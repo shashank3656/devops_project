@@ -116,6 +116,30 @@ sudo usermod -aG docker $USER
 # Then logout and login again
 ```
 
+### Go Vendoring Error
+
+If you see errors like:
+```
+go: inconsistent vendoring in /app:
+github.com/google/go-github/v61@v61.0.0: is explicitly required in go.mod, but not marked as explicit in vendor/modules.txt
+```
+
+**Solution:** The configuration now uses `-mod=mod` to ignore vendor directories. If the error persists:
+
+1. **Remove vendor directory (if it exists):**
+   ```bash
+   cd ~/devops_project/backend
+   rm -rf vendor/
+   ```
+
+2. **Restart the service:**
+   ```bash
+   cd ~/devops_project
+   sudo docker-compose restart backend
+   ```
+
+The `-mod=mod` flag tells Go to use modules directly instead of vendoring.
+
 ## Security Notes
 
 ⚠️ **Never commit `.env` file to git!**

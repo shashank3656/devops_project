@@ -28,10 +28,11 @@ services:
     volumes:
       # Mount source code for hot reload
       - ./backend:/app
-      # Preserve node_modules (not applicable here, but good pattern)
+      # Exclude vendor directory to avoid vendoring conflicts
       - /app/vendor
     # Command runs go run . from the mounted volume
-    command: sh -c "go mod download && go run ."
+    # Use -mod=mod to ignore vendor directory if it exists
+    command: sh -c "go mod download && go run -mod=mod ."
     restart: unless-stopped
     networks:
       - infra-network

@@ -19,4 +19,5 @@ COPY *.go ./
 EXPOSE 8080
 
 # Default command (can be overridden in docker-compose)
-CMD ["go", "run", "."]
+# Use -mod=mod to ignore vendor directory if it exists
+CMD ["go", "run", "-mod=mod", "."]
