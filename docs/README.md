@@ -17,6 +17,7 @@ This directory contains all documentation for the Infrastructure Portal project.
 
 ### Backend Documentation
 - **backend-README.md** - Backend API documentation
+- **API_DOCUMENTATION.md** - Complete API reference with OpenAPI spec
 
 ## Quick Links
 
@@ -26,5 +27,6 @@ This directory contains all documentation for the Infrastructure Portal project.
 - [Deployment Guide](./DEPLOYMENT.md) - **EC2 and production deployment**
 - [Frontend Guide](./frontend-README.md)
 - [Backend Guide](./backend-README.md)
+- [API Documentation](./API_DOCUMENTATION.md) - **API reference with OpenAPI**
 - [Quick Start](./QUICK_START.md)
 - [Tech Stack](./TECH_STACK.md)
