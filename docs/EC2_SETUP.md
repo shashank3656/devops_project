@@ -46,11 +46,14 @@ ls -la config/.env
 
 ```bash
 # Development mode (with hot reload)
-sudo docker-compose --profile dev up -d
+# Note: First time will build images, may take a few minutes
+sudo docker-compose --profile dev up -d --build
 
 # Or production mode
-sudo docker-compose up -d
+sudo docker-compose up -d --build
 ```
+
+**Note:** Use `--build` flag the first time or when Dockerfiles change.
 
 ### 5. Check logs if there are issues
 

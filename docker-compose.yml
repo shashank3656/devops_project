@@ -14,7 +14,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: infra-backend-dev
     ports:
       - "8080:8080"
@@ -28,7 +28,10 @@ services:
     volumes:
       # Mount source code for hot reload
       - ./backend:/app
-    command: go run .
+      # Preserve node_modules (not applicable here, but good pattern)
+      - /app/vendor
+    # Command runs go run . from the mounted volume
+    command: sh -c "go mod download && go run ."
     restart: unless-stopped
     networks:
       - infra-network

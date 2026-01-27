@@ -1,0 +1,22 @@
+# Development Dockerfile - includes Go for hot reload
+FROM golang:1.22-alpine
+
+WORKDIR /app
+
+# Install git (needed for go mod download)
+RUN apk add --no-cache git ca-certificates
+
+# Copy go.mod first for better caching
+COPY go.mod ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code (will be overridden by volume mount in docker-compose)
+COPY *.go ./
+
+# Expose port
+EXPOSE 8080
+
+# Default command (can be overridden in docker-compose)
+CMD ["go", "run", "."]
