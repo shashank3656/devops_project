@@ -11,8 +11,8 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - GITHUB_OWNER=${GITHUB_OWNER:-your-github-username}
-      - GITHUB_REPO=${GITHUB_REPO:-infra-live}
+      - GITHUB_OWNER=${GITHUB_OWNER:-shashank3656}
+      - GITHUB_REPO=${GITHUB_REPO:-Application_Onboarding}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - BASE_BRANCH=${BASE_BRANCH:-main}
     volumes:
