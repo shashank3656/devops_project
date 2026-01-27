@@ -17,7 +17,7 @@ export default function CreateInfrastructure() {
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    router.push('/auth');
+      router.push('/login');
   };
 
   return (
@@ -37,9 +37,8 @@ export default function CreateInfrastructure() {
             <h1 style={{ 
               fontSize: '36px', 
               fontWeight: 'bold',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent'
+              color: 'var(--text-primary)',
+              margin: 0
             }}>
               Create Infrastructure
             </h1>
@@ -88,7 +87,7 @@ export default function CreateInfrastructure() {
                 <div style={{ 
                   fontSize: '48px', 
                   marginBottom: '16px',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent'
                 }}>
@@ -124,7 +123,7 @@ export default function CreateInfrastructure() {
                 <div style={{ 
                   fontSize: '48px', 
                   marginBottom: '16px',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent'
                 }}>

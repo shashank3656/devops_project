@@ -5,11 +5,11 @@
 }
 
 :root {
-  /* Primary Colors */
-  --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --primary-color: #667eea;
-  --primary-dark: #5568d3;
-  --primary-light: #8b9eff;
+  /* Primary Colors - Professional Blue */
+  --primary-gradient: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  --primary-color: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-light: #3b82f6;
   
   /* Cloud Provider Colors */
   --aws-color: #ff9900;
@@ -63,7 +63,7 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+  background: linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 50%, #cbd5e0 100%);
   background-attachment: fixed;
   min-height: 100vh;
   color: var(--text-primary);
