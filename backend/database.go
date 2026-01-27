@@ -24,7 +24,7 @@ type PRRequest struct {
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
-	CreatedBy   int       `json:"created_by"`
+	CreatedBy   *int      `json:"created_by"` // Use pointer to allow NULL
 	Config      string    `json:"config"` // JSON string of the full config
 }
 
@@ -113,7 +113,7 @@ func createTables() error {
 		file_path TEXT NOT NULL,
 		status VARCHAR(50) DEFAULT 'pending',
 		config TEXT NOT NULL,
-		created_by INTEGER REFERENCES users(id),
+		created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);`
@@ -155,7 +155,7 @@ func SavePRRequest(req *PRRequest) error {
 		query,
 		req.Team, req.Env, req.Cloud, req.Service,
 		req.PRURL, req.Branch, req.FilePath, req.Status,
-		req.Config, req.CreatedBy,
+		req.Config, req.CreatedBy, // Will be NULL if CreatedBy is nil
 	).Scan(&req.ID, &req.CreatedAt, &req.UpdatedAt)
 
 	if err != nil {
@@ -216,13 +216,21 @@ func GetPRRequests(team, env string, userIDInt int, limit, offset int) ([]PRRequ
 	var requests []PRRequest
 	for rows.Next() {
 		var req PRRequest
+		var createdBy sql.NullInt64
 		err := rows.Scan(
 			&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service,
 			&req.PRURL, &req.Branch, &req.FilePath, &req.Status,
-			&req.Config, &req.CreatedBy, &req.CreatedAt, &req.UpdatedAt,
+			&req.Config, &createdBy, &req.CreatedAt, &req.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan PR request: %w", err)
+		}
+		// Convert sql.NullInt64 to *int
+		if createdBy.Valid {
+			val := int(createdBy.Int64)
+			req.CreatedBy = &val
+		} else {
+			req.CreatedBy = nil
 		}
 		requests = append(requests, req)
 	}
