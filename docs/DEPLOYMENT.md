@@ -37,13 +37,11 @@ NEXT_PUBLIC_API_URL=http://<EC2_PUBLIC_IP>:8080
 3. Ensure EC2 Security Group allows:
    - Port 3000 (frontend)
    - Port 8080 (backend)
-4. **IMPORTANT: Rebuild frontend** to include the new API URL (Next.js bakes env vars at build time):
+4. Rebuild frontend to include the new API URL:
    ```bash
    docker-compose build frontend-prod
    docker-compose up -d
    ```
-   
-   **Note:** `NEXT_PUBLIC_API_URL` is passed as a build argument and baked into the JavaScript bundle during the build. You MUST rebuild after changing it.
 
 #### Option B: Using Domain Name
 

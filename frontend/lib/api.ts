@@ -1,13 +1,17 @@
 // Centralized API configuration
+// Note: NEXT_PUBLIC_* variables are baked into the build at build time
+// Make sure to rebuild the frontend after changing NEXT_PUBLIC_API_URL in .env
 export const getApiUrl = (): string => {
-  // In browser, use window.location for same-origin requests
-  if (typeof window !== 'undefined') {
-    // If running in Docker, use the service name
-    // If running locally, use localhost
-    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+  // NEXT_PUBLIC_API_URL is available at build time and runtime
+  // It's baked into the Next.js build, so it will be available in the browser
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  
+  if (!apiUrl) {
+    console.warn('NEXT_PUBLIC_API_URL is not set, falling back to localhost:8080');
+    return 'http://localhost:8080';
   }
-  // Server-side rendering fallback
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+  
+  return apiUrl;
 };
 
 export const API_BASE_URL = getApiUrl();
