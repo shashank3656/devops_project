@@ -95,13 +95,12 @@ export default function Login() {
             </button>
           </form>
 
-          <div style={{ 
+          <div className="info" style={{ 
             marginTop: '24px', 
-            padding: '16px', 
-            background: '#f8f9fa', 
-            borderRadius: '8px',
             fontSize: '14px',
-            color: '#666'
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            gap: '8px'
           }}>
             <strong>Demo Credentials:</strong><br />
             Email: demo@example.com<br />

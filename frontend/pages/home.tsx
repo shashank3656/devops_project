@@ -54,12 +54,13 @@ export default function Home() {
             <h2 style={{ 
               fontSize: '28px', 
               marginBottom: '16px',
-              color: '#333'
+              color: 'var(--text-primary)',
+              fontWeight: '700'
             }}>
               Create Infrastructure
             </h2>
             <p style={{ 
-              color: '#666', 
+              color: 'var(--text-secondary)', 
               marginBottom: '40px',
               fontSize: '16px'
             }}>
@@ -75,23 +76,11 @@ export default function Home() {
             }}>
               <div 
                 onClick={() => router.push('/select-service')}
+                className="card card-interactive"
                 style={{
                   padding: '40px',
-                  border: '2px solid #e0e0e0',
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                  background: 'white'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = '#667eea';
-                  e.currentTarget.style.transform = 'translateY(-4px)';
-                  e.currentTarget.style.boxShadow = '0 10px 30px rgba(102, 126, 234, 0.2)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#e0e0e0';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = 'none';
+                  border: '2px solid var(--border-color)',
+                  margin: '0'
                 }}
               >
                 <div style={{ 
@@ -107,12 +96,12 @@ export default function Home() {
                   fontSize: '22px', 
                   fontWeight: '600',
                   marginBottom: '12px',
-                  color: '#333'
+                  color: 'var(--text-primary)'
                 }}>
                   Select Cloud & Service
                 </h3>
                 <p style={{ 
-                  color: '#666', 
+                  color: 'var(--text-secondary)', 
                   fontSize: '14px',
                   lineHeight: '1.6'
                 }}>
@@ -122,23 +111,11 @@ export default function Home() {
 
               <div 
                 onClick={() => router.push('/custom-json')}
+                className="card card-interactive"
                 style={{
                   padding: '40px',
-                  border: '2px solid #e0e0e0',
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                  background: 'white'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = '#667eea';
-                  e.currentTarget.style.transform = 'translateY(-4px)';
-                  e.currentTarget.style.boxShadow = '0 10px 30px rgba(102, 126, 234, 0.2)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#e0e0e0';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = 'none';
+                  border: '2px solid var(--border-color)',
+                  margin: '0'
                 }}
               >
                 <div style={{ 
@@ -154,12 +131,12 @@ export default function Home() {
                   fontSize: '22px', 
                   fontWeight: '600',
                   marginBottom: '12px',
-                  color: '#333'
+                  color: 'var(--text-primary)'
                 }}>
                   Custom JSON
                 </h3>
                 <p style={{ 
-                  color: '#666', 
+                  color: 'var(--text-secondary)', 
                   fontSize: '14px',
                   lineHeight: '1.6'
                 }}>

@@ -2,6 +2,8 @@
 
 A modern, cloud-agnostic self-service infrastructure platform frontend built with Next.js and TypeScript.
 
+> **Note:** This is the frontend documentation. For project overview, see [README.md](./README.md)
+
 ## Tech Stack
 
 ### Core Technologies
@@ -55,7 +57,9 @@ frontend/
 │   ├── select-service.tsx  # Cloud/Service selection page
 │   └── custom-json.tsx     # Custom JSON input page
 ├── styles/
-│   └── globals.css         # Global styles
+│   └── globals.css         # Global styles with color system
+├── lib/
+│   └── api.ts              # API utilities
 ├── package.json
 ├── tsconfig.json
 └── next.config.js
@@ -152,11 +156,23 @@ The frontend expects a backend API running at `http://localhost:8080` with the f
 
 ## Environment Variables
 
-Create a `.env.local` file for environment-specific configuration:
+Create a `config/.env.local` file for environment-specific configuration:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8080
 ```
+
+## Color System
+
+The frontend uses a comprehensive color system defined in CSS variables:
+
+- **Primary**: Purple-blue gradient (#667eea → #764ba2)
+- **AWS**: Orange (#ff9900)
+- **GCP**: Blue (#4285f4)
+- **Azure**: Blue (#0078d4)
+- **Status Colors**: Success (green), Error (red), Warning (amber), Info (blue)
+
+See `styles/globals.css` for the complete color palette.
 
 ## Future Enhancements
 

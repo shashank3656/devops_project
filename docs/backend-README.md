@@ -19,7 +19,7 @@ The backend is a stateless, cloud-agnostic service that:
 
 ## Configuration
 
-The backend uses environment variables for configuration. Set these in your `.env` file or docker-compose:
+The backend uses environment variables for configuration. Set these in your `config/.env` file or docker-compose:
 
 ```bash
 GITHUB_OWNER=your-username        # Your GitHub username (personal) or organization name
@@ -42,7 +42,7 @@ BASE_BRANCH=main                  # Base branch for PRs
      - This includes: `repo:status`, `repo_deployment`, `public_repo`, `repo:invite`, `security_events`
 5. Click "Generate token"
 6. **Copy the token immediately** (you won't be able to see it again)
-7. Add it to your `.env` file as `GITHUB_TOKEN`
+7. Add it to your `config/.env` file as `GITHUB_TOKEN`
 
 **Security Note:** Never commit your token to version control. Always use environment variables or secrets management.
 

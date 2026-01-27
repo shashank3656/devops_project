@@ -1,12 +1,11 @@
 # Docker Compose Guide
 
-This project includes Docker Compose configurations for easy deployment and development.
+This project uses a single Docker Compose file with profiles for different environments.
 
 ## Files
 
-- `docker-compose.yml` - Production configuration
-- `docker-compose.dev.yml` - Development configuration with hot reload
-- `.env.example` - Example environment variables
+- `docker-compose.yml` - Single compose file for both production and development
+- `config/.env.example` - Example environment variables
 
 ## Quick Start
 
@@ -14,10 +13,10 @@ This project includes Docker Compose configurations for easy deployment and deve
 
 1. **Copy environment variables:**
    ```bash
-   cp .env.example .env
+   cp config/.env.example config/.env
    ```
 
-2. **Edit `.env` file with your configuration:**
+2. **Edit `config/.env` file with your configuration:**
    ```env
    # GITHUB_OWNER can be your GitHub username (personal account) or organization name
    GITHUB_OWNER=your-github-username
@@ -29,12 +28,21 @@ This project includes Docker Compose configurations for easy deployment and deve
 3. **Create GitHub Personal Access Token:**
    - Go to https://github.com/settings/tokens
    - Generate a new token (classic) with `repo` scope
-   - Add it to your `.env` file as `GITHUB_TOKEN`
+   - Add it to your `config/.env` file as `GITHUB_TOKEN`
 
-4. **Build and start services:**
+4. **Build and start services (Production):**
    ```bash
+   # Production is the default profile
    docker-compose up -d
+   
+   # Or explicitly:
+   docker-compose --profile prod up -d
    ```
+   
+   This will:
+   - Start `backend-prod` and `frontend-prod` services
+   - Use compiled/production builds
+   - Container names: `infra-backend` and `infra-frontend`
 
 5. **View logs:**
    ```bash
@@ -51,27 +59,45 @@ This project includes Docker Compose configurations for easy deployment and deve
 For development with hot reload:
 
 ```bash
-docker-compose -f docker-compose.dev.yml up
+docker-compose --profile dev up
 ```
 
 This will:
-- Mount source code as volumes
-- Enable hot reload for both frontend and backend
-- Use development mode
+- Start `backend` and `frontend` services (dev profile)
+- Mount source code as volumes for hot reload
+- Run `go run .` for backend (instead of compiled binary)
+- Run `npm run dev` for frontend (instead of production build)
+- Container names: `infra-backend-dev` and `infra-frontend-dev`
 
 ## Services
 
-### Backend
+### Backend (Production)
+- **Service:** `backend-prod`
+- **Container:** `infra-backend`
 - **Port:** 8080
 - **Health Check:** `http://localhost:8080/health`
 - **Endpoints:**
   - `POST /create-pr` - Create infrastructure PR
   - `GET /health` - Health check
 
-### Frontend
+### Backend (Development)
+- **Service:** `backend`
+- **Container:** `infra-backend-dev`
+- **Port:** 8080
+- **Hot Reload:** Enabled (source code mounted)
+
+### Frontend (Production)
+- **Service:** `frontend-prod`
+- **Container:** `infra-frontend`
 - **Port:** 3000
 - **URL:** `http://localhost:3000`
 - **API URL:** Configured via `NEXT_PUBLIC_API_URL`
+
+### Frontend (Development)
+- **Service:** `frontend`
+- **Container:** `infra-frontend-dev`
+- **Port:** 3000
+- **Hot Reload:** Enabled (source code mounted)
 
 ## Environment Variables
 
@@ -94,7 +120,8 @@ This will:
 ## Volumes
 
 ### Production
-- No volumes needed (token is passed via environment variable)
+- No volumes needed (uses compiled binaries)
+- Token is passed via environment variable
 
 ### Development
 - `./backend:/app` - Backend source code (for hot reload)
@@ -102,7 +129,7 @@ This will:
 - `/app/node_modules` - Anonymous volume for node_modules
 - `/app/.next` - Anonymous volume for Next.js build cache
 
-**Note:** Token is passed via environment variable, no volume mount needed.
+**Note:** Token is passed via environment variable from `config/.env`
 
 ## Health Checks
 
@@ -121,7 +148,7 @@ All services are connected via a bridge network (`infra-network`), allowing them
 1. **Check GitHub token is set:**
    ```bash
    echo $GITHUB_TOKEN
-   # Or check in .env file
+   # Or check in config/.env file
    ```
 
 2. **Check environment variables:**
@@ -146,7 +173,7 @@ All services are connected via a bridge network (`infra-network`), allowing them
    docker-compose exec frontend wget -O- http://backend:8080/health
    ```
 
-3. **Update `NEXT_PUBLIC_API_URL`** in `.env` if needed
+3. **Update `NEXT_PUBLIC_API_URL`** in `config/.env` if needed
 
 ### Port already in use
 
@@ -173,12 +200,18 @@ docker-compose up -d
 
 For production deployment:
 
-1. **Use production compose file:**
+1. **Start production services (default profile):**
    ```bash
-   docker-compose -f docker-compose.yml up -d
+   docker-compose up -d
    ```
 
-2. **Set proper environment variables** in `.env`
+2. **Set proper environment variables** in `config/.env`
+
+3. **Verify services are running:**
+   ```bash
+   docker-compose ps
+   # Should show: backend-prod and frontend-prod
+   ```
 
 3. **Use secrets management** for private keys (don't commit them!)
 

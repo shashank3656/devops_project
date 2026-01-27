@@ -188,7 +188,7 @@ export default function SelectService() {
       <Head>
         <title>Select Cloud & Service - Infrastructure Portal</title>
       </Head>
-      <div style={{ minHeight: '100vh', padding: '40px 20px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+      <div style={{ minHeight: '100vh', padding: '40px 20px' }}>
         <div className="container">
           <div style={{ marginBottom: '24px' }}>
             <button 
@@ -204,11 +204,12 @@ export default function SelectService() {
             <h2 style={{ 
               fontSize: '28px', 
               marginBottom: '8px',
-              color: '#333'
+              color: 'var(--text-primary)',
+              fontWeight: '700'
             }}>
               Select Cloud & Service
             </h2>
-            <p style={{ color: '#666', marginBottom: '32px' }}>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '15px' }}>
               Choose your cloud provider and service, then configure the infrastructure
             </p>
 
@@ -288,25 +289,20 @@ export default function SelectService() {
               </div>
 
               {serviceConfig && (
-                <div style={{ 
-                  marginTop: '32px', 
-                  padding: '24px', 
-                  background: '#f8f9fa', 
-                  borderRadius: '8px',
-                  marginBottom: '24px'
-                }}>
-                  <h3 style={{ 
-                    fontSize: '20px', 
-                    marginBottom: '20px',
-                    color: '#333'
-                  }}>
+                <div className="form-section">
+                  <h3 className="form-section-title">
                     Service Configuration
+                    {cloud && (
+                      <span className={`cloud-badge ${cloud}`} style={{ marginLeft: '12px', fontSize: '11px' }}>
+                        {cloud.toUpperCase()}
+                      </span>
+                    )}
                   </h3>
                   {serviceConfig.fields.map(field => (
                     <div key={field.name} className="form-group">
                       {field.type !== 'boolean' && (
                         <label className="label">
-                          {field.label} {field.required && <span style={{ color: '#e74c3c' }}>*</span>}
+                          {field.label} {field.required && <span style={{ color: 'var(--error-color)' }}>*</span>}
                         </label>
                       )}
                       {renderField(field)}
@@ -322,24 +318,17 @@ export default function SelectService() {
               )}
 
               {prUrl && (
-                <div style={{ 
-                  padding: '16px', 
-                  background: '#d4edda', 
-                  border: '1px solid #c3e6cb',
-                  borderRadius: '8px',
-                  marginBottom: '16px'
-                }}>
-                  <strong style={{ color: '#155724' }}>PR Created Successfully!</strong>
-                  <div style={{ marginTop: '8px' }}>
-                    <a 
-                      href={prUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      style={{ color: '#155724', textDecoration: 'underline' }}
-                    >
-                      View Pull Request →
-                    </a>
-                  </div>
+                <div className="success" style={{ marginBottom: '16px', flexDirection: 'column', alignItems: 'flex-start', gap: '12px' }}>
+                  <strong>PR Created Successfully!</strong>
+                  <a 
+                    href={prUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="link"
+                    style={{ fontWeight: '600', fontSize: '15px' }}
+                  >
+                    View Pull Request →
+                  </a>
                 </div>
               )}
 

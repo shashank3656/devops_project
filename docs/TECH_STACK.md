@@ -1,5 +1,7 @@
 # Frontend Tech Stack Recommendation
 
+> **Note:** This document describes the frontend technology stack. For full project documentation, see [README.md](./README.md)
+
 ## Recommended Stack: Next.js + TypeScript + React
 
 ### Why Next.js?

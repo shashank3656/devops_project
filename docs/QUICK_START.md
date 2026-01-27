@@ -1,4 +1,6 @@
-# Quick Start Guide
+# Frontend Quick Start Guide
+
+> **Note:** This is the frontend quick start guide. For full project documentation, see [README.md](./README.md)
 
 ## Installation
 
