@@ -138,6 +138,9 @@ export default function SelectService() {
     setError('');
     setPrUrl('');
 
+    // Use environment variable or fallback to localhost for local development
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+
     try {
       const payload = {
         team,
@@ -147,8 +150,6 @@ export default function SelectService() {
         config: formValues
       };
 
-      // Use environment variable or fallback to localhost for local development
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
       const response = await fetch(`${apiUrl}/create-pr`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
