@@ -1,0 +1,356 @@
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+import Head from 'next/head';
+import { clouds, environments } from '../config/clouds';
+import { awsServices, awsServiceList, ServiceField } from '../config/awsServices';
+import { gcpServices, gcpServiceList } from '../config/gcpServices';
+
+export default function SelectService() {
+  const router = useRouter();
+  const [team, setTeam] = useState('');
+  const [env, setEnv] = useState('');
+  const [cloud, setCloud] = useState('');
+  const [service, setService] = useState('');
+  const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const [loading, setLoading] = useState(false);
+  const [prUrl, setPrUrl] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const isAuthenticated = localStorage.getItem('isAuthenticated');
+    if (!isAuthenticated) {
+      router.push('/');
+    }
+  }, [router]);
+
+  // Get available services based on selected cloud
+  const getAvailableServices = () => {
+    if (cloud === 'aws') return awsServiceList;
+    if (cloud === 'gcp') return gcpServiceList;
+    if (cloud === 'azure') return []; // Add Azure services later
+    return [];
+  };
+
+  // Get service configuration
+  const getServiceConfig = () => {
+    if (cloud === 'aws' && service) {
+      return awsServices[service];
+    }
+    if (cloud === 'gcp' && service) {
+      return gcpServices[service];
+    }
+    return null;
+  };
+
+  // Initialize form values when service changes
+  useEffect(() => {
+    const config = getServiceConfig();
+    if (config) {
+      const initialValues: Record<string, any> = {};
+      config.fields.forEach(field => {
+        if (field.defaultValue !== undefined) {
+          initialValues[field.name] = field.defaultValue;
+        } else {
+          initialValues[field.name] = '';
+        }
+      });
+      setFormValues(initialValues);
+    }
+  }, [service, cloud]);
+
+  const handleFieldChange = (fieldName: string, value: any) => {
+    setFormValues(prev => ({
+      ...prev,
+      [fieldName]: value
+    }));
+  };
+
+  const renderField = (field: ServiceField) => {
+    const value = formValues[field.name] ?? '';
+
+    switch (field.type) {
+      case 'text':
+        return (
+          <input
+            type="text"
+            className="input"
+            placeholder={field.placeholder || ''}
+            value={value}
+            onChange={(e) => handleFieldChange(field.name, e.target.value)}
+            required={field.required}
+          />
+        );
+      
+      case 'number':
+        return (
+          <input
+            type="number"
+            className="input"
+            placeholder={field.placeholder || ''}
+            value={value}
+            onChange={(e) => handleFieldChange(field.name, Number(e.target.value))}
+            required={field.required}
+          />
+        );
+      
+      case 'select':
+        return (
+          <select
+            className="select"
+            value={value}
+            onChange={(e) => handleFieldChange(field.name, e.target.value)}
+            required={field.required}
+          >
+            <option value="">Select {field.label}</option>
+            {field.options?.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        );
+      
+      case 'boolean':
+        return (
+          <div className="checkbox-group">
+            <input
+              type="checkbox"
+              className="checkbox"
+              checked={value === true}
+              onChange={(e) => handleFieldChange(field.name, e.target.checked)}
+            />
+            <label>{field.label}</label>
+          </div>
+        );
+      
+      default:
+        return null;
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!team || !env || !cloud || !service) {
+      setError('Please fill in all required fields');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setPrUrl('');
+
+    try {
+      const payload = {
+        team,
+        env,
+        cloud,
+        service,
+        config: formValues
+      };
+
+      const response = await fetch('http://localhost:8080/create-pr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create PR');
+      }
+
+      const data = await response.json();
+      setPrUrl(data.pr_url || '');
+      
+      // Show success message
+      alert('PR Created Successfully! Check the PR URL below.');
+    } catch (err: any) {
+      setError(err.message || 'An error occurred while creating the PR');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const serviceConfig = getServiceConfig();
+  const availableServices = getAvailableServices();
+
+  return (
+    <>
+      <Head>
+        <title>Select Cloud & Service - Infrastructure Portal</title>
+      </Head>
+      <div style={{ minHeight: '100vh', padding: '40px 20px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+        <div className="container">
+          <div style={{ marginBottom: '24px' }}>
+            <button 
+              onClick={() => router.push('/home')}
+              className="btn btn-secondary"
+              style={{ marginBottom: '16px' }}
+            >
+              ← Back to Home
+            </button>
+          </div>
+
+          <div className="card">
+            <h2 style={{ 
+              fontSize: '28px', 
+              marginBottom: '8px',
+              color: '#333'
+            }}>
+              Select Cloud & Service
+            </h2>
+            <p style={{ color: '#666', marginBottom: '32px' }}>
+              Choose your cloud provider and service, then configure the infrastructure
+            </p>
+
+            <form onSubmit={handleSubmit}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                <div className="form-group">
+                  <label className="label">Team Name *</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Enter team name"
+                    value={team}
+                    onChange={(e) => setTeam(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="label">Environment *</label>
+                  <select
+                    className="select"
+                    value={env}
+                    onChange={(e) => setEnv(e.target.value)}
+                    required
+                  >
+                    <option value="">Select Environment</option>
+                    {environments.map(envOption => (
+                      <option key={envOption.value} value={envOption.value}>
+                        {envOption.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                <div className="form-group">
+                  <label className="label">Cloud Provider *</label>
+                  <select
+                    className="select"
+                    value={cloud}
+                    onChange={(e) => {
+                      setCloud(e.target.value);
+                      setService(''); // Reset service when cloud changes
+                    }}
+                    required
+                  >
+                    <option value="">Select Cloud</option>
+                    {clouds.map(cloudOption => (
+                      <option key={cloudOption.value} value={cloudOption.value}>
+                        {cloudOption.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="label">Service *</label>
+                  <select
+                    className="select"
+                    value={service}
+                    onChange={(e) => setService(e.target.value)}
+                    required
+                    disabled={!cloud || availableServices.length === 0}
+                  >
+                    <option value="">Select Service</option>
+                    {availableServices.map(svc => {
+                      const config = cloud === 'aws' ? awsServices[svc] : gcpServices[svc];
+                      return (
+                        <option key={svc} value={svc}>
+                          {config?.displayName || svc}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              </div>
+
+              {serviceConfig && (
+                <div style={{ 
+                  marginTop: '32px', 
+                  padding: '24px', 
+                  background: '#f8f9fa', 
+                  borderRadius: '8px',
+                  marginBottom: '24px'
+                }}>
+                  <h3 style={{ 
+                    fontSize: '20px', 
+                    marginBottom: '20px',
+                    color: '#333'
+                  }}>
+                    Service Configuration
+                  </h3>
+                  {serviceConfig.fields.map(field => (
+                    <div key={field.name} className="form-group">
+                      {field.type !== 'boolean' && (
+                        <label className="label">
+                          {field.label} {field.required && <span style={{ color: '#e74c3c' }}>*</span>}
+                        </label>
+                      )}
+                      {renderField(field)}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {error && (
+                <div className="error" style={{ marginBottom: '16px' }}>
+                  {error}
+                </div>
+              )}
+
+              {prUrl && (
+                <div style={{ 
+                  padding: '16px', 
+                  background: '#d4edda', 
+                  border: '1px solid #c3e6cb',
+                  borderRadius: '8px',
+                  marginBottom: '16px'
+                }}>
+                  <strong style={{ color: '#155724' }}>PR Created Successfully!</strong>
+                  <div style={{ marginTop: '8px' }}>
+                    <a 
+                      href={prUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ color: '#155724', textDecoration: 'underline' }}
+                    >
+                      View Pull Request →
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{ width: '100%', marginTop: '16px' }}
+                disabled={loading || !serviceConfig}
+              >
+                {loading ? (
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <span className="loading"></span>
+                    Creating PR...
+                  </span>
+                ) : (
+                  'Create Pull Request'
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
