@@ -72,6 +72,9 @@ export default function CustomJSON() {
     setError('');
     setPrUrl('');
 
+    // Use environment variable or fallback to localhost for local development
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+
     try {
       let jsonPayload;
       try {
@@ -87,7 +90,6 @@ export default function CustomJSON() {
         ...jsonPayload
       };
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
       const response = await fetch(`${apiUrl}/create-pr`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -106,7 +108,6 @@ export default function CustomJSON() {
     } catch (err: any) {
       console.error('Error creating PR:', err);
       const errorMessage = err.message || 'An error occurred while creating the PR';
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
       // Check if it's a network error
       if (err.message === 'Failed to fetch' || err.name === 'TypeError' || err.message.includes('NetworkError')) {
         setError(`Cannot connect to backend at ${apiUrl}. Make sure the backend is running.`);
