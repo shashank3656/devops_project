@@ -166,10 +166,10 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Save to database
 	userID := r.Header.Get("X-User-ID")
-	userIDInt := 0
+	var userIDPtr *int
 	if userID != "" {
-		if id, err := strconv.Atoi(userID); err == nil {
-			userIDInt = id
+		if id, err := strconv.Atoi(userID); err == nil && id > 0 {
+			userIDPtr = &id
 		}
 	}
 
@@ -183,7 +183,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		FilePath:  filePath,
 		Status:    "pending",
 		Config:    string(content),
-		CreatedBy: userIDInt,
+		CreatedBy: userIDPtr, // Use pointer - will be NULL if no valid user ID
 	}
 
 	if err := SavePRRequest(prRequest); err != nil {
@@ -211,6 +211,12 @@ func main() {
 	if err := InitDB(); err != nil {
 		log.Printf("Warning: Database initialization failed: %v", err)
 		log.Println("Continuing without database - history features will not work")
+	} else {
+		// Run migration to update schema if needed
+		if err := MigrateDatabase(); err != nil {
+			log.Printf("Warning: Database migration failed: %v", err)
+			log.Println("Continuing - some features may not work correctly")
+		}
 	}
 
 	// API endpoints
