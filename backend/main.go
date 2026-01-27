@@ -86,9 +86,9 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create file path: configs/<team>/<env>/<cloud>-<service>.json
+	// Create file path: <team-id>/<env>/<cloud>-<service>.json
 	filePath := fmt.Sprintf(
-		"configs/%s/%s/%s-%s.json",
+		"%s/%s/%s-%s.json",
 		team, env, cloud, service,
 	)
 
@@ -102,7 +102,10 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Creating PR for: team=%s, env=%s, cloud=%s, service=%s", team, env, cloud, service)
 
-	prURL, err := CreateGitHubPR(filePath, content)
+	// Branch name format: <team-name>/<env>
+	branchName := fmt.Sprintf("%s/%s", team, env)
+	
+	prURL, err := CreateGitHubPR(branchName, filePath, content)
 	if err != nil {
 		log.Printf("Error creating PR: %v", err)
 		http.Error(w, fmt.Sprintf("failed to create PR: %v", err), http.StatusInternalServerError)
@@ -113,7 +116,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
 		"pr_url": prURL,
 		"status": "created",
-		"branch": fmt.Sprintf("infra-%s-%s-%s-%s", team, env, cloud, service),
+		"branch": branchName,
 	}
 	
 	if err := json.NewEncoder(w).Encode(response); err != nil {

@@ -19,35 +19,32 @@ The backend is a stateless, cloud-agnostic service that:
 
 ## Configuration
 
-Edit `config.go` with your GitHub App credentials:
+The backend uses environment variables for configuration. Set these in your `.env` file or docker-compose:
 
-```go
-const (
-    GitHubOwner = "your-username"        // Your GitHub username (personal) or organization name
-    GitHubRepo  = "infra-live"           // Repository name
-    
-    GitHubAppID        = int64(123456)    // GitHub App ID
-    GitHubInstallID   = int64(123456)    // Installation ID
-    GitHubPrivateKey  = "/app/private-key.pem"  // Path to private key file
-    
-    BaseBranch = "main"                   // Base branch for PRs
-)
+```bash
+GITHUB_OWNER=your-username        # Your GitHub username (personal) or organization name
+GITHUB_REPO=infra-live           # Repository name
+GITHUB_TOKEN=your-token          # GitHub Personal Access Token
+BASE_BRANCH=main                  # Base branch for PRs
 ```
 
-**Note:** `GitHubOwner` can be either:
+**Note:** `GITHUB_OWNER` can be either:
 - Your personal GitHub username (e.g., `"john-doe"`)
 - An organization name (e.g., `"my-company"`)
 
-### Setting up GitHub App
+### Setting up GitHub Personal Access Token
 
-1. Go to GitHub Settings → Developer settings → GitHub Apps
-2. Create a new GitHub App with these permissions:
-   - Repository: Read access
-   - Contents: Read and write access
-   - Pull requests: Write access
-3. Generate a private key and save it
-4. Install the app on your repository
-5. Note the App ID and Installation ID
+1. Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+2. Click "Generate new token (classic)"
+3. Give it a descriptive name (e.g., "Infra Portal Backend")
+4. Select the following scopes:
+   - `repo` (Full control of private repositories)
+     - This includes: `repo:status`, `repo_deployment`, `public_repo`, `repo:invite`, `security_events`
+5. Click "Generate token"
+6. **Copy the token immediately** (you won't be able to see it again)
+7. Add it to your `.env` file as `GITHUB_TOKEN`
+
+**Security Note:** Never commit your token to version control. Always use environment variables or secrets management.
 
 ## API Endpoints
 
