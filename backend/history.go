@@ -33,7 +33,17 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	// Get query parameters
 	team := r.URL.Query().Get("team")
 	env := r.URL.Query().Get("env")
+	cloud := r.URL.Query().Get("cloud")
+	prIDStr := r.URL.Query().Get("id") // PR number filter
 	userID := r.URL.Query().Get("user_id")
+
+	// Parse PR ID
+	prID := 0
+	if prIDStr != "" {
+		if parsed, err := strconv.Atoi(prIDStr); err == nil && parsed > 0 {
+			prID = parsed
+		}
+	}
 
 	// Get limit and offset
 	limit := 50
@@ -67,7 +77,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch PR requests
-	requests, err := GetPRRequests(team, env, userIDInt, limit, offset)
+	requests, err := GetPRRequests(team, env, cloud, prID, userIDInt, limit, offset)
 	if err != nil {
 		log.Printf("Error fetching PR requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
