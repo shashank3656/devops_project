@@ -24,7 +24,7 @@ type PRRequest struct {
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
-	CreatedBy   string    `json:"created_by"`
+	CreatedBy   int       `json:"created_by"`
 	Config      string    `json:"config"` // JSON string of the full config
 }
 
@@ -73,7 +73,12 @@ func InitDB() error {
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	log.Println("Database connection established")
+	// Set connection pool settings
+	DB.SetMaxOpenConns(25)                 // Maximum number of open connections
+	DB.SetMaxIdleConns(5)                   // Maximum number of idle connections
+	DB.SetConnMaxLifetime(5 * time.Minute) // Maximum connection lifetime
+
+	log.Println("Database connection established with connection pooling")
 
 	// Create tables
 	if err := createTables(); err != nil {
@@ -161,7 +166,7 @@ func SavePRRequest(req *PRRequest) error {
 }
 
 // GetPRRequests retrieves PR requests with optional filters
-func GetPRRequests(team, env, userID string, limit, offset int) ([]PRRequest, error) {
+func GetPRRequests(team, env string, userIDInt int, limit, offset int) ([]PRRequest, error) {
 	query := `
 		SELECT id, team, env, cloud, service, pr_url, branch, file_path, status, config, created_by, created_at, updated_at
 		FROM pr_requests
@@ -182,9 +187,9 @@ func GetPRRequests(team, env, userID string, limit, offset int) ([]PRRequest, er
 		argPos++
 	}
 
-	if userID != "" {
+	if userIDInt > 0 {
 		query += fmt.Sprintf(" AND created_by = $%d", argPos)
-		args = append(args, userID)
+		args = append(args, userIDInt)
 		argPos++
 	}
 

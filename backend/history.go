@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -52,18 +51,23 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get user ID from token if available
-	if userID == "" {
+	userIDInt := 0
+	if userID != "" {
+		if id, err := strconv.Atoi(userID); err == nil {
+			userIDInt = id
+		}
+	} else {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader != "" && len(authHeader) > 7 && authHeader[:7] == "Bearer " {
 			token := authHeader[7:]
 			if id, err := validateToken(token); err == nil {
-				userID = strconv.Itoa(id)
+				userIDInt = id
 			}
 		}
 	}
 
 	// Fetch PR requests
-	requests, err := GetPRRequests(team, env, userID, limit, offset)
+	requests, err := GetPRRequests(team, env, userIDInt, limit, offset)
 	if err != nil {
 		log.Printf("Error fetching PR requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")

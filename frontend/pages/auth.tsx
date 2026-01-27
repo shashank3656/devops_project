@@ -63,10 +63,15 @@ export default function Auth() {
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)',
+        backgroundAttachment: 'fixed',
         padding: '20px'
       }}>
-        <div className="card" style={{ maxWidth: '400px', width: '100%' }}>
+        <div className="card" style={{ 
+          maxWidth: '450px', 
+          width: '100%',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+        }}>
           <div style={{ textAlign: 'center', marginBottom: '32px' }}>
             <h1 style={{ 
               fontSize: '32px', 
@@ -85,42 +90,54 @@ export default function Auth() {
 
           <div style={{ 
             display: 'flex', 
-            gap: '8px', 
+            gap: '0', 
             marginBottom: '24px',
-            borderBottom: '1px solid var(--border-color)'
+            background: 'var(--bg-gray-100)',
+            borderRadius: '8px',
+            padding: '4px'
           }}>
             <button
               onClick={() => {
                 setMode('login');
                 setError('');
+                setUsername('');
+                setEmail('');
+                setPassword('');
               }}
               style={{
                 flex: 1,
-                padding: '12px',
+                padding: '12px 20px',
                 border: 'none',
-                background: mode === 'login' ? 'var(--primary-color)' : 'transparent',
+                background: mode === 'login' ? 'var(--primary-gradient)' : 'transparent',
                 color: mode === 'login' ? 'white' : 'var(--text-secondary)',
                 cursor: 'pointer',
-                borderRadius: '4px 4px 0 0',
-                fontWeight: mode === 'login' ? '600' : '400'
+                borderRadius: '6px',
+                fontWeight: mode === 'login' ? '600' : '500',
+                transition: 'all 0.2s ease',
+                fontSize: '15px'
               }}
             >
-              Login
+              Sign In
             </button>
             <button
               onClick={() => {
                 setMode('signup');
                 setError('');
+                setUsername('');
+                setEmail('');
+                setPassword('');
               }}
               style={{
                 flex: 1,
-                padding: '12px',
+                padding: '12px 20px',
                 border: 'none',
-                background: mode === 'signup' ? 'var(--primary-color)' : 'transparent',
+                background: mode === 'signup' ? 'var(--primary-gradient)' : 'transparent',
                 color: mode === 'signup' ? 'white' : 'var(--text-secondary)',
                 cursor: 'pointer',
-                borderRadius: '4px 4px 0 0',
-                fontWeight: mode === 'signup' ? '600' : '400'
+                borderRadius: '6px',
+                fontWeight: mode === 'signup' ? '600' : '500',
+                transition: 'all 0.2s ease',
+                fontSize: '15px'
               }}
             >
               Sign Up
@@ -182,9 +199,32 @@ export default function Auth() {
               type="submit"
               className="btn btn-primary"
               disabled={loading}
-              style={{ width: '100%' }}
+              style={{ 
+                width: '100%',
+                padding: '14px',
+                fontSize: '16px',
+                fontWeight: '600',
+                background: 'var(--primary-gradient)',
+                boxShadow: '0 4px 6px -1px rgba(102, 126, 234, 0.3)',
+                transition: 'all 0.2s ease'
+              }}
             >
-              {loading ? 'Processing...' : mode === 'login' ? 'Sign In' : 'Sign Up'}
+              {loading ? (
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <span style={{ 
+                    width: '16px', 
+                    height: '16px', 
+                    border: '2px solid rgba(255,255,255,0.3)', 
+                    borderTop: '2px solid white',
+                    borderRadius: '50%',
+                    animation: 'spin 0.6s linear infinite',
+                    display: 'inline-block'
+                  }}></span>
+                  {mode === 'login' ? 'Signing in...' : 'Creating account...'}
+                </span>
+              ) : (
+                mode === 'login' ? 'Sign In' : 'Create Account'
+              )}
             </button>
           </form>
         </div>
