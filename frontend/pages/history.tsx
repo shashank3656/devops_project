@@ -22,7 +22,8 @@ export default function History() {
   const [requests, setRequests] = useState<PRRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filters, setFilters] = useState({ team: '', env: '' });
+  const [filterType, setFilterType] = useState<'team' | 'pr_number' | 'env' | 'cloud'>('team');
+  const [filterValue, setFilterValue] = useState('');
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -35,7 +36,7 @@ export default function History() {
     }
 
     fetchHistory();
-  }, [filters]);
+  }, [filterType, filterValue]);
 
   const fetchHistory = async () => {
     setLoading(true);
@@ -49,8 +50,14 @@ export default function History() {
       }
 
       const params = new URLSearchParams();
-      if (filters.team) params.append('team', filters.team);
-      if (filters.env) params.append('env', filters.env);
+      if (filterValue.trim()) {
+        // Add filter based on selected type
+        if (filterType === 'pr_number') {
+          params.append('id', filterValue.trim());
+        } else {
+          params.append(filterType, filterValue.trim());
+        }
+      }
 
       const response = await fetch(`${apiUrl}/api/history?${params.toString()}`, {
         headers,
@@ -77,7 +84,14 @@ export default function History() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   return (
@@ -97,8 +111,7 @@ export default function History() {
               fontSize: '36px', 
               fontWeight: 'bold',
               color: 'var(--text-primary)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent'
+              margin: 0
             }}>
               PR Request History
             </h1>
@@ -118,91 +131,305 @@ export default function History() {
             </div>
           </div>
 
-          {/* Filters */}
-          <div className="card" style={{ marginBottom: '24px', padding: '20px' }}>
-            <h3 style={{ marginBottom: '16px' }}>Filters</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-              <div>
-                <label htmlFor="filter-team">Team</label>
+          {/* Single Filter Box */}
+          <div className="card" style={{ marginBottom: '24px', padding: '24px' }}>
+            <h3 style={{ marginBottom: '20px', fontSize: '20px', fontWeight: '600', color: 'var(--text-primary)' }}>
+              Filter Requests
+            </h3>
+            <div style={{ 
+              display: 'flex', 
+              gap: '12px', 
+              alignItems: 'flex-end',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ flex: '0 0 auto', minWidth: '180px' }}>
+                <label htmlFor="filter-type" style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                  Filter By
+                </label>
+                <select
+                  id="filter-type"
+                  value={filterType}
+                  onChange={(e) => {
+                    setFilterType(e.target.value as 'team' | 'pr_number' | 'env' | 'cloud');
+                    setFilterValue(''); // Clear value when changing filter type
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    fontSize: '15px',
+                    backgroundColor: 'white',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="team">Team</option>
+                  <option value="pr_number">PR Number</option>
+                  <option value="env">Environment</option>
+                  <option value="cloud">Cloud</option>
+                </select>
+              </div>
+              <div style={{ flex: '1 1 300px', minWidth: '250px' }}>
+                <label htmlFor="filter-value" style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+                  {filterType === 'pr_number' ? 'PR Number' : 
+                   filterType === 'team' ? 'Team Name' :
+                   filterType === 'env' ? 'Environment' : 'Cloud Provider'}
+                </label>
                 <input
-                  id="filter-team"
-                  type="text"
-                  value={filters.team}
-                  onChange={(e) => setFilters({ ...filters, team: e.target.value })}
-                  placeholder="Filter by team"
+                  id="filter-value"
+                  type={filterType === 'pr_number' ? 'number' : 'text'}
+                  value={filterValue}
+                  onChange={(e) => setFilterValue(e.target.value)}
+                  placeholder={
+                    filterType === 'pr_number' ? 'Enter PR number (e.g., 123)' :
+                    filterType === 'team' ? 'Enter team name' :
+                    filterType === 'env' ? 'Enter environment (dev, stage, prod)' :
+                    'Enter cloud provider (AWS, GCP, Azure)'
+                  }
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    fontSize: '15px'
+                  }}
                 />
               </div>
-              <div>
-                <label htmlFor="filter-env">Environment</label>
-                <input
-                  id="filter-env"
-                  type="text"
-                  value={filters.env}
-                  onChange={(e) => setFilters({ ...filters, env: e.target.value })}
-                  placeholder="Filter by environment"
-                />
+              <div style={{ flex: '0 0 auto' }}>
+                <button
+                  onClick={() => {
+                    setFilterValue('');
+                    fetchHistory();
+                  }}
+                  className="btn btn-secondary"
+                  style={{ 
+                    padding: '12px 24px',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  Clear
+                </button>
               </div>
             </div>
           </div>
 
           {/* Table */}
-          <div className="card" style={{ overflowX: 'auto' }}>
+          <div className="card" style={{ overflowX: 'auto', padding: '0' }}>
             {loading ? (
-              <div style={{ textAlign: 'center', padding: '40px' }}>
-                <p>Loading...</p>
+              <div style={{ textAlign: 'center', padding: '60px' }}>
+                <div style={{ 
+                  display: 'inline-block',
+                  width: '40px',
+                  height: '40px',
+                  border: '4px solid var(--border-color)',
+                  borderTop: '4px solid var(--primary-color)',
+                  borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite',
+                  marginBottom: '16px'
+                }}></div>
+                <p style={{ color: 'var(--text-secondary)' }}>Loading requests...</p>
               </div>
             ) : error ? (
-              <div className="error" style={{ margin: '20px' }}>
-                {error}
+              <div className="error" style={{ margin: '24px', padding: '16px', borderRadius: '8px' }}>
+                <strong>Error:</strong> {error}
               </div>
             ) : requests.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px' }}>
-                <p>No PR requests found</p>
+              <div style={{ textAlign: 'center', padding: '60px' }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '16px' }}>
+                  {filterValue ? 'No PR requests found matching your filter' : 'No PR requests found'}
+                </p>
+                {filterValue && (
+                  <button
+                    onClick={() => {
+                      setFilterValue('');
+                      fetchHistory();
+                    }}
+                    className="btn btn-secondary"
+                    style={{ marginTop: '16px' }}
+                  >
+                    Clear Filter
+                  </button>
+                )}
               </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '2px solid var(--border-color)' }}>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>ID</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Team</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Environment</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Cloud</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Service</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Status</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Created At</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>PR Link</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {requests.map((req) => (
-                    <tr key={req.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '12px' }}>{req.id}</td>
-                      <td style={{ padding: '12px' }}>{req.team}</td>
-                      <td style={{ padding: '12px' }}>{req.env}</td>
-                      <td style={{ padding: '12px' }}>{req.cloud}</td>
-                      <td style={{ padding: '12px' }}>{req.service}</td>
-                      <td style={{ padding: '12px' }}>
-                        <span className={`cloud-badge ${req.status}`}>
-                          {req.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px', fontSize: '14px', color: 'var(--text-secondary)' }}>
-                        {formatDate(req.created_at)}
-                      </td>
-                      <td style={{ padding: '12px' }}>
-                        <a 
-                          href={req.pr_url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="link"
-                        >
-                          View PR
-                        </a>
-                      </td>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ 
+                  width: '100%', 
+                  borderCollapse: 'collapse',
+                  minWidth: '800px'
+                }}>
+                  <thead>
+                    <tr style={{ 
+                      borderBottom: '2px solid var(--border-color)',
+                      background: 'var(--bg-gray-50)'
+                    }}>
+                      <th style={{ 
+                        padding: '16px', 
+                        textAlign: 'left',
+                        fontWeight: '600',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>PR #</th>
+                      <th style={{ 
+                        padding: '16px', 
+                        textAlign: 'left',
+                        fontWeight: '600',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>Team</th>
+                      <th style={{ 
+                        padding: '16px', 
+                        textAlign: 'left',
+                        fontWeight: '600',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>Environment</th>
+                      <th style={{ 
+                        padding: '16px', 
+                        textAlign: 'left',
+                        fontWeight: '600',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>Cloud</th>
+                      <th style={{ 
+                        padding: '16px', 
+                        textAlign: 'left',
+                        fontWeight: '600',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>Service</th>
+                      <th style={{ 
+                        padding: '16px', 
+                        textAlign: 'left',
+                        fontWeight: '600',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>Status</th>
+                      <th style={{ 
+                        padding: '16px', 
+                        textAlign: 'left',
+                        fontWeight: '600',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>Created</th>
+                      <th style={{ 
+                        padding: '16px', 
+                        textAlign: 'left',
+                        fontWeight: '600',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>PR Link</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {requests.map((req, index) => (
+                      <tr 
+                        key={req.id} 
+                        style={{ 
+                          borderBottom: '1px solid var(--border-color)',
+                          transition: 'background 0.2s ease',
+                          background: index % 2 === 0 ? 'white' : 'var(--bg-gray-50)'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'var(--bg-gray-100)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = index % 2 === 0 ? 'white' : 'var(--bg-gray-50)';
+                        }}
+                      >
+                        <td style={{ padding: '16px', fontWeight: '600', color: 'var(--primary-color)' }}>
+                          #{req.id}
+                        </td>
+                        <td style={{ padding: '16px' }}>{req.team}</td>
+                        <td style={{ padding: '16px' }}>
+                          <span style={{
+                            padding: '4px 12px',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            fontWeight: '500',
+                            background: 'var(--info-bg)',
+                            color: 'var(--info-color)'
+                          }}>
+                            {req.env}
+                          </span>
+                        </td>
+                        <td style={{ padding: '16px' }}>
+                          <span style={{
+                            padding: '4px 12px',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            fontWeight: '500',
+                            background: req.cloud === 'AWS' ? '#fff4e6' : req.cloud === 'GCP' ? '#e8f0fe' : '#e3f2fd',
+                            color: req.cloud === 'AWS' ? '#ff9900' : req.cloud === 'GCP' ? '#4285f4' : '#0078d4'
+                          }}>
+                            {req.cloud}
+                          </span>
+                        </td>
+                        <td style={{ padding: '16px' }}>{req.service}</td>
+                        <td style={{ padding: '16px' }}>
+                          <span style={{
+                            padding: '6px 12px',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            background: req.status === 'pending' ? 'var(--warning-bg)' : 
+                                       req.status === 'merged' ? 'var(--success-bg)' : 
+                                       req.status === 'closed' ? 'var(--error-bg)' : 'var(--info-bg)',
+                            color: req.status === 'pending' ? 'var(--warning-color)' : 
+                                  req.status === 'merged' ? 'var(--success-color)' : 
+                                  req.status === 'closed' ? 'var(--error-color)' : 'var(--info-color)'
+                          }}>
+                            {req.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: '16px', fontSize: '14px', color: 'var(--text-secondary)' }}>
+                          {formatDate(req.created_at)}
+                        </td>
+                        <td style={{ padding: '16px' }}>
+                          <a 
+                            href={req.pr_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            style={{
+                              color: 'var(--primary-color)',
+                              textDecoration: 'none',
+                              fontWeight: '500',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.textDecoration = 'underline';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.textDecoration = 'none';
+                            }}
+                          >
+                            View PR →
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </div>

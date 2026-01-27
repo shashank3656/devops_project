@@ -166,7 +166,7 @@ func SavePRRequest(req *PRRequest) error {
 }
 
 // GetPRRequests retrieves PR requests with optional filters
-func GetPRRequests(team, env string, userIDInt int, limit, offset int) ([]PRRequest, error) {
+func GetPRRequests(team, env, cloud string, prID int, userIDInt int, limit, offset int) ([]PRRequest, error) {
 	query := `
 		SELECT id, team, env, cloud, service, pr_url, branch, file_path, status, config, created_by, created_at, updated_at
 		FROM pr_requests
@@ -175,15 +175,27 @@ func GetPRRequests(team, env string, userIDInt int, limit, offset int) ([]PRRequ
 	args := []interface{}{}
 	argPos := 1
 
+	if prID > 0 {
+		query += fmt.Sprintf(" AND id = $%d", argPos)
+		args = append(args, prID)
+		argPos++
+	}
+
 	if team != "" {
-		query += fmt.Sprintf(" AND team = $%d", argPos)
-		args = append(args, team)
+		query += fmt.Sprintf(" AND team ILIKE $%d", argPos)
+		args = append(args, "%"+team+"%")
 		argPos++
 	}
 
 	if env != "" {
-		query += fmt.Sprintf(" AND env = $%d", argPos)
-		args = append(args, env)
+		query += fmt.Sprintf(" AND env ILIKE $%d", argPos)
+		args = append(args, "%"+env+"%")
+		argPos++
+	}
+
+	if cloud != "" {
+		query += fmt.Sprintf(" AND cloud ILIKE $%d", argPos)
+		args = append(args, "%"+cloud+"%")
 		argPos++
 	}
 
