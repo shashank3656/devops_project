@@ -141,6 +141,23 @@ export default function SelectService() {
     // Use environment variable or fallback to localhost for local development
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
+    // Get auth token and user
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
+    const headers: HeadersInit = { 'Content-Type': 'application/json' };
+    
+    // Add user ID if available
+    if (user) {
+      try {
+        const userData = JSON.parse(user);
+        if (userData.id) {
+          headers['X-User-ID'] = userData.id.toString();
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+
     try {
       const payload = {
         team,
@@ -152,7 +169,7 @@ export default function SelectService() {
 
       const response = await fetch(`${apiUrl}/create-pr`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload)
       });
 

@@ -27,12 +27,6 @@ private-key.pem
 .env
 .env.local
 
-# Database files
-*.db
-*.db-shm
-*.db-wal
-requests.db
-
 # IDE
 .idea/
 .vscode/

@@ -3,8 +3,8 @@ FROM golang:1.22-alpine
 
 WORKDIR /app
 
-# Install git and sqlite (needed for go mod download and database)
-RUN apk add --no-cache git ca-certificates sqlite
+# Install git (needed for go mod download)
+RUN apk add --no-cache git ca-certificates
 
 # Copy go.mod first for better caching
 COPY go.mod ./

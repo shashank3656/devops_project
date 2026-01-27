@@ -4,6 +4,7 @@ go 1.22
 
 require (
 	github.com/google/go-github/v61 v61.0.0
-	github.com/mattn/go-sqlite3 v1.14.22
+	github.com/lib/pq v1.10.9
+	golang.org/x/crypto v0.23.0
 	golang.org/x/oauth2 v0.20.0
 )

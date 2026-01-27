@@ -54,9 +54,6 @@ All documentation is available in the [`docs/`](./docs/) directory:
 - ✅ Self-service infrastructure provisioning
 - ✅ GitHub PR-based workflow
 - ✅ GitOps principles
-- ✅ Request history with database storage
-- ✅ History page with table view
-- ✅ OpenAPI/Swagger documentation
 - ✅ Security scanning integration
 - ✅ Cost estimation
 

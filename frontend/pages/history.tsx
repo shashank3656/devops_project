@@ -1,41 +1,39 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import styles from '../styles/History.module.css';
 
-interface RequestHistory {
+interface PRRequest {
   id: number;
   team: string;
   env: string;
   cloud: string;
   service: string;
-  payload: string;
   pr_url: string;
   branch: string;
   file_path: string;
   status: string;
   created_at: string;
   updated_at: string;
+  created_by: number;
 }
 
 export default function History() {
   const router = useRouter();
-  const [history, setHistory] = useState<RequestHistory[]>([]);
+  const [requests, setRequests] = useState<PRRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filters, setFilters] = useState({
-    team: '',
-    env: '',
-  });
+  const [filters, setFilters] = useState({ team: '', env: '' });
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
+    // Check authentication
     const isAuthenticated = localStorage.getItem('isAuthenticated');
     if (!isAuthenticated) {
-      router.push('/');
+      router.push('/auth');
+      return;
     }
-  }, [router]);
 
-  useEffect(() => {
     fetchHistory();
   }, [filters]);
 
@@ -44,152 +42,171 @@ export default function History() {
     setError('');
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+      const token = localStorage.getItem('token');
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const params = new URLSearchParams();
       if (filters.team) params.append('team', filters.team);
       if (filters.env) params.append('env', filters.env);
-      params.append('limit', '100');
 
-      const response = await fetch(`${apiUrl}/history?${params.toString()}`);
-      
+      const response = await fetch(`${apiUrl}/api/history?${params.toString()}`, {
+        headers,
+      });
+
       if (!response.ok) {
-        throw new Error(`Failed to fetch history: ${response.statusText}`);
+        throw new Error(`Server returned ${response.status}`);
       }
 
       const data = await response.json();
-      setHistory(data.data || []);
+      setRequests(data.requests || []);
     } catch (err: any) {
-      setError(err.message || 'Failed to load history');
-      console.error('Error fetching history:', err);
+      setError(err.message || 'Failed to fetch history');
     } finally {
       setLoading(false);
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString();
+  const handleLogout = () => {
+    localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    router.push('/auth');
   };
 
-  const getStatusBadge = (status: string) => {
-    const statusClass = status === 'pr_created' ? 'status-success' : 'status-pending';
-    return (
-      <span className={`${styles.statusBadge} ${styles[statusClass]}`}>
-        {status === 'pr_created' ? 'PR Created' : 'Pending'}
-      </span>
-    );
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString();
   };
 
   return (
-    <div className={styles.container}>
+    <>
       <Head>
-        <title>Request History - Infrastructure Portal</title>
+        <title>History - Infrastructure Portal</title>
       </Head>
+      <div style={{ minHeight: '100vh', padding: '40px 20px' }}>
+        <div className="container">
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            marginBottom: '32px'
+          }}>
+            <h1 style={{ 
+              fontSize: '36px', 
+              fontWeight: 'bold',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
+            }}>
+              PR Request History
+            </h1>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button 
+                onClick={() => router.push('/home')}
+                className="btn btn-secondary"
+              >
+                Home
+              </button>
+              <button 
+                onClick={handleLogout}
+                className="btn btn-secondary"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
 
-      <header className={styles.header}>
-        <h1>Request History</h1>
-        <div className={styles.headerActions}>
-          <button
-            className={styles.btnSecondary}
-            onClick={() => router.push('/home')}
-          >
-            ← Back to Home
-          </button>
-        </div>
-      </header>
+          {/* Filters */}
+          <div className="card" style={{ marginBottom: '24px', padding: '20px' }}>
+            <h3 style={{ marginBottom: '16px' }}>Filters</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+              <div>
+                <label htmlFor="filter-team">Team</label>
+                <input
+                  id="filter-team"
+                  type="text"
+                  value={filters.team}
+                  onChange={(e) => setFilters({ ...filters, team: e.target.value })}
+                  placeholder="Filter by team"
+                />
+              </div>
+              <div>
+                <label htmlFor="filter-env">Environment</label>
+                <input
+                  id="filter-env"
+                  type="text"
+                  value={filters.env}
+                  onChange={(e) => setFilters({ ...filters, env: e.target.value })}
+                  placeholder="Filter by environment"
+                />
+              </div>
+            </div>
+          </div>
 
-      <div className={styles.filters}>
-        <div className={styles.filterGroup}>
-          <label htmlFor="team-filter">Team:</label>
-          <input
-            id="team-filter"
-            type="text"
-            placeholder="Filter by team"
-            value={filters.team}
-            onChange={(e) => setFilters({ ...filters, team: e.target.value })}
-            className={styles.filterInput}
-          />
+          {/* Table */}
+          <div className="card" style={{ overflowX: 'auto' }}>
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <p>Loading...</p>
+              </div>
+            ) : error ? (
+              <div className="error" style={{ margin: '20px' }}>
+                {error}
+              </div>
+            ) : requests.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <p>No PR requests found</p>
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border-color)' }}>
+                    <th style={{ padding: '12px', textAlign: 'left' }}>ID</th>
+                    <th style={{ padding: '12px', textAlign: 'left' }}>Team</th>
+                    <th style={{ padding: '12px', textAlign: 'left' }}>Environment</th>
+                    <th style={{ padding: '12px', textAlign: 'left' }}>Cloud</th>
+                    <th style={{ padding: '12px', textAlign: 'left' }}>Service</th>
+                    <th style={{ padding: '12px', textAlign: 'left' }}>Status</th>
+                    <th style={{ padding: '12px', textAlign: 'left' }}>Created At</th>
+                    <th style={{ padding: '12px', textAlign: 'left' }}>PR Link</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {requests.map((req) => (
+                    <tr key={req.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '12px' }}>{req.id}</td>
+                      <td style={{ padding: '12px' }}>{req.team}</td>
+                      <td style={{ padding: '12px' }}>{req.env}</td>
+                      <td style={{ padding: '12px' }}>{req.cloud}</td>
+                      <td style={{ padding: '12px' }}>{req.service}</td>
+                      <td style={{ padding: '12px' }}>
+                        <span className={`cloud-badge ${req.status}`}>
+                          {req.status}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px', fontSize: '14px', color: 'var(--text-secondary)' }}>
+                        {formatDate(req.created_at)}
+                      </td>
+                      <td style={{ padding: '12px' }}>
+                        <a 
+                          href={req.pr_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="link"
+                        >
+                          View PR
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
-        <div className={styles.filterGroup}>
-          <label htmlFor="env-filter">Environment:</label>
-          <input
-            id="env-filter"
-            type="text"
-            placeholder="Filter by environment"
-            value={filters.env}
-            onChange={(e) => setFilters({ ...filters, env: e.target.value })}
-            className={styles.filterInput}
-          />
-        </div>
-        <button
-          className={styles.btnSecondary}
-          onClick={() => setFilters({ team: '', env: '' })}
-        >
-          Clear Filters
-        </button>
       </div>
-
-      {error && (
-        <div className={styles.error}>
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div className={styles.loading}>Loading history...</div>
-      ) : history.length === 0 ? (
-        <div className={styles.empty}>
-          No requests found. Create your first infrastructure request!
-        </div>
-      ) : (
-        <div className={styles.tableContainer}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Team</th>
-                <th>Environment</th>
-                <th>Cloud</th>
-                <th>Service</th>
-                <th>Branch</th>
-                <th>File Path</th>
-                <th>Status</th>
-                <th>PR URL</th>
-                <th>Created At</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.id}</td>
-                  <td>{item.team}</td>
-                  <td>{item.env}</td>
-                  <td className={styles.cloudBadge}>{item.cloud.toUpperCase()}</td>
-                  <td>{item.service}</td>
-                  <td><code>{item.branch}</code></td>
-                  <td><code>{item.file_path}</code></td>
-                  <td>{getStatusBadge(item.status)}</td>
-                  <td>
-                    {item.pr_url ? (
-                      <a
-                        href={item.pr_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={styles.link}
-                      >
-                        View PR
-                      </a>
-                    ) : (
-                      <span className={styles.noPr}>No PR</span>
-                    )}
-                  </td>
-                  <td>{formatDate(item.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    </>
   );
 }
