@@ -27,10 +27,12 @@ func handleOptions(w http.ResponseWriter, r *http.Request) {
 func validatePayload(payload InfraRequest) error {
 	required := []string{"team", "env", "cloud", "service"}
 	for _, field := range required {
-		if val, ok := payload[field]; !ok || val == nil {
+		val, ok := payload[field]
+		if !ok || val == nil {
 			return fmt.Errorf("missing required field: %s", field)
 		}
-		if str, ok := val.(string); !ok || strings.TrimSpace(str) == "" {
+		str, ok := val.(string)
+		if !ok || strings.TrimSpace(str) == "" {
 			return fmt.Errorf("field %s must be a non-empty string", field)
 		}
 	}
