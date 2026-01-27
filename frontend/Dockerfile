@@ -25,6 +25,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+# Install wget for health checks
+RUN apk --no-cache add wget
+
 # Copy package files
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/next.config.js ./
@@ -40,6 +43,10 @@ RUN mkdir -p public
 
 # Expose port
 EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:3000 || exit 1
 
 # Start the application
 CMD ["npm", "run", "start"]

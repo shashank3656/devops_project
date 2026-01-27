@@ -1,0 +1,54 @@
+version: '3.8'
+
+# Development docker-compose with hot reload and volume mounts
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: infra-backend-dev
+    ports:
+      - "8080:8080"
+    environment:
+      - GITHUB_OWNER=${GITHUB_OWNER:-your-github-username}
+      - GITHUB_REPO=${GITHUB_REPO:-infra-live}
+      - GITHUB_APP_ID=${GITHUB_APP_ID:-123456}
+      - GITHUB_INSTALL_ID=${GITHUB_INSTALL_ID:-123456}
+      - BASE_BRANCH=${BASE_BRANCH:-main}
+    volumes:
+      # Mount source code for development (if using air or similar for hot reload)
+      - ./backend:/app
+      - ./backend/private-key.pem:/app/private-key.pem:ro
+    command: go run .
+    restart: unless-stopped
+    networks:
+      - infra-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: infra-frontend-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://backend:8080
+      - WATCHPACK_POLLING=true
+    volumes:
+      # Mount source code for hot reload
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    # Override command to run dev server instead of production
+    command: sh -c "npm install && npm run dev"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - infra-network
+
+networks:
+  infra-network:
+    driver: bridge
