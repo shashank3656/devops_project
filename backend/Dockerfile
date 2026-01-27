@@ -5,7 +5,9 @@ WORKDIR /app
 
 # Copy go mod files
 COPY go.mod ./
+# Download dependencies and generate go.sum
 RUN go mod download
+RUN go mod tidy
 
 # Copy source code
 COPY *.go ./
@@ -22,10 +24,6 @@ WORKDIR /app
 
 # Copy the binary from builder
 COPY --from=builder /app/backend .
-
-# Copy private key (should be mounted as volume in production)
-# For development, you can copy it here, but for production use volumes
-# COPY private-key.pem /app/private-key.pem
 
 EXPOSE 8080
 

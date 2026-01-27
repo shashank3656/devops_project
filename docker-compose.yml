@@ -11,12 +11,8 @@ services:
     environment:
       - GITHUB_OWNER=${GITHUB_OWNER:-your-github-username}
       - GITHUB_REPO=${GITHUB_REPO:-infra-live}
-      - GITHUB_APP_ID=${GITHUB_APP_ID:-123456}
-      - GITHUB_INSTALL_ID=${GITHUB_INSTALL_ID:-123456}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
       - BASE_BRANCH=${BASE_BRANCH:-main}
-    volumes:
-      # Mount private key file (create this file with your GitHub App private key)
-      - ./backend/private-key.pem:/app/private-key.pem:ro
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s

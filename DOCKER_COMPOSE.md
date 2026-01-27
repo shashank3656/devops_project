@@ -26,11 +26,10 @@ This project includes Docker Compose configurations for easy deployment and deve
    GITHUB_INSTALL_ID=123456
    ```
 
-3. **Create GitHub App private key file:**
-   ```bash
-   # Place your GitHub App private key in:
-   backend/private-key.pem
-   ```
+3. **Create GitHub Personal Access Token:**
+   - Go to https://github.com/settings/tokens
+   - Generate a new token (classic) with `repo` scope
+   - Add it to your `.env` file as `GITHUB_TOKEN`
 
 4. **Build and start services:**
    ```bash
@@ -82,8 +81,7 @@ This will:
 |----------|-------------|---------|
 | `GITHUB_OWNER` | GitHub username (personal) or organization name | `your-github-username` |
 | `GITHUB_REPO` | Repository name | `infra-live` |
-| `GITHUB_APP_ID` | GitHub App ID | `123456` |
-| `GITHUB_INSTALL_ID` | Installation ID | `123456` |
+| `GITHUB_TOKEN` | GitHub Personal Access Token | (required) |
 | `BASE_BRANCH` | Base branch for PRs | `main` |
 
 ### Frontend
@@ -96,13 +94,15 @@ This will:
 ## Volumes
 
 ### Production
-- `./backend/private-key.pem:/app/private-key.pem:ro` - GitHub App private key (read-only)
+- No volumes needed (token is passed via environment variable)
 
 ### Development
 - `./backend:/app` - Backend source code (for hot reload)
 - `./frontend:/app` - Frontend source code (for hot reload)
 - `/app/node_modules` - Anonymous volume for node_modules
 - `/app/.next` - Anonymous volume for Next.js build cache
+
+**Note:** Token is passed via environment variable, no volume mount needed.
 
 ## Health Checks
 
@@ -118,9 +118,10 @@ All services are connected via a bridge network (`infra-network`), allowing them
 
 ### Backend won't start
 
-1. **Check private key file exists:**
+1. **Check GitHub token is set:**
    ```bash
-   ls -la backend/private-key.pem
+   echo $GITHUB_TOKEN
+   # Or check in .env file
    ```
 
 2. **Check environment variables:**
