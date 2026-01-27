@@ -96,7 +96,7 @@ export default function History() {
             <h1 style={{ 
               fontSize: '36px', 
               fontWeight: 'bold',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'var(--text-primary)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent'
             }}>

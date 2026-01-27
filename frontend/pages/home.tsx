@@ -37,9 +37,8 @@ export default function Home() {
             <h1 style={{ 
               fontSize: '36px', 
               fontWeight: 'bold',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent'
+              color: 'var(--text-primary)',
+              margin: 0
             }}>
               Infrastructure Portal
             </h1>
@@ -52,69 +51,57 @@ export default function Home() {
             </button>
           </div>
 
-          <div className="card" style={{ textAlign: 'center' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '60px 40px' }}>
+            <h2 style={{ 
+              fontSize: '36px', 
+              marginBottom: '20px',
+              color: 'var(--text-primary)',
+              fontWeight: '700'
+            }}>
+              Welcome to Infrastructure Portal
+            </h2>
+            <p style={{ 
+              color: 'var(--text-secondary)', 
+              marginBottom: '48px',
+              fontSize: '18px',
+              lineHeight: '1.6',
+              maxWidth: '600px',
+              margin: '0 auto 48px'
+            }}>
+              Manage your cloud infrastructure across AWS, GCP, and Azure with ease.
+              Create new infrastructure requests or view your request history.
+            </p>
+            
             <div style={{ 
               display: 'flex', 
-              gap: '16px', 
-              marginBottom: '40px',
-              justifyContent: 'center'
+              gap: '20px', 
+              justifyContent: 'center',
+              flexWrap: 'wrap'
             }}>
               <button
                 onClick={() => router.push('/create-infrastructure')}
                 className="btn btn-primary"
-                style={{ padding: '16px 32px', fontSize: '18px' }}
+                style={{ 
+                  padding: '16px 40px', 
+                  fontSize: '18px',
+                  fontWeight: '600',
+                  minWidth: '220px'
+                }}
               >
                 ➕ New Request
               </button>
               <button
                 onClick={() => router.push('/history')}
                 className="btn btn-secondary"
-                style={{ padding: '16px 32px', fontSize: '18px' }}
+                style={{ 
+                  padding: '16px 40px', 
+                  fontSize: '18px',
+                  fontWeight: '600',
+                  minWidth: '220px'
+                }}
               >
-                📜 History
+                📜 View History
               </button>
-            </div>
-
-            <div className="card" style={{ textAlign: 'center', padding: '60px 40px' }}>
-              <h2 style={{ 
-                fontSize: '32px', 
-                marginBottom: '16px',
-                color: 'var(--text-primary)',
-                fontWeight: '700'
-              }}>
-                Welcome to Infrastructure Portal
-              </h2>
-              <p style={{ 
-                color: 'var(--text-secondary)', 
-                marginBottom: '32px',
-                fontSize: '18px',
-                lineHeight: '1.6'
-              }}>
-                Manage your cloud infrastructure across AWS, GCP, and Azure with ease.
-                Create new infrastructure requests or view your request history.
-              </p>
-              
-              <div style={{ 
-                display: 'flex', 
-                gap: '16px', 
-                justifyContent: 'center',
-                flexWrap: 'wrap'
-              }}>
-                <button
-                  onClick={() => router.push('/create-infrastructure')}
-                  className="btn btn-primary"
-                  style={{ padding: '14px 28px', fontSize: '16px' }}
-                >
-                  Create New Infrastructure
-                </button>
-                <button
-                  onClick={() => router.push('/history')}
-                  className="btn btn-secondary"
-                  style={{ padding: '14px 28px', fontSize: '16px' }}
-                >
-                  View History
-                </button>
-              </div>
             </div>
           </div>
         </div>
