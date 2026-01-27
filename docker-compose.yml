@@ -101,6 +101,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # Pass NEXT_PUBLIC_API_URL as build argument so it's baked into the bundle
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
     container_name: infra-frontend
     ports:
       - "3000:3000"

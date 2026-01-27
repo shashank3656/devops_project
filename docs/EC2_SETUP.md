@@ -53,7 +53,14 @@ sudo docker-compose --profile dev up -d --build
 sudo docker-compose up -d --build
 ```
 
-**Note:** Use `--build` flag the first time or when Dockerfiles change.
+**IMPORTANT:** 
+- Use `--build` flag the first time or when Dockerfiles change
+- **After changing `NEXT_PUBLIC_API_URL` in `.env`, you MUST rebuild the frontend:**
+  ```bash
+  sudo docker-compose build frontend-prod
+  sudo docker-compose up -d frontend-prod
+  ```
+- Next.js bakes `NEXT_PUBLIC_*` variables into the JavaScript bundle at BUILD time, not runtime
 
 ### 5. Check logs if there are issues
 
