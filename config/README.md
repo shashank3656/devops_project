@@ -27,7 +27,11 @@ This directory contains environment configuration files.
 - All GitHub configuration values must be set in `config/.env`
 - The docker-compose file does not have default values - they must come from your .env file
 - **For EC2 deployment:** Change `NEXT_PUBLIC_API_URL` to your EC2 IP/domain (e.g., `http://54.123.45.67:8080`)
-- **After changing `NEXT_PUBLIC_API_URL`:** You must rebuild the frontend: `docker-compose build frontend-prod`
+- **CRITICAL - After changing `NEXT_PUBLIC_API_URL`:** You MUST rebuild the frontend because Next.js bakes environment variables into the JavaScript bundle at BUILD time:
+  ```bash
+  docker-compose build frontend-prod
+  docker-compose up -d frontend-prod
+  ```
 
 ## Security
 
