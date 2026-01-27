@@ -1,0 +1,175 @@
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
+import Head from 'next/head';
+
+export default function Home() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Check authentication
+    const isAuthenticated = localStorage.getItem('isAuthenticated');
+    if (!isAuthenticated) {
+      router.push('/');
+    }
+  }, [router]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('isAuthenticated');
+    router.push('/');
+  };
+
+  return (
+    <>
+      <Head>
+        <title>Infrastructure Portal - Home</title>
+        <meta name="description" content="Create infrastructure resources" />
+      </Head>
+      <div style={{ minHeight: '100vh', padding: '40px 20px' }}>
+        <div className="container">
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            marginBottom: '32px'
+          }}>
+            <h1 style={{ 
+              fontSize: '36px', 
+              fontWeight: 'bold',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
+            }}>
+              Infrastructure Portal
+            </h1>
+            <button 
+              onClick={handleLogout}
+              className="btn btn-secondary"
+              style={{ padding: '10px 20px' }}
+            >
+              Logout
+            </button>
+          </div>
+
+          <div className="card" style={{ textAlign: 'center' }}>
+            <h2 style={{ 
+              fontSize: '28px', 
+              marginBottom: '16px',
+              color: '#333'
+            }}>
+              Create Infrastructure
+            </h2>
+            <p style={{ 
+              color: '#666', 
+              marginBottom: '40px',
+              fontSize: '16px'
+            }}>
+              Choose how you want to create your infrastructure resources
+            </p>
+
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+              gap: '24px',
+              maxWidth: '800px',
+              margin: '0 auto'
+            }}>
+              <div 
+                onClick={() => router.push('/select-service')}
+                style={{
+                  padding: '40px',
+                  border: '2px solid #e0e0e0',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  background: 'white'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#667eea';
+                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.boxShadow = '0 10px 30px rgba(102, 126, 234, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = '#e0e0e0';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <div style={{ 
+                  fontSize: '48px', 
+                  marginBottom: '16px',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent'
+                }}>
+                  ☁️
+                </div>
+                <h3 style={{ 
+                  fontSize: '22px', 
+                  fontWeight: '600',
+                  marginBottom: '12px',
+                  color: '#333'
+                }}>
+                  Select Cloud & Service
+                </h3>
+                <p style={{ 
+                  color: '#666', 
+                  fontSize: '14px',
+                  lineHeight: '1.6'
+                }}>
+                  Choose your cloud provider (AWS, GCP, Azure) and service type. Fill in the configuration form with guided inputs.
+                </p>
+              </div>
+
+              <div 
+                onClick={() => router.push('/custom-json')}
+                style={{
+                  padding: '40px',
+                  border: '2px solid #e0e0e0',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  background: 'white'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#667eea';
+                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.boxShadow = '0 10px 30px rgba(102, 126, 234, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = '#e0e0e0';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <div style={{ 
+                  fontSize: '48px', 
+                  marginBottom: '16px',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent'
+                }}>
+                  📝
+                </div>
+                <h3 style={{ 
+                  fontSize: '22px', 
+                  fontWeight: '600',
+                  marginBottom: '12px',
+                  color: '#333'
+                }}>
+                  Custom JSON
+                </h3>
+                <p style={{ 
+                  color: '#666', 
+                  fontSize: '14px',
+                  lineHeight: '1.6'
+                }}>
+                  Provide your infrastructure configuration as a custom JSON payload for advanced use cases.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
