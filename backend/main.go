@@ -124,9 +124,9 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create proper folder structure: environments/<team>/<env>/<cloud>/<service>.json
+	// Create file path: <team-id>/<env>/<cloud>-<service>.json
 	filePath := fmt.Sprintf(
-		"environments/%s/%s/%s/%s.json",
+		"%s/%s/%s-%s.json",
 		team, env, cloud, service,
 	)
 

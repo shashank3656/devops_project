@@ -9,8 +9,8 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - GITHUB_OWNER=${GITHUB_OWNER:-your-github-username}
-      - GITHUB_REPO=${GITHUB_REPO:-infra-live}
+      - GITHUB_OWNER=${GITHUB_OWNER:-shashank3656}
+      - GITHUB_REPO=${GITHUB_REPO:-Application_Onboarding}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - BASE_BRANCH=${BASE_BRANCH:-main}
     healthcheck:
@@ -33,7 +33,6 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=http://backend:8080
-      #- NEXT_PUBLIC_API_URL=http://localhost:8080
     depends_on:
       backend:
         condition: service_healthy
