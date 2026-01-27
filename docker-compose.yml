@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: infra-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - GITHUB_OWNER=${GITHUB_OWNER:-your-github-username}
+      - GITHUB_REPO=${GITHUB_REPO:-infra-live}
+      - GITHUB_APP_ID=${GITHUB_APP_ID:-123456}
+      - GITHUB_INSTALL_ID=${GITHUB_INSTALL_ID:-123456}
+      - BASE_BRANCH=${BASE_BRANCH:-main}
+    volumes:
+      # Mount private key file (create this file with your GitHub App private key)
+      - ./backend/private-key.pem:/app/private-key.pem:ro
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - infra-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: infra-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - infra-network
+
+networks:
+  infra-network:
+    driver: bridge
