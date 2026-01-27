@@ -19,7 +19,7 @@ export default function SelectService() {
   useEffect(() => {
     const isAuthenticated = localStorage.getItem('isAuthenticated');
     if (!isAuthenticated) {
-      router.push('/');
+      router.push('/login');
     }
   }, [router]);
 
