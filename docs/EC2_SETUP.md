@@ -60,7 +60,7 @@ sudo docker-compose up -d --build
   sudo docker-compose build frontend-prod
   sudo docker-compose up -d frontend-prod
   ```
-- Next.js bakes `NEXT_PUBLIC_*` variables into the JavaScript bundle at BUILD time, not runtime
+- Next.js bakes `NEXT_PUBLIC_*` variables into the build at build time, not runtime!
 
 ### 5. Check logs if there are issues
 

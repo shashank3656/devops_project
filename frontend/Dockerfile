@@ -3,8 +3,8 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Accept build argument for API URL
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ARG NEXT_PUBLIC_API_URL=http://localhost:8080
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Copy dependency files
 COPY package.json ./
@@ -19,8 +19,9 @@ COPY tsconfig.json ./
 COPY pages ./pages
 COPY config ./config
 COPY styles ./styles
+COPY lib ./lib
 
-# Build Next.js application (NEXT_PUBLIC_API_URL is baked into the bundle here)
+# Build Next.js application (this bakes NEXT_PUBLIC_API_URL into the build)
 RUN npm run build
 
 # ---------- Runtime stage ----------
@@ -41,6 +42,9 @@ COPY --from=builder /app/node_modules ./node_modules
 
 # Copy built application
 COPY --from=builder /app/.next ./.next
+
+# Set environment variable for runtime (though it's already baked into the build)
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Create public directory if it doesn't exist (Next.js requires it)
 RUN mkdir -p public

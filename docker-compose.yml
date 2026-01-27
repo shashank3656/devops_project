@@ -79,7 +79,7 @@ services:
       - config/.env
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.30.10.133:8080}
       - WATCHPACK_POLLING=true
     volumes:
       # Mount source code for hot reload
@@ -102,7 +102,6 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Pass NEXT_PUBLIC_API_URL as build argument so it's baked into the bundle
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
     container_name: infra-frontend
     ports:
@@ -111,7 +110,7 @@ services:
       - config/.env
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.30.10.133:8080}
     depends_on:
       backend-prod:
         condition: service_healthy
