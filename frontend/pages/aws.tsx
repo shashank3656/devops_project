@@ -15,7 +15,8 @@ export default function AWSPage() {
       service
     };
 
-    await fetch("http://localhost:8080/create-pr", {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+    await fetch(`${apiUrl}/create-pr`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)

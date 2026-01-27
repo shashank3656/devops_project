@@ -87,14 +87,16 @@ export default function CustomJSON() {
         ...jsonPayload
       };
 
-      const response = await fetch('http://localhost:8080/create-pr', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+      const response = await fetch(`${apiUrl}/create-pr`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create PR');
+        const errorText = await response.text();
+        throw new Error(errorText || `Server returned ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
@@ -102,7 +104,15 @@ export default function CustomJSON() {
       
       alert('PR Created Successfully! Check the PR URL below.');
     } catch (err: any) {
-      setError(err.message || 'An error occurred while creating the PR');
+      console.error('Error creating PR:', err);
+      const errorMessage = err.message || 'An error occurred while creating the PR';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+      // Check if it's a network error
+      if (err.message === 'Failed to fetch' || err.name === 'TypeError' || err.message.includes('NetworkError')) {
+        setError(`Cannot connect to backend at ${apiUrl}. Make sure the backend is running.`);
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
