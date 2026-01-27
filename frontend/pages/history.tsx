@@ -30,7 +30,7 @@ export default function History() {
     // Check authentication
     const isAuthenticated = localStorage.getItem('isAuthenticated');
     if (!isAuthenticated) {
-      router.push('/auth');
+      router.push('/login');
       return;
     }
 

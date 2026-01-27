@@ -9,7 +9,7 @@ export default function Home() {
     // Check authentication
     const isAuthenticated = localStorage.getItem('isAuthenticated');
     if (!isAuthenticated) {
-      router.push('/auth');
+      router.push('/login');
     }
   }, [router]);
 
@@ -17,7 +17,7 @@ export default function Home() {
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    router.push('/auth');
+    router.push('/login');
   };
 
   return (
@@ -60,7 +60,7 @@ export default function Home() {
               justifyContent: 'center'
             }}>
               <button
-                onClick={() => router.push('/select-service')}
+                onClick={() => router.push('/create-infrastructure')}
                 className="btn btn-primary"
                 style={{ padding: '16px 32px', fontSize: '18px' }}
               >
@@ -75,97 +75,45 @@ export default function Home() {
               </button>
             </div>
 
-            <h2 style={{ 
-              fontSize: '28px', 
-              marginBottom: '16px',
-              color: 'var(--text-primary)',
-              fontWeight: '700'
-            }}>
-              Create Infrastructure
-            </h2>
-            <p style={{ 
-              color: 'var(--text-secondary)', 
-              marginBottom: '40px',
-              fontSize: '16px'
-            }}>
-              Choose how you want to create your infrastructure resources
-            </p>
-
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-              gap: '24px',
-              maxWidth: '800px',
-              margin: '0 auto'
-            }}>
-              <div 
-                onClick={() => router.push('/select-service')}
-                className="card card-interactive"
-                style={{
-                  padding: '40px',
-                  border: '2px solid var(--border-color)',
-                  margin: '0'
-                }}
-              >
-                <div style={{ 
-                  fontSize: '48px', 
-                  marginBottom: '16px',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent'
-                }}>
-                  ☁️
-                </div>
-                <h3 style={{ 
-                  fontSize: '22px', 
-                  fontWeight: '600',
-                  marginBottom: '12px',
-                  color: 'var(--text-primary)'
-                }}>
-                  Select Cloud & Service
-                </h3>
-                <p style={{ 
-                  color: 'var(--text-secondary)', 
-                  fontSize: '14px',
-                  lineHeight: '1.6'
-                }}>
-                  Choose your cloud provider (AWS, GCP, Azure) and service type. Fill in the configuration form with guided inputs.
-                </p>
-              </div>
-
-              <div 
-                onClick={() => router.push('/custom-json')}
-                className="card card-interactive"
-                style={{
-                  padding: '40px',
-                  border: '2px solid var(--border-color)',
-                  margin: '0'
-                }}
-              >
-                <div style={{ 
-                  fontSize: '48px', 
-                  marginBottom: '16px',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent'
-                }}>
-                  📝
-                </div>
-                <h3 style={{ 
-                  fontSize: '22px', 
-                  fontWeight: '600',
-                  marginBottom: '12px',
-                  color: 'var(--text-primary)'
-                }}>
-                  Custom JSON
-                </h3>
-                <p style={{ 
-                  color: 'var(--text-secondary)', 
-                  fontSize: '14px',
-                  lineHeight: '1.6'
-                }}>
-                  Provide your infrastructure configuration as a custom JSON payload for advanced use cases.
-                </p>
+            <div className="card" style={{ textAlign: 'center', padding: '60px 40px' }}>
+              <h2 style={{ 
+                fontSize: '32px', 
+                marginBottom: '16px',
+                color: 'var(--text-primary)',
+                fontWeight: '700'
+              }}>
+                Welcome to Infrastructure Portal
+              </h2>
+              <p style={{ 
+                color: 'var(--text-secondary)', 
+                marginBottom: '32px',
+                fontSize: '18px',
+                lineHeight: '1.6'
+              }}>
+                Manage your cloud infrastructure across AWS, GCP, and Azure with ease.
+                Create new infrastructure requests or view your request history.
+              </p>
+              
+              <div style={{ 
+                display: 'flex', 
+                gap: '16px', 
+                justifyContent: 'center',
+                flexWrap: 'wrap'
+              }}>
+                <button
+                  onClick={() => router.push('/create-infrastructure')}
+                  className="btn btn-primary"
+                  style={{ padding: '14px 28px', fontSize: '16px' }}
+                >
+                  Create New Infrastructure
+                </button>
+                <button
+                  onClick={() => router.push('/history')}
+                  className="btn btn-secondary"
+                  style={{ padding: '14px 28px', fontSize: '16px' }}
+                >
+                  View History
+                </button>
               </div>
             </div>
           </div>
