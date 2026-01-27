@@ -139,7 +139,7 @@ export default function SelectService() {
     setPrUrl('');
 
     // Use environment variable or fallback to localhost for local development
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://backend:8080';
 
     try {
       const payload = {
