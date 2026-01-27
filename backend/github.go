@@ -54,8 +54,7 @@ func CreateGitHubPR(branchName, filePath string, content []byte) (string, error)
 		log.Printf("Created new branch: %s", branchName)
 	}
 
-	// 3. Ensure directory structure exists (GitHub API creates directories automatically when creating files)
-	// Check if file already exists to determine if we should create or update
+	// 3. Check if file already exists to determine if we should create or update
 	fileContent, _, _, err := client.Repositories.GetContents(
 		ctx, GitHubOwner, GitHubRepo, filePath, &github.RepositoryContentGetOptions{
 			Ref: branchName,
