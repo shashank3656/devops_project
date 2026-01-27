@@ -8,6 +8,9 @@ Cloud-agnostic self-service infrastructure platform for managing infrastructure 
    ```bash
    cp config/.env.example config/.env
    # Edit config/.env with your GitHub credentials
+   
+   # Sync env vars for docker-compose (or export them manually)
+   ./scripts/sync-env.sh
    ```
 
 2. **Start Services:**

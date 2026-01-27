@@ -20,7 +20,6 @@ services:
       - "8080:8080"
     env_file:
       - config/.env
-      - config/.env.example
     environment:
       - GITHUB_OWNER=${GITHUB_OWNER}
       - GITHUB_REPO=${GITHUB_REPO}
@@ -50,7 +49,6 @@ services:
       - "8080:8080"
     env_file:
       - config/.env
-      - config/.env.example
     environment:
       - GITHUB_OWNER=${GITHUB_OWNER}
       - GITHUB_REPO=${GITHUB_REPO}
@@ -79,7 +77,6 @@ services:
       - "3000:3000"
     env_file:
       - config/.env
-      - config/.env.example
     environment:
       - NODE_ENV=development
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.30.10.133:8080}
@@ -110,8 +107,7 @@ services:
     ports:
       - "3000:3000"
     env_file:
-      - config/.env
-      - config/.env.example 
+      - config/.env 
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.30.10.133:8080}

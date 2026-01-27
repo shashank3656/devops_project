@@ -35,14 +35,49 @@ NEXT_PUBLIC_API_URL=http://34.30.10.133:8080
 
 **Important:** Replace `your-github-token-here` with your actual GitHub Personal Access Token.
 
-### 3. Verify the file exists
+### 3. Sync environment variables for docker-compose
+
+Docker Compose needs variables in two places:
+- `config/.env` - for container environment (via `env_file`)
+- `.env` (root) - for variable substitution in docker-compose.yml
+
+**Option A: Use the sync script (recommended):**
+```bash
+cd ~/devops_project
+./scripts/sync-env.sh
+```
+
+**Option B: Manually copy values:**
+```bash
+# Source the config/.env and export to current shell
+source config/.env
+export GITHUB_OWNER GITHUB_REPO GITHUB_TOKEN BASE_BRANCH NEXT_PUBLIC_API_URL
+
+# Then run docker-compose
+sudo docker-compose up -d
+```
+
+**Option C: Create .env manually:**
+```bash
+# Copy the variable assignments from config/.env to root .env
+cat > .env << EOF
+GITHUB_OWNER=shashank3656
+GITHUB_REPO=Application_Onboarding
+GITHUB_TOKEN=your-actual-token
+BASE_BRANCH=main
+NEXT_PUBLIC_API_URL=http://34.30.10.133:8080
+EOF
+```
+
+### 4. Verify the files exist
 
 ```bash
 ls -la config/.env
-# Should show the file exists
+ls -la .env
+# Both should exist
 ```
 
-### 4. Start the services
+### 5. Start the services
 
 ```bash
 # Development mode (with hot reload)
@@ -62,7 +97,7 @@ sudo docker-compose up -d --build
   ```
 - Next.js bakes `NEXT_PUBLIC_*` variables into the build at build time, not runtime!
 
-### 5. Check logs if there are issues
+### 6. Check logs if there are issues
 
 ```bash
 # Check backend logs
