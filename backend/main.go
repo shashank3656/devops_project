@@ -55,42 +55,78 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	var payload InfraRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		log.Printf("Error decoding JSON: %v", err)
-		http.Error(w, fmt.Sprintf("invalid json: %v", err), http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		errorResponse := map[string]interface{}{
+			"error":  fmt.Sprintf("invalid json: %v", err),
+			"status": "error",
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(errorResponse)
 		return
 	}
 
 	// Validate required fields
 	if err := validatePayload(payload); err != nil {
 		log.Printf("Validation error: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		errorResponse := map[string]interface{}{
+			"error":  err.Error(),
+			"status": "error",
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(errorResponse)
 		return
 	}
 
 	// Safely extract fields with type checking
 	team, ok := payload["team"].(string)
 	if !ok {
-		http.Error(w, "team must be a string", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		errorResponse := map[string]interface{}{
+			"error":  "team must be a string",
+			"status": "error",
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(errorResponse)
 		return
 	}
 	env, ok := payload["env"].(string)
 	if !ok {
-		http.Error(w, "env must be a string", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		errorResponse := map[string]interface{}{
+			"error":  "env must be a string",
+			"status": "error",
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(errorResponse)
 		return
 	}
 	cloud, ok := payload["cloud"].(string)
 	if !ok {
-		http.Error(w, "cloud must be a string", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		errorResponse := map[string]interface{}{
+			"error":  "cloud must be a string",
+			"status": "error",
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(errorResponse)
 		return
 	}
 	service, ok := payload["service"].(string)
 	if !ok {
-		http.Error(w, "service must be a string", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		errorResponse := map[string]interface{}{
+			"error":  "service must be a string",
+			"status": "error",
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(errorResponse)
 		return
 	}
 
-	// Create file path: <team-id>/<env>/<cloud>-<service>.json
+	// Create proper folder structure: environments/<team>/<env>/<cloud>/<service>.json
 	filePath := fmt.Sprintf(
-		"%s/%s/%s-%s.json",
+		"environments/%s/%s/%s/%s.json",
 		team, env, cloud, service,
 	)
 
@@ -98,7 +134,13 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	content, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		log.Printf("Error marshaling JSON: %v", err)
-		http.Error(w, "error processing request", http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		errorResponse := map[string]interface{}{
+			"error":  "error processing request",
+			"status": "error",
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(errorResponse)
 		return
 	}
 
@@ -110,7 +152,13 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	prURL, err := CreateGitHubPR(branchName, filePath, content)
 	if err != nil {
 		log.Printf("Error creating PR: %v", err)
-		http.Error(w, fmt.Sprintf("failed to create PR: %v", err), http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		errorResponse := map[string]interface{}{
+			"error":  fmt.Sprintf("failed to create PR: %v", err),
+			"status": "error",
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(errorResponse)
 		return
 	}
 
@@ -123,6 +171,8 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Printf("Error encoding response: %v", err)
+		http.Error(w, "error encoding response", http.StatusInternalServerError)
+		return
 	}
 }
 
