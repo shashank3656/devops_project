@@ -1,18 +1,55 @@
 version: '3.8'
 
+# Infrastructure Portal - Docker Compose
+# 
+# Usage:
+#   Production:  docker-compose up -d                    (default - uses prod services)
+#   Development: docker-compose --profile dev up          (uses dev services)
+#
+# Environment variables are loaded from config/.env
+# Copy config/.env.example to config/.env and fill in your values
+
 services:
+  # Development Backend (with hot reload)
   backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: infra-backend-dev
+    ports:
+      - "8080:8080"
+    env_file:
+      - config/.env
+    environment:
+      - GITHUB_OWNER=${GITHUB_OWNER}
+      - GITHUB_REPO=${GITHUB_REPO}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - BASE_BRANCH=${BASE_BRANCH}
+    volumes:
+      # Mount source code for hot reload
+      - ./backend:/app
+    command: go run .
+    restart: unless-stopped
+    networks:
+      - infra-network
+    profiles:
+      - dev
+
+  # Production Backend (compiled binary)
+  backend-prod:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: infra-backend
     ports:
       - "8080:8080"
+    env_file:
+      - config/.env
     environment:
-      - GITHUB_OWNER=${GITHUB_OWNER:-shashank3656}
-      - GITHUB_REPO=${GITHUB_REPO:-Application_Onboarding}
+      - GITHUB_OWNER=${GITHUB_OWNER}
+      - GITHUB_REPO=${GITHUB_REPO}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - BASE_BRANCH=${BASE_BRANCH:-main}
+      - BASE_BRANCH=${BASE_BRANCH}
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
@@ -22,19 +59,54 @@ services:
     restart: unless-stopped
     networks:
       - infra-network
+    profiles:
+      - prod
+      - default
 
+  # Development Frontend (with hot reload)
   frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: infra-frontend-dev
+    ports:
+      - "3000:3000"
+    env_file:
+      - config/.env
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      - WATCHPACK_POLLING=true
+    volumes:
+      # Mount source code for hot reload
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    # Override command to run dev server
+    command: sh -c "npm install && npm run dev"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - infra-network
+    profiles:
+      - dev
+
+  # Production Frontend (built and optimized)
+  frontend-prod:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: infra-frontend
     ports:
       - "3000:3000"
+    env_file:
+      - config/.env
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
     depends_on:
-      backend:
+      backend-prod:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
@@ -45,6 +117,9 @@ services:
     restart: unless-stopped
     networks:
       - infra-network
+    profiles:
+      - prod
+      - default
 
 networks:
   infra-network:

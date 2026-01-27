@@ -135,7 +135,7 @@ export default function CustomJSON() {
       <Head>
         <title>Custom JSON - Infrastructure Portal</title>
       </Head>
-      <div style={{ minHeight: '100vh', padding: '40px 20px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+      <div style={{ minHeight: '100vh', padding: '40px 20px' }}>
         <div className="container">
           <div style={{ marginBottom: '24px' }}>
             <button 
@@ -233,24 +233,17 @@ export default function CustomJSON() {
               )}
 
               {prUrl && (
-                <div style={{ 
-                  padding: '16px', 
-                  background: '#d4edda', 
-                  border: '1px solid #c3e6cb',
-                  borderRadius: '8px',
-                  marginBottom: '16px'
-                }}>
-                  <strong style={{ color: '#155724' }}>PR Created Successfully!</strong>
-                  <div style={{ marginTop: '8px' }}>
-                    <a 
-                      href={prUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      style={{ color: '#155724', textDecoration: 'underline' }}
-                    >
-                      View Pull Request →
-                    </a>
-                  </div>
+                <div className="success" style={{ marginBottom: '16px', flexDirection: 'column', alignItems: 'flex-start', gap: '12px' }}>
+                  <strong>PR Created Successfully!</strong>
+                  <a 
+                    href={prUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="link"
+                    style={{ fontWeight: '600', fontSize: '15px' }}
+                  >
+                    View Pull Request →
+                  </a>
                 </div>
               )}
 
@@ -271,11 +264,8 @@ export default function CustomJSON() {
               </button>
             </form>
 
-            <div style={{ 
+            <div className="form-section" style={{ 
               marginTop: '32px', 
-              padding: '16px', 
-              background: '#f8f9fa', 
-              borderRadius: '8px',
               fontSize: '14px'
             }}>
               <strong>JSON Structure:</strong>
