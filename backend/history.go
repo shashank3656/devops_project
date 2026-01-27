@@ -8,7 +8,6 @@ import (
 	"strconv"
 )
 
-// historyHandler returns the request history
 func historyHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 
@@ -22,42 +21,66 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":  "database not available",
+			"status": "error",
+		})
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
 	// Get query parameters
 	team := r.URL.Query().Get("team")
 	env := r.URL.Query().Get("env")
-	limitStr := r.URL.Query().Get("limit")
-	
-	limit := 100 // default limit
-	if limitStr != "" {
-		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
-			limit = parsedLimit
+	userID := r.URL.Query().Get("user_id")
+
+	// Get limit and offset
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
 		}
 	}
 
-	// Get history from database
-	requests, err := GetRequestHistory(team, env, limit)
-	if err != nil {
-		log.Printf("Error getting history: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		errorResponse := map[string]interface{}{
-			"error":  fmt.Sprintf("failed to get history: %v", err),
-			"status": "error",
+	offset := 0
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
 		}
+	}
+
+	// Get user ID from token if available
+	if userID == "" {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "" && len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+			token := authHeader[7:]
+			if id, err := validateToken(token); err == nil {
+				userID = strconv.Itoa(id)
+			}
+		}
+	}
+
+	// Fetch PR requests
+	requests, err := GetPRRequests(team, env, userID, limit, offset)
+	if err != nil {
+		log.Printf("Error fetching PR requests: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":  "failed to fetch history",
+			"status": "error",
+		})
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(errorResponse)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{
-		"status": "success",
-		"count":  len(requests),
-		"data":   requests,
+		"status":   "success",
+		"requests": requests,
+		"count":    len(requests),
 	}
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("Error encoding response: %v", err)
-		http.Error(w, "error encoding response", http.StatusInternalServerError)
-		return
-	}
+	json.NewEncoder(w).Encode(response)
 }

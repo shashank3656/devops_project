@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type InfraRequest map[string]interface{}
@@ -162,10 +164,31 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save request to database
-	if err := SaveRequest(team, env, cloud, service, branchName, filePath, prURL, payload); err != nil {
-		log.Printf("Warning: Failed to save request to database: %v", err)
-		// Don't fail the request if database save fails
+	// Save to database
+	userID := r.Header.Get("X-User-ID")
+	userIDInt := 0
+	if userID != "" {
+		if id, err := strconv.Atoi(userID); err == nil {
+			userIDInt = id
+		}
+	}
+
+	prRequest := &PRRequest{
+		Team:      team,
+		Env:       env,
+		Cloud:     cloud,
+		Service:   service,
+		PRURL:     prURL,
+		Branch:    branchName,
+		FilePath:  filePath,
+		Status:    "pending",
+		Config:    string(content),
+		CreatedBy: userIDInt,
+	}
+
+	if err := SavePRRequest(prRequest); err != nil {
+		log.Printf("Warning: failed to save PR request to database: %v", err)
+		// Don't fail the request, just log the warning
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -173,7 +196,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		"pr_url": prURL,
 		"status": "created",
 		"branch": branchName,
-		"file_path": filePath,
+		"id":     prRequest.ID,
 	}
 	
 	if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -186,26 +209,54 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	// Initialize database
 	if err := InitDB(); err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		log.Printf("Warning: Database initialization failed: %v", err)
+		log.Println("Continuing without database - history features will not work")
 	}
-	defer CloseDB()
 
-	// Register handlers
+	// API endpoints
 	http.HandleFunc("/create-pr", createPRHandler)
-	http.HandleFunc("/history", historyHandler)
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		enableCORS(w)
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	})
+	http.HandleFunc("/api/history", historyHandler)
+	http.HandleFunc("/api/auth/signup", signupHandler)
+	http.HandleFunc("/api/auth/login", loginHandler)
+	http.HandleFunc("/health", healthHandler)
+	
+	// Swagger/OpenAPI endpoint (will be served from static files or generated)
+	http.HandleFunc("/swagger.json", swaggerHandler)
+	http.HandleFunc("/api-docs", swaggerUIHandler)
 	
 	log.Println("Backend server starting on :8080")
 	log.Println("Endpoints:")
-	log.Println("  POST /create-pr - Create infrastructure PR")
-	log.Println("  GET  /history   - Get request history")
-	log.Println("  GET  /health    - Health check")
+	log.Println("  POST /create-pr      - Create infrastructure PR")
+	log.Println("  GET  /api/history    - Get PR request history")
+	log.Println("  POST /api/auth/signup - User signup")
+	log.Println("  POST /api/auth/login  - User login")
+	log.Println("  GET  /health         - Health check")
+	log.Println("  GET  /swagger.json    - OpenAPI spec")
+	log.Println("  GET  /api-docs       - Swagger UI")
 	
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	status := map[string]interface{}{
+		"status": "ok",
+		"time":   time.Now().Format(time.RFC3339),
+	}
+	
+	// Check database connection
+	if DB != nil {
+		if err := DB.Ping(); err == nil {
+			status["database"] = "connected"
+		} else {
+			status["database"] = "disconnected"
+		}
+	} else {
+		status["database"] = "not_initialized"
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
 }

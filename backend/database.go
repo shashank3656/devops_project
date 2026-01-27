@@ -2,154 +2,225 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/lib/pq"
 )
 
-type RequestHistory struct {
-	ID          int64     `json:"id"`
+var DB *sql.DB
+
+type PRRequest struct {
+	ID          int       `json:"id"`
 	Team        string    `json:"team"`
 	Env         string    `json:"env"`
 	Cloud       string    `json:"cloud"`
 	Service     string    `json:"service"`
-	Payload     string    `json:"payload"` // JSON string
-	PrURL       string    `json:"pr_url"`
+	PRURL       string    `json:"pr_url"`
 	Branch      string    `json:"branch"`
 	FilePath    string    `json:"file_path"`
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+	CreatedBy   string    `json:"created_by"`
+	Config      string    `json:"config"` // JSON string of the full config
 }
 
-var db *sql.DB
+type User struct {
+	ID        int       `json:"id"`
+	Username  string    `json:"username"`
+	Email     string    `json:"email"`
+	Password  string    `json:"-"` // Don't return password in JSON
+	CreatedAt time.Time `json:"created_at"`
+}
 
-// InitDB initializes the SQLite database
+// InitDB initializes the PostgreSQL database connection
 func InitDB() error {
+	dbHost := os.Getenv("DB_HOST")
+	if dbHost == "" {
+		dbHost = "postgres"
+	}
+	dbPort := os.Getenv("DB_PORT")
+	if dbPort == "" {
+		dbPort = "5432"
+	}
+	dbUser := os.Getenv("DB_USER")
+	if dbUser == "" {
+		dbUser = "postgres"
+	}
+	dbPassword := os.Getenv("DB_PASSWORD")
+	if dbPassword == "" {
+		dbPassword = "postgres"
+	}
+	dbName := os.Getenv("DB_NAME")
+	if dbName == "" {
+		dbName = "infra_portal"
+	}
+
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		dbHost, dbPort, dbUser, dbPassword, dbName)
+
 	var err error
-	db, err = sql.Open("sqlite3", "./requests.db")
+	DB, err = sql.Open("postgres", dsn)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Create table if it doesn't exist
-	createTableSQL := `
-	CREATE TABLE IF NOT EXISTS request_history (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		team TEXT NOT NULL,
-		env TEXT NOT NULL,
-		cloud TEXT NOT NULL,
-		service TEXT NOT NULL,
-		payload TEXT NOT NULL,
-		pr_url TEXT,
-		branch TEXT NOT NULL,
+	// Test connection
+	if err := DB.Ping(); err != nil {
+		return fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	log.Println("Database connection established")
+
+	// Create tables
+	if err := createTables(); err != nil {
+		return fmt.Errorf("failed to create tables: %w", err)
+	}
+
+	return nil
+}
+
+// createTables creates the necessary database tables
+func createTables() error {
+	// Users table
+	usersTable := `
+	CREATE TABLE IF NOT EXISTS users (
+		id SERIAL PRIMARY KEY,
+		username VARCHAR(100) UNIQUE NOT NULL,
+		email VARCHAR(255) UNIQUE NOT NULL,
+		password VARCHAR(255) NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);`
+
+	// PR requests table
+	prRequestsTable := `
+	CREATE TABLE IF NOT EXISTS pr_requests (
+		id SERIAL PRIMARY KEY,
+		team VARCHAR(100) NOT NULL,
+		env VARCHAR(50) NOT NULL,
+		cloud VARCHAR(50) NOT NULL,
+		service VARCHAR(100) NOT NULL,
+		pr_url TEXT NOT NULL,
+		branch VARCHAR(255) NOT NULL,
 		file_path TEXT NOT NULL,
-		status TEXT DEFAULT 'pending',
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	);
+		status VARCHAR(50) DEFAULT 'pending',
+		config TEXT NOT NULL,
+		created_by INTEGER REFERENCES users(id),
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);`
 
-	CREATE INDEX IF NOT EXISTS idx_team_env ON request_history(team, env);
-	CREATE INDEX IF NOT EXISTS idx_created_at ON request_history(created_at);
-	`
-
-	_, err = db.Exec(createTableSQL)
-	if err != nil {
-		return fmt.Errorf("failed to create table: %w", err)
+	// Create indexes
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_pr_requests_team ON pr_requests(team);",
+		"CREATE INDEX IF NOT EXISTS idx_pr_requests_env ON pr_requests(env);",
+		"CREATE INDEX IF NOT EXISTS idx_pr_requests_created_by ON pr_requests(created_by);",
+		"CREATE INDEX IF NOT EXISTS idx_pr_requests_created_at ON pr_requests(created_at DESC);",
 	}
 
-	log.Println("Database initialized successfully")
+	if _, err := DB.Exec(usersTable); err != nil {
+		return fmt.Errorf("failed to create users table: %w", err)
+	}
+
+	if _, err := DB.Exec(prRequestsTable); err != nil {
+		return fmt.Errorf("failed to create pr_requests table: %w", err)
+	}
+
+	for _, index := range indexes {
+		if _, err := DB.Exec(index); err != nil {
+			log.Printf("Warning: failed to create index: %v", err)
+		}
+	}
+
+	log.Println("Database tables created/verified")
 	return nil
 }
 
-// SaveRequest saves a request to the database
-func SaveRequest(team, env, cloud, service, branch, filePath, prURL string, payload map[string]interface{}) error {
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal payload: %w", err)
-	}
-
-	status := "pending"
-	if prURL != "" {
-		status = "pr_created"
-	}
-
+// SavePRRequest saves a PR request to the database
+func SavePRRequest(req *PRRequest) error {
 	query := `
-	INSERT INTO request_history (team, env, cloud, service, payload, pr_url, branch, file_path, status)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO pr_requests (team, env, cloud, service, pr_url, branch, file_path, status, config, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING id, created_at, updated_at
 	`
+	err := DB.QueryRow(
+		query,
+		req.Team, req.Env, req.Cloud, req.Service,
+		req.PRURL, req.Branch, req.FilePath, req.Status,
+		req.Config, req.CreatedBy,
+	).Scan(&req.ID, &req.CreatedAt, &req.UpdatedAt)
 
-	_, err = db.Exec(query, team, env, cloud, service, string(payloadJSON), prURL, branch, filePath, status)
 	if err != nil {
-		return fmt.Errorf("failed to insert request: %w", err)
+		return fmt.Errorf("failed to save PR request: %w", err)
 	}
 
-	log.Printf("Saved request to database: team=%s, env=%s, cloud=%s, service=%s", team, env, cloud, service)
 	return nil
 }
 
-// GetRequestHistory retrieves request history with optional filters
-func GetRequestHistory(team, env string, limit int) ([]RequestHistory, error) {
-	var rows *sql.Rows
-	var err error
+// GetPRRequests retrieves PR requests with optional filters
+func GetPRRequests(team, env, userID string, limit, offset int) ([]PRRequest, error) {
+	query := `
+		SELECT id, team, env, cloud, service, pr_url, branch, file_path, status, config, created_by, created_at, updated_at
+		FROM pr_requests
+		WHERE 1=1
+	`
+	args := []interface{}{}
+	argPos := 1
 
-	if team != "" && env != "" {
-		query := `
-		SELECT id, team, env, cloud, service, payload, pr_url, branch, file_path, status, created_at, updated_at
-		FROM request_history
-		WHERE team = ? AND env = ?
-		ORDER BY created_at DESC
-		LIMIT ?
-		`
-		rows, err = db.Query(query, team, env, limit)
-	} else if team != "" {
-		query := `
-		SELECT id, team, env, cloud, service, payload, pr_url, branch, file_path, status, created_at, updated_at
-		FROM request_history
-		WHERE team = ?
-		ORDER BY created_at DESC
-		LIMIT ?
-		`
-		rows, err = db.Query(query, team, limit)
-	} else {
-		query := `
-		SELECT id, team, env, cloud, service, payload, pr_url, branch, file_path, status, created_at, updated_at
-		FROM request_history
-		ORDER BY created_at DESC
-		LIMIT ?
-		`
-		rows, err = db.Query(query, limit)
+	if team != "" {
+		query += fmt.Sprintf(" AND team = $%d", argPos)
+		args = append(args, team)
+		argPos++
 	}
 
+	if env != "" {
+		query += fmt.Sprintf(" AND env = $%d", argPos)
+		args = append(args, env)
+		argPos++
+	}
+
+	if userID != "" {
+		query += fmt.Sprintf(" AND created_by = $%d", argPos)
+		args = append(args, userID)
+		argPos++
+	}
+
+	query += " ORDER BY created_at DESC"
+
+	if limit > 0 {
+		query += fmt.Sprintf(" LIMIT $%d", argPos)
+		args = append(args, limit)
+		argPos++
+	}
+
+	if offset > 0 {
+		query += fmt.Sprintf(" OFFSET $%d", argPos)
+		args = append(args, offset)
+		argPos++
+	}
+
+	rows, err := DB.Query(query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query requests: %w", err)
+		return nil, fmt.Errorf("failed to query PR requests: %w", err)
 	}
 	defer rows.Close()
 
-	var requests []RequestHistory
+	var requests []PRRequest
 	for rows.Next() {
-		var req RequestHistory
+		var req PRRequest
 		err := rows.Scan(
 			&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service,
-			&req.Payload, &req.PrURL, &req.Branch, &req.FilePath, &req.Status,
-			&req.CreatedAt, &req.UpdatedAt,
+			&req.PRURL, &req.Branch, &req.FilePath, &req.Status,
+			&req.Config, &req.CreatedBy, &req.CreatedAt, &req.UpdatedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan row: %w", err)
+			return nil, fmt.Errorf("failed to scan PR request: %w", err)
 		}
 		requests = append(requests, req)
 	}
 
 	return requests, nil
-}
-
-// CloseDB closes the database connection
-func CloseDB() error {
-	if db != nil {
-		return db.Close()
-	}
-	return nil
 }

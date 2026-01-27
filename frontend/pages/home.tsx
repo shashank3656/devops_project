@@ -9,13 +9,15 @@ export default function Home() {
     // Check authentication
     const isAuthenticated = localStorage.getItem('isAuthenticated');
     if (!isAuthenticated) {
-      router.push('/');
+      router.push('/auth');
     }
   }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated');
-    router.push('/');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    router.push('/auth');
   };
 
   return (
@@ -51,6 +53,28 @@ export default function Home() {
           </div>
 
           <div className="card" style={{ textAlign: 'center' }}>
+            <div style={{ 
+              display: 'flex', 
+              gap: '16px', 
+              marginBottom: '40px',
+              justifyContent: 'center'
+            }}>
+              <button
+                onClick={() => router.push('/select-service')}
+                className="btn btn-primary"
+                style={{ padding: '16px 32px', fontSize: '18px' }}
+              >
+                ➕ New Request
+              </button>
+              <button
+                onClick={() => router.push('/history')}
+                className="btn btn-secondary"
+                style={{ padding: '16px 32px', fontSize: '18px' }}
+              >
+                📜 History
+              </button>
+            </div>
+
             <h2 style={{ 
               fontSize: '28px', 
               marginBottom: '16px',
@@ -141,41 +165,6 @@ export default function Home() {
                   lineHeight: '1.6'
                 }}>
                   Provide your infrastructure configuration as a custom JSON payload for advanced use cases.
-                </p>
-              </div>
-
-              <div 
-                onClick={() => router.push('/history')}
-                className="card card-interactive"
-                style={{
-                  padding: '40px',
-                  border: '2px solid var(--border-color)',
-                  margin: '0'
-                }}
-              >
-                <div style={{ 
-                  fontSize: '48px', 
-                  marginBottom: '16px',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent'
-                }}>
-                  📊
-                </div>
-                <h3 style={{ 
-                  fontSize: '22px', 
-                  fontWeight: '600',
-                  marginBottom: '12px',
-                  color: 'var(--text-primary)'
-                }}>
-                  Request History
-                </h3>
-                <p style={{ 
-                  color: 'var(--text-secondary)', 
-                  fontSize: '14px',
-                  lineHeight: '1.6'
-                }}>
-                  View all previous infrastructure requests, PRs, and their status in a table format.
                 </p>
               </div>
             </div>

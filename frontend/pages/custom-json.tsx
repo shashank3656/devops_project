@@ -90,9 +90,26 @@ export default function CustomJSON() {
         ...jsonPayload
       };
 
+      // Get auth token and user
+      const token = localStorage.getItem('token');
+      const user = localStorage.getItem('user');
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      
+      // Add user ID if available
+      if (user) {
+        try {
+          const userData = JSON.parse(user);
+          if (userData.id) {
+            headers['X-User-ID'] = userData.id.toString();
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+
       const response = await fetch(`${apiUrl}/create-pr`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload)
       });
 
