@@ -124,10 +124,10 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create file path: <team-id>/<env>/<cloud>-<service>.json
+	// Create file path: <team-id>/envs/<env>/request.json
 	filePath := fmt.Sprintf(
-		"%s/%s/%s-%s.json",
-		team, env, cloud, service,
+		"%s/envs/%s/request.json",
+		team, env,
 	)
 
 	// Marshal payload with indentation for readability
@@ -162,11 +162,18 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Save request to database
+	if err := SaveRequest(team, env, cloud, service, branchName, filePath, prURL, payload); err != nil {
+		log.Printf("Warning: Failed to save request to database: %v", err)
+		// Don't fail the request if database save fails
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{
 		"pr_url": prURL,
 		"status": "created",
 		"branch": branchName,
+		"file_path": filePath,
 	}
 	
 	if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -177,7 +184,15 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Initialize database
+	if err := InitDB(); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer CloseDB()
+
+	// Register handlers
 	http.HandleFunc("/create-pr", createPRHandler)
+	http.HandleFunc("/history", historyHandler)
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		enableCORS(w)
 		w.WriteHeader(http.StatusOK)
@@ -187,6 +202,7 @@ func main() {
 	log.Println("Backend server starting on :8080")
 	log.Println("Endpoints:")
 	log.Println("  POST /create-pr - Create infrastructure PR")
+	log.Println("  GET  /history   - Get request history")
 	log.Println("  GET  /health    - Health check")
 	
 	if err := http.ListenAndServe(":8080", nil); err != nil {

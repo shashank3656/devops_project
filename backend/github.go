@@ -105,7 +105,7 @@ func CreateGitHubPR(branchName, filePath string, content []byte) (string, error)
 
 	// 6. Create new PR
 	pr := &github.NewPullRequest{
-		Title: github.String(fmt.Sprintf("Infrastructure: %s/%s", branchName, filePath)),
+		Title: github.String(fmt.Sprintf("Infrastructure Request: %s/%s", branchName, filePath)),
 		Head:  github.String(branchName),
 		Base:  github.String(BaseBranch),
 		Body:  github.String(fmt.Sprintf("Auto-generated infrastructure request\n\n**Team:** %s\n**Environment:** %s\n**File:** %s", 

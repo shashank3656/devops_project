@@ -143,6 +143,41 @@ export default function Home() {
                   Provide your infrastructure configuration as a custom JSON payload for advanced use cases.
                 </p>
               </div>
+
+              <div 
+                onClick={() => router.push('/history')}
+                className="card card-interactive"
+                style={{
+                  padding: '40px',
+                  border: '2px solid var(--border-color)',
+                  margin: '0'
+                }}
+              >
+                <div style={{ 
+                  fontSize: '48px', 
+                  marginBottom: '16px',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent'
+                }}>
+                  📊
+                </div>
+                <h3 style={{ 
+                  fontSize: '22px', 
+                  fontWeight: '600',
+                  marginBottom: '12px',
+                  color: 'var(--text-primary)'
+                }}>
+                  Request History
+                </h3>
+                <p style={{ 
+                  color: 'var(--text-secondary)', 
+                  fontSize: '14px',
+                  lineHeight: '1.6'
+                }}>
+                  View all previous infrastructure requests, PRs, and their status in a table format.
+                </p>
+              </div>
             </div>
           </div>
         </div>

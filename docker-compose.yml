@@ -30,6 +30,8 @@ services:
       - ./backend:/app
       # Exclude vendor directory to avoid vendoring conflicts
       - /app/vendor
+      # Persist database file
+      - backend-db:/app
     # Command runs go run . from the mounted volume
     # Use -mod=mod to ignore vendor directory if it exists
     command: sh -c "go mod download && go run -mod=mod ."
@@ -130,3 +132,7 @@ services:
 networks:
   infra-network:
     driver: bridge
+
+volumes:
+  backend-db:
+    driver: local
