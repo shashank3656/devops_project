@@ -64,10 +64,13 @@ docker-compose --profile dev up
 
 This will:
 - Start `backend` and `frontend` services (dev profile)
+- Use `Dockerfile.dev` for backend (includes Go runtime for hot reload)
 - Mount source code as volumes for hot reload
 - Run `go run .` for backend (instead of compiled binary)
 - Run `npm run dev` for frontend (instead of production build)
 - Container names: `infra-backend-dev` and `infra-frontend-dev`
+
+**Note:** The dev backend uses a separate `Dockerfile.dev` that includes Go, allowing `go run .` to work for hot reload.
 
 ## Services
 
