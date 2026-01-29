@@ -15,8 +15,8 @@ type InfraRequest map[string]interface{}
 // enableCORS adds CORS headers to allow frontend requests
 func enableCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 }
 
 // handleOptions handles preflight CORS requests
@@ -222,8 +222,12 @@ func main() {
 	// API endpoints
 	http.HandleFunc("/create-pr", createPRHandler)
 	http.HandleFunc("/api/history", historyHandler)
+	http.HandleFunc("/api/history/", historyDetailHandler)
+	http.HandleFunc("/api/stats", statsHandler)
 	http.HandleFunc("/api/auth/signup", signupHandler)
 	http.HandleFunc("/api/auth/login", loginHandler)
+	http.HandleFunc("/api/me", meHandler)
+	http.HandleFunc("/api/change-password", changePasswordHandler)
 	http.HandleFunc("/health", healthHandler)
 	
 	// Swagger/OpenAPI endpoint (will be served from static files or generated)
@@ -233,9 +237,13 @@ func main() {
 	log.Println("Backend server starting on :8080")
 	log.Println("Endpoints:")
 	log.Println("  POST /create-pr      - Create infrastructure PR")
-	log.Println("  GET  /api/history    - Get PR request history")
+	log.Println("  GET  /api/history     - Get PR request history")
+	log.Println("  GET  /api/history/:id - Get single PR request details")
+	log.Println("  GET  /api/stats       - Get dashboard statistics")
 	log.Println("  POST /api/auth/signup - User signup")
 	log.Println("  POST /api/auth/login  - User login")
+	log.Println("  GET  /api/me         - Current user (auth required)")
+	log.Println("  POST /api/change-password - Change password (auth required)")
 	log.Println("  GET  /health         - Health check")
 	log.Println("  GET  /swagger.json    - OpenAPI spec")
 	log.Println("  GET  /api-docs       - Swagger UI")

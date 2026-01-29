@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { useToast } from '../context/ToastContext';
 import { clouds, environments } from '../config/clouds';
 import { awsServices, awsServiceList, ServiceField } from '../config/awsServices';
 import { gcpServices, gcpServiceList } from '../config/gcpServices';
 
 export default function SelectService() {
   const router = useRouter();
+  const { toast } = useToast();
   const [team, setTeam] = useState('');
   const [env, setEnv] = useState('');
   const [cloud, setCloud] = useState('');
@@ -180,17 +182,16 @@ export default function SelectService() {
 
       const data = await response.json();
       setPrUrl(data.pr_url || '');
-      
-      // Show success message
-      alert('PR Created Successfully! Check the PR URL below.');
+      toast('PR created successfully. Check the PR URL below.', 'success');
     } catch (err: any) {
       console.error('Error creating PR:', err);
       const errorMessage = err.message || 'An error occurred while creating the PR';
-      // Check if it's a network error
       if (err.message === 'Failed to fetch' || err.name === 'TypeError' || err.message.includes('NetworkError')) {
         setError(`Cannot connect to backend at ${apiUrl}. Make sure the backend is running.`);
+        toast('Cannot connect to backend', 'error');
       } else {
         setError(errorMessage);
+        toast(errorMessage, 'error');
       }
     } finally {
       setLoading(false);

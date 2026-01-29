@@ -116,7 +116,7 @@ services:
       - config/.env
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.30.10.133:8080}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.66.132.115:8080}
       - WATCHPACK_POLLING=true
     volumes:
       # Mount source code for hot reload
@@ -147,7 +147,7 @@ services:
       - config/.env 
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.30.10.133:8080}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.66.132.115:8080}
     depends_on:
       backend-prod:
         condition: service_healthy

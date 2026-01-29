@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { useToast } from '../context/ToastContext';
+
+const TEMPLATE_KEY = 'infra-request-template';
 
 export default function CustomJSON() {
   const router = useRouter();
+  const { toast } = useToast();
   const [team, setTeam] = useState('');
   const [env, setEnv] = useState('');
   const [json, setJson] = useState('');
@@ -16,6 +20,20 @@ export default function CustomJSON() {
     const isAuthenticated = localStorage.getItem('isAuthenticated');
     if (!isAuthenticated) {
       router.push('/login');
+      return;
+    }
+    const template = sessionStorage.getItem(TEMPLATE_KEY);
+    if (template) {
+      try {
+        const data = JSON.parse(template);
+        if (data.team) setTeam(data.team);
+        if (data.env) setEnv(data.env);
+        if (data.config && typeof data.config === 'string') setJson(data.config);
+        else if (data.config && typeof data.config === 'object') setJson(JSON.stringify(data.config, null, 2));
+        sessionStorage.removeItem(TEMPLATE_KEY);
+      } catch (_) {
+        sessionStorage.removeItem(TEMPLATE_KEY);
+      }
     }
   }, [router]);
 
@@ -120,16 +138,16 @@ export default function CustomJSON() {
 
       const data = await response.json();
       setPrUrl(data.pr_url || '');
-      
-      alert('PR Created Successfully! Check the PR URL below.');
+      toast('PR created successfully. Check the PR URL below.', 'success');
     } catch (err: any) {
       console.error('Error creating PR:', err);
       const errorMessage = err.message || 'An error occurred while creating the PR';
-      // Check if it's a network error
       if (err.message === 'Failed to fetch' || err.name === 'TypeError' || err.message.includes('NetworkError')) {
         setError(`Cannot connect to backend at ${apiUrl}. Make sure the backend is running.`);
+        toast('Cannot connect to backend', 'error');
       } else {
         setError(errorMessage);
+        toast(errorMessage, 'error');
       }
     } finally {
       setLoading(false);
