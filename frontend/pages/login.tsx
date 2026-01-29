@@ -53,94 +53,48 @@ export default function Login() {
       <Head>
         <title>Login - Infrastructure Portal</title>
       </Head>
-      <div style={{ 
-        minHeight: '100vh', 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 50%, #cbd5e0 100%)',
-        backgroundAttachment: 'fixed',
-        padding: '20px'
-      }}>
-        <div className="card" style={{ 
-          maxWidth: '450px', 
-          width: '100%',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
-        }}>
-          <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-            <h1 style={{ 
-              fontSize: '32px', 
-              fontWeight: 'bold',
-              background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              marginBottom: '8px'
-            }}>
-              Infrastructure Portal
-            </h1>
-            <p style={{ color: 'var(--text-secondary)' }}>
-              Sign in to your account
-            </p>
+      <div className="auth-page">
+        <div className="auth-card">
+          <div className="auth-header">
+            <h1 className="auth-title">Infrastructure Portal</h1>
+            <p className="auth-subtitle">Sign in to your account</p>
           </div>
 
-          {error && (
-            <div className="error" style={{ marginBottom: '16px' }}>
-              {error}
-            </div>
-          )}
+          {error && <div className="error">{error}</div>}
 
-          <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: '16px' }}>
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <div className="form-group">
               <label htmlFor="username">Username</label>
               <input
                 id="username"
                 type="text"
+                className="input"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 disabled={loading}
                 placeholder="Enter your username"
+                autoComplete="username"
               />
             </div>
-
-            <div style={{ marginBottom: '24px' }}>
+            <div className="form-group">
               <label htmlFor="password">Password</label>
               <input
                 id="password"
                 type="password"
+                className="input"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={loading}
                 placeholder="Enter your password"
+                autoComplete="current-password"
               />
             </div>
-
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={loading}
-              style={{ 
-                width: '100%',
-                padding: '14px',
-                fontSize: '16px',
-                fontWeight: '600',
-                background: 'var(--primary-gradient)',
-                boxShadow: '0 4px 6px -1px rgba(102, 126, 234, 0.3)',
-                transition: 'all 0.2s ease'
-              }}
-            >
+            <button type="submit" className="auth-btn" disabled={loading}>
               {loading ? (
                 <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                  <span style={{ 
-                    width: '16px', 
-                    height: '16px', 
-                    border: '2px solid rgba(255,255,255,0.3)', 
-                    borderTop: '2px solid white',
-                    borderRadius: '50%',
-                    animation: 'spin 0.6s linear infinite',
-                    display: 'inline-block'
-                  }}></span>
+                  <span className="loading" style={{ width: 18, height: 18, borderWidth: 2 }} />
                   Signing in...
                 </span>
               ) : (
@@ -149,21 +103,9 @@ export default function Login() {
             </button>
           </form>
 
-          <div style={{ 
-            marginTop: '24px', 
-            textAlign: 'center',
-            paddingTop: '20px',
-            borderTop: '1px solid var(--border-color)'
-          }}>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-              Don't have an account?{' '}
-              <Link href="/signup" style={{ 
-                color: 'var(--primary-color)', 
-                textDecoration: 'none',
-                fontWeight: '600'
-              }}>
-                Sign up here
-              </Link>
+          <div className="auth-divider">
+            <p className="auth-footer">
+              Don&apos;t have an account? <Link href="/signup">Sign up here</Link>
             </p>
           </div>
         </div>
