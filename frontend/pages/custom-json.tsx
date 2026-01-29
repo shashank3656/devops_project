@@ -15,6 +15,9 @@ export default function CustomJSON() {
   const [loading, setLoading] = useState(false);
   const [prUrl, setPrUrl] = useState('');
   const [error, setError] = useState('');
+  const [canCreatePR, setCanCreatePR] = useState<boolean | null>(null);
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem('isAuthenticated');
@@ -35,7 +38,19 @@ export default function CustomJSON() {
         sessionStorage.removeItem(TEMPLATE_KEY);
       }
     }
-  }, [router]);
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          const u = data?.user;
+          setCanCreatePR(!!(u?.verified && (u?.role === 'contributor' || u?.role === 'admin')));
+        })
+        .catch(() => setCanCreatePR(false));
+    } else {
+      setCanCreatePR(false);
+    }
+  }, [router, apiUrl]);
 
   const validateJSON = (jsonString: string): boolean => {
     try {
@@ -108,22 +123,9 @@ export default function CustomJSON() {
         ...jsonPayload
       };
 
-      // Get auth token and user
       const token = localStorage.getItem('token');
-      const user = localStorage.getItem('user');
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      
-      // Add user ID if available
-      if (user) {
-        try {
-          const userData = JSON.parse(user);
-          if (userData.id) {
-            headers['X-User-ID'] = userData.id.toString();
-          }
-        } catch (e) {
-          // Ignore parse errors
-        }
-      }
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const response = await fetch(`${apiUrl}/create-pr`, {
         method: 'POST',
@@ -132,8 +134,13 @@ export default function CustomJSON() {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `Server returned ${response.status}: ${response.statusText}`);
+        const text = await response.text();
+        let errMsg = text || `Server returned ${response.status}`;
+        try {
+          const d = JSON.parse(text);
+          if (d && d.error) errMsg = d.error;
+        } catch (_) {}
+        throw new Error(errMsg);
       }
 
       const data = await response.json();
@@ -193,6 +200,12 @@ export default function CustomJSON() {
             <p style={{ color: '#666', marginBottom: '32px' }}>
               Provide your infrastructure configuration as a JSON payload
             </p>
+
+            {canCreatePR === false && (
+              <div className="error" style={{ marginBottom: '24px' }}>
+                You don&apos;t have permission to create PRs. Verify your email and ensure your account has contributor or admin role in <a href="/profile" style={{ color: 'inherit', textDecoration: 'underline' }}>Profile</a>.
+              </div>
+            )}
 
             <form onSubmit={handleSubmit}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '24px' }}>
@@ -286,7 +299,7 @@ export default function CustomJSON() {
                 type="submit"
                 className="btn btn-primary"
                 style={{ width: '100%', marginTop: '16px' }}
-                disabled={loading || !!jsonError}
+                disabled={loading || !!jsonError || canCreatePR !== true}
               >
                 {loading ? (
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
