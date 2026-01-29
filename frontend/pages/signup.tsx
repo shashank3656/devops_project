@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { useToast } from '../context/ToastContext';
 
 export default function Signup() {
   const router = useRouter();
+  const { toast } = useToast();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,11 +38,12 @@ export default function Signup() {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       localStorage.setItem('isAuthenticated', 'true');
-      
-      // Redirect to home
+      toast('Account created. Welcome!', 'success');
       router.push('/home');
     } catch (err: any) {
-      setError(err.message || 'An error occurred');
+      const msg = err.message || 'An error occurred';
+      setError(msg);
+      toast(msg, 'error');
     } finally {
       setLoading(false);
     }

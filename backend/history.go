@@ -89,11 +89,17 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get total count for pagination
+	totalCount, _ := GetTotalCount(team, env, cloud, prID, userIDInt)
+
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{
-		"status":   "success",
-		"requests": requests,
-		"count":    len(requests),
+		"status":       "success",
+		"requests":     requests,
+		"count":        len(requests),
+		"total_count":  totalCount,
+		"limit":        limit,
+		"offset":       offset,
 	}
 
 	json.NewEncoder(w).Encode(response)

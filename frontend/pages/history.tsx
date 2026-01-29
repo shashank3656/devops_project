@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { useToast } from '../context/ToastContext';
+
+const TEMPLATE_KEY = 'infra-request-template';
 
 interface PRRequest {
   id: number;
@@ -15,15 +18,25 @@ interface PRRequest {
   created_at: string;
   updated_at: string;
   created_by: number | null;
+  config?: string;
 }
+
+const PAGE_SIZE = 10;
 
 export default function History() {
   const router = useRouter();
+  const { toast } = useToast();
   const [requests, setRequests] = useState<PRRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filterType, setFilterType] = useState<'team' | 'pr_number' | 'env' | 'cloud'>('team');
   const [filterValue, setFilterValue] = useState('');
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(0);
+  const [detailRequest, setDetailRequest] = useState<PRRequest | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [sortBy, setSortBy] = useState<'id' | 'created_at' | 'team' | 'cloud'>('created_at');
+  const [sortDesc, setSortDesc] = useState(true);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -36,7 +49,7 @@ export default function History() {
     }
 
     fetchHistory();
-  }, [filterType, filterValue]);
+  }, [filterType, filterValue, page]);
 
   const fetchHistory = async () => {
     setLoading(true);
@@ -51,13 +64,14 @@ export default function History() {
 
       const params = new URLSearchParams();
       if (filterValue.trim()) {
-        // Add filter based on selected type
         if (filterType === 'pr_number') {
           params.append('id', filterValue.trim());
         } else {
           params.append(filterType, filterValue.trim());
         }
       }
+      params.append('limit', String(PAGE_SIZE));
+      params.append('offset', String(page * PAGE_SIZE));
 
       const response = await fetch(`${apiUrl}/api/history?${params.toString()}`, {
         headers,
@@ -69,6 +83,7 @@ export default function History() {
 
       const data = await response.json();
       setRequests(data.requests || []);
+      setTotalCount(data.total_count ?? data.requests?.length ?? 0);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch history');
     } finally {
@@ -76,12 +91,80 @@ export default function History() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/auth');
+  const handleRefresh = () => {
+    fetchHistory();
+    toast('History refreshed', 'success');
   };
+
+  const openDetail = async (req: PRRequest) => {
+    setDetailRequest(null);
+    setDetailLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`${apiUrl}/api/history/${req.id}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setDetailRequest(data.request || req);
+      } else {
+        setDetailRequest(req);
+      }
+    } catch (_) {
+      setDetailRequest(req);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const exportCSV = () => {
+    const headers = ['ID', 'Team', 'Environment', 'Cloud', 'Service', 'Status', 'Branch', 'PR URL', 'Created At'];
+    const rows = [...requests].sort((a, b) => {
+      const aVal = sortBy === 'created_at' ? new Date(a.created_at).getTime() : (a as any)[sortBy];
+      const bVal = sortBy === 'created_at' ? new Date(b.created_at).getTime() : (b as any)[sortBy];
+      return sortDesc ? (bVal > aVal ? 1 : -1) : (aVal > bVal ? 1 : -1);
+    }).map(r => [r.id, r.team, r.env, r.cloud, r.service, r.status, r.branch, r.pr_url, formatDate(r.created_at)].join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pr-requests-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('CSV exported successfully', 'success');
+  };
+
+  const useAsTemplate = (req: PRRequest) => {
+    try {
+      sessionStorage.setItem(TEMPLATE_KEY, JSON.stringify({
+        team: req.team,
+        env: req.env,
+        cloud: req.cloud,
+        service: req.service,
+        config: req.config || '',
+      }));
+      setDetailRequest(null);
+      router.push('/custom-json');
+      toast('Template loaded. Edit and submit in Custom JSON.', 'success');
+    } catch (_) {
+      toast('Failed to use template', 'error');
+    }
+  };
+
+  const sortedRequests = [...requests].sort((a, b) => {
+    let aVal: string | number = (a as any)[sortBy];
+    let bVal: string | number = (b as any)[sortBy];
+    if (sortBy === 'created_at') {
+      aVal = new Date(a.created_at).getTime();
+      bVal = new Date(b.created_at).getTime();
+    }
+    if (aVal === bVal) return 0;
+    const cmp = aVal > bVal ? 1 : -1;
+    return sortDesc ? -cmp : cmp;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -115,18 +198,12 @@ export default function History() {
             }}>
               PR Request History
             </h1>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button 
-                onClick={() => router.push('/home')}
-                className="btn btn-secondary"
-              >
-                Home
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <button onClick={handleRefresh} className="btn btn-secondary" disabled={loading} title="Refresh">
+                🔄 Refresh
               </button>
-              <button 
-                onClick={handleLogout}
-                className="btn btn-secondary"
-              >
-                Logout
+              <button onClick={exportCSV} className="btn btn-secondary" disabled={requests.length === 0}>
+                📥 Export CSV
               </button>
             </div>
           </div>
@@ -339,13 +416,15 @@ export default function History() {
                     </tr>
                   </thead>
                   <tbody>
-                    {requests.map((req, index) => (
+                    {sortedRequests.map((req, index) => (
                       <tr 
                         key={req.id} 
+                        onClick={() => openDetail(req)}
                         style={{ 
                           borderBottom: '1px solid var(--border-color)',
                           transition: 'background 0.2s ease',
-                          background: index % 2 === 0 ? 'white' : 'var(--bg-gray-50)'
+                          background: index % 2 === 0 ? 'white' : 'var(--bg-gray-50)',
+                          cursor: 'pointer'
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.background = 'var(--bg-gray-100)';
@@ -431,7 +510,119 @@ export default function History() {
                 </table>
               </div>
             )}
+
+            {/* Pagination */}
+            {!loading && !error && totalCount > 0 && (
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                padding: '16px 24px',
+                borderTop: '1px solid var(--border-color)',
+                flexWrap: 'wrap',
+                gap: '12px'
+              }}>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                  Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount}
+                </span>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    onClick={() => setPage(p => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                    className="btn btn-secondary"
+                    style={{ padding: '8px 16px' }}
+                  >
+                    Previous
+                  </button>
+                  <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                    Page {page + 1} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={page >= totalPages - 1}
+                    className="btn btn-secondary"
+                    style={{ padding: '8px 16px' }}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* View Details Modal */}
+          {(detailRequest !== null || detailLoading) && (
+            <div
+              onClick={() => !detailLoading && setDetailRequest(null)}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000,
+                padding: '20px'
+              }}
+            >
+              <div
+                onClick={e => e.stopPropagation()}
+                className="card"
+                style={{
+                  maxWidth: '600px',
+                  width: '100%',
+                  maxHeight: '85vh',
+                  overflow: 'auto'
+                }}
+              >
+                {detailLoading ? (
+                  <div style={{ textAlign: 'center', padding: '40px' }}>Loading details...</div>
+                ) : detailRequest ? (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                      <h3 style={{ margin: 0 }}>Request #{detailRequest.id}</h3>
+                      <button onClick={() => setDetailRequest(null)} className="btn btn-secondary" style={{ padding: '8px 16px' }}>
+                        Close
+                      </button>
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <strong>Team:</strong> {detailRequest.team} &nbsp;|&nbsp; <strong>Env:</strong> {detailRequest.env} &nbsp;|&nbsp; <strong>Cloud:</strong> {detailRequest.cloud} &nbsp;|&nbsp; <strong>Service:</strong> {detailRequest.service}
+                    </div>
+                    <div style={{ marginBottom: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                      <a href={detailRequest.pr_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)' }}>
+                        Open PR →
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => useAsTemplate(detailRequest)}
+                        className="btn btn-primary"
+                        style={{ padding: '8px 16px', fontSize: '14px' }}
+                      >
+                        Use as template
+                      </button>
+                    </div>
+                    {detailRequest.config && (
+                      <div>
+                        <strong>Configuration (JSON):</strong>
+                        <pre style={{ 
+                          background: 'var(--bg-gray-100)', 
+                          padding: '16px', 
+                          borderRadius: '8px', 
+                          overflow: 'auto', 
+                          fontSize: '13px',
+                          maxHeight: '300px',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word'
+                        }}>
+                          {detailRequest.config}
+                        </pre>
+                      </div>
+                    )}
+                  </>
+                ) : null}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>
