@@ -17,6 +17,8 @@ RUN npm install
 COPY next.config.js ./
 COPY tsconfig.json ./
 COPY pages ./pages
+COPY components ./components
+COPY context ./context
 COPY config ./config
 COPY styles ./styles
 COPY lib ./lib
