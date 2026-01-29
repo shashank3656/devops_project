@@ -159,8 +159,6 @@ export default function SelectService() {
     // Use environment variable or fallback to localhost for local development
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
-    // Get auth token and user
-    const token = localStorage.getItem('token');
     const token = localStorage.getItem('token');
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
