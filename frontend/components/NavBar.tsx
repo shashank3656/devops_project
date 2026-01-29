@@ -45,19 +45,18 @@ export default function NavBar() {
   const navLink = (href: string, label: string) => {
     const isActive = router.pathname === href;
     return (
-      <Link href={href}>
-        <a
-          style={{
-            padding: '8px 16px',
-            borderRadius: '8px',
-            color: isActive ? 'var(--primary-color)' : 'var(--text-primary)',
-            fontWeight: isActive ? 600 : 500,
-            textDecoration: 'none',
-            background: isActive ? 'var(--info-bg)' : 'transparent',
-          }}
-        >
-          {label}
-        </a>
+      <Link
+        href={href}
+        style={{
+          padding: '8px 16px',
+          borderRadius: '8px',
+          color: isActive ? 'var(--primary-color)' : 'var(--text-primary)',
+          fontWeight: isActive ? 600 : 500,
+          textDecoration: 'none',
+          background: isActive ? 'var(--info-bg)' : 'transparent',
+        }}
+      >
+        {label}
       </Link>
     );
   };
@@ -76,10 +75,11 @@ export default function NavBar() {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <Link href="/home">
-          <a style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', textDecoration: 'none' }}>
-            Infrastructure Portal
-          </a>
+        <Link
+          href="/home"
+          style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', textDecoration: 'none' }}
+        >
+          Infrastructure Portal
         </Link>
         <span style={{ color: 'var(--text-muted)', marginLeft: '8px' }}>|</span>
         <div style={{ display: 'flex', gap: '4px', marginLeft: '8px' }}>
