@@ -41,6 +41,39 @@ func validatePayload(payload InfraRequest) error {
 	return nil
 }
 
+// adminUsersHandler dispatches /api/users/:id/role and /api/users/:id/verify to the appropriate handler
+func adminUsersHandler(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(r.URL.Path, "/verify") {
+		setVerifiedHandler(w, r)
+		return
+	}
+	setRoleHandler(w, r)
+}
+
+// checkCanCreatePR returns (userID, true) if the request has a valid Bearer token and the user is verified and has role contributor or admin
+func checkCanCreatePR(r *http.Request) (userID int, ok bool) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		return 0, false
+	}
+	token := strings.TrimSpace(authHeader[7:])
+	id, err := validateToken(token)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	user, err := GetUserByID(id)
+	if err != nil || user == nil {
+		return 0, false
+	}
+	if !user.Verified {
+		return id, false
+	}
+	if user.Role != "contributor" && user.Role != "admin" {
+		return id, false
+	}
+	return id, true
+}
+
 func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 
@@ -51,6 +84,18 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != "POST" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Require auth and user-based access: verified + role contributor or admin
+	userID, canCreate := checkCanCreatePR(r)
+	if !canCreate {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":  "you do not have permission to create PRs. Verify your email and ensure your account has contributor or admin role.",
+			"status": "error",
+		})
 		return
 	}
 
@@ -164,13 +209,10 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save to database
-	userID := r.Header.Get("X-User-ID")
+	// Save to database (use authenticated user ID)
 	var userIDPtr *int
-	if userID != "" {
-		if id, err := strconv.Atoi(userID); err == nil && id > 0 {
-			userIDPtr = &id
-		}
+	if userID > 0 {
+		userIDPtr = &userID
 	}
 
 	prRequest := &PRRequest{
@@ -228,6 +270,9 @@ func main() {
 	http.HandleFunc("/api/auth/login", loginHandler)
 	http.HandleFunc("/api/me", meHandler)
 	http.HandleFunc("/api/change-password", changePasswordHandler)
+	http.HandleFunc("/api/verify-email", verifyEmailHandler)
+	http.HandleFunc("/api/resend-verification", resendVerificationHandler)
+	http.HandleFunc("/api/users/", adminUsersHandler)
 	http.HandleFunc("/health", healthHandler)
 	
 	// Swagger/OpenAPI endpoint (will be served from static files or generated)
@@ -236,7 +281,7 @@ func main() {
 	
 	log.Println("Backend server starting on :8080")
 	log.Println("Endpoints:")
-	log.Println("  POST /create-pr      - Create infrastructure PR")
+	log.Println("  POST /create-pr      - Create infrastructure PR (verified contributor/admin only)")
 	log.Println("  GET  /api/history     - Get PR request history")
 	log.Println("  GET  /api/history/:id - Get single PR request details")
 	log.Println("  GET  /api/stats       - Get dashboard statistics")
@@ -244,6 +289,10 @@ func main() {
 	log.Println("  POST /api/auth/login  - User login")
 	log.Println("  GET  /api/me         - Current user (auth required)")
 	log.Println("  POST /api/change-password - Change password (auth required)")
+	log.Println("  GET  /api/verify-email?token= - Verify email")
+	log.Println("  POST /api/resend-verification - Resend verification (auth required)")
+	log.Println("  PATCH /api/users/:id/role - Set user role (X-Admin-Secret required)")
+	log.Println("  PATCH /api/users/:id/verify - Set user verified (X-Admin-Secret required)")
 	log.Println("  GET  /health         - Health check")
 	log.Println("  GET  /swagger.json    - OpenAPI spec")
 	log.Println("  GET  /api-docs       - Swagger UI")

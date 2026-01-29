@@ -38,7 +38,7 @@ export default function Signup() {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       localStorage.setItem('isAuthenticated', 'true');
-      toast('Account created. Welcome!', 'success');
+      toast('Account created. Verify your email to create PRs (check Profile to resend link).', 'success');
       router.push('/home');
     } catch (err: any) {
       const msg = err.message || 'An error occurred';

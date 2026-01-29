@@ -7,6 +7,8 @@ interface User {
   id: number;
   username: string;
   email: string;
+  verified?: boolean;
+  role?: string;
   created_at: string;
 }
 
@@ -19,6 +21,7 @@ export default function Profile() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changing, setChanging] = useState(false);
+  const [resending, setResending] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -91,6 +94,26 @@ export default function Profile() {
     }
   };
 
+  const handleResendVerification = async () => {
+    setResending(true);
+    try {
+      const token = localStorage.getItem('token');
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`${apiUrl}/api/resend-verification`, { method: 'POST', headers });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.status === 'ok') {
+        toast(data.message || 'Verification link sent. Check your email.', 'success');
+      } else {
+        toast(data.error || 'Failed to resend', 'error');
+      }
+    } catch (_) {
+      toast('Failed to resend verification', 'error');
+    } finally {
+      setResending(false);
+    }
+  };
+
   if (loading) {
     return (
       <>
@@ -129,6 +152,47 @@ export default function Profile() {
                   <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Email</span>
                   <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{user.email}</div>
                 </div>
+                <div>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Status</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      background: user.verified ? 'var(--success-bg)' : 'var(--warning-bg)',
+                      color: user.verified ? 'var(--success-color)' : 'var(--warning-color)',
+                    }}>
+                      {user.verified ? '✓ Verified' : 'Not verified'}
+                    </span>
+                    <span style={{
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      background: 'var(--info-bg)',
+                      color: 'var(--info-color)',
+                    }}>
+                      Role: {user.role || 'viewer'}
+                    </span>
+                  </div>
+                </div>
+                {!user.verified && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={handleResendVerification}
+                      disabled={resending}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '14px', padding: '8px 16px' }}
+                    >
+                      {resending ? 'Sending...' : 'Resend verification email'}
+                    </button>
+                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
+                      Verify your email and get contributor access to create PRs.
+                    </p>
+                  </div>
+                )}
                 <div>
                   <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Member since</span>
                   <div style={{ color: 'var(--text-primary)' }}>

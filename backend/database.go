@@ -29,11 +29,13 @@ type PRRequest struct {
 }
 
 type User struct {
-	ID        int       `json:"id"`
-	Username  string    `json:"username"`
-	Email     string    `json:"email"`
-	Password  string    `json:"-"` // Don't return password in JSON
-	CreatedAt time.Time `json:"created_at"`
+	ID           int       `json:"id"`
+	Username     string    `json:"username"`
+	Email        string    `json:"email"`
+	Password     string    `json:"-"` // Don't return password in JSON
+	Verified     bool      `json:"verified"`
+	Role         string    `json:"role"` // viewer | contributor | admin
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // InitDB initializes the PostgreSQL database connection
@@ -97,6 +99,10 @@ func createTables() error {
 		username VARCHAR(100) UNIQUE NOT NULL,
 		email VARCHAR(255) UNIQUE NOT NULL,
 		password VARCHAR(255) NOT NULL,
+		verified BOOLEAN DEFAULT FALSE,
+		verification_token VARCHAR(255),
+		verification_token_expires_at TIMESTAMP,
+		role VARCHAR(50) DEFAULT 'viewer',
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);`
 
@@ -279,15 +285,22 @@ func GetPRRequestByID(id int) (*PRRequest, error) {
 // GetUserByID retrieves a user by ID (without password)
 func GetUserByID(id int) (*User, error) {
 	var user User
+	var verified sql.NullBool
+	var role sql.NullString
 	err := DB.QueryRow(
-		"SELECT id, username, email, created_at FROM users WHERE id = $1",
+		"SELECT id, username, email, COALESCE(verified, false), COALESCE(role, 'viewer'), created_at FROM users WHERE id = $1",
 		id,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.CreatedAt)
+	).Scan(&user.ID, &user.Username, &user.Email, &verified, &role, &user.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	user.Verified = verified.Valid && verified.Bool
+	user.Role = "viewer"
+	if role.Valid && role.String != "" {
+		user.Role = role.String
 	}
 	return &user, nil
 }
@@ -299,6 +312,49 @@ func UpdateUserPassword(userID int, hashedPassword string) error {
 		return fmt.Errorf("failed to update password: %w", err)
 	}
 	return nil
+}
+
+// GetUserByVerificationToken returns user ID if token is valid and not expired
+func GetUserByVerificationToken(token string) (int, error) {
+	var userID int
+	err := DB.QueryRow(
+		"SELECT id FROM users WHERE verification_token = $1 AND verification_token_expires_at > NOW()",
+		token,
+	).Scan(&userID)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return userID, nil
+}
+
+// SetUserVerified sets verified=true and clears verification token for user ID
+func SetUserVerified(userID int) error {
+	_, err := DB.Exec(
+		"UPDATE users SET verified = TRUE, verification_token = NULL, verification_token_expires_at = NULL WHERE id = $1",
+		userID,
+	)
+	return err
+}
+
+// SetUserVerificationToken sets verification token and expiry for user ID
+func SetUserVerificationToken(userID int, token string, expiresAt time.Time) error {
+	_, err := DB.Exec(
+		"UPDATE users SET verification_token = $1, verification_token_expires_at = $2 WHERE id = $3",
+		token, expiresAt, userID,
+	)
+	return err
+}
+
+// UpdateUserRole sets role for user ID (caller must enforce admin auth)
+func UpdateUserRole(userID int, role string) error {
+	if role != "viewer" && role != "contributor" && role != "admin" {
+		return fmt.Errorf("invalid role: %s", role)
+	}
+	_, err := DB.Exec("UPDATE users SET role = $1 WHERE id = $2", role, userID)
+	return err
 }
 
 // Stats holds aggregate counts for the dashboard
