@@ -39,7 +39,7 @@ export default function CustomJSON() {
       }
     }
     const token = localStorage.getItem('token');
-    if (token) {
+    if (token && token !== 'undefined') {
       fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } })
         .then((res) => res.ok ? res.json() : null)
         .then((data) => {
@@ -125,7 +125,7 @@ export default function CustomJSON() {
 
       const token = localStorage.getItem('token');
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
       const response = await fetch(`${apiUrl}/create-pr`, {
         method: 'POST',

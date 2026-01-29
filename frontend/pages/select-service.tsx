@@ -28,7 +28,7 @@ export default function SelectService() {
       return;
     }
     const token = localStorage.getItem('token');
-    if (token) {
+    if (token && token !== 'undefined') {
       fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } })
         .then((res) => res.ok ? res.json() : null)
         .then((data) => {
@@ -161,7 +161,7 @@ export default function SelectService() {
 
     const token = localStorage.getItem('token');
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
     try {
       const payload = {

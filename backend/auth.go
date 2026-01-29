@@ -53,42 +53,42 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 	var req SignupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "invalid json",
 			"status": "error",
 		})
-		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	// Validate input
 	if strings.TrimSpace(req.Username) == "" {
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "username is required",
 			"status": "error",
 		})
-		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	if strings.TrimSpace(req.Email) == "" {
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "email is required",
 			"status": "error",
 		})
-		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	if len(req.Password) < 6 {
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "password must be at least 6 characters",
 			"status": "error",
 		})
-		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
@@ -97,11 +97,11 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Error hashing password: %v", err)
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "failed to process password",
 			"status": "error",
 		})
-		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -110,42 +110,45 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 	err = DB.QueryRow("SELECT id FROM users WHERE username = $1 OR email = $2", req.Username, req.Email).Scan(&existingID)
 	if err == nil {
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "username or email already exists",
 			"status": "error",
 		})
-		w.WriteHeader(http.StatusConflict)
 		return
 	} else if err != sql.ErrNoRows {
 		log.Printf("Error checking existing user: %v", err)
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "database error",
 			"status": "error",
 		})
-		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	// Generate verification token (32 bytes hex)
-	verifyBytes := make([]byte, 32)
-	if _, err := rand.Read(verifyBytes); err != nil {
-		log.Printf("Error generating verification token: %v", err)
+	// Generate 6-digit OTP for verification
+	otpBytes := make([]byte, 6)
+	if _, err := rand.Read(otpBytes); err != nil {
+		log.Printf("Error generating OTP: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to create user", "status": "error"})
 		return
 	}
-	verifyToken := hex.EncodeToString(verifyBytes)
-	verifyExpires := time.Now().Add(24 * time.Hour)
+	var otp string
+	for _, b := range otpBytes {
+		otp += fmt.Sprintf("%d", b%10)
+	}
+	otpExpires := time.Now().Add(10 * time.Minute)
 
-	// Create user (with verified=false, role=viewer)
+	// Create user (with verified=false, role=viewer, OTP stored)
 	var user User
 	err = DB.QueryRow(
 		`INSERT INTO users (username, email, password, verified, role, verification_token, verification_token_expires_at)
 		 VALUES ($1, $2, $3, FALSE, 'viewer', $4, $5)
 		 RETURNING id, username, email, created_at`,
-		req.Username, req.Email, string(hashedPassword), verifyToken, verifyExpires,
+		req.Username, req.Email, string(hashedPassword), otp, otpExpires,
 	).Scan(&user.ID, &user.Username, &user.Email, &user.CreatedAt)
 	if err != nil {
 		log.Printf("Error creating user: %v", err)
@@ -157,16 +160,14 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 	user.Verified = false
 	user.Role = "viewer"
 
-	// TODO: send verification email with link containing verifyToken (e.g. /verify-email?token=...)
-	_ = verifyToken
-
-	// Generate auth token
-	token := generateToken(user.ID)
+	// TODO: send OTP via email in production; for now return in response for testing
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AuthResponse{
-		Token:     token,
-		User:      user,
-		ExpiresAt: time.Now().Add(24 * time.Hour),
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":        "Account created. Verify with OTP sent to your email.",
+		"status":          "ok",
+		"otp_for_testing": otp,
+		"email":           req.Email,
+		"user":            user,
 	})
 }
 
@@ -191,11 +192,11 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "invalid json",
 			"status": "error",
 		})
-		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
@@ -209,31 +210,31 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err == sql.ErrNoRows {
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "invalid username or password",
 			"status": "error",
 		})
-		w.WriteHeader(http.StatusUnauthorized)
 		return
 	} else if err != nil {
 		log.Printf("Error querying user: %v", err)
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "database error",
 			"status": "error",
 		})
-		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	// Verify password
 	if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(req.Password)); err != nil {
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "invalid username or password",
 			"status": "error",
 		})
-		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
@@ -509,6 +510,60 @@ func verifyEmailHandler(w http.ResponseWriter, r *http.Request) {
 		"message": "email verified successfully",
 		"status":  "ok",
 	})
+}
+
+// VerifyOTPRequest for OTP verification
+type VerifyOTPRequest struct {
+	Email string `json:"email"`
+	OTP   string `json:"otp"`
+}
+
+// verifyOtpHandler verifies user with OTP (POST /api/verify-otp)
+func verifyOtpHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if DB == nil {
+		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		return
+	}
+	var req VerifyOTPRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	email := strings.TrimSpace(req.Email)
+	otp := strings.TrimSpace(req.OTP)
+	if email == "" || otp == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "email and otp required", "status": "error"})
+		return
+	}
+	userID, err := GetUserIDByEmailAndOTP(email, otp)
+	if err != nil || userID == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid or expired OTP", "status": "error"})
+		return
+	}
+	if err := SetUserVerified(userID); err != nil {
+		log.Printf("Error setting user verified: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to verify", "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"message": "Email verified successfully. You can now log in.", "status": "ok"})
 }
 
 // resendVerificationHandler sends a new verification token (POST /api/resend-verification, Bearer required)

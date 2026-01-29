@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -14,6 +14,14 @@ export default function Login() {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
+  useEffect(() => {
+    const t = localStorage.getItem('token');
+    if (t === 'undefined' || t === 'null') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('isAuthenticated');
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -26,16 +34,20 @@ export default function Login() {
         body: JSON.stringify({ username, password }),
       });
 
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Server returned ${response.status}`);
+        const msg = data.error || `Server returned ${response.status}`;
+        setError(msg);
+        toast(msg, 'error');
+        return;
       }
-
-      const data = await response.json();
-      
-      // Store auth data
+      if (!data.token) {
+        setError(data.error || 'Login failed');
+        toast(data.error || 'Login failed', 'error');
+        return;
+      }
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem('user', JSON.stringify(data.user || {}));
       localStorage.setItem('isAuthenticated', 'true');
       toast('Welcome back!', 'success');
       router.push('/home');

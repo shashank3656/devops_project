@@ -12,6 +12,9 @@ export default function Signup() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [signupDone, setSignupDone] = useState<{ email: string; otpForTesting?: string } | null>(null);
+  const [otp, setOtp] = useState('');
+  const [verifyLoading, setVerifyLoading] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -27,25 +30,53 @@ export default function Signup() {
         body: JSON.stringify({ username, email, password }),
       });
 
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Server returned ${response.status}`);
+        setError(data.error || `Server returned ${response.status}`);
+        toast(data.error || 'Signup failed', 'error');
+        return;
       }
 
-      const data = await response.json();
-      
-      // Store auth data
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      localStorage.setItem('isAuthenticated', 'true');
-      toast('Account created. Verify your email to create PRs (check Profile to resend link).', 'success');
-      router.push('/home');
+      // Signup does not return a token; show OTP verification step
+      setSignupDone({ email: data.email, otpForTesting: data.otp_for_testing });
+      toast('Account created. Enter the OTP to verify.', 'success');
     } catch (err: any) {
       const msg = err.message || 'An error occurred';
       setError(msg);
       toast(msg, 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!signupDone?.email || !otp.trim()) {
+      setError('Enter the 6-digit OTP');
+      toast('Enter the 6-digit OTP', 'error');
+      return;
+    }
+    setError('');
+    setVerifyLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: signupDone.email, otp: otp.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Verification failed');
+        toast(data.error || 'Verification failed', 'error');
+        return;
+      }
+      toast('Email verified. You can now log in.', 'success');
+      router.push('/login');
+    } catch (err: any) {
+      setError(err.message || 'Verification failed');
+      toast('Verification failed', 'error');
+    } finally {
+      setVerifyLoading(false);
     }
   };
 
@@ -63,6 +94,45 @@ export default function Signup() {
 
           {error && <div className="error">{error}</div>}
 
+          {signupDone ? (
+            <div className="auth-form">
+              <p style={{ color: 'var(--text-secondary)', marginBottom: 16, fontSize: 14 }}>
+                Enter the 6-digit OTP sent to <strong>{signupDone.email}</strong>.
+              </p>
+              {signupDone.otpForTesting && (
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+                  (Testing: OTP is <strong>{signupDone.otpForTesting}</strong>)
+                </p>
+              )}
+              <form onSubmit={handleVerifyOtp}>
+                <div className="form-group">
+                  <label htmlFor="otp">OTP</label>
+                  <input
+                    id="otp"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    className="input"
+                    placeholder="000000"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    disabled={verifyLoading}
+                    style={{ letterSpacing: 6, textAlign: 'center', fontSize: 18 }}
+                  />
+                </div>
+                <button type="submit" className="auth-btn" disabled={verifyLoading || otp.length !== 6}>
+                  {verifyLoading ? 'Verifying...' : 'Verify & sign in'}
+                </button>
+              </form>
+              <button
+                type="button"
+                onClick={() => { setSignupDone(null); setOtp(''); setError(''); }}
+                style={{ marginTop: 12, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14 }}
+              >
+                Back to sign up
+              </button>
+            </div>
+          ) : (
           <form className="auth-form" onSubmit={handleSubmit}>
             <div className="form-group">
               <label htmlFor="username">Username</label>
@@ -119,6 +189,7 @@ export default function Signup() {
               )}
             </button>
           </form>
+          )}
 
           <div className="auth-divider">
             <p className="auth-footer">

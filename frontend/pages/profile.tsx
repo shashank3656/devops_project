@@ -26,20 +26,25 @@ export default function Profile() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
     const isAuthenticated = localStorage.getItem('isAuthenticated');
-    if (!isAuthenticated) {
-      router.push('/login');
+    // Do not call /api/me if token is missing or literally "undefined" (e.g. from signup flow)
+    if (!token || token === 'undefined' || !isAuthenticated) {
+      router.replace('/login');
       return;
     }
     fetchMe();
   }, [router]);
 
   const fetchMe = async () => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') {
+      router.replace('/login');
+      return;
+    }
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const headers: HeadersInit = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
       const res = await fetch(`${apiUrl}/api/me`, { headers });
       if (res.ok) {
         const data = await res.json();
@@ -69,7 +74,7 @@ export default function Profile() {
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
       const res = await fetch(`${apiUrl}/api/change-password`, {
         method: 'POST',
         headers,
@@ -99,7 +104,7 @@ export default function Profile() {
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
       const res = await fetch(`${apiUrl}/api/resend-verification`, { method: 'POST', headers });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.status === 'ok') {

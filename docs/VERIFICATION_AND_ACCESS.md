@@ -7,9 +7,19 @@
 
 ## Verification
 
-1. **Signup**: User is created with `verified=false`, `role=viewer`, and a verification token (24h expiry).
-2. **Verify via link**: Send users to `/verify-email?token=<token>`. The backend does not send email by default; you can integrate an email provider or use the admin API to set users as verified.
-3. **Resend verification**: From Profile, users can click "Resend verification email". The backend generates a new token; you can plug in email sending to send the link (e.g. `https://your-app/verify-email?token=<token>`).
+1. **Signup**: User is created in the database with `verified=false`, `role=viewer`, and a 6-digit **OTP** stored in `verification_token` (10-minute expiry). Signup does **not** return a login token; the user must verify with OTP first.
+2. **OTP verification**: After signup, the frontend shows an OTP input. User submits the OTP via `POST /api/verify-otp` with `{"email": "...", "otp": "123456"}`. On success, the user is marked `verified=true` in the database. For local testing, the signup response includes `otp_for_testing` so you can verify without email.
+3. **Verify via link** (optional): `GET /api/verify-email?token=<token>` still works for link-based verification if you send emails with a token link.
+4. **Resend verification**: From Profile, unverified users can click "Resend verification email". The backend generates a new token; you can plug in email sending to send the link or OTP.
+
+## Database storage
+
+All auth and PR data is stored in **PostgreSQL**:
+
+- **users**: `id`, `username`, `email`, `password` (bcrypt), `verified`, `role`, `verification_token`, `verification_token_expires_at`, `created_at`.
+- **pr_requests**: PR history with `created_by` (user ID), team, env, cloud, service, status, etc.
+
+Login uses the stored password hash; wrong password returns `401` with `"invalid username or password"`. On success, the backend returns a token; the frontend stores it and sends `Authorization: Bearer <token>` for `/api/me`, `/api/change-password`, and create-PR. If the token is missing or invalid, `/api/me` returns `401`.
 
 ## User-Based Access for Creating PRs
 

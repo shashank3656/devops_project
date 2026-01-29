@@ -58,7 +58,7 @@ export default function History() {
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token) {
+      if (token && token !== 'undefined') {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
@@ -102,7 +102,7 @@ export default function History() {
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
       const res = await fetch(`${apiUrl}/api/history/${req.id}`, { headers });
       if (res.ok) {
         const data = await res.json();
