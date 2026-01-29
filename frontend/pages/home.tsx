@@ -29,7 +29,7 @@ export default function Home() {
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
       const res = await fetch(`${apiUrl}/api/stats`, { headers });
       if (res.ok) {
         const data = await res.json();

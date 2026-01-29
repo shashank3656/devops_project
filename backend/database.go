@@ -330,6 +330,22 @@ func GetUserByVerificationToken(token string) (int, error) {
 	return userID, nil
 }
 
+// GetUserIDByEmailAndOTP returns user ID if email and OTP match and are not expired
+func GetUserIDByEmailAndOTP(email, otp string) (int, error) {
+	var userID int
+	err := DB.QueryRow(
+		"SELECT id FROM users WHERE email = $1 AND verification_token = $2 AND verification_token_expires_at > NOW()",
+		email, otp,
+	).Scan(&userID)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return userID, nil
+}
+
 // SetUserVerified sets verified=true and clears verification token for user ID
 func SetUserVerified(userID int) error {
 	_, err := DB.Exec(

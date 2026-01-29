@@ -12,6 +12,9 @@ export default function Auth() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [signupSuccess, setSignupSuccess] = useState<{ email: string; otpForTesting?: string } | null>(null);
+  const [otp, setOtp] = useState('');
+  const [verifyLoading, setVerifyLoading] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -22,7 +25,7 @@ export default function Auth() {
 
     try {
       const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
-      const body = mode === 'login' 
+      const body = mode === 'login'
         ? { username, password }
         : { username, email, password };
 
@@ -32,24 +35,61 @@ export default function Auth() {
         body: JSON.stringify(body),
       });
 
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Server returned ${response.status}`);
+        setError(data.error || `Server returned ${response.status}`);
+        return;
       }
 
-      const data = await response.json();
-      
-      // Store auth data
+      if (mode === 'signup') {
+        setSignupSuccess({ email: data.email, otpForTesting: data.otp_for_testing });
+        return;
+      }
+
+      if (!data.token) {
+        setError(data.error || 'Login failed');
+        return;
+      }
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem('user', JSON.stringify(data.user || {}));
       localStorage.setItem('isAuthenticated', 'true');
-      
-      // Redirect to home
       router.push('/home');
     } catch (err: any) {
       setError(err.message || 'An error occurred');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!signupSuccess?.email || !otp.trim()) {
+      setError('Enter the 6-digit OTP');
+      return;
+    }
+    setError('');
+    setVerifyLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: signupSuccess.email, otp: otp.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Verification failed');
+        return;
+      }
+      setSignupSuccess(null);
+      setOtp('');
+      setMode('login');
+      setError('');
+      // Redirect to login so user signs in with new account
+      router.push('/login');
+    } catch (err: any) {
+      setError(err.message || 'Verification failed');
+    } finally {
+      setVerifyLoading(false);
     }
   };
 
@@ -100,6 +140,7 @@ export default function Auth() {
               onClick={() => {
                 setMode('login');
                 setError('');
+                setSignupSuccess(null);
                 setUsername('');
                 setEmail('');
                 setPassword('');
@@ -123,6 +164,7 @@ export default function Auth() {
               onClick={() => {
                 setMode('signup');
                 setError('');
+                setSignupSuccess(null);
                 setUsername('');
                 setEmail('');
                 setPassword('');
@@ -150,6 +192,45 @@ export default function Auth() {
             </div>
           )}
 
+          {signupSuccess ? (
+            <div style={{ marginTop: '8px' }}>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '14px' }}>
+                Account created. Enter the 6-digit OTP sent to <strong>{signupSuccess.email}</strong> to verify.
+              </p>
+              {signupSuccess.otpForTesting && (
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
+                  (Testing: OTP is <strong>{signupSuccess.otpForTesting}</strong>)
+                </p>
+              )}
+              <form onSubmit={handleVerifyOtp}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="Enter OTP"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  disabled={verifyLoading}
+                  style={{ marginBottom: '16px', width: '100%', padding: '12px', fontSize: '18px', letterSpacing: '4px', textAlign: 'center' }}
+                />
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={verifyLoading || otp.length !== 6}
+                  style={{ width: '100%', padding: '14px' }}
+                >
+                  {verifyLoading ? 'Verifying...' : 'Verify & sign in'}
+                </button>
+              </form>
+              <button
+                type="button"
+                onClick={() => { setSignupSuccess(null); setOtp(''); setError(''); }}
+                style={{ marginTop: '12px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '14px' }}
+              >
+                Back to sign up
+              </button>
+            </div>
+          ) : (
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom: '16px' }}>
               <label htmlFor="username">Username</label>
@@ -227,6 +308,7 @@ export default function Auth() {
               )}
             </button>
           </form>
+          )}
         </div>
       </div>
     </>
