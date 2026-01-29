@@ -187,12 +187,184 @@ code {
 .input:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-  transform: translateY(-1px);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
 }
 
 .input::placeholder {
   color: var(--text-muted);
+}
+
+/* ---------- Auth pages (Login / Sign up) ---------- */
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(160deg, #0f172a 0%, #1e293b 35%, #334155 70%, #475569 100%);
+  background-attachment: fixed;
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: 
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59, 130, 246, 0.15), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(37, 99, 235, 0.08), transparent),
+    radial-gradient(ellipse 50% 30% at 0% 80%, rgba(99, 102, 241, 0.06), transparent);
+  pointer-events: none;
+}
+
+.auth-card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  padding: 48px 40px;
+  background: rgba(255, 255, 255, 0.98);
+  border-radius: 20px;
+  box-shadow: 
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 2px 4px rgba(0, 0, 0, 0.05),
+    0 12px 24px rgba(0, 0, 0, 0.08),
+    0 24px 48px rgba(0, 0, 0, 0.06);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.auth-card:focus-within {
+  box-shadow: 
+    0 0 0 1px rgba(37, 99, 235, 0.2),
+    0 2px 4px rgba(0, 0, 0, 0.05),
+    0 12px 24px rgba(0, 0, 0, 0.08),
+    0 24px 48px rgba(0, 0, 0, 0.06);
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.auth-title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+  margin: 0 0 8px 0;
+  line-height: 1.2;
+}
+
+.auth-subtitle {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin: 0;
+  font-weight: 500;
+}
+
+.auth-form .form-group {
+  margin-bottom: 20px;
+}
+
+.auth-form label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  letter-spacing: 0.01em;
+}
+
+.auth-form .input {
+  width: 100%;
+  padding: 14px 16px;
+  font-size: 15px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border-color);
+  background: #fafafa;
+  margin-bottom: 0;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.auth-form .input:hover {
+  border-color: #cbd5e1;
+  background: #fff;
+}
+
+.auth-form .input:focus {
+  background: #fff;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+  transform: none;
+}
+
+.auth-form .error {
+  margin-bottom: 16px;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+}
+
+.auth-btn {
+  width: 100%;
+  padding: 14px 20px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.05s ease;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+  margin-top: 8px;
+}
+
+.auth-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+  transform: translateY(-1px);
+}
+
+.auth-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.auth-btn:disabled {
+  opacity: 0.8;
+  cursor: not-allowed;
+}
+
+.auth-divider {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-color);
+  text-align: center;
+}
+
+.auth-footer {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.auth-footer a {
+  color: var(--primary-color);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s ease, text-decoration 0.2s ease;
+}
+
+.auth-footer a:hover {
+  color: var(--primary-dark);
+  text-decoration: underline;
+}
+
+.auth-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
 }
 
 .select {
