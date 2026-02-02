@@ -39,6 +39,7 @@ func CreateGitHubPR(branchName, filePath string, content []byte) (string, error)
 	if branchErr == nil {
 		// Branch exists, we'll update it
 		log.Printf("Branch %s already exists, updating it", branchName)
+		AppendGitHubLog("branch_exists", fmt.Sprintf("Branch %s already exists, updating it", branchName), branchName)
 	} else {
 		// Branch doesn't exist, create new branch
 		newRef := &github.Reference{
@@ -52,6 +53,7 @@ func CreateGitHubPR(branchName, filePath string, content []byte) (string, error)
 			return "", fmt.Errorf("failed to create branch: %w", err)
 		}
 		log.Printf("Created new branch: %s", branchName)
+		AppendGitHubLog("branch_created", fmt.Sprintf("Created new branch: %s", branchName), branchName)
 	}
 
 	// 3. Check if file already exists to determine if we should create or update
@@ -66,8 +68,10 @@ func CreateGitHubPR(branchName, filePath string, content []byte) (string, error)
 		// File exists, get its SHA for update
 		sha = fileContent.SHA
 		log.Printf("File %s exists, will update it", filePath)
+		AppendGitHubLog("file_update", fmt.Sprintf("File %s exists, updating it", filePath), filePath)
 	} else {
 		log.Printf("File %s does not exist, will create it", filePath)
+		AppendGitHubLog("file_create", fmt.Sprintf("File %s does not exist, creating it", filePath), filePath)
 	}
 
 	// 4. Create or update file
@@ -100,6 +104,7 @@ func CreateGitHubPR(branchName, filePath string, content []byte) (string, error)
 	// If PR exists, return its URL
 	if len(prs) > 0 {
 		log.Printf("PR already exists for branch %s, returning existing PR", branchName)
+		AppendGitHubLog("pr_exists", fmt.Sprintf("PR already exists for branch %s", branchName), prs[0].GetHTMLURL())
 		return prs[0].GetHTMLURL(), nil
 	}
 
@@ -120,6 +125,7 @@ func CreateGitHubPR(branchName, filePath string, content []byte) (string, error)
 	}
 
 	log.Printf("Created PR #%d: %s", createdPR.GetNumber(), createdPR.GetHTMLURL())
+	AppendGitHubLog("pr_created", fmt.Sprintf("Created PR #%d: %s", createdPR.GetNumber(), createdPR.GetHTMLURL()), createdPR.GetHTMLURL())
 	return createdPR.GetHTMLURL(), nil
 }
 

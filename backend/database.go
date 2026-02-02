@@ -124,12 +124,24 @@ func createTables() error {
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);`
 
+	// GitHub logs table (for activity stream)
+	githubLogsTable := `
+	CREATE TABLE IF NOT EXISTS github_logs (
+		id SERIAL PRIMARY KEY,
+		event_type VARCHAR(100) NOT NULL,
+		message TEXT NOT NULL,
+		details TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);`
+
 	// Create indexes
 	indexes := []string{
 		"CREATE INDEX IF NOT EXISTS idx_pr_requests_team ON pr_requests(team);",
 		"CREATE INDEX IF NOT EXISTS idx_pr_requests_env ON pr_requests(env);",
+		"CREATE INDEX IF NOT EXISTS idx_pr_requests_cloud ON pr_requests(cloud);",
 		"CREATE INDEX IF NOT EXISTS idx_pr_requests_created_by ON pr_requests(created_by);",
 		"CREATE INDEX IF NOT EXISTS idx_pr_requests_created_at ON pr_requests(created_at DESC);",
+		"CREATE INDEX IF NOT EXISTS idx_github_logs_created_at ON github_logs(created_at DESC);",
 	}
 
 	if _, err := DB.Exec(usersTable); err != nil {
@@ -138,6 +150,10 @@ func createTables() error {
 
 	if _, err := DB.Exec(prRequestsTable); err != nil {
 		return fmt.Errorf("failed to create pr_requests table: %w", err)
+	}
+
+	if _, err := DB.Exec(githubLogsTable); err != nil {
+		return fmt.Errorf("failed to create github_logs table: %w", err)
 	}
 
 	for _, index := range indexes {
@@ -169,6 +185,50 @@ func SavePRRequest(req *PRRequest) error {
 	}
 
 	return nil
+}
+
+// AppendGitHubLog writes a GitHub activity log entry (no-op if DB is nil)
+func AppendGitHubLog(eventType, message, details string) {
+	if DB == nil {
+		return
+	}
+	_, _ = DB.Exec(
+		"INSERT INTO github_logs (event_type, message, details) VALUES ($1, $2, $3)",
+		eventType, message, details,
+	)
+}
+
+// GitHubLogEntry is a single GitHub activity log row
+type GitHubLogEntry struct {
+	ID        int       `json:"id"`
+	EventType string    `json:"event_type"`
+	Message   string    `json:"message"`
+	Details   string    `json:"details"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// GetGitHubLogs returns recent GitHub log entries, newest first
+func GetGitHubLogs(limit int) ([]GitHubLogEntry, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := DB.Query(
+		"SELECT id, event_type, message, COALESCE(details,''), created_at FROM github_logs ORDER BY created_at DESC LIMIT $1",
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []GitHubLogEntry
+	for rows.Next() {
+		var e GitHubLogEntry
+		if err := rows.Scan(&e.ID, &e.EventType, &e.Message, &e.Details, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, nil
 }
 
 // GetPRRequests retrieves PR requests with optional filters
