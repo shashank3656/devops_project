@@ -1,7 +1,7 @@
 import type { AppProps } from 'next/app';
 import { useRouter } from 'next/router';
 import { useEffect } from 'react';
-import NavBar from '../components/NavBar';
+import AppLayout from '../components/AppLayout';
 import { ToastProvider } from '../context/ToastContext';
 import { getStoredTheme } from '../components/NavBar';
 import '../styles/globals.css';
@@ -16,16 +16,17 @@ export default function App({ Component, pageProps }: AppProps) {
     document.documentElement.setAttribute('data-theme', theme);
   }, []);
 
-  const showNav = AUTHED_PATHS.some((p) => router.pathname === p || router.pathname.startsWith(p + '/'));
+  const showLayout = AUTHED_PATHS.some((p) => router.pathname === p || router.pathname.startsWith(p + '/'));
 
   return (
     <ToastProvider>
-      {showNav && (
-        <div className="container">
-          <NavBar />
-        </div>
+      {showLayout ? (
+        <AppLayout>
+          <Component {...pageProps} />
+        </AppLayout>
+      ) : (
+        <Component {...pageProps} />
       )}
-      <Component {...pageProps} />
     </ToastProvider>
   );
 }
