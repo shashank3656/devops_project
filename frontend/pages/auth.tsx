@@ -55,7 +55,10 @@ export default function Auth() {
       localStorage.setItem('isAuthenticated', 'true');
       router.push('/home');
     } catch (err: any) {
-      setError(err.message || 'An error occurred');
+      const isNetworkError = err?.message === 'Failed to fetch' || err?.name === 'TypeError';
+      setError(isNetworkError
+        ? `Cannot connect to the server. Ensure the backend is running at ${apiUrl} (check NEXT_PUBLIC_API_URL).`
+        : (err?.message || 'An error occurred'));
     } finally {
       setLoading(false);
     }
@@ -189,6 +192,11 @@ export default function Auth() {
           {error && (
             <div className="error" style={{ marginBottom: '16px' }}>
               {error}
+              {error.includes('Cannot connect') && (
+                <p style={{ marginTop: '8px', fontSize: '13px', color: 'var(--text-muted)' }}>
+                  Backend URL: <code style={{ background: 'var(--bg-gray-100)', padding: '2px 6px', borderRadius: '4px' }}>{apiUrl}</code>
+                </p>
+              )}
             </div>
           )}
 

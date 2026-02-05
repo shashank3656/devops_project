@@ -67,6 +67,28 @@ Environment variables are stored in `config/.env`. See `config/.env.example` for
 - After changing, rebuild frontend: `docker-compose build frontend-prod`
 - See [Deployment Guide](./docs/DEPLOYMENT.md) for details
 
+## Troubleshooting: "Failed to fetch" on Login / Create account
+
+If you see **"Failed to fetch"** or **"Cannot connect to the server"** when logging in or creating an account:
+
+1. **Backend must be running**  
+   - Start the backend: `docker-compose up -d` (or run the Go server on port 8080).  
+   - Check: open `http://<your-backend-host>:8080/health` in a browser; you should see a JSON response.
+
+2. **Correct API URL**  
+   - The frontend uses `NEXT_PUBLIC_API_URL` (e.g. in `config/.env` or root `.env`).  
+   - **Local:** use `http://localhost:8080` if the browser and backend are on the same machine.  
+   - **Docker / remote:** use the host IP or domain the browser can reach (e.g. `http://20.219.96.249:8080`).  
+   - After changing env, **rebuild** the frontend so the new URL is baked in:  
+     `docker-compose build frontend-prod` or restart `npm run dev` with the env set.
+
+3. **CORS / mixed content**  
+   - Backend allows all origins (`Access-Control-Allow-Origin: *`).  
+   - If the site is served over **HTTPS**, the API URL must be **HTTPS** as well, or the browser may block the request.
+
+4. **Firewall**  
+   - Ensure port **8080** is open on the machine running the backend (security group on EC2, local firewall, etc.).
+
 ## License
 
 MIT
