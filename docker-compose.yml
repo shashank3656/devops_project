@@ -181,6 +181,27 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
     depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - infra-network
+    profiles:
+      - dev
+  
+  admin-frontend-prod:
+    build:
+      context: ./admin-frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    container_name: infra-admin-frontend
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
+    depends_on:
       backend-prod:
         condition: service_healthy
     restart: unless-stopped
@@ -188,8 +209,6 @@ services:
       - infra-network
     profiles:
       - prod
-      - default
-      - dev
 
 volumes:
   postgres_data:
