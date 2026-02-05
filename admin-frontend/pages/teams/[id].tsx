@@ -180,60 +180,78 @@ export default function TeamDetail() {
                   </div>
                 )}
 
-                <form
-                  onSubmit={handleAddMember}
+                <div
                   style={{
-                    display: 'flex',
-                    gap: 16,
-                    flexWrap: 'wrap',
-                    alignItems: 'flex-end',
                     marginBottom: 24,
                     paddingBottom: 24,
                     borderBottom: '1px solid var(--color-border)',
                   }}
                 >
-                  <div className="form-group" style={{ marginBottom: 0, minWidth: 220 }}>
-                    <label className="label" htmlFor="add-user">
-                      Add user
-                    </label>
-                    <select
-                      id="add-user"
-                      className="input"
-                      value={addUserId}
-                      onChange={(e) => setAddUserId(e.target.value)}
-                      style={{ minWidth: 220 }}
-                    >
-                      <option value="">Select user…</option>
-                      {availableUsers.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.username} ({u.email})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0, minWidth: 120 }}>
-                    <label className="label" htmlFor="add-role">
-                      Role
-                    </label>
-                    <select
-                      id="add-role"
-                      className="input"
-                      value={addRole}
-                      onChange={(e) => setAddRole(e.target.value)}
-                      style={{ minWidth: 120 }}
-                    >
-                      <option value="member">member</option>
-                      <option value="lead">lead</option>
-                    </select>
-                  </div>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={!addUserId || adding}
+                  <h4 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>
+                    Add new member
+                  </h4>
+                  <p
+                    style={{
+                      color: 'var(--color-text-muted)',
+                      fontSize: 14,
+                      marginBottom: 16,
+                    }}
                   >
-                    {adding ? 'Adding…' : 'Add member'}
-                  </button>
-                </form>
+                    Select a user to add to this team. New users can be created from the{' '}
+                    <Link href="/users/new">Users</Link> page.
+                  </p>
+                  <form
+                    onSubmit={handleAddMember}
+                    style={{
+                      display: 'flex',
+                      gap: 16,
+                      flexWrap: 'wrap',
+                      alignItems: 'flex-end',
+                    }}
+                  >
+                    <div className="form-group" style={{ marginBottom: 0, minWidth: 220 }}>
+                      <label className="label" htmlFor="add-user">
+                        User
+                      </label>
+                      <select
+                        id="add-user"
+                        className="input"
+                        value={addUserId}
+                        onChange={(e) => setAddUserId(e.target.value)}
+                        style={{ minWidth: 220 }}
+                      >
+                        <option value="">Select user…</option>
+                        {availableUsers.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.username} ({u.email})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0, minWidth: 120 }}>
+                      <label className="label" htmlFor="add-role">
+                        Role
+                      </label>
+                      <select
+                        id="add-role"
+                        className="input"
+                        value={addRole}
+                        onChange={(e) => setAddRole(e.target.value)}
+                        style={{ minWidth: 120 }}
+                      >
+                        <option value="member">member</option>
+                        <option value="lead">lead</option>
+                      </select>
+                    </div>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={!addUserId || adding}
+                    >
+                      {adding ? 'Adding…' : 'Add member'}
+                    </button>
+                  </form>
+                </div>
 
                 {members.length === 0 ? (
                   <div className="empty-state">

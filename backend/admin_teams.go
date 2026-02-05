@@ -2,10 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // requireAdmin returns true if the request is from an admin (Bearer token with role=admin or X-Admin-Secret)
@@ -37,17 +40,27 @@ func requireAdmin(w http.ResponseWriter, r *http.Request) (userID int, ok bool) 
 	return id, true
 }
 
-// adminUsersListHandler GET /api/admin/users - list users for adding to teams
-func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
+// adminUsersRouter dispatches GET (list) and POST (create) for /api/admin/users
+func adminUsersRouter(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
+		enableCORS(w)
 		handleOptions(w, r)
 		return
 	}
-	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	switch r.Method {
+	case "GET":
+		adminUsersListHandler(w, r)
+		return
+	case "POST":
+		adminUsersCreateHandler(w, r)
 		return
 	}
+	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
+// adminUsersListHandler GET /api/admin/users - list users for adding to teams
+func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
 	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
@@ -58,7 +71,7 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Only present user credentials (exclude admin accounts) in admin console
-	rows, err := DB.Query(`SELECT id, username, email FROM users WHERE role != 'admin' OR role IS NULL ORDER BY username`)
+	rows, err := DB.Query(`SELECT id, username, email, COALESCE(role,'viewer'), COALESCE(verified,false) FROM users WHERE role != 'admin' OR role IS NULL ORDER BY username`)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -69,14 +82,93 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 	var users []map[string]interface{}
 	for rows.Next() {
 		var id int
-		var username, email string
-		if err := rows.Scan(&id, &username, &email); err != nil {
+		var username, email, role string
+		var verified bool
+		if err := rows.Scan(&id, &username, &email, &role, &verified); err != nil {
 			continue
 		}
-		users = append(users, map[string]interface{}{"id": id, "username": username, "email": email})
+		users = append(users, map[string]interface{}{"id": id, "username": username, "email": email, "role": role, "verified": verified})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"users": users, "status": "ok"})
+}
+
+// adminUsersCreateHandler POST /api/admin/users - create a new user (admin only)
+func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+	var req struct {
+		Username string `json:"username"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Role     string `json:"role"` // viewer | contributor; default viewer
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	req.Username = strings.TrimSpace(req.Username)
+	req.Email = strings.TrimSpace(req.Email)
+	if req.Username == "" || req.Email == "" || req.Password == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "username, email and password are required", "status": "error"})
+		return
+	}
+	if req.Role != "contributor" && req.Role != "viewer" {
+		req.Role = "viewer"
+	}
+	var exists int
+	if err := DB.QueryRow(`SELECT 1 FROM users WHERE username = $1`, req.Username).Scan(&exists); err == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "username already exists", "status": "error"})
+		return
+	}
+	if err := DB.QueryRow(`SELECT 1 FROM users WHERE email = $1`, req.Email).Scan(&exists); err == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "email already exists", "status": "error"})
+		return
+	}
+	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("Admin create user: bcrypt error: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to create user", "status": "error"})
+		return
+	}
+	var userID int
+	var createdAt interface{}
+	err = DB.QueryRow(
+		`INSERT INTO users (username, email, password, verified, role) VALUES ($1, $2, $3, TRUE, $4)
+		 RETURNING id, created_at`,
+		req.Username, req.Email, string(hashed), req.Role,
+	).Scan(&userID, &createdAt)
+	if err != nil {
+		log.Printf("Admin create user: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to create user", "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"user":   map[string]interface{}{"id": userID, "username": req.Username, "email": req.Email, "role": req.Role, "verified": true},
+		"status": "ok",
+	})
 }
 
 // adminTeamsListHandler GET /api/admin/teams
