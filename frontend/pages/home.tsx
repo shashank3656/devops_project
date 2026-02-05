@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { maskDisplayValue } from '../lib/maskSensitive';
 
 interface Stats {
   total_requests: number;
@@ -226,7 +227,7 @@ export default function Home() {
                   <span style={{ color: 'var(--text-muted)', marginRight: '12px', fontSize: '13px' }}>{entry.created_at}</span>
                   <span style={{ fontWeight: 500 }}>{entry.message}</span>
                   {entry.details && (
-                    <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>{entry.details}</span>
+                    <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>{maskDisplayValue(entry.details)}</span>
                   )}
                 </li>
               ))}

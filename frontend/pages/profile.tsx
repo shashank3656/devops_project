@@ -17,6 +17,7 @@ export default function Profile() {
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userFetched, setUserFetched] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -49,6 +50,9 @@ export default function Profile() {
       if (res.ok) {
         const data = await res.json();
         setUser(data.user || null);
+      } else if (res.status === 404) {
+        setUser(null);
+        toast('User not found.', 'error');
       } else {
         toast('Session expired. Please log in again.', 'error');
         router.push('/login');
@@ -57,6 +61,7 @@ export default function Profile() {
       toast('Failed to load profile', 'error');
     } finally {
       setLoading(false);
+      setUserFetched(true);
     }
   };
 
@@ -147,7 +152,24 @@ export default function Profile() {
 
           <div className="card" style={{ maxWidth: '500px', marginBottom: '32px' }}>
             <h2 style={{ fontSize: '18px', marginBottom: '16px', color: 'var(--text-primary)' }}>Account</h2>
-            {user && (
+            {!loading && userFetched && !user ? (
+              <div style={{ padding: '24px', textAlign: 'center' }}>
+                <p style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                  User not found
+                </p>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                  The user account could not be found. You may need to sign in again.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => router.push('/login')}
+                  className="btn btn-primary"
+                  style={{ padding: '10px 20px' }}
+                >
+                  Go to login
+                </button>
+              </div>
+            ) : user ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div>
                   <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Username</span>
@@ -205,9 +227,10 @@ export default function Profile() {
                   </div>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
 
+          {user && (
           <div className="card" style={{ maxWidth: '500px' }}>
             <h2 style={{ fontSize: '18px', marginBottom: '16px', color: 'var(--text-primary)' }}>
               Change password
@@ -256,6 +279,7 @@ export default function Profile() {
               </button>
             </form>
           </div>
+          )}
         </div>
       </div>
     </>
