@@ -13,14 +13,11 @@ Cloud-agnostic self-service infrastructure platform for managing infrastructure 
    ./scripts/sync-env.sh
    ```
 
-2. **Start Services:**
+2. **Start all containers (single command):**
    ```bash
-   # Production (default)
    docker-compose up -d
-   
-   # Development (with hot reload)
-   docker-compose --profile dev up
    ```
+   This starts postgres, backend, user frontend (port 3000), and admin frontend (port 3001). See [Docker Compose commands](docs/DOCKER_COMPOSE_CMDS.md) for more.
 
 3. **Access Application:**
    - **User frontend:** http://localhost:3000 (login, requests, history)
@@ -49,6 +46,7 @@ All documentation is available in the [`docs/`](./docs/) directory:
 - [Frontend Documentation](./docs/frontend-README.md)
 - [Backend Documentation](./docs/backend-README.md)
 - [Admin Frontend](./docs/ADMIN_FRONTEND.md) (teams & members, runs on port 3001)
+- [Docker Compose commands](./docs/DOCKER_COMPOSE_CMDS.md) (single command to start all containers)
 
 ## Features
 
