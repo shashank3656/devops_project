@@ -181,8 +181,7 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     restart: unless-stopped
     networks:
       - infra-network
@@ -202,8 +201,7 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
     depends_on:
-      backend-prod:
-        condition: service_healthy
+      - backend-prod
     restart: unless-stopped
     networks:
       - infra-network
