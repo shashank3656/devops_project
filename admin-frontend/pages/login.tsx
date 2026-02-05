@@ -37,10 +37,13 @@ export default function AdminLogin() {
       localStorage.setItem('admin_token', data.token);
       localStorage.setItem('admin_user', JSON.stringify(data.user || {}));
       router.push('/teams');
-    } catch (err: any) {
-      setError(err?.message === 'Failed to fetch'
-        ? `Cannot connect to backend at ${apiUrl}. Ensure it is running.`
-        : (err?.message || 'Login failed'));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '';
+      setError(
+        message === 'Failed to fetch'
+          ? `Cannot connect to backend at ${apiUrl}. Ensure it is running.`
+          : message || 'Login failed'
+      );
     } finally {
       setLoading(false);
     }
@@ -48,19 +51,71 @@ export default function AdminLogin() {
 
   return (
     <>
-      <Head><title>Admin Login - Infrastructure Portal</title></Head>
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-        <div className="card" style={{ maxWidth: 400, width: '100%' }}>
-          <h1 style={{ marginBottom: 8, fontSize: 24 }}>Admin Portal</h1>
-          <p style={{ color: '#6b7280', marginBottom: 24 }}>Sign in with an admin account. Default: admin / admin123 (change after first login).</p>
-          {error && <div className="error">{error}</div>}
+      <Head>
+        <title>Admin Login - Infrastructure Portal</title>
+      </Head>
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 24,
+        }}
+      >
+        <div className="card" style={{ maxWidth: 420, width: '100%' }}>
+          <h1 style={{ marginBottom: 8, fontSize: 24, fontWeight: 700 }}>
+            Admin Portal
+          </h1>
+          <p
+            className="label-optional"
+            style={{ marginBottom: 24, fontSize: 14 }}
+          >
+            Sign in with an admin account. Default: admin / admin123 (change
+            after first login).
+          </p>
+          {error && (
+            <div className="alert alert-error" role="alert">
+              {error}
+            </div>
+          )}
           <form onSubmit={handleSubmit}>
-            <label className="label">Username</label>
-            <input className="input" type="text" value={username} onChange={e => setUsername(e.target.value)} required style={{ marginBottom: 16 }} />
-            <label className="label">Password</label>
-            <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} required style={{ marginBottom: 24 }} />
-            <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%' }}>
-              {loading ? 'Signing in...' : 'Sign in'}
+            <div className="form-group">
+              <label className="label" htmlFor="admin-username">
+                Username
+              </label>
+              <input
+                id="admin-username"
+                className="input"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                autoComplete="username"
+                autoFocus
+              />
+            </div>
+            <div className="form-group">
+              <label className="label" htmlFor="admin-password">
+                Password
+              </label>
+              <input
+                id="admin-password"
+                className="input"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+              />
+            </div>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={loading}
+              style={{ width: '100%', padding: '12px 18px' }}
+            >
+              {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
         </div>

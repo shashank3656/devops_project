@@ -1,7 +1,0 @@
-# Override for --profile dev: admin-frontend depends on dev backend (not backend-prod)
-# Use: docker-compose --profile dev -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-version: '3.8'
-services:
-  admin-frontend:
-    depends_on:
-      - backend
