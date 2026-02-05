@@ -8,6 +8,7 @@ COPY next.config.js tsconfig.json next-env.d.ts ./
 COPY pages ./pages
 COPY components ./components
 COPY styles ./styles
+COPY public ./public
 RUN npm run build
 
 FROM node:20-alpine
@@ -18,7 +19,7 @@ COPY --from=builder /app/package.json ./
 COPY --from=builder /app/next.config.js ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
-RUN mkdir -p public
+COPY --from=builder /app/public ./public
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost:3001 || exit 1

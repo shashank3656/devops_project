@@ -22,6 +22,7 @@ COPY context ./context
 COPY config ./config
 COPY styles ./styles
 COPY lib ./lib
+COPY public ./public
 
 # Build Next.js application (this bakes NEXT_PUBLIC_API_URL into the build)
 RUN npm run build
@@ -48,8 +49,8 @@ COPY --from=builder /app/.next ./.next
 # Set environment variable for runtime (though it's already baked into the build)
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
-# Create public directory if it doesn't exist (Next.js requires it)
-RUN mkdir -p public
+# Copy static assets (e.g. logo)
+COPY --from=builder /app/public ./public
 
 # Expose port
 EXPOSE 3000
