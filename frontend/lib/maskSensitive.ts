@@ -1,8 +1,9 @@
 /**
  * Keys (case-insensitive) whose values should be masked when displaying request/response or config data.
- * Covers headers (e.g. Authorization, Cookie) and common sensitive payload fields.
+ * Covers: headers, secrets, and customer/PII (email, name, phone, etc.).
  */
 const SENSITIVE_KEYS = [
+  // Auth / headers / secrets
   'authorization',
   'cookie',
   'x-api-key',
@@ -20,6 +21,37 @@ const SENSITIVE_KEYS = [
   'privatekey',
   'auth',
   'bearer',
+  // Customer / PII
+  'email',
+  'e-mail',
+  'contact_email',
+  'billing_email',
+  'username',
+  'user_name',
+  'name',
+  'first_name',
+  'last_name',
+  'full_name',
+  'phone',
+  'telephone',
+  'mobile',
+  'address',
+  'street',
+  'city',
+  'zip',
+  'postal',
+  'customer_id',
+  'customer_name',
+  'client_id',
+  'client_name',
+  'user_id',
+  'created_by',
+  'organization',
+  'org_name',
+  'billing_address',
+  'shipping_address',
+  'ssn',
+  'social_security',
 ];
 
 const MASKED_VALUE = '***MASKED***';
@@ -28,7 +60,10 @@ function isSensitiveKey(key: string): boolean {
   const normalized = key.toLowerCase().replace(/[-_\s]/g, '');
   return SENSITIVE_KEYS.some((s) => {
     const n = s.toLowerCase().replace(/[-_\s]/g, '');
-    return normalized === n || normalized.includes(n) || n.includes(normalized);
+    if (normalized === n) return true;
+    // Short terms (name, email, zip): only exact match to avoid masking "hostname", "filename"
+    if (n.length <= 5) return false;
+    return normalized.includes(n) || n.includes(normalized);
   });
 }
 
