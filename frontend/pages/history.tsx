@@ -3,6 +3,8 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { useToast } from '../context/ToastContext';
 
+import { maskSensitiveJson } from '../lib/maskSensitive';
+
 const TEMPLATE_KEY = 'infra-request-template';
 
 interface PRRequest {
@@ -604,6 +606,9 @@ export default function History() {
                     {detailRequest.config && (
                       <div>
                         <strong>Configuration (JSON):</strong>
+                        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                          Sensitive fields (e.g. password, token, authorization) are masked.
+                        </p>
                         <pre style={{ 
                           background: 'var(--bg-gray-100)', 
                           padding: '16px', 
@@ -614,7 +619,7 @@ export default function History() {
                           whiteSpace: 'pre-wrap',
                           wordBreak: 'break-word'
                         }}>
-                          {detailRequest.config}
+                          {maskSensitiveJson(detailRequest.config)}
                         </pre>
                       </div>
                     )}
