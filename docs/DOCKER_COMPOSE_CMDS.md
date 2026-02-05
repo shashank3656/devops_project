@@ -42,12 +42,12 @@ docker-compose down
 docker-compose logs -f
 ```
 
-**Development (hot reload)**
+**Development (hot reload, all containers including admin-frontend)**
 
-To run with dev servers and volume mounts for hot reload:
+To run with dev servers and volume mounts for hot reload, and still start admin-frontend (port 3001), use the dev override so admin-frontend depends on the dev backend:
 
 ```bash
-docker-compose --profile dev up -d
+docker-compose --profile dev -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
-This uses `backend` and `frontend` dev services instead of the production images.
+This starts: postgres, backend (dev), frontend (dev), and admin-frontend. The override file `docker-compose.dev.yml` makes admin-frontend depend on the dev `backend` instead of `backend-prod`.
