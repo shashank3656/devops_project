@@ -52,7 +52,10 @@ export default function Login() {
       toast('Welcome back!', 'success');
       router.push('/home');
     } catch (err: any) {
-      const msg = err.message || 'An error occurred';
+      const isNetworkError = err?.message === 'Failed to fetch' || err?.name === 'TypeError';
+      const msg = isNetworkError
+        ? `Cannot connect to the server. Ensure the backend is running at ${apiUrl} (check NEXT_PUBLIC_API_URL).`
+        : (err?.message || 'An error occurred');
       setError(msg);
       toast(msg, 'error');
     } finally {
@@ -72,7 +75,16 @@ export default function Login() {
             <p className="auth-subtitle">Sign in to your account</p>
           </div>
 
-          {error && <div className="error">{error}</div>}
+          {error && (
+            <div className="error">
+              {error}
+              {error.includes('Cannot connect') && (
+                <p style={{ marginTop: '8px', fontSize: '13px', color: 'var(--text-muted)' }}>
+                  Backend URL: <code style={{ background: 'var(--bg-gray-100)', padding: '2px 6px', borderRadius: '4px' }}>{apiUrl}</code>
+                </p>
+              )}
+            </div>
+          )}
 
           <form className="auth-form" onSubmit={handleSubmit}>
             <div className="form-group">
