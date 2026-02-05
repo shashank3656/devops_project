@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import Link from 'next/link';
 import { useToast } from '../context/ToastContext';
 
 export default function Login() {
@@ -49,6 +48,20 @@ export default function Login() {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user || {}));
       localStorage.setItem('isAuthenticated', 'true');
+
+      const teamsRes = await fetch(`${apiUrl}/api/me/teams`, {
+        headers: { Authorization: `Bearer ${data.token}` },
+      });
+      const teamsData = await teamsRes.json().catch(() => ({}));
+      const teams = teamsData.teams || [];
+      if (teams.length === 0) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('isAuthenticated');
+        localStorage.removeItem('user');
+        setError('403 Forbidden: You are not assigned to any team. Contact your administrator.');
+        toast('Access forbidden. You are not in any team.', 'error');
+        return;
+      }
       toast('Welcome back!', 'success');
       router.push('/home');
     } catch (err: any) {
@@ -127,11 +140,9 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="auth-divider">
-            <p className="auth-footer">
-              Don&apos;t have an account? <Link href="/signup">Sign up here</Link>
-            </p>
-          </div>
+          <p style={{ marginTop: 24, fontSize: 14, color: 'var(--text-muted)' }}>
+            Contact your administrator for access. Sign-up is disabled.
+          </p>
         </div>
       </div>
     </>

@@ -15,6 +15,43 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// EnsureDefaultAdmin creates a default admin user if no admin exists (username/password from env)
+func EnsureDefaultAdmin() {
+	if DB == nil {
+		return
+	}
+	var count int
+	if err := DB.QueryRow(`SELECT COUNT(*) FROM users WHERE role = 'admin'`).Scan(&count); err != nil || count > 0 {
+		return
+	}
+	username := os.Getenv("DEFAULT_ADMIN_USERNAME")
+	if username == "" {
+		username = "admin"
+	}
+	password := os.Getenv("DEFAULT_ADMIN_PASSWORD")
+	if password == "" {
+		password = "admin123"
+	}
+	email := os.Getenv("DEFAULT_ADMIN_EMAIL")
+	if email == "" {
+		email = "admin@localhost"
+	}
+	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("Failed to hash default admin password: %v", err)
+		return
+	}
+	_, err = DB.Exec(
+		`INSERT INTO users (username, email, password, verified, role) VALUES ($1, $2, $3, TRUE, 'admin')`,
+		username, email, string(hashed),
+	)
+	if err != nil {
+		log.Printf("Failed to create default admin: %v", err)
+		return
+	}
+	log.Printf("Default admin user created: %s (change password after first login)", username)
+}
+
 type SignupRequest struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
@@ -334,6 +371,50 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"user": user,
+	})
+}
+
+// meTeamsHandler returns the current user's teams (for main frontend - 403 if none)
+func meTeamsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if DB == nil {
+		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		return
+	}
+	token := strings.TrimSpace(authHeader[7:])
+	userID, err := validateToken(token)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	teams, err := GetTeamsForUserWithDetails(userID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to get teams", "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"teams": teams,
+		"status": "ok",
 	})
 }
 

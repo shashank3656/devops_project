@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -36,6 +37,24 @@ type User struct {
 	Verified     bool      `json:"verified"`
 	Role         string    `json:"role"` // viewer | contributor | admin
 	CreatedAt    time.Time `json:"created_at"`
+}
+
+// Team is a group created by admin (for admin frontend)
+type Team struct {
+	ID        int       `json:"id"`
+	Name      string    `json:"name"`
+	Slug      string    `json:"slug"`
+	CreatedAt time.Time `json:"created_at"`
+	CreatedBy *int      `json:"created_by"`
+}
+
+// TeamMember links a user to a team
+type TeamMember struct {
+	ID        int       `json:"id"`
+	TeamID    int       `json:"team_id"`
+	UserID    int       `json:"user_id"`
+	Role      string    `json:"role"` // member, lead
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // InitDB initializes the PostgreSQL database connection
@@ -134,6 +153,27 @@ func createTables() error {
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);`
 
+	// Admin: teams table (for admin frontend - teams/groups)
+	teamsTable := `
+	CREATE TABLE IF NOT EXISTS teams (
+		id SERIAL PRIMARY KEY,
+		name VARCHAR(200) NOT NULL,
+		slug VARCHAR(100) UNIQUE NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+	);`
+
+	// Admin: team_members table
+	teamMembersTable := `
+	CREATE TABLE IF NOT EXISTS team_members (
+		id SERIAL PRIMARY KEY,
+		team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+		user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		role VARCHAR(50) DEFAULT 'member',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(team_id, user_id)
+	);`
+
 	// Create indexes
 	indexes := []string{
 		"CREATE INDEX IF NOT EXISTS idx_pr_requests_team ON pr_requests(team);",
@@ -142,6 +182,9 @@ func createTables() error {
 		"CREATE INDEX IF NOT EXISTS idx_pr_requests_created_by ON pr_requests(created_by);",
 		"CREATE INDEX IF NOT EXISTS idx_pr_requests_created_at ON pr_requests(created_at DESC);",
 		"CREATE INDEX IF NOT EXISTS idx_github_logs_created_at ON github_logs(created_at DESC);",
+		"CREATE INDEX IF NOT EXISTS idx_teams_slug ON teams(slug);",
+		"CREATE INDEX IF NOT EXISTS idx_team_members_team_id ON team_members(team_id);",
+		"CREATE INDEX IF NOT EXISTS idx_team_members_user_id ON team_members(user_id);",
 	}
 
 	if _, err := DB.Exec(usersTable); err != nil {
@@ -154,6 +197,12 @@ func createTables() error {
 
 	if _, err := DB.Exec(githubLogsTable); err != nil {
 		return fmt.Errorf("failed to create github_logs table: %w", err)
+	}
+	if _, err := DB.Exec(teamsTable); err != nil {
+		return fmt.Errorf("failed to create teams table: %w", err)
+	}
+	if _, err := DB.Exec(teamMembersTable); err != nil {
+		return fmt.Errorf("failed to create team_members table: %w", err)
 	}
 
 	for _, index := range indexes {
@@ -550,4 +599,154 @@ func GetTotalCount(team, env, cloud string, prID int, userIDInt int) (int, error
 	var count int
 	err := DB.QueryRow(query, args...).Scan(&count)
 	return count, err
+}
+
+// CreateTeam creates a new team (admin only)
+func CreateTeam(name, slug string, createdBy *int) (*Team, error) {
+	if slug == "" {
+		slug = strings.ToLower(strings.ReplaceAll(name, " ", "-"))
+	}
+	var t Team
+	err := DB.QueryRow(
+		`INSERT INTO teams (name, slug, created_by) VALUES ($1, $2, $3)
+		 RETURNING id, name, slug, created_at, created_by`,
+		name, slug, createdBy,
+	).Scan(&t.ID, &t.Name, &t.Slug, &t.CreatedAt, &t.CreatedBy)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// GetTeams returns all teams
+func GetTeams() ([]Team, error) {
+	rows, err := DB.Query(`SELECT id, name, slug, created_at, created_by FROM teams ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Team
+	for rows.Next() {
+		var t Team
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.CreatedAt, &t.CreatedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, nil
+}
+
+// GetTeamByID returns a team by ID
+func GetTeamByID(id int) (*Team, error) {
+	var t Team
+	err := DB.QueryRow(
+		`SELECT id, name, slug, created_at, created_by FROM teams WHERE id = $1`, id,
+	).Scan(&t.ID, &t.Name, &t.Slug, &t.CreatedAt, &t.CreatedBy)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// AddTeamMember adds a user to a team
+func AddTeamMember(teamID, userID int, role string) (*TeamMember, error) {
+	if role == "" {
+		role = "member"
+	}
+	var m TeamMember
+	err := DB.QueryRow(
+		`INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)
+		 RETURNING id, team_id, user_id, role, created_at`,
+		teamID, userID, role,
+	).Scan(&m.ID, &m.TeamID, &m.UserID, &m.Role, &m.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// RemoveTeamMember removes a user from a team
+func RemoveTeamMember(teamID, userID int) error {
+	_, err := DB.Exec(`DELETE FROM team_members WHERE team_id = $1 AND user_id = $2`, teamID, userID)
+	return err
+}
+
+// GetTeamMembers returns all members of a team (with user info)
+func GetTeamMembers(teamID int) ([]struct {
+	TeamMember
+	Username string `json:"username"`
+	Email    string `json:"email"`
+}, error) {
+	rows, err := DB.Query(
+		`SELECT m.id, m.team_id, m.user_id, m.role, m.created_at, u.username, u.email
+		 FROM team_members m JOIN users u ON u.id = m.user_id
+		 WHERE m.team_id = $1 ORDER BY m.created_at`,
+		teamID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []struct {
+		TeamMember
+		Username string `json:"username"`
+		Email    string `json:"email"`
+	}
+	for rows.Next() {
+		var m struct {
+			TeamMember
+			Username string `json:"username"`
+			Email    string `json:"email"`
+		}
+		m.TeamMember = TeamMember{}
+		if err := rows.Scan(&m.ID, &m.TeamID, &m.UserID, &m.Role, &m.CreatedAt, &m.Username, &m.Email); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+// GetTeamsForUser returns team IDs the user belongs to
+func GetTeamsForUser(userID int) ([]int, error) {
+	rows, err := DB.Query(`SELECT team_id FROM team_members WHERE user_id = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// GetTeamsForUserWithDetails returns team details (id, name, slug) for a user
+func GetTeamsForUserWithDetails(userID int) ([]Team, error) {
+	rows, err := DB.Query(
+		`SELECT t.id, t.name, t.slug, t.created_at, t.created_by
+		 FROM teams t INNER JOIN team_members m ON m.team_id = t.id
+		 WHERE m.user_id = $1 ORDER BY t.name`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Team
+	for rows.Next() {
+		var t Team
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.CreatedAt, &t.CreatedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, nil
 }
