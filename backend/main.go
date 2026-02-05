@@ -281,6 +281,8 @@ func main() {
 	http.HandleFunc("/api/admin/users", adminUsersRouter)
 	http.HandleFunc("/api/admin/teams", adminTeamsRouter)
 	http.HandleFunc("/api/admin/teams/", adminTeamsRouter)
+	http.HandleFunc("/api/admin/requests", adminRequestsHandler)
+	http.HandleFunc("/api/admin/stats", adminStatsHandler)
 	http.HandleFunc("/health", healthHandler)
 	
 	// Swagger/OpenAPI endpoint (will be served from static files or generated)
@@ -312,6 +314,8 @@ func main() {
 	log.Println("  GET  /api/admin/teams/:id - Team detail + members (admin only)")
 	log.Println("  POST /api/admin/teams/:id/members - Add member (admin only)")
 	log.Println("  DELETE /api/admin/teams/:id/members/:user_id - Remove member (admin only)")
+	log.Println("  GET  /api/admin/requests - List all PR requests (admin only)")
+	log.Println("  GET  /api/admin/stats     - Dashboard stats for all PRs (admin only)")
 	log.Println("  GET  /health         - Health check")
 	log.Println("  GET  /swagger.json    - OpenAPI spec")
 	log.Println("  GET  /api-docs       - Swagger UI")

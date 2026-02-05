@@ -124,9 +124,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               fontWeight: 700,
               color: 'var(--text-primary)',
               textDecoration: 'none',
-              display: 'block',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
             }}
           >
+            <img src="/logo.svg" alt="" width={32} height={32} style={{ display: 'block', flexShrink: 0 }} />
             Infrastructure Portal
           </Link>
         </div>

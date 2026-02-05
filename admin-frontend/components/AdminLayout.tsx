@@ -4,6 +4,7 @@ import { ReactNode } from 'react';
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = router.pathname;
 
   const handleLogout = () => {
     localStorage.removeItem('admin_token');
@@ -11,20 +12,39 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     router.push('/login');
   };
 
+  const navLink = (href: string, label: string) => {
+    const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+    return (
+      <Link href={href} className={isActive ? 'active' : ''}>
+        {label}
+      </Link>
+    );
+  };
+
   return (
     <div className="admin-layout">
-      <nav className="admin-nav">
-        <Link href="/teams" className="admin-nav-brand">
-          Admin
+      <aside className="admin-sidebar">
+        <Link href="/dashboard" className="admin-sidebar-brand">
+          <img src="/logo.svg" alt="" width={36} height={36} />
+          <span>Admin</span>
         </Link>
-        <div className="admin-nav-links">
-          <Link href="/teams">Teams</Link>
-          <Link href="/users">Users</Link>
-          <button type="button" className="btn btn-ghost" onClick={handleLogout}>
+        <nav className="admin-sidebar-nav">
+          {navLink('/dashboard', 'Dashboard')}
+          {navLink('/requests', 'PR Requests')}
+          {navLink('/teams', 'Teams')}
+          {navLink('/users', 'Users')}
+        </nav>
+        <div className="admin-sidebar-footer">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={handleLogout}
+            style={{ width: '100%', justifyContent: 'flex-start' }}
+          >
             Logout
           </button>
         </div>
-      </nav>
+      </aside>
       <main className="admin-main">{children}</main>
     </div>
   );
