@@ -1,13 +1,14 @@
 version: '3.8'
 
 # Infrastructure Portal - Docker Compose
-# 
-# Usage:
-#   Production:  docker-compose up -d                    (default - uses prod services)
-#   Development: docker-compose --profile dev up          (uses dev services)
 #
-# Environment variables are loaded from config/.env
-# Copy config/.env.example to config/.env and fill in your values
+# Single command to spin up all containers (postgres + backend + user frontend + admin frontend):
+#   docker-compose up -d
+#
+# Optional:
+#   Development (hot reload):  docker-compose --profile dev up -d
+#
+# Environment variables: config/.env (copy from config/.env.example)
 
 services:
   # PostgreSQL Database
