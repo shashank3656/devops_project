@@ -607,7 +607,7 @@ export default function History() {
                       <div>
                         <strong>Configuration (JSON):</strong>
                         <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                          Sensitive fields (e.g. password, token, authorization) are masked.
+                          Sensitive and customer data (passwords, tokens, email, name, phone, etc.) are masked.
                         </p>
                         <pre style={{ 
                           background: 'var(--bg-gray-100)', 
