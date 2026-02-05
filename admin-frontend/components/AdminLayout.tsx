@@ -19,6 +19,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </Link>
         <div className="admin-nav-links">
           <Link href="/teams">Teams</Link>
+          <Link href="/users">Users</Link>
           <button type="button" className="btn btn-ghost" onClick={handleLogout}>
             Logout
           </button>
