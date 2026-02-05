@@ -5,8 +5,8 @@ version: '3.8'
 # Single command to spin up all containers (postgres + backend + user frontend + admin frontend):
 #   docker-compose up -d
 #
-# Optional:
-#   Development (hot reload):  docker-compose --profile dev up -d
+# Development (hot reload, includes admin-frontend; use override so admin-frontend uses dev backend):
+#   docker-compose --profile dev -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 #
 # Environment variables: config/.env (copy from config/.env.example)
 
@@ -189,6 +189,7 @@ services:
     profiles:
       - prod
       - default
+      - dev
 
 volumes:
   postgres_data:
