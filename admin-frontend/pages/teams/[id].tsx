@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import AdminLayout from '../../components/AdminLayout';
 
 interface Team {
   id: number;
@@ -38,7 +39,8 @@ export default function TeamDetail() {
   const [adding, setAdding] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
+  const token =
+    typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
 
   useEffect(() => {
     if (!token) {
@@ -98,7 +100,10 @@ export default function TeamDetail() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ user_id: parseInt(addUserId, 10), role: addRole }),
+        body: JSON.stringify({
+          user_id: parseInt(addUserId, 10),
+          role: addRole,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -117,96 +122,177 @@ export default function TeamDetail() {
   const handleRemoveMember = async (userId: number) => {
     if (!confirm('Remove this member from the team?')) return;
     try {
-      const res = await fetch(`${apiUrl}/api/admin/teams/${id}/members/${userId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok && typeof id === 'string') fetchTeam(parseInt(id, 10));
+      const res = await fetch(
+        `${apiUrl}/api/admin/teams/${id}/members/${userId}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (res.ok && typeof id === 'string')
+        fetchTeam(parseInt(id, 10));
     } catch (_) {}
   };
 
-  const memberIds = new Set(members.map(m => m.user_id));
-  const availableUsers = users.filter(u => !memberIds.has(u.id));
+  const memberIds = new Set(members.map((m) => m.user_id));
+  const availableUsers = users.filter((u) => !memberIds.has(u.id));
 
   if (!id || Array.isArray(id)) return null;
 
   return (
     <>
-      <Head><title>{team?.name ?? 'Team'} - Admin</title></Head>
-      <div className="container">
-        <div style={{ marginBottom: 24 }}>
-          <Link href="/teams">← Teams</Link>
+      <Head>
+        <title>{team?.name ?? 'Team'} - Admin</title>
+      </Head>
+      <AdminLayout>
+        <div className="container">
+          <Link href="/teams" className="back-link">
+            ← Back to Teams
+          </Link>
+
+          {loading ? (
+            <p className="loading-text">Loading…</p>
+          ) : error && !team ? (
+            <div className="card">
+              <div className="alert alert-error" role="alert">
+                {error}
+              </div>
+            </div>
+          ) : team ? (
+            <>
+              <div className="card">
+                <h2 className="card-title">{team.name}</h2>
+                <p
+                  style={{
+                    color: 'var(--color-text-muted)',
+                    fontSize: 14,
+                  }}
+                >
+                  Slug: <code>{team.slug}</code>
+                </p>
+              </div>
+
+              <div className="card">
+                <h3 className="card-title">Members</h3>
+                {error && (
+                  <div className="alert alert-error" role="alert">
+                    {error}
+                  </div>
+                )}
+
+                <form
+                  onSubmit={handleAddMember}
+                  style={{
+                    display: 'flex',
+                    gap: 16,
+                    flexWrap: 'wrap',
+                    alignItems: 'flex-end',
+                    marginBottom: 24,
+                    paddingBottom: 24,
+                    borderBottom: '1px solid var(--color-border)',
+                  }}
+                >
+                  <div className="form-group" style={{ marginBottom: 0, minWidth: 220 }}>
+                    <label className="label" htmlFor="add-user">
+                      Add user
+                    </label>
+                    <select
+                      id="add-user"
+                      className="input"
+                      value={addUserId}
+                      onChange={(e) => setAddUserId(e.target.value)}
+                      style={{ minWidth: 220 }}
+                    >
+                      <option value="">Select user…</option>
+                      {availableUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.username} ({u.email})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0, minWidth: 120 }}>
+                    <label className="label" htmlFor="add-role">
+                      Role
+                    </label>
+                    <select
+                      id="add-role"
+                      className="input"
+                      value={addRole}
+                      onChange={(e) => setAddRole(e.target.value)}
+                      style={{ minWidth: 120 }}
+                    >
+                      <option value="member">member</option>
+                      <option value="lead">lead</option>
+                    </select>
+                  </div>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={!addUserId || adding}
+                  >
+                    {adding ? 'Adding…' : 'Add member'}
+                  </button>
+                </form>
+
+                {members.length === 0 ? (
+                  <div className="empty-state">
+                    No members yet. Add users above.
+                  </div>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Username</th>
+                          <th>Email</th>
+                          <th>Role</th>
+                          <th style={{ width: 100 }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {members.map((m) => (
+                          <tr key={m.id}>
+                            <td>{m.username}</td>
+                            <td style={{ color: 'var(--color-text-muted)' }}>
+                              {m.email}
+                            </td>
+                            <td>
+                              <span
+                                style={{
+                                  textTransform: 'capitalize',
+                                  fontWeight: 500,
+                                }}
+                              >
+                                {m.role}
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="btn btn-danger"
+                                style={{
+                                  padding: '6px 12px',
+                                  fontSize: 13,
+                                }}
+                                onClick={() =>
+                                  handleRemoveMember(m.user_id)
+                                }
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : null}
         </div>
-
-        {loading ? (
-          <p>Loading...</p>
-        ) : error && !team ? (
-          <div className="card"><div className="error">{error}</div></div>
-        ) : team ? (
-          <>
-            <div className="card">
-              <h2 style={{ marginBottom: 8 }}>{team.name}</h2>
-              <p style={{ color: '#6b7280', fontSize: 14 }}>Slug: <code>{team.slug}</code></p>
-            </div>
-
-            <div className="card">
-              <h3 style={{ marginBottom: 16 }}>Members</h3>
-              {error && <div className="error">{error}</div>}
-
-              <form onSubmit={handleAddMember} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 24 }}>
-                <div>
-                  <label className="label">Add user</label>
-                  <select className="input" value={addUserId} onChange={e => setAddUserId(e.target.value)} style={{ minWidth: 200 }}>
-                    <option value="">Select user...</option>
-                    {availableUsers.map(u => (
-                      <option key={u.id} value={u.id}>{u.username} ({u.email})</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Role</label>
-                  <select className="input" value={addRole} onChange={e => setAddRole(e.target.value)} style={{ minWidth: 120 }}>
-                    <option value="member">member</option>
-                    <option value="lead">lead</option>
-                  </select>
-                </div>
-                <button type="submit" className="btn btn-primary" disabled={!addUserId || adding}>
-                  {adding ? 'Adding...' : 'Add'}
-                </button>
-              </form>
-
-              {members.length === 0 ? (
-                <p style={{ color: '#6b7280' }}>No members yet. Add users above.</p>
-              ) : (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Username</th>
-                      <th>Email</th>
-                      <th>Role</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {members.map(m => (
-                      <tr key={m.id}>
-                        <td>{m.username}</td>
-                        <td>{m.email}</td>
-                        <td>{m.role}</td>
-                        <td>
-                          <button type="button" className="btn btn-danger" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => handleRemoveMember(m.user_id)}>
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </>
-        ) : null}
-      </div>
+      </AdminLayout>
     </>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import AdminLayout from '../../components/AdminLayout';
 
 interface Team {
   id: number;
@@ -33,7 +34,9 @@ export default function TeamsList() {
     setError('');
     try {
       const res = await fetch(`${apiUrl}/api/admin/teams`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('admin_token')}`,
+        },
       });
       if (res.status === 401 || res.status === 403) {
         router.replace('/login');
@@ -49,56 +52,80 @@ export default function TeamsList() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_user');
-    router.push('/login');
-  };
-
   return (
     <>
-      <Head><title>Teams - Admin</title></Head>
-      <div className="container">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <h1 style={{ fontSize: 28 }}>Teams</h1>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <Link href="/teams/new"><span className="btn btn-primary">Create team</span></Link>
-            <button type="button" className="btn btn-secondary" onClick={handleLogout}>Logout</button>
+      <Head>
+        <title>Teams - Admin</title>
+      </Head>
+      <AdminLayout>
+        <div className="container">
+          <div className="page-header">
+            <h1 className="page-title">Teams</h1>
+            <Link href="/teams/new" className="btn btn-primary">
+              Create team
+            </Link>
+          </div>
+
+          <div className="card">
+            {error && (
+              <div className="alert alert-error" role="alert">
+                {error}
+              </div>
+            )}
+            {loading ? (
+              <p className="loading-text">Loading teams…</p>
+            ) : teams.length === 0 ? (
+              <div className="empty-state">
+                <p>No teams yet.</p>
+                <p style={{ marginTop: 8 }}>
+                  <Link href="/teams/new" className="btn btn-primary" style={{ marginTop: 8 }}>
+                    Create your first team
+                  </Link>
+                </p>
+              </div>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Slug</th>
+                      <th>Created</th>
+                      <th style={{ width: 140 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teams.map((t) => (
+                      <tr key={t.id}>
+                        <td>
+                          <Link href={`/teams/${t.id}`} style={{ fontWeight: 500 }}>
+                            {t.name}
+                          </Link>
+                        </td>
+                        <td>
+                          <code>{t.slug}</code>
+                        </td>
+                        <td style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>
+                          {new Date(t.created_at).toLocaleDateString()}
+                        </td>
+                        <td>
+                          <Link
+                            href={`/teams/${t.id}`}
+                            className="btn btn-secondary"
+                            style={{ padding: '8px 14px', fontSize: 13 }}
+                          >
+                            Manage members
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
-
-        <div className="card">
-          {error && <div className="error">{error}</div>}
-          {loading ? (
-            <p>Loading teams...</p>
-          ) : teams.length === 0 ? (
-            <p style={{ color: '#6b7280' }}>No teams yet. Create a team to get started.</p>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Slug</th>
-                  <th>Created</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {teams.map(t => (
-                  <tr key={t.id}>
-                    <td>{t.name}</td>
-                    <td><code>{t.slug}</code></td>
-                    <td>{new Date(t.created_at).toLocaleDateString()}</td>
-                    <td>
-                      <Link href={`/teams/${t.id}`}><span className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>Manage members</span></Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
+      </AdminLayout>
     </>
   );
 }
