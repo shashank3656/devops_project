@@ -5,16 +5,33 @@ import { useToast } from '../context/ToastContext';
 import { getStoredTheme, setStoredTheme } from './NavBar';
 
 const SIDEBAR_WIDTH = 240;
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { toast } = useToast();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [teamCheck, setTeamCheck] = useState<'loading' | 'ok' | 'forbidden'>('loading');
 
   useEffect(() => {
     const stored = getStoredTheme();
     setTheme(stored);
     document.documentElement.setAttribute('data-theme', stored);
+  }, []);
+
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token || token === 'undefined') {
+      setTeamCheck('forbidden');
+      return;
+    }
+    fetch(`${apiUrl}/api/me/teams`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        const teams = data.teams || [];
+        setTeamCheck(teams.length > 0 ? 'ok' : 'forbidden');
+      })
+      .catch(() => setTeamCheck('forbidden'));
   }, []);
 
   const toggleTheme = () => {
@@ -30,6 +47,29 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     toast('Logged out successfully', 'success');
     router.push('/login');
   };
+
+  if (teamCheck === 'loading') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-gray-50)' }}>
+        <p style={{ color: 'var(--text-secondary)' }}>Checking access...</p>
+      </div>
+    );
+  }
+  if (teamCheck === 'forbidden') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-gray-50)', padding: 24 }}>
+        <div className="card" style={{ maxWidth: 480, textAlign: 'center' }}>
+          <h1 style={{ fontSize: 24, color: 'var(--error-color)', marginBottom: 16 }}>403 Forbidden</h1>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: 24 }}>
+            You are not assigned to any team. Contact your administrator to be added to a team.
+          </p>
+          <button type="button" className="btn btn-primary" onClick={handleLogout}>
+            Logout
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const navItem = (href: string, label: string, icon?: string) => {
     const isActive = router.pathname === href || (href !== '/home' && router.pathname.startsWith(href));

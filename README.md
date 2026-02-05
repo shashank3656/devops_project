@@ -23,8 +23,9 @@ Cloud-agnostic self-service infrastructure platform for managing infrastructure 
    ```
 
 3. **Access Application:**
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:8080
+   - **User frontend:** http://localhost:3000 (login, requests, history)
+   - **Admin frontend:** http://localhost:3001 (teams & members; admin only)
+   - **Backend API:** http://localhost:8080
 
 ## Project Structure
 
@@ -47,6 +48,7 @@ All documentation is available in the [`docs/`](./docs/) directory:
 - [Docker Networking](./docs/DOCKER_NETWORKING.md)
 - [Frontend Documentation](./docs/frontend-README.md)
 - [Backend Documentation](./docs/backend-README.md)
+- [Admin Frontend](./docs/ADMIN_FRONTEND.md) (teams & members, runs on port 3001)
 
 ## Features
 
@@ -56,6 +58,10 @@ All documentation is available in the [`docs/`](./docs/) directory:
 - ✅ GitOps principles
 - ✅ Security scanning integration
 - ✅ Cost estimation
+
+## Data storage
+
+All data is stored in the **backend** (PostgreSQL): users, teams, team members, PR requests, GitHub logs. The frontends (user and admin) only call the backend API; no app data is stored in the browser except the auth token.
 
 ## Configuration
 

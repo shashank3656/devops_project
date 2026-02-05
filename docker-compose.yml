@@ -166,6 +166,29 @@ services:
       - prod
       - default
 
+  # Admin Frontend (runs separately on port 3001 - same backend/DB)
+  admin-frontend:
+    build:
+      context: ./admin-frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    container_name: infra-admin-frontend
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    depends_on:
+      backend-prod:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - infra-network
+    profiles:
+      - prod
+      - default
+
 volumes:
   postgres_data:
 

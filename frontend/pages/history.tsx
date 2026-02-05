@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { useToast } from '../context/ToastContext';
@@ -39,6 +39,8 @@ export default function History() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [sortBy, setSortBy] = useState<'id' | 'created_at' | 'team' | 'cloud'>('created_at');
   const [sortDesc, setSortDesc] = useState(true);
+  // Store raw config in ref only (not in state) so Inspect/React DevTools never show unmasked data
+  const rawConfigByRequestId = useRef<Record<number, string>>({});
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -108,7 +110,13 @@ export default function History() {
       const res = await fetch(`${apiUrl}/api/history/${req.id}`, { headers });
       if (res.ok) {
         const data = await res.json();
-        setDetailRequest(data.request || req);
+        const full = data.request || req;
+        if (full.config) {
+          rawConfigByRequestId.current[full.id] = full.config;
+          setDetailRequest({ ...full, config: maskSensitiveJson(full.config) });
+        } else {
+          setDetailRequest(full);
+        }
       } else {
         setDetailRequest(req);
       }
@@ -139,12 +147,13 @@ export default function History() {
 
   const useAsTemplate = (req: PRRequest) => {
     try {
+      const rawConfig = rawConfigByRequestId.current[req.id] ?? req.config ?? '';
       sessionStorage.setItem(TEMPLATE_KEY, JSON.stringify({
         team: req.team,
         env: req.env,
         cloud: req.cloud,
         service: req.service,
-        config: req.config || '',
+        config: rawConfig,
       }));
       setDetailRequest(null);
       router.push('/custom-json');
@@ -607,7 +616,7 @@ export default function History() {
                       <div>
                         <strong>Configuration (JSON):</strong>
                         <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                          Sensitive and customer data (passwords, tokens, email, name, phone, etc.) are masked.
+                          Sensitive and customer data (passwords, tokens, email, name, phone, etc.) are masked. Raw data is not kept in page state.
                         </p>
                         <pre style={{ 
                           background: 'var(--bg-gray-100)', 
@@ -619,7 +628,7 @@ export default function History() {
                           whiteSpace: 'pre-wrap',
                           wordBreak: 'break-word'
                         }}>
-                          {maskSensitiveJson(detailRequest.config)}
+                          {detailRequest.config}
                         </pre>
                       </div>
                     )}
