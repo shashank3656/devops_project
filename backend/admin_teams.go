@@ -307,6 +307,11 @@ func adminTeamMembersRemoveHandler(w http.ResponseWriter, r *http.Request) {
 
 // adminTeamsRouter dispatches /api/admin/teams, /api/admin/teams/:id, /api/admin/teams/:id/members
 func adminTeamsRouter(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		enableCORS(w)
+		handleOptions(w, r)
+		return
+	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/admin/teams")
 	path = strings.TrimSuffix(path, "/")
 	if path == "" {
