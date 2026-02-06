@@ -124,6 +124,27 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ensure user can only create PRs for a team they belong to
+	if userID > 0 && DB != nil {
+		userTeams, err := GetTeamsForUserWithDetails(userID)
+		if err == nil && len(userTeams) > 0 {
+			teamStr, _ := payload["team"].(string)
+			allowed := false
+			for _, t := range userTeams {
+				if t.Slug == teamStr || t.Name == teamStr {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "you can only create PRs for a team you belong to", "status": "error"})
+				return
+			}
+		}
+	}
+
 	// Safely extract fields with type checking
 	team, ok := payload["team"].(string)
 	if !ok {
@@ -169,6 +190,8 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(errorResponse)
 		return
 	}
+	clientName, _ := payload["client_name"].(string)
+	payload["client_name"] = clientName
 
 	// Create file path: <team-id>/envs/<env>/request.json
 	filePath := fmt.Sprintf(
@@ -215,16 +238,17 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	prRequest := &PRRequest{
-		Team:      team,
-		Env:       env,
-		Cloud:     cloud,
-		Service:   service,
-		PRURL:     prURL,
-		Branch:    branchName,
-		FilePath:  filePath,
-		Status:    "pending",
-		Config:    string(content),
-		CreatedBy: userIDPtr, // Use pointer - will be NULL if no valid user ID
+		Team:       team,
+		Env:        env,
+		Cloud:      cloud,
+		Service:    service,
+		ClientName: clientName,
+		PRURL:      prURL,
+		Branch:     branchName,
+		FilePath:   filePath,
+		Status:     "pending",
+		Config:     string(content),
+		CreatedBy:  userIDPtr, // Use pointer - will be NULL if no valid user ID
 	}
 
 	if err := SavePRRequest(prRequest); err != nil {
@@ -284,10 +308,33 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ensure user can only submit requests for a team they belong to
+	if userID > 0 && DB != nil {
+		userTeams, err := GetTeamsForUserWithDetails(userID)
+		if err == nil && len(userTeams) > 0 {
+			teamStr, _ := payload["team"].(string)
+			allowed := false
+			for _, t := range userTeams {
+				if t.Slug == teamStr || t.Name == teamStr {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "you can only create requests for a team you belong to", "status": "error"})
+				return
+			}
+		}
+	}
+
 	team, _ := payload["team"].(string)
 	env, _ := payload["env"].(string)
 	cloud, _ := payload["cloud"].(string)
 	service, _ := payload["service"].(string)
+	clientName, _ := payload["client_name"].(string)
+	payload["client_name"] = clientName
 	filePath := fmt.Sprintf("%s/envs/%s/request.json", team, env)
 	branchName := fmt.Sprintf("%s/%s", team, env)
 	content, err := json.MarshalIndent(payload, "", "  ")
@@ -310,16 +357,17 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		userIDPtr = &userID
 	}
 	prRequest := &PRRequest{
-		Team:      team,
-		Env:       env,
-		Cloud:     cloud,
-		Service:   service,
-		PRURL:     "", // No PR until admin approves
-		Branch:    branchName,
-		FilePath:  filePath,
-		Status:    "pending_approval",
-		Config:    string(content),
-		CreatedBy: userIDPtr,
+		Team:       team,
+		Env:        env,
+		Cloud:      cloud,
+		Service:    service,
+		ClientName: clientName,
+		PRURL:      "", // No PR until admin approves
+		Branch:     branchName,
+		FilePath:   filePath,
+		Status:     "pending_approval",
+		Config:     string(content),
+		CreatedBy:  userIDPtr,
 	}
 	if err := SavePRRequest(prRequest); err != nil {
 		log.Printf("Failed to save request: %v", err)

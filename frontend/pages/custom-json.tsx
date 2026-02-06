@@ -8,7 +8,14 @@ const TEMPLATE_KEY = 'infra-request-template';
 export default function CustomJSON() {
   const router = useRouter();
   const { toast } = useToast();
+  interface TeamOption {
+    id: number;
+    name: string;
+    slug: string;
+  }
+  const [teams, setTeams] = useState<TeamOption[]>([]);
   const [team, setTeam] = useState('');
+  const [clientName, setClientName] = useState('');
   const [env, setEnv] = useState('');
   const [json, setJson] = useState('');
   const [jsonError, setJsonError] = useState('');
@@ -31,6 +38,7 @@ export default function CustomJSON() {
         const data = JSON.parse(template);
         if (data.team) setTeam(data.team);
         if (data.env) setEnv(data.env);
+        if (data.client_name) setClientName(data.client_name);
         if (data.config && typeof data.config === 'string') setJson(data.config);
         else if (data.config && typeof data.config === 'object') setJson(JSON.stringify(data.config, null, 2));
         sessionStorage.removeItem(TEMPLATE_KEY);
@@ -40,13 +48,14 @@ export default function CustomJSON() {
     }
     const token = localStorage.getItem('token');
     if (token && token !== 'undefined') {
-      fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } })
-        .then((res) => res.ok ? res.json() : null)
-        .then((data) => {
-          const u = data?.user;
-          setCanCreatePR(!!(u?.verified && (u?.role === 'contributor' || u?.role === 'admin')));
-        })
-        .catch(() => setCanCreatePR(false));
+      Promise.all([
+        fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.ok ? res.json() : null),
+        fetch(`${apiUrl}/api/me/teams`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.ok ? res.json() : null),
+      ]).then(([meData, teamsData]) => {
+        const u = meData?.user;
+        setCanCreatePR(!!(u?.verified && (u?.role === 'contributor' || u?.role === 'admin')));
+        setTeams(teamsData?.teams || []);
+      }).catch(() => setCanCreatePR(false));
     } else {
       setCanCreatePR(false);
     }
@@ -116,10 +125,11 @@ export default function CustomJSON() {
         throw new Error('Invalid JSON format');
       }
 
-      // Merge team and env into the JSON payload
+      // Merge team, env, client_name into the JSON payload
       const payload = {
         team,
         env,
+        client_name: clientName || undefined,
         ...jsonPayload
       };
 
@@ -210,14 +220,31 @@ export default function CustomJSON() {
             <form onSubmit={handleSubmit}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '24px' }}>
                 <div className="form-group">
-                  <label className="label">Team Name *</label>
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="Enter team name"
+                  <label className="label">Team *</label>
+                  <select
+                    className="select"
                     value={team}
                     onChange={(e) => setTeam(e.target.value)}
                     required
+                  >
+                    <option value="">{teams.length === 0 ? 'No teams assigned' : 'Select team'}</option>
+                    {teams.map((t) => (
+                      <option key={t.id} value={t.slug}>{t.name}</option>
+                    ))}
+                  </select>
+                  {teams.length === 0 && (
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Contact your admin to be added to a team.</p>
+                  )}
+                </div>
+
+                <div className="form-group">
+                  <label className="label">Client Name</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Optional client or project name"
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
                   />
                 </div>
 
