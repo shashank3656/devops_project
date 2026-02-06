@@ -127,7 +127,7 @@ export default function CustomJSON() {
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
       if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
-      const response = await fetch(`${apiUrl}/create-pr`, {
+      const response = await fetch(`${apiUrl}/api/request`, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload)
@@ -145,7 +145,7 @@ export default function CustomJSON() {
 
       const data = await response.json();
       setPrUrl(data.pr_url || '');
-      toast('PR created successfully. Check the PR URL below.', 'success');
+      toast(data.message || 'Request submitted. An admin will approve it and the PR will be created.', 'success');
     } catch (err: any) {
       console.error('Error creating PR:', err);
       const errorMessage = err.message || 'An error occurred while creating the PR';

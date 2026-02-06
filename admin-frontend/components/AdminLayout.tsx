@@ -12,10 +12,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     router.push('/login');
   };
 
-  const navLink = (href: string, label: string) => {
+  const navLink = (href: string, label: string, icon: string) => {
     const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
     return (
       <Link href={href} className={isActive ? 'active' : ''}>
+        <span className="admin-sidebar-icon" aria-hidden>{icon}</span>
         {label}
       </Link>
     );
@@ -29,10 +30,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <span>Admin</span>
         </Link>
         <nav className="admin-sidebar-nav">
-          {navLink('/dashboard', 'Dashboard')}
-          {navLink('/requests', 'PR Requests')}
-          {navLink('/teams', 'Teams')}
-          {navLink('/users', 'Users')}
+          {navLink('/dashboard', 'Dashboard', '▣')}
+          {navLink('/requests', 'PR Requests', '▤')}
+          {navLink('/teams', 'Teams', '⬡')}
+          {navLink('/users', 'Users', '▢')}
         </nav>
         <div className="admin-sidebar-footer">
           <button

@@ -215,7 +215,7 @@ func createTables() error {
 	return nil
 }
 
-// SavePRRequest saves a PR request to the database
+// SavePRRequest saves a PR request to the database (pr_url may be "" for pending_approval)
 func SavePRRequest(req *PRRequest) error {
 	query := `
 		INSERT INTO pr_requests (team, env, cloud, service, pr_url, branch, file_path, status, config, created_by)
@@ -226,7 +226,7 @@ func SavePRRequest(req *PRRequest) error {
 		query,
 		req.Team, req.Env, req.Cloud, req.Service,
 		req.PRURL, req.Branch, req.FilePath, req.Status,
-		req.Config, req.CreatedBy, // Will be NULL if CreatedBy is nil
+		req.Config, req.CreatedBy,
 	).Scan(&req.ID, &req.CreatedAt, &req.UpdatedAt)
 
 	if err != nil {
@@ -234,6 +234,24 @@ func SavePRRequest(req *PRRequest) error {
 	}
 
 	return nil
+}
+
+// UpdatePRRequestStatus sets status and updated_at for a request
+func UpdatePRRequestStatus(id int, status string) error {
+	_, err := DB.Exec(
+		"UPDATE pr_requests SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+		status, id,
+	)
+	return err
+}
+
+// UpdatePRRequestWithPR sets pr_url and status to in_progress after PR is created
+func UpdatePRRequestWithPR(id int, prURL string) error {
+	_, err := DB.Exec(
+		"UPDATE pr_requests SET pr_url = $1, status = 'in_progress', updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+		prURL, id,
+	)
+	return err
 }
 
 // AppendGitHubLog writes a GitHub activity log entry (no-op if DB is nil)
@@ -280,8 +298,8 @@ func GetGitHubLogs(limit int) ([]GitHubLogEntry, error) {
 	return out, nil
 }
 
-// GetPRRequests retrieves PR requests with optional filters
-func GetPRRequests(team, env, cloud string, prID int, userIDInt int, limit, offset int) ([]PRRequest, error) {
+// GetPRRequests retrieves PR requests with optional filters (status filter optional)
+func GetPRRequests(team, env, cloud, statusFilter string, prID int, userIDInt int, limit, offset int) ([]PRRequest, error) {
 	query := `
 		SELECT id, team, env, cloud, service, pr_url, branch, file_path, status, config, created_by, created_at, updated_at
 		FROM pr_requests
@@ -311,6 +329,12 @@ func GetPRRequests(team, env, cloud string, prID int, userIDInt int, limit, offs
 	if cloud != "" {
 		query += fmt.Sprintf(" AND cloud ILIKE $%d", argPos)
 		args = append(args, "%"+cloud+"%")
+		argPos++
+	}
+
+	if statusFilter != "" {
+		query += fmt.Sprintf(" AND status = $%d", argPos)
+		args = append(args, statusFilter)
 		argPos++
 	}
 
@@ -565,7 +589,7 @@ func GetStats(userIDInt int) (*Stats, error) {
 }
 
 // GetTotalCount returns total count of PR requests (for pagination)
-func GetTotalCount(team, env, cloud string, prID int, userIDInt int) (int, error) {
+func GetTotalCount(team, env, cloud, statusFilter string, prID int, userIDInt int) (int, error) {
 	query := "SELECT COUNT(*) FROM pr_requests WHERE 1=1"
 	args := []interface{}{}
 	argPos := 1
@@ -588,6 +612,11 @@ func GetTotalCount(team, env, cloud string, prID int, userIDInt int) (int, error
 	if cloud != "" {
 		query += fmt.Sprintf(" AND cloud ILIKE $%d", argPos)
 		args = append(args, "%"+cloud+"%")
+		argPos++
+	}
+	if statusFilter != "" {
+		query += fmt.Sprintf(" AND status = $%d", argPos)
+		args = append(args, statusFilter)
 		argPos++
 	}
 	if userIDInt > 0 {

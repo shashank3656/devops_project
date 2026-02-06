@@ -247,6 +247,97 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// createRequestHandler creates a request in pending_approval state (no PR yet). Admin must approve to create PR.
+func createRequestHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, canCreate := checkCanCreatePR(r)
+	if !canCreate {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":  "you do not have permission to create requests. Verify your email and ensure your account has contributor or admin role.",
+			"status": "error",
+		})
+		return
+	}
+
+	var payload InfraRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	if err := validatePayload(payload); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+
+	team, _ := payload["team"].(string)
+	env, _ := payload["env"].(string)
+	cloud, _ := payload["cloud"].(string)
+	service, _ := payload["service"].(string)
+	filePath := fmt.Sprintf("%s/envs/%s/request.json", team, env)
+	branchName := fmt.Sprintf("%s/%s", team, env)
+	content, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "error processing request", "status": "error"})
+		return
+	}
+
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+
+	var userIDPtr *int
+	if userID > 0 {
+		userIDPtr = &userID
+	}
+	prRequest := &PRRequest{
+		Team:      team,
+		Env:       env,
+		Cloud:     cloud,
+		Service:   service,
+		PRURL:     "", // No PR until admin approves
+		Branch:    branchName,
+		FilePath:  filePath,
+		Status:    "pending_approval",
+		Config:    string(content),
+		CreatedBy: userIDPtr,
+	}
+	if err := SavePRRequest(prRequest); err != nil {
+		log.Printf("Failed to save request: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to save request", "status": "error"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":     prRequest.ID,
+		"status": "pending_approval",
+		"message": "Request submitted. An admin will approve it and the PR will be created.",
+	})
+}
+
 func main() {
 	// Initialize database
 	if err := InitDB(); err != nil {
@@ -264,6 +355,7 @@ func main() {
 
 	// API endpoints
 	http.HandleFunc("/create-pr", createPRHandler)
+	http.HandleFunc("/api/request", createRequestHandler)
 	http.HandleFunc("/api/history", historyHandler)
 	http.HandleFunc("/api/history/", historyDetailHandler)
 	http.HandleFunc("/api/stats", statsHandler)
@@ -282,6 +374,7 @@ func main() {
 	http.HandleFunc("/api/admin/teams", adminTeamsRouter)
 	http.HandleFunc("/api/admin/teams/", adminTeamsRouter)
 	http.HandleFunc("/api/admin/requests", adminRequestsHandler)
+	http.HandleFunc("/api/admin/requests/", adminRequestActionHandler)
 	http.HandleFunc("/api/admin/stats", adminStatsHandler)
 	http.HandleFunc("/health", healthHandler)
 	
@@ -291,7 +384,8 @@ func main() {
 	
 	log.Println("Backend server starting on :8080")
 	log.Println("Endpoints:")
-	log.Println("  POST /create-pr      - Create infrastructure PR (verified contributor/admin only)")
+	log.Println("  POST /create-pr      - Create infrastructure PR directly (verified contributor/admin only)")
+	log.Println("  POST /api/request    - Submit request for approval (pending_approval; admin approves to create PR)")
 	log.Println("  GET  /api/history     - Get PR request history")
 	log.Println("  GET  /api/history/:id - Get single PR request details")
 	log.Println("  GET  /api/stats       - Get dashboard statistics")
@@ -314,7 +408,10 @@ func main() {
 	log.Println("  GET  /api/admin/teams/:id - Team detail + members (admin only)")
 	log.Println("  POST /api/admin/teams/:id/members - Add member (admin only)")
 	log.Println("  DELETE /api/admin/teams/:id/members/:user_id - Remove member (admin only)")
-	log.Println("  GET  /api/admin/requests - List all PR requests (admin only)")
+	log.Println("  GET  /api/admin/requests     - List all PR requests (admin only)")
+	log.Println("  POST /api/admin/requests/:id/approve - Approve request, create PR (admin only)")
+	log.Println("  POST /api/admin/requests/:id/reject  - Reject request (admin only)")
+	log.Println("  PATCH /api/admin/requests/:id/status - Set status in_progress|completed|rejected (admin only)")
 	log.Println("  GET  /api/admin/stats     - Dashboard stats for all PRs (admin only)")
 	log.Println("  GET  /health         - Health check")
 	log.Println("  GET  /swagger.json    - OpenAPI spec")
