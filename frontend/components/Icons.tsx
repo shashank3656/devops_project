@@ -61,6 +61,15 @@ export function IconSun({ className = '' }: { className?: string }) {
   );
 }
 
+export function IconBell({ className = '' }: { className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13 21a1 1 0 01-2 0h2z" />
+    </svg>
+  );
+}
+
 export function IconLogout({ className = '' }: { className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>

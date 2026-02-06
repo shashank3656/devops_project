@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ReactNode, useEffect, useState } from 'react';
 import { ADMIN_SITE_NAME } from '../lib/site';
-import { IconDashboard, IconRequests, IconTeams, IconUsers, IconLogout, IconChevronLeft, IconChevronRight } from './Icons';
+import { IconDashboard, IconRequests, IconTeams, IconUsers, IconLogout, IconBell, IconChevronLeft, IconChevronRight } from './Icons';
 
 const SIDEBAR_STORAGE_KEY = 'admin_sidebar_collapsed';
 const NOTIFY_POLL_MS = 30000;
@@ -49,15 +49,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     router.push('/login');
   };
 
-  const navLink = (href: string, label: string, icon: ReactNode, badge?: number) => {
+  const navLink = (href: string, label: string, icon: ReactNode) => {
     const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
     return (
       <Link href={href} className={isActive ? 'active' : ''} title={collapsed ? label : undefined}>
         <span className="admin-sidebar-icon" aria-hidden>{icon}</span>
         <span className="admin-sidebar-label">{label}</span>
-        {badge != null && badge > 0 && (
-          <span className="admin-nav-badge" aria-label={`${badge} new requests`}>{badge > 99 ? '99+' : badge}</span>
-        )}
       </Link>
     );
   };
@@ -82,24 +79,31 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </div>
         <nav className="admin-sidebar-nav">
           {navLink('/dashboard', 'Dashboard', <IconDashboard />)}
-          {navLink('/requests', 'PR Requests', <IconRequests />, newRequestsCount)}
+          {navLink('/requests', 'PR Requests', <IconRequests />)}
           {navLink('/teams', 'Teams', <IconTeams />)}
           {navLink('/users', 'Users', <IconUsers />)}
         </nav>
-        <div className="admin-sidebar-footer">
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={handleLogout}
-            style={{ width: '100%', justifyContent: collapsed ? 'center' : 'flex-start' }}
-            title={collapsed ? 'Logout' : undefined}
-          >
-            <span className="admin-sidebar-icon" aria-hidden><IconLogout /></span>
-            <span className="admin-sidebar-label">Logout</span>
-          </button>
-        </div>
       </aside>
-      <main className="admin-main">{children}</main>
+      <div className="admin-main-wrap">
+        <header className="admin-topbar">
+          <div className="admin-topbar-spacer" />
+          <div className="admin-topbar-actions">
+            <Link href="/requests" className="admin-topbar-notify" title={newRequestsCount > 0 ? `${newRequestsCount} new request(s) pending` : 'Notifications'}>
+              <IconBell />
+              {newRequestsCount > 0 && (
+                <span className="admin-topbar-badge" aria-label={`${newRequestsCount} new requests`}>
+                  {newRequestsCount > 99 ? '99+' : newRequestsCount}
+                </span>
+              )}
+            </Link>
+            <button type="button" className="admin-topbar-logout btn btn-ghost" onClick={handleLogout} title="Logout">
+              <IconLogout />
+              <span>Logout</span>
+            </button>
+          </div>
+        </header>
+        <main className="admin-main">{children}</main>
+      </div>
     </div>
   );
 }

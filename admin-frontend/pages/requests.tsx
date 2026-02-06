@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import AdminLayout from '../components/AdminLayout';
@@ -33,19 +33,13 @@ export default function AdminRequests() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
 
-  useEffect(() => {
-    if (!token) {
-      router.replace('/login');
-      return;
-    }
-    fetchRequests({ offset });
-  }, [token, router, offset]);
+  const filtersRef = useRef({ team: '', env: '', cloud: '', status: '' });
 
   const fetchRequests = (overrides?: { team?: string; env?: string; cloud?: string; status?: string; offset?: number }) => {
-    const t = overrides?.team !== undefined ? overrides.team : team;
-    const e = overrides?.env !== undefined ? overrides.env : env;
-    const c = overrides?.cloud !== undefined ? overrides.cloud : cloud;
-    const s = overrides?.status !== undefined ? overrides.status : statusFilter;
+    const t = overrides?.team !== undefined ? overrides.team : filtersRef.current.team;
+    const e = overrides?.env !== undefined ? overrides.env : filtersRef.current.env;
+    const c = overrides?.cloud !== undefined ? overrides.cloud : filtersRef.current.cloud;
+    const s = overrides?.status !== undefined ? overrides.status : filtersRef.current.status;
     const o = overrides?.offset !== undefined ? overrides.offset : offset;
     setLoading(true);
     setError('');
@@ -72,19 +66,38 @@ export default function AdminRequests() {
       .finally(() => setLoading(false));
   };
 
+  useEffect(() => {
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+    fetchRequests({ offset });
+  }, [token, router, offset]);
+
   const handleFilter = (e: React.FormEvent) => {
     e.preventDefault();
     const form = e.currentTarget as HTMLFormElement;
-    const teamVal = (form.elements.namedItem('filter-team') as HTMLInputElement | null)?.value ?? '';
-    const envVal = (form.elements.namedItem('filter-env') as HTMLInputElement | null)?.value ?? '';
-    const cloudVal = (form.elements.namedItem('filter-cloud') as HTMLInputElement | null)?.value ?? '';
+    const teamVal = (form.elements.namedItem('filter-team') as HTMLInputElement | null)?.value?.trim() ?? '';
+    const envVal = (form.elements.namedItem('filter-env') as HTMLInputElement | null)?.value?.trim() ?? '';
+    const cloudVal = (form.elements.namedItem('filter-cloud') as HTMLInputElement | null)?.value?.trim() ?? '';
     const statusVal = (form.elements.namedItem('filter-status') as HTMLSelectElement | null)?.value ?? '';
+    filtersRef.current = { team: teamVal, env: envVal, cloud: cloudVal, status: statusVal };
     setTeam(teamVal);
     setEnv(envVal);
     setCloud(cloudVal);
     setStatusFilter(statusVal);
     setOffset(0);
     fetchRequests({ team: teamVal, env: envVal, cloud: cloudVal, status: statusVal, offset: 0 });
+  };
+
+  const handleClearFilters = () => {
+    filtersRef.current = { team: '', env: '', cloud: '', status: '' };
+    setTeam('');
+    setEnv('');
+    setCloud('');
+    setStatusFilter('');
+    setOffset(0);
+    fetchRequests({ team: '', env: '', cloud: '', status: '', offset: 0 });
   };
 
   const statusLabel = (s: string) =>
@@ -224,14 +237,7 @@ export default function AdminRequests() {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => {
-                setTeam('');
-                setEnv('');
-                setCloud('');
-                setStatusFilter('');
-                setOffset(0);
-                fetchRequests({ team: '', env: '', cloud: '', status: '', offset: 0 });
-              }}
+              onClick={handleClearFilters}
             >
               Clear
             </button>
