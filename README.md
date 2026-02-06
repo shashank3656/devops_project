@@ -1,6 +1,6 @@
-# Infrastructure Portal
+# InfraGate (Infrastructure Portal)
 
-Cloud-agnostic self-service infrastructure platform for managing infrastructure across AWS, GCP, and Azure.
+Cloud-agnostic self-service infrastructure platform for managing infrastructure across AWS, GCP, and Azure. The user-facing app is branded **InfraGate**; the admin console is **InfraGate Admin**. You can change the name in `frontend/lib/site.ts` (user) and `admin-frontend/pages/_app.tsx` (admin).
 
 ## Quick Start
 

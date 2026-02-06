@@ -1,10 +1,28 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
+
+const SIDEBAR_STORAGE_KEY = 'admin_sidebar_collapsed';
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = router.pathname;
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+      if (stored !== null) setCollapsed(stored === 'true');
+    } catch (_) {}
+  }, []);
+
+  const toggleSidebar = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+    } catch (_) {}
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('admin_token');
@@ -15,20 +33,31 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const navLink = (href: string, label: string, icon: string) => {
     const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
     return (
-      <Link href={href} className={isActive ? 'active' : ''}>
+      <Link href={href} className={isActive ? 'active' : ''} title={collapsed ? label : undefined}>
         <span className="admin-sidebar-icon" aria-hidden>{icon}</span>
-        {label}
+        <span className="admin-sidebar-label">{label}</span>
       </Link>
     );
   };
 
   return (
     <div className="admin-layout">
-      <aside className="admin-sidebar">
-        <Link href="/dashboard" className="admin-sidebar-brand">
-          <img src="/logo.svg" alt="" width={36} height={36} />
-          <span>Admin</span>
-        </Link>
+      <aside className={`admin-sidebar ${collapsed ? 'admin-sidebar-collapsed' : ''}`}>
+        <div className="admin-sidebar-header">
+          <Link href="/dashboard" className="admin-sidebar-brand">
+            <img src="/logo.svg" alt="" width={36} height={36} />
+            <span className="admin-sidebar-brand-text">Admin</span>
+          </Link>
+          <button
+            type="button"
+            className="admin-sidebar-toggle"
+            onClick={toggleSidebar}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? '»' : '«'}
+          </button>
+        </div>
         <nav className="admin-sidebar-nav">
           {navLink('/dashboard', 'Dashboard', '▣')}
           {navLink('/requests', 'PR Requests', '▤')}
@@ -40,9 +69,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             type="button"
             className="btn btn-ghost"
             onClick={handleLogout}
-            style={{ width: '100%', justifyContent: 'flex-start' }}
+            style={{ width: '100%', justifyContent: collapsed ? 'center' : 'flex-start' }}
+            title={collapsed ? 'Logout' : undefined}
           >
-            Logout
+            <span className="admin-sidebar-icon" aria-hidden>↪</span>
+            <span className="admin-sidebar-label">Logout</span>
           </button>
         </div>
       </aside>
