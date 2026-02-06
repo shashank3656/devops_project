@@ -165,6 +165,36 @@ body {
 .app-sidebar-footer .app-sidebar-footer-btn:last-child { margin-bottom: 0; }
 .app-sidebar[data-collapsed="true"] .app-sidebar-footer .app-sidebar-footer-btn { justify-content: center; }
 .app-sidebar-icon-wrap { flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.app-sidebar-nav .app-sidebar-nav-item { position: relative; }
+.app-nav-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  color: #fff;
+  background: var(--error-color);
+  border-radius: 999px;
+}
+.app-sidebar[data-collapsed="true"] .app-nav-badge { top: 2px; right: 2px; min-width: 14px; height: 14px; font-size: 10px; line-height: 14px; padding: 0 3px; }
+
+/* User portal – page titles and content */
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+.page-subtitle {
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  margin-bottom: 1.5rem;
+}
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
@@ -174,23 +204,31 @@ code {
 .container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 24px 20px;
+}
+
+/* User portal – main content area */
+.app-main {
+  flex: 1;
+  overflow: auto;
+  padding: 24px 32px;
+  min-width: 0;
+  background: var(--bg-gray-50);
 }
 
 .card {
   background: var(--bg-white);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xl);
-  padding: 40px;
-  margin: 20px 0;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(10px);
-  transition: all 0.3s ease;
+  box-shadow: var(--shadow-sm);
+  padding: 28px 32px;
+  margin: 0 0 24px 0;
+  border: 1px solid var(--border-color);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .card:hover {
-  box-shadow: var(--shadow-2xl);
-  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--primary-light);
 }
 
 .btn {

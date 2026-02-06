@@ -5,17 +5,34 @@ import { ADMIN_SITE_NAME } from '../lib/site';
 import { IconDashboard, IconRequests, IconTeams, IconUsers, IconLogout, IconChevronLeft, IconChevronRight } from './Icons';
 
 const SIDEBAR_STORAGE_KEY = 'admin_sidebar_collapsed';
+const NOTIFY_POLL_MS = 30000;
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = router.pathname;
   const [collapsed, setCollapsed] = useState(false);
+  const [newRequestsCount, setNewRequestsCount] = useState(0);
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
       if (stored !== null) setCollapsed(stored === 'true');
     } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
+    if (!token) return;
+    const fetchNotifications = () => {
+      fetch(`${apiUrl}/api/admin/notifications`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => { if (data && typeof data.new_requests === 'number') setNewRequestsCount(data.new_requests); })
+        .catch(() => {});
+    };
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, NOTIFY_POLL_MS);
+    return () => clearInterval(interval);
   }, []);
 
   const toggleSidebar = () => {
@@ -32,12 +49,15 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     router.push('/login');
   };
 
-  const navLink = (href: string, label: string, icon: ReactNode) => {
+  const navLink = (href: string, label: string, icon: ReactNode, badge?: number) => {
     const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
     return (
       <Link href={href} className={isActive ? 'active' : ''} title={collapsed ? label : undefined}>
         <span className="admin-sidebar-icon" aria-hidden>{icon}</span>
         <span className="admin-sidebar-label">{label}</span>
+        {badge != null && badge > 0 && (
+          <span className="admin-nav-badge" aria-label={`${badge} new requests`}>{badge > 99 ? '99+' : badge}</span>
+        )}
       </Link>
     );
   };
@@ -62,7 +82,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </div>
         <nav className="admin-sidebar-nav">
           {navLink('/dashboard', 'Dashboard', <IconDashboard />)}
-          {navLink('/requests', 'PR Requests', <IconRequests />)}
+          {navLink('/requests', 'PR Requests', <IconRequests />, newRequestsCount)}
           {navLink('/teams', 'Teams', <IconTeams />)}
           {navLink('/users', 'Users', <IconUsers />)}
         </nav>

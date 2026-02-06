@@ -74,8 +74,17 @@ export default function AdminRequests() {
 
   const handleFilter = (e: React.FormEvent) => {
     e.preventDefault();
+    const form = e.currentTarget as HTMLFormElement;
+    const teamVal = (form.elements.namedItem('filter-team') as HTMLInputElement | null)?.value ?? '';
+    const envVal = (form.elements.namedItem('filter-env') as HTMLInputElement | null)?.value ?? '';
+    const cloudVal = (form.elements.namedItem('filter-cloud') as HTMLInputElement | null)?.value ?? '';
+    const statusVal = (form.elements.namedItem('filter-status') as HTMLSelectElement | null)?.value ?? '';
+    setTeam(teamVal);
+    setEnv(envVal);
+    setCloud(cloudVal);
+    setStatusFilter(statusVal);
     setOffset(0);
-    fetchRequests({ offset: 0 });
+    fetchRequests({ team: teamVal, env: envVal, cloud: cloudVal, status: statusVal, offset: 0 });
   };
 
   const statusLabel = (s: string) =>
@@ -152,7 +161,7 @@ export default function AdminRequests() {
   return (
     <>
       <Head>
-        <title>PR Requests - Admin</title>
+        <title>PR Requests - InfraGate Admin</title>
       </Head>
       <AdminLayout>
         <div className="container" style={{ maxWidth: 1200 }}>
@@ -169,6 +178,8 @@ export default function AdminRequests() {
 
           <form onSubmit={handleFilter} className="filters-bar">
             <input
+              id="filter-team"
+              name="filter-team"
               type="text"
               className="input"
               placeholder="Team"
@@ -176,6 +187,8 @@ export default function AdminRequests() {
               onChange={(e) => setTeam(e.target.value)}
             />
             <input
+              id="filter-env"
+              name="filter-env"
               type="text"
               className="input"
               placeholder="Env"
@@ -183,6 +196,8 @@ export default function AdminRequests() {
               onChange={(e) => setEnv(e.target.value)}
             />
             <input
+              id="filter-cloud"
+              name="filter-cloud"
               type="text"
               className="input"
               placeholder="Cloud"
@@ -190,6 +205,8 @@ export default function AdminRequests() {
               onChange={(e) => setCloud(e.target.value)}
             />
             <select
+              id="filter-status"
+              name="filter-status"
               className="input"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}

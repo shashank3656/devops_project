@@ -673,6 +673,23 @@ func GetTotalCount(team, env, cloud, statusFilter string, prID int, userIDInt in
 	return count, err
 }
 
+// GetPendingApprovalCount returns the number of requests with status pending_approval (for admin notifications)
+func GetPendingApprovalCount() (int, error) {
+	var count int
+	err := DB.QueryRow("SELECT COUNT(*) FROM pr_requests WHERE status = $1", "pending_approval").Scan(&count)
+	return count, err
+}
+
+// GetUserRequestsUpdatedSince returns count of requests created by userID with updated_at > since (for user notifications)
+func GetUserRequestsUpdatedSince(userID int, since time.Time) (int, error) {
+	var count int
+	err := DB.QueryRow(
+		"SELECT COUNT(*) FROM pr_requests WHERE created_by = $1 AND updated_at > $2",
+		userID, since,
+	).Scan(&count)
+	return count, err
+}
+
 // CreateTeam creates a new team (admin only)
 func CreateTeam(name, slug string, createdBy *int) (*Team, error) {
 	if slug == "" {

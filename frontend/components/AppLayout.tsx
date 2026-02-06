@@ -19,6 +19,8 @@ import {
 const SIDEBAR_WIDTH = 240;
 const SIDEBAR_COLLAPSED_WIDTH = 72;
 const SIDEBAR_STORAGE_KEY = 'user_sidebar_collapsed';
+const HISTORY_LAST_SEEN_KEY = 'user_history_last_seen';
+const NOTIFY_POLL_MS = 30000;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -27,6 +29,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [teamCheck, setTeamCheck] = useState<'loading' | 'ok' | 'forbidden'>('loading');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [updatedRequestsCount, setUpdatedRequestsCount] = useState(0);
 
   useEffect(() => {
     const stored = getStoredTheme();
@@ -62,6 +65,37 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         setTeamCheck(teams.length > 0 ? 'ok' : 'forbidden');
       })
       .catch(() => setTeamCheck('forbidden'));
+  }, []);
+
+  // When user visits History, mark as seen so notification badge can clear
+  useEffect(() => {
+    if (router.pathname === '/history') {
+      try {
+        localStorage.setItem(HISTORY_LAST_SEEN_KEY, new Date().toISOString());
+        setUpdatedRequestsCount(0);
+      } catch (_) {}
+    }
+  }, [router.pathname]);
+
+  // Poll for request status updates (user's requests updated since last History visit)
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token || token === 'undefined') return;
+    const fetchNotifications = () => {
+      try {
+        const since = localStorage.getItem(HISTORY_LAST_SEEN_KEY);
+        const sinceParam = since || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const t = localStorage.getItem('token');
+        if (!t) return;
+        fetch(`${apiUrl}/api/me/notifications?since=${encodeURIComponent(sinceParam)}`, { headers: { Authorization: `Bearer ${t}` } })
+          .then((res) => res.ok ? res.json() : null)
+          .then((data) => { if (data && typeof data.updated_count === 'number') setUpdatedRequestsCount(data.updated_count); })
+          .catch(() => {});
+      } catch (_) {}
+    };
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, NOTIFY_POLL_MS);
+    return () => clearInterval(interval);
   }, []);
 
   const toggleTheme = () => {
@@ -101,12 +135,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const navItem = (href: string, label: string, icon: React.ReactNode) => {
+  const navItem = (href: string, label: string, icon: React.ReactNode, badge?: number) => {
     const isActive = router.pathname === href || (href !== '/home' && router.pathname.startsWith(href));
     return (
       <Link
         href={href}
         title={sidebarCollapsed ? label : undefined}
+        className="app-sidebar-nav-item"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -119,10 +154,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           textDecoration: 'none',
           background: isActive ? 'var(--info-bg)' : 'transparent',
           transition: 'background 0.15s, color 0.15s',
+          position: 'relative',
         }}
       >
         <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</span>
         {!sidebarCollapsed && <span>{label}</span>}
+        {badge != null && badge > 0 && (
+          <span className="app-nav-badge" aria-label={`${badge} request updates`}>{badge > 99 ? '99+' : badge}</span>
+        )}
       </Link>
     );
   };
@@ -155,7 +194,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <nav className="app-sidebar-nav">
           {navItem('/home', 'Home', <IconHome />)}
           {navItem('/create-infrastructure', 'New Request', <IconPlus />)}
-          {navItem('/history', 'History', <IconHistory />)}
+          {navItem('/history', 'History', <IconHistory />, updatedRequestsCount)}
           {navItem('/profile', 'Profile', <IconUser />)}
         </nav>
         <div className="app-sidebar-footer">
@@ -179,14 +218,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       {/* Main content */}
-      <main
-        style={{
-          flex: 1,
-          overflow: 'auto',
-          padding: '24px 32px',
-          minWidth: 0,
-        }}
-      >
+      <main className="app-main">
         {children}
       </main>
     </div>

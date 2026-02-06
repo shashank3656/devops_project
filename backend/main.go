@@ -413,6 +413,7 @@ func main() {
 	http.HandleFunc("/api/auth/login", loginHandler)
 	http.HandleFunc("/api/me", meHandler)
 	http.HandleFunc("/api/me/teams", meTeamsHandler)
+	http.HandleFunc("/api/me/notifications", meNotificationsHandler)
 	http.HandleFunc("/api/change-password", changePasswordHandler)
 	http.HandleFunc("/api/verify-email", verifyEmailHandler)
 	http.HandleFunc("/api/verify-otp", verifyOtpHandler)
@@ -424,6 +425,7 @@ func main() {
 	http.HandleFunc("/api/admin/teams/", adminTeamsRouter)
 	http.HandleFunc("/api/admin/requests", adminRequestsHandler)
 	http.HandleFunc("/api/admin/requests/", adminRequestActionHandler)
+	http.HandleFunc("/api/admin/notifications", adminNotificationsHandler)
 	http.HandleFunc("/api/admin/stats", adminStatsHandler)
 	http.HandleFunc("/health", healthHandler)
 	

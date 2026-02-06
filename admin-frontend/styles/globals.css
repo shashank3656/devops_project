@@ -404,6 +404,23 @@ td code { font-size: var(--text-sm); background: #f1f5f9; padding: 2px 8px; bord
 }
 .admin-sidebar-icon svg { flex-shrink: 0; }
 .admin-sidebar-label { white-space: nowrap; }
+.admin-sidebar-nav a { position: relative; }
+.admin-nav-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  color: #fff;
+  background: var(--color-danger);
+  border-radius: 999px;
+}
+.admin-sidebar-collapsed .admin-nav-badge { top: 2px; right: 2px; min-width: 14px; height: 14px; font-size: 10px; line-height: 14px; padding: 0 3px; }
 .admin-sidebar-nav a.active .admin-sidebar-icon { opacity: 1; }
 .admin-sidebar-footer {
   padding: var(--space-4) var(--space-5);
