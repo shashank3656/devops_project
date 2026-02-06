@@ -108,6 +108,30 @@ func adminStatsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "stats": stats})
 }
 
+// adminNotificationsHandler GET /api/admin/notifications - count of new (pending_approval) requests for badge
+func adminNotificationsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"new_requests": 0, "status": "ok"})
+		return
+	}
+	count, _ := GetPendingApprovalCount()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"new_requests": count, "status": "ok"})
+}
+
 // adminRequestActionHandler handles /api/admin/requests/:id/approve, /reject, /status (admin only)
 func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
