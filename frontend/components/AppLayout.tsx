@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { SITE_NAME } from '../lib/site';
 import { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext';
 import { getStoredTheme, setStoredTheme } from './NavBar';
@@ -130,7 +131,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             }}
           >
             <img src="/logo.svg" alt="" width={32} height={32} style={{ display: 'block', flexShrink: 0 }} />
-            Infrastructure Portal
+            {SITE_NAME}
           </Link>
         </div>
         <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px', padding: '0 12px' }}>

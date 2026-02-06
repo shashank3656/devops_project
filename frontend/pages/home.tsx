@@ -111,7 +111,7 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Infrastructure Portal - Home</title>
+        <title>InfraGate - Home</title>
         <meta name="description" content="Create infrastructure resources" />
       </Head>
       <div>
