@@ -14,20 +14,32 @@ import (
 var DB *sql.DB
 
 type PRRequest struct {
-	ID          int       `json:"id"`
-	Team        string    `json:"team"`
-	Env         string    `json:"env"`
-	Cloud       string    `json:"cloud"`
-	Service     string    `json:"service"`
-	ClientName  string    `json:"client_name"`
-	PRURL       string    `json:"pr_url"`
-	Branch      string    `json:"branch"`
-	FilePath    string    `json:"file_path"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	CreatedBy   *int      `json:"created_by"` // Use pointer to allow NULL
-	Config      string    `json:"config"` // JSON string of the full config
+	ID          int        `json:"id"`
+	Team        string     `json:"team"`
+	Env         string     `json:"env"`
+	Cloud       string     `json:"cloud"`
+	Service     string     `json:"service"`
+	ClientName  string     `json:"client_name"`
+	Priority    string     `json:"priority"` // low, medium, high, urgent
+	DueDate     *time.Time `json:"due_date"`
+	PRURL       string     `json:"pr_url"`
+	Branch      string     `json:"branch"`
+	FilePath    string     `json:"file_path"`
+	Status      string     `json:"status"` // draft, pending_approval, in_progress, completed, rejected
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	CreatedBy   *int       `json:"created_by"`
+	Config      string     `json:"config"`
+}
+
+// RequestComment is a comment on a PR request
+type RequestComment struct {
+	ID        int       `json:"id"`
+	RequestID int       `json:"request_id"`
+	UserID    int       `json:"user_id"`
+	Username  string    `json:"username"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type User struct {
@@ -218,22 +230,46 @@ func createTables() error {
 			log.Printf("Note: pr_requests client_name column: %v", err)
 		}
 	}
+	if _, err := DB.Exec("ALTER TABLE pr_requests ADD COLUMN priority VARCHAR(50) DEFAULT 'medium'"); err != nil {
+		if !strings.Contains(err.Error(), "already exists") && !strings.Contains(err.Error(), "duplicate column") {
+			log.Printf("Note: pr_requests priority column: %v", err)
+		}
+	}
+	if _, err := DB.Exec("ALTER TABLE pr_requests ADD COLUMN due_date TIMESTAMP NULL"); err != nil {
+		if !strings.Contains(err.Error(), "already exists") && !strings.Contains(err.Error(), "duplicate column") {
+			log.Printf("Note: pr_requests due_date column: %v", err)
+		}
+	}
+
+	// request_comments: comments on requests (user and admin)
+	_, err = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS request_comments (
+			id SERIAL PRIMARY KEY,
+			request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			user_id INTEGER NOT NULL REFERENCES users(id),
+			body TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("create request_comments: %w", err)
+	}
 
 	log.Println("Database tables created/verified")
 	return nil
 }
 
-// SavePRRequest saves a PR request to the database (pr_url may be "" for pending_approval)
+// SavePRRequest saves a PR request to the database (pr_url may be "" for pending_approval or draft)
 func SavePRRequest(req *PRRequest) error {
 	query := `
-		INSERT INTO pr_requests (team, env, cloud, service, client_name, pr_url, branch, file_path, status, config, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO pr_requests (team, env, cloud, service, client_name, priority, due_date, pr_url, branch, file_path, status, config, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING id, created_at, updated_at
 	`
 	err := DB.QueryRow(
 		query,
 		req.Team, req.Env, req.Cloud, req.Service, req.ClientName,
-		req.PRURL, req.Branch, req.FilePath, req.Status,
+		req.Priority, req.DueDate, req.PRURL, req.Branch, req.FilePath, req.Status,
 		req.Config, req.CreatedBy,
 	).Scan(&req.ID, &req.CreatedAt, &req.UpdatedAt)
 
@@ -306,10 +342,10 @@ func GetGitHubLogs(limit int) ([]GitHubLogEntry, error) {
 	return out, nil
 }
 
-// GetPRRequests retrieves PR requests with optional filters (status filter optional)
-func GetPRRequests(team, env, cloud, statusFilter string, prID int, userIDInt int, limit, offset int) ([]PRRequest, error) {
+// GetPRRequests retrieves PR requests with optional filters (status and priority optional)
+func GetPRRequests(team, env, cloud, statusFilter, priorityFilter string, prID int, userIDInt int, limit, offset int) ([]PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, pr_url, branch, file_path, status, config, created_by, created_at, updated_at
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, config, created_by, created_at, updated_at
 		FROM pr_requests
 		WHERE 1=1
 	`
@@ -346,6 +382,12 @@ func GetPRRequests(team, env, cloud, statusFilter string, prID int, userIDInt in
 		argPos++
 	}
 
+	if priorityFilter != "" {
+		query += fmt.Sprintf(" AND COALESCE(priority,'medium') = $%d", argPos)
+		args = append(args, priorityFilter)
+		argPos++
+	}
+
 	if userIDInt > 0 {
 		query += fmt.Sprintf(" AND created_by = $%d", argPos)
 		args = append(args, userIDInt)
@@ -376,9 +418,10 @@ func GetPRRequests(team, env, cloud, statusFilter string, prID int, userIDInt in
 	for rows.Next() {
 		var req PRRequest
 		var createdBy sql.NullInt64
+		var dueDate sql.NullTime
 		err := rows.Scan(
 			&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
-			&req.PRURL, &req.Branch, &req.FilePath, &req.Status,
+			&req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
 			&req.Config, &createdBy, &req.CreatedAt, &req.UpdatedAt,
 		)
 		if err != nil {
@@ -391,6 +434,9 @@ func GetPRRequests(team, env, cloud, statusFilter string, prID int, userIDInt in
 		} else {
 			req.CreatedBy = nil
 		}
+		if dueDate.Valid {
+			req.DueDate = &dueDate.Time
+		}
 		requests = append(requests, req)
 	}
 
@@ -400,14 +446,15 @@ func GetPRRequests(team, env, cloud, statusFilter string, prID int, userIDInt in
 // GetPRRequestByID retrieves a single PR request by ID
 func GetPRRequestByID(id int) (*PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, pr_url, branch, file_path, status, config, created_by, created_at, updated_at
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, config, created_by, created_at, updated_at
 		FROM pr_requests WHERE id = $1
 	`
 	var req PRRequest
 	var createdBy sql.NullInt64
+	var dueDate sql.NullTime
 	err := DB.QueryRow(query, id).Scan(
 		&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
-		&req.PRURL, &req.Branch, &req.FilePath, &req.Status,
+		&req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
 		&req.Config, &createdBy, &req.CreatedAt, &req.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -420,7 +467,60 @@ func GetPRRequestByID(id int) (*PRRequest, error) {
 		val := int(createdBy.Int64)
 		req.CreatedBy = &val
 	}
+	if dueDate.Valid {
+		req.DueDate = &dueDate.Time
+	}
 	return &req, nil
+}
+
+// UpdatePRRequestFull updates a draft request (config, priority, due_date, status). Only for draft requests.
+func UpdatePRRequestFull(id int, config string, priority string, dueDate *time.Time, status string) error {
+	if dueDate == nil {
+		_, err := DB.Exec(
+			"UPDATE pr_requests SET config = $1, priority = $2, due_date = NULL, status = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4",
+			config, priority, status, id,
+		)
+		return err
+	}
+	_, err := DB.Exec(
+		"UPDATE pr_requests SET config = $1, priority = $2, due_date = $3, status = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5",
+		config, priority, dueDate, status, id,
+	)
+	return err
+}
+
+// GetRequestComments returns comments for a request (newest first)
+func GetRequestComments(requestID int) ([]RequestComment, error) {
+	query := `
+		SELECT c.id, c.request_id, c.user_id, COALESCE(u.username,'') AS username, c.body, c.created_at
+		FROM request_comments c
+		LEFT JOIN users u ON u.id = c.user_id
+		WHERE c.request_id = $1
+		ORDER BY c.created_at ASC
+	`
+	rows, err := DB.Query(query, requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RequestComment
+	for rows.Next() {
+		var c RequestComment
+		if err := rows.Scan(&c.ID, &c.RequestID, &c.UserID, &c.Username, &c.Body, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+// AddRequestComment adds a comment to a request
+func AddRequestComment(requestID, userID int, body string) error {
+	_, err := DB.Exec(
+		"INSERT INTO request_comments (request_id, user_id, body) VALUES ($1, $2, $3)",
+		requestID, userID, body,
+	)
+	return err
 }
 
 // GetUserByID retrieves a user by ID (without password)
@@ -632,7 +732,7 @@ func GetStats(userIDInt int) (*Stats, error) {
 }
 
 // GetTotalCount returns total count of PR requests (for pagination)
-func GetTotalCount(team, env, cloud, statusFilter string, prID int, userIDInt int) (int, error) {
+func GetTotalCount(team, env, cloud, statusFilter, priorityFilter string, prID int, userIDInt int) (int, error) {
 	query := "SELECT COUNT(*) FROM pr_requests WHERE 1=1"
 	args := []interface{}{}
 	argPos := 1
@@ -660,6 +760,11 @@ func GetTotalCount(team, env, cloud, statusFilter string, prID int, userIDInt in
 	if statusFilter != "" {
 		query += fmt.Sprintf(" AND status = $%d", argPos)
 		args = append(args, statusFilter)
+		argPos++
+	}
+	if priorityFilter != "" {
+		query += fmt.Sprintf(" AND COALESCE(priority,'medium') = $%d", argPos)
+		args = append(args, priorityFilter)
 		argPos++
 	}
 	if userIDInt > 0 {

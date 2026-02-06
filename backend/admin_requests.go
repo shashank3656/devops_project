@@ -34,6 +34,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	env := r.URL.Query().Get("env")
 	cloud := r.URL.Query().Get("cloud")
 	statusFilter := r.URL.Query().Get("status")
+	priorityFilter := r.URL.Query().Get("priority")
 	prIDStr := r.URL.Query().Get("id")
 	prID := 0
 	if prIDStr != "" {
@@ -55,7 +56,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// userID 0 = all requests
-	requests, err := GetPRRequests(team, env, cloud, statusFilter, prID, 0, limit, offset)
+	requests, err := GetPRRequests(team, env, cloud, statusFilter, priorityFilter, prID, 0, limit, offset)
 	if err != nil {
 		log.Printf("Admin requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -63,7 +64,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch requests", "status": "error"})
 		return
 	}
-	totalCount, _ := GetTotalCount(team, env, cloud, statusFilter, prID, 0)
+	totalCount, _ := GetTotalCount(team, env, cloud, statusFilter, priorityFilter, prID, 0)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -132,6 +133,90 @@ func adminNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"new_requests": count, "status": "ok"})
 }
 
+// adminBulkApproveHandler POST /api/admin/requests/bulk-approve with body {"ids": [1,2,3]}
+func adminBulkApproveHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		IDs []int `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "ids array required", "status": "error"})
+		return
+	}
+	var approved, failed []int
+	for _, id := range body.IDs {
+		if id <= 0 {
+			continue
+		}
+		req, err := GetPRRequestByID(id)
+		if err != nil || req == nil || req.Status != "pending_approval" {
+			failed = append(failed, id)
+			continue
+		}
+		prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config))
+		if err != nil {
+			log.Printf("Bulk approve id %d: %v", id, err)
+			failed = append(failed, id)
+			continue
+		}
+		if err := UpdatePRRequestWithPR(id, prURL); err != nil {
+			failed = append(failed, id)
+			continue
+		}
+		approved = append(approved, id)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":   "ok",
+		"approved": approved,
+		"failed":   failed,
+	})
+}
+
+// adminBulkRejectHandler POST /api/admin/requests/bulk-reject with body {"ids": [1,2,3]}
+func adminBulkRejectHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		IDs []int `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "ids array required", "status": "error"})
+		return
+	}
+	var rejected, failed []int
+	for _, id := range body.IDs {
+		if id <= 0 {
+			continue
+		}
+		req, err := GetPRRequestByID(id)
+		if err != nil || req == nil || req.Status != "pending_approval" {
+			failed = append(failed, id)
+			continue
+		}
+		if err := UpdatePRRequestStatus(id, "rejected"); err != nil {
+			failed = append(failed, id)
+			continue
+		}
+		rejected = append(rejected, id)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":   "ok",
+		"rejected": rejected,
+		"failed":   failed,
+	})
+}
+
 // adminRequestActionHandler handles /api/admin/requests/:id/approve, /reject, /status (admin only)
 func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
@@ -152,6 +237,14 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/admin/requests/")
 	path = strings.Trim(path, "/")
 	parts := strings.Split(path, "/")
+	if len(parts) >= 1 && parts[0] == "bulk-approve" {
+		adminBulkApproveHandler(w, r)
+		return
+	}
+	if len(parts) >= 1 && parts[0] == "bulk-reject" {
+		adminBulkRejectHandler(w, r)
+		return
+	}
 	if len(parts) < 2 {
 		http.NotFound(w, r)
 		return

@@ -335,6 +335,21 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	service, _ := payload["service"].(string)
 	clientName, _ := payload["client_name"].(string)
 	payload["client_name"] = clientName
+	priority, _ := payload["priority"].(string)
+	if priority == "" {
+		priority = "medium"
+	}
+	if priority != "low" && priority != "medium" && priority != "high" && priority != "urgent" {
+		priority = "medium"
+	}
+	var dueDate *time.Time
+	if d, ok := payload["due_date"].(string); ok && d != "" {
+		if t, err := time.Parse("2006-01-02", d); err == nil {
+			dueDate = &t
+		}
+	}
+	draft, _ := payload["draft"].(bool)
+
 	filePath := fmt.Sprintf("%s/envs/%s/request.json", team, env)
 	branchName := fmt.Sprintf("%s/%s", team, env)
 	content, err := json.MarshalIndent(payload, "", "  ")
@@ -356,16 +371,22 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if userID > 0 {
 		userIDPtr = &userID
 	}
+	status := "pending_approval"
+	if draft {
+		status = "draft"
+	}
 	prRequest := &PRRequest{
 		Team:       team,
 		Env:        env,
 		Cloud:      cloud,
 		Service:    service,
 		ClientName: clientName,
-		PRURL:      "", // No PR until admin approves
+		Priority:   priority,
+		DueDate:    dueDate,
+		PRURL:      "",
 		Branch:     branchName,
 		FilePath:   filePath,
-		Status:     "pending_approval",
+		Status:     status,
 		Config:     string(content),
 		CreatedBy:  userIDPtr,
 	}
@@ -379,10 +400,14 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	msg := "Request submitted. An admin will approve it and the PR will be created."
+	if draft {
+		msg = "Draft saved. You can edit or submit it from History."
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"id":     prRequest.ID,
-		"status": "pending_approval",
-		"message": "Request submitted. An admin will approve it and the PR will be created.",
+		"status": status,
+		"message": msg,
 	})
 }
 
@@ -404,6 +429,7 @@ func main() {
 	// API endpoints
 	http.HandleFunc("/create-pr", createPRHandler)
 	http.HandleFunc("/api/request", createRequestHandler)
+	http.HandleFunc("/api/request/", requestDetailHandler)
 	http.HandleFunc("/api/history", historyHandler)
 	http.HandleFunc("/api/history/", historyDetailHandler)
 	http.HandleFunc("/api/stats", statsHandler)

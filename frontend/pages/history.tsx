@@ -13,6 +13,9 @@ interface PRRequest {
   env: string;
   cloud: string;
   service: string;
+  client_name?: string;
+  priority?: string;
+  due_date?: string | null;
   pr_url: string;
   branch: string;
   file_path: string;
@@ -21,6 +24,15 @@ interface PRRequest {
   updated_at: string;
   created_by: number | null;
   config?: string;
+}
+
+interface RequestComment {
+  id: number;
+  request_id: number;
+  user_id: number;
+  username: string;
+  body: string;
+  created_at: string;
 }
 
 const PAGE_SIZE = 10;
@@ -37,9 +49,11 @@ export default function History() {
   const [page, setPage] = useState(0);
   const [detailRequest, setDetailRequest] = useState<PRRequest | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [comments, setComments] = useState<RequestComment[]>([]);
+  const [commentBody, setCommentBody] = useState('');
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [sortBy, setSortBy] = useState<'id' | 'created_at' | 'team' | 'cloud'>('created_at');
   const [sortDesc, setSortDesc] = useState(true);
-  // Store raw config in ref only (not in state) so Inspect/React DevTools never show unmasked data
   const rawConfigByRequestId = useRef<Record<number, string>>({});
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -102,14 +116,19 @@ export default function History() {
 
   const openDetail = async (req: PRRequest) => {
     setDetailRequest(null);
+    setComments([]);
+    setCommentBody('');
     setDetailLoading(true);
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
       if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`${apiUrl}/api/history/${req.id}`, { headers });
-      if (res.ok) {
-        const data = await res.json();
+      const [detailRes, commentsRes] = await Promise.all([
+        fetch(`${apiUrl}/api/history/${req.id}`, { headers }),
+        fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers })
+      ]);
+      if (detailRes.ok) {
+        const data = await detailRes.json();
         const full = data.request || req;
         if (full.config) {
           rawConfigByRequestId.current[full.id] = full.config;
@@ -120,10 +139,88 @@ export default function History() {
       } else {
         setDetailRequest(req);
       }
+      if (commentsRes.ok) {
+        const cData = await commentsRes.json();
+        setComments(cData.comments || []);
+      }
     } catch (_) {
       setDetailRequest(req);
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const submitDraft = async (id: number) => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    try {
+      const res = await fetch(`${apiUrl}/api/request/${id}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        toast('Draft submitted for approval', 'success');
+        setDetailRequest(null);
+        fetchHistory();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast(d?.error || 'Failed to submit draft', 'error');
+      }
+    } catch (_) {
+      toast('Failed to submit draft', 'error');
+    }
+  };
+
+  const deleteDraft = async (id: number) => {
+    if (!confirm('Delete this draft? This cannot be undone.')) return;
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    try {
+      const res = await fetch(`${apiUrl}/api/request/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        toast('Draft deleted', 'success');
+        setDetailRequest(null);
+        fetchHistory();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast(d?.error || 'Failed to delete draft', 'error');
+      }
+    } catch (_) {
+      toast('Failed to delete draft', 'error');
+    }
+  };
+
+  const addComment = async () => {
+    if (!detailRequest || !commentBody.trim()) return;
+    setCommentSubmitting(true);
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = { 'Content-Type': 'application/json' };
+    if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
+    try {
+      const res = await fetch(`${apiUrl}/api/request/${detailRequest.id}/comments`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ body: commentBody.trim() })
+      });
+      if (res.ok) {
+        setCommentBody('');
+        const listRes = await fetch(`${apiUrl}/api/request/${detailRequest.id}/comments`, { headers });
+        if (listRes.ok) {
+          const d = await listRes.json();
+          setComments(d.comments || []);
+        }
+        toast('Comment added', 'success');
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast(d?.error || 'Failed to add comment', 'error');
+      }
+    } catch (_) {
+      toast('Failed to add comment', 'error');
+    } finally {
+      setCommentSubmitting(false);
     }
   };
 
@@ -153,6 +250,7 @@ export default function History() {
         env: req.env,
         cloud: req.cloud,
         service: req.service,
+        client_name: req.client_name,
         config: rawConfig,
       }));
       setDetailRequest(null);
@@ -479,14 +577,16 @@ export default function History() {
                             borderRadius: '6px',
                             fontSize: '12px',
                             fontWeight: '600',
-                            background: req.status === 'pending_approval' ? 'var(--warning-bg)' :
+                            background: req.status === 'draft' ? 'var(--bg-gray-100)' :
+                                       req.status === 'pending_approval' ? 'var(--warning-bg)' :
                                        req.status === 'in_progress' ? 'var(--info-bg)' :
                                        req.status === 'completed' ? 'var(--success-bg)' :
                                        req.status === 'rejected' ? 'var(--error-bg)' :
                                        req.status === 'pending' ? 'var(--warning-bg)' :
                                        req.status === 'merged' ? 'var(--success-bg)' :
                                        req.status === 'closed' ? 'var(--error-bg)' : 'var(--info-bg)',
-                            color: req.status === 'pending_approval' ? 'var(--warning-color)' :
+                            color: req.status === 'draft' ? 'var(--text-secondary)' :
+                                   req.status === 'pending_approval' ? 'var(--warning-color)' :
                                    req.status === 'in_progress' ? 'var(--info-color)' :
                                    req.status === 'completed' ? 'var(--success-color)' :
                                    req.status === 'rejected' ? 'var(--error-color)' :
@@ -494,7 +594,8 @@ export default function History() {
                                    req.status === 'merged' ? 'var(--success-color)' :
                                    req.status === 'closed' ? 'var(--error-color)' : 'var(--info-color)'
                           }}>
-                            {req.status === 'pending_approval' ? 'Pending approval' :
+                            {req.status === 'draft' ? 'Draft' :
+                             req.status === 'pending_approval' ? 'Pending approval' :
                              req.status === 'in_progress' ? 'In progress' :
                              req.status === 'completed' ? 'Completed' :
                              req.status === 'rejected' ? 'Rejected' : req.status}
@@ -614,6 +715,12 @@ export default function History() {
                     <div style={{ marginBottom: '12px' }}>
                       <strong>Team:</strong> {detailRequest.team} &nbsp;|&nbsp; <strong>Env:</strong> {detailRequest.env} &nbsp;|&nbsp; <strong>Cloud:</strong> {detailRequest.cloud} &nbsp;|&nbsp; <strong>Service:</strong> {detailRequest.service}
                     </div>
+                    {(detailRequest.priority || detailRequest.due_date) && (
+                      <div style={{ marginBottom: '12px', fontSize: '14px', color: 'var(--text-secondary)' }}>
+                        {detailRequest.priority && <span><strong>Priority:</strong> {detailRequest.priority} </span>}
+                        {detailRequest.due_date && <span><strong>Due:</strong> {new Date(detailRequest.due_date).toLocaleDateString()} </span>}
+                      </div>
+                    )}
                     <div style={{ marginBottom: '12px' }}>
                       <strong>Status:</strong>{' '}
                       <span style={{
@@ -621,22 +728,35 @@ export default function History() {
                         borderRadius: '6px',
                         fontSize: '12px',
                         fontWeight: '600',
-                        background: detailRequest.status === 'pending_approval' ? 'var(--warning-bg)' :
+                        background: detailRequest.status === 'draft' ? 'var(--bg-gray-100)' :
+                                   detailRequest.status === 'pending_approval' ? 'var(--warning-bg)' :
                                    detailRequest.status === 'in_progress' ? 'var(--info-bg)' :
                                    detailRequest.status === 'completed' ? 'var(--success-bg)' :
                                    detailRequest.status === 'rejected' ? 'var(--error-bg)' : 'var(--info-bg)',
-                        color: detailRequest.status === 'pending_approval' ? 'var(--warning-color)' :
+                        color: detailRequest.status === 'draft' ? 'var(--text-secondary)' :
+                               detailRequest.status === 'pending_approval' ? 'var(--warning-color)' :
                                detailRequest.status === 'in_progress' ? 'var(--info-color)' :
                                detailRequest.status === 'completed' ? 'var(--success-color)' :
                                detailRequest.status === 'rejected' ? 'var(--error-color)' : 'var(--info-color)'
                       }}>
-                        {detailRequest.status === 'pending_approval' ? 'Pending approval' :
+                        {detailRequest.status === 'draft' ? 'Draft' :
+                         detailRequest.status === 'pending_approval' ? 'Pending approval' :
                          detailRequest.status === 'in_progress' ? 'In progress' :
                          detailRequest.status === 'completed' ? 'Completed' :
                          detailRequest.status === 'rejected' ? 'Rejected' : detailRequest.status}
                       </span>
                     </div>
                     <div style={{ marginBottom: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                      {detailRequest.status === 'draft' && (
+                        <>
+                          <button type="button" onClick={() => submitDraft(detailRequest.id)} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '14px' }}>
+                            Submit for approval
+                          </button>
+                          <button type="button" onClick={() => deleteDraft(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }}>
+                            Delete draft
+                          </button>
+                        </>
+                      )}
                       {detailRequest.pr_url ? (
                         <a href={detailRequest.pr_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)' }}>
                           Open PR →
@@ -645,11 +765,43 @@ export default function History() {
                       <button
                         type="button"
                         onClick={() => useAsTemplate(detailRequest)}
-                        className="btn btn-primary"
+                        className="btn btn-secondary"
                         style={{ padding: '8px 16px', fontSize: '14px' }}
                       >
                         Use as template
                       </button>
+                    </div>
+                    {/* Comments */}
+                    <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+                      <strong>Comments</strong>
+                      <div style={{ marginTop: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                        {comments.length === 0 ? (
+                          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>No comments yet.</p>
+                        ) : (
+                          comments.map(c => (
+                            <div key={c.id} style={{ marginBottom: '12px', padding: '8px', background: 'var(--bg-gray-50)', borderRadius: '8px' }}>
+                              <span style={{ fontWeight: '600', fontSize: '13px' }}>{c.username || 'User'}</span>
+                              <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                                {new Date(c.created_at).toLocaleString()}
+                              </span>
+                              <p style={{ margin: '4px 0 0', fontSize: '14px', whiteSpace: 'pre-wrap' }}>{c.body}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+                        <input
+                          type="text"
+                          placeholder="Add a comment..."
+                          value={commentBody}
+                          onChange={(e) => setCommentBody(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addComment())}
+                          style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}
+                        />
+                        <button type="button" onClick={addComment} className="btn btn-primary" disabled={!commentBody.trim() || commentSubmitting} style={{ padding: '8px 16px' }}>
+                          {commentSubmitting ? '...' : 'Post'}
+                        </button>
+                      </div>
                     </div>
                     {detailRequest.config && (
                       <div>

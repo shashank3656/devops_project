@@ -17,6 +17,8 @@ export default function CustomJSON() {
   const [team, setTeam] = useState('');
   const [clientName, setClientName] = useState('');
   const [env, setEnv] = useState('');
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
+  const [dueDate, setDueDate] = useState('');
   const [json, setJson] = useState('');
   const [jsonError, setJsonError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -97,9 +99,7 @@ export default function CustomJSON() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const submitRequest = async (asDraft: boolean) => {
     if (!team || !env) {
       setError('Please fill in Team Name and Environment');
       return;
@@ -114,7 +114,6 @@ export default function CustomJSON() {
     setError('');
     setPrUrl('');
 
-    // Use environment variable or fallback to localhost for local development
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
     try {
@@ -125,11 +124,13 @@ export default function CustomJSON() {
         throw new Error('Invalid JSON format');
       }
 
-      // Merge team, env, client_name into the JSON payload
       const payload = {
         team,
         env,
         client_name: clientName || undefined,
+        priority,
+        due_date: dueDate || undefined,
+        draft: asDraft,
         ...jsonPayload
       };
 
@@ -155,7 +156,8 @@ export default function CustomJSON() {
 
       const data = await response.json();
       setPrUrl(data.pr_url || '');
-      toast(data.message || 'Request submitted. An admin will approve it and the PR will be created.', 'success');
+      toast(data.message || (asDraft ? 'Draft saved.' : 'Request submitted. An admin will approve it and the PR will be created.'), 'success');
+      if (asDraft) router.push('/history');
     } catch (err: any) {
       console.error('Error creating PR:', err);
       const errorMessage = err.message || 'An error occurred while creating the PR';
@@ -169,6 +171,11 @@ export default function CustomJSON() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitRequest(false);
   };
 
   const exampleJSON = {
@@ -262,6 +269,30 @@ export default function CustomJSON() {
                     <option value="prod">Production</option>
                   </select>
                 </div>
+
+                <div className="form-group">
+                  <label className="label">Priority</label>
+                  <select
+                    className="select"
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value as 'low' | 'medium' | 'high' | 'urgent')}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="label">Due date</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                  />
+                </div>
               </div>
 
               <div className="form-group">
@@ -322,21 +353,32 @@ export default function CustomJSON() {
                 </div>
               )}
 
-              <button
-                type="submit"
-                className="btn btn-primary"
-                style={{ width: '100%', marginTop: '16px' }}
-                disabled={loading || !!jsonError || canCreatePR !== true}
-              >
-                {loading ? (
-                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <span className="loading"></span>
-                    Creating PR...
-                  </span>
-                ) : (
-                  'Create Pull Request'
-                )}
-              </button>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '16px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => submitRequest(true)}
+                  className="btn btn-secondary"
+                  style={{ flex: 1, minWidth: '140px' }}
+                  disabled={loading || !!jsonError || canCreatePR !== true}
+                >
+                  {loading ? <span className="loading"></span> : 'Save as draft'}
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  style={{ flex: 1, minWidth: '140px' }}
+                  disabled={loading || !!jsonError || canCreatePR !== true}
+                >
+                  {loading ? (
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                      <span className="loading"></span>
+                      Submitting...
+                    </span>
+                  ) : (
+                    'Submit for approval'
+                  )}
+                </button>
+              </div>
             </form>
 
             <div className="form-section" style={{ 
