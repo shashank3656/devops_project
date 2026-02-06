@@ -6,10 +6,18 @@ import { clouds, environments } from '../config/clouds';
 import { awsServices, awsServiceList, ServiceField } from '../config/awsServices';
 import { gcpServices, gcpServiceList } from '../config/gcpServices';
 
+interface TeamOption {
+  id: number;
+  name: string;
+  slug: string;
+}
+
 export default function SelectService() {
   const router = useRouter();
   const { toast } = useToast();
+  const [teams, setTeams] = useState<TeamOption[]>([]);
   const [team, setTeam] = useState('');
+  const [clientName, setClientName] = useState('');
   const [env, setEnv] = useState('');
   const [cloud, setCloud] = useState('');
   const [service, setService] = useState('');
@@ -29,13 +37,14 @@ export default function SelectService() {
     }
     const token = localStorage.getItem('token');
     if (token && token !== 'undefined') {
-      fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } })
-        .then((res) => res.ok ? res.json() : null)
-        .then((data) => {
-          const u = data?.user;
-          setCanCreatePR(!!(u?.verified && (u?.role === 'contributor' || u?.role === 'admin')));
-        })
-        .catch(() => setCanCreatePR(false));
+      Promise.all([
+        fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.ok ? res.json() : null),
+        fetch(`${apiUrl}/api/me/teams`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.ok ? res.json() : null),
+      ]).then(([meData, teamsData]) => {
+        const u = meData?.user;
+        setCanCreatePR(!!(u?.verified && (u?.role === 'contributor' || u?.role === 'admin')));
+        setTeams(teamsData?.teams || []);
+      }).catch(() => setCanCreatePR(false));
     } else {
       setCanCreatePR(false);
     }
@@ -169,6 +178,7 @@ export default function SelectService() {
         env,
         cloud,
         service,
+        client_name: clientName || undefined,
         config: formValues
       };
 
@@ -248,14 +258,31 @@ export default function SelectService() {
             <form onSubmit={handleSubmit}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '24px' }}>
                 <div className="form-group">
-                  <label className="label">Team Name *</label>
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="Enter team name"
+                  <label className="label">Team *</label>
+                  <select
+                    className="select"
                     value={team}
                     onChange={(e) => setTeam(e.target.value)}
                     required
+                  >
+                    <option value="">{teams.length === 0 ? 'No teams assigned' : 'Select team'}</option>
+                    {teams.map((t) => (
+                      <option key={t.id} value={t.slug}>{t.name}</option>
+                    ))}
+                  </select>
+                  {teams.length === 0 && (
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Contact your admin to be added to a team.</p>
+                  )}
+                </div>
+
+                <div className="form-group">
+                  <label className="label">Client Name</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Optional client or project name"
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
                   />
                 </div>
 

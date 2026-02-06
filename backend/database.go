@@ -19,6 +19,7 @@ type PRRequest struct {
 	Env         string    `json:"env"`
 	Cloud       string    `json:"cloud"`
 	Service     string    `json:"service"`
+	ClientName  string    `json:"client_name"`
 	PRURL       string    `json:"pr_url"`
 	Branch      string    `json:"branch"`
 	FilePath    string    `json:"file_path"`
@@ -211,6 +212,13 @@ func createTables() error {
 		}
 	}
 
+	// Migration: add client_name to pr_requests if not present
+	if _, err := DB.Exec("ALTER TABLE pr_requests ADD COLUMN client_name VARCHAR(255) DEFAULT ''"); err != nil {
+		if !strings.Contains(err.Error(), "already exists") && !strings.Contains(err.Error(), "duplicate column") {
+			log.Printf("Note: pr_requests client_name column: %v", err)
+		}
+	}
+
 	log.Println("Database tables created/verified")
 	return nil
 }
@@ -218,13 +226,13 @@ func createTables() error {
 // SavePRRequest saves a PR request to the database (pr_url may be "" for pending_approval)
 func SavePRRequest(req *PRRequest) error {
 	query := `
-		INSERT INTO pr_requests (team, env, cloud, service, pr_url, branch, file_path, status, config, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO pr_requests (team, env, cloud, service, client_name, pr_url, branch, file_path, status, config, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id, created_at, updated_at
 	`
 	err := DB.QueryRow(
 		query,
-		req.Team, req.Env, req.Cloud, req.Service,
+		req.Team, req.Env, req.Cloud, req.Service, req.ClientName,
 		req.PRURL, req.Branch, req.FilePath, req.Status,
 		req.Config, req.CreatedBy,
 	).Scan(&req.ID, &req.CreatedAt, &req.UpdatedAt)
@@ -301,7 +309,7 @@ func GetGitHubLogs(limit int) ([]GitHubLogEntry, error) {
 // GetPRRequests retrieves PR requests with optional filters (status filter optional)
 func GetPRRequests(team, env, cloud, statusFilter string, prID int, userIDInt int, limit, offset int) ([]PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, pr_url, branch, file_path, status, config, created_by, created_at, updated_at
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, pr_url, branch, file_path, status, config, created_by, created_at, updated_at
 		FROM pr_requests
 		WHERE 1=1
 	`
@@ -369,7 +377,7 @@ func GetPRRequests(team, env, cloud, statusFilter string, prID int, userIDInt in
 		var req PRRequest
 		var createdBy sql.NullInt64
 		err := rows.Scan(
-			&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service,
+			&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
 			&req.PRURL, &req.Branch, &req.FilePath, &req.Status,
 			&req.Config, &createdBy, &req.CreatedAt, &req.UpdatedAt,
 		)
@@ -392,13 +400,13 @@ func GetPRRequests(team, env, cloud, statusFilter string, prID int, userIDInt in
 // GetPRRequestByID retrieves a single PR request by ID
 func GetPRRequestByID(id int) (*PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, pr_url, branch, file_path, status, config, created_by, created_at, updated_at
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, pr_url, branch, file_path, status, config, created_by, created_at, updated_at
 		FROM pr_requests WHERE id = $1
 	`
 	var req PRRequest
 	var createdBy sql.NullInt64
 	err := DB.QueryRow(query, id).Scan(
-		&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service,
+		&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
 		&req.PRURL, &req.Branch, &req.FilePath, &req.Status,
 		&req.Config, &createdBy, &req.CreatedAt, &req.UpdatedAt,
 	)
