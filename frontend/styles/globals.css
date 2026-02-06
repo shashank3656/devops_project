@@ -79,8 +79,14 @@ body {
   color: var(--text-primary);
 }
 
-/* User portal – app layout sidebar */
+/* User portal – app layout (sidebar + main) */
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg-gray-50);
+}
 .app-sidebar {
+  flex-shrink: 0;
   width: 240px;
   min-width: 240px;
   background: var(--bg-white);
@@ -92,6 +98,65 @@ body {
   transition: width 0.2s ease, min-width 0.2s ease;
   overflow: hidden;
 }
+.app-main-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+.app-topbar {
+  flex-shrink: 0;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 24px;
+  background: var(--bg-white);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+}
+.app-topbar-spacer { flex: 1; }
+.app-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.app-topbar-notify {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.15s, background 0.15s;
+}
+.app-topbar-notify:hover { color: var(--primary-color); background: var(--info-bg); text-decoration: none; }
+.app-topbar-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  color: #fff;
+  background: var(--error-color);
+  border-radius: 999px;
+}
+.app-topbar-logout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+}
+.app-topbar-logout span { font-size: 14px; }
 .app-sidebar[data-collapsed="true"] {
   width: 72px;
   min-width: 72px;

@@ -12,6 +12,7 @@ import {
   IconMoon,
   IconSun,
   IconLogout,
+  IconBell,
   IconChevronLeft,
   IconChevronRight,
 } from './Icons';
@@ -135,7 +136,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const navItem = (href: string, label: string, icon: React.ReactNode, badge?: number) => {
+  const navItem = (href: string, label: string, icon: React.ReactNode) => {
     const isActive = router.pathname === href || (href !== '/home' && router.pathname.startsWith(href));
     return (
       <Link
@@ -159,22 +160,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       >
         <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</span>
         {!sidebarCollapsed && <span>{label}</span>}
-        {badge != null && badge > 0 && (
-          <span className="app-nav-badge" aria-label={`${badge} request updates`}>{badge > 99 ? '99+' : badge}</span>
-        )}
       </Link>
     );
   };
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        minHeight: '100vh',
-        background: 'var(--bg-gray-50)',
-      }}
-    >
-      {/* Left sidebar */}
+    <div className="app-layout">
       <aside className="app-sidebar" data-collapsed={sidebarCollapsed}>
         <div className="app-sidebar-header">
           <Link href="/home" className="app-sidebar-brand">
@@ -194,7 +185,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <nav className="app-sidebar-nav">
           {navItem('/home', 'Home', <IconHome />)}
           {navItem('/create-infrastructure', 'New Request', <IconPlus />)}
-          {navItem('/history', 'History', <IconHistory />, updatedRequestsCount)}
+          {navItem('/history', 'History', <IconHistory />)}
           {navItem('/profile', 'Profile', <IconUser />)}
         </nav>
         <div className="app-sidebar-footer">
@@ -207,20 +198,34 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <span className="app-sidebar-icon-wrap">{theme === 'dark' ? <IconSun /> : <IconMoon />}</span>
             {!sidebarCollapsed && <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>}
           </button>
-          <button
-            onClick={handleLogout}
-            className="btn btn-secondary app-sidebar-footer-btn"
-            title={sidebarCollapsed ? 'Logout' : undefined}
-          >
-            <span className="app-sidebar-icon-wrap"><IconLogout /></span>
-            {!sidebarCollapsed && <span>Logout</span>}
-          </button>
         </div>
       </aside>
-      {/* Main content */}
-      <main className="app-main">
-        {children}
-      </main>
+      <div className="app-main-wrap">
+        <header className="app-topbar">
+          <div className="app-topbar-spacer" />
+          <div className="app-topbar-actions">
+            <Link
+              href="/history"
+              className="app-topbar-notify"
+              title={updatedRequestsCount > 0 ? `${updatedRequestsCount} request update(s)` : 'Notifications'}
+            >
+              <IconBell />
+              {updatedRequestsCount > 0 && (
+                <span className="app-topbar-badge" aria-label={`${updatedRequestsCount} updates`}>
+                  {updatedRequestsCount > 99 ? '99+' : updatedRequestsCount}
+                </span>
+              )}
+            </Link>
+            <button type="button" className="app-topbar-logout btn btn-secondary" onClick={handleLogout} title="Logout">
+              <IconLogout />
+              <span>Logout</span>
+            </button>
+          </div>
+        </header>
+        <main className="app-main">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
