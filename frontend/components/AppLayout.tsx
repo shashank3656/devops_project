@@ -4,6 +4,17 @@ import { SITE_NAME } from '../lib/site';
 import { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext';
 import { getStoredTheme, setStoredTheme } from './NavBar';
+import {
+  IconHome,
+  IconPlus,
+  IconHistory,
+  IconUser,
+  IconMoon,
+  IconSun,
+  IconLogout,
+  IconChevronLeft,
+  IconChevronRight,
+} from './Icons';
 
 const SIDEBAR_WIDTH = 240;
 const SIDEBAR_COLLAPSED_WIDTH = 72;
@@ -90,7 +101,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const navItem = (href: string, label: string, icon?: string) => {
+  const navItem = (href: string, label: string, icon: React.ReactNode) => {
     const isActive = router.pathname === href || (href !== '/home' && router.pathname.startsWith(href));
     return (
       <Link
@@ -99,7 +110,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 10,
+          gap: 12,
           padding: sidebarCollapsed ? '12px' : '12px 16px',
           justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
           borderRadius: 'var(--radius-md)',
@@ -110,7 +121,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           transition: 'background 0.15s, color 0.15s',
         }}
       >
-        {icon && <span style={{ fontSize: '18px', flexShrink: 0 }}>{icon}</span>}
+        <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</span>
         {!sidebarCollapsed && <span>{label}</span>}
       </Link>
     );
@@ -125,110 +136,44 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       }}
     >
       {/* Left sidebar */}
-      <aside
-        style={{
-          width: sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH,
-          minWidth: sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH,
-          background: 'var(--bg-white)',
-          borderRight: '1px solid var(--border-color)',
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '20px 0',
-          boxShadow: 'var(--shadow-sm)',
-          transition: 'width 0.2s ease, min-width 0.2s ease',
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{
-          padding: sidebarCollapsed ? '0 12px 20px' : '0 16px 24px',
-          borderBottom: '1px solid var(--border-color)',
-          marginBottom: 16,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: sidebarCollapsed ? 'center' : 'space-between',
-          gap: 8,
-        }}>
-          <Link
-            href="/home"
-            style={{
-              fontSize: sidebarCollapsed ? 0 : 18,
-              fontWeight: 700,
-              color: 'var(--text-primary)',
-              textDecoration: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              flex: sidebarCollapsed ? 0 : 1,
-              minWidth: 0,
-              justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-            }}
-          >
-            <img src="/logo.svg" alt="" width={32} height={32} style={{ display: 'block', flexShrink: 0 }} />
-            {!sidebarCollapsed && <span>{SITE_NAME}</span>}
+      <aside className="app-sidebar" data-collapsed={sidebarCollapsed}>
+        <div className="app-sidebar-header">
+          <Link href="/home" className="app-sidebar-brand">
+            <img src="/logo.svg" alt="" width={36} height={36} />
+            {!sidebarCollapsed && <span className="app-sidebar-brand-text">{SITE_NAME}</span>}
           </Link>
           <button
             type="button"
+            className="app-sidebar-toggle"
             onClick={toggleSidebar}
             title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            style={{
-              flexShrink: 0,
-              width: 32,
-              height: 32,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: 'none',
-              background: 'var(--bg-gray-100)',
-              borderRadius: 'var(--radius-md)',
-              cursor: 'pointer',
-              fontSize: 16,
-              color: 'var(--text-secondary)',
-            }}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {sidebarCollapsed ? '»' : '«'}
+            {sidebarCollapsed ? <IconChevronRight /> : <IconChevronLeft />}
           </button>
         </div>
-        <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, padding: '0 12px' }}>
-          {navItem('/home', 'Home', '🏠')}
-          {navItem('/create-infrastructure', 'New Request', '➕')}
-          {navItem('/history', 'History', '📜')}
-          {navItem('/profile', 'Profile', '👤')}
+        <nav className="app-sidebar-nav">
+          {navItem('/home', 'Home', <IconHome />)}
+          {navItem('/create-infrastructure', 'New Request', <IconPlus />)}
+          {navItem('/history', 'History', <IconHistory />)}
+          {navItem('/profile', 'Profile', <IconUser />)}
         </nav>
-        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-color)' }}>
+        <div className="app-sidebar-footer">
           <button
             type="button"
             onClick={toggleTheme}
-            className="btn btn-secondary"
+            className="btn btn-secondary app-sidebar-footer-btn"
             title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-            style={{
-              width: '100%',
-              marginBottom: 8,
-              padding: '10px 14px',
-              fontSize: 14,
-              justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-            }}
           >
-            <span>{theme === 'dark' ? '☀️' : '🌙'}</span>
+            <span className="app-sidebar-icon-wrap">{theme === 'dark' ? <IconSun /> : <IconMoon />}</span>
             {!sidebarCollapsed && <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>}
           </button>
           <button
             onClick={handleLogout}
-            className="btn btn-secondary"
+            className="btn btn-secondary app-sidebar-footer-btn"
             title={sidebarCollapsed ? 'Logout' : undefined}
-            style={{
-              width: '100%',
-              padding: '10px 14px',
-              fontSize: 14,
-              justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-            }}
           >
-            <span>↪</span>
+            <span className="app-sidebar-icon-wrap"><IconLogout /></span>
             {!sidebarCollapsed && <span>Logout</span>}
           </button>
         </div>

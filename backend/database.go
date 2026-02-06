@@ -528,6 +528,19 @@ func UpdateUserProfile(userID int, username, email, role string, verified bool) 
 	return err
 }
 
+// DeleteUser removes a user by ID (admin only). Team memberships are removed by CASCADE.
+func DeleteUser(userID int) error {
+	result, err := DB.Exec("DELETE FROM users WHERE id = $1", userID)
+	if err != nil {
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("user not found")
+	}
+	return nil
+}
+
 // Stats holds aggregate counts for the dashboard
 type Stats struct {
 	TotalRequests int            `json:"total_requests"`

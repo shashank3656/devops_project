@@ -1,5 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">
-  <rect width="40" height="40" rx="8" fill="#2563eb"/>
-  <path d="M10 14h20v2H10v-2zm0 6h20v2H10v-2zm0 6h14v2H10v-2z" fill="white" fill-opacity="0.95"/>
-  <path d="M28 26l4 4 4-4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <rect width="40" height="40" rx="10" fill="#4f46e5"/>
+  <!-- Gate: left pillar, right pillar, arch on top -->
+  <rect x="11" y="18" width="4" height="16" rx="1" fill="white" fill-opacity="0.95"/>
+  <rect x="25" y="18" width="4" height="16" rx="1" fill="white" fill-opacity="0.95"/>
+  <path d="M11 18h18v4c0 2.2-1.8 4-4 4H15c-2.2 0-4-1.8-4-4v-4z" fill="white" fill-opacity="0.95"/>
 </svg>

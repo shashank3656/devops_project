@@ -406,6 +406,7 @@ func main() {
 	log.Println("  POST /api/admin/users - Create user (admin only)")
 	log.Println("  GET  /api/admin/users/:id - Get user (admin only)")
 	log.Println("  PATCH /api/admin/users/:id - Update user profile (admin only)")
+	log.Println("  DELETE /api/admin/users/:id - Delete user (admin only)")
 	log.Println("  GET  /api/admin/teams - List teams (admin only)")
 	log.Println("  POST /api/admin/teams - Create team (admin only)")
 	log.Println("  GET  /api/admin/teams/:id - Team detail + members (admin only)")

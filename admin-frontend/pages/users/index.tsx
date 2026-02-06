@@ -17,6 +17,8 @@ export default function UsersList() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -49,6 +51,33 @@ export default function UsersList() {
       setError('Failed to load users');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!userToDelete) return;
+    setDeleting(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/users/${userToDelete.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
+      });
+      if (res.status === 401 || res.status === 403) {
+        router.replace('/login');
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setUserToDelete(null);
+        await fetchUsers();
+      } else {
+        setError(data.error || 'Failed to delete user');
+      }
+    } catch (_) {
+      setError('Failed to delete user');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -85,31 +114,39 @@ export default function UsersList() {
               </div>
             ) : (
               <div className="table-wrap">
-                <table>
+                <table className="users-table">
                   <thead>
                     <tr>
                       <th>Username</th>
                       <th>Email</th>
                       <th>Role</th>
                       <th>Verified</th>
-                      <th style={{ width: 100 }}>Actions</th>
+                      <th className="th-actions">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {users.map((u) => (
                       <tr key={u.id}>
-                        <td style={{ fontWeight: 500 }}>{u.username}</td>
-                        <td style={{ color: 'var(--color-text-muted)' }}>{u.email}</td>
+                        <td className="td-username">{u.username}</td>
+                        <td className="td-email">{u.email}</td>
                         <td>
-                          <span style={{ textTransform: 'capitalize', fontWeight: 500 }}>
+                          <span className={`role-badge role-badge--${u.role || 'viewer'}`}>
                             {u.role || 'viewer'}
                           </span>
                         </td>
                         <td>{u.verified ? 'Yes' : 'No'}</td>
-                        <td>
-                          <Link href={`/users/${u.id}/edit`} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 14 }}>
+                        <td className="td-actions">
+                          <Link href={`/users/${u.id}/edit`} className="btn btn-secondary btn-sm">
                             Edit
                           </Link>
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            onClick={() => setUserToDelete(u)}
+                            aria-label={`Delete ${u.username}`}
+                          >
+                            Delete
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -119,6 +156,25 @@ export default function UsersList() {
             )}
           </div>
         </div>
+
+        {userToDelete && (
+          <div className="modal-overlay" onClick={() => !deleting && setUserToDelete(null)} role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h3 id="delete-modal-title" className="modal-title">Delete user?</h3>
+              <p className="modal-body">
+                This will remove <strong>{userToDelete.username}</strong> and their team memberships. This cannot be undone.
+              </p>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => !deleting && setUserToDelete(null)} disabled={deleting}>
+                  Cancel
+                </button>
+                <button type="button" className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </AdminLayout>
     </>
   );
