@@ -55,7 +55,7 @@ export default function UsersList() {
   return (
     <>
       <Head>
-        <title>Users - Admin</title>
+        <title>Users - InfraGate Admin</title>
       </Head>
       <AdminLayout>
         <div className="container">
@@ -92,6 +92,7 @@ export default function UsersList() {
                       <th>Email</th>
                       <th>Role</th>
                       <th>Verified</th>
+                      <th style={{ width: 100 }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -105,6 +106,11 @@ export default function UsersList() {
                           </span>
                         </td>
                         <td>{u.verified ? 'Yes' : 'No'}</td>
+                        <td>
+                          <Link href={`/users/${u.id}/edit`} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 14 }}>
+                            Edit
+                          </Link>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
