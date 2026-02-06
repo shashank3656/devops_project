@@ -7,6 +7,7 @@ RUN npm install
 COPY next.config.js tsconfig.json next-env.d.ts ./
 COPY pages ./pages
 COPY components ./components
+COPY lib ./lib
 COPY styles ./styles
 COPY public ./public
 RUN npm run build
