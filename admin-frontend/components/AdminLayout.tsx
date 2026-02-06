@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ReactNode, useEffect, useState } from 'react';
+import { ADMIN_SITE_NAME } from '../lib/site';
 
 const SIDEBAR_STORAGE_KEY = 'admin_sidebar_collapsed';
 
@@ -46,7 +47,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         <div className="admin-sidebar-header">
           <Link href="/dashboard" className="admin-sidebar-brand">
             <img src="/logo.svg" alt="" width={36} height={36} />
-            <span className="admin-sidebar-brand-text">Admin</span>
+            <span className="admin-sidebar-brand-text">{ADMIN_SITE_NAME}</span>
           </Link>
           <button
             type="button"

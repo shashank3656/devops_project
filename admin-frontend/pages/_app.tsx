@@ -1,8 +1,7 @@
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
+import { ADMIN_SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
-
-export const ADMIN_SITE_NAME = 'InfraGate Admin';
 
 export default function App({ Component, pageProps }: AppProps) {
   return (

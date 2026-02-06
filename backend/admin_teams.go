@@ -171,6 +171,107 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// adminUserDetailHandler handles GET and PATCH /api/admin/users/:id (admin only)
+func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/admin/users/")
+	path = strings.Trim(path, "/")
+	if path == "" {
+		http.NotFound(w, r)
+		return
+	}
+	id, err := strconv.Atoi(path)
+	if err != nil || id <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid user id", "status": "error"})
+		return
+	}
+	user, err := GetUserByID(id)
+	if err != nil || user == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "user not found", "status": "error"})
+		return
+	}
+	switch r.Method {
+	case "GET":
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"user": map[string]interface{}{
+				"id": user.ID, "username": user.Username, "email": user.Email,
+				"role": user.Role, "verified": user.Verified, "created_at": user.CreatedAt,
+			},
+			"status": "ok",
+		})
+		return
+	case "PATCH", "PUT":
+		var req struct {
+			Username string `json:"username"`
+			Email    string `json:"email"`
+			Role     string `json:"role"`
+			Verified *bool  `json:"verified"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			return
+		}
+		username := strings.TrimSpace(req.Username)
+		email := strings.TrimSpace(req.Email)
+		if username == "" {
+			username = user.Username
+		}
+		if email == "" {
+			email = user.Email
+		}
+		role := req.Role
+		if role != "viewer" && role != "contributor" && role != "admin" {
+			role = user.Role
+		}
+		verified := user.Verified
+		if req.Verified != nil {
+			verified = *req.Verified
+		}
+		if err := UpdateUserProfile(id, username, email, role, verified); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		updated, _ := GetUserByID(id)
+		if updated != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"user": map[string]interface{}{
+					"id": updated.ID, "username": updated.Username, "email": updated.Email,
+					"role": updated.Role, "verified": updated.Verified,
+				},
+				"status": "ok",
+			})
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok"})
+		}
+		return
+	}
+	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
 // adminTeamsListHandler GET /api/admin/teams
 func adminTeamsListHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)

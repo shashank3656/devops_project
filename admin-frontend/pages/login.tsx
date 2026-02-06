@@ -52,7 +52,7 @@ export default function AdminLogin() {
   return (
     <>
       <Head>
-        <title>Admin Login - Infrastructure Portal</title>
+        <title>Admin Login - InfraGate Admin</title>
       </Head>
       <div
         style={{
@@ -65,7 +65,7 @@ export default function AdminLogin() {
       >
         <div className="card" style={{ maxWidth: 420, width: '100%' }}>
           <h1 style={{ marginBottom: 8, fontSize: 24, fontWeight: 700 }}>
-            Admin Portal
+            InfraGate Admin
           </h1>
           <p
             className="label-optional"

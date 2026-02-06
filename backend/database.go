@@ -506,6 +506,28 @@ func UpdateUserRole(userID int, role string) error {
 	return err
 }
 
+// UpdateUserProfile updates username, email, role, verified for a user (caller must enforce admin auth)
+func UpdateUserProfile(userID int, username, email, role string, verified bool) error {
+	if username == "" || email == "" {
+		return fmt.Errorf("username and email are required")
+	}
+	if role != "viewer" && role != "contributor" && role != "admin" {
+		return fmt.Errorf("invalid role: %s", role)
+	}
+	var exists int
+	if err := DB.QueryRow("SELECT id FROM users WHERE username = $1 AND id != $2", username, userID).Scan(&exists); err == nil {
+		return fmt.Errorf("username already exists")
+	}
+	if err := DB.QueryRow("SELECT id FROM users WHERE email = $1 AND id != $2", email, userID).Scan(&exists); err == nil {
+		return fmt.Errorf("email already exists")
+	}
+	_, err := DB.Exec(
+		"UPDATE users SET username = $1, email = $2, role = $3, verified = $4 WHERE id = $5",
+		username, email, role, verified, userID,
+	)
+	return err
+}
+
 // Stats holds aggregate counts for the dashboard
 type Stats struct {
 	TotalRequests int            `json:"total_requests"`
