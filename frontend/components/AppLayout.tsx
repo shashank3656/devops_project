@@ -153,7 +153,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           color: isActive ? 'var(--primary-color)' : 'var(--text-primary)',
           fontWeight: isActive ? 600 : 500,
           textDecoration: 'none',
-          background: isActive ? 'var(--info-bg)' : 'transparent',
+          background: isActive ? 'var(--primary-tint)' : 'transparent',
           transition: 'background 0.15s, color 0.15s',
           position: 'relative',
         }}
