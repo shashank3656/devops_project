@@ -25,7 +25,9 @@ export default function AdminRequests() {
   const [team, setTeam] = useState('');
   const [env, setEnv] = useState('');
   const [cloud, setCloud] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [offset, setOffset] = useState(0);
+  const [actioningId, setActioningId] = useState<number | null>(null);
   const limit = 20;
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -39,10 +41,11 @@ export default function AdminRequests() {
     fetchRequests({ offset });
   }, [token, router, offset]);
 
-  const fetchRequests = (overrides?: { team?: string; env?: string; cloud?: string; offset?: number }) => {
+  const fetchRequests = (overrides?: { team?: string; env?: string; cloud?: string; status?: string; offset?: number }) => {
     const t = overrides?.team !== undefined ? overrides.team : team;
     const e = overrides?.env !== undefined ? overrides.env : env;
     const c = overrides?.cloud !== undefined ? overrides.cloud : cloud;
+    const s = overrides?.status !== undefined ? overrides.status : statusFilter;
     const o = overrides?.offset !== undefined ? overrides.offset : offset;
     setLoading(true);
     setError('');
@@ -50,6 +53,7 @@ export default function AdminRequests() {
     if (t) params.set('team', t);
     if (e) params.set('env', e);
     if (c) params.set('cloud', c);
+    if (s) params.set('status', s);
     params.set('limit', String(limit));
     params.set('offset', String(o));
     fetch(`${apiUrl}/api/admin/requests?${params}`, {
@@ -72,6 +76,74 @@ export default function AdminRequests() {
     e.preventDefault();
     setOffset(0);
     fetchRequests({ offset: 0 });
+  };
+
+  const statusLabel = (s: string) =>
+    s === 'pending_approval' ? 'Pending approval' : s === 'in_progress' ? 'In progress' : s === 'completed' ? 'Completed' : s === 'rejected' ? 'Rejected' : s;
+
+  const handleApprove = async (id: number) => {
+    setActioningId(id);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/requests/${id}/approve`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        fetchRequests({ offset });
+      } else {
+        setError(data.error || 'Failed to approve');
+      }
+    } catch (_) {
+      setError('Failed to approve');
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const handleReject = async (id: number) => {
+    if (!confirm('Reject this request? The user will see status "Rejected".')) return;
+    setActioningId(id);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/requests/${id}/reject`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        fetchRequests({ offset });
+      } else {
+        setError(data.error || 'Failed to reject');
+      }
+    } catch (_) {
+      setError('Failed to reject');
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const handleSetStatus = async (id: number, status: string) => {
+    setActioningId(id);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/requests/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        fetchRequests({ offset });
+      } else {
+        setError(data.error || 'Failed to update status');
+      }
+    } catch (_) {
+      setError('Failed to update status');
+    } finally {
+      setActioningId(null);
+    }
   };
 
   const totalPages = Math.ceil(total / limit) || 1;
@@ -117,6 +189,18 @@ export default function AdminRequests() {
               value={cloud}
               onChange={(e) => setCloud(e.target.value)}
             />
+            <select
+              className="input"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{ minWidth: 160 }}
+            >
+              <option value="">All statuses</option>
+              <option value="pending_approval">Pending approval</option>
+              <option value="in_progress">In progress</option>
+              <option value="completed">Completed</option>
+              <option value="rejected">Rejected</option>
+            </select>
             <button type="submit" className="btn btn-primary">
               Apply filters
             </button>
@@ -127,8 +211,9 @@ export default function AdminRequests() {
                 setTeam('');
                 setEnv('');
                 setCloud('');
+                setStatusFilter('');
                 setOffset(0);
-                fetchRequests({ team: '', env: '', cloud: '', offset: 0 });
+                fetchRequests({ team: '', env: '', cloud: '', status: '', offset: 0 });
               }}
             >
               Clear
@@ -155,7 +240,7 @@ export default function AdminRequests() {
                         <th>Service</th>
                         <th>Status</th>
                         <th>Created</th>
-                        <th></th>
+                        <th style={{ width: 200 }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -167,21 +252,69 @@ export default function AdminRequests() {
                           <td>{req.cloud}</td>
                           <td>{req.service}</td>
                           <td>
-                            <span style={{ textTransform: 'capitalize', fontWeight: 500 }}>
-                              {req.status}
+                            <span
+                              style={{
+                                padding: '4px 10px',
+                                borderRadius: 6,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                background: req.status === 'pending_approval' ? 'var(--color-warning-bg)' :
+                                           req.status === 'in_progress' ? 'var(--color-primary-light)' :
+                                           req.status === 'completed' ? 'var(--color-success-bg)' :
+                                           req.status === 'rejected' ? 'var(--color-danger-bg)' : '#f1f5f9',
+                                color: req.status === 'pending_approval' ? 'var(--color-warning)' :
+                                       req.status === 'in_progress' ? 'var(--color-primary)' :
+                                       req.status === 'completed' ? 'var(--color-success)' :
+                                       req.status === 'rejected' ? 'var(--color-danger)' : 'var(--color-text-muted)'
+                              }}
+                            >
+                              {statusLabel(req.status)}
                             </span>
                           </td>
                           <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
                             {new Date(req.created_at).toLocaleString()}
                           </td>
                           <td>
-                            {req.pr_url ? (
-                              <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
-                                Open PR
-                              </a>
-                            ) : (
-                              <span style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>—</span>
-                            )}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                              {req.status === 'pending_approval' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    style={{ padding: '6px 12px', fontSize: 13 }}
+                                    disabled={actioningId !== null}
+                                    onClick={() => handleApprove(req.id)}
+                                  >
+                                    {actioningId === req.id ? '…' : 'Approve'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-danger"
+                                    style={{ padding: '6px 12px', fontSize: 13 }}
+                                    disabled={actioningId !== null}
+                                    onClick={() => handleReject(req.id)}
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              )}
+                              {req.status === 'in_progress' && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{ padding: '6px 12px', fontSize: 13 }}
+                                  disabled={actioningId !== null}
+                                  onClick={() => handleSetStatus(req.id, 'completed')}
+                                >
+                                  {actioningId === req.id ? '…' : 'Mark completed'}
+                                </button>
+                              )}
+                              {req.pr_url ? (
+                                <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
+                                  Open PR
+                                </a>
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                       ))}

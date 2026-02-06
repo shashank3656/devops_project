@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 // adminRequestsHandler GET /api/admin/requests - list all PR requests (admin only, no user filter)
@@ -31,6 +33,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	team := r.URL.Query().Get("team")
 	env := r.URL.Query().Get("env")
 	cloud := r.URL.Query().Get("cloud")
+	statusFilter := r.URL.Query().Get("status")
 	prIDStr := r.URL.Query().Get("id")
 	prID := 0
 	if prIDStr != "" {
@@ -52,7 +55,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// userID 0 = all requests
-	requests, err := GetPRRequests(team, env, cloud, prID, 0, limit, offset)
+	requests, err := GetPRRequests(team, env, cloud, statusFilter, prID, 0, limit, offset)
 	if err != nil {
 		log.Printf("Admin requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -60,7 +63,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch requests", "status": "error"})
 		return
 	}
-	totalCount, _ := GetTotalCount(team, env, cloud, prID, 0)
+	totalCount, _ := GetTotalCount(team, env, cloud, statusFilter, prID, 0)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -103,4 +106,131 @@ func adminStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "stats": stats})
+}
+
+// adminRequestActionHandler handles /api/admin/requests/:id/approve, /reject, /status (admin only)
+func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/admin/requests/")
+	path = strings.Trim(path, "/")
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 {
+		http.NotFound(w, r)
+		return
+	}
+	idStr, action := parts[0], parts[1]
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid request id", "status": "error"})
+		return
+	}
+
+	req, err := GetPRRequestByID(id)
+	if err != nil || req == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "request not found", "status": "error"})
+		return
+	}
+
+	switch action {
+	case "approve":
+		if r.Method != "POST" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if req.Status != "pending_approval" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending_approval requests can be approved", "status": "error"})
+			return
+		}
+		prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config))
+		if err != nil {
+			log.Printf("Admin approve: create PR failed: %v", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": fmt.Sprintf("failed to create PR: %v", err), "status": "error"})
+			return
+		}
+		if err := UpdatePRRequestWithPR(id, prURL); err != nil {
+			log.Printf("Admin approve: update request failed: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "pr_url": prURL, "message": "PR created and request set to in_progress"})
+		return
+
+	case "reject":
+		if r.Method != "POST" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if req.Status != "pending_approval" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending_approval requests can be rejected", "status": "error"})
+			return
+		}
+		if err := UpdatePRRequestStatus(id, "rejected"); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Request rejected"})
+		return
+
+	case "status":
+		if r.Method != "PATCH" && r.Method != "PUT" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			Status string `json:"status"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			return
+		}
+		switch body.Status {
+		case "in_progress", "completed", "rejected":
+			// allow admin to set completed (e.g. when PR merged) or revert
+			break
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "status must be in_progress, completed, or rejected", "status": "error"})
+			return
+		}
+		if err := UpdatePRRequestStatus(id, body.Status); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "request_status": body.Status})
+		return
+
+	default:
+		http.NotFound(w, r)
+		return
+	}
 }

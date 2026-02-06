@@ -479,41 +479,56 @@ export default function History() {
                             borderRadius: '6px',
                             fontSize: '12px',
                             fontWeight: '600',
-                            background: req.status === 'pending' ? 'var(--warning-bg)' : 
-                                       req.status === 'merged' ? 'var(--success-bg)' : 
+                            background: req.status === 'pending_approval' ? 'var(--warning-bg)' :
+                                       req.status === 'in_progress' ? 'var(--info-bg)' :
+                                       req.status === 'completed' ? 'var(--success-bg)' :
+                                       req.status === 'rejected' ? 'var(--error-bg)' :
+                                       req.status === 'pending' ? 'var(--warning-bg)' :
+                                       req.status === 'merged' ? 'var(--success-bg)' :
                                        req.status === 'closed' ? 'var(--error-bg)' : 'var(--info-bg)',
-                            color: req.status === 'pending' ? 'var(--warning-color)' : 
-                                  req.status === 'merged' ? 'var(--success-color)' : 
-                                  req.status === 'closed' ? 'var(--error-color)' : 'var(--info-color)'
+                            color: req.status === 'pending_approval' ? 'var(--warning-color)' :
+                                   req.status === 'in_progress' ? 'var(--info-color)' :
+                                   req.status === 'completed' ? 'var(--success-color)' :
+                                   req.status === 'rejected' ? 'var(--error-color)' :
+                                   req.status === 'pending' ? 'var(--warning-color)' :
+                                   req.status === 'merged' ? 'var(--success-color)' :
+                                   req.status === 'closed' ? 'var(--error-color)' : 'var(--info-color)'
                           }}>
-                            {req.status}
+                            {req.status === 'pending_approval' ? 'Pending approval' :
+                             req.status === 'in_progress' ? 'In progress' :
+                             req.status === 'completed' ? 'Completed' :
+                             req.status === 'rejected' ? 'Rejected' : req.status}
                           </span>
                         </td>
                         <td style={{ padding: '16px', fontSize: '14px', color: 'var(--text-secondary)' }}>
                           {formatDate(req.created_at)}
                         </td>
                         <td style={{ padding: '16px' }}>
-                          <a 
-                            href={req.pr_url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            style={{
-                              color: 'var(--primary-color)',
-                              textDecoration: 'none',
-                              fontWeight: '500',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.textDecoration = 'underline';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.textDecoration = 'none';
-                            }}
-                          >
-                            View PR →
-                          </a>
+                          {req.pr_url ? (
+                            <a 
+                              href={req.pr_url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              style={{
+                                color: 'var(--primary-color)',
+                                textDecoration: 'none',
+                                fontWeight: '500',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.textDecoration = 'underline';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.textDecoration = 'none';
+                              }}
+                            >
+                              View PR →
+                            </a>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>—</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -599,10 +614,34 @@ export default function History() {
                     <div style={{ marginBottom: '12px' }}>
                       <strong>Team:</strong> {detailRequest.team} &nbsp;|&nbsp; <strong>Env:</strong> {detailRequest.env} &nbsp;|&nbsp; <strong>Cloud:</strong> {detailRequest.cloud} &nbsp;|&nbsp; <strong>Service:</strong> {detailRequest.service}
                     </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <strong>Status:</strong>{' '}
+                      <span style={{
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        background: detailRequest.status === 'pending_approval' ? 'var(--warning-bg)' :
+                                   detailRequest.status === 'in_progress' ? 'var(--info-bg)' :
+                                   detailRequest.status === 'completed' ? 'var(--success-bg)' :
+                                   detailRequest.status === 'rejected' ? 'var(--error-bg)' : 'var(--info-bg)',
+                        color: detailRequest.status === 'pending_approval' ? 'var(--warning-color)' :
+                               detailRequest.status === 'in_progress' ? 'var(--info-color)' :
+                               detailRequest.status === 'completed' ? 'var(--success-color)' :
+                               detailRequest.status === 'rejected' ? 'var(--error-color)' : 'var(--info-color)'
+                      }}>
+                        {detailRequest.status === 'pending_approval' ? 'Pending approval' :
+                         detailRequest.status === 'in_progress' ? 'In progress' :
+                         detailRequest.status === 'completed' ? 'Completed' :
+                         detailRequest.status === 'rejected' ? 'Rejected' : detailRequest.status}
+                      </span>
+                    </div>
                     <div style={{ marginBottom: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                      <a href={detailRequest.pr_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)' }}>
-                        Open PR →
-                      </a>
+                      {detailRequest.pr_url ? (
+                        <a href={detailRequest.pr_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)' }}>
+                          Open PR →
+                        </a>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => useAsTemplate(detailRequest)}

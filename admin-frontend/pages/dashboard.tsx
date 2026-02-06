@@ -94,7 +94,7 @@ export default function AdminDashboard() {
             <>
               {stats && (
                 <div className="stats-grid">
-                  <div className="stat-card">
+                  <div className="stat-card stat-card-primary">
                     <div className="stat-card-value">{stats.total_requests}</div>
                     <div className="stat-card-label">Total PR requests</div>
                   </div>
@@ -143,8 +143,26 @@ export default function AdminDashboard() {
                             <td>{req.cloud}</td>
                             <td>{req.service}</td>
                             <td>
-                              <span style={{ textTransform: 'capitalize', fontWeight: 500 }}>
-                                {req.status}
+                              <span
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: 6,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  background: req.status === 'pending_approval' ? 'var(--color-warning-bg)' :
+                                             req.status === 'in_progress' ? 'var(--color-primary-light)' :
+                                             req.status === 'completed' ? 'var(--color-success-bg)' :
+                                             req.status === 'rejected' ? 'var(--color-danger-bg)' : '#f1f5f9',
+                                  color: req.status === 'pending_approval' ? 'var(--color-warning)' :
+                                         req.status === 'in_progress' ? 'var(--color-primary)' :
+                                         req.status === 'completed' ? 'var(--color-success)' :
+                                         req.status === 'rejected' ? 'var(--color-danger)' : 'var(--color-text-muted)'
+                                }}
+                              >
+                                {req.status === 'pending_approval' ? 'Pending approval' :
+                                 req.status === 'in_progress' ? 'In progress' :
+                                 req.status === 'completed' ? 'Completed' :
+                                 req.status === 'rejected' ? 'Rejected' : req.status}
                               </span>
                             </td>
                             <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>

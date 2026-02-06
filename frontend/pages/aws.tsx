@@ -16,13 +16,21 @@ export default function AWSPage() {
     };
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-    await fetch(`${apiUrl}/create-pr`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const headers: HeadersInit = { 'Content-Type': 'application/json' };
+    if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${apiUrl}/api/request`, {
+      method: 'POST',
+      headers,
       body: JSON.stringify(payload)
     });
-
-    alert("PR Created");
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      alert(data.message || 'Request submitted. An admin will approve it and the PR will be created.');
+    } else {
+      alert(data.error || 'Request failed');
+    }
   };
 
   return (
