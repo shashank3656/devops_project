@@ -242,7 +242,7 @@ func createTables() error {
 	}
 
 	// request_comments: comments on requests (user and admin)
-	_, err = DB.Exec(`
+	_, errComments := DB.Exec(`
 		CREATE TABLE IF NOT EXISTS request_comments (
 			id SERIAL PRIMARY KEY,
 			request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
@@ -251,8 +251,8 @@ func createTables() error {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
-	if err != nil {
-		return fmt.Errorf("create request_comments: %w", err)
+	if errComments != nil {
+		return fmt.Errorf("create request_comments: %w", errComments)
 	}
 
 	log.Println("Database tables created/verified")
