@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -96,7 +97,8 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 // adminUsersCreateHandler POST /api/admin/users - create a new user (admin only)
 func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
-	if _, ok := requireAdmin(w, r); !ok {
+	adminID, ok := requireAdmin(w, r)
+	if !ok {
 		return
 	}
 	if DB == nil {
@@ -104,6 +106,10 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
 		return
+	}
+	var adminIDPtr *int
+	if adminID > 0 {
+		adminIDPtr = &adminID
 	}
 	var req struct {
 		Username string `json:"username"`
@@ -163,6 +169,7 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to create user", "status": "error"})
 		return
 	}
+	AppendAuditLog(adminIDPtr, "user_create", "user", strconv.Itoa(userID), req.Username)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -178,8 +185,13 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireAdmin(w, r); !ok {
+	adminID, ok := requireAdmin(w, r)
+	if !ok {
 		return
+	}
+	var adminIDPtr *int
+	if adminID > 0 {
+		adminIDPtr = &adminID
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -253,6 +265,7 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
+		AppendAuditLog(adminIDPtr, "user_update", "user", strconv.Itoa(id), username)
 		updated, _ := GetUserByID(id)
 		if updated != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -279,6 +292,7 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
+		AppendAuditLog(adminIDPtr, "user_delete", "user", strconv.Itoa(id), user.Username)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "user deleted"})
 		return
@@ -365,6 +379,7 @@ func adminTeamsCreateHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
+	AppendAuditLog(createdBy, "team_create", "team", strconv.Itoa(team.ID), team.Name)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"team": team, "status": "ok"})
 }
@@ -416,12 +431,13 @@ func adminTeamMembersAddHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	adminID, ok := requireAdmin(w, r)
+	if !ok {
 		return
 	}
-	if _, ok := requireAdmin(w, r); !ok {
-		return
+	var adminIDPtr *int
+	if adminID > 0 {
+		adminIDPtr = &adminID
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -461,6 +477,7 @@ func adminTeamMembersAddHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
+	AppendAuditLog(adminIDPtr, "team_member_add", "team", strconv.Itoa(teamID), fmt.Sprintf("user_id=%d", body.UserID))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"member": member, "status": "ok"})
 }
@@ -472,11 +489,16 @@ func adminTeamMembersRemoveHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	if r.Method != "DELETE" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	adminID, ok := requireAdmin(w, r)
+	if !ok {
 		return
 	}
-	if _, ok := requireAdmin(w, r); !ok {
+	var adminIDPtr *int
+	if adminID > 0 {
+		adminIDPtr = &adminID
+	}
+	if r.Method != "DELETE" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	if DB == nil {
@@ -508,6 +530,7 @@ func adminTeamMembersRemoveHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
+	AppendAuditLog(adminIDPtr, "team_member_remove", "team", strconv.Itoa(teamID), fmt.Sprintf("user_id=%d", userID))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"message": "member removed", "status": "ok"})
 }

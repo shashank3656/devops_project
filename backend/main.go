@@ -398,6 +398,15 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Optional initial comment when raising the PR (saved as first request comment)
+	if userID > 0 {
+		if ic, ok := payload["initial_comment"].(string); ok && strings.TrimSpace(ic) != "" {
+			_ = AddRequestComment(prRequest.ID, userID, strings.TrimSpace(ic))
+		} else if ic, ok := payload["comment"].(string); ok && strings.TrimSpace(ic) != "" {
+			_ = AddRequestComment(prRequest.ID, userID, strings.TrimSpace(ic))
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	msg := "Request submitted. An admin will approve it and the PR will be created."
@@ -453,7 +462,10 @@ func main() {
 	http.HandleFunc("/api/admin/requests/", adminRequestActionHandler)
 	http.HandleFunc("/api/admin/notifications", adminNotificationsHandler)
 	http.HandleFunc("/api/admin/stats", adminStatsHandler)
+	http.HandleFunc("/api/admin/dashboard-stats", adminDashboardStatsHandler)
+	http.HandleFunc("/api/admin/audit-log", adminAuditLogHandler)
 	http.HandleFunc("/health", healthHandler)
+	http.HandleFunc("/ready", readyHandler)
 	
 	// Swagger/OpenAPI endpoint (will be served from static files or generated)
 	http.HandleFunc("/swagger.json", swaggerHandler)
@@ -508,7 +520,6 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 		"status": "ok",
 		"time":   time.Now().Format(time.RFC3339),
 	}
-	
 	// Check database connection
 	if DB != nil {
 		if err := DB.Ping(); err == nil {
@@ -519,7 +530,25 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		status["database"] = "not_initialized"
 	}
-	
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)
+}
+
+// readyHandler GET /ready - readiness probe (DB must be up)
+func readyHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if DB == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "not_ready", "reason": "database not initialized"})
+		return
+	}
+	if err := DB.Ping(); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "not_ready", "reason": "database ping failed"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
 }

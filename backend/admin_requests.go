@@ -9,6 +9,83 @@ import (
 	"strings"
 )
 
+// adminDashboardStatsHandler GET /api/admin/dashboard-stats - quick counts for admin dashboard
+func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"total_users": 0, "total_teams": 0, "unverified_users": 0,
+			"requests_this_week": 0, "pending_approval": 0, "status": "ok",
+		})
+		return
+	}
+	stats, _ := GetDashboardStats()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"total_users":        stats.TotalUsers,
+		"total_teams":        stats.TotalTeams,
+		"unverified_users":   stats.UnverifiedUsers,
+		"requests_this_week": stats.RequestsThisWeek,
+		"pending_approval":   stats.PendingApproval,
+		"status":             "ok",
+	})
+}
+
+// adminAuditLogHandler GET /api/admin/audit-log - list admin audit log entries
+func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"entries": []interface{}{}, "status": "ok"})
+		return
+	}
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	offset := 0
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if n, err := strconv.Atoi(o); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+	actionFilter := r.URL.Query().Get("action")
+	entries, err := GetAuditLogs(limit, offset, actionFilter)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch audit log", "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"entries": entries, "status": "ok"})
+}
+
 // adminRequestsHandler GET /api/admin/requests - list all PR requests (admin only, no user filter)
 func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
@@ -178,20 +255,30 @@ func adminBulkApproveHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// adminBulkRejectHandler POST /api/admin/requests/bulk-reject with body {"ids": [1,2,3]}
+// adminBulkRejectHandler POST /api/admin/requests/bulk-reject with body {"ids": [1,2,3], "reason": "optional"}
 func adminBulkRejectHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	adminID, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
-		IDs []int `json:"ids"`
+		IDs    []int  `json:"ids"`
+		Reason string `json:"reason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "ids array required", "status": "error"})
 		return
+	}
+	reason := strings.TrimSpace(body.Reason)
+	var adminIDPtr *int
+	if adminID > 0 {
+		adminIDPtr = &adminID
 	}
 	var rejected, failed []int
 	for _, id := range body.IDs {
@@ -203,10 +290,11 @@ func adminBulkRejectHandler(w http.ResponseWriter, r *http.Request) {
 			failed = append(failed, id)
 			continue
 		}
-		if err := UpdatePRRequestStatus(id, "rejected"); err != nil {
+		if err := UpdatePRRequestReject(id, reason); err != nil {
 			failed = append(failed, id)
 			continue
 		}
+		AppendAuditLog(adminIDPtr, "request_reject", "pr_request", strconv.Itoa(id), reason)
 		rejected = append(rejected, id)
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -224,7 +312,8 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireAdmin(w, r); !ok {
+	adminID, ok := requireAdmin(w, r)
+	if !ok {
 		return
 	}
 	if DB == nil {
@@ -232,6 +321,10 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
 		return
+	}
+	var adminIDPtr *int
+	if adminID > 0 {
+		adminIDPtr = &adminID
 	}
 
 	path := strings.TrimPrefix(r.URL.Path, "/api/admin/requests/")
@@ -291,6 +384,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), prURL)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "pr_url": prURL, "message": "PR created and request set to in_progress"})
 		return
@@ -306,10 +400,18 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending_approval requests can be rejected", "status": "error"})
 			return
 		}
-		if err := UpdatePRRequestStatus(id, "rejected"); err != nil {
+		reason := ""
+		var bodyReject struct {
+			Reason string `json:"reason"`
+		}
+		if json.NewDecoder(r.Body).Decode(&bodyReject) == nil && bodyReject.Reason != "" {
+			reason = strings.TrimSpace(bodyReject.Reason)
+		}
+		if err := UpdatePRRequestReject(id, reason); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		AppendAuditLog(adminIDPtr, "request_reject", "pr_request", strconv.Itoa(id), reason)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Request rejected"})
 		return

@@ -20,6 +20,7 @@ interface PRRequest {
   branch: string;
   file_path: string;
   status: string;
+  reject_reason?: string;
   created_at: string;
   updated_at: string;
   created_by: number | null;
@@ -52,7 +53,7 @@ export default function History() {
   const [comments, setComments] = useState<RequestComment[]>([]);
   const [commentBody, setCommentBody] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
-  const [sortBy, setSortBy] = useState<'id' | 'created_at' | 'team' | 'cloud'>('created_at');
+  const [sortBy, setSortBy] = useState<'id' | 'created_at' | 'team' | 'cloud' | 'priority' | 'due_date'>('created_at');
   const [sortDesc, setSortDesc] = useState(true);
   const rawConfigByRequestId = useRef<Record<number, string>>({});
 
@@ -261,12 +262,19 @@ export default function History() {
     }
   };
 
+  const priorityOrder: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
   const sortedRequests = [...requests].sort((a, b) => {
     let aVal: string | number = (a as any)[sortBy];
     let bVal: string | number = (b as any)[sortBy];
     if (sortBy === 'created_at') {
       aVal = new Date(a.created_at).getTime();
       bVal = new Date(b.created_at).getTime();
+    } else if (sortBy === 'due_date') {
+      aVal = a.due_date ? new Date(a.due_date).getTime() : 0;
+      bVal = b.due_date ? new Date(b.due_date).getTime() : 0;
+    } else if (sortBy === 'priority') {
+      aVal = priorityOrder[(a as any).priority || 'medium'] ?? 2;
+      bVal = priorityOrder[(b as any).priority || 'medium'] ?? 2;
     }
     if (aVal === bVal) return 0;
     const cmp = aVal > bVal ? 1 : -1;
@@ -381,6 +389,30 @@ export default function History() {
                   }}
                 />
               </div>
+              <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ fontSize: '14px', fontWeight: '500' }}>Sort by</label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                  style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', minWidth: '140px' }}
+                >
+                  <option value="created_at">Created (newest)</option>
+                  <option value="id">PR #</option>
+                  <option value="priority">Priority</option>
+                  <option value="due_date">Due date</option>
+                  <option value="team">Team</option>
+                  <option value="cloud">Cloud</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setSortDesc((d) => !d)}
+                  className="btn btn-secondary"
+                  style={{ padding: '10px 14px' }}
+                  title={sortDesc ? 'Descending' : 'Ascending'}
+                >
+                  {sortDesc ? '↓' : '↑'}
+                </button>
+              </div>
               <div style={{ flex: '0 0 auto' }}>
                 <button
                   onClick={() => {
@@ -388,10 +420,7 @@ export default function History() {
                     fetchHistory();
                   }}
                   className="btn btn-secondary"
-                  style={{ 
-                    padding: '12px 24px',
-                    whiteSpace: 'nowrap'
-                  }}
+                  style={{ padding: '12px 24px', whiteSpace: 'nowrap' }}
                 >
                   Clear
                 </button>
@@ -423,9 +452,14 @@ export default function History() {
               <div style={{ textAlign: 'center', padding: '60px' }}>
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '16px' }}>
-                  {filterValue ? 'No PR requests found matching your filter' : 'No PR requests found'}
+                  {filterValue ? 'No PR requests found matching your filter' : 'No requests yet'}
                 </p>
-                {filterValue && (
+                {!filterValue && (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '8px' }}>
+                    Create your first request from Custom JSON or Select Service.
+                  </p>
+                )}
+                {filterValue ? (
                   <button
                     onClick={() => {
                       setFilterValue('');
@@ -436,6 +470,15 @@ export default function History() {
                   >
                     Clear Filter
                   </button>
+                ) : (
+                  <div style={{ marginTop: '20px', display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <button onClick={() => router.push('/custom-json')} className="btn btn-primary">
+                      Custom JSON
+                    </button>
+                    <button onClick={() => router.push('/select-service')} className="btn btn-secondary">
+                      Select Service
+                    </button>
+                  </div>
                 )}
               </div>
             ) : (
@@ -746,6 +789,12 @@ export default function History() {
                          detailRequest.status === 'rejected' ? 'Rejected' : detailRequest.status}
                       </span>
                     </div>
+                    {detailRequest.status === 'rejected' && detailRequest.reject_reason && (
+                      <div style={{ marginBottom: '12px', padding: '12px', background: 'var(--error-bg)', borderRadius: '8px', borderLeft: '4px solid var(--error-color)' }}>
+                        <strong style={{ color: 'var(--error-color)' }}>Rejection reason (from admin):</strong>
+                        <p style={{ margin: '6px 0 0', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>{detailRequest.reject_reason}</p>
+                      </div>
+                    )}
                     <div style={{ marginBottom: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                       {detailRequest.status === 'draft' && (
                         <>

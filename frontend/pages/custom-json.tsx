@@ -19,6 +19,7 @@ export default function CustomJSON() {
   const [env, setEnv] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
   const [dueDate, setDueDate] = useState('');
+  const [initialComment, setInitialComment] = useState('');
   const [json, setJson] = useState('');
   const [jsonError, setJsonError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -131,6 +132,7 @@ export default function CustomJSON() {
         priority,
         due_date: dueDate || undefined,
         draft: asDraft,
+        initial_comment: initialComment.trim() || undefined,
         ...jsonPayload
       };
 
@@ -293,6 +295,18 @@ export default function CustomJSON() {
                     onChange={(e) => setDueDate(e.target.value)}
                   />
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label className="label">Comment / notes (optional)</label>
+                <textarea
+                  className="textarea"
+                  placeholder="Add a note or context for this request (visible to admins)"
+                  value={initialComment}
+                  onChange={(e) => setInitialComment(e.target.value)}
+                  rows={2}
+                  style={{ resize: 'vertical' }}
+                />
               </div>
 
               <div className="form-group">

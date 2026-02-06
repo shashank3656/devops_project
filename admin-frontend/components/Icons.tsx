@@ -55,6 +55,15 @@ export function IconBell({ className = '' }: { className?: string }) {
   );
 }
 
+export function IconActivity({ className = '' }: { className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M12 8v4l2 2" />
+      <circle cx="12" cy="12" r="10" />
+    </svg>
+  );
+}
+
 export function IconLogout({ className = '' }: { className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>

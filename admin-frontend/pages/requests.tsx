@@ -16,6 +16,7 @@ interface PRRequest {
   branch: string;
   file_path: string;
   status: string;
+  config?: string;
   created_at: string;
 }
 
@@ -47,6 +48,7 @@ export default function AdminRequests() {
   const [detailComments, setDetailComments] = useState<RequestComment[]>([]);
   const [commentBody, setCommentBody] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [detailConfigOpen, setDetailConfigOpen] = useState(false);
   const limit = 20;
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -169,6 +171,8 @@ export default function AdminRequests() {
   const handleBulkReject = async () => {
     const ids = Array.from(selectedIds).filter((id) => pendingIds.includes(id));
     if (ids.length === 0) return;
+    const reasonInput = window.prompt(`Reject ${ids.length} request(s)? Add a reason (optional, visible to users):`);
+    if (reasonInput === null) return;
     if (!confirm(`Reject ${ids.length} request(s)? This cannot be undone.`)) return;
     setBulkActioning(true);
     setError('');
@@ -176,7 +180,7 @@ export default function AdminRequests() {
       const res = await fetch(`${apiUrl}/api/admin/requests/bulk-reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ ids }),
+        body: JSON.stringify({ ids, reason: reasonInput.trim() }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -244,17 +248,20 @@ export default function AdminRequests() {
   };
 
   const handleReject = async (id: number) => {
-    if (!confirm('Reject this request? The user will see status "Rejected".')) return;
+    const reasonInput = window.prompt('Reject this request? Add a reason (optional, visible to the user):');
+    if (reasonInput === null) return; // user cancelled
     setActioningId(id);
     setError('');
     try {
       const res = await fetch(`${apiUrl}/api/admin/requests/${id}/reject`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason: reasonInput.trim() }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         fetchRequests({ offset });
+        if (detailRequest?.id === id) setDetailRequest(null);
       } else {
         setError(data.error || 'Failed to reject');
       }
@@ -297,10 +304,36 @@ export default function AdminRequests() {
       </Head>
       <AdminLayout>
         <div className="container" style={{ maxWidth: 1200 }}>
-          <h1 className="page-title" style={{ marginBottom: 24 }}>PR Requests</h1>
-          <p style={{ color: 'var(--color-text-muted)', marginBottom: 24 }}>
-            All infrastructure PR requests from the portal. Use filters to narrow by team, env, or cloud.
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
+            <div>
+              <h1 className="page-title" style={{ marginBottom: 8 }}>PR Requests</h1>
+              <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>
+                All infrastructure PR requests. Use filters to narrow by team, env, cloud, or priority.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={requests.length === 0}
+              onClick={() => {
+                const headers = ['ID', 'Team', 'Env', 'Cloud', 'Service', 'Priority', 'Due date', 'Status', 'Created', 'PR URL'];
+                const rows = requests.map((r) => [
+                  r.id, r.team, r.env, r.cloud, r.service, r.priority || '', r.due_date ? new Date(r.due_date).toLocaleDateString() : '',
+                  r.status, new Date(r.created_at).toLocaleString(), r.pr_url || '',
+                ].join(','));
+                const csv = [headers.join(','), ...rows].join('\n');
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `requests-${new Date().toISOString().slice(0, 10)}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              Export CSV
+            </button>
+          </div>
 
           {error && (
             <div className="alert alert-error" role="alert">
@@ -611,6 +644,23 @@ export default function AdminRequests() {
                     {statusLabel(detailRequest.status)}
                   </span>
                 </p>
+
+                {detailRequest.config && (
+                  <div style={{ marginTop: 16, borderTop: '1px solid var(--color-border)', paddingTop: 16 }}>
+                    <button
+                      type="button"
+                      onClick={() => setDetailConfigOpen((o) => !o)}
+                      style={{ background: 'none', border: 'none', padding: 0, fontWeight: 600, cursor: 'pointer', color: 'var(--color-text)' }}
+                    >
+                      {detailConfigOpen ? '▼' : '▶'} Configuration (JSON)
+                    </button>
+                    {detailConfigOpen && (
+                      <pre style={{ marginTop: 8, padding: 12, background: 'var(--color-bg)', borderRadius: 8, overflow: 'auto', fontSize: 12, maxHeight: 280 }}>
+                        {detailRequest.config}
+                      </pre>
+                    )}
+                  </div>
+                )}
 
                 <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 16, marginTop: 16 }}>
                   <strong>Comments</strong>
