@@ -328,15 +328,17 @@ td code { font-size: var(--text-sm); background: #f1f5f9; padding: 2px 8px; bord
 }
 .admin-sidebar-header {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   padding: 0 var(--space-3) var(--space-4);
   margin-bottom: var(--space-4);
   border-bottom: 1px solid var(--sidebar-border);
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 .admin-sidebar-brand {
   display: flex;
   align-items: center;
+  width: 100%;
   gap: var(--space-3);
   flex: 1;
   min-width: 0;
@@ -445,11 +447,10 @@ td code { font-size: var(--text-sm); background: #f1f5f9; padding: 2px 8px; bord
 }
 .admin-sidebar-collapsed .admin-sidebar-header {
   padding: 0 var(--space-2) var(--space-4);
-  flex-direction: column;
   align-items: center;
   gap: var(--space-2);
 }
-.admin-sidebar-collapsed .admin-sidebar-brand { justify-content: center; }
+.admin-sidebar-collapsed .admin-sidebar-brand { justify-content: center; width: auto; }
 .admin-sidebar-collapsed .admin-sidebar-brand-text,
 .admin-sidebar-collapsed .admin-sidebar-label { display: none; }
 .admin-sidebar-collapsed .admin-sidebar-nav a {
@@ -522,6 +523,122 @@ td code { font-size: var(--text-sm); background: #f1f5f9; padding: 2px 8px; bord
   color: var(--color-text-muted);
 }
 .admin-topbar-logout:hover { color: var(--color-text); background: var(--color-bg); }
+
+/* Notification dropdown panel */
+.admin-topbar-notify-wrap { position: relative; }
+.admin-topbar-notify {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0;
+  transition: color var(--transition), background var(--transition);
+}
+.admin-topbar-notify:hover { color: var(--color-primary); background: var(--color-primary-light); }
+.admin-notify-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.admin-notify-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+.admin-notify-panel-title { font-size: var(--text-lg); font-weight: var(--font-semibold); margin: 0; color: var(--color-text); }
+.admin-notify-panel-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+.admin-notify-panel-close:hover { color: var(--color-text); background: var(--color-bg); }
+.admin-notify-panel-more {
+  display: block;
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--color-primary);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-border);
+}
+.admin-notify-panel-more:hover { text-decoration: underline; background: var(--color-primary-light); }
+.admin-notify-panel-list {
+  overflow-y: auto;
+  padding: var(--space-2);
+  flex: 1;
+  min-height: 120px;
+}
+.admin-notify-panel-loading,
+.admin-notify-panel-empty {
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  margin: 0;
+}
+.admin-notify-ticket {
+  padding: var(--space-4);
+  border-radius: var(--radius);
+  margin-bottom: var(--space-2);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+.admin-notify-ticket:last-child { margin-bottom: 0; }
+.admin-notify-ticket-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.admin-notify-ticket-id {
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+  font-size: var(--text-base);
+}
+.admin-notify-ticket-meta {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.admin-notify-ticket-time {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin-left: auto;
+}
+.admin-notify-ticket-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.admin-notify-ticket-actions .btn { flex: 0 0 auto; }
 
 .admin-main {
   flex: 1;
