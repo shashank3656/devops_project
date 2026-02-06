@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { ADMIN_SITE_NAME } from '../lib/site';
-import { IconDashboard, IconRequests, IconTeams, IconUsers, IconLogout, IconBell, IconChevronLeft, IconChevronRight } from './Icons';
+import { IconDashboard, IconRequests, IconTeams, IconUsers, IconLogout, IconBell, IconChevronLeft, IconChevronRight, IconActivity } from './Icons';
 
 const SIDEBAR_STORAGE_KEY = 'admin_sidebar_collapsed';
 const NOTIFY_POLL_MS = 30000;
@@ -27,6 +27,8 @@ interface PendingRequest {
   cloud: string;
   service: string;
   status: string;
+  priority?: string;
+  due_date?: string | null;
   created_at: string;
 }
 
@@ -106,10 +108,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   };
 
   const handleReject = async (id: number) => {
-    if (!token || !confirm('Reject this request? The user will see status "Rejected".')) return;
+    if (!token) return;
+    const reasonInput = window.prompt('Reject this request? Add a reason (optional, visible to the user):');
+    if (reasonInput === null) return;
     setActioningId(id);
     try {
-      const res = await fetch(`${apiUrl}/api/admin/requests/${id}/reject`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${apiUrl}/api/admin/requests/${id}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason: reasonInput.trim() }),
+      });
       if (res.ok) {
         setPendingTickets((prev) => prev.filter((r) => r.id !== id));
         fetchCount();
@@ -166,6 +174,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           {navLink('/requests', 'PR Requests', <IconRequests />)}
           {navLink('/teams', 'Teams', <IconTeams />)}
           {navLink('/users', 'Users', <IconUsers />)}
+          {navLink('/activity', 'Activity', <IconActivity />)}
         </nav>
       </aside>
       <div className="admin-main-wrap">
@@ -210,6 +219,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                           <div className="admin-notify-ticket-main">
                             <span className="admin-notify-ticket-id">PR #{req.id}</span>
                             <span className="admin-notify-ticket-meta">{req.team} / {req.env} · {req.cloud} · {req.service}</span>
+                            {(req.priority || req.due_date) && (
+                              <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+                                {req.priority && `Priority: ${req.priority}`}
+                                {req.priority && req.due_date && ' · '}
+                                {req.due_date && `Due: ${new Date(req.due_date).toLocaleDateString()}`}
+                              </span>
+                            )}
                             <span className="admin-notify-ticket-time">{formatTime(req.created_at)}</span>
                           </div>
                           <div className="admin-notify-ticket-actions">

@@ -21,6 +21,7 @@ export default function SelectService() {
   const [env, setEnv] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
   const [dueDate, setDueDate] = useState('');
+  const [initialComment, setInitialComment] = useState('');
   const [cloud, setCloud] = useState('');
   const [service, setService] = useState('');
   const [formValues, setFormValues] = useState<Record<string, any>>({});
@@ -181,6 +182,7 @@ export default function SelectService() {
         priority,
         due_date: dueDate || undefined,
         draft: asDraft,
+        initial_comment: initialComment.trim() || undefined,
         config: formValues
       };
 
@@ -377,6 +379,18 @@ export default function SelectService() {
                     })}
                   </select>
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label className="label">Comment / notes (optional)</label>
+                <textarea
+                  className="textarea"
+                  placeholder="Add a note or context for this request (visible to admins)"
+                  value={initialComment}
+                  onChange={(e) => setInitialComment(e.target.value)}
+                  rows={2}
+                  style={{ resize: 'vertical' }}
+                />
               </div>
 
               {serviceConfig && (

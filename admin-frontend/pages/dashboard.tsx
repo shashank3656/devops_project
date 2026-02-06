@@ -11,6 +11,14 @@ interface Stats {
   by_env: Record<string, number>;
 }
 
+interface DashboardStats {
+  total_users: number;
+  total_teams: number;
+  unverified_users: number;
+  requests_this_week: number;
+  pending_approval: number;
+}
+
 interface PRRequest {
   id: number;
   team: string;
@@ -25,6 +33,7 @@ interface PRRequest {
 export default function AdminDashboard() {
   const router = useRouter();
   const [stats, setStats] = useState<Stats | null>(null);
+  const [quickStats, setQuickStats] = useState<DashboardStats | null>(null);
   const [recent, setRecent] = useState<PRRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -44,21 +53,20 @@ export default function AdminDashboard() {
     setLoading(true);
     setError('');
     try {
-      const [statsRes, requestsRes] = await Promise.all([
-        fetch(`${apiUrl}/api/admin/stats`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${apiUrl}/api/admin/requests?limit=10`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+      const [statsRes, dashboardRes, requestsRes] = await Promise.all([
+        fetch(`${apiUrl}/api/admin/stats`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/admin/dashboard-stats`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/admin/requests?limit=10`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
       if (statsRes.status === 401 || statsRes.status === 403 || requestsRes.status === 401 || requestsRes.status === 403) {
         router.replace('/login');
         return;
       }
       const statsData = await statsRes.json().catch(() => ({}));
+      const dashboardData = await dashboardRes.json().catch(() => ({}));
       const requestsData = await requestsRes.json().catch(() => ({}));
       if (statsData.stats) setStats(statsData.stats);
+      if (dashboardData.total_users !== undefined) setQuickStats(dashboardData);
       if (requestsData.requests) setRecent(requestsData.requests);
       if (statsData.error) setError(statsData.error);
     } catch (_) {
@@ -92,6 +100,30 @@ export default function AdminDashboard() {
             <p className="loading-text">Loading…</p>
           ) : (
             <>
+              {quickStats && (
+                <div className="stats-grid" style={{ marginBottom: 24 }}>
+                  <div className="stat-card stat-card-primary">
+                    <div className="stat-card-value">{quickStats.total_users}</div>
+                    <div className="stat-card-label">Total users</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-card-value">{quickStats.total_teams}</div>
+                    <div className="stat-card-label">Teams</div>
+                  </div>
+                  <div className="stat-card stat-card-warning">
+                    <div className="stat-card-value">{quickStats.pending_approval}</div>
+                    <div className="stat-card-label">Pending approval</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-card-value">{quickStats.requests_this_week}</div>
+                    <div className="stat-card-label">Requests this week</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-card-value">{quickStats.unverified_users}</div>
+                    <div className="stat-card-label">Unverified users</div>
+                  </div>
+                </div>
+              )}
               {stats && (
                 <div className="stats-grid">
                   <div className="stat-card stat-card-primary">

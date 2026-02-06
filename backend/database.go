@@ -25,11 +25,12 @@ type PRRequest struct {
 	PRURL       string     `json:"pr_url"`
 	Branch      string     `json:"branch"`
 	FilePath    string     `json:"file_path"`
-	Status      string     `json:"status"` // draft, pending_approval, in_progress, completed, rejected
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	CreatedBy   *int       `json:"created_by"`
-	Config      string     `json:"config"`
+	Status       string     `json:"status"` // draft, pending_approval, in_progress, completed, rejected
+	RejectReason string    `json:"reject_reason"` // set when admin rejects (optional comment)
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	CreatedBy    *int       `json:"created_by"`
+	Config       string     `json:"config"`
 }
 
 // RequestComment is a comment on a PR request
@@ -240,6 +241,11 @@ func createTables() error {
 			log.Printf("Note: pr_requests due_date column: %v", err)
 		}
 	}
+	if _, err := DB.Exec("ALTER TABLE pr_requests ADD COLUMN reject_reason TEXT DEFAULT ''"); err != nil {
+		if !strings.Contains(err.Error(), "already exists") && !strings.Contains(err.Error(), "duplicate column") {
+			log.Printf("Note: pr_requests reject_reason column: %v", err)
+		}
+	}
 
 	// request_comments: comments on requests (user and admin)
 	_, errComments := DB.Exec(`
@@ -253,6 +259,22 @@ func createTables() error {
 	`)
 	if errComments != nil {
 		return fmt.Errorf("create request_comments: %w", errComments)
+	}
+
+	// admin_audit_log: log admin actions for accountability
+	_, errAudit := DB.Exec(`
+		CREATE TABLE IF NOT EXISTS admin_audit_log (
+			id SERIAL PRIMARY KEY,
+			admin_user_id INTEGER REFERENCES users(id),
+			action VARCHAR(100) NOT NULL,
+			resource_type VARCHAR(50) NOT NULL,
+			resource_id VARCHAR(50),
+			details TEXT,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if errAudit != nil {
+		return fmt.Errorf("create admin_audit_log: %w", errAudit)
 	}
 
 	log.Println("Database tables created/verified")
@@ -285,6 +307,15 @@ func UpdatePRRequestStatus(id int, status string) error {
 	_, err := DB.Exec(
 		"UPDATE pr_requests SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
 		status, id,
+	)
+	return err
+}
+
+// UpdatePRRequestReject sets status to rejected and optional reject_reason
+func UpdatePRRequestReject(id int, reason string) error {
+	_, err := DB.Exec(
+		"UPDATE pr_requests SET status = 'rejected', reject_reason = COALESCE(NULLIF(TRIM($1),''), reject_reason), updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+		reason, id,
 	)
 	return err
 }
@@ -345,7 +376,7 @@ func GetGitHubLogs(limit int) ([]GitHubLogEntry, error) {
 // GetPRRequests retrieves PR requests with optional filters (status and priority optional)
 func GetPRRequests(team, env, cloud, statusFilter, priorityFilter string, prID int, userIDInt int, limit, offset int) ([]PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, config, created_by, created_at, updated_at
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, created_at, updated_at
 		FROM pr_requests
 		WHERE 1=1
 	`
@@ -422,7 +453,7 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter string, prID i
 		err := rows.Scan(
 			&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
 			&req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
-			&req.Config, &createdBy, &req.CreatedAt, &req.UpdatedAt,
+			&req.RejectReason, &req.Config, &createdBy, &req.CreatedAt, &req.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan PR request: %w", err)
@@ -446,7 +477,7 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter string, prID i
 // GetPRRequestByID retrieves a single PR request by ID
 func GetPRRequestByID(id int) (*PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, config, created_by, created_at, updated_at
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, created_at, updated_at
 		FROM pr_requests WHERE id = $1
 	`
 	var req PRRequest
@@ -455,7 +486,7 @@ func GetPRRequestByID(id int) (*PRRequest, error) {
 	err := DB.QueryRow(query, id).Scan(
 		&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
 		&req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
-		&req.Config, &createdBy, &req.CreatedAt, &req.UpdatedAt,
+		&req.RejectReason, &req.Config, &createdBy, &req.CreatedAt, &req.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -783,6 +814,92 @@ func GetPendingApprovalCount() (int, error) {
 	var count int
 	err := DB.QueryRow("SELECT COUNT(*) FROM pr_requests WHERE status = $1", "pending_approval").Scan(&count)
 	return count, err
+}
+
+// AuditLogEntry is a single admin audit log row
+type AuditLogEntry struct {
+	ID           int       `json:"id"`
+	AdminUserID  *int      `json:"admin_user_id"`
+	Action       string    `json:"action"`
+	ResourceType string    `json:"resource_type"`
+	ResourceID   string    `json:"resource_id"`
+	Details      string    `json:"details"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// AppendAuditLog records an admin action (no-op if DB is nil)
+func AppendAuditLog(adminUserID *int, action, resourceType, resourceID, details string) {
+	if DB == nil {
+		return
+	}
+	_, _ = DB.Exec(
+		"INSERT INTO admin_audit_log (admin_user_id, action, resource_type, resource_id, details) VALUES ($1, $2, $3, $4, $5)",
+		adminUserID, action, resourceType, resourceID, details,
+	)
+}
+
+// GetAuditLogs returns recent audit log entries with optional filters
+func GetAuditLogs(limit, offset int, actionFilter string) ([]AuditLogEntry, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	query := `
+		SELECT id, admin_user_id, action, resource_type, COALESCE(resource_id,''), COALESCE(details,''), created_at
+		FROM admin_audit_log
+		WHERE 1=1
+	`
+	args := []interface{}{}
+	argPos := 1
+	if actionFilter != "" {
+		query += fmt.Sprintf(" AND action = $%d", argPos)
+		args = append(args, actionFilter)
+		argPos++
+	}
+	query += " ORDER BY created_at DESC"
+	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argPos, argPos+1)
+	args = append(args, limit, offset)
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AuditLogEntry
+	for rows.Next() {
+		var e AuditLogEntry
+		var adminID sql.NullInt64
+		if err := rows.Scan(&e.ID, &adminID, &e.Action, &e.ResourceType, &e.ResourceID, &e.Details, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		if adminID.Valid {
+			id := int(adminID.Int64)
+			e.AdminUserID = &id
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}
+
+// DashboardStats holds counts for admin dashboard
+type DashboardStats struct {
+	TotalUsers       int `json:"total_users"`
+	TotalTeams       int `json:"total_teams"`
+	UnverifiedUsers  int `json:"unverified_users"`
+	RequestsThisWeek int `json:"requests_this_week"`
+	PendingApproval  int `json:"pending_approval"`
+}
+
+// GetDashboardStats returns counts for admin dashboard
+func GetDashboardStats() (DashboardStats, error) {
+	var s DashboardStats
+	if DB == nil {
+		return s, nil
+	}
+	_ = DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&s.TotalUsers)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM teams").Scan(&s.TotalTeams)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM users WHERE COALESCE(verified, false) = false").Scan(&s.UnverifiedUsers)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM pr_requests WHERE created_at >= NOW() - INTERVAL '7 days'").Scan(&s.RequestsThisWeek)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM pr_requests WHERE status = 'pending_approval'").Scan(&s.PendingApproval)
+	return s, nil
 }
 
 // GetUserRequestsUpdatedSince returns count of requests created by userID with updated_at > since (for user notifications)
