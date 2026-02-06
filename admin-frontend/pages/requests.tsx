@@ -9,10 +9,22 @@ interface PRRequest {
   env: string;
   cloud: string;
   service: string;
+  client_name?: string;
+  priority?: string;
+  due_date?: string | null;
   pr_url: string;
   branch: string;
   file_path: string;
   status: string;
+  created_at: string;
+}
+
+interface RequestComment {
+  id: number;
+  request_id: number;
+  user_id: number;
+  username: string;
+  body: string;
   created_at: string;
 }
 
@@ -26,20 +38,28 @@ export default function AdminRequests() {
   const [env, setEnv] = useState('');
   const [cloud, setCloud] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
   const [offset, setOffset] = useState(0);
   const [actioningId, setActioningId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkActioning, setBulkActioning] = useState(false);
+  const [detailRequest, setDetailRequest] = useState<PRRequest | null>(null);
+  const [detailComments, setDetailComments] = useState<RequestComment[]>([]);
+  const [commentBody, setCommentBody] = useState('');
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
   const limit = 20;
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
 
-  const filtersRef = useRef({ team: '', env: '', cloud: '', status: '' });
+  const filtersRef = useRef({ team: '', env: '', cloud: '', status: '', priority: '' });
 
-  const fetchRequests = (overrides?: { team?: string; env?: string; cloud?: string; status?: string; offset?: number }) => {
+  const fetchRequests = (overrides?: { team?: string; env?: string; cloud?: string; status?: string; priority?: string; offset?: number }) => {
     const t = overrides?.team !== undefined ? overrides.team : filtersRef.current.team;
     const e = overrides?.env !== undefined ? overrides.env : filtersRef.current.env;
     const c = overrides?.cloud !== undefined ? overrides.cloud : filtersRef.current.cloud;
     const s = overrides?.status !== undefined ? overrides.status : filtersRef.current.status;
+    const p = overrides?.priority !== undefined ? overrides.priority : filtersRef.current.priority;
     const o = overrides?.offset !== undefined ? overrides.offset : offset;
     setLoading(true);
     setError('');
@@ -48,6 +68,7 @@ export default function AdminRequests() {
     if (e) params.set('env', e);
     if (c) params.set('cloud', c);
     if (s) params.set('status', s);
+    if (p) params.set('priority', p);
     params.set('limit', String(limit));
     params.set('offset', String(o));
     fetch(`${apiUrl}/api/admin/requests?${params}`, {
@@ -81,27 +102,125 @@ export default function AdminRequests() {
     const envVal = (form.elements.namedItem('filter-env') as HTMLInputElement | null)?.value?.trim() ?? '';
     const cloudVal = (form.elements.namedItem('filter-cloud') as HTMLInputElement | null)?.value?.trim() ?? '';
     const statusVal = (form.elements.namedItem('filter-status') as HTMLSelectElement | null)?.value ?? '';
-    filtersRef.current = { team: teamVal, env: envVal, cloud: cloudVal, status: statusVal };
+    const priorityVal = (form.elements.namedItem('filter-priority') as HTMLSelectElement | null)?.value ?? '';
+    filtersRef.current = { team: teamVal, env: envVal, cloud: cloudVal, status: statusVal, priority: priorityVal };
     setTeam(teamVal);
     setEnv(envVal);
     setCloud(cloudVal);
     setStatusFilter(statusVal);
+    setPriorityFilter(priorityVal);
     setOffset(0);
-    fetchRequests({ team: teamVal, env: envVal, cloud: cloudVal, status: statusVal, offset: 0 });
+    fetchRequests({ team: teamVal, env: envVal, cloud: cloudVal, status: statusVal, priority: priorityVal, offset: 0 });
   };
 
   const handleClearFilters = () => {
-    filtersRef.current = { team: '', env: '', cloud: '', status: '' };
+    filtersRef.current = { team: '', env: '', cloud: '', status: '', priority: '' };
     setTeam('');
     setEnv('');
     setCloud('');
     setStatusFilter('');
+    setPriorityFilter('');
     setOffset(0);
-    fetchRequests({ team: '', env: '', cloud: '', status: '', offset: 0 });
+    fetchRequests({ team: '', env: '', cloud: '', status: '', priority: '', offset: 0 });
   };
 
   const statusLabel = (s: string) =>
-    s === 'pending_approval' ? 'Pending approval' : s === 'in_progress' ? 'In progress' : s === 'completed' ? 'Completed' : s === 'rejected' ? 'Rejected' : s;
+    s === 'draft' ? 'Draft' : s === 'pending_approval' ? 'Pending approval' : s === 'in_progress' ? 'In progress' : s === 'completed' ? 'Completed' : s === 'rejected' ? 'Rejected' : s;
+
+  const pendingIds = requests.filter((r) => r.status === 'pending_approval').map((r) => r.id);
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAllPending = () => {
+    if (selectedIds.size >= pendingIds.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(pendingIds));
+  };
+
+  const handleBulkApprove = async () => {
+    const ids = Array.from(selectedIds).filter((id) => pendingIds.includes(id));
+    if (ids.length === 0) return;
+    setBulkActioning(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/requests/bulk-approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setSelectedIds(new Set());
+        fetchRequests({ offset });
+      } else {
+        setError(data.error || 'Bulk approve failed');
+      }
+    } catch (_) {
+      setError('Bulk approve failed');
+    } finally {
+      setBulkActioning(false);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    const ids = Array.from(selectedIds).filter((id) => pendingIds.includes(id));
+    if (ids.length === 0) return;
+    if (!confirm(`Reject ${ids.length} request(s)? This cannot be undone.`)) return;
+    setBulkActioning(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/requests/bulk-reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setSelectedIds(new Set());
+        fetchRequests({ offset });
+      } else {
+        setError(data.error || 'Bulk reject failed');
+      }
+    } catch (_) {
+      setError('Bulk reject failed');
+    } finally {
+      setBulkActioning(false);
+    }
+  };
+
+  const openDetail = async (req: PRRequest) => {
+    setDetailRequest(req);
+    setDetailComments([]);
+    setCommentBody('');
+    fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.json())
+      .then((d) => setDetailComments(d.comments || []))
+      .catch(() => {});
+  };
+
+  const addComment = async () => {
+    if (!detailRequest || !commentBody.trim()) return;
+    setCommentSubmitting(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/request/${detailRequest.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ body: commentBody.trim() }),
+      });
+      if (res.ok) {
+        setCommentBody('');
+        const listRes = await fetch(`${apiUrl}/api/request/${detailRequest.id}/comments`, { headers: { Authorization: `Bearer ${token}` } });
+        const d = await listRes.json().catch(() => ({}));
+        setDetailComments(d.comments || []);
+      }
+    } finally {
+      setCommentSubmitting(false);
+    }
+  };
 
   const handleApprove = async (id: number) => {
     setActioningId(id);
@@ -226,10 +345,25 @@ export default function AdminRequests() {
               style={{ minWidth: 160 }}
             >
               <option value="">All statuses</option>
+              <option value="draft">Draft</option>
               <option value="pending_approval">Pending approval</option>
               <option value="in_progress">In progress</option>
               <option value="completed">Completed</option>
               <option value="rejected">Rejected</option>
+            </select>
+            <select
+              id="filter-priority"
+              name="filter-priority"
+              className="input"
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              style={{ minWidth: 120 }}
+            >
+              <option value="">All priorities</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
             </select>
             <button type="submit" className="btn btn-primary">
               Apply filters
@@ -252,15 +386,48 @@ export default function AdminRequests() {
               </div>
             ) : (
               <>
+                {pendingIds.length > 0 && (
+                  <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.size === pendingIds.length && pendingIds.length > 0}
+                        onChange={toggleSelectAllPending}
+                      />
+                      Select all pending ({pendingIds.length})
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      style={{ padding: '6px 14px', fontSize: 13 }}
+                      disabled={selectedIds.size === 0 || bulkActioning}
+                      onClick={handleBulkApprove}
+                    >
+                      {bulkActioning ? '…' : `Approve selected (${selectedIds.size})`}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      style={{ padding: '6px 14px', fontSize: 13 }}
+                      disabled={selectedIds.size === 0 || bulkActioning}
+                      onClick={handleBulkReject}
+                    >
+                      Reject selected
+                    </button>
+                  </div>
+                )}
                 <div className="table-wrap">
                   <table>
                     <thead>
                       <tr>
+                        {pendingIds.length > 0 ? <th style={{ width: 44 }} title="Select">☐</th> : null}
                         <th>ID</th>
                         <th>Team</th>
                         <th>Env</th>
                         <th>Cloud</th>
                         <th>Service</th>
+                        <th>Priority</th>
+                        <th>Due</th>
                         <th>Status</th>
                         <th>Created</th>
                         <th style={{ width: 200 }}>Actions</th>
@@ -268,12 +435,27 @@ export default function AdminRequests() {
                     </thead>
                     <tbody>
                       {requests.map((req) => (
-                        <tr key={req.id}>
+                        <tr key={req.id} style={{ cursor: 'pointer' }} onClick={() => openDetail(req)}>
+                          {pendingIds.length > 0 ? (
+                            <td onClick={(e) => e.stopPropagation()}>
+                              {req.status === 'pending_approval' ? (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedIds.has(req.id)}
+                                  onChange={() => toggleSelect(req.id)}
+                                />
+                              ) : null}
+                            </td>
+                          ) : null}
                           <td>{req.id}</td>
                           <td>{req.team}</td>
                           <td>{req.env}</td>
                           <td>{req.cloud}</td>
                           <td>{req.service}</td>
+                          <td style={{ fontSize: 13 }}>{req.priority || '—'}</td>
+                          <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
+                            {req.due_date ? new Date(req.due_date).toLocaleDateString() : '—'}
+                          </td>
                           <td>
                             <span
                               style={{
@@ -281,11 +463,13 @@ export default function AdminRequests() {
                                 borderRadius: 6,
                                 fontSize: 12,
                                 fontWeight: 600,
-                                background: req.status === 'pending_approval' ? 'var(--color-warning-bg)' :
+                                background: req.status === 'draft' ? '#f1f5f9' :
+                                           req.status === 'pending_approval' ? 'var(--color-warning-bg)' :
                                            req.status === 'in_progress' ? 'var(--color-primary-light)' :
                                            req.status === 'completed' ? 'var(--color-success-bg)' :
                                            req.status === 'rejected' ? 'var(--color-danger-bg)' : '#f1f5f9',
-                                color: req.status === 'pending_approval' ? 'var(--color-warning)' :
+                                color: req.status === 'draft' ? 'var(--color-text-muted)' :
+                                       req.status === 'pending_approval' ? 'var(--color-warning)' :
                                        req.status === 'in_progress' ? 'var(--color-primary)' :
                                        req.status === 'completed' ? 'var(--color-success)' :
                                        req.status === 'rejected' ? 'var(--color-danger)' : 'var(--color-text-muted)'
@@ -297,7 +481,7 @@ export default function AdminRequests() {
                           <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
                             {new Date(req.created_at).toLocaleString()}
                           </td>
-                          <td>
+                          <td onClick={(e) => e.stopPropagation()}>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                               {req.status === 'pending_approval' && (
                                 <>
@@ -368,6 +552,98 @@ export default function AdminRequests() {
               </>
             )}
           </div>
+
+          {detailRequest && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000,
+                padding: 20,
+              }}
+              onClick={() => setDetailRequest(null)}
+            >
+              <div
+                className="card"
+                style={{ maxWidth: 560, width: '100%', maxHeight: '90vh', overflow: 'auto' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <h3 style={{ margin: 0 }}>Request #{detailRequest.id}</h3>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px' }} onClick={() => setDetailRequest(null)}>
+                    Close
+                  </button>
+                </div>
+                <p style={{ marginBottom: 8, fontSize: 14 }}>
+                  <strong>Team:</strong> {detailRequest.team} · <strong>Env:</strong> {detailRequest.env} · <strong>Cloud:</strong> {detailRequest.cloud} · <strong>Service:</strong> {detailRequest.service}
+                </p>
+                {(detailRequest.priority || detailRequest.due_date) && (
+                  <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--color-text-muted)' }}>
+                    {detailRequest.priority && <span>Priority: {detailRequest.priority} </span>}
+                    {detailRequest.due_date && <span>Due: {new Date(detailRequest.due_date).toLocaleDateString()}</span>}
+                  </p>
+                )}
+                <p style={{ marginBottom: 16 }}>
+                  <span
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background: detailRequest.status === 'draft' ? '#f1f5f9' :
+                                 detailRequest.status === 'pending_approval' ? 'var(--color-warning-bg)' :
+                                 detailRequest.status === 'in_progress' ? 'var(--color-primary-light)' :
+                                 detailRequest.status === 'completed' ? 'var(--color-success-bg)' :
+                                 detailRequest.status === 'rejected' ? 'var(--color-danger-bg)' : '#f1f5f9',
+                      color: detailRequest.status === 'draft' ? 'var(--color-text-muted)' :
+                             detailRequest.status === 'pending_approval' ? 'var(--color-warning)' :
+                             detailRequest.status === 'in_progress' ? 'var(--color-primary)' :
+                             detailRequest.status === 'completed' ? 'var(--color-success)' :
+                             detailRequest.status === 'rejected' ? 'var(--color-danger)' : 'var(--color-text-muted)'
+                    }}
+                  >
+                    {statusLabel(detailRequest.status)}
+                  </span>
+                </p>
+
+                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 16, marginTop: 16 }}>
+                  <strong>Comments</strong>
+                  <div style={{ marginTop: 8, maxHeight: 200, overflowY: 'auto' }}>
+                    {detailComments.length === 0 ? (
+                      <p style={{ fontSize: 14, color: 'var(--color-text-muted)' }}>No comments yet.</p>
+                    ) : (
+                      detailComments.map((c) => (
+                        <div key={c.id} style={{ marginBottom: 12, padding: 8, background: 'var(--color-bg)', borderRadius: 8 }}>
+                          <span style={{ fontWeight: 600, fontSize: 13 }}>{c.username || 'User'}</span>
+                          <span style={{ fontSize: 12, color: 'var(--color-text-muted)', marginLeft: 8 }}>{new Date(c.created_at).toLocaleString()}</span>
+                          <p style={{ margin: '4px 0 0', fontSize: 14, whiteSpace: 'pre-wrap' }}>{c.body}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="Add a comment..."
+                      value={commentBody}
+                      onChange={(e) => setCommentBody(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addComment())}
+                      style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-border)' }}
+                    />
+                    <button type="button" className="btn btn-primary" disabled={!commentBody.trim() || commentSubmitting} onClick={addComment} style={{ padding: '8px 16px' }}>
+                      {commentSubmitting ? '…' : 'Post'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </AdminLayout>
     </>

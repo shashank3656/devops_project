@@ -19,6 +19,8 @@ export default function SelectService() {
   const [team, setTeam] = useState('');
   const [clientName, setClientName] = useState('');
   const [env, setEnv] = useState('');
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
+  const [dueDate, setDueDate] = useState('');
   const [cloud, setCloud] = useState('');
   const [service, setService] = useState('');
   const [formValues, setFormValues] = useState<Record<string, any>>({});
@@ -153,9 +155,7 @@ export default function SelectService() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const submitRequest = async (asDraft: boolean) => {
     if (!team || !env || !cloud || !service) {
       setError('Please fill in all required fields');
       return;
@@ -165,7 +165,6 @@ export default function SelectService() {
     setError('');
     setPrUrl('');
 
-    // Use environment variable or fallback to localhost for local development
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
     const token = localStorage.getItem('token');
@@ -179,6 +178,9 @@ export default function SelectService() {
         cloud,
         service,
         client_name: clientName || undefined,
+        priority,
+        due_date: dueDate || undefined,
+        draft: asDraft,
         config: formValues
       };
 
@@ -200,7 +202,8 @@ export default function SelectService() {
 
       const data = await response.json();
       setPrUrl(data.pr_url || '');
-      toast(data.message || 'Request submitted. An admin will approve it and the PR will be created.', 'success');
+      toast(data.message || (asDraft ? 'Draft saved.' : 'Request submitted. An admin will approve it and the PR will be created.'), 'success');
+      if (asDraft) router.push('/history');
     } catch (err: any) {
       console.error('Error creating PR:', err);
       const errorMessage = err.message || 'An error occurred while creating the PR';
@@ -214,6 +217,11 @@ export default function SelectService() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitRequest(false);
   };
 
   const serviceConfig = getServiceConfig();
@@ -301,6 +309,30 @@ export default function SelectService() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="label">Priority</label>
+                  <select
+                    className="select"
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value as 'low' | 'medium' | 'high' | 'urgent')}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="label">Due date</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -391,21 +423,32 @@ export default function SelectService() {
                 </div>
               )}
 
-              <button
-                type="submit"
-                className="btn btn-primary"
-                style={{ width: '100%', marginTop: '16px' }}
-                disabled={loading || !serviceConfig || canCreatePR !== true}
-              >
-                {loading ? (
-                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <span className="loading"></span>
-                    Creating PR...
-                  </span>
-                ) : (
-                  'Create Pull Request'
-                )}
-              </button>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '16px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => submitRequest(true)}
+                  className="btn btn-secondary"
+                  style={{ flex: 1, minWidth: '140px' }}
+                  disabled={loading || !serviceConfig || canCreatePR !== true}
+                >
+                  {loading ? <span className="loading"></span> : 'Save as draft'}
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  style={{ flex: 1, minWidth: '140px' }}
+                  disabled={loading || !serviceConfig || canCreatePR !== true}
+                >
+                  {loading ? (
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                      <span className="loading"></span>
+                      Submitting...
+                    </span>
+                  ) : (
+                    'Submit for approval'
+                  )}
+                </button>
+              </div>
             </form>
           </div>
         </div>

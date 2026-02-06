@@ -76,8 +76,8 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Fetch PR requests (no status filter for user history)
-	requests, err := GetPRRequests(team, env, cloud, "", prID, userIDInt, limit, offset)
+	// Fetch PR requests (no status/priority filter for user history; include drafts for owner)
+	requests, err := GetPRRequests(team, env, cloud, "", "", prID, userIDInt, limit, offset)
 	if err != nil {
 		log.Printf("Error fetching PR requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -90,7 +90,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get total count for pagination
-	totalCount, _ := GetTotalCount(team, env, cloud, "", prID, userIDInt)
+	totalCount, _ := GetTotalCount(team, env, cloud, "", "", prID, userIDInt)
 
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{
