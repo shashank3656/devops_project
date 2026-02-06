@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ReactNode, useEffect, useState } from 'react';
 import { ADMIN_SITE_NAME } from '../lib/site';
+import { IconDashboard, IconRequests, IconTeams, IconUsers, IconLogout, IconChevronLeft, IconChevronRight } from './Icons';
 
 const SIDEBAR_STORAGE_KEY = 'admin_sidebar_collapsed';
 
@@ -31,7 +32,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     router.push('/login');
   };
 
-  const navLink = (href: string, label: string, icon: string) => {
+  const navLink = (href: string, label: string, icon: ReactNode) => {
     const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
     return (
       <Link href={href} className={isActive ? 'active' : ''} title={collapsed ? label : undefined}>
@@ -56,14 +57,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {collapsed ? '»' : '«'}
+            {collapsed ? <IconChevronRight /> : <IconChevronLeft />}
           </button>
         </div>
         <nav className="admin-sidebar-nav">
-          {navLink('/dashboard', 'Dashboard', '▣')}
-          {navLink('/requests', 'PR Requests', '▤')}
-          {navLink('/teams', 'Teams', '⬡')}
-          {navLink('/users', 'Users', '▢')}
+          {navLink('/dashboard', 'Dashboard', <IconDashboard />)}
+          {navLink('/requests', 'PR Requests', <IconRequests />)}
+          {navLink('/teams', 'Teams', <IconTeams />)}
+          {navLink('/users', 'Users', <IconUsers />)}
         </nav>
         <div className="admin-sidebar-footer">
           <button
@@ -73,7 +74,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             style={{ width: '100%', justifyContent: collapsed ? 'center' : 'flex-start' }}
             title={collapsed ? 'Logout' : undefined}
           >
-            <span className="admin-sidebar-icon" aria-hidden>↪</span>
+            <span className="admin-sidebar-icon" aria-hidden><IconLogout /></span>
             <span className="admin-sidebar-label">Logout</span>
           </button>
         </div>

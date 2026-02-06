@@ -268,6 +268,20 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok"})
 		}
 		return
+	case "DELETE":
+		if err := DeleteUser(id); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			if err.Error() == "user not found" {
+				w.WriteHeader(http.StatusNotFound)
+			} else {
+				w.WriteHeader(http.StatusBadRequest)
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "user deleted"})
+		return
 	}
 	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 }
