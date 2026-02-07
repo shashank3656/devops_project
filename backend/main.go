@@ -493,6 +493,7 @@ func main() {
 	http.HandleFunc("/api/admin/user-activity", adminUserActivityHandler)
 	http.HandleFunc("/api/devops/me", devopsMeHandler)
 	http.HandleFunc("/api/devops/tickets", devopsTicketsHandler)
+	http.HandleFunc("/api/devops/users", devopsUsersHandler)
 	http.HandleFunc("/api/devops/workload", devopsWorkloadHandler)
 	http.HandleFunc("/api/devops/dashboard-stats", devopsDashboardStatsHandler)
 	http.HandleFunc("/api/devops/notifications", devopsNotificationsHandler)
