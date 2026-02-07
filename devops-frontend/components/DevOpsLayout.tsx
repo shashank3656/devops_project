@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { useApiUrl } from '../context/ApiUrlContext';
 import { DEVOPS_SITE_NAME } from '../lib/site';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -15,7 +16,9 @@ interface DevopsUser {
 
 export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const apiUrl = useApiUrl();
   const [user, setUser] = useState<DevopsUser | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
     try {
@@ -24,13 +27,36 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     } catch (_) {}
   }, []);
 
+  const isManager = user?.devops_profile?.is_manager ?? false;
+
+  const refreshPendingCount = useCallback(() => {
+    if (!isManager) return;
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    fetch(`${apiUrl}/api/devops/notifications`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.status === 'ok' && typeof data.pending_approval_count === 'number') setPendingCount(data.pending_approval_count);
+      })
+      .catch(() => {});
+  }, [isManager, apiUrl]);
+
+  useEffect(() => {
+    refreshPendingCount();
+  }, [refreshPendingCount]);
+
+  useEffect(() => {
+    if (!isManager) return;
+    const onRefresh = () => refreshPendingCount();
+    window.addEventListener('devops-notifications-refresh', onRefresh);
+    return () => window.removeEventListener('devops-notifications-refresh', onRefresh);
+  }, [isManager, refreshPendingCount]);
+
   const handleLogout = () => {
     localStorage.removeItem(DEVOPS_TOKEN_KEY);
     localStorage.removeItem(DEVOPS_USER_KEY);
     router.replace('/login');
   };
-
-  const isManager = user?.devops_profile?.is_manager ?? false;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -44,8 +70,13 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               My tickets
             </Link>
             {isManager && (
-              <Link href="/workload" className={router.pathname === '/workload' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} style={{ textDecoration: 'none' }}>
+              <Link href="/workload" className={router.pathname === '/workload' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} style={{ textDecoration: 'none', position: 'relative' }}>
                 Workload
+                {pendingCount > 0 && (
+                  <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, background: 'var(--color-error, #dc3545)', color: '#fff', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+                    {pendingCount > 99 ? '99+' : pendingCount}
+                  </span>
+                )}
               </Link>
             )}
           </nav>

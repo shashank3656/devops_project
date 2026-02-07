@@ -1139,6 +1139,15 @@ func GetPendingApprovalCount() (int, error) {
 	return count, err
 }
 
+// GetPendingDevopsApprovalCount returns the number of requests pending DevOps manager approval (for DevOps portal notification badge)
+func GetPendingDevopsApprovalCount() (int, error) {
+	var count int
+	err := DB.QueryRow(
+		"SELECT COUNT(*) FROM pr_requests WHERE status = 'pending_devops_approval'",
+	).Scan(&count)
+	return count, err
+}
+
 // AuditLogEntry is a single admin audit log row
 type AuditLogEntry struct {
 	ID           int       `json:"id"`

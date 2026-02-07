@@ -208,6 +208,7 @@ func handleRequestApproveByManager(w http.ResponseWriter, r *http.Request, id in
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	AppendUserActivity(req.CreatedBy, "request_approved_by_manager", "pr_request", strconv.Itoa(id), "Pending DevOps approval")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Approved; request is now pending DevOps approval"})
 }
