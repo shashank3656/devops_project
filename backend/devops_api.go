@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 )
 
 // requireDevopsUser validates Bearer token and ensures user is devops_user. Returns userID and ok.
