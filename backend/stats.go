@@ -128,9 +128,18 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := 0
+	if authHeader := r.Header.Get("Authorization"); authHeader != "" && len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		if id, err := validateToken(strings.TrimSpace(authHeader[7:])); err == nil {
+			userID = id
+		}
+	}
+	canApproveByManager := CanApproveByManager(req, userID)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "success",
-		"request": req,
+		"status":                 "success",
+		"request":                req,
+		"can_approve_by_manager": canApproveByManager,
 	})
 }

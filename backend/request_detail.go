@@ -199,6 +199,26 @@ func handleRequestSubmit(w http.ResponseWriter, r *http.Request, id int, req *PR
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Draft submitted for approval"})
 }
 
+// CanApproveByManager returns true if the given user can approve this request (status must be pending_user_manager_approval; user must be group manager for request's team or creator's manager_id). Used by history detail to show/hide Approve button.
+func CanApproveByManager(req *PRRequest, userID int) bool {
+	if req.Status != "pending_user_manager_approval" || req.CreatedBy == nil || userID <= 0 {
+		return false
+	}
+	creatorID := *req.CreatedBy
+	groupManagerID := GetGroupManagerForUserInTeam(creatorID, req.Team)
+	if groupManagerID == 0 {
+		groupManagerID = GetGroupManagerForUser(creatorID)
+	}
+	if groupManagerID == userID {
+		return true
+	}
+	creator, err := GetUserByID(creatorID)
+	if err != nil || creator == nil || creator.ManagerID == nil {
+		return false
+	}
+	return *creator.ManagerID == userID
+}
+
 // handleRequestApproveByManager lets the creator's manager move request from pending_user_manager_approval to pending_devops_approval
 func handleRequestApproveByManager(w http.ResponseWriter, r *http.Request, id int, req *PRRequest, userID int) {
 	if r.Method != "POST" {
@@ -215,19 +235,7 @@ func handleRequestApproveByManager(w http.ResponseWriter, r *http.Request, id in
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	creatorID := *req.CreatedBy
-	groupManagerID := GetGroupManagerForUserInTeam(creatorID, req.Team)
-	if groupManagerID == 0 {
-		groupManagerID = GetGroupManagerForUser(creatorID)
-	}
-	// Allow if current user is the group manager (portal team manager) or the creator's manager_id
-	allowed := groupManagerID == userID
-	if !allowed {
-		if creator, err := GetUserByID(creatorID); err == nil && creator != nil && creator.ManagerID != nil && *creator.ManagerID == userID {
-			allowed = true
-		}
-	}
-	if !allowed {
+	if !CanApproveByManager(req, userID) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator's group manager or assigned manager can approve this step", "status": "error"})
