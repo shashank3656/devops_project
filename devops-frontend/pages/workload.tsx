@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import DevOpsLayout from '../components/DevOpsLayout';
@@ -51,6 +51,24 @@ export default function DevOpsWorkload() {
   const [actioningId, setActioningId] = useState<number | null>(null);
   const [filterUserId, setFilterUserId] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
+
+  // Per-user ticket counts and status breakdown (from workload)
+  const userStats = useMemo(() => {
+    const byUser: Record<number, { username: string; total: number; byStatus: Record<string, number> }> = {};
+    workload.forEach((item) => {
+      const id = item.assignee_id;
+      const name = item.assignee_username;
+      if (!byUser[id]) {
+        byUser[id] = { username: name, total: 0, byStatus: {} };
+      }
+      byUser[id].total += 1;
+      const s = item.request.status || 'unknown';
+      byUser[id].byStatus[s] = (byUser[id].byStatus[s] || 0) + 1;
+    });
+    return Object.entries(byUser)
+      .map(([id, data]) => ({ userId: Number(id), ...data }))
+      .sort((a, b) => b.total - a.total);
+  }, [workload]);
 
   const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -219,41 +237,94 @@ export default function DevOpsWorkload() {
             <p style={{ color: 'var(--color-text-muted)', marginBottom: 16, fontSize: 14 }}>
               Requests that have been assigned to DevOps team members.
             </p>
-            <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 24, flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-                <span style={{ color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>DevOps user:</span>
-                <select
-                  value={filterUserId}
-                  onChange={(e) => setFilterUserId(e.target.value)}
-                  style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', minWidth: 160 }}
-                >
-                  <option value="">All users</option>
-                  {devopsUsers.map((u) => (
-                    <option key={u.id} value={String(u.id)}>{u.username}</option>
-                  ))}
-                </select>
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-                <span style={{ color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Status:</span>
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', minWidth: 160 }}
-                >
-                  {STATUS_OPTIONS.map((opt) => (
-                    <option key={opt.value || 'all'} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </label>
-              {(filterUserId || filterStatus) && (
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => { setFilterUserId(''); setFilterStatus(''); }}
-                >
-                  Clear filters
-                </button>
-              )}
+
+            {/* Tickets by user – who has how many tickets and status breakdown */}
+            {!loading && workload.length > 0 && (
+              <div className="card" style={{ marginBottom: 24, padding: 16 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Tickets by user</h3>
+                <div className="table-wrap">
+                  <table style={{ fontSize: 14 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '8px 12px' }}>User</th>
+                        <th style={{ textAlign: 'center', padding: '8px 12px' }}>Total</th>
+                        <th style={{ textAlign: 'center', padding: '8px 12px' }}>In progress</th>
+                        <th style={{ textAlign: 'center', padding: '8px 12px' }}>Completed</th>
+                        <th style={{ textAlign: 'center', padding: '8px 12px' }}>Rejected</th>
+                        <th style={{ textAlign: 'left', padding: '8px 12px' }}>Other</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {userStats.map(({ userId, username, total, byStatus }) => (
+                        <tr
+                          key={userId}
+                          style={{
+                            cursor: 'pointer',
+                            background: filterUserId === String(userId) ? 'var(--color-primary-tint, #e8f4fc)' : undefined,
+                          }}
+                          onClick={() => setFilterUserId(filterUserId === String(userId) ? '' : String(userId))}
+                        >
+                          <td style={{ padding: '8px 12px', fontWeight: 500 }}>{username}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>{total}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>{byStatus['in_progress'] ?? 0}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>{byStatus['completed'] ?? 0}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>{byStatus['rejected'] ?? 0}</td>
+                          <td style={{ padding: '8px 12px', color: 'var(--color-text-muted)' }}>
+                            {Object.entries(byStatus)
+                              .filter(([s]) => !['in_progress', 'completed', 'rejected'].includes(s))
+                              .map(([s, n]) => `${s}: ${n}`)
+                              .join(', ') || '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Filter – by user and status */}
+            <div className="card" style={{ marginBottom: 24, padding: 16 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Filter</h3>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+                  <span style={{ color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>DevOps user:</span>
+                  <select
+                    value={filterUserId}
+                    onChange={(e) => setFilterUserId(e.target.value)}
+                    style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', minWidth: 180 }}
+                  >
+                    <option value="">All users ({workload.length})</option>
+                    {devopsUsers.map((u) => {
+                      const count = userStats.find((s) => s.userId === u.id)?.total ?? 0;
+                      return (
+                        <option key={u.id} value={String(u.id)}>{u.username} ({count})</option>
+                      );
+                    })}
+                  </select>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+                  <span style={{ color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Status:</span>
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', minWidth: 160 }}
+                  >
+                    {STATUS_OPTIONS.map((opt) => (
+                      <option key={opt.value || 'all'} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </label>
+                {(filterUserId || filterStatus) && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => { setFilterUserId(''); setFilterStatus(''); }}
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
             </div>
             {error && <div className="alert alert-error">{error}</div>}
             {loading ? (
