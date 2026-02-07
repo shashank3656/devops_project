@@ -33,7 +33,8 @@ devops_project/
 │   └── .env.example
 ├── docs/            # All documentation
 ├── backend/         # Go backend service
-├── frontend/        # Next.js frontend
+├── frontend/        # Next.js user frontend (port 3000)
+├── admin-frontend/  # Next.js admin frontend (port 3001)
 └── docker-compose.yml
 ```
 
@@ -42,11 +43,12 @@ devops_project/
 All documentation is available in the [`docs/`](./docs/) directory:
 
 - [Docker Compose Guide](./docs/DOCKER_COMPOSE.md)
+- [Docker Compose commands](./docs/DOCKER_COMPOSE_CMDS.md) (single command to start all containers)
 - [Docker Networking](./docs/DOCKER_NETWORKING.md)
 - [Frontend Documentation](./docs/frontend-README.md)
 - [Backend Documentation](./docs/backend-README.md)
 - [Admin Frontend](./docs/ADMIN_FRONTEND.md) (teams & members, runs on port 3001)
-- [Docker Compose commands](./docs/DOCKER_COMPOSE_CMDS.md) (single command to start all containers)
+- [Feature Guide](./docs/FEATURE_GUIDE.md) (admin secret rollout, email enablement, delete teams, and more)
 
 ## Features
 
@@ -56,6 +58,11 @@ All documentation is available in the [`docs/`](./docs/) directory:
 - ✅ GitOps principles
 - ✅ Security scanning integration
 - ✅ Cost estimation
+- ✅ Admin console: teams & groups management (create, delete, add/remove members)
+- ✅ Admin secret for API/script access (`X-Admin-Secret` header)
+- ✅ Audit logging for admin actions
+
+See [Feature Guide](./docs/FEATURE_GUIDE.md) for: secure admin secret rollout, email enablement (SMTP), delete teams, and additional feature suggestions.
 
 ## Data storage
 
@@ -63,7 +70,7 @@ All data is stored in the **backend** (PostgreSQL): users, teams, team members, 
 
 ## Configuration
 
-Environment variables are stored in `config/.env`. See `config/.env.example` for required variables.
+Environment variables are stored in `config/.env`. See `config/.env.example` for required variables (GitHub, database, admin secret). Optional: `SMTP_*` and `EMAIL_ENABLED` for email notifications—see [Feature Guide](./docs/FEATURE_GUIDE.md).
 
 **Important for EC2 Deployment:**
 - Update `NEXT_PUBLIC_API_URL` in `config/.env` to your EC2 IP/domain
