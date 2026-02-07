@@ -40,6 +40,7 @@ export default function TeamDetail() {
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   const [bulkAdding, setBulkAdding] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [updatingRoleFor, setUpdatingRoleFor] = useState<number | null>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token =
@@ -177,6 +178,39 @@ export default function TeamDetail() {
       if (res.ok && typeof id === 'string')
         fetchTeam(parseInt(id, 10));
     } catch (_) {}
+  };
+
+  const handleRoleChange = async (userId: number, newRole: string) => {
+    if (!id || typeof id !== 'string') return;
+    setUpdatingRoleFor(userId);
+    setError('');
+    try {
+      const res = await fetch(
+        `${apiUrl}/api/admin/teams/${id}/members/${userId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ role: newRole }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMembers((prev) =>
+          prev.map((m) =>
+            m.user_id === userId ? { ...m, role: newRole } : m
+          )
+        );
+      } else {
+        setError(data.error || 'Failed to update role');
+      }
+    } catch (_) {
+      setError('Failed to update role');
+    } finally {
+      setUpdatingRoleFor(null);
+    }
   };
 
   const handleDeleteTeam = async () => {
@@ -437,14 +471,24 @@ export default function TeamDetail() {
                               {m.email}
                             </td>
                             <td>
-                              <span
+                              <select
+                                className="input"
+                                value={m.role}
+                                disabled={updatingRoleFor === m.user_id}
+                                onChange={(e) =>
+                                  handleRoleChange(m.user_id, e.target.value)
+                                }
                                 style={{
+                                  minWidth: 100,
+                                  padding: '6px 8px',
+                                  fontSize: 13,
                                   textTransform: 'capitalize',
-                                  fontWeight: 500,
                                 }}
+                                aria-label={`Role for ${m.username}`}
                               >
-                                {m.role}
-                              </span>
+                                <option value="member">member</option>
+                                <option value="lead">lead</option>
+                              </select>
                             </td>
                             <td>
                               <button
