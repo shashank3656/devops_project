@@ -79,6 +79,9 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 		case "tags":
 			handleRequestTags(w, r, id, req, userID)
 			return
+		case "cancel":
+			handleRequestCancel(w, r, id, req, userID)
+			return
 		}
 	}
 
@@ -297,6 +300,35 @@ func handleRequestDeleteDraft(w http.ResponseWriter, r *http.Request, id int, re
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Draft deleted"})
+}
+
+// handleRequestCancel lets the creator cancel their request (draft or any pending approval state, before PR is created).
+func handleRequestCancel(w http.ResponseWriter, r *http.Request, id int, req *PRRequest, userID int) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if req.CreatedBy == nil || *req.CreatedBy != userID {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator can cancel this request", "status": "error"})
+		return
+	}
+	cancellable := req.Status == "draft" || req.Status == "pending_user_manager_approval" ||
+		req.Status == "pending_devops_approval" || req.Status == "pending_approval"
+	if !cancellable {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only draft or pending requests can be cancelled", "status": "error"})
+		return
+	}
+	if err := UpdatePRRequestReject(id, "Cancelled by creator"); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	AppendUserActivity(req.CreatedBy, "request_cancel", "pr_request", strconv.Itoa(id), "cancelled by creator")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Request cancelled"})
 }
 
 func handleRequestComments(w http.ResponseWriter, r *http.Request, requestID int, req *PRRequest, userID int) {
