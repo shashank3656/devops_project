@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -397,6 +398,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to save request", "status": "error"})
 		return
 	}
+	AppendUserActivity(userIDPtr, "request_create", "pr_request", strconv.Itoa(prRequest.ID), status)
 
 	// Optional initial comment when raising the PR (saved as first request comment)
 	if userID > 0 {
@@ -464,6 +466,8 @@ func main() {
 	http.HandleFunc("/api/admin/stats", adminStatsHandler)
 	http.HandleFunc("/api/admin/dashboard-stats", adminDashboardStatsHandler)
 	http.HandleFunc("/api/admin/audit-log", adminAuditLogHandler)
+	http.HandleFunc("/api/admin/user-activity", adminUserActivityHandler)
+	http.HandleFunc("/api/webhooks/github", githubWebhookHandler)
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/ready", readyHandler)
 	

@@ -5,6 +5,7 @@ import { ADMIN_SITE_NAME } from '../lib/site';
 import { IconDashboard, IconRequests, IconTeams, IconUsers, IconLogout, IconBell, IconChevronLeft, IconChevronRight, IconActivity } from './Icons';
 
 const SIDEBAR_STORAGE_KEY = 'admin_sidebar_collapsed';
+const THEME_KEY = 'admin-theme';
 const NOTIFY_POLL_MS = 30000;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -36,6 +37,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = router.pathname;
   const [collapsed, setCollapsed] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [newRequestsCount, setNewRequestsCount] = useState(0);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [pendingTickets, setPendingTickets] = useState<PendingRequest[]>([]);
@@ -47,8 +49,20 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     try {
       const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
       if (stored !== null) setCollapsed(stored === 'true');
+      const t = localStorage.getItem(THEME_KEY);
+      if (t === 'dark' || t === 'light') {
+        setTheme(t);
+        document.documentElement.setAttribute('data-theme', t);
+      }
     } catch (_) {}
   }, []);
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    try { localStorage.setItem(THEME_KEY, next); } catch (_) {}
+    document.documentElement.setAttribute('data-theme', next);
+  };
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
 
@@ -176,6 +190,17 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           {navLink('/users', 'Users', <IconUsers />)}
           {navLink('/activity', 'Activity', <IconActivity />)}
         </nav>
+        <div style={{ padding: '0 var(--space-3)' }}>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            style={{ width: '100%', justifyContent: 'flex-start' }}
+          >
+            {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+          </button>
+        </div>
       </aside>
       <div className="admin-main-wrap">
         <header className="admin-topbar">

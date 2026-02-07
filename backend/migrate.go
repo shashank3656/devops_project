@@ -68,6 +68,57 @@ func MigrateDatabase() error {
 			}
 		}
 	}
+	// Migration 3: request_tags table (tags on PR requests)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS request_tags (
+			id SERIAL PRIMARY KEY,
+			request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			tag VARCHAR(100) NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(request_id, tag)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_tags_request_id ON request_tags(request_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_tags_tag ON request_tags(tag)")
+
+	// Migration 4: user_activity table (user actions for activity feed)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS user_activity (
+			id SERIAL PRIMARY KEY,
+			user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			action VARCHAR(100) NOT NULL,
+			resource_type VARCHAR(50) NOT NULL,
+			resource_id VARCHAR(50),
+			details TEXT,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_activity_user_id ON user_activity(user_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_activity_created_at ON user_activity(created_at DESC)")
+
+	// Migration 5: api_keys table (for programmatic access)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS api_keys (
+			id SERIAL PRIMARY KEY,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name VARCHAR(200) NOT NULL,
+			key_hash VARCHAR(64) NOT NULL UNIQUE,
+			last_used_at TIMESTAMP,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+
+	// Migration 6: saved_filter_views (admin saved filters)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS saved_filter_views (
+			id SERIAL PRIMARY KEY,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name VARCHAR(200) NOT NULL,
+			filters JSONB NOT NULL DEFAULT '{}',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+
 	log.Println("Database schema is up to date")
 	return nil
 }

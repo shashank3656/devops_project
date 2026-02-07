@@ -70,6 +70,12 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 		case "comments":
 			handleRequestComments(w, r, id, req, userID)
 			return
+		case "diff":
+			requestDiffHandler(w, r, id, userID)
+			return
+		case "tags":
+			handleRequestTags(w, r, id, req, userID)
+			return
 		}
 	}
 
@@ -121,6 +127,7 @@ func handleRequestResubmit(w http.ResponseWriter, r *http.Request, id int, req *
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	AppendUserActivity(req.CreatedBy, "request_resubmit", "pr_request", strconv.Itoa(newReq.ID), "cloned from #"+strconv.Itoa(id))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -151,6 +158,7 @@ func handleRequestSubmit(w http.ResponseWriter, r *http.Request, id int, req *PR
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	AppendUserActivity(req.CreatedBy, "request_submit", "pr_request", strconv.Itoa(id), "draft submitted")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Draft submitted for approval"})
 }
@@ -272,6 +280,8 @@ func handleRequestComments(w http.ResponseWriter, r *http.Request, requestID int
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		uid := userID
+		AppendUserActivity(&uid, "request_comment", "pr_request", strconv.Itoa(requestID), "")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Comment added"})

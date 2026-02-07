@@ -51,6 +51,10 @@ export default function History() {
   const [detailRequest, setDetailRequest] = useState<PRRequest | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [comments, setComments] = useState<RequestComment[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+  const [newTag, setNewTag] = useState('');
+  const [compareWithId, setCompareWithId] = useState('');
+  const [diffResult, setDiffResult] = useState<{ base: any; compare: any; changes: any[] } | null>(null);
   const [commentBody, setCommentBody] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [sortBy, setSortBy] = useState<'id' | 'created_at' | 'team' | 'cloud' | 'priority' | 'due_date'>('created_at');
@@ -120,15 +124,19 @@ export default function History() {
   const openDetail = async (req: PRRequest) => {
     setDetailRequest(null);
     setComments([]);
+    setTags([]);
+    setNewTag('');
+    setDiffResult(null);
     setCommentBody('');
     setDetailLoading(true);
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
       if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
-      const [detailRes, commentsRes] = await Promise.all([
+      const [detailRes, commentsRes, tagsRes] = await Promise.all([
         fetch(`${apiUrl}/api/history/${req.id}`, { headers }),
-        fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers })
+        fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers }),
+        fetch(`${apiUrl}/api/request/${req.id}/tags`, { headers })
       ]);
       if (detailRes.ok) {
         const data = await detailRes.json();
@@ -145,6 +153,10 @@ export default function History() {
       if (commentsRes.ok) {
         const cData = await commentsRes.json();
         setComments(cData.comments || []);
+      }
+      if (tagsRes.ok) {
+        const tData = await tagsRes.json();
+        setTags(tData.tags || []);
       }
     } catch (_) {
       setDetailRequest(req);
@@ -850,6 +862,145 @@ export default function History() {
                       >
                         Use as template
                       </button>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input
+                          type="number"
+                          placeholder="Compare with PR #"
+                          value={compareWithId}
+                          onChange={(e) => setCompareWithId(e.target.value)}
+                          style={{ width: 120, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border-color)' }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ padding: '6px 12px', fontSize: 13 }}
+                          disabled={!compareWithId}
+                          onClick={async () => {
+                            const token = localStorage.getItem('token');
+                            if (!token || !compareWithId) return;
+                            const res = await fetch(`${apiUrl}/api/request/${detailRequest.id}/diff?compare_with=${compareWithId}`, {
+                              headers: { Authorization: `Bearer ${token}` },
+                            });
+                            if (res.ok) {
+                              const d = await res.json();
+                              setDiffResult(d.diff);
+                            } else {
+                              setDiffResult(null);
+                            }
+                          }}
+                        >
+                          Compare
+                        </button>
+                        {diffResult && (
+                          <button type="button" className="btn btn-secondary" style={{ padding: '6px' }} onClick={() => setDiffResult(null)}>
+                            Clear diff
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {diffResult && diffResult.changes && diffResult.changes.length > 0 && (
+                      <div style={{ marginBottom: 12, padding: 12, background: 'var(--bg-gray-50)', borderRadius: 8 }}>
+                        <strong>Diff (this vs #{compareWithId})</strong>
+                        {diffResult.changes.map((c: any) => (
+                          <div key={c.field} style={{ marginTop: 8, fontSize: 13 }}>
+                            <strong>{c.field}:</strong> <span style={{ color: 'var(--error-color)' }}>− {String(c.base_value || '').slice(0, 80)}</span>
+                            <br />
+                            <strong>{c.field}:</strong> <span style={{ color: 'var(--success-color)' }}>+ {String(c.compare_value || '').slice(0, 80)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Tags */}
+                    <div style={{ marginBottom: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-color)' }}>
+                      <strong>Tags</strong>
+                      <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                        {tags.map((t) => (
+                          <span
+                            key={t}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              background: 'var(--primary-tint)',
+                              color: 'var(--primary-color)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            {t}
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const token = localStorage.getItem('token');
+                                if (!token) return;
+                                const res = await fetch(`${apiUrl}/api/request/${detailRequest.id}/tags?tag=${encodeURIComponent(t)}`, {
+                                  method: 'DELETE',
+                                  headers: { Authorization: `Bearer ${token}` },
+                                });
+                                if (res.ok) {
+                                  setTags((prev) => prev.filter((x) => x !== t));
+                                }
+                              }}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 14 }}
+                              aria-label={`Remove ${t}`}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <input
+                            type="text"
+                            placeholder="Add tag"
+                            value={newTag}
+                            onChange={(e) => setNewTag(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && newTag.trim()) {
+                                e.preventDefault();
+                                (async () => {
+                                  const token = localStorage.getItem('token');
+                                  if (!token) return;
+                                  const res = await fetch(`${apiUrl}/api/request/${detailRequest.id}/tags`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                    body: JSON.stringify({ tag: newTag.trim() }),
+                                  });
+                                  if (res.ok) {
+                                    const d = await res.json();
+                                    setTags(d.tags || []);
+                                    setNewTag('');
+                                  }
+                                })();
+                              }
+                            }}
+                            style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', width: 100 }}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ padding: '6px 12px', fontSize: 13 }}
+                            disabled={!newTag.trim()}
+                            onClick={async () => {
+                              if (!newTag.trim()) return;
+                              const token = localStorage.getItem('token');
+                              if (!token) return;
+                              const res = await fetch(`${apiUrl}/api/request/${detailRequest.id}/tags`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ tag: newTag.trim() }),
+                              });
+                              if (res.ok) {
+                                const d = await res.json();
+                                setTags(d.tags || []);
+                                setNewTag('');
+                              }
+                            }}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
                     </div>
                     {/* Comments */}
                     <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>

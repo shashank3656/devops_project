@@ -90,6 +90,28 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// SLA metrics
+	fromStr, toStr := "", ""
+	if !fromDate.IsZero() {
+		fromStr = fromDate.Format("2006-01-02")
+	}
+	if !toDate.IsZero() {
+		toStr = toDate.Format("2006-01-02") + " 23:59:59"
+	}
+	if avgHours, cnt, err := GetSLAMetrics("", fromStr, toStr); err == nil && cnt > 0 {
+		resp["sla"] = map[string]interface{}{"avg_hours": avgHours, "completed_count": cnt}
+	}
+
+	// Team comparison
+	if teamComp, err := GetTeamComparison(fromStr, toStr); err == nil {
+		resp["team_comparison"] = teamComp
+	}
+
+	// Trend (last 14 days)
+	if trend, err := GetRequestsTrend(14, ""); err == nil {
+		resp["trend"] = trend
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
