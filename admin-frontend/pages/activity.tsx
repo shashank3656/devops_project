@@ -44,6 +44,7 @@ export default function ActivityPage() {
       return;
     }
     setLoading(true);
+    setError('');
     if (tab === 'audit') {
       const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
       if (actionFilter) params.set('action', actionFilter);
@@ -53,8 +54,14 @@ export default function ActivityPage() {
           return res.json();
         })
         .then((data) => {
-          if (data.entries) setEntries(data.entries);
-          if (data.error) setError(data.error);
+          if (data.error) {
+            setError(data.error);
+          } else if (data.status === 'ok' || Array.isArray(data.entries)) {
+            setEntries(Array.isArray(data.entries) ? data.entries : []);
+            setError('');
+          } else {
+            setError('Failed to load audit log');
+          }
         })
         .catch(() => setError('Failed to load audit log'))
         .finally(() => setLoading(false));
@@ -66,7 +73,14 @@ export default function ActivityPage() {
           return res.json();
         })
         .then((data) => {
-          if (data.entries) setUserEntries(data.entries);
+          if (data.error) {
+            setError(data.error);
+          } else if (data.status === 'ok' || Array.isArray(data.entries)) {
+            setUserEntries(Array.isArray(data.entries) ? data.entries : []);
+            setError('');
+          } else {
+            setError('Failed to load user activity');
+          }
         })
         .catch(() => setError('Failed to load user activity'))
         .finally(() => setLoading(false));
