@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { useApiUrl } from '../context/ApiUrlContext';
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
 
 export default function DevOpsLogin() {
   const router = useRouter();
+  const apiUrl = useApiUrl();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');

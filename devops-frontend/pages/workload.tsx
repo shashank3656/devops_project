@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import DevOpsLayout from '../components/DevOpsLayout';
+import { useApiUrl } from '../context/ApiUrlContext';
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
 interface Request {
@@ -27,6 +27,7 @@ interface WorkloadItem {
 
 export default function DevOpsWorkload() {
   const router = useRouter();
+  const apiUrl = useApiUrl();
   const [workload, setWorkload] = useState<WorkloadItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -51,7 +52,7 @@ export default function DevOpsWorkload() {
       })
       .catch(() => setError('Failed to load workload'))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [router, apiUrl]);
 
   return (
     <>

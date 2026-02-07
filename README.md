@@ -110,6 +110,24 @@ If you see **"Failed to fetch"**, **"Cannot connect to backend"**, or **"Cannot 
 5. **Firewall**  
    - Ensure port **8080** is open on the host running the backend (e.g. EC2 security group, local firewall).
 
+**Why does the connection fail?** One of three things is usually wrong:
+
+| Cause | What’s happening | What to do |
+|-------|-------------------|------------|
+| **Backend not running** | The backend container isn’t up, so nothing is listening on 8080. | On the server: `docker ps` and look for `infra-backend`. If missing, run `docker-compose up -d` (same directory as `docker-compose.yml`). |
+| **Port 8080 not reachable** | Backend is running, but the machine’s firewall or cloud security group blocks inbound 8080. Your browser never reaches the server. | On the server: `curl -s http://localhost:8080/health` should return JSON. If that works but from your laptop/browser `http://20.219.96.249:8080/health` fails, open port **8080** in the server’s firewall / Azure NSG / AWS security group. |
+| **Wrong URL** | Backend is on another IP, port, or host. The URL baked into the frontend doesn’t match. | Set `NEXT_PUBLIC_API_URL` in `config/.env` to the URL your **browser** can use (e.g. `http://20.219.96.249:8080`), then rebuild the frontend and restart. |
+
+**Quick checks on the server (where Docker runs):**
+```bash
+# Is the backend container running?
+docker ps --format '{{.Names}} {{.Ports}}' | grep -E 'backend|8080'
+
+# Does the backend respond locally?
+curl -s http://localhost:8080/health
+```
+If the first shows no backend and the second fails, start the stack with `docker-compose up -d`. If the second works but the browser still can’t open `http://20.219.96.249:8080/health`, open port 8080 in the firewall/security group for that machine.
+
 ## License
 
 MIT
