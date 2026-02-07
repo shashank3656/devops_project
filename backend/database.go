@@ -509,7 +509,30 @@ func GetReporteeUserIDs(managerUserID int) ([]int, error) {
 	return ids, nil
 }
 
-// GetTeamMemberUserIDsForManager returns all user IDs the manager should see in "Group tickets": portal team members + direct reportees (manager_id). Includes manager themselves.
+// GetPortalTeamMemberUserIDsForPortalManager returns all user IDs in any portal team that the given user is a member of (any role). Used when user has is_portal_manager so they see all tickets from their team groups.
+func GetPortalTeamMemberUserIDsForPortalManager(userID int) ([]int, error) {
+	rows, err := DB.Query(`
+		SELECT DISTINCT m2.user_id FROM team_members m1
+		INNER JOIN teams t ON t.id = m1.team_id AND COALESCE(t.team_type,'portal') = 'portal'
+		INNER JOIN team_members m2 ON m2.team_id = t.id
+		WHERE m1.user_id = $1
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// GetTeamMemberUserIDsForManager returns all user IDs the manager should see in "Group tickets": portal team members (where user has role=manager) + direct reportees (manager_id) + if user has is_portal_manager, all members of any portal team they belong to. Includes manager themselves.
 func GetTeamMemberUserIDsForManager(managerUserID int) ([]int, error) {
 	seen := make(map[int]bool)
 	seen[managerUserID] = true
@@ -520,6 +543,14 @@ func GetTeamMemberUserIDsForManager(managerUserID int) ([]int, error) {
 	reportees, _ := GetReporteeUserIDs(managerUserID)
 	for _, id := range reportees {
 		seen[id] = true
+	}
+	// If user is designated as portal manager (is_portal_manager), include all members of every portal team they belong to
+	u, _ := GetUserByID(managerUserID)
+	if u != nil && u.IsPortalManager {
+		portalAny, _ := GetPortalTeamMemberUserIDsForPortalManager(managerUserID)
+		for _, id := range portalAny {
+			seen[id] = true
+		}
 	}
 	out := make([]int, 0, len(seen))
 	for id := range seen {
