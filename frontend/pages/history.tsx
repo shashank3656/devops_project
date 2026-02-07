@@ -200,6 +200,27 @@ export default function History() {
     }
   };
 
+  const approveByManager = async (id: number) => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    try {
+      const res = await fetch(`${apiUrl}/api/request/${id}/approve-by-manager`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast(d?.message || 'Approved; request is now pending DevOps approval', 'success');
+        setDetailRequest(null);
+        fetchHistory();
+      } else {
+        toast(d?.error || 'Failed to approve', 'error');
+      }
+    } catch (_) {
+      toast('Failed to approve', 'error');
+    }
+  };
+
   const resubmitRequest = async (id: number) => {
     const token = localStorage.getItem('token');
     if (!token || token === 'undefined') return;
@@ -736,7 +757,7 @@ export default function History() {
                             fontSize: '12px',
                             fontWeight: '600',
                             background: req.status === 'draft' ? 'var(--bg-gray-100)' :
-                                       req.status === 'pending_approval' ? 'var(--warning-bg)' :
+                                       req.status === 'pending_approval' || req.status === 'pending_user_manager_approval' || req.status === 'pending_devops_approval' ? 'var(--warning-bg)' :
                                        req.status === 'in_progress' ? 'var(--info-bg)' :
                                        req.status === 'completed' ? 'var(--success-bg)' :
                                        req.status === 'rejected' ? 'var(--error-bg)' :
@@ -744,7 +765,7 @@ export default function History() {
                                        req.status === 'merged' ? 'var(--success-bg)' :
                                        req.status === 'closed' ? 'var(--error-bg)' : 'var(--info-bg)',
                             color: req.status === 'draft' ? 'var(--text-secondary)' :
-                                   req.status === 'pending_approval' ? 'var(--warning-color)' :
+                                   req.status === 'pending_approval' || req.status === 'pending_user_manager_approval' || req.status === 'pending_devops_approval' ? 'var(--warning-color)' :
                                    req.status === 'in_progress' ? 'var(--info-color)' :
                                    req.status === 'completed' ? 'var(--success-color)' :
                                    req.status === 'rejected' ? 'var(--error-color)' :
@@ -754,6 +775,8 @@ export default function History() {
                           }}>
                             {req.status === 'draft' ? 'Draft' :
                              req.status === 'pending_approval' ? 'Pending approval' :
+                             req.status === 'pending_user_manager_approval' ? 'Pending your approval' :
+                             req.status === 'pending_devops_approval' ? 'Pending DevOps approval' :
                              req.status === 'in_progress' ? 'In progress' :
                              req.status === 'completed' ? 'Completed' :
                              req.status === 'rejected' ? 'Rejected' : req.status}
@@ -903,18 +926,20 @@ export default function History() {
                         fontSize: '12px',
                         fontWeight: '600',
                         background: detailRequest.status === 'draft' ? 'var(--bg-gray-100)' :
-                                   detailRequest.status === 'pending_approval' ? 'var(--warning-bg)' :
+                                   detailRequest.status === 'pending_approval' || detailRequest.status === 'pending_user_manager_approval' || detailRequest.status === 'pending_devops_approval' ? 'var(--warning-bg)' :
                                    detailRequest.status === 'in_progress' ? 'var(--info-bg)' :
                                    detailRequest.status === 'completed' ? 'var(--success-bg)' :
                                    detailRequest.status === 'rejected' ? 'var(--error-bg)' : 'var(--info-bg)',
                         color: detailRequest.status === 'draft' ? 'var(--text-secondary)' :
-                               detailRequest.status === 'pending_approval' ? 'var(--warning-color)' :
+                               detailRequest.status === 'pending_approval' || detailRequest.status === 'pending_user_manager_approval' || detailRequest.status === 'pending_devops_approval' ? 'var(--warning-color)' :
                                detailRequest.status === 'in_progress' ? 'var(--info-color)' :
                                detailRequest.status === 'completed' ? 'var(--success-color)' :
                                detailRequest.status === 'rejected' ? 'var(--error-color)' : 'var(--info-color)'
                       }}>
                         {detailRequest.status === 'draft' ? 'Draft' :
                          detailRequest.status === 'pending_approval' ? 'Pending approval' :
+                         detailRequest.status === 'pending_user_manager_approval' ? 'Pending your approval' :
+                         detailRequest.status === 'pending_devops_approval' ? 'Pending DevOps approval' :
                          detailRequest.status === 'in_progress' ? 'In progress' :
                          detailRequest.status === 'completed' ? 'Completed' :
                          detailRequest.status === 'rejected' ? 'Rejected' : detailRequest.status}
@@ -936,6 +961,11 @@ export default function History() {
                             Delete draft
                           </button>
                         </>
+                      )}
+                      {detailRequest.status === 'pending_user_manager_approval' && (
+                        <button type="button" onClick={() => approveByManager(detailRequest.id)} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '14px' }}>
+                          Approve (send to DevOps)
+                        </button>
                       )}
                       {detailRequest.status === 'rejected' && (
                         <button type="button" onClick={() => resubmitRequest(detailRequest.id)} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '14px' }}>
