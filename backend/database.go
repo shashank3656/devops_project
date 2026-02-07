@@ -1081,6 +1081,12 @@ func RemoveTeamMember(teamID, userID int) error {
 	return err
 }
 
+// DeleteTeam deletes a team and cascades to team_members (ON DELETE CASCADE)
+func DeleteTeam(teamID int) error {
+	_, err := DB.Exec(`DELETE FROM teams WHERE id = $1`, teamID)
+	return err
+}
+
 // GetTeamMembers returns all members of a team (with user info)
 func GetTeamMembers(teamID int) ([]struct {
 	TeamMember

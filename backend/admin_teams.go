@@ -424,6 +424,49 @@ func adminTeamDetailHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"team": team, "members": members, "status": "ok"})
 }
 
+// adminTeamDeleteHandler DELETE /api/admin/teams/:id
+func adminTeamDeleteHandler(w http.ResponseWriter, r *http.Request) {
+	adminID, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var adminIDPtr *int
+	if adminID > 0 {
+		adminIDPtr = &adminID
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/admin/teams/")
+	path = strings.TrimSuffix(path, "/")
+	teamID, _ := strconv.Atoi(strings.Split(path, "/")[0])
+	if teamID <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid team id", "status": "error"})
+		return
+	}
+	team, err := GetTeamByID(teamID)
+	if err != nil || team == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "team not found", "status": "error"})
+		return
+	}
+	if err := DeleteTeam(teamID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to delete team", "status": "error"})
+		return
+	}
+	AppendAuditLog(adminIDPtr, "team_delete", "team", strconv.Itoa(teamID), fmt.Sprintf("name=%s", team.Name))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"message": "team deleted", "status": "ok"})
+}
+
 // adminTeamMembersAddHandler POST /api/admin/teams/:id/members
 func adminTeamMembersAddHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
@@ -581,8 +624,12 @@ func adminTeamsRouter(w http.ResponseWriter, r *http.Request) {
 	// path is /:id or /:id/members or /:id/members/:user_id
 	parts := strings.Split(path[1:], "/") // [ "123" ] or [ "123", "members" ] or [ "123", "members", "456" ]
 	if len(parts) == 1 {
-		if r.Method == "GET" {
+		switch r.Method {
+		case "GET":
 			adminTeamDetailHandler(w, r)
+			return
+		case "DELETE":
+			adminTeamDeleteHandler(w, r)
 			return
 		}
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
