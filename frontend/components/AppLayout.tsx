@@ -31,6 +31,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [teamCheck, setTeamCheck] = useState<'loading' | 'ok' | 'forbidden'>('loading');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [updatedRequestsCount, setUpdatedRequestsCount] = useState(0);
+  const [pendingManagerApprovalCount, setPendingManagerApprovalCount] = useState(0);
 
   useEffect(() => {
     const stored = getStoredTheme();
@@ -97,6 +98,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     fetchNotifications();
     const interval = setInterval(fetchNotifications, NOTIFY_POLL_MS);
     return () => clearInterval(interval);
+  }, []);
+
+  // Poll for "pending your approval" count (portal / group managers)
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token || token === 'undefined') return;
+    const fetchPendingApproval = () => {
+      const t = localStorage.getItem('token');
+      if (!t) return;
+      fetch(`${apiUrl}/api/me/pending-manager-approval`, { headers: { Authorization: `Bearer ${t}` } })
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => { if (data && typeof data.pending_manager_approval_count === 'number') setPendingManagerApprovalCount(data.pending_manager_approval_count); })
+        .catch(() => {});
+    };
+    fetchPendingApproval();
+    const interval = setInterval(fetchPendingApproval, NOTIFY_POLL_MS);
+    const onRefresh = () => fetchPendingApproval();
+    window.addEventListener('pending-manager-approval-refresh', onRefresh);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('pending-manager-approval-refresh', onRefresh);
+    };
   }, []);
 
   const toggleTheme = () => {
@@ -198,7 +221,37 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <nav className="app-sidebar-nav">
           {navItem('/home', 'Home', <IconHome />)}
           {navItem('/create-infrastructure', 'New Request', <IconPlus />)}
-          {navItem('/history', 'History', <IconHistory />)}
+          <Link
+            href="/history"
+            title="History"
+            className="app-sidebar-nav-item"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: sidebarCollapsed ? '12px' : '12px 16px',
+              justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+              borderRadius: 'var(--radius-md)',
+              color: router.pathname === '/history' ? 'var(--primary-color)' : 'var(--text-primary)',
+              fontWeight: router.pathname === '/history' ? 600 : 500,
+              textDecoration: 'none',
+              background: router.pathname === '/history' ? 'var(--primary-tint)' : 'transparent',
+              transition: 'background 0.15s, color 0.15s',
+              position: 'relative',
+            }}
+          >
+            <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><IconHistory /></span>
+            {!sidebarCollapsed && (
+              <>
+                <span>History</span>
+                {pendingManagerApprovalCount > 0 && (
+                  <span className="app-topbar-badge" style={{ marginLeft: 'auto', minWidth: 20 }} aria-label={`${pendingManagerApprovalCount} need your approval`}>
+                    {pendingManagerApprovalCount > 99 ? '99+' : pendingManagerApprovalCount}
+                  </span>
+                )}
+              </>
+            )}
+          </Link>
           {navItem('/profile', 'Profile', <IconUser />)}
         </nav>
         <div className="app-sidebar-footer">
