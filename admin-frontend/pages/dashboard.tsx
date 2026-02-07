@@ -268,7 +268,7 @@ export default function AdminDashboard() {
                         style={{
                           flex: '1 1 24px',
                           minWidth: 20,
-                          height: Math.max(4, (d.count / Math.max(1, ...quickStats.trend.map((x) => x.count))) * 60),
+                          height: Math.max(4, (d.count / Math.max(1, ...(quickStats.trend ?? []).map((x) => x.count))) * 60),
                           background: 'var(--color-primary)',
                           borderRadius: 4,
                         }}
