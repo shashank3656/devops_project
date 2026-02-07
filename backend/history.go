@@ -78,10 +78,10 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// view=team: if user is manager of a portal team, show all tickets from that team; else same as normal (own tickets)
+	// view=team: if user is manager (portal team manager or has reportees via manager_id), show all tickets from team + reportees; else same as normal (own tickets)
 	createdByIn := ([]int)(nil)
 	if r.URL.Query().Get("view") == "team" && userIDInt > 0 {
-		if memberIDs, err := GetPortalTeamMemberUserIDs(userIDInt); err == nil && len(memberIDs) > 0 {
+		if memberIDs, err := GetTeamMemberUserIDsForManager(userIDInt); err == nil && len(memberIDs) > 0 {
 			createdByIn = memberIDs
 		}
 	}
@@ -96,6 +96,24 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		w.WriteHeader(http.StatusInternalServerError)
 		return
+	}
+
+	// Attach creator usernames for "who raised" (especially for group/manager view)
+	var creatorIDs []int
+	for i := range requests {
+		if requests[i].CreatedBy != nil {
+			creatorIDs = append(creatorIDs, *requests[i].CreatedBy)
+		}
+	}
+	if len(creatorIDs) > 0 {
+		usernames, _ := GetUsernamesByUserIDs(creatorIDs)
+		for i := range requests {
+			if requests[i].CreatedBy != nil && usernames != nil {
+				if name := usernames[*requests[i].CreatedBy]; name != "" {
+					requests[i].CreatedByUsername = name
+				}
+			}
+		}
 	}
 
 	// Get total count for pagination

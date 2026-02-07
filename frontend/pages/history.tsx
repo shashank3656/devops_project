@@ -25,6 +25,7 @@ interface PRRequest {
   created_at: string;
   updated_at: string;
   created_by: number | null;
+  created_by_username?: string;
   config?: string;
 }
 
@@ -569,6 +570,11 @@ export default function History() {
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
+                {viewMode === 'team' && (
+                  <p style={{ padding: '12px 16px 0', margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>
+                    Showing tickets raised by you and your team members. Use <strong>Raised by</strong> to see who created each ticket.
+                  </p>
+                )}
                 <table style={{ 
                   width: '100%', 
                   borderCollapse: 'collapse',
@@ -597,6 +603,17 @@ export default function History() {
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px'
                       }}>Team</th>
+                      {viewMode === 'team' && (
+                        <th style={{ 
+                          padding: '16px', 
+                          textAlign: 'left',
+                          fontWeight: '600',
+                          color: 'var(--text-primary)',
+                          fontSize: '14px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
+                        }}>Raised by</th>
+                      )}
                       <th style={{ 
                         padding: '16px', 
                         textAlign: 'left',
@@ -684,6 +701,9 @@ export default function History() {
                           #{req.id}
                         </td>
                         <td style={{ padding: '16px' }}>{req.team}</td>
+                        {viewMode === 'team' && (
+                          <td style={{ padding: '16px', fontSize: '14px' }}>{req.created_by_username || '—'}</td>
+                        )}
                         <td style={{ padding: '16px' }}>
                           <span style={{
                             padding: '4px 12px',

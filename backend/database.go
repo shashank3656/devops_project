@@ -59,9 +59,10 @@ type PRRequest struct {
 	RejectReason string     `json:"reject_reason"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
-	CreatedBy    *int       `json:"created_by"`
-	AssignedTo   *int       `json:"assigned_to"` // DevOps user assigned after PR creation (by priority)
-	Config       string     `json:"config"`
+	CreatedBy         *int    `json:"created_by"`
+	CreatedByUsername string  `json:"created_by_username,omitempty"` // set in history for "who raised" when view=team
+	AssignedTo        *int    `json:"assigned_to"`                   // DevOps user assigned after PR creation (by priority)
+	Config            string  `json:"config"`
 }
 
 // RequestComment is a comment on a PR request
@@ -487,6 +488,83 @@ func GetPortalTeamMemberUserIDs(managerUserID int) ([]int, error) {
 		ids = append(ids, id)
 	}
 	return ids, nil
+}
+
+// GetReporteeUserIDs returns user IDs of users who have manager_id = managerUserID (direct reportees).
+func GetReporteeUserIDs(managerUserID int) ([]int, error) {
+	rows, err := DB.Query(`SELECT id FROM users WHERE manager_id = $1`, managerUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// GetTeamMemberUserIDsForManager returns all user IDs the manager should see in "Group tickets": portal team members + direct reportees (manager_id). Includes manager themselves.
+func GetTeamMemberUserIDsForManager(managerUserID int) ([]int, error) {
+	seen := make(map[int]bool)
+	seen[managerUserID] = true
+	portal, _ := GetPortalTeamMemberUserIDs(managerUserID)
+	for _, id := range portal {
+		seen[id] = true
+	}
+	reportees, _ := GetReporteeUserIDs(managerUserID)
+	for _, id := range reportees {
+		seen[id] = true
+	}
+	out := make([]int, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+// GetUsernamesByUserIDs returns a map of user_id -> username for the given IDs (for "Raised by" in history).
+func GetUsernamesByUserIDs(userIDs []int) (map[int]string, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	seen := make(map[int]bool)
+	var unique []int
+	for _, id := range userIDs {
+		if id > 0 && !seen[id] {
+			seen[id] = true
+			unique = append(unique, id)
+		}
+	}
+	if len(unique) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(unique))
+	args := make([]interface{}, len(unique))
+	for i, id := range unique {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query := fmt.Sprintf("SELECT id, username FROM users WHERE id IN (%s)", strings.Join(placeholders, ","))
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[int]string)
+	for rows.Next() {
+		var id int
+		var username string
+		if err := rows.Scan(&id, &username); err != nil {
+			continue
+		}
+		out[id] = username
+	}
+	return out, nil
 }
 
 // GetPRRequests retrieves PR requests with optional filters. If createdByIn is non-empty, filter by created_by IN (createdByIn); else if userIDInt > 0, filter by created_by = userIDInt.
