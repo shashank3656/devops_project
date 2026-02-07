@@ -39,6 +39,7 @@ export default function TeamDetail() {
   const [adding, setAdding] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   const [bulkAdding, setBulkAdding] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token =
@@ -178,6 +179,28 @@ export default function TeamDetail() {
     } catch (_) {}
   };
 
+  const handleDeleteTeam = async () => {
+    if (!team || !confirm(`Delete team "${team.name}"? This will remove all members. This cannot be undone.`)) return;
+    setDeleting(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/teams/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        router.push('/teams');
+      } else {
+        setError(data.error || 'Failed to delete team');
+      }
+    } catch (_) {
+      setError('Failed to delete team');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const memberIds = new Set(members.map((m) => m.user_id));
   const availableUsers = users.filter((u) => !memberIds.has(u.id));
 
@@ -205,15 +228,27 @@ export default function TeamDetail() {
           ) : team ? (
             <>
               <div className="card">
-                <h2 className="card-title">{team.name}</h2>
-                <p
-                  style={{
-                    color: 'var(--color-text-muted)',
-                    fontSize: 14,
-                  }}
-                >
-                  Slug: <code>{team.slug}</code>
-                </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+                  <div>
+                    <h2 className="card-title">{team.name}</h2>
+                    <p
+                      style={{
+                        color: 'var(--color-text-muted)',
+                        fontSize: 14,
+                      }}
+                    >
+                      Slug: <code>{team.slug}</code>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    disabled={deleting}
+                    onClick={handleDeleteTeam}
+                  >
+                    {deleting ? 'Deleting…' : 'Delete team'}
+                  </button>
+                </div>
               </div>
 
               <div className="card">

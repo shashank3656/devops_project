@@ -17,6 +17,7 @@ export default function TeamsList() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -49,6 +50,28 @@ export default function TeamsList() {
       setError('Failed to load teams');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteTeam = async (t: Team) => {
+    if (!confirm(`Delete team "${t.name}"? This will remove all members. This cannot be undone.`)) return;
+    setDeletingId(t.id);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/teams/${t.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setTeams((prev) => prev.filter((x) => x.id !== t.id));
+      } else {
+        setError(data.error || 'Failed to delete team');
+      }
+    } catch (_) {
+      setError('Failed to delete team');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -109,13 +132,25 @@ export default function TeamsList() {
                           {new Date(t.created_at).toLocaleDateString()}
                         </td>
                         <td>
-                          <Link
-                            href={`/teams/${t.id}`}
-                            className="btn btn-secondary"
-                            style={{ padding: '8px 14px', fontSize: 13 }}
-                          >
-                            Manage members
-                          </Link>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <Link
+                              href={`/teams/${t.id}`}
+                              className="btn btn-secondary"
+                              style={{ padding: '8px 14px', fontSize: 13 }}
+                            >
+                              Manage members
+                            </Link>
+                            <button
+                              type="button"
+                              className="btn btn-danger"
+                              style={{ padding: '8px 14px', fontSize: 13 }}
+                              disabled={deletingId === t.id}
+                              onClick={() => handleDeleteTeam(t)}
+                              title="Delete team"
+                            >
+                              {deletingId === t.id ? 'Deleting…' : 'Delete'}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
