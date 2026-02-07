@@ -368,10 +368,17 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resp := map[string]interface{}{"user": user}
+	// Portal managers (and users who can approve as group manager or manager_id) get count of tickets pending their approval
+	if user.UserType == "portal_user" || user.IsPortalManager {
+		if n, err := GetPendingManagerApprovalCount(userID); err == nil && n > 0 {
+			resp["pending_manager_approval_count"] = n
+		} else if err == nil {
+			resp["pending_manager_approval_count"] = 0
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"user": user,
-	})
+	json.NewEncoder(w).Encode(resp)
 }
 
 // meTeamsHandler returns the current user's teams (for main frontend - 403 if none)
@@ -416,6 +423,42 @@ func meTeamsHandler(w http.ResponseWriter, r *http.Request) {
 		"teams": teams,
 		"status": "ok",
 	})
+}
+
+// mePendingManagerApprovalHandler GET /api/me/pending-manager-approval - count of requests pending the current user's approval (as group manager or creator's manager). For portal manager notification badge.
+func mePendingManagerApprovalHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		return
+	}
+	token := strings.TrimSpace(authHeader[7:])
+	userID, err := validateToken(token)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"pending_manager_approval_count": 0, "status": "ok"})
+		return
+	}
+	count, _ := GetPendingManagerApprovalCount(userID)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"pending_manager_approval_count": count, "status": "ok"})
 }
 
 // meNotificationsHandler GET /api/me/notifications?since=ISO8601 - count of user's requests updated since (for badge)

@@ -475,6 +475,7 @@ func main() {
 	http.HandleFunc("/api/me", meHandler)
 	http.HandleFunc("/api/me/teams", meTeamsHandler)
 	http.HandleFunc("/api/me/notifications", meNotificationsHandler)
+	http.HandleFunc("/api/me/pending-manager-approval", mePendingManagerApprovalHandler)
 	http.HandleFunc("/api/change-password", changePasswordHandler)
 	http.HandleFunc("/api/verify-email", verifyEmailHandler)
 	http.HandleFunc("/api/verify-otp", verifyOtpHandler)

@@ -1496,6 +1496,26 @@ func GetUserRequestsUpdatedSince(userID int, since time.Time) (int, error) {
 	return count, err
 }
 
+// GetPendingManagerApprovalCount returns how many requests are pending_user_manager_approval that the given user can approve (as group manager for request's team or as creator's manager_id). Used for portal manager notification badge.
+func GetPendingManagerApprovalCount(managerUserID int) (int, error) {
+	var count int
+	err := DB.QueryRow(`
+		SELECT COUNT(DISTINCT r.id) FROM pr_requests r
+		WHERE r.status = 'pending_user_manager_approval'
+		AND r.created_by IS NOT NULL
+		AND (
+			EXISTS (SELECT 1 FROM users u WHERE u.id = r.created_by AND u.manager_id = $1)
+			OR EXISTS (
+				SELECT 1 FROM team_members m1
+				INNER JOIN teams t ON t.id = m1.team_id AND COALESCE(t.team_type,'portal') = 'portal' AND (t.name = r.team OR t.slug = r.team)
+				INNER JOIN team_members m2 ON m2.team_id = t.id AND m2.role = 'manager' AND m2.user_id = $1
+				WHERE m1.user_id = r.created_by
+			)
+		)
+	`, managerUserID).Scan(&count)
+	return count, err
+}
+
 // CreateTeam creates a new team (admin only). teamType: "portal" | "devops"
 func CreateTeam(name, slug, teamType string, createdBy *int) (*Team, error) {
 	if slug == "" {

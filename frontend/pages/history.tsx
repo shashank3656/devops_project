@@ -63,6 +63,7 @@ export default function History() {
   const [sortDesc, setSortDesc] = useState(true);
   const [viewMode, setViewMode] = useState<'mine' | 'team'>('mine');
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const defaultedToTeamView = useRef(false);
   const rawConfigByRequestId = useRef<Record<number, string>>({});
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -83,6 +84,11 @@ export default function History() {
       .then((res) => res.ok ? res.json() : null)
       .then((data) => {
         if (data?.user?.id != null) setCurrentUserId(data.user.id);
+        // Default to Group tickets view once for portal managers so they see all their group requests
+        if (data?.user?.is_portal_manager === true && !defaultedToTeamView.current) {
+          defaultedToTeamView.current = true;
+          setViewMode('team');
+        }
       })
       .catch(() => {});
   }, [apiUrl]);
@@ -213,6 +219,7 @@ export default function History() {
         toast(d?.message || 'Approved; request is now pending DevOps approval', 'success');
         setDetailRequest(null);
         fetchHistory();
+        window.dispatchEvent(new CustomEvent('pending-manager-approval-refresh'));
       } else {
         toast(d?.error || 'Failed to approve', 'error');
       }
