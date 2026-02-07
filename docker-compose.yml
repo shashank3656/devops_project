@@ -229,25 +229,25 @@ services:
     profiles:
       - dev
   
-    devops-frontend-prod:
-      build:
-        context: ./devops-frontend
-        dockerfile: Dockerfile
-        args:
-          - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
-      container_name: infra-devops-frontend
-      ports:
-        - "3002:3002"
-      environment:
-        - NODE_ENV=production
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
-      depends_on:
-        - backend-prod
-      restart: unless-stopped
-      networks:
-        - infra-network
-      profiles:
-        - prod
+  devops-frontend-prod:
+    build:
+      context: ./devops-frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    container_name: infra-devops-frontend
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
+    depends_on:
+      - backend-prod
+    restart: unless-stopped
+    networks:
+      - infra-network
+    profiles:
+      - prod
 
 volumes:
   postgres_data:
