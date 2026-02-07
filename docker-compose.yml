@@ -222,7 +222,7 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
     depends_on:
-      - backend-prod
+      - backend
     restart: unless-stopped
     networks:
       - infra-network
