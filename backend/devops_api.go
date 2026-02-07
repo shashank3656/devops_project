@@ -67,6 +67,11 @@ func requireDevopsManager(w http.ResponseWriter, r *http.Request) (userID int, o
 
 // devopsMeHandler GET /api/devops/me - current DevOps user + profile
 func devopsMeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		enableCORS(w)
+		handleOptions(w, r)
+		return
+	}
 	if r.Method != "GET" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -93,6 +98,11 @@ func devopsMeHandler(w http.ResponseWriter, r *http.Request) {
 
 // devopsTicketsHandler GET /api/devops/tickets - my assigned tickets (assigned_to = me)
 func devopsTicketsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		enableCORS(w)
+		handleOptions(w, r)
+		return
+	}
 	if r.Method != "GET" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -115,6 +125,11 @@ func devopsTicketsHandler(w http.ResponseWriter, r *http.Request) {
 
 // devopsWorkloadHandler GET /api/devops/workload - manager only; requests with assigned_to set, optionally grouped by assignee
 func devopsWorkloadHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		enableCORS(w)
+		handleOptions(w, r)
+		return
+	}
 	if r.Method != "GET" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
