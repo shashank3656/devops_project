@@ -61,6 +61,7 @@ export default function History() {
   const [sortBy, setSortBy] = useState<'id' | 'created_at' | 'team' | 'cloud' | 'priority' | 'due_date'>('created_at');
   const [sortDesc, setSortDesc] = useState(true);
   const [viewMode, setViewMode] = useState<'mine' | 'team'>('mine');
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const rawConfigByRequestId = useRef<Record<number, string>>({});
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -73,6 +74,17 @@ export default function History() {
     }
     fetchHistory();
   }, [filterType, filterValue, page, viewMode]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data?.user?.id != null) setCurrentUserId(data.user.id);
+      })
+      .catch(() => {});
+  }, [apiUrl]);
 
   const fetchHistory = async () => {
     setLoading(true);
@@ -227,6 +239,30 @@ export default function History() {
       }
     } catch (_) {
       toast('Failed to delete draft', 'error');
+    }
+  };
+
+  const CANCELLABLE_STATUSES = ['draft', 'pending_user_manager_approval', 'pending_devops_approval', 'pending_approval'];
+
+  const cancelRequest = async (id: number) => {
+    if (!confirm('Cancel this ticket? It will be marked as cancelled.')) return;
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    try {
+      const res = await fetch(`${apiUrl}/api/request/${id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast(d?.message || 'Ticket cancelled', 'success');
+        setDetailRequest(null);
+        fetchHistory();
+      } else {
+        toast(d?.error || 'Failed to cancel ticket', 'error');
+      }
+    } catch (_) {
+      toast('Failed to cancel ticket', 'error');
     }
   };
 
@@ -862,6 +898,13 @@ export default function History() {
                       {detailRequest.status === 'rejected' && (
                         <button type="button" onClick={() => resubmitRequest(detailRequest.id)} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '14px' }}>
                           Resubmit as draft
+                        </button>
+                      )}
+                      {currentUserId != null && detailRequest.created_by === currentUserId &&
+                       CANCELLABLE_STATUSES.includes(detailRequest.status) &&
+                       detailRequest.status !== 'draft' && (
+                        <button type="button" onClick={() => cancelRequest(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }}>
+                          Cancel ticket
                         </button>
                       )}
                       {detailRequest.pr_url ? (
