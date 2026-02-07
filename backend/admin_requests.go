@@ -309,7 +309,7 @@ func adminBulkApproveHandler(w http.ResponseWriter, r *http.Request) {
 			failed = append(failed, id)
 			continue
 		}
-		prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config))
+		prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
 		if err != nil {
 			log.Printf("Bulk approve id %d: %v", id, err)
 			failed = append(failed, id)
@@ -445,7 +445,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending_approval requests can be approved", "status": "error"})
 			return
 		}
-		prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config))
+		prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
 		if err != nil {
 			log.Printf("Admin approve: create PR failed: %v", err)
 			w.Header().Set("Content-Type", "application/json")

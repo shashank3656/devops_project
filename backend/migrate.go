@@ -108,7 +108,17 @@ func MigrateDatabase() error {
 		)
 	`)
 
-	// Migration 6: saved_filter_views (admin saved filters)
+	// Migration 6: application_id on pr_requests (unique 10-char alphanumeric per request)
+	var appIdCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'pr_requests' AND column_name = 'application_id'").Scan(&appIdCount)
+	if appIdCount == 0 {
+		log.Println("Migrating database: adding pr_requests.application_id...")
+		_, _ = DB.Exec("ALTER TABLE pr_requests ADD COLUMN application_id VARCHAR(10) DEFAULT ''")
+		_, _ = DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_requests_application_id ON pr_requests(application_id) WHERE application_id != ''")
+		log.Println("Database migration (application_id) completed")
+	}
+
+	// Migration 7: saved_filter_views (admin saved filters)
 	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS saved_filter_views (
 			id SERIAL PRIMARY KEY,

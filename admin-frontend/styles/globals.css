@@ -428,15 +428,19 @@ td code { font-size: var(--text-sm); background: #f1f5f9; padding: 2px 8px; bord
   padding: var(--space-4) var(--space-5);
   border-top: 1px solid var(--sidebar-border);
 }
-.admin-sidebar-footer .btn-ghost {
+.admin-sidebar-footer .btn-ghost,
+.admin-sidebar-footer .btn-secondary {
   color: var(--sidebar-text-muted);
   width: 100%;
   justify-content: flex-start;
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  background: transparent;
+  border: 1px solid var(--sidebar-border);
 }
-.admin-sidebar-footer .btn-ghost:hover { color: var(--sidebar-text); background: var(--sidebar-hover); }
+.admin-sidebar-footer .btn-ghost:hover,
+.admin-sidebar-footer .btn-secondary:hover { color: var(--sidebar-text); background: var(--sidebar-hover); }
 
 /* Collapsed state: narrow sidebar, icons only */
 .admin-sidebar-collapsed {
@@ -706,7 +710,7 @@ td code { font-size: var(--text-sm); background: #f1f5f9; padding: 2px 8px; bord
   .stats-grid { grid-template-columns: 1fr 1fr; }
 }
 
-/* Dark theme */
+/* Dark theme – matches user portal */
 [data-theme="dark"] {
   --color-bg: #0f172a;
   --color-surface: #1e293b;
@@ -717,8 +721,15 @@ td code { font-size: var(--text-sm); background: #f1f5f9; padding: 2px 8px; bord
   --color-danger-bg: #7f1d1d;
   --color-success-bg: #064e3b;
   --color-warning-bg: #78350f;
+  --sidebar-bg: #0f172a;
+  --sidebar-border: #1e293b;
+  --sidebar-hover: #334155;
 }
 [data-theme="dark"] body { background: var(--color-bg); }
 [data-theme="dark"] th { background: #334155; }
 [data-theme="dark"] .stat-card { background: var(--color-surface); border-color: var(--color-border); }
 [data-theme="dark"] .modal { background: var(--color-surface); }
+[data-theme="dark"] .card { background: var(--color-surface); border-color: var(--color-border); }
+[data-theme="dark"] .admin-main { background: var(--color-bg); }
+[data-theme="dark"] .admin-topbar { background: var(--color-surface); border-color: var(--color-border); }
+[data-theme="dark"] .input { background: #1e293b; border-color: #334155; color: var(--color-text); }

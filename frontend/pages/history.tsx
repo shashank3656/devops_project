@@ -13,6 +13,7 @@ interface PRRequest {
   env: string;
   cloud: string;
   service: string;
+  application_id?: string;
   client_name?: string;
   priority?: string;
   due_date?: string | null;
@@ -795,6 +796,9 @@ export default function History() {
                     </div>
                     <div style={{ marginBottom: '12px' }}>
                       <strong>Team:</strong> {detailRequest.team} &nbsp;|&nbsp; <strong>Env:</strong> {detailRequest.env} &nbsp;|&nbsp; <strong>Cloud:</strong> {detailRequest.cloud} &nbsp;|&nbsp; <strong>Service:</strong> {detailRequest.service}
+                      {detailRequest.application_id && (
+                        <> &nbsp;|&nbsp; <strong>App ID:</strong> <code style={{ background: 'var(--bg-gray-100)', padding: '2px 6px', borderRadius: 4 }}>{detailRequest.application_id}</code></>
+                      )}
                     </div>
                     {(detailRequest.priority || detailRequest.due_date) && (
                       <div style={{ marginBottom: '12px', fontSize: '14px', color: 'var(--text-secondary)' }}>
