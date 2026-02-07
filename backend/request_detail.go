@@ -172,11 +172,22 @@ func handleRequestSubmit(w http.ResponseWriter, r *http.Request, id int, req *PR
 	initialStatus := "pending_devops_approval"
 	if req.CreatedBy != nil {
 		creatorID := *req.CreatedBy
-		groupManagerID := GetGroupManagerForUser(creatorID)
+		// Prefer manager from the request's team (same team the request is filed under)
+		groupManagerID := GetGroupManagerForUserInTeam(creatorID, req.Team)
+		if groupManagerID == 0 {
+			groupManagerID = GetGroupManagerForUser(creatorID)
+		}
 		if groupManagerID != 0 {
 			initialStatus = "pending_user_manager_approval"
-		} else if creator, _ := GetUserByID(creatorID); creator != nil && creator.ManagerID != nil {
-			initialStatus = "pending_user_manager_approval"
+			log.Printf("[submit] request id=%d creator=%d team=%q -> pending_user_manager_approval (group_manager=%d)", id, creatorID, req.Team, groupManagerID)
+		} else {
+			creator, _ := GetUserByID(creatorID)
+			if creator != nil && creator.ManagerID != nil && *creator.ManagerID > 0 {
+				initialStatus = "pending_user_manager_approval"
+				log.Printf("[submit] request id=%d creator=%d team=%q -> pending_user_manager_approval (creator.manager_id=%d)", id, creatorID, req.Team, *creator.ManagerID)
+			} else {
+				log.Printf("[submit] request id=%d creator=%d team=%q -> pending_devops_approval (no group manager in team and no creator.manager_id; ensure portal team has a member with role=manager)", id, creatorID, req.Team)
+			}
 		}
 	}
 	if err := UpdatePRRequestStatus(id, initialStatus); err != nil {
@@ -205,7 +216,10 @@ func handleRequestApproveByManager(w http.ResponseWriter, r *http.Request, id in
 		return
 	}
 	creatorID := *req.CreatedBy
-	groupManagerID := GetGroupManagerForUser(creatorID)
+	groupManagerID := GetGroupManagerForUserInTeam(creatorID, req.Team)
+	if groupManagerID == 0 {
+		groupManagerID = GetGroupManagerForUser(creatorID)
+	}
 	// Allow if current user is the group manager (portal team manager) or the creator's manager_id
 	allowed := groupManagerID == userID
 	if !allowed {

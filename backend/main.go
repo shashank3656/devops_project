@@ -494,6 +494,7 @@ func main() {
 	http.HandleFunc("/api/devops/me", devopsMeHandler)
 	http.HandleFunc("/api/devops/tickets", devopsTicketsHandler)
 	http.HandleFunc("/api/devops/workload", devopsWorkloadHandler)
+	http.HandleFunc("/api/devops/dashboard-stats", devopsDashboardStatsHandler)
 	http.HandleFunc("/api/devops/notifications", devopsNotificationsHandler)
 	http.HandleFunc("/api/devops/pending-approvals", devopsPendingApprovalsHandler)
 	http.HandleFunc("/api/devops/requests/", devopsRequestActionHandler)
