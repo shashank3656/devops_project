@@ -356,7 +356,7 @@ export default function History() {
     }
   };
 
-  const priorityOrder: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
+  const priorityOrder: Record<string, number> = { critical: 5, urgent: 4, high: 3, medium: 2, low: 1 };
   const sortedRequests = [...requests].sort((a, b) => {
     let aVal: string | number = (a as any)[sortBy];
     let bVal: string | number = (b as any)[sortBy];

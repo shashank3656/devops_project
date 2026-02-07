@@ -172,7 +172,7 @@ func devopsWorkloadHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	workload, err := GetWorkloadAssignedRequests()
+	workload, err := GetWorkloadAllInProgress()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)

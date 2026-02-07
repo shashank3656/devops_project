@@ -423,6 +423,7 @@ export default function AdminRequests() {
               <option value="medium">Medium</option>
               <option value="high">High</option>
               <option value="urgent">Urgent</option>
+              <option value="critical">Critical</option>
             </select>
             <button type="submit" className="btn btn-primary">
               Apply filters
