@@ -902,6 +902,54 @@ func GetDashboardStats() (DashboardStats, error) {
 	return s, nil
 }
 
+// DateRangeStats holds request counts by status for a date range
+type DateRangeStats struct {
+	From      string            `json:"from"`
+	To        string            `json:"to"`
+	Total     int               `json:"total"`
+	ByStatus  map[string]int    `json:"by_status"`
+}
+
+// GetRequestsByStatusInDateRange returns total and per-status counts for requests created in the date range (inclusive)
+func GetRequestsByStatusInDateRange(from, to time.Time) (DateRangeStats, error) {
+	var s DateRangeStats
+	s.ByStatus = make(map[string]int)
+	if DB == nil {
+		return s, nil
+	}
+	s.From = from.Format("2006-01-02")
+	s.To = to.Format("2006-01-02")
+	fromStr := from.Format("2006-01-02")
+	toStr := to.Format("2006-01-02")
+
+	// Total in range (date inclusive)
+	_ = DB.QueryRow(
+		`SELECT COUNT(*) FROM pr_requests WHERE created_at::date >= $1::date AND created_at::date <= $2::date`,
+		fromStr, toStr,
+	).Scan(&s.Total)
+
+	// Per status
+	rows, err := DB.Query(
+		`SELECT status, COUNT(*) FROM pr_requests 
+		 WHERE created_at::date >= $1::date AND created_at::date <= $2::date 
+		 GROUP BY status`,
+		fromStr, toStr,
+	)
+	if err != nil {
+		return s, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return s, err
+		}
+		s.ByStatus[status] = count
+	}
+	return s, nil
+}
+
 // GetUserRequestsUpdatedSince returns count of requests created by userID with updated_at > since (for user notifications)
 func GetUserRequestsUpdatedSince(userID int, since time.Time) (int, error) {
 	var count int

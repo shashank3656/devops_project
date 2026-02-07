@@ -17,6 +17,12 @@ interface DashboardStats {
   unverified_users: number;
   requests_this_week: number;
   pending_approval: number;
+  date_filter?: {
+    from: string;
+    to: string;
+    total: number;
+    by_status: Record<string, number>;
+  };
 }
 
 interface PRRequest {
@@ -37,6 +43,9 @@ export default function AdminDashboard() {
   const [recent, setRecent] = useState<PRRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'custom'>('today');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
@@ -47,15 +56,23 @@ export default function AdminDashboard() {
       return;
     }
     fetchData();
-  }, [token, router]);
+  }, [token, router, dateFilter, customFrom, customTo]);
 
   const fetchData = async () => {
     setLoading(true);
     setError('');
+    const dashboardParams = new URLSearchParams();
+    if (dateFilter === 'today' || dateFilter === 'week' || dateFilter === 'month') {
+      dashboardParams.set('period', dateFilter);
+    } else if (dateFilter === 'custom' && customFrom) {
+      dashboardParams.set('from', customFrom);
+      dashboardParams.set('to', customTo || customFrom);
+    }
+    const dashboardUrl = dashboardParams.toString() ? `${apiUrl}/api/admin/dashboard-stats?${dashboardParams}` : `${apiUrl}/api/admin/dashboard-stats`;
     try {
       const [statsRes, dashboardRes, requestsRes] = await Promise.all([
         fetch(`${apiUrl}/api/admin/stats`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${apiUrl}/api/admin/dashboard-stats`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(dashboardUrl, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${apiUrl}/api/admin/requests?limit=10`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
       if (statsRes.status === 401 || statsRes.status === 403 || requestsRes.status === 401 || requestsRes.status === 403) {
@@ -100,6 +117,110 @@ export default function AdminDashboard() {
             <p className="loading-text">Loading…</p>
           ) : (
             <>
+              {/* Date-wise filter and ticket status breakdown */}
+              <div className="card" style={{ marginBottom: 24 }}>
+                <h2 className="section-title">Requests by date</h2>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>Filter by</label>
+                    <select
+                      value={dateFilter}
+                      onChange={(e) => setDateFilter(e.target.value as typeof dateFilter)}
+                      className="input"
+                      style={{ minWidth: 140 }}
+                    >
+                      <option value="today">Today</option>
+                      <option value="week">Last 7 days</option>
+                      <option value="month">This month</option>
+                      <option value="custom">Custom range</option>
+                    </select>
+                  </div>
+                  {dateFilter === 'custom' && (
+                    <>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>From</label>
+                        <input
+                          type="date"
+                          value={customFrom}
+                          onChange={(e) => setCustomFrom(e.target.value)}
+                          className="input"
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>To</label>
+                        <input
+                          type="date"
+                          value={customTo}
+                          onChange={(e) => setCustomTo(e.target.value)}
+                          className="input"
+                        />
+                      </div>
+                      {!customFrom && (
+                        <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Select from date</span>
+                      )}
+                    </>
+                  )}
+                </div>
+                {dateFilter === 'custom' && !customFrom && (
+                  <p style={{ padding: 16, color: 'var(--color-text-muted)', margin: 0 }}>Select From and To dates to see the breakdown.</p>
+                )}
+                {quickStats?.date_filter && (dateFilter !== 'custom' || customFrom) && (
+                  <div style={{ padding: 16, background: 'var(--color-bg)', borderRadius: 8 }}>
+                    <p style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600 }}>
+                      {quickStats.date_filter.from === quickStats.date_filter.to
+                        ? `${quickStats.date_filter.from}: ${quickStats.date_filter.total} request(s) came`
+                        : `${quickStats.date_filter.from} to ${quickStats.date_filter.to}: ${quickStats.date_filter.total} request(s) came`}
+                    </p>
+                    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                      {[
+                        { key: 'completed', label: 'Completed', color: 'var(--color-success)' },
+                        { key: 'rejected', label: 'Rejected', color: 'var(--color-danger)' },
+                        { key: 'in_progress', label: 'In progress', color: 'var(--color-primary)' },
+                        { key: 'pending_approval', label: 'Pending approval', color: 'var(--color-warning)' },
+                        { key: 'draft', label: 'Draft', color: 'var(--color-text-muted)' },
+                      ].map(({ key, label, color }) => {
+                        const count = quickStats.date_filter!.by_status[key] ?? 0;
+                        return (
+                          <span
+                            key={key}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: 6,
+                              background: 'white',
+                              border: '1px solid var(--color-border)',
+                              fontSize: 14,
+                              fontWeight: 600,
+                              color: count > 0 ? color : 'var(--color-text-muted)',
+                            }}
+                          >
+                            {count} {label}
+                          </span>
+                        );
+                      })}
+                      {Object.entries(quickStats.date_filter!.by_status || {}).filter(([k]) => !['completed', 'rejected', 'in_progress', 'pending_approval', 'draft'].includes(k)).map(([key, count]) => (
+                        <span
+                          key={key}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: 6,
+                            background: 'white',
+                            border: '1px solid var(--color-border)',
+                            fontSize: 14,
+                            fontWeight: 600,
+                            color: 'var(--color-text-muted)',
+                          }}
+                        >
+                          {count} {key}
+                        </span>
+                      ))}
+                    </div>
+                    {quickStats.date_filter.total === 0 && (
+                      <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--color-text-muted)' }}>No requests in this period.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {quickStats && (
                 <div className="stats-grid" style={{ marginBottom: 24 }}>
                   <div className="stat-card stat-card-primary">
