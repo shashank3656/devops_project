@@ -197,8 +197,18 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Admin create user: devops profile: %v", err)
 		}
 	}
+	if userType == "portal_user" && req.IsManager {
+		if _, err := DB.Exec("UPDATE users SET is_portal_manager = TRUE WHERE id = $1", userID); err != nil {
+			log.Printf("Admin create user: is_portal_manager: %v", err)
+		}
+	}
 	AppendAuditLog(adminIDPtr, "user_create", "user", strconv.Itoa(userID), req.Username)
 	userResp := map[string]interface{}{"id": userID, "username": req.Username, "email": req.Email, "role": req.Role, "verified": true, "user_type": userType}
+	if userType == "portal_user" {
+		if u, _ := GetUserByID(userID); u != nil {
+			userResp["is_portal_manager"] = u.IsPortalManager
+		}
+	}
 	if userType == "devops_user" {
 		if prof, _ := GetDevopsProfile(userID); prof != nil {
 			userResp["devops_profile"] = map[string]interface{}{
@@ -258,7 +268,7 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 		userResp := map[string]interface{}{
 			"id": user.ID, "username": user.Username, "email": user.Email,
 			"role": user.Role, "verified": user.Verified, "created_at": user.CreatedAt,
-			"user_type": user.UserType, "manager_id": user.ManagerID,
+			"user_type": user.UserType, "manager_id": user.ManagerID, "is_portal_manager": user.IsPortalManager,
 		}
 		if user.UserType == "devops_user" {
 			if prof, _ := GetDevopsProfile(id); prof != nil {
@@ -273,16 +283,17 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	case "PATCH", "PUT":
 		var req struct {
-			Username    string `json:"username"`
-			Email       string `json:"email"`
-			Role        string `json:"role"`
-			Verified    *bool  `json:"verified"`
-			UserType    string `json:"user_type"`
-			ManagerID   *int   `json:"manager_id"` // portal user's manager (for two-step approval)
-			IsManager   *bool  `json:"is_manager"`
-			Position    string `json:"position"`
-			OnboardDate string `json:"onboard_date"`
-			Level       string `json:"level"`
+			Username        string `json:"username"`
+			Email           string `json:"email"`
+			Role            string `json:"role"`
+			Verified        *bool  `json:"verified"`
+			UserType        string `json:"user_type"`
+			ManagerID       *int   `json:"manager_id"`       // portal user's manager (for two-step approval)
+			IsPortalManager *bool  `json:"is_portal_manager"` // portal user as group manager (same as DevOps manager checkbox)
+			IsManager       *bool  `json:"is_manager"`
+			Position        string `json:"position"`
+			OnboardDate     string `json:"onboard_date"`
+			Level           string `json:"level"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -325,6 +336,13 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if userType == "portal_user" {
 			_ = UpdateUserManagerID(id, req.ManagerID)
+			if req.IsPortalManager != nil {
+				val := 0
+				if *req.IsPortalManager {
+					val = 1
+				}
+				_, _ = DB.Exec("UPDATE users SET is_portal_manager = $1 WHERE id = $2", val == 1, id)
+			}
 		}
 		AppendAuditLog(adminIDPtr, "user_update", "user", strconv.Itoa(id), username)
 		updated, _ := GetUserByID(id)
@@ -333,7 +351,7 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		respUser := map[string]interface{}{
 			"id": updated.ID, "username": updated.Username, "email": updated.Email,
-			"role": updated.Role, "verified": updated.Verified, "user_type": updated.UserType, "manager_id": updated.ManagerID,
+			"role": updated.Role, "verified": updated.Verified, "user_type": updated.UserType, "manager_id": updated.ManagerID, "is_portal_manager": updated.IsPortalManager,
 		}
 		if updated.UserType == "devops_user" {
 			if prof, _ := GetDevopsProfile(id); prof != nil {

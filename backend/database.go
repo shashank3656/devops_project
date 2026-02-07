@@ -76,15 +76,16 @@ type RequestComment struct {
 }
 
 type User struct {
-	ID           int       `json:"id"`
-	Username     string    `json:"username"`
-	Email        string    `json:"email"`
-	Password     string    `json:"-"` // Don't return password in JSON
-	Verified     bool      `json:"verified"`
-	Role         string    `json:"role"` // viewer | contributor | admin
-	UserType     string    `json:"user_type"` // portal_user | devops_user
-	ManagerID    *int      `json:"manager_id"` // portal user's manager (for two-step approval)
-	CreatedAt    time.Time `json:"created_at"`
+	ID              int       `json:"id"`
+	Username        string    `json:"username"`
+	Email           string    `json:"email"`
+	Password        string    `json:"-"` // Don't return password in JSON
+	Verified        bool      `json:"verified"`
+	Role            string    `json:"role"` // viewer | contributor | admin
+	UserType        string    `json:"user_type"` // portal_user | devops_user
+	ManagerID       *int      `json:"manager_id"` // portal user's manager (for two-step approval)
+	IsPortalManager bool      `json:"is_portal_manager"` // portal user designated as group manager (same UX as DevOps manager)
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // DevopsProfile holds DevOps-specific fields for users with user_type = devops_user
@@ -610,9 +611,13 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 	}
 
 	if statusFilter != "" {
-		query += fmt.Sprintf(" AND status = $%d", argPos)
-		args = append(args, statusFilter)
-		argPos++
+		if statusFilter == "pending_any" {
+			query += " AND status IN ('pending_approval', 'pending_devops_approval', 'pending_user_manager_approval')"
+		} else {
+			query += fmt.Sprintf(" AND status = $%d", argPos)
+			args = append(args, statusFilter)
+			argPos++
+		}
 	}
 
 	if priorityFilter != "" {
@@ -881,10 +886,11 @@ func GetUserByID(id int) (*User, error) {
 	var role sql.NullString
 	var userType sql.NullString
 	var managerID sql.NullInt64
+	var isPortalManager sql.NullBool
 	err := DB.QueryRow(
-		"SELECT id, username, email, COALESCE(verified, false), COALESCE(role, 'viewer'), COALESCE(user_type, 'portal_user'), manager_id, created_at FROM users WHERE id = $1",
+		"SELECT id, username, email, COALESCE(verified, false), COALESCE(role, 'viewer'), COALESCE(user_type, 'portal_user'), manager_id, COALESCE(is_portal_manager, false), created_at FROM users WHERE id = $1",
 		id,
-	).Scan(&user.ID, &user.Username, &user.Email, &verified, &role, &userType, &managerID, &user.CreatedAt)
+	).Scan(&user.ID, &user.Username, &user.Email, &verified, &role, &userType, &managerID, &isPortalManager, &user.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -904,6 +910,7 @@ func GetUserByID(id int) (*User, error) {
 		m := int(managerID.Int64)
 		user.ManagerID = &m
 	}
+	user.IsPortalManager = isPortalManager.Valid && isPortalManager.Bool
 	return &user, nil
 }
 
@@ -1246,9 +1253,13 @@ func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string
 		argPos++
 	}
 	if statusFilter != "" {
-		query += fmt.Sprintf(" AND status = $%d", argPos)
-		args = append(args, statusFilter)
-		argPos++
+		if statusFilter == "pending_any" {
+			query += " AND status IN ('pending_approval', 'pending_devops_approval', 'pending_user_manager_approval')"
+		} else {
+			query += fmt.Sprintf(" AND status = $%d", argPos)
+			args = append(args, statusFilter)
+			argPos++
+		}
 	}
 	if priorityFilter != "" {
 		query += fmt.Sprintf(" AND COALESCE(priority,'medium') = $%d", argPos)

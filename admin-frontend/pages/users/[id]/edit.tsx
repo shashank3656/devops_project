@@ -37,6 +37,7 @@ export default function EditUser() {
   const [onboardDate, setOnboardDate] = useState('');
   const [level, setLevel] = useState<'L1' | 'L2' | 'L3' | 'L4'>('L1');
   const [managerId, setManagerId] = useState<string>('');
+  const [isPortalManager, setIsPortalManager] = useState(false);
   const [usersList, setUsersList] = useState<{ id: number; username: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -84,6 +85,7 @@ export default function EditUser() {
         setVerified(Boolean(data.user.verified));
         setUserType(data.user.user_type === 'devops_user' ? 'devops_user' : 'portal_user');
         setManagerId(data.user.manager_id != null ? String(data.user.manager_id) : '');
+        setIsPortalManager(Boolean(data.user.is_portal_manager));
         const dp = data.user.devops_profile;
         if (dp) {
           setIsManager(Boolean(dp.is_manager));
@@ -120,6 +122,7 @@ export default function EditUser() {
           verified,
           user_type: userType,
           manager_id: userType === 'portal_user' ? (managerId ? parseInt(managerId, 10) : null) : undefined,
+          is_portal_manager: userType === 'portal_user' ? isPortalManager : undefined,
           ...(userType === 'devops_user' && {
             is_manager: isManager,
             position: position.trim(),
@@ -257,6 +260,21 @@ export default function EditUser() {
                     </select>
                     <span className="label-optional" style={{ display: 'block', marginTop: 4 }}>
                       When this user submits a request, their manager approves first, then DevOps.
+                    </span>
+                  </div>
+                )}
+                {userType === 'portal_user' && (
+                  <div className="form-group">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={isPortalManager}
+                        onChange={(e) => setIsPortalManager(e.target.checked)}
+                      />
+                      <span className="label">Portal manager</span>
+                    </label>
+                    <span className="label-optional" style={{ display: 'block', marginTop: 4 }}>
+                      Designate as group manager (same as DevOps manager). They can approve team tickets and see Group tickets.
                     </span>
                   </div>
                 )}
