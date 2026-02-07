@@ -28,6 +28,7 @@ export default function UsersList() {
   const [error, setError] = useState('');
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -43,6 +44,7 @@ export default function UsersList() {
   const fetchUsers = async () => {
     setLoading(true);
     setError('');
+    setSuccessMessage('');
     try {
       const res = await fetch(`${apiUrl}/api/admin/users`, {
         headers: {
@@ -54,8 +56,12 @@ export default function UsersList() {
         return;
       }
       const data = await res.json().catch(() => ({}));
-      if (data.users) setUsers(data.users);
-      else setError(data.error || 'Failed to load users');
+      if (res.ok && (data.status === 'ok' || Array.isArray(data.users))) {
+        setUsers(Array.isArray(data.users) ? data.users : []);
+        setError('');
+      } else {
+        setError(data.error || 'Failed to load users');
+      }
     } catch (_) {
       setError('Failed to load users');
     } finally {
@@ -67,6 +73,7 @@ export default function UsersList() {
     if (!userToDelete) return;
     setDeleting(true);
     setError('');
+    setSuccessMessage('');
     try {
       const res = await fetch(`${apiUrl}/api/admin/users/${userToDelete.id}`, {
         method: 'DELETE',
@@ -79,7 +86,9 @@ export default function UsersList() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setUserToDelete(null);
-        await fetchUsers();
+        setSuccessMessage('User deleted successfully.');
+        setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id));
+        setTimeout(() => setSuccessMessage(''), 4000);
       } else {
         setError(data.error || 'Failed to delete user');
       }
@@ -115,11 +124,16 @@ export default function UsersList() {
                 {error}
               </div>
             )}
+            {successMessage && (
+              <div className="alert alert-info" role="alert" style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', border: '1px solid #a7f3d0' }}>
+                {successMessage}
+              </div>
+            )}
             {loading ? (
               <p className="loading-text">Loading users…</p>
             ) : users.length === 0 ? (
               <div className="empty-state">
-                <p>No users yet.</p>
+                <p>No users are onboarded yet.</p>
                 <p style={{ marginTop: 8 }}>
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                     <Link href="/users/new" className="btn btn-primary">Create portal user</Link>

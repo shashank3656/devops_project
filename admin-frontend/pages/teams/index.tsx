@@ -17,6 +17,7 @@ export default function TeamsList() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -33,6 +34,7 @@ export default function TeamsList() {
   const fetchTeams = async () => {
     setLoading(true);
     setError('');
+    setSuccessMessage('');
     try {
       const res = await fetch(`${apiUrl}/api/admin/teams`, {
         headers: {
@@ -44,8 +46,12 @@ export default function TeamsList() {
         return;
       }
       const data = await res.json().catch(() => ({}));
-      if (data.teams) setTeams(data.teams);
-      else setError(data.error || 'Failed to load teams');
+      if (res.ok && (data.status === 'ok' || Array.isArray(data.teams))) {
+        setTeams(Array.isArray(data.teams) ? data.teams : []);
+        setError('');
+      } else {
+        setError(data.error || 'Failed to load teams');
+      }
     } catch (_) {
       setError('Failed to load teams');
     } finally {
@@ -57,6 +63,7 @@ export default function TeamsList() {
     if (!confirm(`Delete team "${t.name}"? This will remove all members. This cannot be undone.`)) return;
     setDeletingId(t.id);
     setError('');
+    setSuccessMessage('');
     try {
       const res = await fetch(`${apiUrl}/api/admin/teams/${t.id}`, {
         method: 'DELETE',
@@ -65,6 +72,8 @@ export default function TeamsList() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setTeams((prev) => prev.filter((x) => x.id !== t.id));
+        setSuccessMessage('Team deleted successfully.');
+        setTimeout(() => setSuccessMessage(''), 4000);
       } else {
         setError(data.error || 'Failed to delete team');
       }
@@ -95,11 +104,16 @@ export default function TeamsList() {
                 {error}
               </div>
             )}
+            {successMessage && (
+              <div className="alert alert-info" role="alert" style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', border: '1px solid #a7f3d0' }}>
+                {successMessage}
+              </div>
+            )}
             {loading ? (
               <p className="loading-text">Loading teams…</p>
             ) : teams.length === 0 ? (
               <div className="empty-state">
-                <p>No teams yet.</p>
+                <p>No teams are onboarded yet.</p>
                 <p style={{ marginTop: 8 }}>
                   <Link href="/teams/new" className="btn btn-primary" style={{ marginTop: 8 }}>
                     Create your first team
