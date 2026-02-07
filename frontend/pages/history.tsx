@@ -52,6 +52,7 @@ export default function History() {
   const [page, setPage] = useState(0);
   const [detailRequest, setDetailRequest] = useState<PRRequest | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [canApproveByManager, setCanApproveByManager] = useState(false);
   const [comments, setComments] = useState<RequestComment[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
@@ -143,6 +144,7 @@ export default function History() {
 
   const openDetail = async (req: PRRequest) => {
     setDetailRequest(null);
+    setCanApproveByManager(false);
     setComments([]);
     setTags([]);
     setNewTag('');
@@ -161,6 +163,7 @@ export default function History() {
       if (detailRes.ok) {
         const data = await detailRes.json();
         const full = data.request || req;
+        setCanApproveByManager(Boolean(data.can_approve_by_manager));
         if (full.config) {
           rawConfigByRequestId.current[full.id] = full.config;
           setDetailRequest({ ...full, config: maskSensitiveJson(full.config) });
@@ -969,7 +972,7 @@ export default function History() {
                           </button>
                         </>
                       )}
-                      {detailRequest.status === 'pending_user_manager_approval' && (
+                      {detailRequest.status === 'pending_user_manager_approval' && canApproveByManager && (
                         <button type="button" onClick={() => approveByManager(detailRequest.id)} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '14px' }}>
                           Approve (send to DevOps)
                         </button>
