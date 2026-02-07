@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { DEVOPS_SITE_NAME } from '../lib/site';
+import { IconTickets, IconWorkload, IconLogout } from './Icons';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -58,35 +59,56 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     router.replace('/login');
   };
 
+  const pathname = router.pathname;
+  const navLink = (href: string, label: string, icon: ReactNode, badge?: number) => {
+    const isActive = pathname === href;
+    return (
+      <Link href={href} className={isActive ? 'devops-nav-active' : ''} title={label}>
+        <span className="devops-sidebar-icon" aria-hidden>{icon}</span>
+        <span className="devops-sidebar-label">{label}</span>
+        {badge != null && badge > 0 && (
+          <span className="devops-nav-badge" aria-label={`${badge} pending`}>
+            {badge > 99 ? '99+' : badge}
+          </span>
+        )}
+      </Link>
+    );
+  };
+
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-surface)', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-          <Link href="/dashboard" style={{ fontWeight: 700, fontSize: 18, color: 'var(--color-text)', textDecoration: 'none' }}>
-            {DEVOPS_SITE_NAME}
+    <div className="devops-layout">
+      <aside className="devops-sidebar">
+        <div className="devops-sidebar-header">
+          <Link href="/dashboard" className="devops-sidebar-brand">
+            <img src="/logo.svg" alt="" width={36} height={36} />
+            <span className="devops-sidebar-brand-text">{DEVOPS_SITE_NAME}</span>
           </Link>
-          <nav style={{ display: 'flex', gap: 8 }}>
-            <Link href="/dashboard" className={router.pathname === '/dashboard' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} style={{ textDecoration: 'none' }}>
-              My tickets
-            </Link>
-            {isManager && (
-              <Link href="/workload" className={router.pathname === '/workload' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'} style={{ textDecoration: 'none', position: 'relative' }}>
-                Workload
-                {pendingCount > 0 && (
-                  <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, background: 'var(--color-error, #dc3545)', color: '#fff', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
-                    {pendingCount > 99 ? '99+' : pendingCount}
-                  </span>
-                )}
-              </Link>
-            )}
-          </nav>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {user && <span style={{ fontSize: 14, color: 'var(--color-text-muted)' }}>{user.username}</span>}
-          <button type="button" className="btn btn-secondary btn-sm" onClick={handleLogout}>Logout</button>
+        <nav className="devops-sidebar-nav">
+          {navLink('/dashboard', 'My tickets', <IconTickets />)}
+          {isManager && navLink('/workload', 'Workload', <IconWorkload />, pendingCount)}
+        </nav>
+        <div className="devops-sidebar-footer">
+          {user && <span className="devops-sidebar-user">{user.username}</span>}
+          <button type="button" className="btn btn-secondary devops-sidebar-logout" onClick={handleLogout} title="Logout">
+            <IconLogout />
+            <span>Logout</span>
+          </button>
         </div>
-      </header>
-      <main style={{ flex: 1 }}>{children}</main>
+      </aside>
+      <div className="devops-main-wrap">
+        <header className="devops-topbar">
+          <div className="devops-topbar-spacer" />
+          <div className="devops-topbar-actions">
+            {user && <span className="devops-topbar-user">{user.username}</span>}
+            <button type="button" className="btn btn-ghost devops-topbar-logout" onClick={handleLogout} title="Logout">
+              <IconLogout />
+              <span>Logout</span>
+            </button>
+          </div>
+        </header>
+        <main className="devops-main">{children}</main>
+      </div>
     </div>
   );
 }

@@ -85,7 +85,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const fetchPendingTickets = () => {
     if (!token) return;
     setTicketsLoading(true);
-    fetch(`${apiUrl}/api/admin/requests?status=pending_approval&limit=15`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${apiUrl}/api/admin/requests?status=pending_any&limit=15`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.ok ? res.json() : null)
       .then((data) => {
         if (data?.requests) setPendingTickets(data.requests);
@@ -253,7 +253,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                       pendingTickets.map((req) => (
                         <div key={req.id} className="admin-notify-ticket">
                           <div className="admin-notify-ticket-main">
-                            <span className="admin-notify-ticket-id">PR #{req.id}</span>
+                            <span className="admin-notify-ticket-id">Ticket #{req.id}</span>
                             <span className="admin-notify-ticket-meta">{req.team} / {req.env} · {req.cloud} · {req.service}</span>
                             {(req.priority || req.due_date) && (
                               <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>

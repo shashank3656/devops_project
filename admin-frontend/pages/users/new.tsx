@@ -10,6 +10,7 @@ export default function NewUser() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'viewer' | 'contributor'>('viewer');
+  const [isManager, setIsManager] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -31,6 +32,8 @@ export default function NewUser() {
           email: email.trim(),
           password,
           role,
+          user_type: 'portal_user',
+          is_manager: isManager,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -127,6 +130,19 @@ export default function NewUser() {
                 </select>
                 <span className="label-optional" style={{ display: 'block', marginTop: 4 }}>
                   Contributors can create PRs; viewers have read-only access.
+                </span>
+              </div>
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={isManager}
+                    onChange={(e) => setIsManager(e.target.checked)}
+                  />
+                  <span className="label">Portal manager</span>
+                </label>
+                <span className="label-optional" style={{ display: 'block', marginTop: 4 }}>
+                  Designate this user as a group manager (same as DevOps manager). They can approve team tickets and see Group tickets in the portal.
                 </span>
               </div>
               <button

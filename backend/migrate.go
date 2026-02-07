@@ -178,6 +178,15 @@ func MigrateDatabase() error {
 	}
 	// team_members.role already VARCHAR(50); allow developer, senior_developer, lead, manager (no schema change, just validation in code)
 
+	// Migration 11: users.is_portal_manager (portal user can be designated as group manager, same UX as DevOps manager)
+	var portalManagerCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'is_portal_manager'").Scan(&portalManagerCount)
+	if portalManagerCount == 0 {
+		log.Println("Migrating database: adding users.is_portal_manager...")
+		_, _ = DB.Exec("ALTER TABLE users ADD COLUMN is_portal_manager BOOLEAN DEFAULT FALSE")
+		log.Println("Database migration (is_portal_manager) completed")
+	}
+
 	log.Println("Database schema is up to date")
 	return nil
 }
