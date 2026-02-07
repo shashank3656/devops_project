@@ -163,6 +163,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	cloud := r.URL.Query().Get("cloud")
 	statusFilter := r.URL.Query().Get("status")
 	priorityFilter := r.URL.Query().Get("priority")
+	search := strings.TrimSpace(r.URL.Query().Get("q"))
 	prIDStr := r.URL.Query().Get("id")
 	prID := 0
 	if prIDStr != "" {
@@ -184,7 +185,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// userID 0 = all requests
-	requests, err := GetPRRequests(team, env, cloud, statusFilter, priorityFilter, prID, 0, limit, offset)
+	requests, err := GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, limit, offset)
 	if err != nil {
 		log.Printf("Admin requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -192,7 +193,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch requests", "status": "error"})
 		return
 	}
-	totalCount, _ := GetTotalCount(team, env, cloud, statusFilter, priorityFilter, prID, 0)
+	totalCount, _ := GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search, prID, 0)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

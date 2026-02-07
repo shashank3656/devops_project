@@ -58,11 +58,14 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sub-path: submit, comments
+	// Sub-path: submit, resubmit, comments
 	if len(parts) >= 2 {
 		switch parts[1] {
 		case "submit":
 			handleRequestSubmit(w, r, id, req, userID)
+			return
+		case "resubmit":
+			handleRequestResubmit(w, r, id, req, userID)
 			return
 		case "comments":
 			handleRequestComments(w, r, id, req, userID)
@@ -83,6 +86,48 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
+// handleRequestResubmit clones a rejected (or any) request as a new draft - POST /api/request/:id/resubmit
+func handleRequestResubmit(w http.ResponseWriter, r *http.Request, id int, req *PRRequest, userID int) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if req.CreatedBy == nil || *req.CreatedBy != userID {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator can resubmit this request", "status": "error"})
+		return
+	}
+	// Clone as new draft (same config, clear reject_reason, status=draft)
+	newReq := &PRRequest{
+		Team:       req.Team,
+		Env:        req.Env,
+		Cloud:      req.Cloud,
+		Service:    req.Service,
+		ClientName: req.ClientName,
+		Priority:   req.Priority,
+		DueDate:    req.DueDate,
+		PRURL:      "",
+		Branch:     req.Branch,
+		FilePath:   req.FilePath,
+		Status:     "draft",
+		Config:     req.Config,
+		CreatedBy:  req.CreatedBy,
+	}
+	if err := SavePRRequest(newReq); err != nil {
+		log.Printf("Resubmit: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"id":      newReq.ID,
+		"message": "Request cloned as draft. Edit and submit from History.",
+	})
 }
 
 func handleRequestSubmit(w http.ResponseWriter, r *http.Request, id int, req *PRRequest, userID int) {

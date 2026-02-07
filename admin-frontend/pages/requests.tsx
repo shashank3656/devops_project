@@ -38,6 +38,7 @@ export default function AdminRequests() {
   const [team, setTeam] = useState('');
   const [env, setEnv] = useState('');
   const [cloud, setCloud] = useState('');
+  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [offset, setOffset] = useState(0);
@@ -54,12 +55,13 @@ export default function AdminRequests() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
 
-  const filtersRef = useRef({ team: '', env: '', cloud: '', status: '', priority: '' });
+  const filtersRef = useRef({ team: '', env: '', cloud: '', search: '', status: '', priority: '' });
 
-  const fetchRequests = (overrides?: { team?: string; env?: string; cloud?: string; status?: string; priority?: string; offset?: number }) => {
+  const fetchRequests = (overrides?: { team?: string; env?: string; cloud?: string; search?: string; status?: string; priority?: string; offset?: number }) => {
     const t = overrides?.team !== undefined ? overrides.team : filtersRef.current.team;
     const e = overrides?.env !== undefined ? overrides.env : filtersRef.current.env;
     const c = overrides?.cloud !== undefined ? overrides.cloud : filtersRef.current.cloud;
+    const q = overrides?.search !== undefined ? overrides.search : filtersRef.current.search;
     const s = overrides?.status !== undefined ? overrides.status : filtersRef.current.status;
     const p = overrides?.priority !== undefined ? overrides.priority : filtersRef.current.priority;
     const o = overrides?.offset !== undefined ? overrides.offset : offset;
@@ -69,6 +71,7 @@ export default function AdminRequests() {
     if (t) params.set('team', t);
     if (e) params.set('env', e);
     if (c) params.set('cloud', c);
+    if (q) params.set('q', q);
     if (s) params.set('status', s);
     if (p) params.set('priority', p);
     params.set('limit', String(limit));
@@ -103,27 +106,30 @@ export default function AdminRequests() {
     const teamVal = (form.elements.namedItem('filter-team') as HTMLInputElement | null)?.value?.trim() ?? '';
     const envVal = (form.elements.namedItem('filter-env') as HTMLInputElement | null)?.value?.trim() ?? '';
     const cloudVal = (form.elements.namedItem('filter-cloud') as HTMLInputElement | null)?.value?.trim() ?? '';
+    const searchVal = (form.elements.namedItem('filter-search') as HTMLInputElement | null)?.value?.trim() ?? '';
     const statusVal = (form.elements.namedItem('filter-status') as HTMLSelectElement | null)?.value ?? '';
     const priorityVal = (form.elements.namedItem('filter-priority') as HTMLSelectElement | null)?.value ?? '';
-    filtersRef.current = { team: teamVal, env: envVal, cloud: cloudVal, status: statusVal, priority: priorityVal };
+    filtersRef.current = { team: teamVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal };
     setTeam(teamVal);
     setEnv(envVal);
     setCloud(cloudVal);
+    setSearch(searchVal);
     setStatusFilter(statusVal);
     setPriorityFilter(priorityVal);
     setOffset(0);
-    fetchRequests({ team: teamVal, env: envVal, cloud: cloudVal, status: statusVal, priority: priorityVal, offset: 0 });
+    fetchRequests({ team: teamVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal, offset: 0 });
   };
 
   const handleClearFilters = () => {
-    filtersRef.current = { team: '', env: '', cloud: '', status: '', priority: '' };
+    filtersRef.current = { team: '', env: '', cloud: '', search: '', status: '', priority: '' };
     setTeam('');
     setEnv('');
     setCloud('');
+    setSearch('');
     setStatusFilter('');
     setPriorityFilter('');
     setOffset(0);
-    fetchRequests({ team: '', env: '', cloud: '', status: '', priority: '', offset: 0 });
+    fetchRequests({ team: '', env: '', cloud: '', search: '', status: '', priority: '', offset: 0 });
   };
 
   const statusLabel = (s: string) =>
@@ -368,6 +374,16 @@ export default function AdminRequests() {
               placeholder="Cloud"
               value={cloud}
               onChange={(e) => setCloud(e.target.value)}
+            />
+            <input
+              id="filter-search"
+              name="filter-search"
+              type="text"
+              className="input"
+              placeholder="Search (all fields)"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ minWidth: 180 }}
             />
             <select
               id="filter-status"
