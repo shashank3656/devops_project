@@ -17,7 +17,7 @@ export default function CustomJSON() {
   const [team, setTeam] = useState('');
   const [clientName, setClientName] = useState('');
   const [env, setEnv] = useState('');
-  const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'urgent' | 'critical'>('medium');
   const [dueDate, setDueDate] = useState('');
   const [initialComment, setInitialComment] = useState('');
   const [json, setJson] = useState('');
@@ -282,12 +282,13 @@ export default function CustomJSON() {
                   <select
                     className="select"
                     value={priority}
-                    onChange={(e) => setPriority(e.target.value as 'low' | 'medium' | 'high' | 'urgent')}
+                    onChange={(e) => setPriority(e.target.value as 'low' | 'medium' | 'high' | 'urgent' | 'critical')}
                   >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
                     <option value="urgent">Urgent</option>
+                    <option value="critical">Critical</option>
                   </select>
                 </div>
 

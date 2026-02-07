@@ -231,11 +231,11 @@ export default function DevOpsWorkload() {
             )}
           </section>
 
-          {/* Assigned workload */}
+          {/* All in-progress tickets (assigned and unassigned) */}
           <section>
-            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Assigned tickets</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>All in-progress tickets</h2>
             <p style={{ color: 'var(--color-text-muted)', marginBottom: 16, fontSize: 14 }}>
-              Requests that have been assigned to DevOps team members.
+              All tickets currently in progress. Unassigned tickets show until a DevOps user with the matching level (e.g. L4 for Critical) is available.
             </p>
 
             {/* Tickets by user – who has how many tickets and status breakdown */}
@@ -264,7 +264,7 @@ export default function DevOpsWorkload() {
                           }}
                           onClick={() => setFilterUserId(filterUserId === String(userId) ? '' : String(userId))}
                         >
-                          <td style={{ padding: '8px 12px', fontWeight: 500 }}>{username}</td>
+                          <td style={{ padding: '8px 12px', fontWeight: 500 }}>{userId === 0 ? 'Unassigned' : username}</td>
                           <td style={{ padding: '8px 12px', textAlign: 'center' }}>{total}</td>
                           <td style={{ padding: '8px 12px', textAlign: 'center' }}>{byStatus['in_progress'] ?? 0}</td>
                           <td style={{ padding: '8px 12px', textAlign: 'center' }}>{byStatus['completed'] ?? 0}</td>
@@ -295,6 +295,9 @@ export default function DevOpsWorkload() {
                     style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', minWidth: 180 }}
                   >
                     <option value="">All users ({workload.length})</option>
+                    {workload.some((w) => w.assignee_id === 0) && (
+                      <option value="0">Unassigned ({workload.filter((w) => w.assignee_id === 0).length})</option>
+                    )}
                     {devopsUsers.map((u) => {
                       const count = userStats.find((s) => s.userId === u.id)?.total ?? 0;
                       return (
@@ -338,7 +341,7 @@ export default function DevOpsWorkload() {
               return filtered.length === 0 ? (
                 <div className="card">
                   <div className="empty-state">
-                    <p>{workload.length === 0 ? 'No assigned tickets yet.' : 'No tickets match the selected filters.'}</p>
+                    <p>{workload.length === 0 ? 'No in-progress tickets.' : 'No tickets match the selected filters.'}</p>
                   </div>
                 </div>
               ) : (
@@ -362,7 +365,7 @@ export default function DevOpsWorkload() {
                       <tbody>
                         {filtered.map((item) => (
                         <tr key={item.request.id}>
-                          <td style={{ fontWeight: 500 }}>{item.assignee_username}</td>
+                          <td style={{ fontWeight: 500 }}>{item.assignee_id === 0 ? 'Unassigned' : item.assignee_username}</td>
                           <td><code>#{item.request.id}</code></td>
                           <td>{item.request.team}</td>
                           <td>{item.request.env}</td>

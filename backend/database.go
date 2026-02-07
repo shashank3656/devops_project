@@ -814,13 +814,31 @@ type WorkloadItem struct {
 
 // GetWorkloadAssignedRequests returns all requests that have an assignee (for DevOps manager workload view)
 func GetWorkloadAssignedRequests() ([]WorkloadItem, error) {
+	return getWorkloadInProgress(false)
+}
+
+// GetWorkloadAllInProgress returns all in_progress requests for DevOps manager (assigned and unassigned). Unassigned have assignee_id 0 and assignee_username "—".
+func GetWorkloadAllInProgress() ([]WorkloadItem, error) {
+	return getWorkloadInProgress(true)
+}
+
+func getWorkloadInProgress(includeUnassigned bool) ([]WorkloadItem, error) {
 	query := `
+		SELECT p.id, p.team, p.env, p.cloud, p.service, COALESCE(p.client_name,'') AS client_name, COALESCE(p.application_id,'') AS application_id, COALESCE(p.priority,'medium') AS priority, p.due_date, p.pr_url, p.branch, p.file_path, p.status, COALESCE(p.reject_reason,'') AS reject_reason, p.config, p.created_by, p.assigned_to, p.created_at, p.updated_at, COALESCE(u.username, '—') AS assignee_username
+		FROM pr_requests p
+		LEFT JOIN users u ON u.id = p.assigned_to
+		WHERE p.status = 'in_progress'
+		ORDER BY p.updated_at DESC
+	`
+	if !includeUnassigned {
+		query = `
 		SELECT p.id, p.team, p.env, p.cloud, p.service, COALESCE(p.client_name,'') AS client_name, COALESCE(p.application_id,'') AS application_id, COALESCE(p.priority,'medium') AS priority, p.due_date, p.pr_url, p.branch, p.file_path, p.status, COALESCE(p.reject_reason,'') AS reject_reason, p.config, p.created_by, p.assigned_to, p.created_at, p.updated_at, u.username AS assignee_username
 		FROM pr_requests p
 		INNER JOIN users u ON u.id = p.assigned_to
 		WHERE p.assigned_to IS NOT NULL
 		ORDER BY p.updated_at DESC
-	`
+		`
+	}
 	rows, err := DB.Query(query)
 	if err != nil {
 		return nil, err
@@ -848,8 +866,8 @@ func GetWorkloadAssignedRequests() ([]WorkloadItem, error) {
 			v := int(assignedTo.Int64)
 			req.AssignedTo = &v
 		}
-		if dueDate.Valid {
-			req.DueDate = &dueDate.Time
+		if assigneeUsername == "" {
+			assigneeUsername = "—"
 		}
 		item := WorkloadItem{Request: req, AssigneeUsername: assigneeUsername}
 		if req.AssignedTo != nil {
