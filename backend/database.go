@@ -829,6 +829,32 @@ func GetUserByID(id int) (*User, error) {
 	return &user, nil
 }
 
+// DevopsUserListItem is a minimal user for DevOps manager filter dropdown
+type DevopsUserListItem struct {
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+}
+
+// GetDevopsUsers returns all users with user_type = devops_user (for manager workload filter)
+func GetDevopsUsers() ([]DevopsUserListItem, error) {
+	rows, err := DB.Query(
+		`SELECT id, username FROM users WHERE COALESCE(user_type, 'portal_user') = 'devops_user' ORDER BY username`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DevopsUserListItem
+	for rows.Next() {
+		var u DevopsUserListItem
+		if err := rows.Scan(&u.ID, &u.Username); err != nil {
+			continue
+		}
+		out = append(out, u)
+	}
+	return out, nil
+}
+
 // GetDevopsProfile returns the DevOps profile for a user, or nil if none
 func GetDevopsProfile(userID int) (*DevopsProfile, error) {
 	var p DevopsProfile

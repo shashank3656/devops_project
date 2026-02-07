@@ -26,15 +26,31 @@ interface WorkloadItem {
   assignee_username: string;
 }
 
+interface DevopsUser {
+  id: number;
+  username: string;
+}
+
+const STATUS_OPTIONS = [
+  { value: '', label: 'All statuses' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'pending_approval', label: 'Pending approval' },
+];
+
 export default function DevOpsWorkload() {
   const router = useRouter();
   const apiUrl = useApiUrl();
   const [pendingApprovals, setPendingApprovals] = useState<Request[]>([]);
   const [pendingLoading, setPendingLoading] = useState(true);
   const [workload, setWorkload] = useState<WorkloadItem[]>([]);
+  const [devopsUsers, setDevopsUsers] = useState<DevopsUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actioningId, setActioningId] = useState<number | null>(null);
+  const [filterUserId, setFilterUserId] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<string>('');
 
   const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -70,6 +86,19 @@ export default function DevOpsWorkload() {
       .finally(() => setLoading(false));
   }, [token, apiUrl, router]);
 
+  const fetchDevopsUsers = useCallback(() => {
+    if (!token) return;
+    fetch(`${apiUrl}/api/devops/users`, { headers })
+      .then((res) => {
+        if (res.status === 401 || res.status === 403) return null;
+        return res.json();
+      })
+      .then((data) => {
+        if (data?.users) setDevopsUsers(data.users);
+      })
+      .catch(() => {});
+  }, [token, apiUrl]);
+
   useEffect(() => {
     if (!token) {
       router.replace('/login');
@@ -77,7 +106,8 @@ export default function DevOpsWorkload() {
     }
     fetchPending();
     fetchWorkload();
-  }, [token, router, fetchPending, fetchWorkload]);
+    fetchDevopsUsers();
+  }, [token, router, fetchPending, fetchWorkload, fetchDevopsUsers]);
 
   const handleApprove = (id: number) => {
     setActioningId(id);
@@ -186,38 +216,80 @@ export default function DevOpsWorkload() {
           {/* Assigned workload */}
           <section>
             <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Assigned tickets</h2>
-            <p style={{ color: 'var(--color-text-muted)', marginBottom: 24, fontSize: 14 }}>
+            <p style={{ color: 'var(--color-text-muted)', marginBottom: 16, fontSize: 14 }}>
               Requests that have been assigned to DevOps team members.
             </p>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 24, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+                <span style={{ color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>DevOps user:</span>
+                <select
+                  value={filterUserId}
+                  onChange={(e) => setFilterUserId(e.target.value)}
+                  style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', minWidth: 160 }}
+                >
+                  <option value="">All users</option>
+                  {devopsUsers.map((u) => (
+                    <option key={u.id} value={String(u.id)}>{u.username}</option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+                <span style={{ color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Status:</span>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', minWidth: 160 }}
+                >
+                  {STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value || 'all'} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </label>
+              {(filterUserId || filterStatus) && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => { setFilterUserId(''); setFilterStatus(''); }}
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
             {error && <div className="alert alert-error">{error}</div>}
             {loading ? (
               <p className="loading-text">Loading…</p>
-            ) : workload.length === 0 ? (
-              <div className="card">
-                <div className="empty-state">
-                  <p>No assigned tickets yet.</p>
+            ) : (() => {
+              const filtered = workload.filter((item) => {
+                if (filterUserId && item.assignee_id !== Number(filterUserId)) return false;
+                if (filterStatus && item.request.status !== filterStatus) return false;
+                return true;
+              });
+              return filtered.length === 0 ? (
+                <div className="card">
+                  <div className="empty-state">
+                    <p>{workload.length === 0 ? 'No assigned tickets yet.' : 'No tickets match the selected filters.'}</p>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="card">
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Assignee</th>
-                        <th>Ticket #</th>
-                        <th>Team</th>
-                        <th>Env</th>
-                        <th>Cloud</th>
-                        <th>Service</th>
-                        <th>Priority</th>
-                        <th>Status</th>
-                        <th>PR</th>
-                        <th>Updated</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {workload.map((item) => (
+              ) : (
+                <div className="card">
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Assignee</th>
+                          <th>Ticket #</th>
+                          <th>Team</th>
+                          <th>Env</th>
+                          <th>Cloud</th>
+                          <th>Service</th>
+                          <th>Priority</th>
+                          <th>Status</th>
+                          <th>PR</th>
+                          <th>Updated</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map((item) => (
                         <tr key={item.request.id}>
                           <td style={{ fontWeight: 500 }}>{item.assignee_username}</td>
                           <td><code>#{item.request.id}</code></td>
@@ -230,12 +302,13 @@ export default function DevOpsWorkload() {
                           <td>{item.request.pr_url ? <a href={item.request.pr_url} target="_blank" rel="noopener noreferrer">Open PR</a> : '-'}</td>
                           <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{new Date(item.request.updated_at).toLocaleString()}</td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </section>
         </div>
       </DevOpsLayout>

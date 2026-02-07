@@ -127,6 +127,36 @@ func devopsTicketsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"tickets": requests, "status": "ok"})
 }
 
+// devopsUsersHandler GET /api/devops/users - manager only; list of DevOps users for workload filter
+func devopsUsersHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	_, ok := requireDevopsManager(w, r)
+	if !ok {
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"users": []interface{}{}, "status": "ok"})
+		return
+	}
+	users, err := GetDevopsUsers()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"users": users, "status": "ok"})
+}
+
 // devopsWorkloadHandler GET /api/devops/workload - manager only; requests with assigned_to set, optionally grouped by assignee
 func devopsWorkloadHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
