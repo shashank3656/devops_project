@@ -651,6 +651,15 @@ export default function History() {
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px'
                       }}>PR Link</th>
+                      <th style={{ 
+                        padding: '16px', 
+                        textAlign: 'left',
+                        fontWeight: '600',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -758,6 +767,19 @@ export default function History() {
                             </a>
                           ) : (
                             <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '16px' }} onClick={(e) => e.stopPropagation()}>
+                          {CANCELLABLE_STATUSES.includes(req.status) &&
+                           (currentUserId == null || req.created_by === currentUserId) && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ padding: '6px 12px', fontSize: '13px' }}
+                              onClick={() => cancelRequest(req.id)}
+                            >
+                              Cancel
+                            </button>
                           )}
                         </td>
                       </tr>
@@ -900,9 +922,8 @@ export default function History() {
                           Resubmit as draft
                         </button>
                       )}
-                      {currentUserId != null && detailRequest.created_by === currentUserId &&
-                       CANCELLABLE_STATUSES.includes(detailRequest.status) &&
-                       detailRequest.status !== 'draft' && (
+                      {CANCELLABLE_STATUSES.includes(detailRequest.status) &&
+                       (currentUserId == null || detailRequest.created_by === currentUserId) && (
                         <button type="button" onClick={() => cancelRequest(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }}>
                           Cancel ticket
                         </button>

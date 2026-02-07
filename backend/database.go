@@ -1521,6 +1521,27 @@ func GetGroupManagerForUser(userID int) int {
 	return managerID
 }
 
+// GetGroupManagerForUserInTeam returns the user ID of the "manager" role in the portal team that matches teamNameOrSlug and that the user belongs to. If not found or no manager, returns 0.
+// teamNameOrSlug is the request's team field (name or slug). Use this so group manager approval uses the same team the request is for.
+func GetGroupManagerForUserInTeam(userID int, teamNameOrSlug string) int {
+	if teamNameOrSlug == "" {
+		return GetGroupManagerForUser(userID)
+	}
+	var managerID int
+	err := DB.QueryRow(`
+		SELECT m2.user_id FROM team_members m1
+		INNER JOIN teams t ON t.id = m1.team_id AND COALESCE(t.team_type,'portal') = 'portal'
+		  AND (t.name = $2 OR t.slug = $2)
+		INNER JOIN team_members m2 ON m2.team_id = t.id AND m2.role = 'manager' AND m2.user_id != $1
+		WHERE m1.user_id = $1
+		LIMIT 1
+	`, userID, teamNameOrSlug).Scan(&managerID)
+	if err != nil || managerID == 0 {
+		return 0
+	}
+	return managerID
+}
+
 // GetTeamsForUserWithDetails returns team details (id, name, slug, team_type) for a user
 func GetTeamsForUserWithDetails(userID int) ([]Team, error) {
 	rows, err := DB.Query(

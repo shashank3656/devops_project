@@ -20,12 +20,18 @@ interface Ticket {
   updated_at: string;
 }
 
+interface DashboardStats {
+  pending_approval: number;
+  in_progress: number;
+}
+
 export default function DevOpsDashboard() {
   const router = useRouter();
   const apiUrl = useApiUrl();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [stats, setStats] = useState<DashboardStats | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -49,6 +55,22 @@ export default function DevOpsDashboard() {
       .finally(() => setLoading(false));
   }, [router, apiUrl]);
 
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    fetch(`${apiUrl}/api/devops/dashboard-stats`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => {
+        if (res.status === 200) return res.json();
+        return null;
+      })
+      .then((data) => {
+        if (data?.status === 'ok' && typeof data.pending_approval === 'number') {
+          setStats({ pending_approval: data.pending_approval, in_progress: data.in_progress ?? 0 });
+        }
+      })
+      .catch(() => {});
+  }, [apiUrl]);
+
   return (
     <>
       <Head>
@@ -57,6 +79,19 @@ export default function DevOpsDashboard() {
       <DevOpsLayout>
         <div className="container">
           <h1 className="page-title">My tickets</h1>
+          {stats != null && (
+            <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+              <div className="card" style={{ padding: 16, minWidth: 160 }}>
+                <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 4 }}>Pending your approval</div>
+                <div style={{ fontSize: 24, fontWeight: 700 }}>{stats.pending_approval}</div>
+                <a href="/workload" style={{ fontSize: 13, marginTop: 8, display: 'inline-block' }}>Review on Workload →</a>
+              </div>
+              <div className="card" style={{ padding: 16, minWidth: 160 }}>
+                <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 4 }}>In progress</div>
+                <div style={{ fontSize: 24, fontWeight: 700 }}>{stats.in_progress}</div>
+              </div>
+            </div>
+          )}
           {error && <div className="alert alert-error">{error}</div>}
           {loading ? (
             <p className="loading-text">Loading…</p>
@@ -73,7 +108,7 @@ export default function DevOpsDashboard() {
                 <table>
                   <thead>
                     <tr>
-                      <th>ID</th>
+                      <th>Ticket #</th>
                       <th>Team</th>
                       <th>Env</th>
                       <th>Cloud</th>
@@ -87,7 +122,7 @@ export default function DevOpsDashboard() {
                   <tbody>
                     {tickets.map((t) => (
                       <tr key={t.id}>
-                        <td><code>{t.application_id || t.id}</code></td>
+                        <td><code>#{t.id}</code></td>
                         <td>{t.team}</td>
                         <td>{t.env}</td>
                         <td>{t.cloud}</td>

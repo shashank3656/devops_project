@@ -153,6 +153,38 @@ func devopsWorkloadHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"workload": workload, "status": "ok"})
 }
 
+// devopsDashboardStatsHandler GET /api/devops/dashboard-stats - manager only; counts for DevOps manager dashboard
+func devopsDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	_, ok := requireDevopsManager(w, r)
+	if !ok {
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"pending_approval": 0, "in_progress": 0, "status": "ok",
+		})
+		return
+	}
+	pending, _ := GetPendingDevopsApprovalCount()
+	var inProgress int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM pr_requests WHERE status = 'in_progress'").Scan(&inProgress)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"pending_approval": pending,
+		"in_progress":      inProgress,
+		"status":           "ok",
+	})
+}
+
 // devopsNotificationsHandler GET /api/devops/notifications - manager only; count of requests pending DevOps approval (for badge)
 func devopsNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {

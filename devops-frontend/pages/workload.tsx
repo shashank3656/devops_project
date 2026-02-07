@@ -145,7 +145,7 @@ export default function DevOpsWorkload() {
                   <table>
                     <thead>
                       <tr>
-                        <th>ID</th>
+                        <th>Ticket #</th>
                         <th>Team</th>
                         <th>Env</th>
                         <th>Cloud</th>
@@ -158,7 +158,7 @@ export default function DevOpsWorkload() {
                     <tbody>
                       {pendingApprovals.map((req) => (
                         <tr key={req.id}>
-                          <td><code>{req.application_id || req.id}</code></td>
+                          <td><code>#{req.id}</code></td>
                           <td>{req.team}</td>
                           <td>{req.env}</td>
                           <td>{req.cloud}</td>
@@ -205,7 +205,7 @@ export default function DevOpsWorkload() {
                     <thead>
                       <tr>
                         <th>Assignee</th>
-                        <th>ID</th>
+                        <th>Ticket #</th>
                         <th>Team</th>
                         <th>Env</th>
                         <th>Cloud</th>
@@ -220,7 +220,7 @@ export default function DevOpsWorkload() {
                       {workload.map((item) => (
                         <tr key={item.request.id}>
                           <td style={{ fontWeight: 500 }}>{item.assignee_username}</td>
-                          <td><code>{item.request.application_id || item.request.id}</code></td>
+                          <td><code>#{item.request.id}</code></td>
                           <td>{item.request.team}</td>
                           <td>{item.request.env}</td>
                           <td>{item.request.cloud}</td>
