@@ -167,6 +167,17 @@ func MigrateDatabase() error {
 		log.Println("Database migration (assigned_to) completed")
 	}
 
+	// Migration 10: teams.team_type (portal | devops), portal team member roles (developer, senior_developer, lead, manager)
+	var teamTypeCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'teams' AND column_name = 'team_type'").Scan(&teamTypeCount)
+	if teamTypeCount == 0 {
+		log.Println("Migrating database: adding teams.team_type...")
+		_, _ = DB.Exec("ALTER TABLE teams ADD COLUMN team_type VARCHAR(50) DEFAULT 'portal'")
+		_, _ = DB.Exec("UPDATE teams SET team_type = 'portal' WHERE team_type IS NULL")
+		log.Println("Database migration (team_type) completed")
+	}
+	// team_members.role already VARCHAR(50); allow developer, senior_developer, lead, manager (no schema change, just validation in code)
+
 	log.Println("Database schema is up to date")
 	return nil
 }

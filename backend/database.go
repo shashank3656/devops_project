@@ -95,21 +95,22 @@ type DevopsProfile struct {
 	Level       string    `json:"level"`       // L1, L2, L3, L4
 }
 
-// Team is a group created by admin (for admin frontend)
+// Team is a group created by admin (for admin frontend). team_type: portal (user portal group) | devops (DevOps team)
 type Team struct {
 	ID        int       `json:"id"`
 	Name      string    `json:"name"`
 	Slug      string    `json:"slug"`
+	TeamType  string    `json:"team_type"` // portal | devops
 	CreatedAt time.Time `json:"created_at"`
 	CreatedBy *int      `json:"created_by"`
 }
 
-// TeamMember links a user to a team
+// TeamMember links a user to a team. For portal teams: role is developer | senior_developer | lead | manager. For devops: member | lead.
 type TeamMember struct {
 	ID        int       `json:"id"`
 	TeamID    int       `json:"team_id"`
 	UserID    int       `json:"user_id"`
-	Role      string    `json:"role"` // member, lead
+	Role      string    `json:"role"` // developer, senior_developer, lead, manager (portal) | member, lead (devops)
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -463,9 +464,33 @@ func GetGitHubLogs(limit int) ([]GitHubLogEntry, error) {
 	return out, nil
 }
 
-// GetPRRequests retrieves PR requests with optional filters (status and priority optional).
-// search: if non-empty, searches across team, env, cloud, service, client_name, branch, config.
-func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, limit, offset int) ([]PRRequest, error) {
+// GetPortalTeamMemberUserIDs returns user IDs of all members in portal team(s) where the given user has role=manager (for "manager sees all group tickets").
+func GetPortalTeamMemberUserIDs(managerUserID int) ([]int, error) {
+	rows, err := DB.Query(`
+		SELECT DISTINCT m1.user_id FROM team_members m1
+		INNER JOIN teams t ON t.id = m1.team_id AND COALESCE(t.team_type,'portal') = 'portal'
+		INNER JOIN team_members m2 ON m2.team_id = t.id AND m2.role = 'manager' AND m2.user_id = $1
+		WHERE m1.user_id != $1
+		UNION
+		SELECT $1
+	`, managerUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// GetPRRequests retrieves PR requests with optional filters. If createdByIn is non-empty, filter by created_by IN (createdByIn); else if userIDInt > 0, filter by created_by = userIDInt.
+func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, limit, offset int) ([]PRRequest, error) {
 	query := `
 		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at
 		FROM pr_requests
@@ -518,7 +543,15 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 		argPos++
 	}
 
-	if userIDInt > 0 {
+	if len(createdByIn) > 0 {
+		placeholders := make([]string, len(createdByIn))
+		for i := range createdByIn {
+			placeholders[i] = fmt.Sprintf("$%d", argPos)
+			args = append(args, createdByIn[i])
+			argPos++
+		}
+		query += " AND created_by IN (" + strings.Join(placeholders, ",") + ")"
+	} else if userIDInt > 0 {
 		query += fmt.Sprintf(" AND created_by = $%d", argPos)
 		args = append(args, userIDInt)
 		argPos++
@@ -1074,9 +1107,8 @@ func GetStats(userIDInt int) (*Stats, error) {
 	return stats, nil
 }
 
-// GetTotalCount returns total count of PR requests (for pagination).
-// search: if non-empty, same full-text search as GetPRRequests.
-func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int) (int, error) {
+// GetTotalCount returns total count of PR requests (for pagination). Same createdByIn/userIDInt logic as GetPRRequests.
+func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int) (int, error) {
 	query := "SELECT COUNT(*) FROM pr_requests WHERE 1=1"
 	args := []interface{}{}
 	argPos := 1
@@ -1119,7 +1151,15 @@ func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string
 		args = append(args, priorityFilter)
 		argPos++
 	}
-	if userIDInt > 0 {
+	if len(createdByIn) > 0 {
+		placeholders := make([]string, len(createdByIn))
+		for i := range createdByIn {
+			placeholders[i] = fmt.Sprintf("$%d", argPos)
+			args = append(args, createdByIn[i])
+			argPos++
+		}
+		query += " AND created_by IN (" + strings.Join(placeholders, ",") + ")"
+	} else if userIDInt > 0 {
 		query += fmt.Sprintf(" AND created_by = $%d", argPos)
 		args = append(args, userIDInt)
 		argPos++
@@ -1292,17 +1332,20 @@ func GetUserRequestsUpdatedSince(userID int, since time.Time) (int, error) {
 	return count, err
 }
 
-// CreateTeam creates a new team (admin only)
-func CreateTeam(name, slug string, createdBy *int) (*Team, error) {
+// CreateTeam creates a new team (admin only). teamType: "portal" | "devops"
+func CreateTeam(name, slug, teamType string, createdBy *int) (*Team, error) {
 	if slug == "" {
 		slug = strings.ToLower(strings.ReplaceAll(name, " ", "-"))
 	}
+	if teamType != "devops" && teamType != "portal" {
+		teamType = "portal"
+	}
 	var t Team
 	err := DB.QueryRow(
-		`INSERT INTO teams (name, slug, created_by) VALUES ($1, $2, $3)
-		 RETURNING id, name, slug, created_at, created_by`,
-		name, slug, createdBy,
-	).Scan(&t.ID, &t.Name, &t.Slug, &t.CreatedAt, &t.CreatedBy)
+		`INSERT INTO teams (name, slug, team_type, created_by) VALUES ($1, $2, $3, $4)
+		 RETURNING id, name, slug, COALESCE(team_type,'portal'), created_at, created_by`,
+		name, slug, teamType, createdBy,
+	).Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.CreatedAt, &t.CreatedBy)
 	if err != nil {
 		return nil, err
 	}
@@ -1311,7 +1354,7 @@ func CreateTeam(name, slug string, createdBy *int) (*Team, error) {
 
 // GetTeams returns all teams
 func GetTeams() ([]Team, error) {
-	rows, err := DB.Query(`SELECT id, name, slug, created_at, created_by FROM teams ORDER BY name`)
+	rows, err := DB.Query(`SELECT id, name, slug, COALESCE(team_type,'portal'), created_at, created_by FROM teams ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -1319,7 +1362,7 @@ func GetTeams() ([]Team, error) {
 	var out []Team
 	for rows.Next() {
 		var t Team
-		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.CreatedAt, &t.CreatedBy); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.CreatedAt, &t.CreatedBy); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -1331,8 +1374,8 @@ func GetTeams() ([]Team, error) {
 func GetTeamByID(id int) (*Team, error) {
 	var t Team
 	err := DB.QueryRow(
-		`SELECT id, name, slug, created_at, created_by FROM teams WHERE id = $1`, id,
-	).Scan(&t.ID, &t.Name, &t.Slug, &t.CreatedAt, &t.CreatedBy)
+		`SELECT id, name, slug, COALESCE(team_type,'portal'), created_at, created_by FROM teams WHERE id = $1`, id,
+	).Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.CreatedAt, &t.CreatedBy)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -1365,10 +1408,31 @@ func RemoveTeamMember(teamID, userID int) error {
 	return err
 }
 
-// UpdateTeamMemberRole sets the role for a team member (member or lead)
+// ValidPortalRole returns true for portal team member roles
+func ValidPortalRole(role string) bool {
+	switch role {
+	case "developer", "senior_developer", "lead", "manager":
+		return true
+	}
+	return false
+}
+
+// ValidDevopsRole returns true for devops team member roles
+func ValidDevopsRole(role string) bool {
+	return role == "member" || role == "lead"
+}
+
+// UpdateTeamMemberRole sets the role for a team member. Portal: developer, senior_developer, lead, manager. DevOps: member, lead.
 func UpdateTeamMemberRole(teamID, userID int, role string) error {
-	if role != "member" && role != "lead" {
-		role = "member"
+	team, _ := GetTeamByID(teamID)
+	if team != nil && team.TeamType == "devops" {
+		if !ValidDevopsRole(role) {
+			role = "member"
+		}
+	} else {
+		if !ValidPortalRole(role) {
+			role = "developer"
+		}
 	}
 	result, err := DB.Exec(`UPDATE team_members SET role = $1 WHERE team_id = $2 AND user_id = $3`, role, teamID, userID)
 	if err != nil {
@@ -1441,10 +1505,26 @@ func GetTeamsForUser(userID int) ([]int, error) {
 	return ids, nil
 }
 
-// GetTeamsForUserWithDetails returns team details (id, name, slug) for a user
+// GetGroupManagerForUser returns the user ID of the "manager" role in the user's portal team(s). If user is in multiple portal teams, returns the first team's manager. Returns 0 if none.
+func GetGroupManagerForUser(userID int) int {
+	var managerID int
+	err := DB.QueryRow(`
+		SELECT m2.user_id FROM team_members m1
+		INNER JOIN teams t ON t.id = m1.team_id AND COALESCE(t.team_type,'portal') = 'portal'
+		INNER JOIN team_members m2 ON m2.team_id = t.id AND m2.role = 'manager' AND m2.user_id != $1
+		WHERE m1.user_id = $1
+		LIMIT 1
+	`, userID).Scan(&managerID)
+	if err != nil || managerID == 0 {
+		return 0
+	}
+	return managerID
+}
+
+// GetTeamsForUserWithDetails returns team details (id, name, slug, team_type) for a user
 func GetTeamsForUserWithDetails(userID int) ([]Team, error) {
 	rows, err := DB.Query(
-		`SELECT t.id, t.name, t.slug, t.created_at, t.created_by
+		`SELECT t.id, t.name, t.slug, COALESCE(t.team_type,'portal'), t.created_at, t.created_by
 		 FROM teams t INNER JOIN team_members m ON m.team_id = t.id
 		 WHERE m.user_id = $1 ORDER BY t.name`,
 		userID,
@@ -1456,7 +1536,7 @@ func GetTeamsForUserWithDetails(userID int) ([]Team, error) {
 	var out []Team
 	for rows.Next() {
 		var t Team
-		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.CreatedAt, &t.CreatedBy); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.CreatedAt, &t.CreatedBy); err != nil {
 			return nil, err
 		}
 		out = append(out, t)

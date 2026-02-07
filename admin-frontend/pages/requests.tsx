@@ -133,9 +133,17 @@ export default function AdminRequests() {
   };
 
   const statusLabel = (s: string) =>
-    s === 'draft' ? 'Draft' : s === 'pending_approval' ? 'Pending approval' : s === 'in_progress' ? 'In progress' : s === 'completed' ? 'Completed' : s === 'rejected' ? 'Rejected' : s;
+    s === 'draft' ? 'Draft'
+      : s === 'pending_approval' ? 'Pending approval'
+      : s === 'pending_user_manager_approval' ? 'Pending user manager'
+      : s === 'pending_devops_approval' ? 'Pending DevOps approval'
+      : s === 'in_progress' ? 'In progress'
+      : s === 'completed' ? 'Completed'
+      : s === 'rejected' ? 'Rejected' : s;
 
-  const pendingIds = requests.filter((r) => r.status === 'pending_approval').map((r) => r.id);
+  const canApproveOrReject = (s: string) =>
+    s === 'pending_approval' || s === 'pending_user_manager_approval' || s === 'pending_devops_approval';
+  const pendingIds = requests.filter((r) => canApproveOrReject(r.status)).map((r) => r.id);
   const toggleSelect = (id: number) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -395,6 +403,8 @@ export default function AdminRequests() {
             >
               <option value="">All statuses</option>
               <option value="draft">Draft</option>
+              <option value="pending_user_manager_approval">Pending user manager</option>
+              <option value="pending_devops_approval">Pending DevOps approval</option>
               <option value="pending_approval">Pending approval</option>
               <option value="in_progress">In progress</option>
               <option value="completed">Completed</option>
@@ -487,7 +497,7 @@ export default function AdminRequests() {
                         <tr key={req.id} style={{ cursor: 'pointer' }} onClick={() => openDetail(req)}>
                           {pendingIds.length > 0 ? (
                             <td onClick={(e) => e.stopPropagation()}>
-                              {req.status === 'pending_approval' ? (
+                              {(req.status === 'pending_approval' || req.status === 'pending_user_manager_approval' || req.status === 'pending_devops_approval') ? (
                                 <input
                                   type="checkbox"
                                   checked={selectedIds.has(req.id)}
@@ -513,12 +523,12 @@ export default function AdminRequests() {
                                 fontSize: 12,
                                 fontWeight: 600,
                                 background: req.status === 'draft' ? '#f1f5f9' :
-                                           req.status === 'pending_approval' ? 'var(--color-warning-bg)' :
+                                           canApproveOrReject(req.status) ? 'var(--color-warning-bg)' :
                                            req.status === 'in_progress' ? 'var(--color-primary-light)' :
                                            req.status === 'completed' ? 'var(--color-success-bg)' :
                                            req.status === 'rejected' ? 'var(--color-danger-bg)' : '#f1f5f9',
                                 color: req.status === 'draft' ? 'var(--color-text-muted)' :
-                                       req.status === 'pending_approval' ? 'var(--color-warning)' :
+                                       canApproveOrReject(req.status) ? 'var(--color-warning)' :
                                        req.status === 'in_progress' ? 'var(--color-primary)' :
                                        req.status === 'completed' ? 'var(--color-success)' :
                                        req.status === 'rejected' ? 'var(--color-danger)' : 'var(--color-text-muted)'
@@ -646,12 +656,12 @@ export default function AdminRequests() {
                       fontSize: 12,
                       fontWeight: 600,
                       background: detailRequest.status === 'draft' ? '#f1f5f9' :
-                                 detailRequest.status === 'pending_approval' ? 'var(--color-warning-bg)' :
+                                 canApproveOrReject(detailRequest.status) ? 'var(--color-warning-bg)' :
                                  detailRequest.status === 'in_progress' ? 'var(--color-primary-light)' :
                                  detailRequest.status === 'completed' ? 'var(--color-success-bg)' :
                                  detailRequest.status === 'rejected' ? 'var(--color-danger-bg)' : '#f1f5f9',
                       color: detailRequest.status === 'draft' ? 'var(--color-text-muted)' :
-                             detailRequest.status === 'pending_approval' ? 'var(--color-warning)' :
+                             canApproveOrReject(detailRequest.status) ? 'var(--color-warning)' :
                              detailRequest.status === 'in_progress' ? 'var(--color-primary)' :
                              detailRequest.status === 'completed' ? 'var(--color-success)' :
                              detailRequest.status === 'rejected' ? 'var(--color-danger)' : 'var(--color-text-muted)'
@@ -660,6 +670,27 @@ export default function AdminRequests() {
                     {statusLabel(detailRequest.status)}
                   </span>
                 </p>
+
+                {canApproveOrReject(detailRequest.status) && (
+                  <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={actioningId !== null}
+                      onClick={() => handleApprove(detailRequest.id)}
+                    >
+                      {actioningId === detailRequest.id ? '…' : 'Approve'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      disabled={actioningId !== null}
+                      onClick={() => handleReject(detailRequest.id)}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                )}
 
                 {detailRequest.config && (
                   <div style={{ marginTop: 16, borderTop: '1px solid var(--color-border)', paddingTop: 16 }}>

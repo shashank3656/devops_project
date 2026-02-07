@@ -207,7 +207,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// userID 0 = all requests
-	requests, err := GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, limit, offset)
+	requests, err := GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil, limit, offset)
 	if err != nil {
 		log.Printf("Admin requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -215,7 +215,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch requests", "status": "error"})
 		return
 	}
-	totalCount, _ := GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search, prID, 0)
+	totalCount, _ := GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -307,6 +307,14 @@ func adminBulkApproveHandler(w http.ResponseWriter, r *http.Request) {
 		req, err := GetPRRequestByID(id)
 		if err != nil || req == nil {
 			failed = append(failed, id)
+			continue
+		}
+		if req.Status == "pending_user_manager_approval" {
+			if err := UpdatePRRequestStatus(id, "pending_devops_approval"); err != nil {
+				failed = append(failed, id)
+				continue
+			}
+			approved = append(approved, id)
 			continue
 		}
 		if req.Status != "pending_approval" && req.Status != "pending_devops_approval" {
@@ -448,12 +456,24 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if req.Status != "pending_approval" && req.Status != "pending_devops_approval" {
+		if req.Status != "pending_approval" && req.Status != "pending_devops_approval" && req.Status != "pending_user_manager_approval" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending_approval or pending_devops_approval requests can be approved", "status": "error"})
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending requests can be approved", "status": "error"})
 			return
 		}
+		// Admin full control: if pending_user_manager_approval, just move to pending_devops_approval; else create PR and assign
+		if req.Status == "pending_user_manager_approval" {
+			if err := UpdatePRRequestStatus(id, "pending_devops_approval"); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), "admin_step_to_devops_approval")
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Request moved to pending DevOps approval"})
+			return
+		}
+		// pending_approval or pending_devops_approval: create PR and assign
 		prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
 		if err != nil {
 			log.Printf("Admin approve: create PR failed: %v", err)

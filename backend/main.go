@@ -390,7 +390,9 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	status := "pending_devops_approval"
 	if !draft && userID > 0 {
-		if creator, _ := GetUserByID(userID); creator != nil && creator.ManagerID != nil {
+		if GetGroupManagerForUser(userID) != 0 {
+			status = "pending_user_manager_approval"
+		} else if creator, _ := GetUserByID(userID); creator != nil && creator.ManagerID != nil {
 			status = "pending_user_manager_approval"
 		}
 	}

@@ -165,10 +165,14 @@ func handleRequestSubmit(w http.ResponseWriter, r *http.Request, id int, req *PR
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator can submit this draft", "status": "error"})
 		return
 	}
-	// Two-step approval: if creator has a manager, first status is pending_user_manager_approval; else pending_devops_approval (devops/admin can approve directly)
+	// Two-step approval: if creator has a group manager (portal team manager) or creator's manager_id, first status is pending_user_manager_approval; else pending_devops_approval
 	initialStatus := "pending_devops_approval"
 	if req.CreatedBy != nil {
-		if creator, _ := GetUserByID(*req.CreatedBy); creator != nil && creator.ManagerID != nil {
+		creatorID := *req.CreatedBy
+		groupManagerID := GetGroupManagerForUser(creatorID)
+		if groupManagerID != 0 {
+			initialStatus = "pending_user_manager_approval"
+		} else if creator, _ := GetUserByID(creatorID); creator != nil && creator.ManagerID != nil {
 			initialStatus = "pending_user_manager_approval"
 		}
 	}
@@ -197,11 +201,19 @@ func handleRequestApproveByManager(w http.ResponseWriter, r *http.Request, id in
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	creator, err := GetUserByID(*req.CreatedBy)
-	if err != nil || creator == nil || creator.ManagerID == nil || *creator.ManagerID != userID {
+	creatorID := *req.CreatedBy
+	groupManagerID := GetGroupManagerForUser(creatorID)
+	// Allow if current user is the group manager (portal team manager) or the creator's manager_id
+	allowed := groupManagerID == userID
+	if !allowed {
+		if creator, err := GetUserByID(creatorID); err == nil && creator != nil && creator.ManagerID != nil && *creator.ManagerID == userID {
+			allowed = true
+		}
+	}
+	if !allowed {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator's manager can approve this step", "status": "error"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator's group manager or assigned manager can approve this step", "status": "error"})
 		return
 	}
 	if err := UpdatePRRequestStatus(id, "pending_devops_approval"); err != nil {

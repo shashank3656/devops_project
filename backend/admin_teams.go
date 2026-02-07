@@ -418,8 +418,9 @@ func adminTeamsCreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name string `json:"name"`
-		Slug string `json:"slug"`
+		Name     string `json:"name"`
+		Slug     string `json:"slug"`
+		TeamType string `json:"team_type"` // "portal" | "devops"
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -433,11 +434,15 @@ func adminTeamsCreateHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "name is required", "status": "error"})
 		return
 	}
+	teamType := strings.TrimSpace(strings.ToLower(body.TeamType))
+	if teamType != "devops" && teamType != "portal" {
+		teamType = "portal"
+	}
 	var createdBy *int
 	if userID > 0 {
 		createdBy = &userID
 	}
-	team, err := CreateTeam(strings.TrimSpace(body.Name), strings.TrimSpace(body.Slug), createdBy)
+	team, err := CreateTeam(strings.TrimSpace(body.Name), strings.TrimSpace(body.Slug), teamType, createdBy)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
