@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import DevOpsLayout from '../components/DevOpsLayout';
+import { useApiUrl } from '../context/ApiUrlContext';
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
 interface Ticket {
@@ -22,6 +22,7 @@ interface Ticket {
 
 export default function DevOpsDashboard() {
   const router = useRouter();
+  const apiUrl = useApiUrl();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -46,7 +47,7 @@ export default function DevOpsDashboard() {
       })
       .catch(() => setError('Failed to load tickets'))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [router, apiUrl]);
 
   return (
     <>
