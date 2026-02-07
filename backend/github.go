@@ -10,7 +10,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-func CreateGitHubPR(branchName, filePath string, content []byte) (string, error) {
+func CreateGitHubPR(branchName, filePath string, content []byte, applicationID string) (string, error) {
 	ctx := context.Background()
 
 	if GitHubToken == "" {
@@ -109,12 +109,21 @@ func CreateGitHubPR(branchName, filePath string, content []byte) (string, error)
 	}
 
 	// 6. Create new PR
+	bodyStr := fmt.Sprintf("Auto-generated infrastructure request\n\n**Team:** %s\n**Environment:** %s\n**File:** %s",
+		extractTeamFromBranch(branchName), extractEnvFromBranch(branchName), filePath)
+	if applicationID != "" {
+		bodyStr = fmt.Sprintf("Auto-generated infrastructure request\n\n**Application ID:** %s\n**Team:** %s\n**Environment:** %s\n**File:** %s",
+			applicationID, extractTeamFromBranch(branchName), extractEnvFromBranch(branchName), filePath)
+	}
+	title := fmt.Sprintf("Infrastructure: %s", branchName)
+	if applicationID != "" {
+		title = fmt.Sprintf("Infrastructure: %s [%s]", branchName, applicationID)
+	}
 	pr := &github.NewPullRequest{
-		Title: github.String(fmt.Sprintf("Infrastructure: %s/%s", branchName, filePath)),
+		Title: github.String(title),
 		Head:  github.String(branchName),
 		Base:  github.String(BaseBranch),
-		Body:  github.String(fmt.Sprintf("Auto-generated infrastructure request\n\n**Team:** %s\n**Environment:** %s\n**File:** %s", 
-			extractTeamFromBranch(branchName), extractEnvFromBranch(branchName), filePath)),
+		Body:  github.String(bodyStr),
 	}
 
 	createdPR, _, err := client.PullRequests.Create(

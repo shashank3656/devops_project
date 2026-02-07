@@ -2,10 +2,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { ADMIN_SITE_NAME } from '../lib/site';
-import { IconDashboard, IconRequests, IconTeams, IconUsers, IconLogout, IconBell, IconChevronLeft, IconChevronRight, IconActivity } from './Icons';
+import { IconDashboard, IconRequests, IconTeams, IconUsers, IconLogout, IconBell, IconChevronLeft, IconChevronRight, IconActivity, IconSun, IconMoon } from './Icons';
 
 const SIDEBAR_STORAGE_KEY = 'admin_sidebar_collapsed';
-const THEME_KEY = 'admin-theme';
+const THEME_KEY = 'infra-portal-theme';
 const NOTIFY_POLL_MS = 30000;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -50,18 +50,19 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
       if (stored !== null) setCollapsed(stored === 'true');
       const t = localStorage.getItem(THEME_KEY);
-      if (t === 'dark' || t === 'light') {
-        setTheme(t);
-        document.documentElement.setAttribute('data-theme', t);
-      }
+      const resolved = t === 'dark' ? 'dark' : 'light';
+      setTheme(resolved);
+      document.documentElement.setAttribute('data-theme', resolved);
     } catch (_) {}
   }, []);
 
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark';
     setTheme(next);
-    try { localStorage.setItem(THEME_KEY, next); } catch (_) {}
-    document.documentElement.setAttribute('data-theme', next);
+    try {
+      localStorage.setItem(THEME_KEY, next);
+      document.documentElement.setAttribute('data-theme', next);
+    } catch (_) {}
   };
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
@@ -190,15 +191,25 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           {navLink('/users', 'Users', <IconUsers />)}
           {navLink('/activity', 'Activity', <IconActivity />)}
         </nav>
-        <div style={{ padding: '0 var(--space-3)' }}>
+        <div className="admin-sidebar-footer">
           <button
             type="button"
-            className="btn btn-ghost"
             onClick={toggleTheme}
-            title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            style={{ width: '100%', justifyContent: 'flex-start' }}
+            className="btn btn-secondary"
+            title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+            style={{
+              width: '100%',
+              justifyContent: 'flex-start',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-3)',
+              padding: 'var(--space-3) var(--space-4)',
+            }}
           >
-            {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {theme === 'dark' ? <IconSun /> : <IconMoon />}
+            </span>
+            <span className="admin-sidebar-label">{theme === 'dark' ? 'Light' : 'Dark'}</span>
           </button>
         </div>
       </aside>

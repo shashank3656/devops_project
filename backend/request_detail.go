@@ -106,21 +106,29 @@ func handleRequestResubmit(w http.ResponseWriter, r *http.Request, id int, req *
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator can resubmit this request", "status": "error"})
 		return
 	}
-	// Clone as new draft (same config, clear reject_reason, status=draft)
+	// Clone as new draft (same config, new application_id/branch)
+	appID, err := GenerateApplicationID()
+	if err != nil {
+		log.Printf("Resubmit GenerateApplicationID: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	branchName := req.Team + "/" + req.Env + "/" + appID
 	newReq := &PRRequest{
-		Team:       req.Team,
-		Env:        req.Env,
-		Cloud:      req.Cloud,
-		Service:    req.Service,
-		ClientName: req.ClientName,
-		Priority:   req.Priority,
-		DueDate:    req.DueDate,
-		PRURL:      "",
-		Branch:     req.Branch,
-		FilePath:   req.FilePath,
-		Status:     "draft",
-		Config:     req.Config,
-		CreatedBy:  req.CreatedBy,
+		Team:          req.Team,
+		Env:           req.Env,
+		Cloud:         req.Cloud,
+		Service:       req.Service,
+		ClientName:    req.ClientName,
+		ApplicationID: appID,
+		Priority:      req.Priority,
+		DueDate:       req.DueDate,
+		PRURL:         "",
+		Branch:        branchName,
+		FilePath:      req.FilePath,
+		Status:        "draft",
+		Config:        req.Config,
+		CreatedBy:     req.CreatedBy,
 	}
 	if err := SavePRRequest(newReq); err != nil {
 		log.Printf("Resubmit: %v", err)

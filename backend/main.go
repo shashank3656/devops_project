@@ -216,10 +216,17 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Creating PR for: team=%s, env=%s, cloud=%s, service=%s", team, env, cloud, service)
 
-	// Branch name format: <team-name>/<env>
-	branchName := fmt.Sprintf("%s/%s", team, env)
-	
-	prURL, err := CreateGitHubPR(branchName, filePath, content)
+	appID, appErr := GenerateApplicationID()
+	if appErr != nil {
+		log.Printf("GenerateApplicationID: %v", appErr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to generate application id", "status": "error"})
+		return
+	}
+	branchName := fmt.Sprintf("%s/%s/%s", team, env, appID)
+
+	prURL, err := CreateGitHubPR(branchName, filePath, content, appID)
 	if err != nil {
 		log.Printf("Error creating PR: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -239,17 +246,18 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	prRequest := &PRRequest{
-		Team:       team,
-		Env:        env,
-		Cloud:      cloud,
-		Service:    service,
-		ClientName: clientName,
-		PRURL:      prURL,
-		Branch:     branchName,
-		FilePath:   filePath,
-		Status:     "pending",
-		Config:     string(content),
-		CreatedBy:  userIDPtr, // Use pointer - will be NULL if no valid user ID
+		Team:          team,
+		Env:           env,
+		Cloud:         cloud,
+		Service:       service,
+		ClientName:    clientName,
+		ApplicationID: appID,
+		PRURL:         prURL,
+		Branch:        branchName,
+		FilePath:      filePath,
+		Status:        "pending",
+		Config:        string(content),
+		CreatedBy:     userIDPtr,
 	}
 
 	if err := SavePRRequest(prRequest); err != nil {
@@ -352,7 +360,15 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	draft, _ := payload["draft"].(bool)
 
 	filePath := fmt.Sprintf("%s/envs/%s/request.json", team, env)
-	branchName := fmt.Sprintf("%s/%s", team, env)
+	appID, appErr := GenerateApplicationID()
+	if appErr != nil {
+		log.Printf("GenerateApplicationID: %v", appErr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to generate application id", "status": "error"})
+		return
+	}
+	branchName := fmt.Sprintf("%s/%s/%s", team, env, appID)
 	content, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -377,19 +393,20 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		status = "draft"
 	}
 	prRequest := &PRRequest{
-		Team:       team,
-		Env:        env,
-		Cloud:      cloud,
-		Service:    service,
-		ClientName: clientName,
-		Priority:   priority,
-		DueDate:    dueDate,
-		PRURL:      "",
-		Branch:     branchName,
-		FilePath:   filePath,
-		Status:     status,
-		Config:     string(content),
-		CreatedBy:  userIDPtr,
+		Team:          team,
+		Env:           env,
+		Cloud:         cloud,
+		Service:       service,
+		ClientName:    clientName,
+		ApplicationID: appID,
+		Priority:      priority,
+		DueDate:       dueDate,
+		PRURL:         "",
+		Branch:        branchName,
+		FilePath:      filePath,
+		Status:        status,
+		Config:        string(content),
+		CreatedBy:     userIDPtr,
 	}
 	if err := SavePRRequest(prRequest); err != nil {
 		log.Printf("Failed to save request: %v", err)

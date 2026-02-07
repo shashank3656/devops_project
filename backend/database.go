@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"fmt"
 	"log"
@@ -11,20 +12,49 @@ import (
 	_ "github.com/lib/pq"
 )
 
+const applicationIDChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+// GenerateApplicationID returns a unique 10-char alphanumeric ID (no special chars)
+func GenerateApplicationID() (string, error) {
+	for i := 0; i < 100; i++ {
+		b := make([]byte, 10)
+		if _, err := rand.Read(b); err != nil {
+			return "", err
+		}
+		for j := range b {
+			b[j] = applicationIDChars[int(b[j])%len(applicationIDChars)]
+		}
+		id := string(b)
+		if DB == nil {
+			return id, nil
+		}
+		var exists int
+		err := DB.QueryRow("SELECT 1 FROM pr_requests WHERE application_id = $1 LIMIT 1", id).Scan(&exists)
+		if err == sql.ErrNoRows {
+			return id, nil
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+	return "", fmt.Errorf("could not generate unique application_id after 100 attempts")
+}
+
 var DB *sql.DB
 
 type PRRequest struct {
-	ID          int        `json:"id"`
-	Team        string     `json:"team"`
-	Env         string     `json:"env"`
-	Cloud       string     `json:"cloud"`
-	Service     string     `json:"service"`
-	ClientName  string     `json:"client_name"`
-	Priority    string     `json:"priority"` // low, medium, high, urgent
-	DueDate     *time.Time `json:"due_date"`
-	PRURL       string     `json:"pr_url"`
-	Branch      string     `json:"branch"`
-	FilePath    string     `json:"file_path"`
+	ID            int        `json:"id"`
+	Team          string     `json:"team"`
+	Env           string     `json:"env"`
+	Cloud         string     `json:"cloud"`
+	Service       string     `json:"service"`
+	ClientName    string     `json:"client_name"`
+	ApplicationID string     `json:"application_id"` // unique 10-char alphanumeric, used in branch/PR
+	Priority      string     `json:"priority"`      // low, medium, high, urgent
+	DueDate       *time.Time `json:"due_date"`
+	PRURL         string     `json:"pr_url"`
+	Branch        string     `json:"branch"`
+	FilePath      string     `json:"file_path"`
 	Status       string     `json:"status"` // draft, pending_approval, in_progress, completed, rejected
 	RejectReason string    `json:"reject_reason"` // set when admin rejects (optional comment)
 	CreatedAt    time.Time  `json:"created_at"`
@@ -284,14 +314,14 @@ func createTables() error {
 // SavePRRequest saves a PR request to the database (pr_url may be "" for pending_approval or draft)
 func SavePRRequest(req *PRRequest) error {
 	query := `
-		INSERT INTO pr_requests (team, env, cloud, service, client_name, priority, due_date, pr_url, branch, file_path, status, config, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		INSERT INTO pr_requests (team, env, cloud, service, client_name, application_id, priority, due_date, pr_url, branch, file_path, status, config, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id, created_at, updated_at
 	`
 	err := DB.QueryRow(
 		query,
 		req.Team, req.Env, req.Cloud, req.Service, req.ClientName,
-		req.Priority, req.DueDate, req.PRURL, req.Branch, req.FilePath, req.Status,
+		req.ApplicationID, req.Priority, req.DueDate, req.PRURL, req.Branch, req.FilePath, req.Status,
 		req.Config, req.CreatedBy,
 	).Scan(&req.ID, &req.CreatedAt, &req.UpdatedAt)
 
@@ -377,7 +407,7 @@ func GetGitHubLogs(limit int) ([]GitHubLogEntry, error) {
 // search: if non-empty, searches across team, env, cloud, service, client_name, branch, config.
 func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, limit, offset int) ([]PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, created_at, updated_at
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, created_at, updated_at
 		FROM pr_requests
 		WHERE 1=1
 	`
@@ -461,7 +491,7 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 		var dueDate sql.NullTime
 		err := rows.Scan(
 			&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
-			&req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
+			&req.ApplicationID, &req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
 			&req.RejectReason, &req.Config, &createdBy, &req.CreatedAt, &req.UpdatedAt,
 		)
 		if err != nil {
@@ -486,7 +516,7 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 // GetPRRequestByID retrieves a single PR request by ID
 func GetPRRequestByID(id int) (*PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, created_at, updated_at
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, created_at, updated_at
 		FROM pr_requests WHERE id = $1
 	`
 	var req PRRequest
@@ -494,7 +524,7 @@ func GetPRRequestByID(id int) (*PRRequest, error) {
 	var dueDate sql.NullTime
 	err := DB.QueryRow(query, id).Scan(
 		&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
-		&req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
+		&req.ApplicationID, &req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
 		&req.RejectReason, &req.Config, &createdBy, &req.CreatedAt, &req.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
