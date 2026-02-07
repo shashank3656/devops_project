@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // adminDashboardStatsHandler GET /api/admin/dashboard-stats - quick counts for admin dashboard
@@ -32,15 +33,65 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stats, _ := GetDashboardStats()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	resp := map[string]interface{}{
 		"total_users":        stats.TotalUsers,
 		"total_teams":        stats.TotalTeams,
 		"unverified_users":   stats.UnverifiedUsers,
 		"requests_this_week": stats.RequestsThisWeek,
 		"pending_approval":   stats.PendingApproval,
 		"status":             "ok",
-	})
+	}
+
+	// Date-wise filter: ?from=YYYY-MM-DD&to=YYYY-MM-DD or ?period=today|week|month
+	var fromDate, toDate time.Time
+	now := time.Now()
+	if period := r.URL.Query().Get("period"); period != "" {
+		switch period {
+		case "today":
+			fromDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			toDate = fromDate
+		case "week":
+			fromDate = now.AddDate(0, 0, -6)
+			fromDate = time.Date(fromDate.Year(), fromDate.Month(), fromDate.Day(), 0, 0, 0, 0, fromDate.Location())
+			toDate = now
+		case "month":
+			fromDate = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+			toDate = now
+		}
+	}
+	if fromStr := r.URL.Query().Get("from"); fromStr != "" {
+		if t, err := time.Parse("2006-01-02", fromStr); err == nil {
+			fromDate = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+		}
+	}
+	if toStr := r.URL.Query().Get("to"); toStr != "" {
+		if t, err := time.Parse("2006-01-02", toStr); err == nil {
+			toDate = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+		}
+	}
+	if !fromDate.IsZero() || !toDate.IsZero() {
+		if fromDate.IsZero() {
+			fromDate = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		}
+		if toDate.IsZero() {
+			toDate = now
+		}
+		if fromDate.After(toDate) {
+			fromDate, toDate = toDate, fromDate
+		}
+		dateStats, err := GetRequestsByStatusInDateRange(fromDate, toDate)
+		if err == nil {
+			resp["date_filter"] = map[string]interface{}{
+				"from":       dateStats.From,
+				"to":         dateStats.To,
+				"total":      dateStats.Total,
+				"by_status":  dateStats.ByStatus,
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // adminAuditLogHandler GET /api/admin/audit-log - list admin audit log entries
