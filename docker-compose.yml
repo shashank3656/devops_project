@@ -209,6 +209,7 @@ services:
       - prod
 
   # DevOps Frontend (port 3002 - for DevOps users: my tickets + manager workload)
+  # Backend URL is baked in at build time; set NEXT_PUBLIC_API_URL in config/.env and rebuild if backend is on another host.
   devops-frontend:
     build:
       context: ./devops-frontend

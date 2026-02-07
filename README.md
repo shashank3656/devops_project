@@ -80,27 +80,35 @@ Environment variables are stored in `config/.env`. See `config/.env.example` for
 - After changing, rebuild frontend: `docker-compose build frontend-prod`
 - See [Deployment Guide](./docs/DEPLOYMENT.md) for details
 
-## Troubleshooting: "Failed to fetch" on Login / Create account
+## Troubleshooting: "Failed to fetch" / "Cannot connect to backend" on Login
 
-If you see **"Failed to fetch"** or **"Cannot connect to the server"** when logging in or creating an account:
+If you see **"Failed to fetch"**, **"Cannot connect to backend"**, or **"Cannot connect to server"** on the **user frontend**, **admin frontend**, or **DevOps frontend** (e.g. at `http://20.219.96.249:8080`):
 
 1. **Backend must be running**  
-   - Start the backend: `docker-compose up -d` (or run the Go server on port 8080).  
-   - Check: open `http://<your-backend-host>:8080/health` in a browser; you should see a JSON response.
+   - Start the stack: `docker-compose up -d` (starts backend on port 8080).  
+   - Check: open `http://<your-backend-host>:8080/health` in a browser; you should see a JSON response.  
+   - If using profiles: `backend-prod` runs with the default profile; `backend` runs with `--profile dev`.
 
-2. **Correct API URL**  
-   - The frontend uses `NEXT_PUBLIC_API_URL` (e.g. in `config/.env` or root `.env`).  
+2. **Correct API URL and rebuild**  
+   - All frontends use `NEXT_PUBLIC_API_URL` from `config/.env`.  
    - **Local:** use `http://localhost:8080` if the browser and backend are on the same machine.  
-   - **Docker / remote:** use the host IP or domain the browser can reach (e.g. `http://20.219.96.249:8080`).  
-   - After changing env, **rebuild** the frontend so the new URL is baked in:  
-     `docker-compose build frontend-prod` or restart `npm run dev` with the env set.
+   - **Remote (e.g. EC2):** use the URL the **browser** can reach (e.g. `http://20.219.96.249:8080`).  
+   - After changing `NEXT_PUBLIC_API_URL`, **rebuild** so the URL is baked in:  
+     - User/Admin: `docker-compose build frontend-prod admin-frontend-prod`  
+     - **DevOps:** `docker-compose build devops-frontend-prod`  
+   - Then restart: `docker-compose up -d`.
 
-3. **CORS / mixed content**  
+3. **Reachability from your browser**  
+   - The backend is called **from the user’s browser**, not from the frontend container. So `NEXT_PUBLIC_API_URL` must be a URL that **your browser** can reach.  
+   - From the same machine as the server: `http://localhost:8080` or `http://<server-ip>:8080`.  
+   - From another machine: use `http://<server-ip>:8080` and ensure port 8080 is open (firewall / security group).
+
+4. **CORS / mixed content**  
    - Backend allows all origins (`Access-Control-Allow-Origin: *`).  
    - If the site is served over **HTTPS**, the API URL must be **HTTPS** as well, or the browser may block the request.
 
-4. **Firewall**  
-   - Ensure port **8080** is open on the machine running the backend (security group on EC2, local firewall, etc.).
+5. **Firewall**  
+   - Ensure port **8080** is open on the host running the backend (e.g. EC2 security group, local firewall).
 
 ## License
 
