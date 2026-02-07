@@ -4,6 +4,13 @@ import Head from 'next/head';
 import Link from 'next/link';
 import AdminLayout from '../../../components/AdminLayout';
 
+interface DevopsProfile {
+  is_manager: boolean;
+  position: string;
+  onboard_date: string | null;
+  level: string;
+}
+
 interface User {
   id: number;
   username: string;
@@ -11,6 +18,9 @@ interface User {
   role: string;
   verified: boolean;
   created_at?: string;
+  user_type?: 'portal_user' | 'devops_user';
+  manager_id?: number | null;
+  devops_profile?: DevopsProfile;
 }
 
 export default function EditUser() {
@@ -21,6 +31,13 @@ export default function EditUser() {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'viewer' | 'contributor' | 'admin'>('viewer');
   const [verified, setVerified] = useState(false);
+  const [userType, setUserType] = useState<'portal_user' | 'devops_user'>('portal_user');
+  const [isManager, setIsManager] = useState(false);
+  const [position, setPosition] = useState('');
+  const [onboardDate, setOnboardDate] = useState('');
+  const [level, setLevel] = useState<'L1' | 'L2' | 'L3' | 'L4'>('L1');
+  const [managerId, setManagerId] = useState<string>('');
+  const [usersList, setUsersList] = useState<{ id: number; username: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -36,7 +53,16 @@ export default function EditUser() {
     if (id && typeof id === 'string') {
       fetchUser(parseInt(id, 10));
     }
+    fetchUsersList();
   }, [token, id, router]);
+
+  const fetchUsersList = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json().catch(() => ({}));
+      if (data.users) setUsersList(data.users.map((u: { id: number; username: string }) => ({ id: u.id, username: u.username })));
+    } catch (_) {}
+  };
 
   const fetchUser = async (userId: number) => {
     setLoading(true);
@@ -56,6 +82,15 @@ export default function EditUser() {
         setEmail(data.user.email || '');
         setRole((data.user.role || 'viewer') as 'viewer' | 'contributor' | 'admin');
         setVerified(Boolean(data.user.verified));
+        setUserType(data.user.user_type === 'devops_user' ? 'devops_user' : 'portal_user');
+        setManagerId(data.user.manager_id != null ? String(data.user.manager_id) : '');
+        const dp = data.user.devops_profile;
+        if (dp) {
+          setIsManager(Boolean(dp.is_manager));
+          setPosition(dp.position || '');
+          setOnboardDate(dp.onboard_date || '');
+          setLevel((dp.level || 'L1') as 'L1' | 'L2' | 'L3' | 'L4');
+        }
       } else {
         setError(data.error || 'User not found');
       }
@@ -83,6 +118,14 @@ export default function EditUser() {
           email: email.trim(),
           role,
           verified,
+          user_type: userType,
+          manager_id: userType === 'portal_user' ? (managerId ? parseInt(managerId, 10) : null) : undefined,
+          ...(userType === 'devops_user' && {
+            is_manager: isManager,
+            position: position.trim(),
+            onboard_date: onboardDate.trim() || undefined,
+            level,
+          }),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -182,6 +225,92 @@ export default function EditUser() {
                     <span className="label">Verified (can log in without OTP)</span>
                   </label>
                 </div>
+                <div className="form-group">
+                  <label className="label" htmlFor="edit-user-type">
+                    User type
+                  </label>
+                  <select
+                    id="edit-user-type"
+                    className="input"
+                    value={userType}
+                    onChange={(e) => setUserType(e.target.value as 'portal_user' | 'devops_user')}
+                    style={{ maxWidth: 200 }}
+                  >
+                    <option value="portal_user">Portal user</option>
+                    <option value="devops_user">DevOps user</option>
+                  </select>
+                </div>
+                {userType === 'portal_user' && (
+                  <div className="form-group">
+                    <label className="label" htmlFor="edit-manager">Manager (for two-step approval)</label>
+                    <select
+                      id="edit-manager"
+                      className="input"
+                      value={managerId}
+                      onChange={(e) => setManagerId(e.target.value)}
+                      style={{ maxWidth: 280 }}
+                    >
+                      <option value="">None</option>
+                      {usersList.filter((u) => u.id !== (id && typeof id === 'string' ? parseInt(id, 10) : 0)).map((u) => (
+                        <option key={u.id} value={u.id}>{u.username}</option>
+                      ))}
+                    </select>
+                    <span className="label-optional" style={{ display: 'block', marginTop: 4 }}>
+                      When this user submits a request, their manager approves first, then DevOps.
+                    </span>
+                  </div>
+                )}
+                {userType === 'devops_user' && (
+                  <>
+                    <div className="form-group">
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={isManager}
+                          onChange={(e) => setIsManager(e.target.checked)}
+                        />
+                        <span className="label">DevOps manager</span>
+                      </label>
+                    </div>
+                    <div className="form-group">
+                      <label className="label" htmlFor="edit-position">Position</label>
+                      <input
+                        id="edit-position"
+                        className="input"
+                        type="text"
+                        value={position}
+                        onChange={(e) => setPosition(e.target.value)}
+                        placeholder="e.g. DevOps Engineer"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="label" htmlFor="edit-onboard">Onboard date</label>
+                      <input
+                        id="edit-onboard"
+                        className="input"
+                        type="date"
+                        value={onboardDate}
+                        onChange={(e) => setOnboardDate(e.target.value)}
+                        style={{ maxWidth: 200 }}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="label" htmlFor="edit-level">Level</label>
+                      <select
+                        id="edit-level"
+                        className="input"
+                        value={level}
+                        onChange={(e) => setLevel(e.target.value as 'L1' | 'L2' | 'L3' | 'L4')}
+                        style={{ maxWidth: 120 }}
+                      >
+                        <option value="L1">L1</option>
+                        <option value="L2">L2</option>
+                        <option value="L3">L3</option>
+                        <option value="L4">L4</option>
+                      </select>
+                    </div>
+                  </>
+                )}
                 <button
                   type="submit"
                   className="btn btn-primary"

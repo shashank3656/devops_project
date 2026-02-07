@@ -21,7 +21,8 @@ Cloud-agnostic self-service infrastructure platform for managing infrastructure 
 
 3. **Access Application:**
    - **User frontend:** http://localhost:3000 (login, requests, history)
-   - **Admin frontend:** http://localhost:3001 (teams & members; admin only)
+   - **Admin frontend:** http://localhost:3001 (teams & members, users; admin only)
+   - **DevOps frontend:** http://localhost:3002 (my tickets, workload view; DevOps users only)
    - **Backend API:** http://localhost:8080
 
 ## Project Structure
@@ -35,6 +36,7 @@ devops_project/
 ├── backend/         # Go backend service
 ├── frontend/        # Next.js user frontend (port 3000)
 ├── admin-frontend/  # Next.js admin frontend (port 3001)
+├── devops-frontend/ # Next.js DevOps portal (port 3002)
 └── docker-compose.yml
 ```
 

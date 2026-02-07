@@ -58,7 +58,7 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sub-path: submit, resubmit, comments
+	// Sub-path: submit, resubmit, approve-by-manager, comments
 	if len(parts) >= 2 {
 		switch parts[1] {
 		case "submit":
@@ -66,6 +66,9 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		case "resubmit":
 			handleRequestResubmit(w, r, id, req, userID)
+			return
+		case "approve-by-manager":
+			handleRequestApproveByManager(w, r, id, req, userID)
 			return
 		case "comments":
 			handleRequestComments(w, r, id, req, userID)
@@ -162,13 +165,51 @@ func handleRequestSubmit(w http.ResponseWriter, r *http.Request, id int, req *PR
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator can submit this draft", "status": "error"})
 		return
 	}
-	if err := UpdatePRRequestStatus(id, "pending_approval"); err != nil {
+	// Two-step approval: if creator has a manager, first status is pending_user_manager_approval; else pending_devops_approval (devops/admin can approve directly)
+	initialStatus := "pending_devops_approval"
+	if req.CreatedBy != nil {
+		if creator, _ := GetUserByID(*req.CreatedBy); creator != nil && creator.ManagerID != nil {
+			initialStatus = "pending_user_manager_approval"
+		}
+	}
+	if err := UpdatePRRequestStatus(id, initialStatus); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	AppendUserActivity(req.CreatedBy, "request_submit", "pr_request", strconv.Itoa(id), "draft submitted")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Draft submitted for approval"})
+}
+
+// handleRequestApproveByManager lets the creator's manager move request from pending_user_manager_approval to pending_devops_approval
+func handleRequestApproveByManager(w http.ResponseWriter, r *http.Request, id int, req *PRRequest, userID int) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if req.Status != "pending_user_manager_approval" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only requests pending user manager approval can be approved", "status": "error"})
+		return
+	}
+	if req.CreatedBy == nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	creator, err := GetUserByID(*req.CreatedBy)
+	if err != nil || creator == nil || creator.ManagerID == nil || *creator.ManagerID != userID {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator's manager can approve this step", "status": "error"})
+		return
+	}
+	if err := UpdatePRRequestStatus(id, "pending_devops_approval"); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Approved; request is now pending DevOps approval"})
 }
 
 func handleRequestUpdateDraft(w http.ResponseWriter, r *http.Request, id int, req *PRRequest, userID int) {

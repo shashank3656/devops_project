@@ -305,7 +305,11 @@ func adminBulkApproveHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		req, err := GetPRRequestByID(id)
-		if err != nil || req == nil || req.Status != "pending_approval" {
+		if err != nil || req == nil {
+			failed = append(failed, id)
+			continue
+		}
+		if req.Status != "pending_approval" && req.Status != "pending_devops_approval" {
 			failed = append(failed, id)
 			continue
 		}
@@ -319,6 +323,7 @@ func adminBulkApproveHandler(w http.ResponseWriter, r *http.Request) {
 			failed = append(failed, id)
 			continue
 		}
+		_ = AssignRequestByPriority(id)
 		approved = append(approved, id)
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -360,7 +365,11 @@ func adminBulkRejectHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		req, err := GetPRRequestByID(id)
-		if err != nil || req == nil || req.Status != "pending_approval" {
+		if err != nil || req == nil {
+			failed = append(failed, id)
+			continue
+		}
+		if req.Status != "pending_approval" && req.Status != "pending_devops_approval" && req.Status != "pending_user_manager_approval" {
 			failed = append(failed, id)
 			continue
 		}
@@ -439,10 +448,10 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if req.Status != "pending_approval" {
+		if req.Status != "pending_approval" && req.Status != "pending_devops_approval" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending_approval requests can be approved", "status": "error"})
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending_approval or pending_devops_approval requests can be approved", "status": "error"})
 			return
 		}
 		prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
@@ -458,6 +467,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		_ = AssignRequestByPriority(id) // assign to DevOps user by priority (best-effort)
 		AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), prURL)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "pr_url": prURL, "message": "PR created and request set to in_progress"})
@@ -468,10 +478,10 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if req.Status != "pending_approval" {
+		if req.Status != "pending_approval" && req.Status != "pending_devops_approval" && req.Status != "pending_user_manager_approval" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending_approval requests can be rejected", "status": "error"})
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending requests can be rejected", "status": "error"})
 			return
 		}
 		reason := ""

@@ -129,6 +129,44 @@ func MigrateDatabase() error {
 		)
 	`)
 
+	// Migration 8: user_type (portal_user | devops_user) and devops_profiles
+	var userTypeCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'user_type'").Scan(&userTypeCount)
+	if userTypeCount == 0 {
+		log.Println("Migrating database: adding users.user_type...")
+		_, _ = DB.Exec("ALTER TABLE users ADD COLUMN user_type VARCHAR(50) DEFAULT 'portal_user'")
+		_, _ = DB.Exec("UPDATE users SET user_type = 'portal_user' WHERE user_type IS NULL")
+		log.Println("Database migration (user_type) completed")
+	}
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS devops_profiles (
+			user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+			is_manager BOOLEAN DEFAULT FALSE,
+			position VARCHAR(200) DEFAULT '',
+			onboard_date DATE,
+			level VARCHAR(10) DEFAULT 'L1'
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_devops_profiles_level ON devops_profiles(level)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_devops_profiles_is_manager ON devops_profiles(is_manager)")
+
+	// Migration 9: users.manager_id (portal user's manager for two-step approval), pr_requests.assigned_to
+	var managerIDCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'manager_id'").Scan(&managerIDCount)
+	if managerIDCount == 0 {
+		log.Println("Migrating database: adding users.manager_id...")
+		_, _ = DB.Exec("ALTER TABLE users ADD COLUMN manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL")
+		log.Println("Database migration (manager_id) completed")
+	}
+	var assignedToCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'pr_requests' AND column_name = 'assigned_to'").Scan(&assignedToCount)
+	if assignedToCount == 0 {
+		log.Println("Migrating database: adding pr_requests.assigned_to...")
+		_, _ = DB.Exec("ALTER TABLE pr_requests ADD COLUMN assigned_to INTEGER REFERENCES users(id) ON DELETE SET NULL")
+		_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_requests_assigned_to ON pr_requests(assigned_to)")
+		log.Println("Database migration (assigned_to) completed")
+	}
+
 	log.Println("Database schema is up to date")
 	return nil
 }
