@@ -348,7 +348,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if priority == "" {
 		priority = "medium"
 	}
-	if priority != "low" && priority != "medium" && priority != "high" && priority != "urgent" && priority != "critical" {
+	if priority != "low" && priority != "medium" && priority != "high" && priority != "critical" {
 		priority = "medium"
 	}
 	var dueDate *time.Time

@@ -275,7 +275,7 @@ func handleRequestUpdateDraft(w http.ResponseWriter, r *http.Request, id int, re
 	if priority == "" {
 		priority = req.Priority
 	}
-	if priority != "low" && priority != "medium" && priority != "high" && priority != "urgent" && priority != "critical" {
+	if priority != "low" && priority != "medium" && priority != "high" && priority != "critical" {
 		priority = "medium"
 	}
 	var dueDate *time.Time
