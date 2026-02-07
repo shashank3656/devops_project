@@ -50,7 +50,7 @@ type PRRequest struct {
 	Service       string     `json:"service"`
 	ClientName    string     `json:"client_name"`
 	ApplicationID string     `json:"application_id"` // unique 10-char alphanumeric, used in branch/PR
-	Priority      string     `json:"priority"`      // low, medium, high, urgent
+	Priority      string     `json:"priority"`      // low, medium, high, critical
 	DueDate       *time.Time `json:"due_date"`
 	PRURL         string     `json:"pr_url"`
 	Branch        string     `json:"branch"`
@@ -384,10 +384,10 @@ func UpdatePRRequestAssignedTo(requestID, userID int) error {
 	return err
 }
 
-// PriorityToLevel maps request priority to DevOps level for assignment (Critical/urgent->L4, High->L3, Medium->L2, Low->L1)
+// PriorityToLevel maps request priority to DevOps level for assignment (Critical->L4, High->L3, Medium->L2, Low->L1)
 func PriorityToLevel(priority string) string {
 	switch strings.ToLower(strings.TrimSpace(priority)) {
-	case "urgent", "critical":
+	case "critical":
 		return "L4"
 	case "high":
 		return "L3"
@@ -400,7 +400,7 @@ func PriorityToLevel(priority string) string {
 	}
 }
 
-// AssignRequestByPriority assigns the request to a DevOps user by priority (L4 for critical/urgent, L3 high, L2 medium, L1 low). Picks a non-manager devops user with that level (least assigned first).
+// AssignRequestByPriority assigns the request to a DevOps user by priority (L4 for critical, L3 high, L2 medium, L1 low). Picks a non-manager devops user with that level (least assigned first).
 func AssignRequestByPriority(requestID int) error {
 	req, err := GetPRRequestByID(requestID)
 	if err != nil || req == nil {
