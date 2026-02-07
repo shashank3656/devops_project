@@ -29,12 +29,17 @@ export default function TeamsList() {
       return;
     }
     fetchTeams();
+    // If we landed here after deleting from team detail page, show success
+    if (router.query.deleted === '1') {
+      setSuccessMessage('Successfully deleted the group.');
+      setError('');
+      setTimeout(() => setSuccessMessage(''), 4000);
+    }
   }, [router]);
 
   const fetchTeams = async () => {
     setLoading(true);
     setError('');
-    setSuccessMessage('');
     try {
       const res = await fetch(`${apiUrl}/api/admin/teams`, {
         headers: {
@@ -46,7 +51,7 @@ export default function TeamsList() {
         return;
       }
       const data = await res.json().catch(() => ({}));
-      if (res.ok && (data.status === 'ok' || Array.isArray(data.teams))) {
+      if (res.ok) {
         setTeams(Array.isArray(data.teams) ? data.teams : []);
         setError('');
       } else {
@@ -72,7 +77,8 @@ export default function TeamsList() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setTeams((prev) => prev.filter((x) => x.id !== t.id));
-        setSuccessMessage('Team deleted successfully.');
+        setSuccessMessage('Successfully deleted the group.');
+        setError('');
         setTimeout(() => setSuccessMessage(''), 4000);
       } else {
         setError(data.error || 'Failed to delete team');
