@@ -47,8 +47,14 @@ export default function DevOpsLogin() {
       localStorage.setItem(DEVOPS_TOKEN_KEY, loginData.token);
       localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(meData.user || {}));
       router.push('/dashboard');
-    } catch {
-      setError(`Cannot connect to backend at ${apiUrl}. Ensure it is running.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      const isNetwork = /failed to fetch|network error|load failed|err_connection/i.test(String(msg));
+      setError(
+        isNetwork
+          ? `Cannot connect to backend at ${apiUrl}. Check: (1) Backend is running (docker-compose up -d or run backend on port 8080). (2) Port 8080 is open. (3) From this browser, open ${apiUrl.replace(/\/$/, '')}/health to test.`
+          : `Cannot connect to backend at ${apiUrl}. Ensure it is running.`
+      );
     } finally {
       setLoading(false);
     }
