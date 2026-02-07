@@ -134,12 +134,6 @@ export default function UsersList() {
             ) : users.length === 0 ? (
               <div className="empty-state">
                 <p>No users are onboarded yet.</p>
-                <p style={{ marginTop: 8 }}>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                    <Link href="/users/new" className="btn btn-primary">Create portal user</Link>
-                    <Link href="/users/new-devops" className="btn btn-secondary">Create DevOps user</Link>
-                  </div>
-                </p>
               </div>
             ) : (
               <div className="table-wrap">
