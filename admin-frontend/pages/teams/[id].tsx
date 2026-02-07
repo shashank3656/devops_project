@@ -233,7 +233,7 @@ export default function TeamDetail() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        router.push('/teams');
+        router.push('/teams?deleted=1');
       } else {
         setError(data.error || 'Failed to delete team');
       }
