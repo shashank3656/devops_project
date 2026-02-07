@@ -78,8 +78,15 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// view=team: if user is manager of a portal team, show all tickets from that team; else same as normal (own tickets)
+	createdByIn := ([]int)(nil)
+	if r.URL.Query().Get("view") == "team" && userIDInt > 0 {
+		if memberIDs, err := GetPortalTeamMemberUserIDs(userIDInt); err == nil && len(memberIDs) > 0 {
+			createdByIn = memberIDs
+		}
+	}
 	// Fetch PR requests (no status/priority filter for user history; include drafts for owner)
-	requests, err := GetPRRequests(team, env, cloud, "", "", search, prID, userIDInt, limit, offset)
+	requests, err := GetPRRequests(team, env, cloud, "", "", search, prID, userIDInt, createdByIn, limit, offset)
 	if err != nil {
 		log.Printf("Error fetching PR requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -92,7 +99,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get total count for pagination
-	totalCount, _ := GetTotalCount(team, env, cloud, "", "", search, prID, userIDInt)
+	totalCount, _ := GetTotalCount(team, env, cloud, "", "", search, prID, userIDInt, createdByIn)
 
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{

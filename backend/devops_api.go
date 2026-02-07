@@ -191,7 +191,7 @@ func devopsPendingApprovalsHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	requests, err := GetPRRequests("", "", "", "pending_devops_approval", "", "", 0, 0, 100, 0)
+	requests, err := GetPRRequests("", "", "", "pending_devops_approval", "", "", 0, 0, nil, 100, 0)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)

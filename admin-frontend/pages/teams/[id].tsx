@@ -8,6 +8,7 @@ interface Team {
   id: number;
   name: string;
   slug: string;
+  team_type?: string;
   created_at: string;
 }
 
@@ -28,7 +29,7 @@ interface User {
 
 export default function TeamDetail() {
   const router = useRouter();
-  const { id } = router.query;
+  const { id, created, group } = router.query;
   const [team, setTeam] = useState<Team | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -56,6 +57,14 @@ export default function TeamDetail() {
       fetchUsers();
     }
   }, [token, id, router]);
+
+  useEffect(() => {
+    if (team?.team_type === 'portal' && !['developer', 'senior_developer', 'lead', 'manager'].includes(addRole)) {
+      setAddRole('developer');
+    } else if (team?.team_type === 'devops' && !['member', 'lead'].includes(addRole)) {
+      setAddRole('member');
+    }
+  }, [team?.team_type]);
 
   const fetchTeam = async (teamId: number) => {
     setLoading(true);
@@ -251,6 +260,12 @@ export default function TeamDetail() {
             ← Back to Teams
           </Link>
 
+          {created === '1' && group && (
+            <div className="alert" role="alert" style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', marginBottom: 16 }}>
+              Team created successfully. <strong>{team?.name ?? ''}</strong> ({decodeURIComponent(String(group))}).
+            </div>
+          )}
+
           {loading ? (
             <p className="loading-text">Loading…</p>
           ) : error && !team ? (
@@ -272,6 +287,11 @@ export default function TeamDetail() {
                       }}
                     >
                       Slug: <code>{team.slug}</code>
+                      {(team.team_type === 'devops' || team.team_type === 'portal') && (
+                        <span style={{ marginLeft: 12 }}>
+                          Group: {team.team_type === 'devops' ? 'DevOps team group' : 'Portal team group'}
+                        </span>
+                      )}
                     </p>
                   </div>
                   <button
@@ -350,10 +370,21 @@ export default function TeamDetail() {
                         className="input"
                         value={addRole}
                         onChange={(e) => setAddRole(e.target.value)}
-                        style={{ minWidth: 120 }}
+                        style={{ minWidth: 140 }}
                       >
-                        <option value="member">member</option>
-                        <option value="lead">lead</option>
+                        {team.team_type === 'portal' ? (
+                          <>
+                            <option value="developer">developer</option>
+                            <option value="senior_developer">senior developer</option>
+                            <option value="lead">lead</option>
+                            <option value="manager">manager</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="member">member</option>
+                            <option value="lead">lead</option>
+                          </>
+                        )}
                       </select>
                     </div>
                     <button
@@ -486,8 +517,19 @@ export default function TeamDetail() {
                                 }}
                                 aria-label={`Role for ${m.username}`}
                               >
-                                <option value="member">member</option>
-                                <option value="lead">lead</option>
+                                {team.team_type === 'portal' ? (
+                                  <>
+                                    <option value="developer">developer</option>
+                                    <option value="senior_developer">senior developer</option>
+                                    <option value="lead">lead</option>
+                                    <option value="manager">manager</option>
+                                  </>
+                                ) : (
+                                  <>
+                                    <option value="member">member</option>
+                                    <option value="lead">lead</option>
+                                  </>
+                                )}
                               </select>
                             </td>
                             <td>

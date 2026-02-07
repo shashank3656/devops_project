@@ -60,20 +60,19 @@ export default function History() {
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [sortBy, setSortBy] = useState<'id' | 'created_at' | 'team' | 'cloud' | 'priority' | 'due_date'>('created_at');
   const [sortDesc, setSortDesc] = useState(true);
+  const [viewMode, setViewMode] = useState<'mine' | 'team'>('mine');
   const rawConfigByRequestId = useRef<Record<number, string>>({});
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
-    // Check authentication
     const isAuthenticated = localStorage.getItem('isAuthenticated');
     if (!isAuthenticated) {
       router.push('/login');
       return;
     }
-
     fetchHistory();
-  }, [filterType, filterValue, page]);
+  }, [filterType, filterValue, page, viewMode]);
 
   const fetchHistory = async () => {
     setLoading(true);
@@ -98,6 +97,7 @@ export default function History() {
       }
       params.append('limit', String(PAGE_SIZE));
       params.append('offset', String(page * PAGE_SIZE));
+      if (viewMode === 'team') params.append('view', 'team');
 
       const response = await fetch(`${apiUrl}/api/history?${params.toString()}`, {
         headers,
@@ -428,6 +428,17 @@ export default function History() {
                   }}
                 />
               </div>
+              <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '14px', fontWeight: '500' }}>View:</span>
+                <select
+                  value={viewMode}
+                  onChange={(e) => { setViewMode(e.target.value as 'mine' | 'team'); setPage(0); }}
+                  style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', minWidth: '120px' }}
+                >
+                  <option value="mine">My tickets</option>
+                  <option value="team">Group tickets</option>
+                </select>
+              </div>
               <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <label style={{ fontSize: '14px', fontWeight: '500' }}>Sort by</label>
                 <select
@@ -436,7 +447,7 @@ export default function History() {
                   style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', minWidth: '140px' }}
                 >
                   <option value="created_at">Created (newest)</option>
-                  <option value="id">PR #</option>
+                  <option value="id">Ticket #</option>
                   <option value="priority">Priority</option>
                   <option value="due_date">Due date</option>
                   <option value="team">Team</option>
@@ -540,7 +551,7 @@ export default function History() {
                         fontSize: '14px',
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px'
-                      }}>PR #</th>
+                      }}>Ticket #</th>
                       <th style={{ 
                         padding: '16px', 
                         textAlign: 'left',
@@ -789,7 +800,7 @@ export default function History() {
                 ) : detailRequest ? (
                   <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                      <h3 style={{ margin: 0 }}>Request #{detailRequest.id}</h3>
+                      <h3 style={{ margin: 0 }}>Ticket #{detailRequest.id}</h3>
                       <button onClick={() => setDetailRequest(null)} className="btn btn-secondary" style={{ padding: '8px 16px' }}>
                         Close
                       </button>

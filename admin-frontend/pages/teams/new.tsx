@@ -8,6 +8,7 @@ export default function NewTeam() {
   const router = useRouter();
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
+  const [teamType, setTeamType] = useState<'portal' | 'devops'>('portal');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -27,11 +28,13 @@ export default function NewTeam() {
         body: JSON.stringify({
           name: name.trim(),
           slug: slug.trim() || undefined,
+          team_type: teamType,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.team) {
-        router.push(`/teams/${data.team.id}`);
+        const groupName = (data.team.team_type || 'portal') === 'devops' ? 'DevOps team group' : 'Portal team group';
+        router.push(`/teams/${data.team.id}?created=1&group=${encodeURIComponent(groupName)}`);
         return;
       }
       setError(data.error || 'Failed to create team');
@@ -88,6 +91,18 @@ export default function NewTeam() {
                   onChange={(e) => setSlug(e.target.value)}
                   placeholder="e.g. platform-team"
                 />
+              </div>
+              <div className="form-group">
+                <label className="label" htmlFor="team-type">Group type</label>
+                <select
+                  id="team-type"
+                  className="input"
+                  value={teamType}
+                  onChange={(e) => setTeamType(e.target.value as 'portal' | 'devops')}
+                >
+                  <option value="portal">Portal team group (developer, lead, manager roles)</option>
+                  <option value="devops">DevOps team group</option>
+                </select>
               </div>
               <button
                 type="submit"

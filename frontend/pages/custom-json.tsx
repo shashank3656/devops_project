@@ -158,8 +158,13 @@ export default function CustomJSON() {
 
       const data = await response.json();
       setPrUrl(data.pr_url || '');
-      toast(data.message || (asDraft ? 'Draft saved.' : 'Request submitted. An admin will approve it and the PR will be created.'), 'success');
-      if (asDraft) router.push('/history');
+      toast(data.message || (asDraft ? 'Draft saved.' : 'Ticket created successfully.'), 'success');
+      if (asDraft) {
+        router.push('/history');
+      } else {
+        const params = new URLSearchParams({ id: String(data.id || ''), team: team || '' });
+        router.push(`/request-success?${params.toString()}`);
+      }
     } catch (err: any) {
       console.error('Error creating PR:', err);
       const errorMessage = err.message || 'An error occurred while creating the PR';
