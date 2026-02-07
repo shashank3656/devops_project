@@ -208,6 +208,28 @@ services:
     profiles:
       - prod
 
+  # DevOps Frontend (port 3002 - for DevOps users: my tickets + manager workload)
+  devops-frontend:
+    build:
+      context: ./devops-frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    container_name: infra-devops-frontend
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
+    depends_on:
+      - backend-prod
+    restart: unless-stopped
+    networks:
+      - infra-network
+    profiles:
+      - prod
+      - default
+
 volumes:
   postgres_data:
 

@@ -388,7 +388,12 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if userID > 0 {
 		userIDPtr = &userID
 	}
-	status := "pending_approval"
+	status := "pending_devops_approval"
+	if !draft && userID > 0 {
+		if creator, _ := GetUserByID(userID); creator != nil && creator.ManagerID != nil {
+			status = "pending_user_manager_approval"
+		}
+	}
 	if draft {
 		status = "draft"
 	}
@@ -484,6 +489,9 @@ func main() {
 	http.HandleFunc("/api/admin/dashboard-stats", adminDashboardStatsHandler)
 	http.HandleFunc("/api/admin/audit-log", adminAuditLogHandler)
 	http.HandleFunc("/api/admin/user-activity", adminUserActivityHandler)
+	http.HandleFunc("/api/devops/me", devopsMeHandler)
+	http.HandleFunc("/api/devops/tickets", devopsTicketsHandler)
+	http.HandleFunc("/api/devops/workload", devopsWorkloadHandler)
 	http.HandleFunc("/api/webhooks/github", githubWebhookHandler)
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/ready", readyHandler)

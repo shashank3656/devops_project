@@ -71,8 +71,8 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
-	// Only present user credentials (exclude admin accounts) in admin console
-	rows, err := DB.Query(`SELECT id, username, email, COALESCE(role,'viewer'), COALESCE(verified,false) FROM users WHERE role != 'admin' OR role IS NULL ORDER BY username`)
+	// Only present user credentials (exclude admin accounts) in admin console; include user_type and devops_profile
+	rows, err := DB.Query(`SELECT id, username, email, COALESCE(role,'viewer'), COALESCE(verified,false), COALESCE(user_type,'portal_user') FROM users WHERE role != 'admin' OR role IS NULL ORDER BY username`)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -83,12 +83,26 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 	var users []map[string]interface{}
 	for rows.Next() {
 		var id int
-		var username, email, role string
+		var username, email, role, userType string
 		var verified bool
-		if err := rows.Scan(&id, &username, &email, &role, &verified); err != nil {
+		if err := rows.Scan(&id, &username, &email, &role, &verified, &userType); err != nil {
 			continue
 		}
-		users = append(users, map[string]interface{}{"id": id, "username": username, "email": email, "role": role, "verified": verified})
+		if userType != "devops_user" && userType != "portal_user" {
+			userType = "portal_user"
+		}
+		u := map[string]interface{}{"id": id, "username": username, "email": email, "role": role, "verified": verified, "user_type": userType}
+		if userType == "devops_user" {
+			if prof, _ := GetDevopsProfile(id); prof != nil {
+				u["devops_profile"] = map[string]interface{}{
+					"is_manager":   prof.IsManager,
+					"position":     prof.Position,
+					"onboard_date": prof.OnboardDate,
+					"level":        prof.Level,
+				}
+			}
+		}
+		users = append(users, u)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"users": users, "status": "ok"})
@@ -112,10 +126,15 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 		adminIDPtr = &adminID
 	}
 	var req struct {
-		Username string `json:"username"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Role     string `json:"role"` // viewer | contributor; default viewer
+		Username     string `json:"username"`
+		Email        string `json:"email"`
+		Password     string `json:"password"`
+		Role         string `json:"role"`         // viewer | contributor; default viewer
+		UserType     string `json:"user_type"`    // portal_user | devops_user
+		IsManager    bool   `json:"is_manager"`   // for devops_user
+		Position     string `json:"position"`    // for devops_user
+		OnboardDate  string `json:"onboard_date"` // YYYY-MM-DD for devops_user
+		DevopsLevel  string `json:"level"`        // L1..L4 for devops_user
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -133,6 +152,10 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Role != "contributor" && req.Role != "viewer" {
 		req.Role = "viewer"
+	}
+	userType := strings.TrimSpace(req.UserType)
+	if userType != "devops_user" && userType != "portal_user" {
+		userType = "portal_user"
 	}
 	var exists int
 	if err := DB.QueryRow(`SELECT 1 FROM users WHERE username = $1`, req.Username).Scan(&exists); err == nil {
@@ -158,9 +181,9 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 	var userID int
 	var createdAt interface{}
 	err = DB.QueryRow(
-		`INSERT INTO users (username, email, password, verified, role) VALUES ($1, $2, $3, TRUE, $4)
+		`INSERT INTO users (username, email, password, verified, role, user_type) VALUES ($1, $2, $3, TRUE, $4, $5)
 		 RETURNING id, created_at`,
-		req.Username, req.Email, string(hashed), req.Role,
+		req.Username, req.Email, string(hashed), req.Role, userType,
 	).Scan(&userID, &createdAt)
 	if err != nil {
 		log.Printf("Admin create user: %v", err)
@@ -169,13 +192,24 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to create user", "status": "error"})
 		return
 	}
+	if userType == "devops_user" {
+		if err := CreateDevopsProfile(userID, req.IsManager, strings.TrimSpace(req.Position), strings.TrimSpace(req.OnboardDate), strings.TrimSpace(req.DevopsLevel)); err != nil {
+			log.Printf("Admin create user: devops profile: %v", err)
+		}
+	}
 	AppendAuditLog(adminIDPtr, "user_create", "user", strconv.Itoa(userID), req.Username)
+	userResp := map[string]interface{}{"id": userID, "username": req.Username, "email": req.Email, "role": req.Role, "verified": true, "user_type": userType}
+	if userType == "devops_user" {
+		if prof, _ := GetDevopsProfile(userID); prof != nil {
+			userResp["devops_profile"] = map[string]interface{}{
+				"is_manager": prof.IsManager, "position": prof.Position,
+				"onboard_date": prof.OnboardDate, "level": prof.Level,
+			}
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"user":   map[string]interface{}{"id": userID, "username": req.Username, "email": req.Email, "role": req.Role, "verified": true},
-		"status": "ok",
-	})
+	json.NewEncoder(w).Encode(map[string]interface{}{"user": userResp, "status": "ok"})
 }
 
 // adminUserDetailHandler handles GET and PATCH /api/admin/users/:id (admin only)
@@ -221,21 +255,34 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case "GET":
+		userResp := map[string]interface{}{
+			"id": user.ID, "username": user.Username, "email": user.Email,
+			"role": user.Role, "verified": user.Verified, "created_at": user.CreatedAt,
+			"user_type": user.UserType, "manager_id": user.ManagerID,
+		}
+		if user.UserType == "devops_user" {
+			if prof, _ := GetDevopsProfile(id); prof != nil {
+				userResp["devops_profile"] = map[string]interface{}{
+					"is_manager": prof.IsManager, "position": prof.Position,
+					"onboard_date": prof.OnboardDate, "level": prof.Level,
+				}
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"user": map[string]interface{}{
-				"id": user.ID, "username": user.Username, "email": user.Email,
-				"role": user.Role, "verified": user.Verified, "created_at": user.CreatedAt,
-			},
-			"status": "ok",
-		})
+		json.NewEncoder(w).Encode(map[string]interface{}{"user": userResp, "status": "ok"})
 		return
 	case "PATCH", "PUT":
 		var req struct {
-			Username string `json:"username"`
-			Email    string `json:"email"`
-			Role     string `json:"role"`
-			Verified *bool  `json:"verified"`
+			Username    string `json:"username"`
+			Email       string `json:"email"`
+			Role        string `json:"role"`
+			Verified    *bool  `json:"verified"`
+			UserType    string `json:"user_type"`
+			ManagerID   *int   `json:"manager_id"` // portal user's manager (for two-step approval)
+			IsManager   *bool  `json:"is_manager"`
+			Position    string `json:"position"`
+			OnboardDate string `json:"onboard_date"`
+			Level       string `json:"level"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -265,21 +312,39 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
+		userType := strings.TrimSpace(req.UserType)
+		if userType == "portal_user" || userType == "devops_user" {
+			_ = UpdateUserType(id, userType)
+			if userType == "devops_user" {
+				isManager := false
+				if req.IsManager != nil {
+					isManager = *req.IsManager
+				}
+				_ = UpdateDevopsProfile(id, isManager, strings.TrimSpace(req.Position), strings.TrimSpace(req.OnboardDate), strings.TrimSpace(req.Level))
+			}
+		}
+		if userType == "portal_user" {
+			_ = UpdateUserManagerID(id, req.ManagerID)
+		}
 		AppendAuditLog(adminIDPtr, "user_update", "user", strconv.Itoa(id), username)
 		updated, _ := GetUserByID(id)
-		if updated != nil {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"user": map[string]interface{}{
-					"id": updated.ID, "username": updated.Username, "email": updated.Email,
-					"role": updated.Role, "verified": updated.Verified,
-				},
-				"status": "ok",
-			})
-		} else {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok"})
+		if updated == nil {
+			updated = user
 		}
+		respUser := map[string]interface{}{
+			"id": updated.ID, "username": updated.Username, "email": updated.Email,
+			"role": updated.Role, "verified": updated.Verified, "user_type": updated.UserType, "manager_id": updated.ManagerID,
+		}
+		if updated.UserType == "devops_user" {
+			if prof, _ := GetDevopsProfile(id); prof != nil {
+				respUser["devops_profile"] = map[string]interface{}{
+					"is_manager": prof.IsManager, "position": prof.Position,
+					"onboard_date": prof.OnboardDate, "level": prof.Level,
+				}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"user": respUser, "status": "ok"})
 		return
 	case "DELETE":
 		if err := DeleteUser(id); err != nil {

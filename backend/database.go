@@ -55,11 +55,12 @@ type PRRequest struct {
 	PRURL         string     `json:"pr_url"`
 	Branch        string     `json:"branch"`
 	FilePath      string     `json:"file_path"`
-	Status       string     `json:"status"` // draft, pending_approval, in_progress, completed, rejected
-	RejectReason string    `json:"reject_reason"` // set when admin rejects (optional comment)
+	Status       string     `json:"status"` // draft, pending_user_manager_approval, pending_devops_approval, pending_approval, in_progress, completed, rejected
+	RejectReason string     `json:"reject_reason"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	CreatedBy    *int       `json:"created_by"`
+	AssignedTo   *int       `json:"assigned_to"` // DevOps user assigned after PR creation (by priority)
 	Config       string     `json:"config"`
 }
 
@@ -80,7 +81,18 @@ type User struct {
 	Password     string    `json:"-"` // Don't return password in JSON
 	Verified     bool      `json:"verified"`
 	Role         string    `json:"role"` // viewer | contributor | admin
+	UserType     string    `json:"user_type"` // portal_user | devops_user
+	ManagerID    *int      `json:"manager_id"` // portal user's manager (for two-step approval)
 	CreatedAt    time.Time `json:"created_at"`
+}
+
+// DevopsProfile holds DevOps-specific fields for users with user_type = devops_user
+type DevopsProfile struct {
+	UserID      int       `json:"user_id"`
+	IsManager   bool      `json:"is_manager"`
+	Position    string    `json:"position"`
+	OnboardDate *string   `json:"onboard_date"` // YYYY-MM-DD
+	Level       string    `json:"level"`       // L1, L2, L3, L4
 }
 
 // Team is a group created by admin (for admin frontend)
@@ -166,6 +178,7 @@ func createTables() error {
 		verification_token VARCHAR(255),
 		verification_token_expires_at TIMESTAMP,
 		role VARCHAR(50) DEFAULT 'viewer',
+		user_type VARCHAR(50) DEFAULT 'portal_user',
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);`
 
@@ -359,6 +372,53 @@ func UpdatePRRequestWithPR(id int, prURL string) error {
 	return err
 }
 
+// UpdatePRRequestAssignedTo sets assigned_to for a request (used after PR creation)
+func UpdatePRRequestAssignedTo(requestID, userID int) error {
+	_, err := DB.Exec(
+		"UPDATE pr_requests SET assigned_to = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+		userID, requestID,
+	)
+	return err
+}
+
+// PriorityToLevel maps request priority to DevOps level for assignment (Critical/urgent->L4, High->L3, Medium->L2, Low->L1)
+func PriorityToLevel(priority string) string {
+	switch strings.ToLower(strings.TrimSpace(priority)) {
+	case "urgent", "critical":
+		return "L4"
+	case "high":
+		return "L3"
+	case "medium":
+		return "L2"
+	case "low":
+		return "L1"
+	default:
+		return "L2"
+	}
+}
+
+// AssignRequestByPriority assigns the request to a DevOps user by priority (L4 for critical/urgent, L3 high, L2 medium, L1 low). Picks a non-manager devops user with that level (least assigned first).
+func AssignRequestByPriority(requestID int) error {
+	req, err := GetPRRequestByID(requestID)
+	if err != nil || req == nil {
+		return fmt.Errorf("request not found")
+	}
+	level := PriorityToLevel(req.Priority)
+	var assigneeID int
+	// Pick a devops user with this level (is_manager = false), order by fewest assigned tickets
+	err = DB.QueryRow(`
+		SELECT u.id FROM users u
+		INNER JOIN devops_profiles d ON d.user_id = u.id AND d.level = $1 AND COALESCE(d.is_manager, false) = false
+		WHERE COALESCE(u.user_type, 'portal_user') = 'devops_user'
+		ORDER BY (SELECT COUNT(*) FROM pr_requests p WHERE p.assigned_to = u.id) ASC
+		LIMIT 1
+	`, level).Scan(&assigneeID)
+	if err == sql.ErrNoRows || err != nil {
+		return nil // no assignee found, leave unassigned
+	}
+	return UpdatePRRequestAssignedTo(requestID, assigneeID)
+}
+
 // AppendGitHubLog writes a GitHub activity log entry (no-op if DB is nil)
 func AppendGitHubLog(eventType, message, details string) {
 	if DB == nil {
@@ -407,7 +467,7 @@ func GetGitHubLogs(limit int) ([]GitHubLogEntry, error) {
 // search: if non-empty, searches across team, env, cloud, service, client_name, branch, config.
 func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, limit, offset int) ([]PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, created_at, updated_at
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at
 		FROM pr_requests
 		WHERE 1=1
 	`
@@ -487,22 +547,27 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 	var requests []PRRequest
 	for rows.Next() {
 		var req PRRequest
-		var createdBy sql.NullInt64
+		var createdBy, assignedTo sql.NullInt64
 		var dueDate sql.NullTime
 		err := rows.Scan(
 			&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
 			&req.ApplicationID, &req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
-			&req.RejectReason, &req.Config, &createdBy, &req.CreatedAt, &req.UpdatedAt,
+			&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan PR request: %w", err)
 		}
-		// Convert sql.NullInt64 to *int
 		if createdBy.Valid {
 			val := int(createdBy.Int64)
 			req.CreatedBy = &val
 		} else {
 			req.CreatedBy = nil
+		}
+		if assignedTo.Valid && assignedTo.Int64 > 0 {
+			val := int(assignedTo.Int64)
+			req.AssignedTo = &val
+		} else {
+			req.AssignedTo = nil
 		}
 		if dueDate.Valid {
 			req.DueDate = &dueDate.Time
@@ -516,16 +581,16 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 // GetPRRequestByID retrieves a single PR request by ID
 func GetPRRequestByID(id int) (*PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, created_at, updated_at
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at
 		FROM pr_requests WHERE id = $1
 	`
 	var req PRRequest
-	var createdBy sql.NullInt64
+	var createdBy, assignedTo sql.NullInt64
 	var dueDate sql.NullTime
 	err := DB.QueryRow(query, id).Scan(
 		&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
 		&req.ApplicationID, &req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
-		&req.RejectReason, &req.Config, &createdBy, &req.CreatedAt, &req.UpdatedAt,
+		&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -537,10 +602,115 @@ func GetPRRequestByID(id int) (*PRRequest, error) {
 		val := int(createdBy.Int64)
 		req.CreatedBy = &val
 	}
+	if assignedTo.Valid && assignedTo.Int64 > 0 {
+		val := int(assignedTo.Int64)
+		req.AssignedTo = &val
+	}
 	if dueDate.Valid {
 		req.DueDate = &dueDate.Time
 	}
 	return &req, nil
+}
+
+// GetPRRequestsByAssignedTo returns PR requests assigned to the given user (for DevOps "my tickets")
+func GetPRRequestsByAssignedTo(assigneeID int, limit, offset int) ([]PRRequest, error) {
+	query := `
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at
+		FROM pr_requests WHERE assigned_to = $1
+		ORDER BY updated_at DESC
+	`
+	if limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", limit)
+	}
+	if offset > 0 {
+		query += fmt.Sprintf(" OFFSET %d", offset)
+	}
+	rows, err := DB.Query(query, assigneeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var requests []PRRequest
+	for rows.Next() {
+		var req PRRequest
+		var createdBy, assignedTo sql.NullInt64
+		var dueDate sql.NullTime
+		if err := rows.Scan(
+			&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
+			&req.ApplicationID, &req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
+			&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if createdBy.Valid {
+			v := int(createdBy.Int64)
+			req.CreatedBy = &v
+		}
+		if assignedTo.Valid && assignedTo.Int64 > 0 {
+			v := int(assignedTo.Int64)
+			req.AssignedTo = &v
+		}
+		if dueDate.Valid {
+			req.DueDate = &dueDate.Time
+		}
+		requests = append(requests, req)
+	}
+	return requests, nil
+}
+
+// WorkloadItem is a request with assignee info for the DevOps manager workload view
+type WorkloadItem struct {
+	Request         PRRequest `json:"request"`
+	AssigneeID      int       `json:"assignee_id"`
+	AssigneeUsername string   `json:"assignee_username"`
+}
+
+// GetWorkloadAssignedRequests returns all requests that have an assignee (for DevOps manager workload view)
+func GetWorkloadAssignedRequests() ([]WorkloadItem, error) {
+	query := `
+		SELECT p.id, p.team, p.env, p.cloud, p.service, COALESCE(p.client_name,'') AS client_name, COALESCE(p.application_id,'') AS application_id, COALESCE(p.priority,'medium') AS priority, p.due_date, p.pr_url, p.branch, p.file_path, p.status, COALESCE(p.reject_reason,'') AS reject_reason, p.config, p.created_by, p.assigned_to, p.created_at, p.updated_at, u.username AS assignee_username
+		FROM pr_requests p
+		INNER JOIN users u ON u.id = p.assigned_to
+		WHERE p.assigned_to IS NOT NULL
+		ORDER BY p.updated_at DESC
+	`
+	rows, err := DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WorkloadItem
+	for rows.Next() {
+		var req PRRequest
+		var createdBy, assignedTo sql.NullInt64
+		var dueDate sql.NullTime
+		var assigneeUsername string
+		if err := rows.Scan(
+			&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
+			&req.ApplicationID, &req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
+			&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt,
+			&assigneeUsername,
+		); err != nil {
+			return nil, err
+		}
+		if createdBy.Valid {
+			v := int(createdBy.Int64)
+			req.CreatedBy = &v
+		}
+		if assignedTo.Valid && assignedTo.Int64 > 0 {
+			v := int(assignedTo.Int64)
+			req.AssignedTo = &v
+		}
+		if dueDate.Valid {
+			req.DueDate = &dueDate.Time
+		}
+		item := WorkloadItem{Request: req, AssigneeUsername: assigneeUsername}
+		if req.AssignedTo != nil {
+			item.AssigneeID = *req.AssignedTo
+		}
+		out = append(out, item)
+	}
+	return out, nil
 }
 
 // UpdatePRRequestFull updates a draft request (config, priority, due_date, status). Only for draft requests.
@@ -593,19 +763,21 @@ func AddRequestComment(requestID, userID int, body string) error {
 	return err
 }
 
-// GetUserByID retrieves a user by ID (without password)
+// GetUserByID retrieves a user by ID (without password). UserType and devops profile are loaded separately when needed.
 func GetUserByID(id int) (*User, error) {
 	var user User
 	var verified sql.NullBool
 	var role sql.NullString
+	var userType sql.NullString
+	var managerID sql.NullInt64
 	err := DB.QueryRow(
-		"SELECT id, username, email, COALESCE(verified, false), COALESCE(role, 'viewer'), created_at FROM users WHERE id = $1",
+		"SELECT id, username, email, COALESCE(verified, false), COALESCE(role, 'viewer'), COALESCE(user_type, 'portal_user'), manager_id, created_at FROM users WHERE id = $1",
 		id,
-	).Scan(&user.ID, &user.Username, &user.Email, &verified, &role, &user.CreatedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
+	).Scan(&user.ID, &user.Username, &user.Email, &verified, &role, &userType, &managerID, &user.CreatedAt)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 	user.Verified = verified.Valid && verified.Bool
@@ -613,7 +785,77 @@ func GetUserByID(id int) (*User, error) {
 	if role.Valid && role.String != "" {
 		user.Role = role.String
 	}
+	user.UserType = "portal_user"
+	if userType.Valid && (userType.String == "portal_user" || userType.String == "devops_user") {
+		user.UserType = userType.String
+	}
+	if managerID.Valid && managerID.Int64 > 0 {
+		m := int(managerID.Int64)
+		user.ManagerID = &m
+	}
 	return &user, nil
+}
+
+// GetDevopsProfile returns the DevOps profile for a user, or nil if none
+func GetDevopsProfile(userID int) (*DevopsProfile, error) {
+	var p DevopsProfile
+	var onboardDate sql.NullString
+	err := DB.QueryRow(
+		`SELECT user_id, COALESCE(is_manager, false), COALESCE(position,''), onboard_date, COALESCE(level,'L1')
+		 FROM devops_profiles WHERE user_id = $1`,
+		userID,
+	).Scan(&p.UserID, &p.IsManager, &p.Position, &onboardDate, &p.Level)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if onboardDate.Valid && onboardDate.String != "" {
+		p.OnboardDate = &onboardDate.String
+	}
+	if p.Level != "L1" && p.Level != "L2" && p.Level != "L3" && p.Level != "L4" {
+		p.Level = "L1"
+	}
+	return &p, nil
+}
+
+// CreateDevopsProfile inserts a DevOps profile for a user
+func CreateDevopsProfile(userID int, isManager bool, position, onboardDate, level string) error {
+	if level != "L1" && level != "L2" && level != "L3" && level != "L4" {
+		level = "L1"
+	}
+	var onboard interface{}
+	if onboardDate != "" {
+		onboard = onboardDate
+	} else {
+		onboard = nil
+	}
+	_, err := DB.Exec(
+		`INSERT INTO devops_profiles (user_id, is_manager, position, onboard_date, level) VALUES ($1, $2, $3, $4, $5)`,
+		userID, isManager, position, onboard, level,
+	)
+	return err
+}
+
+// UpdateDevopsProfile updates the DevOps profile for a user (creates if missing)
+func UpdateDevopsProfile(userID int, isManager bool, position, onboardDate, level string) error {
+	if level != "L1" && level != "L2" && level != "L3" && level != "L4" {
+		level = "L1"
+	}
+	var onboard interface{}
+	if onboardDate != "" {
+		onboard = onboardDate
+	} else {
+		onboard = nil
+	}
+	_, err := DB.Exec(
+		`INSERT INTO devops_profiles (user_id, is_manager, position, onboard_date, level)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (user_id) DO UPDATE SET is_manager = $2, position = $3, onboard_date = $4, level = $5`,
+		userID, isManager, position, onboard, level,
+	)
+	return err
 }
 
 // UpdateUserPassword updates a user's password by ID
@@ -703,6 +945,24 @@ func UpdateUserProfile(userID int, username, email, role string, verified bool) 
 		"UPDATE users SET username = $1, email = $2, role = $3, verified = $4 WHERE id = $5",
 		username, email, role, verified, userID,
 	)
+	return err
+}
+
+// UpdateUserType sets user_type for a user (portal_user | devops_user)
+func UpdateUserType(userID int, userType string) error {
+	if userType != "portal_user" && userType != "devops_user" {
+		userType = "portal_user"
+	}
+	_, err := DB.Exec("UPDATE users SET user_type = $1 WHERE id = $2", userType, userID)
+	return err
+}
+
+// UpdateUserManagerID sets manager_id for a portal user (for two-step approval)
+func UpdateUserManagerID(userID int, managerID *int) error {
+	if managerID != nil && *managerID == userID {
+		return fmt.Errorf("user cannot be their own manager")
+	}
+	_, err := DB.Exec("UPDATE users SET manager_id = $1 WHERE id = $2", managerID, userID)
 	return err
 }
 
@@ -870,10 +1130,12 @@ func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string
 	return count, err
 }
 
-// GetPendingApprovalCount returns the number of requests with status pending_approval (for admin notifications)
+// GetPendingApprovalCount returns the number of requests pending any approval (user manager, devops, or legacy pending_approval)
 func GetPendingApprovalCount() (int, error) {
 	var count int
-	err := DB.QueryRow("SELECT COUNT(*) FROM pr_requests WHERE status = $1", "pending_approval").Scan(&count)
+	err := DB.QueryRow(
+		"SELECT COUNT(*) FROM pr_requests WHERE status IN ('pending_approval', 'pending_devops_approval', 'pending_user_manager_approval')",
+	).Scan(&count)
 	return count, err
 }
 
@@ -959,7 +1221,7 @@ func GetDashboardStats() (DashboardStats, error) {
 	_ = DB.QueryRow("SELECT COUNT(*) FROM teams").Scan(&s.TotalTeams)
 	_ = DB.QueryRow("SELECT COUNT(*) FROM users WHERE COALESCE(verified, false) = false").Scan(&s.UnverifiedUsers)
 	_ = DB.QueryRow("SELECT COUNT(*) FROM pr_requests WHERE created_at >= NOW() - INTERVAL '7 days'").Scan(&s.RequestsThisWeek)
-	_ = DB.QueryRow("SELECT COUNT(*) FROM pr_requests WHERE status = 'pending_approval'").Scan(&s.PendingApproval)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM pr_requests WHERE status IN ('pending_approval', 'pending_devops_approval', 'pending_user_manager_approval')").Scan(&s.PendingApproval)
 	return s, nil
 }
 

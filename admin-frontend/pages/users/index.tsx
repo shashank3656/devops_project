@@ -4,12 +4,21 @@ import Head from 'next/head';
 import Link from 'next/link';
 import AdminLayout from '../../components/AdminLayout';
 
+interface DevopsProfile {
+  is_manager: boolean;
+  position: string;
+  onboard_date: string | null;
+  level: string;
+}
+
 interface User {
   id: number;
   username: string;
   email: string;
   role?: string;
   verified?: boolean;
+  user_type?: 'portal_user' | 'devops_user';
+  devops_profile?: DevopsProfile;
 }
 
 export default function UsersList() {
@@ -90,9 +99,14 @@ export default function UsersList() {
         <div className="container">
           <div className="page-header">
             <h1 className="page-title">Users</h1>
-            <Link href="/users/new" className="btn btn-primary">
-              Add user
-            </Link>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Link href="/users/new" className="btn btn-primary">
+                Create portal user
+              </Link>
+              <Link href="/users/new-devops" className="btn btn-secondary">
+                Create DevOps user
+              </Link>
+            </div>
           </div>
 
           <div className="card">
@@ -107,9 +121,10 @@ export default function UsersList() {
               <div className="empty-state">
                 <p>No users yet.</p>
                 <p style={{ marginTop: 8 }}>
-                  <Link href="/users/new" className="btn btn-primary" style={{ marginTop: 8 }}>
-                    Add your first user
-                  </Link>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <Link href="/users/new" className="btn btn-primary">Create portal user</Link>
+                    <Link href="/users/new-devops" className="btn btn-secondary">Create DevOps user</Link>
+                  </div>
                 </p>
               </div>
             ) : (
@@ -119,6 +134,7 @@ export default function UsersList() {
                     <tr>
                       <th>Username</th>
                       <th>Email</th>
+                      <th>Type</th>
                       <th>Role</th>
                       <th>Verified</th>
                       <th className="th-actions">Actions</th>
@@ -129,6 +145,17 @@ export default function UsersList() {
                       <tr key={u.id}>
                         <td className="td-username">{u.username}</td>
                         <td className="td-email">{u.email}</td>
+                        <td>
+                          <span style={{ textTransform: 'capitalize' }}>
+                            {u.user_type === 'devops_user' ? 'DevOps user' : 'Portal user'}
+                          </span>
+                          {u.user_type === 'devops_user' && u.devops_profile?.is_manager && (
+                            <span style={{ marginLeft: 6, fontSize: 12, color: 'var(--color-primary)' }}>(Manager)</span>
+                          )}
+                          {u.user_type === 'devops_user' && u.devops_profile?.level && (
+                            <span style={{ marginLeft: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>· {u.devops_profile.level}</span>
+                          )}
+                        </td>
                         <td>
                           <span className={`role-badge role-badge--${u.role || 'viewer'}`}>
                             {u.role || 'viewer'}
