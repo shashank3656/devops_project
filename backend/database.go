@@ -706,9 +706,22 @@ func UpdateUserProfile(userID int, username, email, role string, verified bool) 
 	return err
 }
 
-// DeleteUser removes a user by ID (admin only). Team memberships are removed by CASCADE.
+// DeleteUser removes a user by ID (admin only). Cleans request_comments and audit log references, then deletes user (team_members CASCADE).
 func DeleteUser(userID int) error {
-	result, err := DB.Exec("DELETE FROM users WHERE id = $1", userID)
+	tx, err := DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// Remove comments by this user (request_comments has no ON DELETE)
+	if _, err := tx.Exec("DELETE FROM request_comments WHERE user_id = $1", userID); err != nil {
+		return err
+	}
+	// Null out audit log admin reference so we keep the log
+	if _, err := tx.Exec("UPDATE admin_audit_log SET admin_user_id = NULL WHERE admin_user_id = $1", userID); err != nil {
+		return err
+	}
+	result, err := tx.Exec("DELETE FROM users WHERE id = $1", userID)
 	if err != nil {
 		return err
 	}
@@ -716,7 +729,7 @@ func DeleteUser(userID int) error {
 	if rows == 0 {
 		return fmt.Errorf("user not found")
 	}
-	return nil
+	return tx.Commit()
 }
 
 // Stats holds aggregate counts for the dashboard
@@ -1079,6 +1092,22 @@ func AddTeamMember(teamID, userID int, role string) (*TeamMember, error) {
 func RemoveTeamMember(teamID, userID int) error {
 	_, err := DB.Exec(`DELETE FROM team_members WHERE team_id = $1 AND user_id = $2`, teamID, userID)
 	return err
+}
+
+// UpdateTeamMemberRole sets the role for a team member (member or lead)
+func UpdateTeamMemberRole(teamID, userID int, role string) error {
+	if role != "member" && role != "lead" {
+		role = "member"
+	}
+	result, err := DB.Exec(`UPDATE team_members SET role = $1 WHERE team_id = $2 AND user_id = $3`, role, teamID, userID)
+	if err != nil {
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("team member not found")
+	}
+	return nil
 }
 
 // DeleteTeam deletes a team and cascades to team_members (ON DELETE CASCADE)

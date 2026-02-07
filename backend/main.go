@@ -15,7 +15,7 @@ type InfraRequest map[string]interface{}
 // enableCORS adds CORS headers to allow frontend requests
 func enableCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 }
 
@@ -520,6 +520,7 @@ func main() {
 	log.Println("  POST /api/admin/teams - Create team (admin only)")
 	log.Println("  GET  /api/admin/teams/:id - Team detail + members (admin only)")
 	log.Println("  POST /api/admin/teams/:id/members - Add member (admin only)")
+	log.Println("  PATCH  /api/admin/teams/:id/members/:user_id - Update member role (admin only)")
 	log.Println("  DELETE /api/admin/teams/:id/members/:user_id - Remove member (admin only)")
 	log.Println("  GET  /api/admin/requests     - List all PR requests (admin only)")
 	log.Println("  POST /api/admin/requests/:id/approve - Approve request, create PR (admin only)")

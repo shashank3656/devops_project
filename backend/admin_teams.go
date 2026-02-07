@@ -547,6 +547,67 @@ func adminTeamMembersAddHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// adminTeamMemberUpdateRoleHandler PATCH /api/admin/teams/:id/members/:user_id - update member role (admin only)
+func adminTeamMemberUpdateRoleHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	adminID, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var adminIDPtr *int
+	if adminID > 0 {
+		adminIDPtr = &adminID
+	}
+	if r.Method != "PATCH" && r.Method != "PUT" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/admin/teams/")
+	parts := strings.Split(path, "/")
+	if len(parts) < 3 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid path", "status": "error"})
+		return
+	}
+	teamID, _ := strconv.Atoi(parts[0])
+	userID, _ := strconv.Atoi(parts[2])
+	if teamID <= 0 || userID <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid team id or user id", "status": "error"})
+		return
+	}
+	var body struct {
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	if err := UpdateTeamMemberRole(teamID, userID, body.Role); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	AppendAuditLog(adminIDPtr, "team_member_role_update", "team", strconv.Itoa(teamID), fmt.Sprintf("user_id=%d,role=%s", userID, body.Role))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"message": "role updated", "status": "ok"})
+}
+
 // adminTeamMembersRemoveHandler DELETE /api/admin/teams/:id/members/:user_id
 func adminTeamMembersRemoveHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
@@ -640,9 +701,15 @@ func adminTeamsRouter(w http.ResponseWriter, r *http.Request) {
 			adminTeamMembersAddHandler(w, r)
 			return
 		}
-		if r.Method == "DELETE" && len(parts) == 3 {
-			adminTeamMembersRemoveHandler(w, r)
-			return
+		if len(parts) == 3 {
+			if r.Method == "PATCH" || r.Method == "PUT" {
+				adminTeamMemberUpdateRoleHandler(w, r)
+				return
+			}
+			if r.Method == "DELETE" {
+				adminTeamMembersRemoveHandler(w, r)
+				return
+			}
 		}
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return

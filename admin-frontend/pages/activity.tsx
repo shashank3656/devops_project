@@ -91,6 +91,7 @@ export default function ActivityPage() {
       team_create: 'Team created',
       team_member_add: 'Member added to team',
       team_member_remove: 'Member removed from team',
+      team_member_role_update: 'Member role updated',
       request_approve: 'Request approved',
       request_reject: 'Request rejected',
     };
@@ -142,6 +143,7 @@ export default function ActivityPage() {
               <option value="team_create">Team created</option>
               <option value="team_member_add">Member added</option>
               <option value="team_member_remove">Member removed</option>
+              <option value="team_member_role_update">Member role updated</option>
               <option value="request_approve">Request approved</option>
               <option value="request_reject">Request rejected</option>
             </select>
