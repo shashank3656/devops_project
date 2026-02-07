@@ -373,8 +373,9 @@ func GetGitHubLogs(limit int) ([]GitHubLogEntry, error) {
 	return out, nil
 }
 
-// GetPRRequests retrieves PR requests with optional filters (status and priority optional)
-func GetPRRequests(team, env, cloud, statusFilter, priorityFilter string, prID int, userIDInt int, limit, offset int) ([]PRRequest, error) {
+// GetPRRequests retrieves PR requests with optional filters (status and priority optional).
+// search: if non-empty, searches across team, env, cloud, service, client_name, branch, config.
+func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, limit, offset int) ([]PRRequest, error) {
 	query := `
 		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, created_at, updated_at
 		FROM pr_requests
@@ -382,6 +383,14 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter string, prID i
 	`
 	args := []interface{}{}
 	argPos := 1
+
+	if search != "" {
+		searchVal := "%" + search + "%"
+		query += fmt.Sprintf(` AND (team ILIKE $%d OR env ILIKE $%d OR cloud ILIKE $%d OR service ILIKE $%d OR COALESCE(client_name,'') ILIKE $%d OR branch ILIKE $%d OR COALESCE(config,'')::text ILIKE $%d)`,
+			argPos, argPos, argPos, argPos, argPos, argPos, argPos)
+		args = append(args, searchVal)
+		argPos++
+	}
 
 	if prID > 0 {
 		query += fmt.Sprintf(" AND id = $%d", argPos)
@@ -762,11 +771,20 @@ func GetStats(userIDInt int) (*Stats, error) {
 	return stats, nil
 }
 
-// GetTotalCount returns total count of PR requests (for pagination)
-func GetTotalCount(team, env, cloud, statusFilter, priorityFilter string, prID int, userIDInt int) (int, error) {
+// GetTotalCount returns total count of PR requests (for pagination).
+// search: if non-empty, same full-text search as GetPRRequests.
+func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int) (int, error) {
 	query := "SELECT COUNT(*) FROM pr_requests WHERE 1=1"
 	args := []interface{}{}
 	argPos := 1
+
+	if search != "" {
+		searchVal := "%" + search + "%"
+		query += fmt.Sprintf(` AND (team ILIKE $%d OR env ILIKE $%d OR cloud ILIKE $%d OR service ILIKE $%d OR COALESCE(client_name,'') ILIKE $%d OR branch ILIKE $%d OR COALESCE(config,'')::text ILIKE $%d)`,
+			argPos, argPos, argPos, argPos, argPos, argPos, argPos)
+		args = append(args, searchVal)
+		argPos++
+	}
 
 	if prID > 0 {
 		query += fmt.Sprintf(" AND id = $%d", argPos)

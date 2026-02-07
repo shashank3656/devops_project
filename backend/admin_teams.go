@@ -455,8 +455,9 @@ func adminTeamMembersAddHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		UserID int    `json:"user_id"`
-		Role   string `json:"role"`
+		UserID   int     `json:"user_id"`
+		UserIDs  []int   `json:"user_ids"`
+		Role     string  `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -464,22 +465,43 @@ func adminTeamMembersAddHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
 		return
 	}
-	if body.UserID <= 0 {
+	role := body.Role
+	if role == "" {
+		role = "member"
+	}
+	var idsToAdd []int
+	if len(body.UserIDs) > 0 {
+		for _, uid := range body.UserIDs {
+			if uid > 0 {
+				idsToAdd = append(idsToAdd, uid)
+			}
+		}
+	} else if body.UserID > 0 {
+		idsToAdd = []int{body.UserID}
+	}
+	if len(idsToAdd) == 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "user_id is required", "status": "error"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "user_id or user_ids required", "status": "error"})
 		return
 	}
-	member, err := AddTeamMember(teamID, body.UserID, body.Role)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
-		return
+	var added []interface{}
+	var failed []int
+	for _, uid := range idsToAdd {
+		member, err := AddTeamMember(teamID, uid, role)
+		if err != nil {
+			failed = append(failed, uid)
+			continue
+		}
+		added = append(added, member)
+		AppendAuditLog(adminIDPtr, "team_member_add", "team", strconv.Itoa(teamID), fmt.Sprintf("user_id=%d", uid))
 	}
-	AppendAuditLog(adminIDPtr, "team_member_add", "team", strconv.Itoa(teamID), fmt.Sprintf("user_id=%d", body.UserID))
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"member": member, "status": "ok"})
+	if len(added) == 1 && len(failed) == 0 {
+		json.NewEncoder(w).Encode(map[string]interface{}{"member": added[0], "status": "ok"})
+	} else {
+		json.NewEncoder(w).Encode(map[string]interface{}{"added": added, "failed": failed, "status": "ok"})
+	}
 }
 
 // adminTeamMembersRemoveHandler DELETE /api/admin/teams/:id/members/:user_id

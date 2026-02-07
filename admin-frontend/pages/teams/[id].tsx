@@ -37,6 +37,8 @@ export default function TeamDetail() {
   const [addUserId, setAddUserId] = useState('');
   const [addRole, setAddRole] = useState('member');
   const [adding, setAdding] = useState(false);
+  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const [bulkAdding, setBulkAdding] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token =
@@ -117,6 +119,48 @@ export default function TeamDetail() {
     } finally {
       setAdding(false);
     }
+  };
+
+  const handleBulkAddMembers = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedUserIds.length === 0 || !id) return;
+    setBulkAdding(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/teams/${id}/members`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          user_ids: selectedUserIds,
+          role: addRole,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setSelectedUserIds([]);
+        if (typeof id === 'string') fetchTeam(parseInt(id, 10));
+        const addedCount = Array.isArray(data.added) ? data.added.length : 1;
+        const failedCount = Array.isArray(data.failed) ? data.failed.length : 0;
+        if (failedCount > 0) {
+          setError(`Added ${addedCount}, failed: ${failedCount} (maybe already members)`);
+        }
+      } else {
+        setError(data.error || 'Failed to add members');
+      }
+    } catch (_) {
+      setError('Failed to add members');
+    } finally {
+      setBulkAdding(false);
+    }
+  };
+
+  const toggleUserSelection = (userId: number) => {
+    setSelectedUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
   };
 
   const handleRemoveMember = async (userId: number) => {
@@ -251,6 +295,88 @@ export default function TeamDetail() {
                       {adding ? 'Adding…' : 'Add member'}
                     </button>
                   </form>
+
+                  {/* Bulk add */}
+                  {availableUsers.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: 24,
+                        paddingTop: 24,
+                        borderTop: '1px solid var(--color-border)',
+                      }}
+                    >
+                      <h4 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>
+                        Bulk add members
+                      </h4>
+                      <p
+                        style={{
+                          color: 'var(--color-text-muted)',
+                          fontSize: 14,
+                          marginBottom: 16,
+                        }}
+                      >
+                        Select multiple users below and add them at once.
+                      </p>
+                      <form
+                        onSubmit={handleBulkAddMembers}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 16,
+                        }}
+                      >
+                        <div
+                          style={{
+                            maxHeight: 180,
+                            overflowY: 'auto',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 8,
+                            padding: 12,
+                          }}
+                        >
+                          {availableUsers.map((u) => (
+                            <label
+                              key={u.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 10,
+                                padding: '6px 0',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedUserIds.includes(u.id)}
+                                onChange={() => toggleUserSelection(u.id)}
+                              />
+                              <span>
+                                {u.username} <span style={{ color: 'var(--color-text-muted)' }}>({u.email})</span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                          <button
+                            type="submit"
+                            className="btn btn-primary"
+                            disabled={selectedUserIds.length === 0 || bulkAdding}
+                          >
+                            {bulkAdding ? 'Adding…' : `Add selected (${selectedUserIds.length})`}
+                          </button>
+                          {selectedUserIds.length > 0 && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => setSelectedUserIds([])}
+                            >
+                              Clear selection
+                            </button>
+                          )}
+                        </div>
+                      </form>
+                    </div>
+                  )}
                 </div>
 
                 {members.length === 0 ? (

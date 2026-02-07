@@ -44,7 +44,7 @@ export default function History() {
   const [requests, setRequests] = useState<PRRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filterType, setFilterType] = useState<'team' | 'pr_number' | 'env' | 'cloud'>('team');
+  const [filterType, setFilterType] = useState<'team' | 'pr_number' | 'env' | 'cloud' | 'search'>('team');
   const [filterValue, setFilterValue] = useState('');
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(0);
@@ -85,6 +85,8 @@ export default function History() {
       if (filterValue.trim()) {
         if (filterType === 'pr_number') {
           params.append('id', filterValue.trim());
+        } else if (filterType === 'search') {
+          params.append('q', filterValue.trim());
         } else {
           params.append(filterType, filterValue.trim());
         }
@@ -169,6 +171,27 @@ export default function History() {
       }
     } catch (_) {
       toast('Failed to submit draft', 'error');
+    }
+  };
+
+  const resubmitRequest = async (id: number) => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    try {
+      const res = await fetch(`${apiUrl}/api/request/${id}/resubmit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast(d?.message || 'Request cloned as draft. Edit and submit from History.', 'success');
+        setDetailRequest(null);
+        fetchHistory();
+      } else {
+        toast(d?.error || 'Failed to resubmit', 'error');
+      }
+    } catch (_) {
+      toast('Failed to resubmit', 'error');
     }
   };
 
@@ -344,7 +367,7 @@ export default function History() {
                   id="filter-type"
                   value={filterType}
                   onChange={(e) => {
-                    setFilterType(e.target.value as 'team' | 'pr_number' | 'env' | 'cloud');
+                    setFilterType(e.target.value as 'team' | 'pr_number' | 'env' | 'cloud' | 'search');
                     setFilterValue(''); // Clear value when changing filter type
                   }}
                   style={{
@@ -361,11 +384,13 @@ export default function History() {
                   <option value="pr_number">PR Number</option>
                   <option value="env">Environment</option>
                   <option value="cloud">Cloud</option>
+                  <option value="search">Search (all fields)</option>
                 </select>
               </div>
               <div style={{ flex: '1 1 300px', minWidth: '250px' }}>
                 <label htmlFor="filter-value" style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
-                  {filterType === 'pr_number' ? 'PR Number' : 
+                  {filterType === 'pr_number' ? 'PR Number' :
+                   filterType === 'search' ? 'Search term' :
                    filterType === 'team' ? 'Team Name' :
                    filterType === 'env' ? 'Environment' : 'Cloud Provider'}
                 </label>
@@ -376,6 +401,7 @@ export default function History() {
                   onChange={(e) => setFilterValue(e.target.value)}
                   placeholder={
                     filterType === 'pr_number' ? 'Enter PR number (e.g., 123)' :
+                    filterType === 'search' ? 'Search team, env, cloud, service, branch, config…' :
                     filterType === 'team' ? 'Enter team name' :
                     filterType === 'env' ? 'Enter environment (dev, stage, prod)' :
                     'Enter cloud provider (AWS, GCP, Azure)'
@@ -805,6 +831,11 @@ export default function History() {
                             Delete draft
                           </button>
                         </>
+                      )}
+                      {detailRequest.status === 'rejected' && (
+                        <button type="button" onClick={() => resubmitRequest(detailRequest.id)} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '14px' }}>
+                          Resubmit as draft
+                        </button>
                       )}
                       {detailRequest.pr_url ? (
                         <a href={detailRequest.pr_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)' }}>
