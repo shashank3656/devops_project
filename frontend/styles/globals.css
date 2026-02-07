@@ -884,6 +884,31 @@ code {
   border-bottom-color: var(--primary-dark);
 }
 
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .app-sidebar {
+    width: 72px;
+    min-width: 72px;
+  }
+  .app-sidebar .app-sidebar-brand-text,
+  .app-sidebar .app-sidebar-label { display: none !important; }
+  .app-main { padding: 16px; }
+  .container { padding: 16px; }
+  .card { padding: 16px; }
+  table { font-size: 13px; }
+  th, td { padding: 10px 8px; }
+}
+
+@media (max-width: 480px) {
+  .app-layout { flex-direction: column; }
+  .app-sidebar {
+    width: 100%;
+    min-width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 10px;

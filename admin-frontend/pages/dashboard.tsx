@@ -23,6 +23,9 @@ interface DashboardStats {
     total: number;
     by_status: Record<string, number>;
   };
+  sla?: { avg_hours: number; completed_count: number };
+  team_comparison?: Array<{ team: string; total: number; completed: number; rejected: number; pending: number; rate: number }>;
+  trend?: Array<{ date: string; count: number }>;
 }
 
 interface PRRequest {
@@ -245,6 +248,72 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               )}
+              {quickStats?.sla && quickStats.sla.completed_count > 0 && (
+                <div className="card" style={{ marginBottom: 24 }}>
+                  <h2 className="section-title">SLA metrics</h2>
+                  <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
+                    Avg time to complete: <strong>{quickStats.sla.avg_hours.toFixed(1)}h</strong> ({quickStats.sla.completed_count} completed)
+                  </p>
+                </div>
+              )}
+
+              {quickStats?.trend && quickStats.trend.length > 0 && (
+                <div className="card" style={{ marginBottom: 24 }}>
+                  <h2 className="section-title">Request trend (last 14 days)</h2>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', minHeight: 80, flexWrap: 'wrap' }}>
+                    {quickStats.trend.map((d) => (
+                      <div
+                        key={d.date}
+                        title={`${d.date}: ${d.count}`}
+                        style={{
+                          flex: '1 1 24px',
+                          minWidth: 20,
+                          height: Math.max(4, (d.count / Math.max(1, ...quickStats.trend.map((x) => x.count))) * 60),
+                          background: 'var(--color-primary)',
+                          borderRadius: 4,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 11, color: 'var(--color-text-muted)' }}>
+                    <span>{quickStats.trend[0]?.date}</span>
+                    <span>{quickStats.trend[quickStats.trend.length - 1]?.date}</span>
+                  </div>
+                </div>
+              )}
+
+              {quickStats?.team_comparison && quickStats.team_comparison.length > 0 && (
+                <div className="card" style={{ marginBottom: 24 }}>
+                  <h2 className="section-title">Team comparison</h2>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Team</th>
+                          <th>Total</th>
+                          <th>Completed</th>
+                          <th>Rejected</th>
+                          <th>Pending</th>
+                          <th>Rate</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {quickStats.team_comparison.map((t) => (
+                          <tr key={t.team}>
+                            <td><strong>{t.team}</strong></td>
+                            <td>{t.total}</td>
+                            <td>{t.completed}</td>
+                            <td>{t.rejected}</td>
+                            <td>{t.pending}</td>
+                            <td>{t.rate.toFixed(0)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {stats && (
                 <div className="stats-grid">
                   <div className="stat-card stat-card-primary">

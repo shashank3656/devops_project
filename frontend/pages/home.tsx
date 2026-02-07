@@ -34,9 +34,12 @@ const CLOUD_COLORS: Record<string, { bg: string; color: string }> = {
   Azure: { bg: 'var(--azure-color)', color: '#fff' },
 };
 
+const ONBOARDING_KEY = 'infra-portal-onboarding-done';
+
 export default function Home() {
   const router = useRouter();
   const [stats, setStats] = useState<Stats | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [statsLoading, setStatsLoading] = useState(true);
   const [cloudLogs, setCloudLogs] = useState<Record<string, CloudLogEntry[]>>({});
   const [githubLogs, setGithubLogs] = useState<GitHubLogEntry[]>([]);
@@ -48,6 +51,9 @@ export default function Home() {
       router.push('/login');
       return;
     }
+    try {
+      if (!localStorage.getItem(ONBOARDING_KEY)) setShowOnboarding(true);
+    } catch (_) {}
     fetchStats();
     fetchLogs();
   }, [router]);
@@ -108,6 +114,11 @@ export default function Home() {
     return a.localeCompare(b);
   });
 
+  const dismissOnboarding = () => {
+    setShowOnboarding(false);
+    try { localStorage.setItem(ONBOARDING_KEY, '1'); } catch (_) {}
+  };
+
   return (
     <>
       <Head>
@@ -115,6 +126,35 @@ export default function Home() {
         <meta name="description" content="Create infrastructure resources" />
       </Head>
       <div>
+        {showOnboarding && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000,
+              padding: 20,
+            }}
+            onClick={dismissOnboarding}
+          >
+            <div
+              className="card"
+              style={{ maxWidth: 420 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ marginBottom: 12 }}>Welcome to the Infrastructure Portal</h3>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: 16 }}>
+                Create requests from <strong>New Request</strong> or <strong>History</strong>. Admins approve and create PRs. Press <kbd>?</kbd> for shortcuts.
+              </p>
+              <button type="button" className="btn btn-primary" onClick={dismissOnboarding}>
+                Get started
+              </button>
+            </div>
+          </div>
+        )}
         {/* Dashboard stats */}
         {!statsLoading && stats && (
           <div style={{
