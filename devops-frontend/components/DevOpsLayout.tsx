@@ -24,7 +24,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<DevopsUser | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
 
   useEffect(() => {
     try {
@@ -33,7 +33,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       const c = localStorage.getItem(DEVOPS_SIDEBAR_COLLAPSED_KEY);
       if (c !== null) setCollapsed(c === 'true');
       const t = localStorage.getItem(DEVOPS_THEME_KEY);
-      const resolved = t === 'dark' ? 'dark' : 'light';
+      const resolved = t === 'light' ? 'light' : 'dark';
       setTheme(resolved);
       document.documentElement.setAttribute('data-theme', resolved);
     } catch (_) {}

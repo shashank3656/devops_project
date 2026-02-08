@@ -81,14 +81,14 @@ export default function DevOpsDashboard() {
           <h1 className="page-title">My tickets</h1>
           {stats != null && (
             <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-              <div className="card" style={{ padding: 16, minWidth: 160 }}>
-                <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 4 }}>Pending your approval</div>
-                <div style={{ fontSize: 24, fontWeight: 700 }}>{stats.pending_approval}</div>
-                <a href="/workload" style={{ fontSize: 13, marginTop: 8, display: 'inline-block' }}>Review on Workload →</a>
+              <div className="stat-card">
+                <div className="stat-card-label">Pending your approval</div>
+                <div className="stat-card-value">{stats.pending_approval}</div>
+                <a href="/workload" className="stat-card-link">Review on Workload →</a>
               </div>
-              <div className="card" style={{ padding: 16, minWidth: 160 }}>
-                <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 4 }}>In progress</div>
-                <div style={{ fontSize: 24, fontWeight: 700 }}>{stats.in_progress}</div>
+              <div className="stat-card">
+                <div className="stat-card-label">In progress</div>
+                <div className="stat-card-value">{stats.in_progress}</div>
               </div>
             </div>
           )}
