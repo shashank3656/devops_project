@@ -80,39 +80,66 @@ export default function DevOpsTickets() {
       </Head>
       <DevOpsLayout>
         <div className="container">
-          <h1 className="page-title">All tickets</h1>
-          <p style={{ color: 'var(--color-text-muted)', marginBottom: 24, fontSize: 14 }}>
-            Search and filter by ticket #, team, cloud, status, requester. Sort by created, updated, priority, or due date. Use &quot;At risk&quot; for overdue or due in 24h.
+          <h1 className="page-title" style={{ marginBottom: 8 }}>All tickets</h1>
+          <p style={{ color: 'var(--color-text-muted)', marginBottom: 24, fontSize: 14, maxWidth: 560 }}>
+            Search and filter by ticket #, team, cloud, status, or requester. Sort by created, updated, priority, or due date. Use &quot;At risk&quot; for overdue or due in 24h.
           </p>
-          <div className="card" style={{ padding: 16, marginBottom: 24 }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-              <input type="text" placeholder="Ticket #" value={idFilter} onChange={(e) => setIdFilter(e.target.value)} style={{ width: 90 }} className="input" />
-              <input type="text" placeholder="Team" value={team} onChange={(e) => setTeam(e.target.value)} className="input" style={{ minWidth: 100 }} />
-              <input type="text" placeholder="Cloud" value={cloud} onChange={(e) => setCloud(e.target.value)} className="input" style={{ minWidth: 80 }} />
-              <select value={status} onChange={(e) => setStatus(e.target.value)} className="input" style={{ minWidth: 160 }}>
-                <option value="">All statuses</option>
-                <option value="pending_approval">Pending approval</option>
-                <option value="pending_user_manager_approval">Pending user manager</option>
-                <option value="pending_devops_approval">Pending DevOps approval</option>
-                <option value="in_progress">In progress</option>
-                <option value="completed">Completed</option>
-                <option value="rejected">Rejected</option>
-              </select>
-              <input type="text" placeholder="Requester ID" value={requester} onChange={(e) => setRequester(e.target.value)} className="input" style={{ width: 100 }} />
-              <input type="text" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} className="input" style={{ minWidth: 120 }} />
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="input">
-                <option value="created_at">Sort: Created</option>
-                <option value="updated_at">Sort: Updated</option>
-                <option value="priority">Sort: Priority</option>
-                <option value="due_date">Sort: Due date</option>
-              </select>
-              <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="input">
-                <option value="desc">Desc</option>
-                <option value="asc">Asc</option>
-              </select>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div className="card" style={{ marginBottom: 24 }}>
+            <h2 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, color: 'var(--color-text)' }}>Filters</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 4 }}>Ticket #</label>
+                <input type="text" value={idFilter} onChange={(e) => setIdFilter(e.target.value)} className="input" style={{ width: '100%' }} placeholder="e.g. 42" />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 4 }}>Team</label>
+                <input type="text" value={team} onChange={(e) => setTeam(e.target.value)} className="input" style={{ width: '100%' }} placeholder="Team slug" />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 4 }}>Cloud</label>
+                <input type="text" value={cloud} onChange={(e) => setCloud(e.target.value)} className="input" style={{ width: '100%' }} placeholder="aws, gcp, azure" />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 4 }}>Status</label>
+                <select value={status} onChange={(e) => setStatus(e.target.value)} className="input" style={{ width: '100%' }}>
+                  <option value="">All statuses</option>
+                  <option value="pending_approval">Pending approval</option>
+                  <option value="pending_user_manager_approval">Pending user manager</option>
+                  <option value="pending_devops_approval">Pending DevOps approval</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 4 }}>Requester</label>
+                <input type="text" value={requester} onChange={(e) => setRequester(e.target.value)} className="input" style={{ width: '100%' }} placeholder="Username or ID" />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 4 }}>Search</label>
+                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} className="input" style={{ maxWidth: 320 }} placeholder="Search across ticket details" />
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16, marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--color-border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Sort by</label>
+                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="input" style={{ minWidth: 140 }}>
+                  <option value="created_at">Created</option>
+                  <option value="updated_at">Updated</option>
+                  <option value="priority">Priority</option>
+                  <option value="due_date">Due date</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Order</label>
+                <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="input" style={{ minWidth: 100 }}>
+                  <option value="desc">Descending</option>
+                  <option value="asc">Ascending</option>
+                </select>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 }}>
                 <input type="checkbox" checked={atRisk} onChange={(e) => setAtRisk(e.target.checked)} />
-                At risk
+                <span>At risk (overdue or due in 24h)</span>
               </label>
             </div>
           </div>
