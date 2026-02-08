@@ -328,6 +328,29 @@ export default function SelectService() {
             <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '15px' }}>
               Choose your cloud provider and service, then configure the infrastructure
             </p>
+            {(cloud || service) && (
+              <div style={{ marginBottom: '20px' }}>
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const params = new URLSearchParams();
+                    if (cloud) params.set('cloud', cloud);
+                    if (service) params.set('service', service);
+                    if (env) params.set('env', env);
+                    fetch(`${apiUrl}/api/cost-estimate?${params}`)
+                      .then((r) => r.json())
+                      .then((d) => {
+                        if (d.link) window.open(d.link, '_blank', 'noopener,noreferrer');
+                      })
+                      .catch(() => {});
+                  }}
+                  style={{ color: 'var(--primary-color)', fontSize: '14px' }}
+                >
+                  Estimate cost (opens cloud pricing calculator)
+                </a>
+              </div>
+            )}
 
             {canCreatePR === false && (
               <div className="error" style={{ marginBottom: '24px' }}>
@@ -457,32 +480,6 @@ export default function SelectService() {
                     })}
                   </select>
                 </div>
-              </div>
-
-              <div style={{ marginBottom: '24px', padding: '12px 16px', background: 'var(--primary-tint, rgba(59, 130, 246, 0.08))', borderRadius: 'var(--radius-md, 8px)', border: '1px solid var(--border-color, #e5e7eb)' }}>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    const params = new URLSearchParams();
-                    if (cloud) params.set('cloud', cloud);
-                    if (service) params.set('service', service);
-                    if (env) params.set('env', env);
-                    fetch(`${apiUrl}/api/cost-estimate?${params}`)
-                      .then((r) => r.json())
-                      .then((d) => {
-                        if (d.link) window.open(d.link, '_blank', 'noopener,noreferrer');
-                      })
-                      .catch(() => {});
-                  }}
-                  className="btn btn-secondary"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}
-                >
-                  💰 Estimate cost (opens cloud pricing calculator)
-                </button>
-                <span style={{ marginLeft: '12px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  {cloud || service ? 'Opens the provider calculator with your selection.' : 'Select cloud and service above for a direct link to the calculator.'}
-                </span>
               </div>
 
               <div className="form-group">
