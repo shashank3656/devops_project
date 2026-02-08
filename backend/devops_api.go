@@ -509,6 +509,154 @@ func devopsTeamsRouter(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"member": member, "status": "ok"})
 }
 
+// devopsTemplatesRouter handles /api/devops/templates - DevOps manager can list, create, update, delete templates
+func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	managerID, ok := requireDevopsManager(w, r)
+	if !ok {
+		return
+	}
+	var managerIDPtr *int
+	if managerID > 0 {
+		managerIDPtr = &managerID
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/devops/templates/")
+	path = strings.Trim(path, "/")
+	w.Header().Set("Content-Type", "application/json")
+	if path == "" {
+		switch r.Method {
+		case "GET":
+			list, err := ListRequestTemplates()
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{"templates": list, "status": "ok"})
+			return
+		case "POST":
+			var body struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+				Cloud       string `json:"cloud"`
+				Env         string `json:"env"`
+				Service     string `json:"service"`
+				Config      string `json:"config"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+				return
+			}
+			name := strings.TrimSpace(body.Name)
+			if name == "" || strings.TrimSpace(body.Cloud) == "" || strings.TrimSpace(body.Env) == "" || strings.TrimSpace(body.Service) == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "name, cloud, env, service required", "status": "error"})
+				return
+			}
+			config := body.Config
+			if config == "" {
+				config = "{}"
+			}
+			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, managerIDPtr)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+			AppendAuditLog(managerIDPtr, "template_create", "request_template", strconv.Itoa(t.ID), "devops_manager:"+name)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]interface{}{"template": t, "status": "ok"})
+			return
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+	}
+
+	id, err := strconv.Atoi(path)
+	if err != nil || id <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+	t, err := GetRequestTemplateByID(id)
+	if err != nil || t == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "template not found", "status": "error"})
+		return
+	}
+
+	switch r.Method {
+	case "GET":
+		json.NewEncoder(w).Encode(map[string]interface{}{"template": t, "status": "ok"})
+		return
+	case "PUT", "PATCH":
+		var body struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Cloud       string `json:"cloud"`
+			Env         string `json:"env"`
+			Service     string `json:"service"`
+			Config      string `json:"config"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			return
+		}
+		name := strings.TrimSpace(body.Name)
+		if name == "" {
+			name = t.Name
+		}
+		cloud, env, service, config := strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), body.Config
+		if cloud == "" {
+			cloud = t.Cloud
+		}
+		if env == "" {
+			env = t.Env
+		}
+		if service == "" {
+			service = t.Service
+		}
+		if config == "" {
+			config = t.Config
+		}
+		if err := UpdateRequestTemplate(id, name, strings.TrimSpace(body.Description), cloud, env, service, config); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		AppendAuditLog(managerIDPtr, "template_update", "request_template", strconv.Itoa(id), "devops_manager:"+name)
+		updated, _ := GetRequestTemplateByID(id)
+		json.NewEncoder(w).Encode(map[string]interface{}{"template": updated, "status": "ok"})
+		return
+	case "DELETE":
+		if err := DeleteRequestTemplate(id); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		AppendAuditLog(managerIDPtr, "template_delete", "request_template", strconv.Itoa(id), "devops_manager:"+t.Name)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "deleted"})
+		return
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+}
+
 // devopsRequestActionHandler handles /api/devops/requests/:id/approve and /api/devops/requests/:id/reject (DevOps manager only)
 func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)

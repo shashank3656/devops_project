@@ -121,27 +121,48 @@ export default function CreateInfrastructure() {
                 Start from template
               </h2>
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
-                Use an admin-defined template to pre-fill cloud, environment and service.
+                Use a template to pre-fill cloud, environment and service (read-only).
               </p>
               {loadingTemplates ? (
                 <p style={{ color: 'var(--text-muted)' }}>Loading templates…</p>
               ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-                  {templates.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      className="btn btn-secondary"
-                      style={{ padding: '12px 20px', textAlign: 'left' }}
-                      onClick={() => router.push(`/select-service?cloud=${encodeURIComponent(t.cloud)}&env=${encodeURIComponent(t.env)}&service=${encodeURIComponent(t.service)}&template_id=${t.id}`)}
-                    >
-                      <span style={{ fontWeight: 600 }}>{t.name}</span>
-                      <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginTop: 4 }}>
-                        {t.cloud} / {t.env} / {t.service}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+                (() => {
+                  const byCloud = templates.reduce<Record<string, RequestTemplate[]>>((acc, t) => {
+                    const c = (t.cloud || 'other').toLowerCase();
+                    if (!acc[c]) acc[c] = [];
+                    acc[c].push(t);
+                    return acc;
+                  }, {});
+                  const cloudOrder = ['aws', 'gcp', 'azure'];
+                  const clouds = [...new Set([...cloudOrder.filter((c) => byCloud[c]?.length), ...Object.keys(byCloud).filter((c) => !cloudOrder.includes(c))])];
+                  return (
+                    <div>
+                      {clouds.map((cloudKey) => (
+                        <div key={cloudKey} style={{ marginBottom: '20px' }}>
+                          <div style={{ fontSize: '13px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+                            {cloudKey}
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginLeft: '12px' }}>
+                            {(byCloud[cloudKey] || []).map((t) => (
+                              <button
+                                key={t.id}
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ padding: '12px 20px', textAlign: 'left' }}
+                                onClick={() => router.push(`/select-service?cloud=${encodeURIComponent(t.cloud)}&env=${encodeURIComponent(t.env)}&service=${encodeURIComponent(t.service)}&template_id=${t.id}`)}
+                              >
+                                <span style={{ fontWeight: 600 }}>{t.name}</span>
+                                <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginTop: 4 }}>
+                                  {t.env} / {t.service}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()
               )}
             </div>
           )}

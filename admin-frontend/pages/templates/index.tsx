@@ -50,10 +50,10 @@ export default function TemplatesList() {
         setTemplates(Array.isArray(data.templates) ? data.templates : []);
         setError('');
       } else {
-        setError(data.error || 'Failed to load templates');
+        setError(data.error || 'Failed to load templates. Check that the backend is running and you have admin access.');
       }
-    } catch (_) {
-      setError('Failed to load templates');
+    } catch (err) {
+      setError('Failed to load templates. Check your connection and that the backend is running.');
     } finally {
       setLoading(false);
     }
@@ -108,51 +108,68 @@ export default function TemplatesList() {
             </div>
           ) : !error && templates.length === 0 ? (
             <div className="card" style={{ padding: '48px', textAlign: 'center' }}>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>No templates yet.</p>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>No templates are there. Create one to get started.</p>
               <Link href="/templates/new" className="btn btn-primary">
                 Create first template
               </Link>
             </div>
           ) : !error ? (
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '2px solid var(--border-color)', background: 'var(--bg-gray-50)' }}>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>Name</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>Cloud</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>Env</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>Service</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>Description</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {templates.map((t) => (
-                    <tr key={t.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '12px 16px' }}>{t.name}</td>
-                      <td style={{ padding: '12px 16px' }}>{t.cloud}</td>
-                      <td style={{ padding: '12px 16px' }}>{t.env}</td>
-                      <td style={{ padding: '12px 16px' }}>{t.service}</td>
-                      <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', maxWidth: 240 }}>{t.description || '—'}</td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                        <Link href={`/templates/${t.id}/edit`} className="btn btn-secondary" style={{ marginRight: 8, padding: '6px 12px' }}>
-                          Edit
-                        </Link>
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          style={{ padding: '6px 12px' }}
-                          disabled={deletingId === t.id}
-                          onClick={() => handleDelete(t)}
-                        >
-                          {deletingId === t.id ? 'Deleting…' : 'Delete'}
-                        </button>
-                      </td>
-                    </tr>
+            (() => {
+              const byCloud = templates.reduce<Record<string, RequestTemplate[]>>((acc, t) => {
+                const c = (t.cloud || 'other').toLowerCase();
+                if (!acc[c]) acc[c] = [];
+                acc[c].push(t);
+                return acc;
+              }, {});
+              const cloudOrder = ['aws', 'gcp', 'azure'];
+              const clouds = [...new Set([...cloudOrder.filter((c) => byCloud[c]?.length), ...Object.keys(byCloud).filter((c) => !cloudOrder.includes(c))])];
+              return (
+                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                  {clouds.map((cloudKey) => (
+                    <div key={cloudKey} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <div style={{ padding: '12px 16px', background: 'var(--bg-gray-50)', fontWeight: 600, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        {cloudKey}
+                      </div>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border-color)', background: 'var(--bg-gray-50)' }}>
+                            <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: '13px' }}>Name</th>
+                            <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: '13px' }}>Env</th>
+                            <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: '13px' }}>Service</th>
+                            <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: '13px' }}>Description</th>
+                            <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, fontSize: '13px' }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(byCloud[cloudKey] || []).map((t) => (
+                            <tr key={t.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                              <td style={{ padding: '12px 16px' }}>{t.name}</td>
+                              <td style={{ padding: '12px 16px' }}>{t.env}</td>
+                              <td style={{ padding: '12px 16px' }}>{t.service}</td>
+                              <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', maxWidth: 240 }}>{t.description || '—'}</td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                                <Link href={`/templates/${t.id}/edit`} className="btn btn-secondary" style={{ marginRight: 8, padding: '6px 12px' }}>
+                                  Edit
+                                </Link>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{ padding: '6px 12px' }}
+                                  disabled={deletingId === t.id}
+                                  onClick={() => handleDelete(t)}
+                                >
+                                  {deletingId === t.id ? 'Deleting…' : 'Delete'}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </div>
+              );
+            })()
           ) : null}
         </div>
       </AdminLayout>
