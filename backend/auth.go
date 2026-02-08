@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -423,6 +424,164 @@ func meTeamsHandler(w http.ResponseWriter, r *http.Request) {
 		"teams": teams,
 		"status": "ok",
 	})
+}
+
+// meManagedTeamsHandler GET /api/me/managed-teams - portal teams the current user can manage (manager role or is_portal_manager)
+func meManagedTeamsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		return
+	}
+	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
+	if err != nil || userID <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid token", "status": "error"})
+		return
+	}
+	teams, err := GetPortalTeamsManagedByUser(userID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"teams": teams, "status": "ok"})
+}
+
+// meTeamMembersRouter handles /api/me/teams/:id/members - GET list members, POST add member (portal manager)
+func meTeamMembersRouter(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/me/teams/")
+	path = strings.Trim(path, "/")
+	if path == "" {
+		http.NotFound(w, r)
+		return
+	}
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 || parts[1] != "members" {
+		http.NotFound(w, r)
+		return
+	}
+	teamID, _ := strconv.Atoi(parts[0])
+	if teamID <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid team id", "status": "error"})
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		return
+	}
+	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
+	if err != nil || userID <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid token", "status": "error"})
+		return
+	}
+	if !CanUserManagePortalTeam(userID, teamID) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "you cannot manage this team", "status": "error"})
+		return
+	}
+	if r.Method == "GET" {
+		members, err := GetTeamMembers(teamID)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"members": members, "status": "ok"})
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Email    string `json:"email"`
+		Username string `json:"username"`
+		Role     string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	emailOrUsername := strings.TrimSpace(body.Email)
+	if emailOrUsername == "" {
+		emailOrUsername = strings.TrimSpace(body.Username)
+	}
+	if emailOrUsername == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "email or username required", "status": "error"})
+		return
+	}
+	role := strings.TrimSpace(body.Role)
+	if role == "" {
+		role = "developer"
+	}
+	if !ValidPortalRole(role) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid role; use developer, senior_developer, lead, or manager", "status": "error"})
+		return
+	}
+	targetUser, err := GetUserByEmailOrUsername(emailOrUsername)
+	if err != nil || targetUser == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "user not found", "status": "error"})
+		return
+	}
+	member, err := AddTeamMember(teamID, targetUser.ID, role)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"member": member, "status": "ok"})
 }
 
 // mePendingManagerApprovalHandler GET /api/me/pending-manager-approval - count of requests pending the current user's approval (as group manager or creator's manager). For portal manager notification badge.

@@ -264,6 +264,131 @@ func devopsPendingApprovalsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"requests": requests, "status": "ok"})
 }
 
+// devopsMyTeamsHandler GET /api/devops/my-teams - DevOps teams the current user belongs to
+func devopsMyTeamsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
+		return
+	}
+	teams, err := GetDevopsTeamsForUser(userID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"teams": teams, "status": "ok"})
+}
+
+// devopsTeamsRouter handles /api/devops/teams/:id/members - POST add member (DevOps manager only)
+func devopsTeamsRouter(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/devops/teams/")
+	path = strings.Trim(path, "/")
+	if path == "" {
+		http.NotFound(w, r)
+		return
+	}
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 || parts[1] != "members" {
+		http.NotFound(w, r)
+		return
+	}
+	teamID, _ := strconv.Atoi(parts[0])
+	if teamID <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid team id", "status": "error"})
+		return
+	}
+	userID, ok := requireDevopsManager(w, r)
+	if !ok {
+		return
+	}
+	if !CanUserManageDevopsTeam(userID, teamID) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "you cannot manage this team", "status": "error"})
+		return
+	}
+	if r.Method == "GET" {
+		members, err := GetTeamMembers(teamID)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"members": members, "status": "ok"})
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		UserID int    `json:"user_id"`
+		Email  string `json:"email"`
+		Role   string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	var targetUserID int
+	if body.UserID > 0 {
+		targetUserID = body.UserID
+	} else if body.Email != "" {
+		u, err := GetUserByEmailOrUsername(strings.TrimSpace(body.Email))
+		if err != nil || u == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "user not found", "status": "error"})
+			return
+		}
+		targetUserID = u.ID
+	}
+	if targetUserID <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "user_id or email required", "status": "error"})
+		return
+	}
+	role := strings.TrimSpace(body.Role)
+	if role == "" {
+		role = "member"
+	}
+	if !ValidDevopsRole(role) {
+		role = "member"
+	}
+	member, err := AddTeamMember(teamID, targetUserID, role)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"member": member, "status": "ok"})
+}
+
 // devopsRequestActionHandler handles /api/devops/requests/:id/approve and /api/devops/requests/:id/reject (DevOps manager only)
 func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)

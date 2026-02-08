@@ -3,16 +3,19 @@ import { useRouter } from 'next/router';
 import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { DEVOPS_SITE_NAME } from '../lib/site';
-import { IconTickets, IconWorkload, IconLogout } from './Icons';
+import { IconTickets, IconWorkload, IconLogout, IconChevronLeft, IconChevronRight, IconSun, IconMoon, IconUser, IconUsers } from './Icons';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
+const DEVOPS_SIDEBAR_COLLAPSED_KEY = 'devops_sidebar_collapsed';
+const DEVOPS_THEME_KEY = 'infra-portal-theme';
 
 interface DevopsUser {
   id: number;
   username: string;
+  email?: string;
   user_type?: string;
-  devops_profile?: { is_manager: boolean; level: string };
+  devops_profile?: { is_manager: boolean; level: string; position?: string; onboard_date?: string };
 }
 
 export default function DevOpsLayout({ children }: { children: ReactNode }) {
@@ -20,11 +23,19 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const apiUrl = useApiUrl();
   const [user, setUser] = useState<DevopsUser | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [collapsed, setCollapsed] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
   useEffect(() => {
     try {
       const u = localStorage.getItem(DEVOPS_USER_KEY);
       if (u) setUser(JSON.parse(u));
+      const c = localStorage.getItem(DEVOPS_SIDEBAR_COLLAPSED_KEY);
+      if (c !== null) setCollapsed(c === 'true');
+      const t = localStorage.getItem(DEVOPS_THEME_KEY);
+      const resolved = t === 'dark' ? 'dark' : 'light';
+      setTheme(resolved);
+      document.documentElement.setAttribute('data-theme', resolved);
     } catch (_) {}
   }, []);
 
@@ -53,6 +64,23 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('devops-notifications-refresh', onRefresh);
   }, [isManager, refreshPendingCount]);
 
+  const toggleSidebar = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      localStorage.setItem(DEVOPS_SIDEBAR_COLLAPSED_KEY, String(next));
+    } catch (_) {}
+  };
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    try {
+      localStorage.setItem(DEVOPS_THEME_KEY, next);
+      document.documentElement.setAttribute('data-theme', next);
+    } catch (_) {}
+  };
+
   const handleLogout = () => {
     localStorage.removeItem(DEVOPS_TOKEN_KEY);
     localStorage.removeItem(DEVOPS_USER_KEY);
@@ -61,9 +89,9 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
 
   const pathname = router.pathname;
   const navLink = (href: string, label: string, icon: ReactNode, badge?: number) => {
-    const isActive = pathname === href;
+    const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
     return (
-      <Link href={href} className={isActive ? 'devops-nav-active' : ''} title={label}>
+      <Link href={href} className={isActive ? 'devops-nav-active' : ''} title={collapsed ? label : undefined}>
         <span className="devops-sidebar-icon" aria-hidden>{icon}</span>
         <span className="devops-sidebar-label">{label}</span>
         {badge != null && badge > 0 && (
@@ -77,22 +105,50 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="devops-layout">
-      <aside className="devops-sidebar">
+      <aside className={`devops-sidebar ${collapsed ? 'devops-sidebar-collapsed' : ''}`}>
         <div className="devops-sidebar-header">
           <Link href="/dashboard" className="devops-sidebar-brand">
             <img src="/logo.svg" alt="" width={36} height={36} />
             <span className="devops-sidebar-brand-text">{DEVOPS_SITE_NAME}</span>
           </Link>
+          <button
+            type="button"
+            className="devops-sidebar-toggle"
+            onClick={toggleSidebar}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <IconChevronRight /> : <IconChevronLeft />}
+          </button>
         </div>
         <nav className="devops-sidebar-nav">
           {navLink('/dashboard', 'My tickets', <IconTickets />)}
           {isManager && navLink('/workload', 'Workload', <IconWorkload />, pendingCount)}
+          {isManager && navLink('/team', 'Team', <IconUsers />)}
+          {navLink('/profile', 'Profile', <IconUser />)}
         </nav>
         <div className="devops-sidebar-footer">
-          {user && <span className="devops-sidebar-user">{user.username}</span>}
-          <button type="button" className="btn btn-secondary devops-sidebar-logout" onClick={handleLogout} title="Logout">
-            <IconLogout />
-            <span>Logout</span>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="btn btn-secondary"
+            title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+            style={{
+              width: '100%',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-3)',
+              padding: 'var(--space-3) var(--space-4)',
+              color: 'var(--sidebar-text-muted)',
+              background: 'transparent',
+              border: '1px solid var(--sidebar-border)',
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {theme === 'dark' ? <IconSun /> : <IconMoon />}
+            </span>
+            {!collapsed && <span className="devops-sidebar-label">{theme === 'dark' ? 'Light' : 'Dark'}</span>}
           </button>
         </div>
       </aside>
