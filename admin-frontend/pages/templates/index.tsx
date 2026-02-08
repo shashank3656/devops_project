@@ -95,22 +95,25 @@ export default function TemplatesList() {
             </Link>
           </div>
           {error && (
-            <div className="alert alert-error" role="alert" style={{ marginBottom: '16px' }}>
-              {error}
+            <div className="alert alert-error" role="alert" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+              <span>{error}</span>
+              <button type="button" className="btn btn-secondary" style={{ padding: '8px 16px' }} onClick={() => { setError(''); fetchTemplates(); }}>
+                Retry
+              </button>
             </div>
           )}
           {loading ? (
             <div className="card" style={{ padding: '48px', textAlign: 'center' }}>
               Loading…
             </div>
-          ) : templates.length === 0 ? (
+          ) : !error && templates.length === 0 ? (
             <div className="card" style={{ padding: '48px', textAlign: 'center' }}>
               <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>No templates yet.</p>
               <Link href="/templates/new" className="btn btn-primary">
                 Create first template
               </Link>
             </div>
-          ) : (
+          ) : !error ? (
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
@@ -150,7 +153,7 @@ export default function TemplatesList() {
                 </tbody>
               </table>
             </div>
-          )}
+          ) : null}
         </div>
       </AdminLayout>
     </>

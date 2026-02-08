@@ -189,13 +189,32 @@ export default function Profile() {
     }
   };
 
-  const copyKey = (key: string) => {
+  const copyKey = async (key: string) => {
     try {
-      navigator.clipboard.writeText(key);
-      toast('Copied to clipboard', 'success');
-    } catch (_) {
-      toast('Could not copy', 'error');
-    }
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(key);
+        toast('Copied to clipboard', 'success');
+        return;
+      }
+    } catch (_) {}
+    const fallback = () => {
+      const input = document.createElement('input');
+      input.value = key;
+      input.setAttribute('readonly', '');
+      input.style.position = 'absolute';
+      input.style.left = '-9999px';
+      document.body.appendChild(input);
+      input.select();
+      input.setSelectionRange(0, key.length);
+      try {
+        document.execCommand('copy');
+        toast('Copied to clipboard', 'success');
+      } catch (_) {
+        toast('Copy failed. Select and copy the key manually.', 'error');
+      }
+      document.body.removeChild(input);
+    };
+    fallback();
   };
 
   const handleResendVerification = async () => {
@@ -382,12 +401,20 @@ export default function Profile() {
               Create keys to call &quot;create request&quot; or &quot;get history&quot; without browser login. Use the key in the <code style={{ fontSize: '13px' }}>Authorization: Bearer ip_xxx</code> header. Scopes: <code>request:create</code>, <code>history:read</code>.
             </p>
             {createdKeyValue && (
-              <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--success-bg)', borderRadius: '8px', wordBreak: 'break-all' }}>
-                <strong style={{ fontSize: '13px' }}>New key (copy now):</strong>
+              <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--success-bg)', borderRadius: '8px' }}>
+                <strong style={{ fontSize: '13px' }}>New key (copy now — not shown again):</strong>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-                  <code style={{ fontSize: '12px' }}>{createdKeyValue}</code>
+                  <input
+                    type="text"
+                    readOnly
+                    value={createdKeyValue}
+                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                    style={{ flex: '1', minWidth: 200, fontSize: '12px', fontFamily: 'monospace', padding: '8px 10px' }}
+                    aria-label="New API key"
+                  />
                   <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '13px' }} onClick={() => copyKey(createdKeyValue)}>Copy</button>
                 </div>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px', marginBottom: 0 }}>If Copy fails, select the key above and copy manually (Ctrl+C / Cmd+C).</p>
               </div>
             )}
             <form onSubmit={handleCreateAPIKey} style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end', marginBottom: '20px' }}>
