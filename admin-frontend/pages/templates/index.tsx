@@ -48,6 +48,7 @@ export default function TemplatesList() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setTemplates(Array.isArray(data.templates) ? data.templates : []);
+        setError('');
       } else {
         setError(data.error || 'Failed to load templates');
       }
