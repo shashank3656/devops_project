@@ -174,6 +174,24 @@ tbody tr td { color: var(--color-text); }
 .stat-card-value { font-size: 22px; font-weight: 700; color: var(--color-text); }
 .stat-card-link { font-size: var(--text-sm); margin-top: 8px; display: inline-block; color: var(--color-primary); }
 .stat-card-link:hover { color: #2dd4bf; }
+
+.devops-team-pill {
+  display: inline-block;
+  padding: 8px 14px;
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+.devops-team-pill:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
 code { background: var(--color-surface-elevated); color: var(--color-primary); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
 
 /* ---- DevOps layout: sidebar (220px) + main ---- */

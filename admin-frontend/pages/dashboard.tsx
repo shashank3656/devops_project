@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import AdminLayout from '../components/AdminLayout';
+import PieChart, { PieChartSegment } from '../components/PieChart';
 
 interface Stats {
   total_requests: number;
@@ -100,6 +101,36 @@ export default function AdminDashboard() {
 
   const trend = quickStats?.trend ?? [];
   const trendMax = Math.max(1, ...trend.map((d) => d.count));
+
+  const statusColors: Record<string, string> = {
+    completed: 'var(--color-success)',
+    rejected: 'var(--color-danger)',
+    in_progress: 'var(--color-primary)',
+    pending_approval: 'var(--color-warning)',
+    pending_devops_approval: '#0ea5e9',
+    draft: 'var(--color-text-muted)',
+  };
+  const cloudColors: Record<string, string> = {
+    aws: '#ff9900',
+    gcp: '#4285f4',
+    azure: '#0078d4',
+  };
+  const pieByStatus = useMemo((): PieChartSegment[] => {
+    if (!stats?.by_status) return [];
+    return Object.entries(stats.by_status).map(([status, value]) => ({
+      label: status.replace(/_/g, ' '),
+      value,
+      color: statusColors[status] || 'var(--color-text-muted)',
+    }));
+  }, [stats?.by_status]);
+  const pieByCloud = useMemo((): PieChartSegment[] => {
+    if (!stats?.by_cloud) return [];
+    return Object.entries(stats.by_cloud).map(([cloud, value]) => ({
+      label: cloud,
+      value,
+      color: cloudColors[cloud.toLowerCase()] || 'var(--color-primary)',
+    }));
+  }, [stats?.by_cloud]);
 
   return (
     <>
@@ -200,6 +231,22 @@ export default function AdminDashboard() {
                       <div className="dashboard-kpi-card__label">Status: {status.replace(/_/g, ' ')}</div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* Pie charts – requests by status & by cloud */}
+              {stats && (pieByStatus.length > 0 || pieByCloud.length > 0) && (
+                <div className="dashboard-pie-row">
+                  <PieChart
+                    title="Requests by status"
+                    segments={pieByStatus}
+                    emptyMessage="No request status data"
+                  />
+                  <PieChart
+                    title="Requests by cloud"
+                    segments={pieByCloud}
+                    emptyMessage="No cloud data"
+                  />
                 </div>
               )}
 
