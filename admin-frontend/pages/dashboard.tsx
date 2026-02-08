@@ -1,9 +1,8 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import AdminLayout from '../components/AdminLayout';
-import PieChart, { PieChartSegment } from '../components/PieChart';
 
 interface Stats {
   total_requests: number;
@@ -40,7 +39,6 @@ interface PRRequest {
   created_at: string;
 }
 
-const TREND_MAX_BAR_HEIGHT = 140;
 const STATUS_LABELS: Record<string, string> = {
   completed: 'Completed',
   rejected: 'Rejected',
@@ -108,8 +106,6 @@ export default function AdminDashboard() {
     }
   };
 
-  const trend = quickStats?.trend ?? [];
-  const trendMax = Math.max(1, ...trend.map((d) => d.count));
   const dateFilter = quickStats?.date_filter;
   const showPeriodSummary = period === 'custom' ? !!customFrom : true;
 
@@ -121,27 +117,6 @@ export default function AdminDashboard() {
     pending_devops_approval: '#0ea5e9',
     draft: 'var(--color-text-muted)',
   };
-  const cloudColors: Record<string, string> = {
-    aws: '#ff9900',
-    gcp: '#4285f4',
-    azure: '#0078d4',
-  };
-  const pieByStatus = useMemo((): PieChartSegment[] => {
-    if (!stats?.by_status) return [];
-    return Object.entries(stats.by_status).map(([status, value]) => ({
-      label: STATUS_LABELS[status] || status.replace(/_/g, ' '),
-      value,
-      color: statusColors[status] || 'var(--color-text-muted)',
-    }));
-  }, [stats?.by_status]);
-  const pieByCloud = useMemo((): PieChartSegment[] => {
-    if (!stats?.by_cloud) return [];
-    return Object.entries(stats.by_cloud).map(([cloud, value]) => ({
-      label: cloud,
-      value,
-      color: cloudColors[cloud.toLowerCase()] || 'var(--color-primary)',
-    }));
-  }, [stats?.by_cloud]);
 
   return (
     <>
@@ -213,37 +188,6 @@ export default function AdminDashboard() {
                     <div className="dashboard-kpi-card__value">{quickStats.unverified_users}</div>
                     <div className="dashboard-kpi-card__label">Unverified users</div>
                   </div>
-                </div>
-              )}
-
-              {/* Request trend (14 days) */}
-              <div className="dashboard-trend-card">
-                <h2 className="section-title">Request trend (last 14 days)</h2>
-                {trend.length === 0 ? (
-                  <p className="dashboard-pie-empty">No request data for the last 14 days.</p>
-                ) : (
-                  <>
-                    <div className="dashboard-trend-chart">
-                      {trend.map((d) => (
-                        <div key={d.date} className="dashboard-trend-bar-wrap" title={`${d.date}: ${d.count}`}>
-                          <div className="dashboard-trend-bar" style={{ height: `${Math.max(4, (d.count / trendMax) * TREND_MAX_BAR_HEIGHT)}px` }} />
-                          <span className="dashboard-trend-bar__label">{d.date.slice(5)}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="dashboard-trend-axis">
-                      <span>{trend[0]?.date ?? '—'}</span>
-                      <span>{trend[trend.length - 1]?.date ?? '—'}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Requests overview – pie charts only */}
-              {stats && (pieByStatus.length > 0 || pieByCloud.length > 0) && (
-                <div className="dashboard-pie-row">
-                  <PieChart title="Requests by status" segments={pieByStatus} emptyMessage="No status data" />
-                  <PieChart title="Requests by cloud" segments={pieByCloud} emptyMessage="No cloud data" />
                 </div>
               )}
 
