@@ -12,6 +12,8 @@ interface TeamOption {
   slug: string;
 }
 
+const VALID_CLOUDS = ['aws', 'gcp', 'azure'];
+
 export default function SelectService() {
   const router = useRouter();
   const { toast } = useToast();
@@ -31,6 +33,16 @@ export default function SelectService() {
   const [canCreatePR, setCanCreatePR] = useState<boolean | null>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+
+  // Pre-select cloud from URL (e.g. /select-service?cloud=aws)
+  useEffect(() => {
+    if (!router.isReady) return;
+    const q = router.query.cloud;
+    const cloudParam = typeof q === 'string' ? q.toLowerCase() : '';
+    if (VALID_CLOUDS.includes(cloudParam) && !cloud) {
+      setCloud(cloudParam);
+    }
+  }, [router.isReady, router.query.cloud, cloud]);
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem('isAuthenticated');
