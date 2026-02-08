@@ -520,6 +520,8 @@ func main() {
 	http.HandleFunc("/api/devops/pending-approvals", devopsPendingApprovalsHandler)
 	http.HandleFunc("/api/devops/requests", devopsRequestsListHandler)
 	http.HandleFunc("/api/devops/requests/", devopsRequestActionHandler)
+	http.HandleFunc("/api/devops/templates", devopsTemplatesRouter)
+	http.HandleFunc("/api/devops/templates/", devopsTemplatesRouter)
 	http.HandleFunc("/api/webhooks/github", githubWebhookHandler)
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/ready", readyHandler)

@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { DEVOPS_SITE_NAME } from '../lib/site';
-import { IconTickets, IconWorkload, IconLogout, IconChevronLeft, IconChevronRight, IconSun, IconMoon, IconUser, IconUsers } from './Icons';
+import { IconTickets, IconWorkload, IconLogout, IconChevronLeft, IconChevronRight, IconSun, IconMoon, IconUser, IconUsers, IconTemplates } from './Icons';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -125,6 +125,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           {navLink('/dashboard', 'My tickets', <IconTickets />)}
           {isManager && navLink('/workload', 'Workload', <IconWorkload />, pendingCount)}
           {isManager && navLink('/tickets', 'All tickets', <IconTickets />)}
+          {isManager && navLink('/templates', 'Templates', <IconTemplates />)}
           {isManager && navLink('/team', 'Team', <IconUsers />)}
           {navLink('/profile', 'Profile', <IconUser />)}
         </nav>
