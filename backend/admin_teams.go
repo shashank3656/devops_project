@@ -117,11 +117,7 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 			return strings.Join(ss, ",")
 		}
 		w.Write([]byte(csvLine("id", "username", "email", "role", "verified", "user_type") + "\n"))
-		for _, u := range users {
-			usr, _ := u.(map[string]interface{})
-			if usr == nil {
-				continue
-			}
+		for _, usr := range users {
 			username, _ := usr["username"].(string)
 			email, _ := usr["email"].(string)
 			role, _ := usr["role"].(string)
