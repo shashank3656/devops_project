@@ -150,8 +150,11 @@ export default function WebhooksPage() {
           </p>
 
           {error && (
-            <div className="alert alert-error" role="alert" style={{ marginBottom: 16 }}>
-              {error}
+            <div className="alert alert-error" role="alert" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+              <span>{error}</span>
+              <button type="button" className="btn btn-secondary" style={{ padding: '8px 16px' }} onClick={() => { setError(''); fetchWebhooks(); }}>
+                Retry
+              </button>
             </div>
           )}
 
@@ -205,9 +208,9 @@ export default function WebhooksPage() {
             <h2 className="card-title">Webhooks</h2>
             {loading ? (
               <p className="loading-text">Loading…</p>
-            ) : webhooks.length === 0 ? (
+            ) : !error && webhooks.length === 0 ? (
               <p style={{ color: 'var(--color-text-muted)' }}>No webhooks configured.</p>
-            ) : (
+            ) : !error ? (
               <div className="table-wrap">
                 <table>
                   <thead>
@@ -260,7 +263,7 @@ export default function WebhooksPage() {
                   </tbody>
                 </table>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </AdminLayout>
