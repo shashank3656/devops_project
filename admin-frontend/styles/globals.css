@@ -355,8 +355,8 @@ td code { font-size: var(--text-sm); background: var(--color-primary-light); col
   background: var(--color-bg);
 }
 .admin-sidebar {
-  width: 280px;
-  min-width: 280px;
+  width: 240px;
+  min-width: 240px;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
   display: flex;
