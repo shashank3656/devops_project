@@ -108,22 +108,15 @@ export default function CreateInfrastructure() {
                   }}
                 >
                   <div style={{
-                    width: '56px',
-                    height: '56px',
-                    borderRadius: '12px',
-                    background: `${c.color}12`,
+                    height: '48px',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
                     marginBottom: '16px',
-                    padding: '8px',
                   }}>
                     <img
-                      src={`/${c.id}-logo.svg`}
+                      src={`/${c.id}-logo.png`}
                       alt={c.short}
-                      width={40}
-                      height={40}
-                      style={{ objectFit: 'contain' }}
+                      style={{ height: 48, width: 'auto', objectFit: 'contain' }}
                     />
                   </div>
                   <h3 style={{

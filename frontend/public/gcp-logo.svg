@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 28" fill="none" aria-hidden="true">
-  <!-- GCP cloud: rounded shape in 4 segments (blue, red, yellow, green) -->
-  <path fill="#4285F4" d="M24 10c2.2 0 4 1.8 4 4v2h2c1.1 0 2 .9 2 2s-.9 2-2 2h-8v-2h6c0-1.1-.9-2-2-2v-4c0-1.1.9-2 2-2z"/>
-  <path fill="#EA4335" d="M16 10v4H8c-1.1 0-2-.9-2-2s.9-2 2-2h8v-2h-4c-1.1 0-2 .9-2 2z"/>
-  <path fill="#FBBC05" d="M16 14h8v6c0 1.1-.9 2-2 2h-4v-6h-2v-2z"/>
-  <path fill="#34A853" d="M12 20H8c-1.1 0-2-.9-2-2v-2c0-1.1.9-2 2-2h4v6zm16 0v-6h4c1.1 0 2 .9 2 2v2c0 1.1-.9 2-2 2h-4z"/>
-</svg>
