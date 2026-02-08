@@ -135,6 +135,9 @@ type OutboundWebhook struct {
 func GetOutboundWebhooks() ([]OutboundWebhook, error) {
 	rows, err := DB.Query(`SELECT id, url, COALESCE(secret,''), events, enabled, created_at, updated_at FROM outbound_webhooks ORDER BY id`)
 	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return []OutboundWebhook{}, nil
+		}
 		return nil, err
 	}
 	defer rows.Close()
@@ -2325,6 +2328,9 @@ func ListRequestTemplates() ([]RequestTemplate, error) {
 	}
 	rows, err := DB.Query(`SELECT id, COALESCE(name,''), COALESCE(description,''), cloud, env, COALESCE(service,''), COALESCE(config,'{}'), created_by, created_at FROM request_templates ORDER BY name`)
 	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return []RequestTemplate{}, nil
+		}
 		return nil, err
 	}
 	defer rows.Close()

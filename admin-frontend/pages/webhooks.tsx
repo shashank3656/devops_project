@@ -35,8 +35,12 @@ export default function WebhooksPage() {
     try {
       const res = await fetch(`${apiUrl}/api/admin/webhooks`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.webhooks) setWebhooks(data.webhooks);
-      else setError(data.error || 'Failed to load webhooks');
+      if (res.ok) {
+        setWebhooks(Array.isArray(data.webhooks) ? data.webhooks : []);
+        setError('');
+      } else {
+        setError(data.error || 'Failed to load webhooks');
+      }
     } catch (_) {
       setError('Failed to load webhooks');
     } finally {
