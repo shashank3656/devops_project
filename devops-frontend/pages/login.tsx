@@ -47,6 +47,10 @@ export default function DevOpsLogin() {
       }
       localStorage.setItem(DEVOPS_TOKEN_KEY, loginData.token);
       localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(meData.user || {}));
+      if (!meData.user?.verified) {
+        router.push('/verify-required');
+        return;
+      }
       router.push('/dashboard');
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';

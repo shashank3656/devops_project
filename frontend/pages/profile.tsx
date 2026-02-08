@@ -258,13 +258,16 @@ export default function Profile() {
         <title>Profile - Infrastructure Portal</title>
       </Head>
       <div style={{ minHeight: '100vh', padding: '40px 20px' }}>
-        <div className="container">
-          <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: '24px' }}>
+        <div className="container" style={{ maxWidth: 720 }}>
+          <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: '8px' }}>
             Profile
           </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 15, marginBottom: '28px' }}>
+            Manage your account, password, and API keys.
+          </p>
 
-          <div className="card" style={{ maxWidth: '500px', marginBottom: '32px' }}>
-            <h2 style={{ fontSize: '18px', marginBottom: '16px', color: 'var(--text-primary)' }}>Account</h2>
+          <div className="card" style={{ marginBottom: '24px' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '20px', color: 'var(--text-primary)', paddingBottom: 12, borderBottom: '1px solid var(--border-color)' }}>Account</h2>
             {!loading && userFetched && !user ? (
               <div style={{ padding: '24px', textAlign: 'center' }}>
                 <p style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
@@ -283,17 +286,17 @@ export default function Profile() {
                 </button>
               </div>
             ) : user ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '20px' }}>
                 <div>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Username</span>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{user.username}</div>
+                  <span style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 4 }}>Username</span>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 16 }}>{user.username}</div>
                 </div>
                 <div>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Email</span>
-                  <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{user.email}</div>
+                  <span style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 4 }}>Email</span>
+                  <div style={{ color: 'var(--text-primary)' }}>{user.email}</div>
                 </div>
                 <div>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Status</span>
+                  <span style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 4 }}>Status</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <span style={{
                       padding: '4px 10px',
@@ -334,7 +337,7 @@ export default function Profile() {
                   </div>
                 )}
                 <div>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Member since</span>
+                  <span style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 4 }}>Member since</span>
                   <div style={{ color: 'var(--text-primary)' }}>
                     {new Date(user.created_at).toLocaleDateString()}
                   </div>
@@ -344,8 +347,8 @@ export default function Profile() {
           </div>
 
           {user && (
-          <div className="card" style={{ maxWidth: '500px' }}>
-            <h2 style={{ fontSize: '18px', marginBottom: '16px', color: 'var(--text-primary)' }}>
+          <div className="card" style={{ marginBottom: '24px' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', color: 'var(--text-primary)', paddingBottom: 12, borderBottom: '1px solid var(--border-color)' }}>
               Change password
             </h2>
             <form onSubmit={handleChangePassword}>
@@ -395,8 +398,8 @@ export default function Profile() {
           )}
 
           {user && (
-          <div className="card" style={{ maxWidth: '640px', marginTop: '24px' }}>
-            <h2 style={{ fontSize: '18px', marginBottom: '8px', color: 'var(--text-primary)' }}>API keys</h2>
+          <div className="card">
+            <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px', color: 'var(--text-primary)', paddingBottom: 12, borderBottom: '1px solid var(--border-color)' }}>API keys</h2>
             <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
               Create keys to call &quot;create request&quot; or &quot;get history&quot; without browser login. Use the key in the <code style={{ fontSize: '13px' }}>Authorization: Bearer ip_xxx</code> header. Scopes: <code>request:create</code>, <code>history:read</code>.
             </p>
