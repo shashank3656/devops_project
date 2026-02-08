@@ -1748,3 +1748,144 @@ func GetTeamsForUserWithDetails(userID int) ([]Team, error) {
 	}
 	return out, nil
 }
+
+// GetPortalTeamsManagedByUser returns portal teams that the user can manage: teams where they have role=manager, or (is_portal_manager and they are a member).
+func GetPortalTeamsManagedByUser(userID int) ([]Team, error) {
+	u, err := GetUserByID(userID)
+	if err != nil || u == nil {
+		return nil, err
+	}
+	seen := make(map[int]bool)
+	var out []Team
+	// Teams where I have role=manager
+	rows, err := DB.Query(
+		`SELECT t.id, t.name, t.slug, COALESCE(t.team_type,'portal'), t.created_at, t.created_by
+		 FROM teams t INNER JOIN team_members m ON m.team_id = t.id AND m.user_id = $1 AND m.role = 'manager'
+		 WHERE COALESCE(t.team_type,'portal') = 'portal' ORDER BY t.name`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var t Team
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.CreatedAt, &t.CreatedBy); err != nil {
+			continue
+		}
+		if !seen[t.ID] {
+			seen[t.ID] = true
+			out = append(out, t)
+		}
+	}
+	rows.Close()
+	if u.IsPortalManager {
+		// Also include any portal team I'm a member of (any role)
+		rows2, err2 := DB.Query(
+			`SELECT t.id, t.name, t.slug, COALESCE(t.team_type,'portal'), t.created_at, t.created_by
+			 FROM teams t INNER JOIN team_members m ON m.team_id = t.id AND m.user_id = $1
+			 WHERE COALESCE(t.team_type,'portal') = 'portal' ORDER BY t.name`,
+			userID,
+		)
+		if err2 == nil {
+			for rows2.Next() {
+				var t Team
+				if err := rows2.Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.CreatedAt, &t.CreatedBy); err != nil {
+					continue
+				}
+				if !seen[t.ID] {
+					seen[t.ID] = true
+					out = append(out, t)
+				}
+			}
+			rows2.Close()
+		}
+	}
+	return out, nil
+}
+
+// CanUserManagePortalTeam returns true if the user can add/remove members in this portal team (role=manager in team, or is_portal_manager and in team).
+func CanUserManagePortalTeam(userID, teamID int) bool {
+	team, err := GetTeamByID(teamID)
+	if err != nil || team == nil || team.TeamType != "portal" {
+		return false
+	}
+	var hasManagerRole bool
+	_ = DB.QueryRow(`SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2 AND role = 'manager'`, teamID, userID).Scan(&hasManagerRole)
+	if hasManagerRole {
+		return true
+	}
+	u, _ := GetUserByID(userID)
+	if u != nil && u.IsPortalManager {
+		var inTeam bool
+		_ = DB.QueryRow(`SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2`, teamID, userID).Scan(&inTeam)
+		return inTeam
+	}
+	return false
+}
+
+// GetDevopsTeamsForUser returns devops teams the user belongs to (for DevOps portal).
+func GetDevopsTeamsForUser(userID int) ([]Team, error) {
+	rows, err := DB.Query(
+		`SELECT t.id, t.name, t.slug, COALESCE(t.team_type,'portal'), t.created_at, t.created_by
+		 FROM teams t INNER JOIN team_members m ON m.team_id = t.id AND m.user_id = $1
+		 WHERE COALESCE(t.team_type,'portal') = 'devops' ORDER BY t.name`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Team
+	for rows.Next() {
+		var t Team
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.CreatedAt, &t.CreatedBy); err != nil {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out, nil
+}
+
+// CanUserManageDevopsTeam returns true if the user is a DevOps manager and is a member of this devops team.
+func CanUserManageDevopsTeam(userID, teamID int) bool {
+	team, err := GetTeamByID(teamID)
+	if err != nil || team == nil || team.TeamType != "devops" {
+		return false
+	}
+	prof, err := GetDevopsProfile(userID)
+	if err != nil || prof == nil || !prof.IsManager {
+		return false
+	}
+	var inTeam bool
+	_ = DB.QueryRow(`SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2`, teamID, userID).Scan(&inTeam)
+	return inTeam
+}
+
+// GetUserByEmailOrUsername returns a user by email or username (for add-member by email/username).
+func GetUserByEmailOrUsername(emailOrUsername string) (*User, error) {
+	emailOrUsername = strings.TrimSpace(emailOrUsername)
+	if emailOrUsername == "" {
+		return nil, fmt.Errorf("email or username required")
+	}
+	var u User
+	var verified sql.NullBool
+	var role, userType sql.NullString
+	var managerID sql.NullInt64
+	var isPortalManager sql.NullBool
+	err := DB.QueryRow(
+		`SELECT id, username, email, COALESCE(verified, false), COALESCE(role, 'viewer'), COALESCE(user_type, 'portal_user'), manager_id, COALESCE(is_portal_manager, false), created_at FROM users WHERE email = $1 OR username = $1`,
+		emailOrUsername, emailOrUsername,
+	).Scan(&u.ID, &u.Username, &u.Email, &verified, &role, &userType, &managerID, &isPortalManager, &u.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	u.Verified = verified.Bool
+	u.Role = role.String
+	u.UserType = userType.String
+	if managerID.Valid && managerID.Int64 > 0 {
+		m := int(managerID.Int64)
+		u.ManagerID = &m
+	}
+	u.IsPortalManager = isPortalManager.Bool
+	return &u, nil
+}

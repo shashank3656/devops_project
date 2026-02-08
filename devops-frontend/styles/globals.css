@@ -113,21 +113,68 @@ tbody tr:hover { background: #f8fafc; }
   font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
   color: #fff; background: var(--color-danger); border-radius: 999px;
 }
+.devops-sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--sidebar-border);
+}
+.devops-sidebar-toggle {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sidebar-hover);
+  border: none;
+  border-radius: var(--radius);
+  color: var(--sidebar-text-muted);
+  cursor: pointer;
+  margin-left: auto;
+}
+.devops-sidebar-toggle:hover { color: var(--sidebar-text); background: var(--sidebar-border); }
 .devops-sidebar-footer { padding: var(--space-4) var(--space-3); border-top: 1px solid var(--sidebar-border); display: flex; flex-direction: column; gap: var(--space-2); }
+.devops-sidebar-footer .btn-secondary { color: var(--sidebar-text-muted); background: transparent; border-color: var(--sidebar-border); }
+.devops-sidebar-footer .btn-secondary:hover { color: var(--sidebar-text); background: var(--sidebar-hover); }
 .devops-sidebar-user { font-size: var(--text-sm); color: var(--sidebar-text-muted); }
 .devops-sidebar-logout { width: 100%; justify-content: flex-start; color: var(--sidebar-text-muted); }
 .devops-sidebar-logout:hover { color: var(--sidebar-text); background: var(--sidebar-hover); }
-.devops-main-wrap { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.devops-main-wrap { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: var(--color-bg); }
 .devops-topbar {
+  flex-shrink: 0;
   height: 56px;
   padding: 0 var(--space-6);
   display: flex; align-items: center; justify-content: flex-end; gap: var(--space-4);
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
 }
 .devops-topbar-spacer { flex: 1; }
 .devops-topbar-actions { display: flex; align-items: center; gap: var(--space-3); }
 .devops-topbar-user { font-size: var(--text-sm); color: var(--color-text-muted); }
-.devops-topbar-logout { color: var(--color-text-muted); }
+.devops-topbar-logout { display: flex; align-items: center; gap: var(--space-2); padding: 8px 16px; color: var(--color-text-muted); }
 .devops-topbar-logout:hover { color: var(--color-text); background: var(--color-bg); }
 .devops-main { flex: 1; padding: var(--space-6); }
+
+/* Collapsed sidebar – same as admin */
+.devops-sidebar-collapsed { width: 72px; min-width: 72px; padding-left: 0; padding-right: 0; }
+.devops-sidebar-collapsed .devops-sidebar-header { padding: 0 var(--space-2) var(--space-4); align-items: center; justify-content: center; gap: var(--space-2); }
+.devops-sidebar-collapsed .devops-sidebar-brand { justify-content: center; width: auto; }
+.devops-sidebar-collapsed .devops-sidebar-brand-text,
+.devops-sidebar-collapsed .devops-sidebar-label { display: none; }
+.devops-sidebar-collapsed .devops-sidebar-nav a { justify-content: center; padding: var(--space-3) var(--space-2); }
+.devops-sidebar-collapsed .devops-sidebar-footer { padding: var(--space-4) var(--space-2); }
+.devops-sidebar-collapsed .devops-sidebar-footer .btn-secondary { justify-content: center; }
+.devops-sidebar-collapsed .devops-sidebar-toggle { margin-left: 0; }
+
+/* Dark theme – align with admin */
+[data-theme="dark"] { --color-bg: #0f172a; --color-surface: #1e293b; --color-border: #334155; --color-text: #f1f5f9; --color-text-muted: #94a3b8; }
+[data-theme="dark"] body { background: var(--color-bg); }
+[data-theme="dark"] .card { background: var(--color-surface); border-color: var(--color-border); }
+[data-theme="dark"] .devops-main { background: var(--color-bg); }
+[data-theme="dark"] .devops-topbar { background: var(--color-surface); border-color: var(--color-border); }
+[data-theme="dark"] .input { background: #1e293b; border-color: #334155; color: var(--color-text); }
+[data-theme="dark"] th { background: #334155; }

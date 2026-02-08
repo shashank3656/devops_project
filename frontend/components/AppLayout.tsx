@@ -15,6 +15,7 @@ import {
   IconBell,
   IconChevronLeft,
   IconChevronRight,
+  IconUsers,
 } from './Icons';
 
 const SIDEBAR_WIDTH = 240;
@@ -24,6 +25,10 @@ const HISTORY_LAST_SEEN_KEY = 'user_history_last_seen';
 const NOTIFY_POLL_MS = 30000;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
+export function getApiUrl(): string {
+  return apiUrl;
+}
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -32,6 +37,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [updatedRequestsCount, setUpdatedRequestsCount] = useState(0);
   const [pendingManagerApprovalCount, setPendingManagerApprovalCount] = useState(0);
+  const [hasManagedTeams, setHasManagedTeams] = useState(false);
 
   useEffect(() => {
     const stored = getStoredTheme();
@@ -68,6 +74,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       })
       .catch(() => setTeamCheck('forbidden'));
   }, []);
+
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token || token === 'undefined' || teamCheck !== 'ok') return;
+    fetch(`${apiUrl}/api/me/managed-teams`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        const teams = data?.teams || [];
+        setHasManagedTeams(teams.length > 0);
+      })
+      .catch(() => {});
+  }, [teamCheck]);
 
   // When user visits History, mark as seen so notification badge can clear
   useEffect(() => {
@@ -252,6 +270,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </>
             )}
           </Link>
+          {hasManagedTeams && navItem('/my-teams', 'My teams', <IconUsers />)}
           {navItem('/profile', 'Profile', <IconUser />)}
         </nav>
         <div className="app-sidebar-footer">
