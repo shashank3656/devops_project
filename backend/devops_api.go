@@ -89,7 +89,7 @@ func devopsMeHandler(w http.ResponseWriter, r *http.Request) {
 	prof, _ := GetDevopsProfile(userID)
 	resp := map[string]interface{}{
 		"id": user.ID, "username": user.Username, "email": user.Email,
-		"user_type": user.UserType, "verified": user.Verified,
+		"user_type": user.UserType,
 	}
 	if prof != nil {
 		resp["devops_profile"] = map[string]interface{}{

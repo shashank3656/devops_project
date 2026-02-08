@@ -61,12 +61,6 @@ export default function Login() {
       localStorage.setItem('user', JSON.stringify(data.user || {}));
       localStorage.setItem('isAuthenticated', 'true');
 
-      if (!data.user?.verified) {
-        toast('Please verify your email to access the portal.', 'success');
-        router.push('/verify-required');
-        return;
-      }
-
       const teamsRes = await fetch(`${apiUrl}/api/me/teams`, {
         headers: { Authorization: `Bearer ${data.token}` },
       });
