@@ -90,7 +90,7 @@ export default function DevOpsTemplatesList() {
     return acc;
   }, {});
   const cloudOrder = ['aws', 'gcp', 'azure'];
-  const clouds = [...new Set([...cloudOrder.filter((c) => byCloud[c]?.length), ...Object.keys(byCloud).filter((c) => !cloudOrder.includes(c))])];
+  const clouds = Array.from(new Set([...cloudOrder.filter((c) => byCloud[c]?.length), ...Object.keys(byCloud).filter((c) => !cloudOrder.includes(c))]));
 
   return (
     <>

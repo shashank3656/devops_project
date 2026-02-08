@@ -122,7 +122,7 @@ export default function TemplatesList() {
                 return acc;
               }, {});
               const cloudOrder = ['aws', 'gcp', 'azure'];
-              const clouds = [...new Set([...cloudOrder.filter((c) => byCloud[c]?.length), ...Object.keys(byCloud).filter((c) => !cloudOrder.includes(c))])];
+              const clouds = Array.from(new Set([...cloudOrder.filter((c) => byCloud[c]?.length), ...Object.keys(byCloud).filter((c) => !cloudOrder.includes(c))]));
               return (
                 <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                   {clouds.map((cloudKey) => (
