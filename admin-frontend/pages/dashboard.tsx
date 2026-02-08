@@ -39,6 +39,8 @@ interface PRRequest {
   created_at: string;
 }
 
+const TREND_MAX_BAR_HEIGHT = 140;
+
 export default function AdminDashboard() {
   const router = useRouter();
   const [stats, setStats] = useState<Stats | null>(null);
@@ -96,6 +98,9 @@ export default function AdminDashboard() {
     }
   };
 
+  const trend = quickStats?.trend ?? [];
+  const trendMax = Math.max(1, ...trend.map((d) => d.count));
+
   return (
     <>
       <Head>
@@ -120,7 +125,118 @@ export default function AdminDashboard() {
             <p className="loading-text">Loading…</p>
           ) : (
             <>
-              {/* Date-wise filter and ticket status breakdown */}
+              {/* Top row: 5 KPI cards – graphical, user-visible */}
+              {quickStats && (
+                <div className="dashboard-kpi-grid">
+                  <div className="dashboard-kpi-card dashboard-kpi-card--accent">
+                    <div className="dashboard-kpi-card__value">{quickStats.total_users}</div>
+                    <div className="dashboard-kpi-card__label">Total users</div>
+                  </div>
+                  <div className="dashboard-kpi-card">
+                    <div className="dashboard-kpi-card__value">{quickStats.total_teams}</div>
+                    <div className="dashboard-kpi-card__label">Teams</div>
+                  </div>
+                  <div className={`dashboard-kpi-card ${quickStats.pending_approval === 0 ? 'dashboard-kpi-card--warning' : ''}`}>
+                    <div className="dashboard-kpi-card__value">{quickStats.pending_approval}</div>
+                    <div className="dashboard-kpi-card__label">Pending approval</div>
+                  </div>
+                  <div className="dashboard-kpi-card">
+                    <div className="dashboard-kpi-card__value">{quickStats.requests_this_week}</div>
+                    <div className="dashboard-kpi-card__label">Requests this week</div>
+                  </div>
+                  <div className={`dashboard-kpi-card ${quickStats.unverified_users === 0 ? 'dashboard-kpi-card--warning' : ''}`}>
+                    <div className="dashboard-kpi-card__value">{quickStats.unverified_users}</div>
+                    <div className="dashboard-kpi-card__label">Unverified users</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Request trend – last 14 days (bar chart) */}
+              <div className="dashboard-trend-card">
+                <h2 className="section-title">Request trend (last 14 days)</h2>
+                {trend.length === 0 ? (
+                  <div className="dashboard-trend-chart" style={{ alignItems: 'center', justifyContent: 'center' }}>
+                    <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 14 }}>No request data for the last 14 days.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="dashboard-trend-chart">
+                      {trend.map((d) => (
+                        <div key={d.date} className="dashboard-trend-bar-wrap" title={`${d.date}: ${d.count} request(s)`}>
+                          <div
+                            className="dashboard-trend-bar"
+                            style={{
+                              height: `${Math.max(4, (d.count / trendMax) * TREND_MAX_BAR_HEIGHT)}px`,
+                            }}
+                          />
+                          <span className="dashboard-trend-bar__label">{d.date.slice(5)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="dashboard-trend-axis">
+                      <span>{trend[0]?.date ?? '—'}</span>
+                      <span>{trend[trend.length - 1]?.date ?? '—'}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Second row: Total PR requests + cloud + status */}
+              {stats && (
+                <div className="dashboard-stats-row">
+                  <div className="dashboard-kpi-card dashboard-kpi-card--accent">
+                    <div className="dashboard-kpi-card__value">{stats.total_requests}</div>
+                    <div className="dashboard-kpi-card__label">Total PR requests</div>
+                  </div>
+                  {Object.entries(stats.by_cloud || {}).map(([cloud, count]) => (
+                    <div key={cloud} className="dashboard-kpi-card">
+                      <div className="dashboard-kpi-card__value">{count}</div>
+                      <div className="dashboard-kpi-card__label">{cloud}</div>
+                    </div>
+                  ))}
+                  {Object.entries(stats.by_status || {}).map(([status, count]) => (
+                    <div key={status} className="dashboard-kpi-card">
+                      <div className="dashboard-kpi-card__value">{count}</div>
+                      <div className="dashboard-kpi-card__label">Status: {status.replace(/_/g, ' ')}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Cloud & status distribution – visual chips */}
+              {stats && (Object.keys(stats.by_cloud || {}).length > 0 || Object.keys(stats.by_status || {}).length > 0) && (
+                <div className="card" style={{ marginBottom: 24 }}>
+                  <h2 className="section-title">Distribution</h2>
+                  {Object.keys(stats.by_cloud || {}).length > 0 && (
+                    <div style={{ marginBottom: 12 }}>
+                      <span style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 600 }}>By cloud</span>
+                      <div className="dashboard-distribution">
+                        {Object.entries(stats.by_cloud || {}).map(([cloud, count]) => (
+                          <div key={cloud} className="dashboard-distribution__item">
+                            <span className="dashboard-distribution__value">{count}</span>
+                            <span className="dashboard-distribution__label">{cloud}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {Object.keys(stats.by_status || {}).length > 0 && (
+                    <div>
+                      <span style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 600 }}>By status</span>
+                      <div className="dashboard-distribution">
+                        {Object.entries(stats.by_status || {}).map(([status, count]) => (
+                          <div key={status} className="dashboard-distribution__item">
+                            <span className="dashboard-distribution__value">{count}</span>
+                            <span className="dashboard-distribution__label">{status.replace(/_/g, ' ')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Date filter & breakdown */}
               <div className="card" style={{ marginBottom: 24 }}>
                 <h2 className="section-title">Requests by date</h2>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -142,25 +258,13 @@ export default function AdminDashboard() {
                     <>
                       <div>
                         <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>From</label>
-                        <input
-                          type="date"
-                          value={customFrom}
-                          onChange={(e) => setCustomFrom(e.target.value)}
-                          className="input"
-                        />
+                        <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="input" />
                       </div>
                       <div>
                         <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>To</label>
-                        <input
-                          type="date"
-                          value={customTo}
-                          onChange={(e) => setCustomTo(e.target.value)}
-                          className="input"
-                        />
+                        <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="input" />
                       </div>
-                      {!customFrom && (
-                        <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Select from date</span>
-                      )}
+                      {!customFrom && <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Select from date</span>}
                     </>
                   )}
                 </div>
@@ -171,10 +275,10 @@ export default function AdminDashboard() {
                   <div style={{ padding: 16, background: 'var(--color-bg)', borderRadius: 8 }}>
                     <p style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600 }}>
                       {quickStats.date_filter.from === quickStats.date_filter.to
-                        ? `${quickStats.date_filter.from}: ${quickStats.date_filter.total} request(s) came`
-                        : `${quickStats.date_filter.from} to ${quickStats.date_filter.to}: ${quickStats.date_filter.total} request(s) came`}
+                        ? `${quickStats.date_filter.from}: ${quickStats.date_filter.total} request(s)`
+                        : `${quickStats.date_filter.from} to ${quickStats.date_filter.to}: ${quickStats.date_filter.total} request(s)`}
                     </p>
-                    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                    <div className="dashboard-distribution">
                       {[
                         { key: 'completed', label: 'Completed', color: 'var(--color-success)' },
                         { key: 'rejected', label: 'Rejected', color: 'var(--color-danger)' },
@@ -184,37 +288,17 @@ export default function AdminDashboard() {
                       ].map(({ key, label, color }) => {
                         const count = quickStats.date_filter!.by_status[key] ?? 0;
                         return (
-                          <span
-                            key={key}
-                            style={{
-                              padding: '6px 12px',
-                              borderRadius: 6,
-                              background: 'white',
-                              border: '1px solid var(--color-border)',
-                              fontSize: 14,
-                              fontWeight: 600,
-                              color: count > 0 ? color : 'var(--color-text-muted)',
-                            }}
-                          >
-                            {count} {label}
-                          </span>
+                          <div key={key} className="dashboard-distribution__item" style={{ borderLeft: `3px solid ${count > 0 ? color : 'var(--color-border)' }` }}>
+                            <span className="dashboard-distribution__value" style={count > 0 ? { color } : {}}>{count}</span>
+                            <span className="dashboard-distribution__label">{label}</span>
+                          </div>
                         );
                       })}
                       {Object.entries(quickStats.date_filter!.by_status || {}).filter(([k]) => !['completed', 'rejected', 'in_progress', 'pending_approval', 'draft'].includes(k)).map(([key, count]) => (
-                        <span
-                          key={key}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: 6,
-                            background: 'white',
-                            border: '1px solid var(--color-border)',
-                            fontSize: 14,
-                            fontWeight: 600,
-                            color: 'var(--color-text-muted)',
-                          }}
-                        >
-                          {count} {key}
-                        </span>
+                        <div key={key} className="dashboard-distribution__item">
+                          <span className="dashboard-distribution__value">{count}</span>
+                          <span className="dashboard-distribution__label">{key.replace(/_/g, ' ')}</span>
+                        </div>
                       ))}
                     </div>
                     {quickStats.date_filter.total === 0 && (
@@ -224,61 +308,12 @@ export default function AdminDashboard() {
                 )}
               </div>
 
-              {quickStats && (
-                <div className="stats-grid" style={{ marginBottom: 24 }}>
-                  <div className="stat-card stat-card-primary">
-                    <div className="stat-card-value">{quickStats.total_users}</div>
-                    <div className="stat-card-label">Total users</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-card-value">{quickStats.total_teams}</div>
-                    <div className="stat-card-label">Teams</div>
-                  </div>
-                  <div className="stat-card stat-card-warning">
-                    <div className="stat-card-value">{quickStats.pending_approval}</div>
-                    <div className="stat-card-label">Pending approval</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-card-value">{quickStats.requests_this_week}</div>
-                    <div className="stat-card-label">Requests this week</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-card-value">{quickStats.unverified_users}</div>
-                    <div className="stat-card-label">Unverified users</div>
-                  </div>
-                </div>
-              )}
               {quickStats?.sla && quickStats.sla.completed_count > 0 && (
                 <div className="card" style={{ marginBottom: 24 }}>
                   <h2 className="section-title">SLA metrics</h2>
                   <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                    Avg time to complete: <strong>{quickStats.sla.avg_hours.toFixed(1)}h</strong> ({quickStats.sla.completed_count} completed)
+                    Avg time to complete: <strong style={{ color: 'var(--color-text)' }}>{quickStats.sla.avg_hours.toFixed(1)}h</strong> ({quickStats.sla.completed_count} completed)
                   </p>
-                </div>
-              )}
-
-              {quickStats?.trend && quickStats.trend.length > 0 && (
-                <div className="card" style={{ marginBottom: 24 }}>
-                  <h2 className="section-title">Request trend (last 14 days)</h2>
-                  <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', minHeight: 80, flexWrap: 'wrap' }}>
-                    {quickStats.trend.map((d) => (
-                      <div
-                        key={d.date}
-                        title={`${d.date}: ${d.count}`}
-                        style={{
-                          flex: '1 1 24px',
-                          minWidth: 20,
-                          height: Math.max(4, (d.count / Math.max(1, ...(quickStats.trend ?? []).map((x) => x.count))) * 60),
-                          background: 'var(--color-primary)',
-                          borderRadius: 4,
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 11, color: 'var(--color-text-muted)' }}>
-                    <span>{quickStats.trend[0]?.date}</span>
-                    <span>{quickStats.trend[quickStats.trend.length - 1]?.date}</span>
-                  </div>
                 </div>
               )}
 
@@ -311,27 +346,6 @@ export default function AdminDashboard() {
                       </tbody>
                     </table>
                   </div>
-                </div>
-              )}
-
-              {stats && (
-                <div className="stats-grid">
-                  <div className="stat-card stat-card-primary">
-                    <div className="stat-card-value">{stats.total_requests}</div>
-                    <div className="stat-card-label">Total PR requests</div>
-                  </div>
-                  {Object.entries(stats.by_cloud || {}).map(([cloud, count]) => (
-                    <div key={cloud} className="stat-card">
-                      <div className="stat-card-value">{count}</div>
-                      <div className="stat-card-label">{cloud}</div>
-                    </div>
-                  ))}
-                  {Object.entries(stats.by_status || {}).map(([status, count]) => (
-                    <div key={status} className="stat-card">
-                      <div className="stat-card-value">{count}</div>
-                      <div className="stat-card-label">Status: {status}</div>
-                    </div>
-                  ))}
                 </div>
               )}
 
@@ -372,24 +386,22 @@ export default function AdminDashboard() {
                                   fontSize: 12,
                                   fontWeight: 600,
                                   background: req.status === 'pending_approval' ? 'var(--color-warning-bg)' :
-                                             req.status === 'in_progress' ? 'var(--color-primary-light)' :
-                                             req.status === 'completed' ? 'var(--color-success-bg)' :
-                                             req.status === 'rejected' ? 'var(--color-danger-bg)' : '#f1f5f9',
+                                    req.status === 'in_progress' ? 'var(--color-primary-light)' :
+                                    req.status === 'completed' ? 'var(--color-success-bg)' :
+                                    req.status === 'rejected' ? 'var(--color-danger-bg)' : 'var(--color-bg)',
                                   color: req.status === 'pending_approval' ? 'var(--color-warning)' :
-                                         req.status === 'in_progress' ? 'var(--color-primary)' :
-                                         req.status === 'completed' ? 'var(--color-success)' :
-                                         req.status === 'rejected' ? 'var(--color-danger)' : 'var(--color-text-muted)'
+                                    req.status === 'in_progress' ? 'var(--color-primary)' :
+                                    req.status === 'completed' ? 'var(--color-success)' :
+                                    req.status === 'rejected' ? 'var(--color-danger)' : 'var(--color-text-muted)',
                                 }}
                               >
                                 {req.status === 'pending_approval' ? 'Pending approval' :
-                                 req.status === 'in_progress' ? 'In progress' :
-                                 req.status === 'completed' ? 'Completed' :
-                                 req.status === 'rejected' ? 'Rejected' : req.status}
+                                  req.status === 'in_progress' ? 'In progress' :
+                                  req.status === 'completed' ? 'Completed' :
+                                  req.status === 'rejected' ? 'Rejected' : req.status}
                               </span>
                             </td>
-                            <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
-                              {new Date(req.created_at).toLocaleString()}
-                            </td>
+                            <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{new Date(req.created_at).toLocaleString()}</td>
                             <td>
                               {req.pr_url ? (
                                 <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>

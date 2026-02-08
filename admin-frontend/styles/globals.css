@@ -733,6 +733,148 @@ td code { font-size: var(--text-sm); background: var(--color-border); color: var
 .stat-card.stat-card-success .stat-card-value { color: var(--color-success); }
 .stat-card.stat-card-warning .stat-card-value { color: var(--color-warning); }
 
+/* Dashboard – graphical KPI and trend */
+.dashboard-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+@media (max-width: 1100px) {
+  .dashboard-kpi-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 640px) {
+  .dashboard-kpi-grid { grid-template-columns: 1fr 1fr; }
+}
+.dashboard-kpi-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  position: relative;
+  overflow: hidden;
+  transition: box-shadow var(--transition), border-color var(--transition), transform var(--transition);
+  animation: adminSlideUp 0.4s var(--ease-out) backwards;
+}
+.dashboard-kpi-card:nth-child(1) { animation-delay: 0.05s; }
+.dashboard-kpi-card:nth-child(2) { animation-delay: 0.1s; }
+.dashboard-kpi-card:nth-child(3) { animation-delay: 0.15s; }
+.dashboard-kpi-card:nth-child(4) { animation-delay: 0.2s; }
+.dashboard-kpi-card:nth-child(5) { animation-delay: 0.25s; }
+.dashboard-kpi-card:hover {
+  box-shadow: var(--shadow);
+  border-color: var(--color-primary-muted);
+  transform: translateY(-2px);
+}
+.dashboard-kpi-card--accent::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--color-primary);
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+.dashboard-kpi-card__value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.dashboard-kpi-card__label {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
+}
+.dashboard-kpi-card--warning .dashboard-kpi-card__value { color: var(--color-warning); }
+
+.dashboard-trend-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+  animation: adminSlideUp 0.4s var(--ease-out) 0.12s backwards;
+}
+.dashboard-trend-card .section-title { margin-bottom: var(--space-5); }
+.dashboard-trend-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  min-height: 180px;
+  padding: var(--space-4) 0;
+}
+.dashboard-trend-bar-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+.dashboard-trend-bar {
+  width: 100%;
+  max-width: 32px;
+  margin: 0 auto;
+  background: var(--color-primary);
+  border-radius: 6px 6px 0 0;
+  min-height: 4px;
+  transition: opacity var(--transition), filter var(--transition);
+}
+.dashboard-trend-bar-wrap:hover .dashboard-trend-bar {
+  opacity: 0.9;
+  filter: brightness(1.15);
+}
+.dashboard-trend-bar__label {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  margin-top: 8px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.dashboard-trend-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.dashboard-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+.dashboard-stats-row .dashboard-kpi-card--accent::before { background: var(--color-primary); }
+
+.dashboard-distribution {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.dashboard-distribution__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+  transition: border-color var(--transition), background var(--transition);
+}
+.dashboard-distribution__item:hover { border-color: var(--color-primary-muted); }
+.dashboard-distribution__label { color: var(--color-text-muted); }
+.dashboard-distribution__value { font-weight: 600; color: var(--color-text); }
+
 /* Filters bar */
 .filters-bar {
   display: flex;
