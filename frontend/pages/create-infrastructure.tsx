@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
@@ -9,8 +9,32 @@ const CLOUDS = [
   { id: 'gcp', name: 'Google Cloud Platform', short: 'GCP', color: '#4285F4', description: 'Create GCP resources: Compute Engine, Cloud Storage, BigQuery, and more.' },
 ] as const;
 
+interface RequestTemplate {
+  id: number;
+  name: string;
+  description: string;
+  cloud: string;
+  env: string;
+  service: string;
+}
+
+interface UserSavedConfig {
+  id: number;
+  name: string;
+  cloud: string;
+  env: string;
+  service: string;
+  created_at: string;
+}
+
 export default function CreateInfrastructure() {
   const router = useRouter();
+  const [templates, setTemplates] = useState<RequestTemplate[]>([]);
+  const [savedConfigs, setSavedConfigs] = useState<UserSavedConfig[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [loadingSaved, setLoadingSaved] = useState(false);
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem('isAuthenticated');
@@ -18,6 +42,28 @@ export default function CreateInfrastructure() {
       router.push('/login');
     }
   }, [router]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    setLoadingTemplates(true);
+    fetch(`${apiUrl}/api/templates`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.ok ? res.json() : { templates: [] })
+      .then((data) => setTemplates(data.templates || []))
+      .catch(() => setTemplates([]))
+      .finally(() => setLoadingTemplates(false));
+  }, [apiUrl]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    setLoadingSaved(true);
+    fetch(`${apiUrl}/api/me/saved-configs`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.ok ? res.json() : { saved_configs: [] })
+      .then((data) => setSavedConfigs(data.saved_configs || []))
+      .catch(() => setSavedConfigs([]))
+      .finally(() => setLoadingSaved(false));
+  }, [apiUrl]);
 
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated');
@@ -68,6 +114,68 @@ export default function CreateInfrastructure() {
               </button>
             </div>
           </div>
+
+          {templates.length > 0 && (
+            <div className="card" style={{ marginBottom: '24px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px', color: 'var(--text-primary)' }}>
+                Start from template
+              </h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
+                Use an admin-defined template to pre-fill cloud, environment and service.
+              </p>
+              {loadingTemplates ? (
+                <p style={{ color: 'var(--text-muted)' }}>Loading templates…</p>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                  {templates.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '12px 20px', textAlign: 'left' }}
+                      onClick={() => router.push(`/select-service?cloud=${encodeURIComponent(t.cloud)}&env=${encodeURIComponent(t.env)}&service=${encodeURIComponent(t.service)}&template_id=${t.id}`)}
+                    >
+                      <span style={{ fontWeight: 600 }}>{t.name}</span>
+                      <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginTop: 4 }}>
+                        {t.cloud} / {t.env} / {t.service}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {savedConfigs.length > 0 && (
+            <div className="card" style={{ marginBottom: '24px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px', color: 'var(--text-primary)' }}>
+                My saved configurations
+              </h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
+                Reuse a configuration you saved from history.
+              </p>
+              {loadingSaved ? (
+                <p style={{ color: 'var(--text-muted)' }}>Loading…</p>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                  {savedConfigs.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '12px 20px', textAlign: 'left' }}
+                      onClick={() => router.push(`/select-service?cloud=${encodeURIComponent(s.cloud)}&env=${encodeURIComponent(s.env)}&service=${encodeURIComponent(s.service)}&saved_id=${s.id}`)}
+                    >
+                      <span style={{ fontWeight: 600 }}>{s.name}</span>
+                      <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginTop: 4 }}>
+                        {s.cloud} / {s.env} / {s.service}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="card" style={{ textAlign: 'center' }}>
             <p style={{

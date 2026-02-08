@@ -26,6 +26,13 @@ interface WorkloadItem {
   assignee_username: string;
 }
 
+interface WorkloadSummaryRow {
+  key: string;
+  open: number;
+  in_progress: number;
+  completed_this_week: number;
+}
+
 interface DevopsUser {
   id: number;
   username: string;
@@ -45,6 +52,8 @@ export default function DevOpsWorkload() {
   const [pendingApprovals, setPendingApprovals] = useState<Request[]>([]);
   const [pendingLoading, setPendingLoading] = useState(true);
   const [workload, setWorkload] = useState<WorkloadItem[]>([]);
+  const [byTeam, setByTeam] = useState<WorkloadSummaryRow[]>([]);
+  const [byPerson, setByPerson] = useState<WorkloadSummaryRow[]>([]);
   const [devopsUsers, setDevopsUsers] = useState<DevopsUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -98,7 +107,9 @@ export default function DevOpsWorkload() {
       })
       .then((data) => {
         if (data?.workload) setWorkload(data.workload);
-        else if (data?.error) setError(data.error);
+        if (Array.isArray(data?.by_team)) setByTeam(data.by_team);
+        if (Array.isArray(data?.by_person)) setByPerson(data.by_person);
+        if (data?.error) setError(data.error);
       })
       .catch(() => setError('Failed to load workload'))
       .finally(() => setLoading(false));
@@ -172,6 +183,72 @@ export default function DevOpsWorkload() {
       <DevOpsLayout>
         <div className="container">
           <h1 className="page-title">Workload</h1>
+
+          {/* Capacity summary: open, in progress, completed this week by team and by person */}
+          {(byTeam.length > 0 || byPerson.length > 0) && (
+            <section style={{ marginBottom: 32 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Capacity / workload summary</h2>
+              <p style={{ color: 'var(--color-text-muted)', marginBottom: 16, fontSize: 14 }}>
+                Open tickets, in progress, and completed this week — by team or by person.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24 }}>
+                {byTeam.length > 0 && (
+                  <div className="card" style={{ padding: 16 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>By team</h3>
+                    <div className="table-wrap">
+                      <table style={{ fontSize: 14 }}>
+                        <thead>
+                          <tr>
+                            <th style={{ textAlign: 'left', padding: '8px 12px' }}>Team</th>
+                            <th style={{ textAlign: 'center', padding: '8px 12px' }}>Open</th>
+                            <th style={{ textAlign: 'center', padding: '8px 12px' }}>In progress</th>
+                            <th style={{ textAlign: 'center', padding: '8px 12px' }}>Done this week</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {byTeam.map((r) => (
+                            <tr key={r.key}>
+                              <td style={{ padding: '8px 12px', fontWeight: 500 }}>{r.key}</td>
+                              <td style={{ padding: '8px 12px', textAlign: 'center' }}>{r.open}</td>
+                              <td style={{ padding: '8px 12px', textAlign: 'center' }}>{r.in_progress}</td>
+                              <td style={{ padding: '8px 12px', textAlign: 'center' }}>{r.completed_this_week}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+                {byPerson.length > 0 && (
+                  <div className="card" style={{ padding: 16 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>By person</h3>
+                    <div className="table-wrap">
+                      <table style={{ fontSize: 14 }}>
+                        <thead>
+                          <tr>
+                            <th style={{ textAlign: 'left', padding: '8px 12px' }}>Person</th>
+                            <th style={{ textAlign: 'center', padding: '8px 12px' }}>Open</th>
+                            <th style={{ textAlign: 'center', padding: '8px 12px' }}>In progress</th>
+                            <th style={{ textAlign: 'center', padding: '8px 12px' }}>Done this week</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {byPerson.map((r) => (
+                            <tr key={r.key}>
+                              <td style={{ padding: '8px 12px', fontWeight: 500 }}>{r.key}</td>
+                              <td style={{ padding: '8px 12px', textAlign: 'center' }}>{r.open}</td>
+                              <td style={{ padding: '8px 12px', textAlign: 'center' }}>{r.in_progress}</td>
+                              <td style={{ padding: '8px 12px', textAlign: 'center' }}>{r.completed_this_week}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* Pending your approval (DevOps manager) */}
           <section style={{ marginBottom: 32 }}>

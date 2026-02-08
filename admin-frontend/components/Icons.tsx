@@ -64,6 +64,17 @@ export function IconActivity({ className = '' }: { className?: string }) {
   );
 }
 
+export function IconTemplates({ className = '' }: { className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  );
+}
+
 export function IconLogout({ className = '' }: { className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
@@ -110,6 +121,17 @@ export function IconSun({ className = '' }: { className?: string }) {
       <line x1="21" y1="12" x2="23" y2="12" />
       <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
       <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  );
+}
+
+export function IconWebhook({ className = '' }: { className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0111 21c0 .34.03.67.08 1H5a2 2 0 01-2-2v-4a2 2 0 012-2h3" />
+      <path d="M18 13h-2.5c-.28 0-.5.22-.5.5v2a2.5 2.5 0 005 0v-2c0-.28-.22-.5-.5-.5H15" />
+      <path d="M12 4v10" />
+      <path d="M9 7l3-3 3 3" />
     </svg>
   );
 }

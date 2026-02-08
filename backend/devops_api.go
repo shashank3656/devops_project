@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // requireDevopsUser validates Bearer token and ensures user is devops_user. Returns userID and ok.
@@ -157,7 +158,7 @@ func devopsUsersHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"users": users, "status": "ok"})
 }
 
-// devopsWorkloadHandler GET /api/devops/workload - manager only; requests with assigned_to set, optionally grouped by assignee
+// devopsWorkloadHandler GET /api/devops/workload - manager only; in-progress list + summary by_team and by_person (open, in_progress, completed_this_week)
 func devopsWorkloadHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
 		enableCORS(w)
@@ -179,8 +180,127 @@ func devopsWorkloadHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
+	byTeam, _ := GetWorkloadSummaryByTeam()
+	byPerson, _ := GetWorkloadSummaryByPerson()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"workload": workload, "status": "ok"})
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"workload":   workload,
+		"by_team":    byTeam,
+		"by_person":  byPerson,
+		"status":     "ok",
+	})
+}
+
+// dueStatus returns "overdue", "due_soon", or "" for SLA display
+func dueStatus(due *time.Time) string {
+	if due == nil {
+		return ""
+	}
+	now := time.Now()
+	if due.Before(now) {
+		return "overdue"
+	}
+	if due.Before(now.Add(24 * time.Hour)) {
+		return "due_soon"
+	}
+	return ""
+}
+
+// devopsRequestsListHandler GET /api/devops/requests - manager only; list tickets with filters (id, team, cloud, status, requester), sort, at_risk
+func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		enableCORS(w)
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	_, ok := requireDevopsManager(w, r)
+	if !ok {
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+	team := strings.TrimSpace(r.URL.Query().Get("team"))
+	cloud := strings.TrimSpace(r.URL.Query().Get("cloud"))
+	statusFilter := strings.TrimSpace(r.URL.Query().Get("status"))
+	search := strings.TrimSpace(r.URL.Query().Get("q"))
+	prID := 0
+	if idStr := r.URL.Query().Get("id"); idStr != "" {
+		if n, err := strconv.Atoi(idStr); err == nil && n > 0 {
+			prID = n
+		}
+	}
+	requesterID := 0
+	if reqStr := r.URL.Query().Get("requester"); reqStr != "" {
+		if n, err := strconv.Atoi(reqStr); err == nil && n > 0 {
+			requesterID = n
+		}
+	}
+	var createdByIn []int
+	if requesterID > 0 {
+		createdByIn = []int{requesterID}
+	}
+	sortBy := strings.TrimSpace(r.URL.Query().Get("sort_by"))
+	if sortBy != "created_at" && sortBy != "updated_at" && sortBy != "priority" && sortBy != "due_date" {
+		sortBy = "created_at"
+	}
+	sortOrder := strings.TrimSpace(r.URL.Query().Get("sort_order"))
+	if sortOrder != "asc" && sortOrder != "desc" {
+		sortOrder = "desc"
+	}
+	atRiskOnly := r.URL.Query().Get("at_risk") == "1" || strings.ToLower(r.URL.Query().Get("at_risk")) == "true"
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	offset := 0
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if n, err := strconv.Atoi(o); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+	requests, err := GetPRRequests(team, "", cloud, statusFilter, "", search, prID, 0, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	totalCount, _ := GetTotalCount(team, "", cloud, statusFilter, "", search, prID, 0, createdByIn, atRiskOnly)
+	userIDs := make([]int, 0)
+	for _, req := range requests {
+		if req.CreatedBy != nil && *req.CreatedBy > 0 {
+			userIDs = append(userIDs, *req.CreatedBy)
+		}
+	}
+	usernames, _ := GetUsernamesByUserIDs(userIDs)
+	out := make([]map[string]interface{}, 0, len(requests))
+	for _, req := range requests {
+		obj := map[string]interface{}{
+			"id": req.ID, "team": req.Team, "env": req.Env, "cloud": req.Cloud, "service": req.Service,
+			"client_name": req.ClientName, "application_id": req.ApplicationID, "priority": req.Priority,
+			"due_date": req.DueDate, "pr_url": req.PRURL, "branch": req.Branch, "status": req.Status,
+			"created_by": req.CreatedBy, "assigned_to": req.AssignedTo, "created_at": req.CreatedAt, "updated_at": req.UpdatedAt,
+		}
+		obj["due_status"] = dueStatus(req.DueDate)
+		if req.CreatedBy != nil && usernames != nil {
+			obj["created_by_username"] = usernames[*req.CreatedBy]
+		}
+		out = append(out, obj)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"requests": out, "total_count": totalCount, "limit": limit, "offset": offset, "status": "ok",
+	})
 }
 
 // devopsDashboardStatsHandler GET /api/devops/dashboard-stats - manager only; counts for DevOps manager dashboard
@@ -253,7 +373,7 @@ func devopsPendingApprovalsHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	requests, err := GetPRRequests("", "", "", "pending_devops_approval", "", "", 0, 0, nil, 100, 0)
+	requests, err := GetPRRequests("", "", "", "pending_devops_approval", "", "", 0, 0, nil, 100, 0, "", "", false)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -458,6 +578,17 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_ = AssignRequestByPriority(id)
+		updated, _ := GetPRRequestByID(id)
+		if updated != nil {
+			NotifyPRCreated(updated, prURL)
+			p := RequestPayloadForWebhook(updated)
+			p["pr_url"] = prURL
+			FireOutboundWebhooks("pr_created", p)
+			if updated.AssignedTo != nil && *updated.AssignedTo > 0 {
+				NotifyTicketAssigned(updated, *updated.AssignedTo)
+				FireOutboundWebhooks("assigned", RequestPayloadForWebhook(updated))
+			}
+		}
 		AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), "devops_manager:"+prURL)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "pr_url": prURL, "message": "PR created and request set to in_progress"})
@@ -484,6 +615,10 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		NotifyRequestRejected(req, reason)
+		p := RequestPayloadForWebhook(req)
+		p["reject_reason"] = reason
+		FireOutboundWebhooks("rejected", p)
 		AppendAuditLog(adminIDPtr, "request_reject", "pr_request", strconv.Itoa(id), "devops_manager:"+reason)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Request rejected"})

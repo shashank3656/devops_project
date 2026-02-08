@@ -10,6 +10,8 @@ interface TeamOption {
   id: number;
   name: string;
   slug: string;
+  default_env?: string;
+  default_cloud?: string;
 }
 
 const VALID_CLOUDS = ['aws', 'gcp', 'azure'];
@@ -34,15 +36,66 @@ export default function SelectService() {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
-  // Pre-select cloud from URL (e.g. /select-service?cloud=aws)
+  // Pre-select cloud, env, service from URL; load template or saved config when present
   useEffect(() => {
     if (!router.isReady) return;
-    const q = router.query.cloud;
-    const cloudParam = typeof q === 'string' ? q.toLowerCase() : '';
-    if (VALID_CLOUDS.includes(cloudParam) && !cloud) {
-      setCloud(cloudParam);
+    const qCloud = router.query.cloud;
+    const qEnv = router.query.env;
+    const qService = router.query.service;
+    const cloudParam = typeof qCloud === 'string' ? qCloud.toLowerCase() : '';
+    const envParam = typeof qEnv === 'string' ? qEnv.trim() : '';
+    const serviceParam = typeof qService === 'string' ? qService.trim() : '';
+    if (VALID_CLOUDS.includes(cloudParam)) setCloud((c) => c || cloudParam);
+    if (envParam) setEnv((e) => e || envParam);
+    if (serviceParam) setService((s) => s || serviceParam);
+  }, [router.isReady, router.query.cloud, router.query.env, router.query.service]);
+
+  // Fetch template or saved config and prefill form
+  useEffect(() => {
+    if (!router.isReady) return;
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    const templateId = router.query.template_id;
+    const savedId = router.query.saved_id;
+    const tid = typeof templateId === 'string' ? templateId : undefined;
+    const sid = typeof savedId === 'string' ? savedId : undefined;
+    if (!tid && !sid) return;
+
+    const applyConfig = (data: { cloud?: string; env?: string; service?: string; config?: string }) => {
+      if (data.cloud && VALID_CLOUDS.includes(data.cloud.toLowerCase())) setCloud(data.cloud.toLowerCase());
+      if (data.env) setEnv(data.env);
+      if (data.service) setService(data.service);
+      if (data.config) {
+        try {
+          const parsed = JSON.parse(data.config) as Record<string, unknown>;
+          if (typeof parsed.team === 'string') setTeam(parsed.team);
+          if (typeof parsed.client_name === 'string') setClientName(parsed.client_name);
+          if (['low', 'medium', 'high', 'critical'].includes(parsed.priority as string)) setPriority(parsed.priority as 'low' | 'medium' | 'high' | 'critical');
+          if (typeof parsed.due_date === 'string') setDueDate(parsed.due_date);
+          if (typeof parsed.initial_comment === 'string') setInitialComment(parsed.initial_comment);
+          const rest: Record<string, any> = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (!['team', 'client_name', 'priority', 'due_date', 'initial_comment', 'comment', 'cloud', 'env', 'service'].includes(k)) {
+              rest[k] = v;
+            }
+          }
+          if (Object.keys(rest).length > 0) setFormValues((prev) => ({ ...prev, ...rest }));
+        } catch (_) {}
+      }
+    };
+
+    if (tid) {
+      fetch(`${apiUrl}/api/templates/${tid}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => data?.template && applyConfig(data.template))
+        .catch(() => {});
+    } else if (sid) {
+      fetch(`${apiUrl}/api/me/saved-configs/${sid}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => data?.saved_config && applyConfig(data.saved_config))
+        .catch(() => {});
     }
-  }, [router.isReady, router.query.cloud, cloud]);
+  }, [router.isReady, router.query.template_id, router.query.saved_id, apiUrl]);
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem('isAuthenticated');
@@ -275,6 +328,29 @@ export default function SelectService() {
             <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '15px' }}>
               Choose your cloud provider and service, then configure the infrastructure
             </p>
+            {(cloud || service) && (
+              <div style={{ marginBottom: '20px' }}>
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const params = new URLSearchParams();
+                    if (cloud) params.set('cloud', cloud);
+                    if (service) params.set('service', service);
+                    if (env) params.set('env', env);
+                    fetch(`${apiUrl}/api/cost-estimate?${params}`)
+                      .then((r) => r.json())
+                      .then((d) => {
+                        if (d.link) window.open(d.link, '_blank', 'noopener,noreferrer');
+                      })
+                      .catch(() => {});
+                  }}
+                  style={{ color: 'var(--primary-color)', fontSize: '14px' }}
+                >
+                  Estimate cost (opens cloud pricing calculator)
+                </a>
+              </div>
+            )}
 
             {canCreatePR === false && (
               <div className="error" style={{ marginBottom: '24px' }}>
@@ -289,7 +365,15 @@ export default function SelectService() {
                   <select
                     className="select"
                     value={team}
-                    onChange={(e) => setTeam(e.target.value)}
+                    onChange={(e) => {
+                      const slug = e.target.value;
+                      setTeam(slug);
+                      const selected = teams.find((t) => t.slug === slug);
+                      if (selected) {
+                        if (selected.default_env) setEnv(selected.default_env);
+                        if (selected.default_cloud) setCloud(selected.default_cloud);
+                      }
+                    }}
                     required
                   >
                     <option value="">{teams.length === 0 ? 'No teams assigned' : 'Select team'}</option>

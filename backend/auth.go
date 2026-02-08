@@ -320,6 +320,40 @@ func validateToken(token string) (int, error) {
 	return userID, nil
 }
 
+// validateTokenOrAPIKey returns (userID, scopes, nil) for valid Bearer token. Token can be session token (scopes "") or API key prefix "ip_xxx" (scopes from DB).
+func validateTokenOrAPIKey(token string) (userID int, scopes string, err error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return 0, "", fmt.Errorf("missing token")
+	}
+	if strings.HasPrefix(token, APIKeyPrefix) {
+		uid, sc, keyID, err := GetUserIDAndScopesByAPIKey(token)
+		if err != nil {
+			return 0, "", err
+		}
+		UpdateAPIKeyLastUsed(keyID)
+		return uid, sc, nil
+	}
+	uid, err := validateToken(token)
+	if err != nil {
+		return 0, "", err
+	}
+	return uid, "", nil
+}
+
+// hasScope returns true if scope is in the comma-separated scopes list
+func hasScope(scopes, need string) bool {
+	if scopes == "" {
+		return true // session token has all scopes
+	}
+	for _, s := range strings.Split(scopes, ",") {
+		if strings.TrimSpace(s) == need {
+			return true
+		}
+	}
+	return false
+}
+
 // meHandler returns the current user from the Bearer token
 func meHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
@@ -424,6 +458,150 @@ func meTeamsHandler(w http.ResponseWriter, r *http.Request) {
 		"teams": teams,
 		"status": "ok",
 	})
+}
+
+// meAPIKeysHandler GET /api/me/api-keys (list), POST /api/me/api-keys (create). Requires session token (not API key).
+func meAPIKeysHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" && r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		return
+	}
+	token := strings.TrimSpace(authHeader[7:])
+	if strings.HasPrefix(token, APIKeyPrefix) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "use session login to manage API keys", "status": "error"})
+		return
+	}
+	userID, err := validateToken(token)
+	if err != nil || userID <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+
+	if r.Method == "GET" {
+		keys, err := ListAPIKeysForUser(userID)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to list API keys", "status": "error"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"api_keys": keys, "status": "ok"})
+		return
+	}
+
+	// POST: create API key
+	var body struct {
+		Name   string `json:"name"`
+		Scopes string `json:"scopes"` // comma-separated: request:create, history:read
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "name is required", "status": "error"})
+		return
+	}
+	scopes := strings.TrimSpace(body.Scopes)
+	rawKey, rec, err := CreateAPIKey(userID, name, scopes)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"api_key":  rec,
+		"key":      rawKey,
+		"message":  "Save this key; it will not be shown again.",
+		"status":   "ok",
+	})
+}
+
+// meAPIKeyDetailHandler DELETE /api/me/api-keys/:id - revoke API key (session token only)
+func meAPIKeyDetailHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "DELETE" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/me/api-keys/")
+	idStr := strings.Split(path, "/")[0]
+	keyID, _ := strconv.Atoi(idStr)
+	if keyID <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid key id", "status": "error"})
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		return
+	}
+	token := strings.TrimSpace(authHeader[7:])
+	if strings.HasPrefix(token, APIKeyPrefix) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "use session login to revoke API keys", "status": "error"})
+		return
+	}
+	userID, err := validateToken(token)
+	if err != nil || userID <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	if err := RevokeAPIKey(keyID, userID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"message": "API key revoked", "status": "ok"})
 }
 
 // meManagedTeamsHandler GET /api/me/managed-teams - portal teams the current user can manage (manager role or is_portal_manager)
@@ -620,15 +798,11 @@ func mePendingManagerApprovalHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"pending_manager_approval_count": count, "status": "ok"})
 }
 
-// meNotificationsHandler GET /api/me/notifications?since=ISO8601 - count of user's requests updated since (for badge)
+// meNotificationsHandler GET /api/me/notifications - list in-app notifications; optional since= for updated_count (badge). POST to mark read.
 func meNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
 		handleOptions(w, r)
-		return
-	}
-	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	authHeader := r.Header.Get("Authorization")
@@ -646,21 +820,46 @@ func meNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	sinceStr := r.URL.Query().Get("since")
-	var since time.Time
-	if sinceStr != "" {
-		if t, err := time.Parse(time.RFC3339, sinceStr); err == nil {
-			since = t
-		}
-	}
+	w.Header().Set("Content-Type", "application/json")
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"updated_count": 0, "status": "ok"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"notifications": []interface{}{}, "unread_count": 0, "updated_count": 0, "status": "ok"})
 		return
 	}
-	count, _ := GetUserRequestsUpdatedSince(userID, since)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"updated_count": count, "status": "ok"})
+	if r.Method == "POST" {
+		var body struct {
+			MarkRead string `json:"mark_read"`
+			IDs      []int  `json:"ids"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.MarkRead == "all" || body.MarkRead == "true" {
+			_ = MarkUserNotificationsRead(userID, body.IDs)
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok"})
+		return
+	}
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	unreadOnly := r.URL.Query().Get("unread_only") == "1" || r.URL.Query().Get("unread_only") == "true"
+	list, _ := ListUserNotifications(userID, limit, 0, unreadOnly)
+	unreadCount := 0
+	for _, n := range list {
+		if n.ReadAt == nil {
+			unreadCount++
+		}
+	}
+	sinceStr := r.URL.Query().Get("since")
+	resp := map[string]interface{}{"notifications": list, "unread_count": unreadCount, "status": "ok"}
+	if sinceStr != "" {
+		if t, err := time.Parse(time.RFC3339, sinceStr); err == nil {
+			count, _ := GetUserRequestsUpdatedSince(userID, t)
+			resp["updated_count"] = count
+		}
+	}
+	json.NewEncoder(w).Encode(resp)
 }
 
 type ChangePasswordRequest struct {

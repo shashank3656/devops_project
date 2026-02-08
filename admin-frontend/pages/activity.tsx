@@ -6,6 +6,7 @@ import AdminLayout from '../components/AdminLayout';
 interface AuditEntry {
   id: number;
   admin_user_id: number | null;
+  admin_username?: string;
   action: string;
   resource_type: string;
   resource_id: string;
@@ -32,6 +33,8 @@ export default function ActivityPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionFilter, setActionFilter] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [offset, setOffset] = useState(0);
   const limit = 30;
 
@@ -48,6 +51,8 @@ export default function ActivityPage() {
     if (tab === 'audit') {
       const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
       if (actionFilter) params.set('action', actionFilter);
+      if (fromDate) params.set('from', fromDate);
+      if (toDate) params.set('to', toDate);
       fetch(`${apiUrl}/api/admin/audit-log?${params}`, { headers: { Authorization: `Bearer ${token}` } })
         .then((res) => {
           if (res.status === 401 || res.status === 403) router.replace('/login');
@@ -85,7 +90,7 @@ export default function ActivityPage() {
         .catch(() => setError('Failed to load user activity'))
         .finally(() => setLoading(false));
     }
-  }, [token, router, offset, actionFilter, tab]);
+  }, [token, router, offset, actionFilter, fromDate, toDate, tab]);
 
   const userActionLabel = (a: string) => {
     const labels: Record<string, string> = {
@@ -142,8 +147,8 @@ export default function ActivityPage() {
           )}
 
           {tab === 'audit' && (
-          <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
-            <label style={{ fontWeight: 500 }}>Filter by action</label>
+          <div style={{ marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+            <label style={{ fontWeight: 500 }}>Action</label>
             <select
               value={actionFilter}
               onChange={(e) => { setActionFilter(e.target.value); setOffset(0); }}
@@ -161,6 +166,22 @@ export default function ActivityPage() {
               <option value="request_approve">Request approved</option>
               <option value="request_reject">Request rejected</option>
             </select>
+            <label style={{ fontWeight: 500, marginLeft: 8 }}>From</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => { setFromDate(e.target.value); setOffset(0); }}
+              className="input"
+              style={{ width: 140 }}
+            />
+            <label style={{ fontWeight: 500 }}>To</label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => { setToDate(e.target.value); setOffset(0); }}
+              className="input"
+              style={{ width: 140 }}
+            />
           </div>
           )}
 
@@ -176,6 +197,7 @@ export default function ActivityPage() {
                   <thead>
                     <tr>
                       <th>Time</th>
+                      <th>Admin</th>
                       <th>Action</th>
                       <th>Resource</th>
                       <th>Details</th>
@@ -187,6 +209,7 @@ export default function ActivityPage() {
                         <td style={{ color: 'var(--color-text-muted)', fontSize: 13, whiteSpace: 'nowrap' }}>
                           {new Date(e.created_at).toLocaleString()}
                         </td>
+                        <td style={{ fontSize: 13 }}>{e.admin_username || (e.admin_user_id ? `User #${e.admin_user_id}` : '—')}</td>
                         <td>
                           <span style={{
                             padding: '4px 8px',

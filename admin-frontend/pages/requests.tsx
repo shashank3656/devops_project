@@ -12,12 +12,15 @@ interface PRRequest {
   client_name?: string;
   priority?: string;
   due_date?: string | null;
+  due_status?: 'overdue' | 'due_soon' | '';
   pr_url: string;
-  branch: string;
-  file_path: string;
+  branch?: string;
+  file_path?: string;
   status: string;
   config?: string;
   created_at: string;
+  updated_at?: string;
+  created_by_username?: string;
 }
 
 interface RequestComment {
@@ -41,6 +44,9 @@ export default function AdminRequests() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [atRiskOnly, setAtRiskOnly] = useState(false);
   const [offset, setOffset] = useState(0);
   const [actioningId, setActioningId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -55,15 +61,18 @@ export default function AdminRequests() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
 
-  const filtersRef = useRef({ team: '', env: '', cloud: '', search: '', status: '', priority: '' });
+  const filtersRef = useRef<{ team: string; env: string; cloud: string; search: string; status: string; priority: string; sortBy: string; sortOrder: string; atRiskOnly: boolean }>({ team: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false });
 
-  const fetchRequests = (overrides?: { team?: string; env?: string; cloud?: string; search?: string; status?: string; priority?: string; offset?: number }) => {
+  const fetchRequests = (overrides?: { team?: string; env?: string; cloud?: string; search?: string; status?: string; priority?: string; sortBy?: string; sortOrder?: string; atRiskOnly?: boolean; offset?: number }) => {
     const t = overrides?.team !== undefined ? overrides.team : filtersRef.current.team;
     const e = overrides?.env !== undefined ? overrides.env : filtersRef.current.env;
     const c = overrides?.cloud !== undefined ? overrides.cloud : filtersRef.current.cloud;
     const q = overrides?.search !== undefined ? overrides.search : filtersRef.current.search;
     const s = overrides?.status !== undefined ? overrides.status : filtersRef.current.status;
     const p = overrides?.priority !== undefined ? overrides.priority : filtersRef.current.priority;
+    const sb = overrides?.sortBy !== undefined ? overrides.sortBy : filtersRef.current.sortBy;
+    const so = overrides?.sortOrder !== undefined ? overrides.sortOrder : filtersRef.current.sortOrder;
+    const ar = overrides?.atRiskOnly !== undefined ? overrides.atRiskOnly : filtersRef.current.atRiskOnly;
     const o = overrides?.offset !== undefined ? overrides.offset : offset;
     setLoading(true);
     setError('');
@@ -74,6 +83,9 @@ export default function AdminRequests() {
     if (q) params.set('q', q);
     if (s) params.set('status', s);
     if (p) params.set('priority', p);
+    params.set('sort_by', sb);
+    params.set('sort_order', so);
+    if (ar) params.set('at_risk', 'true');
     params.set('limit', String(limit));
     params.set('offset', String(o));
     fetch(`${apiUrl}/api/admin/requests?${params}`, {
@@ -109,27 +121,36 @@ export default function AdminRequests() {
     const searchVal = (form.elements.namedItem('filter-search') as HTMLInputElement | null)?.value?.trim() ?? '';
     const statusVal = (form.elements.namedItem('filter-status') as HTMLSelectElement | null)?.value ?? '';
     const priorityVal = (form.elements.namedItem('filter-priority') as HTMLSelectElement | null)?.value ?? '';
-    filtersRef.current = { team: teamVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal };
+    const sortByVal = (form.elements.namedItem('filter-sort-by') as HTMLSelectElement | null)?.value ?? 'created_at';
+    const sortOrderVal = (form.elements.namedItem('filter-sort-order') as HTMLSelectElement | null)?.value ?? 'desc';
+    const atRiskVal = (form.elements.namedItem('filter-at-risk') as HTMLInputElement | null)?.checked ?? false;
+    filtersRef.current = { team: teamVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal, sortBy: sortByVal, sortOrder: sortOrderVal, atRiskOnly: atRiskVal };
     setTeam(teamVal);
     setEnv(envVal);
     setCloud(cloudVal);
     setSearch(searchVal);
     setStatusFilter(statusVal);
     setPriorityFilter(priorityVal);
+    setSortBy(sortByVal);
+    setSortOrder(sortOrderVal);
+    setAtRiskOnly(atRiskVal);
     setOffset(0);
     fetchRequests({ team: teamVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal, offset: 0 });
   };
 
   const handleClearFilters = () => {
-    filtersRef.current = { team: '', env: '', cloud: '', search: '', status: '', priority: '' };
+    filtersRef.current = { team: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false };
     setTeam('');
     setEnv('');
     setCloud('');
     setSearch('');
     setStatusFilter('');
     setPriorityFilter('');
+    setSortBy('created_at');
+    setSortOrder('desc');
+    setAtRiskOnly(false);
     setOffset(0);
-    fetchRequests({ team: '', env: '', cloud: '', search: '', status: '', priority: '', offset: 0 });
+    fetchRequests({ team: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false, offset: 0 });
   };
 
   const statusLabel = (s: string) =>
@@ -213,10 +234,19 @@ export default function AdminRequests() {
   const openDetail = async (req: PRRequest) => {
     setDetailRequest(req);
     setDetailComments([]);
+    setDetailConfigOpen(false);
     setCommentBody('');
     fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.json())
       .then((d) => setDetailComments(d.comments || []))
+      .catch(() => {});
+    fetch(`${apiUrl}/api/admin/requests/${req.id}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.ok ? res.json() : null)
+      .then((d) => {
+        if (d?.request) {
+          setDetailRequest((prev) => prev ? { ...prev, ...d.request } : d.request);
+        }
+      })
       .catch(() => {});
   };
 
@@ -328,24 +358,33 @@ export default function AdminRequests() {
             <button
               type="button"
               className="btn btn-secondary"
-              disabled={requests.length === 0}
               onClick={() => {
-                const headers = ['ID', 'Team', 'Env', 'Cloud', 'Service', 'Priority', 'Due date', 'Status', 'Created', 'PR URL'];
-                const rows = requests.map((r) => [
-                  r.id, r.team, r.env, r.cloud, r.service, r.priority || '', r.due_date ? new Date(r.due_date).toLocaleDateString() : '',
-                  r.status, new Date(r.created_at).toLocaleString(), r.pr_url || '',
-                ].join(','));
-                const csv = [headers.join(','), ...rows].join('\n');
-                const blob = new Blob([csv], { type: 'text/csv' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `requests-${new Date().toISOString().slice(0, 10)}.csv`;
-                a.click();
-                URL.revokeObjectURL(url);
+                const params = new URLSearchParams();
+                if (team) params.set('team', team);
+                if (env) params.set('env', env);
+                if (cloud) params.set('cloud', cloud);
+                if (search) params.set('q', search);
+                if (statusFilter) params.set('status', statusFilter);
+                if (priorityFilter) params.set('priority', priorityFilter);
+                params.set('sort_by', sortBy);
+                params.set('sort_order', sortOrder);
+                if (atRiskOnly) params.set('at_risk', 'true');
+                params.set('format', 'csv');
+                fetch(`${apiUrl}/api/admin/requests?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+                  .then((res) => res.text())
+                  .then((csv) => {
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `requests-${new Date().toISOString().slice(0, 10)}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  })
+                  .catch(() => setError('Export failed'));
               }}
             >
-              Export CSV
+              Export CSV (filtered)
             </button>
           </div>
 
@@ -424,6 +463,20 @@ export default function AdminRequests() {
               <option value="high">High</option>
               <option value="critical">Critical</option>
             </select>
+            <select id="filter-sort-by" name="filter-sort-by" className="input" value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ minWidth: 120 }}>
+              <option value="created_at">Sort: Created</option>
+              <option value="updated_at">Sort: Updated</option>
+              <option value="priority">Sort: Priority</option>
+              <option value="due_date">Sort: Due date</option>
+            </select>
+            <select id="filter-sort-order" name="filter-sort-order" className="input" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} style={{ minWidth: 80 }}>
+              <option value="desc">Desc</option>
+              <option value="asc">Asc</option>
+            </select>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input type="checkbox" id="filter-at-risk" name="filter-at-risk" checked={atRiskOnly} onChange={(e) => setAtRiskOnly(e.target.checked)} />
+              At risk (overdue / due in 24h)
+            </label>
             <button type="submit" className="btn btn-primary">
               Apply filters
             </button>
@@ -514,6 +567,12 @@ export default function AdminRequests() {
                           <td style={{ fontSize: 13 }}>{req.priority || '—'}</td>
                           <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
                             {req.due_date ? new Date(req.due_date).toLocaleDateString() : '—'}
+                            {req.due_status === 'overdue' && (
+                              <span style={{ marginLeft: 6, padding: '2px 6px', borderRadius: 4, fontSize: 11, background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>Overdue</span>
+                            )}
+                            {req.due_status === 'due_soon' && (
+                              <span style={{ marginLeft: 6, padding: '2px 6px', borderRadius: 4, fontSize: 11, background: 'var(--color-warning-bg)', color: 'var(--color-warning)' }}>Due in 24h</span>
+                            )}
                           </td>
                           <td>
                             <span
@@ -642,6 +701,32 @@ export default function AdminRequests() {
                 <p style={{ marginBottom: 8, fontSize: 14 }}>
                   <strong>Team:</strong> {detailRequest.team} · <strong>Env:</strong> {detailRequest.env} · <strong>Cloud:</strong> {detailRequest.cloud} · <strong>Service:</strong> {detailRequest.service}
                 </p>
+                {detailRequest.created_by_username && (
+                  <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--color-text-muted)' }}>
+                    <strong>Requester:</strong> {detailRequest.created_by_username}
+                  </p>
+                )}
+                {detailRequest.branch && (
+                  <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--color-text-muted)' }}>
+                    <strong>Branch:</strong> <code style={{ fontSize: 12 }}>{detailRequest.branch}</code>
+                  </p>
+                )}
+                {detailRequest.file_path && (
+                  <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--color-text-muted)' }}>
+                    <strong>File path:</strong> <code style={{ fontSize: 12 }}>{detailRequest.file_path}</code>
+                  </p>
+                )}
+                <p style={{ marginBottom: 8, fontSize: 13, color: 'var(--color-text-muted)' }}>
+                  Created: {new Date(detailRequest.created_at).toLocaleString()}
+                  {detailRequest.updated_at && ` · Updated: ${new Date(detailRequest.updated_at).toLocaleString()}`}
+                </p>
+                {detailRequest.pr_url && (
+                  <p style={{ marginBottom: 8 }}>
+                    <a href={detailRequest.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
+                      Open PR
+                    </a>
+                  </p>
+                )}
                 {(detailRequest.priority || detailRequest.due_date) && (
                   <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--color-text-muted)' }}>
                     {detailRequest.priority && <span>Priority: {detailRequest.priority} </span>}
@@ -699,7 +784,7 @@ export default function AdminRequests() {
                       onClick={() => setDetailConfigOpen((o) => !o)}
                       style={{ background: 'none', border: 'none', padding: 0, fontWeight: 600, cursor: 'pointer', color: 'var(--color-text)' }}
                     >
-                      {detailConfigOpen ? '▼' : '▶'} Configuration (JSON)
+                      {detailConfigOpen ? '▼' : '▶'} Configuration (JSON, secrets masked)
                     </button>
                     {detailConfigOpen && (
                       <pre style={{ marginTop: 8, padding: 12, background: 'var(--color-bg)', borderRadius: 8, overflow: 'auto', fontSize: 12, maxHeight: 280 }}>

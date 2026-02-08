@@ -187,6 +187,100 @@ func MigrateDatabase() error {
 		log.Println("Database migration (is_portal_manager) completed")
 	}
 
+	// Migration 12: request_templates (admin-defined presets) and user_saved_configs (user favorites)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS request_templates (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(200) NOT NULL,
+			description TEXT,
+			cloud VARCHAR(50) NOT NULL,
+			env VARCHAR(50) NOT NULL,
+			service VARCHAR(100) NOT NULL,
+			config TEXT DEFAULT '{}',
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_templates_cloud ON request_templates(cloud)")
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS user_saved_configs (
+			id SERIAL PRIMARY KEY,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name VARCHAR(200) NOT NULL,
+			config TEXT NOT NULL DEFAULT '{}',
+			cloud VARCHAR(50) DEFAULT '',
+			env VARCHAR(50) DEFAULT '',
+			service VARCHAR(100) DEFAULT '',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_saved_configs_user_id ON user_saved_configs(user_id)")
+
+	// Migration 13: user_notifications (in-app notifications for request approved/rejected/PR created/assigned)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS user_notifications (
+			id SERIAL PRIMARY KEY,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			request_id INTEGER REFERENCES pr_requests(id) ON DELETE SET NULL,
+			kind VARCHAR(50) NOT NULL,
+			message TEXT NOT NULL,
+			read_at TIMESTAMP NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_notifications_user_id ON user_notifications(user_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_notifications_read_at ON user_notifications(read_at)")
+
+	// Migration 14: teams.default_env, teams.default_cloud (per-team defaults for request creation)
+	for _, col := range []string{"default_env", "default_cloud"} {
+		var count int
+		_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'teams' AND column_name = $1", col).Scan(&count)
+		if count == 0 {
+			log.Printf("Migrating database: adding teams.%s...", col)
+			_, _ = DB.Exec("ALTER TABLE teams ADD COLUMN " + col + " VARCHAR(100)")
+		}
+	}
+
+	// Migration 15: repo_config (global and per-team GitHub repo/branch/base path override)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS repo_config (
+			id SERIAL PRIMARY KEY,
+			scope VARCHAR(20) NOT NULL DEFAULT 'global',
+			team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+			repo_owner VARCHAR(200),
+			repo_name VARCHAR(200),
+			base_branch VARCHAR(200),
+			base_path VARCHAR(500),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(team_id)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_repo_config_scope_team ON repo_config(scope, team_id)")
+
+	// Migration 16: api_keys.scopes (request:create, history:read)
+	var scopesCol int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'api_keys' AND column_name = 'scopes'").Scan(&scopesCol)
+	if scopesCol == 0 {
+		log.Println("Migrating database: adding api_keys.scopes...")
+		_, _ = DB.Exec("ALTER TABLE api_keys ADD COLUMN scopes VARCHAR(200) DEFAULT 'request:create,history:read'")
+		_, _ = DB.Exec("UPDATE api_keys SET scopes = 'request:create,history:read' WHERE scopes IS NULL OR scopes = ''")
+		log.Println("Database migration (api_keys.scopes) completed")
+	}
+
+	// Migration 17: outbound_webhooks (admin-configured URL, secret, events)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS outbound_webhooks (
+			id SERIAL PRIMARY KEY,
+			url VARCHAR(2048) NOT NULL,
+			secret VARCHAR(255) DEFAULT '',
+			events VARCHAR(500) NOT NULL DEFAULT 'approved,pr_created,rejected',
+			enabled BOOLEAN DEFAULT TRUE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_outbound_webhooks_enabled ON outbound_webhooks(enabled)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }

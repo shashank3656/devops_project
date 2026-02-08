@@ -148,7 +148,9 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	actionFilter := r.URL.Query().Get("action")
-	entries, err := GetAuditLogs(limit, offset, actionFilter)
+	fromDate := strings.TrimSpace(r.URL.Query().Get("from"))
+	toDate := strings.TrimSpace(r.URL.Query().Get("to"))
+	entries, err := GetAuditLogs(limit, offset, actionFilter, fromDate, toDate)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -193,6 +195,15 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 			prID = parsed
 		}
 	}
+	sortBy := strings.TrimSpace(r.URL.Query().Get("sort_by"))
+	if sortBy != "created_at" && sortBy != "updated_at" && sortBy != "priority" && sortBy != "due_date" {
+		sortBy = "created_at"
+	}
+	sortOrder := strings.TrimSpace(r.URL.Query().Get("sort_order"))
+	if sortOrder != "asc" && sortOrder != "desc" {
+		sortOrder = "desc"
+	}
+	atRiskOnly := r.URL.Query().Get("at_risk") == "1" || strings.ToLower(r.URL.Query().Get("at_risk")) == "true"
 	limit := 50
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
@@ -207,7 +218,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// userID 0 = all requests
-	requests, err := GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil, limit, offset)
+	requests, err := GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil, limit, offset, sortBy, sortOrder, atRiskOnly)
 	if err != nil {
 		log.Printf("Admin requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -215,13 +226,74 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch requests", "status": "error"})
 		return
 	}
-	totalCount, _ := GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil)
+	totalCount, _ := GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil, atRiskOnly)
+
+	// Enrich with due_status and created_by_username for UI
+	userIDs := make([]int, 0)
+	for _, req := range requests {
+		if req.CreatedBy != nil && *req.CreatedBy > 0 {
+			userIDs = append(userIDs, *req.CreatedBy)
+		}
+	}
+	usernames, _ := GetUsernamesByUserIDs(userIDs)
+	enriched := make([]map[string]interface{}, 0, len(requests))
+	for _, req := range requests {
+		ds := ""
+		if req.DueDate != nil {
+			now := time.Now()
+			if req.DueDate.Before(now) {
+				ds = "overdue"
+			} else if req.DueDate.Before(now.Add(24 * time.Hour)) {
+				ds = "due_soon"
+			}
+		}
+		obj := map[string]interface{}{
+			"id": req.ID, "team": req.Team, "env": req.Env, "cloud": req.Cloud, "service": req.Service,
+			"client_name": req.ClientName, "application_id": req.ApplicationID, "priority": req.Priority,
+			"due_date": req.DueDate, "due_status": ds, "pr_url": req.PRURL, "branch": req.Branch, "status": req.Status,
+			"created_by": req.CreatedBy, "assigned_to": req.AssignedTo, "created_at": req.CreatedAt, "updated_at": req.UpdatedAt,
+		}
+		if req.CreatedBy != nil && usernames != nil {
+			obj["created_by_username"] = usernames[*req.CreatedBy]
+		}
+		enriched = append(enriched, obj)
+	}
+
+	format := r.URL.Query().Get("format")
+	if format == "csv" {
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment; filename=requests.csv")
+		// Export all matching (use higher limit for CSV)
+		all, _ := GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil, 10000, 0, sortBy, sortOrder, atRiskOnly)
+		csvLine := func(ss ...string) string {
+			for i, s := range ss {
+				if strings.Contains(s, ",") || strings.Contains(s, "\"") || strings.Contains(s, "\n") {
+					ss[i] = "\"" + strings.ReplaceAll(strings.ReplaceAll(s, "\"", "\"\""), "\n", " ") + "\""
+				}
+			}
+			return strings.Join(ss, ",")
+		}
+		w.Write([]byte(csvLine("id", "team", "env", "cloud", "service", "priority", "status", "pr_url", "created_at", "updated_at") + "\n"))
+		for _, rq := range all {
+			prURL := rq.PRURL
+			if prURL == "" {
+				prURL = ""
+			}
+			w.Write([]byte(csvLine(
+				strconv.Itoa(rq.ID), rq.Team, rq.Env, rq.Cloud, rq.Service,
+				rq.Priority, rq.Status, prURL,
+				rq.CreatedAt.Format("2006-01-02 15:04:05"),
+				rq.UpdatedAt.Format("2006-01-02 15:04:05"),
+			) + "\n"))
+		}
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":       "success",
-		"requests":     requests,
-		"count":        len(requests),
+		"requests":     enriched,
+		"count":        len(enriched),
 		"total_count":  totalCount,
 		"limit":        limit,
 		"offset":       offset,
@@ -396,7 +468,109 @@ func adminBulkRejectHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// adminRequestActionHandler handles /api/admin/requests/:id/approve, /reject, /status (admin only)
+// maskConfigForAdmin redacts common secret-like keys in JSON config (recursive). Keys matched case-insensitive (password, secret, token, key, api_key, etc).
+func maskConfigForAdmin(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		return raw
+	}
+	maskMap(m)
+	b, _ := json.MarshalIndent(m, "", "  ")
+	return string(b)
+}
+
+func maskMap(m map[string]interface{}) {
+	const mask = "***MASKED***"
+	secretKeys := map[string]bool{
+		"password": true, "secret": true, "token": true, "api_key": true, "apikey": true,
+		"access_key": true, "secret_key": true, "private_key": true, "authorization": true,
+	}
+	for k, v := range m {
+		lower := strings.ToLower(k)
+		if secretKeys[lower] || strings.Contains(lower, "password") || strings.Contains(lower, "secret") || strings.Contains(lower, "token") || strings.Contains(lower, "api_key") {
+			m[k] = mask
+			continue
+		}
+		if nested, ok := v.(map[string]interface{}); ok {
+			maskMap(nested)
+		}
+	}
+}
+
+// adminRequestDetailHandler GET /api/admin/requests/:id - full request detail for admin (config masked)
+func adminRequestDetailHandler(w http.ResponseWriter, r *http.Request, id int) {
+	req, err := GetPRRequestByID(id)
+	if err != nil || req == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "request not found", "status": "error"})
+		return
+	}
+	createdByUsername := ""
+	if req.CreatedBy != nil && *req.CreatedBy > 0 {
+		names, _ := GetUsernamesByUserIDs([]int{*req.CreatedBy})
+		if names != nil {
+			createdByUsername = names[*req.CreatedBy]
+		}
+	}
+	configMasked := maskConfigForAdmin(req.Config)
+	ds := ""
+	if req.DueDate != nil {
+		now := time.Now()
+		if req.DueDate.Before(now) {
+			ds = "overdue"
+		} else if req.DueDate.Before(now.Add(24 * time.Hour)) {
+			ds = "due_soon"
+		}
+	}
+	resp := map[string]interface{}{
+		"id": req.ID, "team": req.Team, "env": req.Env, "cloud": req.Cloud, "service": req.Service,
+		"client_name": req.ClientName, "application_id": req.ApplicationID, "priority": req.Priority,
+		"due_date": req.DueDate, "due_status": ds, "pr_url": req.PRURL, "branch": req.Branch, "file_path": req.FilePath,
+		"status": req.Status, "reject_reason": req.RejectReason,
+		"created_at": req.CreatedAt, "updated_at": req.UpdatedAt,
+		"created_by": req.CreatedBy, "created_by_username": createdByUsername,
+		"assigned_to": req.AssignedTo,
+		"config": configMasked,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"request": resp, "status": "ok"})
+}
+
+// adminDevopsUsersHandler GET /api/admin/devops-users - list devops users for reassign dropdown (admin only)
+func adminDevopsUsersHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"users": []interface{}{}, "status": "ok"})
+		return
+	}
+	users, err := GetDevopsUsers()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"users": users, "status": "ok"})
+}
+
+// adminRequestActionHandler handles /api/admin/requests/:id (GET detail) and /api/admin/requests/:id/approve, /reject, /status, /reassign (admin only)
 func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
@@ -428,6 +602,13 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	if len(parts) >= 1 && parts[0] == "bulk-reject" {
 		adminBulkRejectHandler(w, r)
 		return
+	}
+	if len(parts) == 1 && parts[0] != "" && r.Method == "GET" {
+		id, err := strconv.Atoi(parts[0])
+		if err == nil && id > 0 {
+			adminRequestDetailHandler(w, r, id)
+			return
+		}
 	}
 	if len(parts) < 2 {
 		http.NotFound(w, r)
@@ -468,6 +649,8 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+			NotifyRequestApproved(req, "Request #"+strconv.Itoa(id)+" was approved by your manager and is now pending DevOps approval.")
+			FireOutboundWebhooks("approved", RequestPayloadForWebhook(req))
 			AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), "admin_step_to_devops_approval")
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Request moved to pending DevOps approval"})
@@ -487,7 +670,18 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		_ = AssignRequestByPriority(id) // assign to DevOps user by priority (best-effort)
+		_ = AssignRequestByPriority(id)
+		updated, _ := GetPRRequestByID(id)
+		if updated != nil {
+			NotifyPRCreated(updated, prURL)
+			p := RequestPayloadForWebhook(updated)
+			p["pr_url"] = prURL
+			FireOutboundWebhooks("pr_created", p)
+			if updated.AssignedTo != nil && *updated.AssignedTo > 0 {
+				NotifyTicketAssigned(updated, *updated.AssignedTo)
+				FireOutboundWebhooks("assigned", RequestPayloadForWebhook(updated))
+			}
+		}
 		AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), prURL)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "pr_url": prURL, "message": "PR created and request set to in_progress"})
@@ -515,6 +709,10 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		NotifyRequestRejected(req, reason)
+		p := RequestPayloadForWebhook(req)
+		p["reject_reason"] = reason
+		FireOutboundWebhooks("rejected", p)
 		AppendAuditLog(adminIDPtr, "request_reject", "pr_request", strconv.Itoa(id), reason)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Request rejected"})
@@ -550,6 +748,58 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "request_status": body.Status})
+		return
+
+	case "reassign":
+		if r.Method != "POST" && r.Method != "PATCH" && r.Method != "PUT" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			AssignedTo *int `json:"assigned_to"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			return
+		}
+		// Allow clearing assignment with assigned_to: null or 0
+		if body.AssignedTo != nil && *body.AssignedTo <= 0 {
+			body.AssignedTo = nil
+		}
+		if body.AssignedTo != nil {
+			u, _ := GetUserByID(*body.AssignedTo)
+			if u == nil || u.UserType != "devops_user" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "assigned_to must be a devops user id", "status": "error"})
+				return
+			}
+		}
+		if body.AssignedTo != nil {
+			if err := UpdatePRRequestAssignedTo(id, *body.AssignedTo); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+		} else {
+			if _, err := DB.Exec("UPDATE pr_requests SET assigned_to = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1", id); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+		}
+		if body.AssignedTo != nil && *body.AssignedTo > 0 {
+			updated, _ := GetPRRequestByID(id)
+			if updated != nil {
+				NotifyTicketAssigned(updated, *body.AssignedTo)
+				FireOutboundWebhooks("assigned", RequestPayloadForWebhook(updated))
+			}
+		}
+		AppendAuditLog(adminIDPtr, "request_reassign", "pr_request", strconv.Itoa(id), "")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "assigned_to": body.AssignedTo})
 		return
 
 	default:

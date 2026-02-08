@@ -330,21 +330,30 @@ export default function History() {
   };
 
   const exportCSV = () => {
-    const headers = ['ID', 'Team', 'Environment', 'Cloud', 'Service', 'Status', 'Branch', 'PR URL', 'Created At'];
-    const rows = [...requests].sort((a, b) => {
-      const aVal = sortBy === 'created_at' ? new Date(a.created_at).getTime() : (a as any)[sortBy];
-      const bVal = sortBy === 'created_at' ? new Date(b.created_at).getTime() : (b as any)[sortBy];
-      return sortDesc ? (bVal > aVal ? 1 : -1) : (aVal > bVal ? 1 : -1);
-    }).map(r => [r.id, r.team, r.env, r.cloud, r.service, r.status, r.branch, r.pr_url, formatDate(r.created_at)].join(','));
-    const csv = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `pr-requests-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast('CSV exported successfully', 'success');
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = { 'Content-Type': 'application/json' };
+    if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
+    const params = new URLSearchParams();
+    if (filterValue.trim()) {
+      if (filterType === 'pr_number') params.append('id', filterValue.trim());
+      else if (filterType === 'search') params.append('q', filterValue.trim());
+      else params.append(filterType, filterValue.trim());
+    }
+    if (viewMode === 'team') params.append('view', 'team');
+    params.set('format', 'csv');
+    fetch(`${apiUrl}/api/history?${params.toString()}`, { headers })
+      .then((res) => res.text())
+      .then((csv) => {
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `pr-requests-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast('CSV exported successfully', 'success');
+      })
+      .catch(() => toast('Export failed', 'error'));
   };
 
   const useAsTemplate = (req: PRRequest) => {
@@ -363,6 +372,35 @@ export default function History() {
       toast('Template loaded. Edit and submit in Custom JSON.', 'success');
     } catch (_) {
       toast('Failed to use template', 'error');
+    }
+  };
+
+  const saveConfiguration = async (req: PRRequest) => {
+    const name = window.prompt('Name this saved configuration (e.g. "Prod EKS request"):');
+    if (!name || !name.trim()) return;
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    const rawConfig = rawConfigByRequestId.current[req.id] ?? req.config ?? '{}';
+    try {
+      const res = await fetch(`${apiUrl}/api/me/saved-configs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          name: name.trim(),
+          config: rawConfig,
+          cloud: req.cloud,
+          env: req.env,
+          service: req.service,
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast('Saved. You can reuse it from Create Infrastructure → My saved configurations.', 'success');
+      } else {
+        toast(d?.error || 'Failed to save', 'error');
+      }
+    } catch (_) {
+      toast('Failed to save configuration', 'error');
     }
   };
 
@@ -423,8 +461,8 @@ export default function History() {
               <button onClick={handleRefresh} className="btn btn-secondary" disabled={loading} title="Refresh">
                 🔄 Refresh
               </button>
-              <button onClick={exportCSV} className="btn btn-secondary" disabled={requests.length === 0}>
-                📥 Export CSV
+              <button onClick={exportCSV} className="btn btn-secondary" disabled={loading}>
+                📥 Export CSV (filtered)
               </button>
             </div>
           </div>
@@ -823,17 +861,29 @@ export default function History() {
                           )}
                         </td>
                         <td style={{ padding: '16px' }} onClick={(e) => e.stopPropagation()}>
-                          {CANCELLABLE_STATUSES.includes(req.status) &&
-                           (currentUserId == null || req.created_by === currentUserId) && (
-                            <button
-                              type="button"
-                              className="btn btn-secondary"
-                              style={{ padding: '6px 12px', fontSize: '13px' }}
-                              onClick={() => cancelRequest(req.id)}
-                            >
-                              Cancel
-                            </button>
-                          )}
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            {(currentUserId == null || req.created_by === currentUserId) && (
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                style={{ padding: '6px 12px', fontSize: '13px' }}
+                                onClick={() => resubmitRequest(req.id)}
+                              >
+                                Clone
+                              </button>
+                            )}
+                            {CANCELLABLE_STATUSES.includes(req.status) &&
+                             (currentUserId == null || req.created_by === currentUserId) && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ padding: '6px 12px', fontSize: '13px' }}
+                                onClick={() => cancelRequest(req.id)}
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1000,6 +1050,14 @@ export default function History() {
                         style={{ padding: '8px 16px', fontSize: '14px' }}
                       >
                         Use as template
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => saveConfiguration(detailRequest)}
+                        className="btn btn-secondary"
+                        style={{ padding: '8px 16px', fontSize: '14px' }}
+                      >
+                        Save as my template
                       </button>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <input

@@ -38,7 +38,7 @@ func logsCloudHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	requests, err := GetPRRequests("", "", "", "", "", "", 0, 0, nil, limit, 0)
+	requests, err := GetPRRequests("", "", "", "", "", "", 0, 0, nil, limit, 0, "", "", false)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)

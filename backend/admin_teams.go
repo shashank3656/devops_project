@@ -104,6 +104,38 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		users = append(users, u)
 	}
+	format := r.URL.Query().Get("format")
+	if format == "csv" {
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment; filename=users.csv")
+		csvLine := func(ss ...string) string {
+			for i, s := range ss {
+				if strings.Contains(s, ",") || strings.Contains(s, "\"") || strings.Contains(s, "\n") {
+					ss[i] = "\"" + strings.ReplaceAll(strings.ReplaceAll(s, "\"", "\"\""), "\n", " ") + "\""
+				}
+			}
+			return strings.Join(ss, ",")
+		}
+		w.Write([]byte(csvLine("id", "username", "email", "role", "verified", "user_type") + "\n"))
+		for _, u := range users {
+			usr, _ := u.(map[string]interface{})
+			if usr == nil {
+				continue
+			}
+			username, _ := usr["username"].(string)
+			email, _ := usr["email"].(string)
+			role, _ := usr["role"].(string)
+			verified := "false"
+			if v, _ := usr["verified"].(bool); v {
+				verified = "true"
+			}
+			userType, _ := usr["user_type"].(string)
+			idStr := fmt.Sprint(usr["id"])
+			w.Write([]byte(csvLine(idStr, username, email, role, verified, userType) + "\n"))
+		}
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"users": users, "status": "ok"})
 }
@@ -278,6 +310,12 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		teams, _ := GetTeamsForUserWithDetails(id)
+		if len(teams) > 0 {
+			userResp["teams"] = teams
+		} else {
+			userResp["teams"] = []interface{}{}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"user": userResp, "status": "ok"})
 		return
@@ -436,9 +474,11 @@ func adminTeamsCreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name     string `json:"name"`
-		Slug     string `json:"slug"`
-		TeamType string `json:"team_type"` // "portal" | "devops"
+		Name         string `json:"name"`
+		Slug         string `json:"slug"`
+		TeamType     string `json:"team_type"`     // "portal" | "devops"
+		DefaultEnv   string `json:"default_env"`   // e.g. dev, stage, prod
+		DefaultCloud string `json:"default_cloud"` // optional default cloud
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -460,7 +500,7 @@ func adminTeamsCreateHandler(w http.ResponseWriter, r *http.Request) {
 	if userID > 0 {
 		createdBy = &userID
 	}
-	team, err := CreateTeam(strings.TrimSpace(body.Name), strings.TrimSpace(body.Slug), teamType, createdBy)
+	team, err := CreateTeam(strings.TrimSpace(body.Name), strings.TrimSpace(body.Slug), teamType, createdBy, strings.TrimSpace(body.DefaultEnv), strings.TrimSpace(body.DefaultCloud))
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -510,6 +550,53 @@ func adminTeamDetailHandler(w http.ResponseWriter, r *http.Request) {
 	members, _ := GetTeamMembers(id)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"team": team, "members": members, "status": "ok"})
+}
+
+// adminTeamUpdateHandler PATCH /api/admin/teams/:id - update default_env, default_cloud
+func adminTeamUpdateHandler(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/admin/teams/")
+	id, _ := strconv.Atoi(strings.Split(path, "/")[0])
+	if id <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid team id", "status": "error"})
+		return
+	}
+	var body struct {
+		DefaultEnv   string `json:"default_env"`
+		DefaultCloud string `json:"default_cloud"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	team, err := GetTeamByID(id)
+	if err != nil || team == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "team not found", "status": "error"})
+		return
+	}
+	if err := UpdateTeamDefaults(id, strings.TrimSpace(body.DefaultEnv), strings.TrimSpace(body.DefaultCloud)); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	team, _ = GetTeamByID(id)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"team": team, "status": "ok"})
 }
 
 // adminTeamDeleteHandler DELETE /api/admin/teams/:id
@@ -776,6 +863,9 @@ func adminTeamsRouter(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
 			adminTeamDetailHandler(w, r)
+			return
+		case "PATCH":
+			adminTeamUpdateHandler(w, r)
 			return
 		case "DELETE":
 			adminTeamDeleteHandler(w, r)

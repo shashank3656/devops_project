@@ -124,6 +124,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         <nav className="devops-sidebar-nav">
           {navLink('/dashboard', 'My tickets', <IconTickets />)}
           {isManager && navLink('/workload', 'Workload', <IconWorkload />, pendingCount)}
+          {isManager && navLink('/tickets', 'All tickets', <IconTickets />)}
           {isManager && navLink('/team', 'Team', <IconUsers />)}
           {navLink('/profile', 'Profile', <IconUser />)}
         </nav>

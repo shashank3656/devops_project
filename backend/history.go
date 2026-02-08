@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func historyHandler(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +63,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get user ID from token if available
+	// Get user ID from token or API key if available
 	userIDInt := 0
 	if userID != "" {
 		if id, err := strconv.Atoi(userID); err == nil {
@@ -71,8 +72,15 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader != "" && len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-			token := authHeader[7:]
-			if id, err := validateToken(token); err == nil {
+			token := strings.TrimSpace(authHeader[7:])
+			id, scopes, err := validateTokenOrAPIKey(token)
+			if err == nil {
+				if scopes != "" && !hasScope(scopes, "history:read") {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusForbidden)
+					json.NewEncoder(w).Encode(map[string]interface{}{"error": "api key does not have history:read scope", "status": "error"})
+					return
+				}
 				userIDInt = id
 			}
 		}
@@ -86,7 +94,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// Fetch PR requests (no status/priority filter for user history; include drafts for owner)
-	requests, err := GetPRRequests(team, env, cloud, "", "", search, prID, userIDInt, createdByIn, limit, offset)
+	requests, err := GetPRRequests(team, env, cloud, "", "", search, prID, userIDInt, createdByIn, limit, offset, "", "", false)
 	if err != nil {
 		log.Printf("Error fetching PR requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -117,7 +125,29 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get total count for pagination
-	totalCount, _ := GetTotalCount(team, env, cloud, "", "", search, prID, userIDInt, createdByIn)
+	totalCount, _ := GetTotalCount(team, env, cloud, "", "", search, prID, userIDInt, createdByIn, false)
+
+	if r.URL.Query().Get("format") == "csv" {
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment; filename=history.csv")
+		all, _ := GetPRRequests(team, env, cloud, "", "", search, prID, userIDInt, createdByIn, 10000, 0, "", "", false)
+		csvLine := func(ss ...string) string {
+			for i, s := range ss {
+				if strings.Contains(s, ",") || strings.Contains(s, "\"") || strings.Contains(s, "\n") {
+					ss[i] = "\"" + strings.ReplaceAll(strings.ReplaceAll(s, "\"", "\"\""), "\n", " ") + "\""
+				}
+			}
+			return strings.Join(ss, ",")
+		}
+		w.Write([]byte(csvLine("id", "team", "env", "cloud", "service", "status", "created_at", "updated_at") + "\n"))
+		for _, rq := range all {
+			w.Write([]byte(csvLine(
+				strconv.Itoa(rq.ID), rq.Team, rq.Env, rq.Cloud, rq.Service, rq.Status,
+				rq.CreatedAt.Format(time.RFC3339), rq.UpdatedAt.Format(time.RFC3339),
+			) + "\n"))
+		}
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{

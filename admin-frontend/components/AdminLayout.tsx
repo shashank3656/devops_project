@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { ADMIN_SITE_NAME } from '../lib/site';
-import { IconDashboard, IconRequests, IconTeams, IconUsers, IconLogout, IconBell, IconChevronLeft, IconChevronRight, IconActivity, IconSun, IconMoon } from './Icons';
+import { IconDashboard, IconRequests, IconTeams, IconUsers, IconLogout, IconBell, IconChevronLeft, IconChevronRight, IconActivity, IconTemplates, IconSun, IconMoon, IconWebhook } from './Icons';
 
 const SIDEBAR_STORAGE_KEY = 'admin_sidebar_collapsed';
 const THEME_KEY = 'infra-portal-theme';
@@ -190,6 +190,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           {navLink('/teams', 'Teams', <IconTeams />)}
           {navLink('/users', 'Users', <IconUsers />)}
           {navLink('/activity', 'Activity', <IconActivity />)}
+          {navLink('/templates', 'Templates', <IconTemplates />)}
+          {navLink('/webhooks', 'Webhooks', <IconWebhook />)}
         </nav>
         <div className="admin-sidebar-footer">
           <button

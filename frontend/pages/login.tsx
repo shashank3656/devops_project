@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { useToast } from '../context/ToastContext';
+import { getStoredTheme, setStoredTheme } from '../components/NavBar';
 
 export default function Login() {
   const router = useRouter();
@@ -10,6 +11,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -20,6 +22,16 @@ export default function Login() {
       localStorage.removeItem('isAuthenticated');
     }
   }, []);
+
+  useEffect(() => {
+    setTheme(getStoredTheme());
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setStoredTheme(next);
+    setTheme(next);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,6 +94,23 @@ export default function Login() {
         <title>Login - InfraGate</title>
       </Head>
       <div className="auth-page">
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="btn btn-secondary"
+          style={{
+            position: 'absolute',
+            top: 16,
+            right: 16,
+            padding: '8px 14px',
+            fontSize: 14,
+            borderRadius: 8,
+          }}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+        >
+          {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+        </button>
         <div className="auth-card">
           <div className="auth-header">
             <h1 className="auth-title">InfraGate</h1>

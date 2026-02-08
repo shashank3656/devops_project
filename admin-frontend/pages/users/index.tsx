@@ -108,13 +108,36 @@ export default function UsersList() {
         <div className="container">
           <div className="page-header">
             <h1 className="page-title">Users</h1>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <Link href="/users/new" className="btn btn-primary">
                 Create portal user
               </Link>
               <Link href="/users/new-devops" className="btn btn-secondary">
                 Create DevOps user
               </Link>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  const token = localStorage.getItem('admin_token');
+                  fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/admin/users?format=csv`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                  })
+                    .then((res) => res.text())
+                    .then((csv) => {
+                      const blob = new Blob([csv], { type: 'text/csv' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `users-${new Date().toISOString().slice(0, 10)}.csv`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    })
+                    .catch(() => setError('Export failed'));
+                }}
+              >
+                Export CSV
+              </button>
             </div>
           </div>
 
