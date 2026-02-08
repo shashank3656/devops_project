@@ -10,6 +10,22 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// CheckGitHubConnectivity returns true if GitHub token is set and API is reachable
+func CheckGitHubConnectivity() (ok bool, err error) {
+	if GitHubToken == "" {
+		return false, nil
+	}
+	ctx := context.Background()
+	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: GitHubToken})
+	tc := oauth2.NewClient(ctx, ts)
+	client := github.NewClient(tc)
+	_, _, err = client.Repositories.Get(ctx, GitHubOwner, GitHubRepo)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func CreateGitHubPR(branchName, filePath string, content []byte, applicationID string) (string, error) {
 	ctx := context.Background()
 

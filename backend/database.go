@@ -2,7 +2,9 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
@@ -99,12 +101,14 @@ type DevopsProfile struct {
 
 // Team is a group created by admin (for admin frontend). team_type: portal (user portal group) | devops (DevOps team)
 type Team struct {
-	ID        int       `json:"id"`
-	Name      string    `json:"name"`
-	Slug      string    `json:"slug"`
-	TeamType  string    `json:"team_type"` // portal | devops
-	CreatedAt time.Time `json:"created_at"`
-	CreatedBy *int      `json:"created_by"`
+	ID           int       `json:"id"`
+	Name         string    `json:"name"`
+	Slug         string    `json:"slug"`
+	TeamType     string    `json:"team_type"` // portal | devops
+	DefaultEnv   string    `json:"default_env,omitempty"`   // e.g. dev, prod; prefill when user from this team creates request
+	DefaultCloud string    `json:"default_cloud,omitempty"` // e.g. aws; optional prefill
+	CreatedAt    time.Time `json:"created_at"`
+	CreatedBy    *int      `json:"created_by"`
 }
 
 // TeamMember links a user to a team. For portal teams: role is developer | senior_developer | lead | manager. For devops: member | lead.
@@ -113,6 +117,135 @@ type TeamMember struct {
 	TeamID    int       `json:"team_id"`
 	UserID    int       `json:"user_id"`
 	Role      string    `json:"role"` // developer, senior_developer, lead, manager (portal) | member, lead (devops)
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// OutboundWebhook is admin-configured URL to POST on request state change
+type OutboundWebhook struct {
+	ID        int       `json:"id"`
+	URL       string    `json:"url"`
+	Secret    string    `json:"-"` // never returned in list
+	Events    string    `json:"events"` // comma-separated: approved, pr_created, rejected, assigned
+	Enabled   bool      `json:"enabled"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// GetOutboundWebhooks returns all webhooks (for admin list)
+func GetOutboundWebhooks() ([]OutboundWebhook, error) {
+	rows, err := DB.Query(`SELECT id, url, COALESCE(secret,''), events, enabled, created_at, updated_at FROM outbound_webhooks ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OutboundWebhook
+	for rows.Next() {
+		var w OutboundWebhook
+		if err := rows.Scan(&w.ID, &w.URL, &w.Secret, &w.Events, &w.Enabled, &w.CreatedAt, &w.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, w)
+	}
+	return out, nil
+}
+
+// GetEnabledOutboundWebhooksForEvent returns webhooks that are enabled and subscribe to the event
+func GetEnabledOutboundWebhooksForEvent(event string) ([]OutboundWebhook, error) {
+	rows, err := DB.Query(`SELECT id, url, COALESCE(secret,''), events FROM outbound_webhooks WHERE enabled = TRUE`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OutboundWebhook
+	for rows.Next() {
+		var w OutboundWebhook
+		if err := rows.Scan(&w.ID, &w.URL, &w.Secret, &w.Events); err != nil {
+			return nil, err
+		}
+		for _, e := range strings.Split(w.Events, ",") {
+			if strings.TrimSpace(e) == event {
+				out = append(out, w)
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
+// CreateOutboundWebhook inserts a new webhook
+func CreateOutboundWebhook(url, secret, events string) (*OutboundWebhook, error) {
+	if events == "" {
+		events = "approved,pr_created,rejected"
+	}
+	var w OutboundWebhook
+	err := DB.QueryRow(
+		`INSERT INTO outbound_webhooks (url, secret, events) VALUES ($1, $2, $3)
+		 RETURNING id, url, events, enabled, created_at, updated_at`,
+		strings.TrimSpace(url), strings.TrimSpace(secret), strings.TrimSpace(events),
+	).Scan(&w.ID, &w.URL, &w.Events, &w.Enabled, &w.CreatedAt, &w.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &w, nil
+}
+
+// UpdateOutboundWebhook updates url, secret, events, enabled
+func UpdateOutboundWebhook(id int, url, secret, events string, enabled bool) error {
+	if secret == "" {
+		_, err := DB.Exec(
+			`UPDATE outbound_webhooks SET url = $1, events = $2, enabled = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4`,
+			strings.TrimSpace(url), strings.TrimSpace(events), enabled, id,
+		)
+		return err
+	}
+	_, err := DB.Exec(
+		`UPDATE outbound_webhooks SET url = $1, secret = $2, events = $3, enabled = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5`,
+		strings.TrimSpace(url), strings.TrimSpace(secret), strings.TrimSpace(events), enabled, id,
+	)
+	return err
+}
+
+// DeleteOutboundWebhook removes a webhook
+func DeleteOutboundWebhook(id int) error {
+	_, err := DB.Exec("DELETE FROM outbound_webhooks WHERE id = $1", id)
+	return err
+}
+
+// APIKey is a scoped, revocable key for automation (create request, get history without browser login).
+const APIKeyPrefix = "ip_"
+
+type APIKeyRecord struct {
+	ID         int        `json:"id"`
+	UserID     int        `json:"user_id"`
+	Name       string     `json:"name"`
+	KeyHash    string     `json:"-"` // never returned
+	Scopes     string     `json:"scopes"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+// RequestTemplate is an admin-defined preset (e.g. "AWS prod EKS")
+type RequestTemplate struct {
+	ID          int       `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Cloud       string    `json:"cloud"`
+	Env         string    `json:"env"`
+	Service     string    `json:"service"`
+	Config      string    `json:"config"`
+	CreatedBy   *int      `json:"created_by"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// UserSavedConfig is a user's saved/favorite configuration
+type UserSavedConfig struct {
+	ID        int       `json:"id"`
+	UserID    int       `json:"user_id"`
+	Name      string    `json:"name"`
+	Config    string    `json:"config"`
+	Cloud     string    `json:"cloud"`
+	Env       string    `json:"env"`
+	Service   string    `json:"service"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -466,6 +599,95 @@ func GetGitHubLogs(limit int) ([]GitHubLogEntry, error) {
 	return out, nil
 }
 
+// UserNotification is a single in-app notification row
+type UserNotification struct {
+	ID         int        `json:"id"`
+	UserID     int        `json:"user_id"`
+	RequestID  *int       `json:"request_id"`
+	Kind       string     `json:"kind"`
+	Message    string     `json:"message"`
+	ReadAt     *time.Time `json:"read_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+// InsertUserNotification creates an in-app notification for a user
+func InsertUserNotification(userID int, requestID *int, kind, message string) error {
+	if DB == nil {
+		return nil
+	}
+	_, err := DB.Exec(
+		"INSERT INTO user_notifications (user_id, request_id, kind, message) VALUES ($1, $2, $3, $4)",
+		userID, requestID, kind, message,
+	)
+	return err
+}
+
+// ListUserNotifications returns notifications for a user, newest first
+func ListUserNotifications(userID int, limit, offset int, unreadOnly bool) ([]UserNotification, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	q := "SELECT id, user_id, request_id, kind, message, read_at, created_at FROM user_notifications WHERE user_id = $1"
+	args := []interface{}{userID}
+	argPos := 2
+	if unreadOnly {
+		q += fmt.Sprintf(" AND read_at IS NULL")
+	}
+	q += " ORDER BY created_at DESC"
+	if limit > 0 {
+		q += fmt.Sprintf(" LIMIT $%d", argPos)
+		args = append(args, limit)
+		argPos++
+	}
+	if offset > 0 {
+		q += fmt.Sprintf(" OFFSET $%d", argPos)
+		args = append(args, offset)
+		argPos++
+	}
+	rows, err := DB.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []UserNotification
+	for rows.Next() {
+		var n UserNotification
+		var reqID sql.NullInt64
+		var readAt sql.NullTime
+		if err := rows.Scan(&n.ID, &n.UserID, &reqID, &n.Kind, &n.Message, &readAt, &n.CreatedAt); err != nil {
+			return nil, err
+		}
+		if reqID.Valid {
+			v := int(reqID.Int64)
+			n.RequestID = &v
+		}
+		if readAt.Valid {
+			n.ReadAt = &readAt.Time
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
+// MarkUserNotificationsRead marks notifications as read (ids empty = mark all for user)
+func MarkUserNotificationsRead(userID int, ids []int) error {
+	if DB == nil {
+		return nil
+	}
+	if len(ids) == 0 {
+		_, err := DB.Exec("UPDATE user_notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND read_at IS NULL", userID)
+		return err
+	}
+	placeholders := make([]string, len(ids))
+	args := []interface{}{userID}
+	for i := range ids {
+		args = append(args, ids[i])
+		placeholders[i] = fmt.Sprintf("$%d", len(args))
+	}
+	_, err := DB.Exec("UPDATE user_notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND id IN ("+strings.Join(placeholders, ",")+")", args...)
+	return err
+}
+
 // GetPortalTeamMemberUserIDs returns user IDs of all members in portal team(s) where the given user has role=manager (for "manager sees all group tickets").
 func GetPortalTeamMemberUserIDs(managerUserID int) ([]int, error) {
 	rows, err := DB.Query(`
@@ -599,8 +821,8 @@ func GetUsernamesByUserIDs(userIDs []int) (map[int]string, error) {
 	return out, nil
 }
 
-// GetPRRequests retrieves PR requests with optional filters. If createdByIn is non-empty, filter by created_by IN (createdByIn); else if userIDInt > 0, filter by created_by = userIDInt.
-func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, limit, offset int) ([]PRRequest, error) {
+// GetPRRequests retrieves PR requests with optional filters. sortBy: created_at|updated_at|priority|due_date; sortOrder: asc|desc; atRiskOnly: due_date overdue or due in 24h.
+func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, limit, offset int, sortBy, sortOrder string, atRiskOnly bool) ([]PRRequest, error) {
 	query := `
 		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at
 		FROM pr_requests
@@ -670,8 +892,27 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 		args = append(args, userIDInt)
 		argPos++
 	}
-
-	query += " ORDER BY created_at DESC"
+	if atRiskOnly {
+		query += " AND due_date IS NOT NULL AND (due_date < NOW() OR due_date < NOW() + INTERVAL '24 hours')"
+	}
+	orderCol := "created_at"
+	switch sortBy {
+	case "updated_at":
+		orderCol = "updated_at"
+	case "priority":
+		orderCol = "COALESCE(priority,'medium')"
+	case "due_date":
+		orderCol = "due_date"
+	}
+	orderDir := "DESC"
+	if strings.ToLower(sortOrder) == "asc" {
+		orderDir = "ASC"
+	}
+	if orderCol == "due_date" {
+		query += " ORDER BY due_date NULLS LAST " + orderDir
+	} else {
+		query += " ORDER BY " + orderCol + " " + orderDir
+	}
 
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT $%d", argPos)
@@ -878,7 +1119,78 @@ func getWorkloadInProgress(includeUnassigned bool) ([]WorkloadItem, error) {
 	return out, nil
 }
 
-// UpdatePRRequestFull updates a draft request (config, priority, due_date, status). Only for draft requests.
+// WorkloadSummaryRow is one row for workload capacity view (by team or by person)
+type WorkloadSummaryRow struct {
+	Key                string `json:"key"`                  // team name or username
+	Open               int    `json:"open"`                 // pending_* + in_progress
+	InProgress         int    `json:"in_progress"`          // status = in_progress
+	CompletedThisWeek  int    `json:"completed_this_week"`   // status = completed and updated_at in current week
+}
+
+// GetWorkloadSummaryByTeam returns per-team open, in_progress, completed_this_week
+func GetWorkloadSummaryByTeam() ([]WorkloadSummaryRow, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	query := `
+		SELECT team AS key,
+			COUNT(*) FILTER (WHERE status IN ('pending_approval', 'pending_devops_approval', 'pending_user_manager_approval', 'in_progress')) AS open,
+			COUNT(*) FILTER (WHERE status = 'in_progress') AS in_progress,
+			COUNT(*) FILTER (WHERE status = 'completed' AND updated_at >= date_trunc('week', CURRENT_DATE)) AS completed_this_week
+		FROM pr_requests
+		WHERE status NOT IN ('draft', 'rejected', 'cancelled')
+		GROUP BY team
+		ORDER BY open DESC, in_progress DESC
+	`
+	rows, err := DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WorkloadSummaryRow
+	for rows.Next() {
+		var r WorkloadSummaryRow
+		if err := rows.Scan(&r.Key, &r.Open, &r.InProgress, &r.CompletedThisWeek); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// GetWorkloadSummaryByPerson returns per-assignee open, in_progress, completed_this_week (assignee_username as key)
+func GetWorkloadSummaryByPerson() ([]WorkloadSummaryRow, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	query := `
+		SELECT COALESCE(u.username, 'Unassigned') AS key,
+			COUNT(*) FILTER (WHERE p.status IN ('pending_approval', 'pending_devops_approval', 'pending_user_manager_approval', 'in_progress')) AS open,
+			COUNT(*) FILTER (WHERE p.status = 'in_progress') AS in_progress,
+			COUNT(*) FILTER (WHERE p.status = 'completed' AND p.updated_at >= date_trunc('week', CURRENT_DATE)) AS completed_this_week
+		FROM pr_requests p
+		LEFT JOIN users u ON u.id = p.assigned_to
+		WHERE p.status NOT IN ('draft', 'rejected', 'cancelled')
+		GROUP BY p.assigned_to, u.username
+		ORDER BY open DESC, in_progress DESC
+	`
+	rows, err := DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WorkloadSummaryRow
+	for rows.Next() {
+		var r WorkloadSummaryRow
+		if err := rows.Scan(&r.Key, &r.Open, &r.InProgress, &r.CompletedThisWeek); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// UpdatePRRequestFull updates a draft request (config, priority, due_date, status). Only for draft requests. (config, priority, due_date, status). Only for draft requests.
 func UpdatePRRequestFull(id int, config string, priority string, dueDate *time.Time, status string) error {
 	if dueDate == nil {
 		_, err := DB.Exec(
@@ -1267,8 +1579,8 @@ func GetStats(userIDInt int) (*Stats, error) {
 	return stats, nil
 }
 
-// GetTotalCount returns total count of PR requests (for pagination). Same createdByIn/userIDInt logic as GetPRRequests.
-func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int) (int, error) {
+// GetTotalCount returns total count of PR requests (for pagination). Same filters as GetPRRequests including atRiskOnly.
+func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, atRiskOnly bool) (int, error) {
 	query := "SELECT COUNT(*) FROM pr_requests WHERE 1=1"
 	args := []interface{}{}
 	argPos := 1
@@ -1328,6 +1640,9 @@ func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string
 		args = append(args, userIDInt)
 		argPos++
 	}
+	if atRiskOnly {
+		query += " AND due_date IS NOT NULL AND (due_date < NOW() OR due_date < NOW() + INTERVAL '24 hours')"
+	}
 
 	var count int
 	err := DB.QueryRow(query, args...).Scan(&count)
@@ -1354,13 +1669,14 @@ func GetPendingDevopsApprovalCount() (int, error) {
 
 // AuditLogEntry is a single admin audit log row
 type AuditLogEntry struct {
-	ID           int       `json:"id"`
-	AdminUserID  *int      `json:"admin_user_id"`
-	Action       string    `json:"action"`
-	ResourceType string    `json:"resource_type"`
-	ResourceID   string    `json:"resource_id"`
-	Details      string    `json:"details"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID            int       `json:"id"`
+	AdminUserID   *int      `json:"admin_user_id"`
+	AdminUsername string    `json:"admin_username,omitempty"`
+	Action        string    `json:"action"`
+	ResourceType  string    `json:"resource_type"`
+	ResourceID    string    `json:"resource_id"`
+	Details       string    `json:"details"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // AppendAuditLog records an admin action (no-op if DB is nil)
@@ -1374,24 +1690,36 @@ func AppendAuditLog(adminUserID *int, action, resourceType, resourceID, details 
 	)
 }
 
-// GetAuditLogs returns recent audit log entries with optional filters
-func GetAuditLogs(limit, offset int, actionFilter string) ([]AuditLogEntry, error) {
+// GetAuditLogs returns recent audit log entries with optional filters (action, date range from/to YYYY-MM-DD)
+func GetAuditLogs(limit, offset int, actionFilter, fromDate, toDate string) ([]AuditLogEntry, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	query := `
-		SELECT id, admin_user_id, action, resource_type, COALESCE(resource_id,''), COALESCE(details,''), created_at
-		FROM admin_audit_log
+		SELECT a.id, a.admin_user_id, a.action, a.resource_type, COALESCE(a.resource_id,''), COALESCE(a.details,''), a.created_at,
+		       u.username
+		FROM admin_audit_log a
+		LEFT JOIN users u ON u.id = a.admin_user_id
 		WHERE 1=1
 	`
 	args := []interface{}{}
 	argPos := 1
 	if actionFilter != "" {
-		query += fmt.Sprintf(" AND action = $%d", argPos)
+		query += fmt.Sprintf(" AND a.action = $%d", argPos)
 		args = append(args, actionFilter)
 		argPos++
 	}
-	query += " ORDER BY created_at DESC"
+	if fromDate != "" {
+		query += fmt.Sprintf(" AND a.created_at >= $%d::date", argPos)
+		args = append(args, fromDate)
+		argPos++
+	}
+	if toDate != "" {
+		query += fmt.Sprintf(" AND a.created_at < ($%d::date + interval '1 day')", argPos)
+		args = append(args, toDate)
+		argPos++
+	}
+	query += " ORDER BY a.created_at DESC"
 	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argPos, argPos+1)
 	args = append(args, limit, offset)
 	rows, err := DB.Query(query, args...)
@@ -1403,12 +1731,16 @@ func GetAuditLogs(limit, offset int, actionFilter string) ([]AuditLogEntry, erro
 	for rows.Next() {
 		var e AuditLogEntry
 		var adminID sql.NullInt64
-		if err := rows.Scan(&e.ID, &adminID, &e.Action, &e.ResourceType, &e.ResourceID, &e.Details, &e.CreatedAt); err != nil {
+		var username sql.NullString
+		if err := rows.Scan(&e.ID, &adminID, &e.Action, &e.ResourceType, &e.ResourceID, &e.Details, &e.CreatedAt, &username); err != nil {
 			return nil, err
 		}
 		if adminID.Valid {
 			id := int(adminID.Int64)
 			e.AdminUserID = &id
+		}
+		if username.Valid {
+			e.AdminUsername = username.String
 		}
 		out = append(out, e)
 	}
@@ -1516,8 +1848,8 @@ func GetPendingManagerApprovalCount(managerUserID int) (int, error) {
 	return count, err
 }
 
-// CreateTeam creates a new team (admin only). teamType: "portal" | "devops"
-func CreateTeam(name, slug, teamType string, createdBy *int) (*Team, error) {
+// CreateTeam creates a new team (admin only). teamType: "portal" | "devops". defaultEnv, defaultCloud optional.
+func CreateTeam(name, slug, teamType string, createdBy *int, defaultEnv, defaultCloud string) (*Team, error) {
 	if slug == "" {
 		slug = strings.ToLower(strings.ReplaceAll(name, " ", "-"))
 	}
@@ -1526,19 +1858,115 @@ func CreateTeam(name, slug, teamType string, createdBy *int) (*Team, error) {
 	}
 	var t Team
 	err := DB.QueryRow(
-		`INSERT INTO teams (name, slug, team_type, created_by) VALUES ($1, $2, $3, $4)
-		 RETURNING id, name, slug, COALESCE(team_type,'portal'), created_at, created_by`,
-		name, slug, teamType, createdBy,
-	).Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.CreatedAt, &t.CreatedBy)
+		`INSERT INTO teams (name, slug, team_type, created_by, default_env, default_cloud) VALUES ($1, $2, $3, $4, NULLIF(TRIM($5),''), NULLIF(TRIM($6),''))
+		 RETURNING id, name, slug, COALESCE(team_type,'portal'), COALESCE(default_env,''), COALESCE(default_cloud,''), created_at, created_by`,
+		name, slug, teamType, createdBy, defaultEnv, defaultCloud,
+	).Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy)
 	if err != nil {
 		return nil, err
 	}
 	return &t, nil
 }
 
+// UpdateTeamDefaults updates default_env and default_cloud for a team
+func UpdateTeamDefaults(teamID int, defaultEnv, defaultCloud string) error {
+	_, err := DB.Exec(
+		`UPDATE teams SET default_env = NULLIF(TRIM($1),''), default_cloud = NULLIF(TRIM($2),'') WHERE id = $3`,
+		defaultEnv, defaultCloud, teamID,
+	)
+	return err
+}
+
+// CreateAPIKey creates an API key for the user; returns the raw key (shown once) and record. Scopes: comma-separated e.g. "request:create,history:read"
+func CreateAPIKey(userID int, name, scopes string) (rawKey string, rec *APIKeyRecord, err error) {
+	if scopes == "" {
+		scopes = "request:create,history:read"
+	}
+	scopes = strings.TrimSpace(strings.ReplaceAll(scopes, " ", ""))
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", nil, err
+	}
+	raw := hex.EncodeToString(bytes)
+	rawKey = APIKeyPrefix + raw
+	hash := sha256.Sum256([]byte(rawKey))
+	hashStr := hex.EncodeToString(hash[:])
+	var id int
+	var createdAt time.Time
+	err = DB.QueryRow(
+		`INSERT INTO api_keys (user_id, name, key_hash, scopes) VALUES ($1, $2, $3, $4)
+		 RETURNING id, created_at`, userID, strings.TrimSpace(name), hashStr, scopes,
+	).Scan(&id, &createdAt)
+	if err != nil {
+		return "", nil, err
+	}
+	rec = &APIKeyRecord{ID: id, UserID: userID, Name: strings.TrimSpace(name), Scopes: scopes, CreatedAt: createdAt}
+	return rawKey, rec, nil
+}
+
+// GetUserIDAndScopesByAPIKey returns userID and scopes for a raw API key (prefix ip_xxx), or error if invalid/revoked
+func GetUserIDAndScopesByAPIKey(rawKey string) (userID int, scopes string, keyID int, err error) {
+	if rawKey == "" || !strings.HasPrefix(rawKey, APIKeyPrefix) {
+		return 0, "", 0, fmt.Errorf("invalid api key format")
+	}
+	hash := sha256.Sum256([]byte(rawKey))
+	hashStr := hex.EncodeToString(hash[:])
+	var uid int
+	var s string
+	err = DB.QueryRow(
+		`SELECT id, user_id, COALESCE(scopes,'') FROM api_keys WHERE key_hash = $1`, hashStr,
+	).Scan(&keyID, &uid, &s)
+	if err == sql.ErrNoRows {
+		return 0, "", 0, fmt.Errorf("api key not found or revoked")
+	}
+	if err != nil {
+		return 0, "", 0, err
+	}
+	return uid, s, keyID, nil
+}
+
+// UpdateAPIKeyLastUsed sets last_used_at for the key
+func UpdateAPIKeyLastUsed(keyID int) {
+	_, _ = DB.Exec("UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = $1", keyID)
+}
+
+// ListAPIKeysForUser returns all API keys for the user (without key value)
+func ListAPIKeysForUser(userID int) ([]APIKeyRecord, error) {
+	rows, err := DB.Query(
+		`SELECT id, user_id, name, scopes, last_used_at, created_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []APIKeyRecord
+	for rows.Next() {
+		var r APIKeyRecord
+		if err := rows.Scan(&r.ID, &r.UserID, &r.Name, &r.Scopes, &r.LastUsedAt, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// RevokeAPIKey deletes the API key if it belongs to the user
+func RevokeAPIKey(keyID, userID int) error {
+	res, err := DB.Exec("DELETE FROM api_keys WHERE id = $1 AND user_id = $2", keyID, userID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("api key not found or access denied")
+	}
+	return nil
+}
+
 // GetTeams returns all teams
 func GetTeams() ([]Team, error) {
-	rows, err := DB.Query(`SELECT id, name, slug, COALESCE(team_type,'portal'), created_at, created_by FROM teams ORDER BY name`)
+	rows, err := DB.Query(`SELECT id, name, slug, COALESCE(team_type,'portal'), COALESCE(default_env,''), COALESCE(default_cloud,''), created_at, created_by FROM teams ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -1546,7 +1974,7 @@ func GetTeams() ([]Team, error) {
 	var out []Team
 	for rows.Next() {
 		var t Team
-		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.CreatedAt, &t.CreatedBy); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -1558,8 +1986,8 @@ func GetTeams() ([]Team, error) {
 func GetTeamByID(id int) (*Team, error) {
 	var t Team
 	err := DB.QueryRow(
-		`SELECT id, name, slug, COALESCE(team_type,'portal'), created_at, created_by FROM teams WHERE id = $1`, id,
-	).Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.CreatedAt, &t.CreatedBy)
+		`SELECT id, name, slug, COALESCE(team_type,'portal'), COALESCE(default_env,''), COALESCE(default_cloud,''), created_at, created_by FROM teams WHERE id = $1`, id,
+	).Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -1726,10 +2154,10 @@ func GetGroupManagerForUserInTeam(userID int, teamNameOrSlug string) int {
 	return managerID
 }
 
-// GetTeamsForUserWithDetails returns team details (id, name, slug, team_type) for a user
+// GetTeamsForUserWithDetails returns team details (id, name, slug, team_type, default_env, default_cloud) for a user
 func GetTeamsForUserWithDetails(userID int) ([]Team, error) {
 	rows, err := DB.Query(
-		`SELECT t.id, t.name, t.slug, COALESCE(t.team_type,'portal'), t.created_at, t.created_by
+		`SELECT t.id, t.name, t.slug, COALESCE(t.team_type,'portal'), COALESCE(t.default_env,''), COALESCE(t.default_cloud,''), t.created_at, t.created_by
 		 FROM teams t INNER JOIN team_members m ON m.team_id = t.id
 		 WHERE m.user_id = $1 ORDER BY t.name`,
 		userID,
@@ -1741,7 +2169,7 @@ func GetTeamsForUserWithDetails(userID int) ([]Team, error) {
 	var out []Team
 	for rows.Next() {
 		var t Team
-		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.CreatedAt, &t.CreatedBy); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -1888,4 +2316,155 @@ func GetUserByEmailOrUsername(emailOrUsername string) (*User, error) {
 	}
 	u.IsPortalManager = isPortalManager.Bool
 	return &u, nil
+}
+
+// --- Request templates (admin-defined presets) ---
+func ListRequestTemplates() ([]RequestTemplate, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	rows, err := DB.Query(`SELECT id, COALESCE(name,''), COALESCE(description,''), cloud, env, COALESCE(service,''), COALESCE(config,'{}'), created_by, created_at FROM request_templates ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RequestTemplate
+	for rows.Next() {
+		var t RequestTemplate
+		var createdBy sql.NullInt64
+		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Cloud, &t.Env, &t.Service, &t.Config, &createdBy, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		if createdBy.Valid && createdBy.Int64 > 0 {
+			id := int(createdBy.Int64)
+			t.CreatedBy = &id
+		}
+		out = append(out, t)
+	}
+	return out, nil
+}
+
+func GetRequestTemplateByID(id int) (*RequestTemplate, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	var t RequestTemplate
+	var createdBy sql.NullInt64
+	err := DB.QueryRow(
+		`SELECT id, COALESCE(name,''), COALESCE(description,''), cloud, env, COALESCE(service,''), COALESCE(config,'{}'), created_by, created_at FROM request_templates WHERE id = $1`,
+		id,
+	).Scan(&t.ID, &t.Name, &t.Description, &t.Cloud, &t.Env, &t.Service, &t.Config, &createdBy, &t.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if createdBy.Valid && createdBy.Int64 > 0 {
+		id := int(createdBy.Int64)
+		t.CreatedBy = &id
+	}
+	return &t, nil
+}
+
+func CreateRequestTemplate(name, description, cloud, env, service, config string, createdBy *int) (*RequestTemplate, error) {
+	if DB == nil {
+		return nil, fmt.Errorf("database not available")
+	}
+	var t RequestTemplate
+	err := DB.QueryRow(
+		`INSERT INTO request_templates (name, description, cloud, env, service, config, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 RETURNING id, name, description, cloud, env, service, config, created_by, created_at`,
+		name, description, cloud, env, service, config, createdBy,
+	).Scan(&t.ID, &t.Name, &t.Description, &t.Cloud, &t.Env, &t.Service, &t.Config, &t.CreatedBy, &t.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func UpdateRequestTemplate(id int, name, description, cloud, env, service, config string) error {
+	if DB == nil {
+		return fmt.Errorf("database not available")
+	}
+	_, err := DB.Exec(
+		`UPDATE request_templates SET name = $1, description = $2, cloud = $3, env = $4, service = $5, config = $6 WHERE id = $7`,
+		name, description, cloud, env, service, config, id,
+	)
+	return err
+}
+
+func DeleteRequestTemplate(id int) error {
+	if DB == nil {
+		return fmt.Errorf("database not available")
+	}
+	_, err := DB.Exec("DELETE FROM request_templates WHERE id = $1", id)
+	return err
+}
+
+// --- User saved configs (favorites) ---
+func ListUserSavedConfigs(userID int) ([]UserSavedConfig, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	rows, err := DB.Query(
+		`SELECT id, user_id, COALESCE(name,''), COALESCE(config,'{}'), COALESCE(cloud,''), COALESCE(env,''), COALESCE(service,''), created_at FROM user_saved_configs WHERE user_id = $1 ORDER BY created_at DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []UserSavedConfig
+	for rows.Next() {
+		var c UserSavedConfig
+		if err := rows.Scan(&c.ID, &c.UserID, &c.Name, &c.Config, &c.Cloud, &c.Env, &c.Service, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+func GetUserSavedConfigByID(id, userID int) (*UserSavedConfig, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	var c UserSavedConfig
+	err := DB.QueryRow(
+		`SELECT id, user_id, COALESCE(name,''), COALESCE(config,'{}'), COALESCE(cloud,''), COALESCE(env,''), COALESCE(service,''), created_at FROM user_saved_configs WHERE id = $1 AND user_id = $2`,
+		id, userID,
+	).Scan(&c.ID, &c.UserID, &c.Name, &c.Config, &c.Cloud, &c.Env, &c.Service, &c.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func CreateUserSavedConfig(userID int, name, config, cloud, env, service string) (*UserSavedConfig, error) {
+	if DB == nil {
+		return nil, fmt.Errorf("database not available")
+	}
+	var c UserSavedConfig
+	err := DB.QueryRow(
+		`INSERT INTO user_saved_configs (user_id, name, config, cloud, env, service) VALUES ($1, $2, $3, $4, $5, $6)
+		 RETURNING id, user_id, name, config, cloud, env, service, created_at`,
+		userID, name, config, cloud, env, service,
+	).Scan(&c.ID, &c.UserID, &c.Name, &c.Config, &c.Cloud, &c.Env, &c.Service, &c.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func DeleteUserSavedConfig(id, userID int) error {
+	if DB == nil {
+		return fmt.Errorf("database not available")
+	}
+	res, err := DB.Exec("DELETE FROM user_saved_configs WHERE id = $1 AND user_id = $2", id, userID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("not found")
+	}
+	return nil
 }

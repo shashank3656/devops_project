@@ -11,6 +11,13 @@ interface DevopsProfile {
   level: string;
 }
 
+interface Team {
+  id: number;
+  name: string;
+  slug: string;
+  team_type?: string;
+}
+
 interface User {
   id: number;
   username: string;
@@ -21,6 +28,7 @@ interface User {
   user_type?: 'portal_user' | 'devops_user';
   manager_id?: number | null;
   devops_profile?: DevopsProfile;
+  teams?: Team[];
 }
 
 export default function EditUser() {
@@ -163,6 +171,27 @@ export default function EditUser() {
               <div className="alert alert-error">{error}</div>
             </div>
           ) : user ? (
+            <>
+              {user.teams && user.teams.length > 0 && (
+                <div className="card" style={{ maxWidth: 480, marginBottom: 24 }}>
+                  <h3 className="card-title" style={{ fontSize: 18 }}>Teams</h3>
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 12 }}>
+                    This user is a member of the following teams. Manage membership from each team&apos;s page.
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: 20 }}>
+                    {user.teams.map((t) => (
+                      <li key={t.id}>
+                        <Link href={`/teams/${t.id}`}>{t.name}</Link>
+                        {t.team_type && (
+                          <span style={{ marginLeft: 8, fontSize: 13, color: 'var(--color-text-muted)' }}>
+                            ({t.team_type})
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             <div className="card" style={{ maxWidth: 480 }}>
               <h2 className="card-title">Edit user profile</h2>
               <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 24 }}>
@@ -339,6 +368,7 @@ export default function EditUser() {
                 </button>
               </form>
             </div>
+            </>
           ) : null}
         </div>
       </AdminLayout>

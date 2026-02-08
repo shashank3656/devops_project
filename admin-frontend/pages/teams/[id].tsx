@@ -9,6 +9,8 @@ interface Team {
   name: string;
   slug: string;
   team_type?: string;
+  default_env?: string;
+  default_cloud?: string;
   created_at: string;
 }
 
@@ -42,6 +44,10 @@ export default function TeamDetail() {
   const [bulkAdding, setBulkAdding] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [updatingRoleFor, setUpdatingRoleFor] = useState<number | null>(null);
+  const [defaultEnv, setDefaultEnv] = useState('');
+  const [defaultCloud, setDefaultCloud] = useState('');
+  const [savingDefaults, setSavingDefaults] = useState(false);
+  const [defaultsSaved, setDefaultsSaved] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token =
@@ -81,6 +87,8 @@ export default function TeamDetail() {
       if (data.team) {
         setTeam(data.team);
         setMembers(data.members || []);
+        setDefaultEnv(data.team.default_env || '');
+        setDefaultCloud(data.team.default_cloud || '');
       } else {
         setError(data.error || 'Team not found');
       }
@@ -222,6 +230,36 @@ export default function TeamDetail() {
     }
   };
 
+  const handleSaveDefaults = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || typeof id !== 'string') return;
+    setSavingDefaults(true);
+    setError('');
+    setDefaultsSaved(false);
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/teams/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ default_env: defaultEnv, default_cloud: defaultCloud }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setTeam((prev) => prev ? { ...prev, default_env: defaultEnv, default_cloud: defaultCloud } : null);
+        setDefaultsSaved(true);
+        setTimeout(() => setDefaultsSaved(false), 3000);
+      } else {
+        setError(data.error || 'Failed to save team settings');
+      }
+    } catch (_) {
+      setError('Failed to save team settings');
+    } finally {
+      setSavingDefaults(false);
+    }
+  };
+
   const handleDeleteTeam = async () => {
     if (!team || !confirm(`Delete team "${team.name}"? This will remove all members. This cannot be undone.`)) return;
     setDeleting(true);
@@ -303,6 +341,47 @@ export default function TeamDetail() {
                     {deleting ? 'Deleting…' : 'Delete team'}
                   </button>
                 </div>
+              </div>
+
+              <div className="card">
+                <h3 className="card-title">Team default settings</h3>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 16 }}>
+                  Default environment and cloud are prefilled when a user from this team creates a request.
+                </p>
+                <form onSubmit={handleSaveDefaults} style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-end' }}>
+                  <div className="form-group" style={{ marginBottom: 0, minWidth: 180 }}>
+                    <label className="label" htmlFor="team-default-env">Default environment</label>
+                    <select
+                      id="team-default-env"
+                      className="input"
+                      value={defaultEnv}
+                      onChange={(e) => setDefaultEnv(e.target.value)}
+                    >
+                      <option value="">None</option>
+                      <option value="dev">dev</option>
+                      <option value="stage">stage</option>
+                      <option value="prod">prod</option>
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0, minWidth: 180 }}>
+                    <label className="label" htmlFor="team-default-cloud">Default cloud</label>
+                    <select
+                      id="team-default-cloud"
+                      className="input"
+                      value={defaultCloud}
+                      onChange={(e) => setDefaultCloud(e.target.value)}
+                    >
+                      <option value="">None</option>
+                      <option value="aws">AWS</option>
+                      <option value="gcp">GCP</option>
+                      <option value="azure">Azure</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="btn btn-primary" disabled={savingDefaults}>
+                    {savingDefaults ? 'Saving…' : 'Save'}
+                  </button>
+                  {defaultsSaved && <span style={{ color: 'var(--color-success)', fontSize: 14 }}>Saved.</span>}
+                </form>
               </div>
 
               <div className="card">

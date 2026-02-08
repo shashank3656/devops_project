@@ -9,6 +9,8 @@ export default function NewTeam() {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [teamType, setTeamType] = useState<'portal' | 'devops'>('portal');
+  const [defaultEnv, setDefaultEnv] = useState('');
+  const [defaultCloud, setDefaultCloud] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -29,6 +31,8 @@ export default function NewTeam() {
           name: name.trim(),
           slug: slug.trim() || undefined,
           team_type: teamType,
+          default_env: defaultEnv.trim() || undefined,
+          default_cloud: defaultCloud.trim() || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -102,6 +106,40 @@ export default function NewTeam() {
                 >
                   <option value="portal">Portal team group (developer, lead, manager roles)</option>
                   <option value="devops">DevOps team group</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="label" htmlFor="default-env">
+                  Default environment{' '}
+                  <span className="label-optional">(prefilled when user from this team creates a request)</span>
+                </label>
+                <select
+                  id="default-env"
+                  className="input"
+                  value={defaultEnv}
+                  onChange={(e) => setDefaultEnv(e.target.value)}
+                >
+                  <option value="">None</option>
+                  <option value="dev">dev</option>
+                  <option value="stage">stage</option>
+                  <option value="prod">prod</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="label" htmlFor="default-cloud">
+                  Default cloud{' '}
+                  <span className="label-optional">(optional)</span>
+                </label>
+                <select
+                  id="default-cloud"
+                  className="input"
+                  value={defaultCloud}
+                  onChange={(e) => setDefaultCloud(e.target.value)}
+                >
+                  <option value="">None</option>
+                  <option value="aws">AWS</option>
+                  <option value="gcp">GCP</option>
+                  <option value="azure">Azure</option>
                 </select>
               </div>
               <button

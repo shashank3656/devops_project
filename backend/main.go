@@ -50,15 +50,18 @@ func adminUsersHandler(w http.ResponseWriter, r *http.Request) {
 	setRoleHandler(w, r)
 }
 
-// checkCanCreatePR returns (userID, true) if the request has a valid Bearer token and the user is verified and has role contributor or admin
+// checkCanCreatePR returns (userID, true) if the request has a valid Bearer token (or API key with request:create scope) and the user is verified and has role contributor or admin
 func checkCanCreatePR(r *http.Request) (userID int, ok bool) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
 		return 0, false
 	}
 	token := strings.TrimSpace(authHeader[7:])
-	id, err := validateToken(token)
+	id, scopes, err := validateTokenOrAPIKey(token)
 	if err != nil || id <= 0 {
+		return 0, false
+	}
+	if scopes != "" && !hasScope(scopes, "request:create") {
 		return 0, false
 	}
 	user, err := GetUserByID(id)
@@ -477,8 +480,15 @@ func main() {
 	http.HandleFunc("/api/me/teams/", meTeamMembersRouter)
 	http.HandleFunc("/api/me/managed-teams", meManagedTeamsHandler)
 	http.HandleFunc("/api/me/notifications", meNotificationsHandler)
+	http.HandleFunc("/api/cost-estimate", costEstimateHandler)
 	http.HandleFunc("/api/me/pending-manager-approval", mePendingManagerApprovalHandler)
+	http.HandleFunc("/api/me/saved-configs", savedConfigsHandler)
+	http.HandleFunc("/api/me/saved-configs/", savedConfigDetailHandler)
+	http.HandleFunc("/api/me/api-keys", meAPIKeysHandler)
+	http.HandleFunc("/api/me/api-keys/", meAPIKeyDetailHandler)
 	http.HandleFunc("/api/change-password", changePasswordHandler)
+	http.HandleFunc("/api/templates", templatesListHandler)
+	http.HandleFunc("/api/templates/", templatesDetailHandler)
 	http.HandleFunc("/api/verify-email", verifyEmailHandler)
 	http.HandleFunc("/api/verify-otp", verifyOtpHandler)
 	http.HandleFunc("/api/resend-verification", resendVerificationHandler)
@@ -489,11 +499,16 @@ func main() {
 	http.HandleFunc("/api/admin/teams/", adminTeamsRouter)
 	http.HandleFunc("/api/admin/requests", adminRequestsHandler)
 	http.HandleFunc("/api/admin/requests/", adminRequestActionHandler)
+	http.HandleFunc("/api/admin/devops-users", adminDevopsUsersHandler)
 	http.HandleFunc("/api/admin/notifications", adminNotificationsHandler)
 	http.HandleFunc("/api/admin/stats", adminStatsHandler)
 	http.HandleFunc("/api/admin/dashboard-stats", adminDashboardStatsHandler)
 	http.HandleFunc("/api/admin/audit-log", adminAuditLogHandler)
 	http.HandleFunc("/api/admin/user-activity", adminUserActivityHandler)
+	http.HandleFunc("/api/admin/webhooks", adminWebhooksHandler)
+	http.HandleFunc("/api/admin/webhooks/", adminWebhookDetailHandler)
+	http.HandleFunc("/api/admin/templates", adminTemplatesRouter)
+	http.HandleFunc("/api/admin/templates/", adminTemplatesRouter)
 	http.HandleFunc("/api/devops/me", devopsMeHandler)
 	http.HandleFunc("/api/devops/my-teams", devopsMyTeamsHandler)
 	http.HandleFunc("/api/devops/teams/", devopsTeamsRouter)
@@ -503,6 +518,7 @@ func main() {
 	http.HandleFunc("/api/devops/dashboard-stats", devopsDashboardStatsHandler)
 	http.HandleFunc("/api/devops/notifications", devopsNotificationsHandler)
 	http.HandleFunc("/api/devops/pending-approvals", devopsPendingApprovalsHandler)
+	http.HandleFunc("/api/devops/requests", devopsRequestsListHandler)
 	http.HandleFunc("/api/devops/requests/", devopsRequestActionHandler)
 	http.HandleFunc("/api/webhooks/github", githubWebhookHandler)
 	http.HandleFunc("/health", healthHandler)
@@ -562,15 +578,27 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 		"status": "ok",
 		"time":   time.Now().Format(time.RFC3339),
 	}
-	// Check database connection
+	// Database
 	if DB != nil {
 		if err := DB.Ping(); err == nil {
 			status["database"] = "connected"
+			if n, err := GetPendingApprovalCount(); err == nil {
+				status["pending_approval_count"] = n
+			}
 		} else {
 			status["database"] = "disconnected"
 		}
 	} else {
 		status["database"] = "not_initialized"
+	}
+	// GitHub (optional)
+	if ok, err := CheckGitHubConnectivity(); err != nil {
+		status["github"] = "error"
+		status["github_error"] = err.Error()
+	} else if !ok {
+		status["github"] = "disabled"
+	} else {
+		status["github"] = "ok"
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)
