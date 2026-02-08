@@ -84,6 +84,8 @@ export default function DevOpsDashboard() {
       .catch(() => {});
   }, [apiUrl]);
 
+  const [statusFilter, setStatusFilter] = useState<string>('');
+
   const teamStatus = useMemo(() => {
     const byTeam: Record<string, { in_progress: number; completed: number; rejected: number; pending_approval: number; other: number }> = {};
     tickets.forEach((t) => {
@@ -101,6 +103,11 @@ export default function DevOpsDashboard() {
       total: counts.in_progress + counts.completed + counts.rejected + counts.pending_approval + counts.other,
     }));
   }, [tickets]);
+
+  const filteredTickets = useMemo(() => {
+    if (!statusFilter) return tickets;
+    return tickets.filter((t) => t.status === statusFilter);
+  }, [tickets, statusFilter]);
 
   return (
     <>
@@ -184,12 +191,27 @@ export default function DevOpsDashboard() {
           ) : tickets.length === 0 ? (
             <div className="card">
               <div className="empty-state">
-                <p>No tickets assigned to you yet.</p>
-                <p style={{ marginTop: 8, fontSize: 14 }}>After an admin approves a request and a PR is created, tickets are assigned by priority (Critical→L4, High→L3, Medium→L2, Low→L1).</p>
+                <p>No tickets assigned to you yet. Tickets appear here after an admin approves a request and a PR is created.</p>
               </div>
             </div>
           ) : (
             <div className="card">
+              <div className="devops-tickets-filter">
+                <label className="devops-filter-label">Status</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="input"
+                  style={{ width: 'auto', minWidth: 140 }}
+                >
+                  <option value="">All</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="pending_approval">Pending approval</option>
+                  <option value="pending_devops_approval">Pending DevOps</option>
+                </select>
+              </div>
               <div className="table-wrap">
                 <table>
                   <thead>
@@ -206,7 +228,11 @@ export default function DevOpsDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {tickets.map((t) => (
+                    {filteredTickets.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 24 }}>No tickets match the filter.</td>
+                      </tr>
+                    ) : filteredTickets.map((t) => (
                       <tr key={t.id}>
                         <td><code>#{t.id}</code></td>
                         <td>{t.team}</td>

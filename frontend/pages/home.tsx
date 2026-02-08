@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Link from 'next/link';
 import { maskDisplayValue } from '../lib/maskSensitive';
 
 interface Stats {
   total_requests: number;
   by_cloud: Record<string, number>;
   by_status: Record<string, number>;
-  by_env: Record<string, number>;
 }
 
 interface CloudLogEntry {
@@ -35,6 +35,7 @@ const CLOUD_COLORS: Record<string, { bg: string; color: string }> = {
 };
 
 const ONBOARDING_KEY = 'infra-portal-onboarding-done';
+const LOG_LIMIT = 15;
 
 export default function Home() {
   const router = useRouter();
@@ -116,14 +117,16 @@ export default function Home() {
 
   const dismissOnboarding = () => {
     setShowOnboarding(false);
-    try { localStorage.setItem(ONBOARDING_KEY, '1'); } catch (_) {}
+    try {
+      localStorage.setItem(ONBOARDING_KEY, '1');
+    } catch (_) {}
   };
 
   return (
     <>
       <Head>
-        <title>InfraGate - Home</title>
-        <meta name="description" content="Create infrastructure resources" />
+        <title>Home - InfraGate</title>
+        <meta name="description" content="Infrastructure request portal" />
       </Head>
       <div>
         {showOnboarding && (
@@ -140,14 +143,10 @@ export default function Home() {
             }}
             onClick={dismissOnboarding}
           >
-            <div
-              className="card"
-              style={{ maxWidth: 420 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 style={{ marginBottom: 12 }}>Welcome to the Infrastructure Portal</h3>
+            <div className="card" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+              <h3 style={{ marginBottom: 12 }}>Welcome</h3>
               <p style={{ color: 'var(--text-secondary)', marginBottom: 16 }}>
-                Create requests from <strong>New Request</strong> or <strong>History</strong>. Admins approve and create PRs. Press <kbd>?</kbd> for shortcuts.
+                Create requests from <strong>New Request</strong>. Track them in <strong>History</strong>.
               </p>
               <button type="button" className="btn btn-primary" onClick={dismissOnboarding}>
                 Get started
@@ -155,123 +154,70 @@ export default function Home() {
             </div>
           </div>
         )}
-        {/* Dashboard stats */}
+
+        {/* Summary: one row, clear metrics */}
         {!statsLoading && stats && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '20px',
-            marginBottom: '32px',
-          }}>
-            <div className="card" style={{ padding: '24px', textAlign: 'center' }}>
-              <div style={{ fontSize: '32px', fontWeight: '700', color: 'var(--primary-color)' }}>
-                {stats.total_requests}
-              </div>
-              <div style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>Total Requests</div>
+          <div className="home-stats-row">
+            <div className="home-stat-card home-stat-card--primary">
+              <div className="home-stat-value">{stats.total_requests}</div>
+              <div className="home-stat-label">Total requests</div>
             </div>
-            {Object.entries(stats.by_cloud).slice(0, 3).map(([cloud, count]) => (
-              <div key={cloud} className="card" style={{ padding: '24px', textAlign: 'center' }}>
-                <div style={{ fontSize: '28px', fontWeight: '700', color: 'var(--text-primary)' }}>{count}</div>
-                <div style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>{cloud}</div>
-              </div>
-            ))}
-            {Object.entries(stats.by_status).slice(0, 2).map(([status, count]) => (
-              <div key={status} className="card" style={{ padding: '24px', textAlign: 'center' }}>
-                <div style={{ fontSize: '28px', fontWeight: '700', color: 'var(--text-primary)' }}>{count}</div>
-                <div style={{ color: 'var(--text-secondary)', marginTop: '4px', textTransform: 'capitalize' }}>{status}</div>
+            {Object.entries(stats.by_cloud || {}).slice(0, 3).map(([cloud, count]) => (
+              <div key={cloud} className="home-stat-card">
+                <div className="home-stat-value">{count}</div>
+                <div className="home-stat-label">{cloud}</div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Cloud activity logs (by cloud name) */}
-        <div className="card" style={{ marginBottom: '24px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            Cloud activity logs
-          </h2>
-          {logsLoading ? (
-            <p style={{ color: 'var(--text-muted)' }}>Loading logs...</p>
-          ) : cloudKeys.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>No cloud activity yet. Create a request to see logs here.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              {cloudKeys.map((cloud) => {
-                const entries = cloudLogs[cloud] || [];
-                const style = CLOUD_COLORS[cloud] || { bg: 'var(--primary-color)', color: '#fff' };
-                return (
-                  <div key={cloud}>
-                    <div
-                      style={{
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        marginBottom: '8px',
-                        padding: '6px 12px',
-                        borderRadius: 'var(--radius-md)',
-                        background: style.bg,
-                        color: style.color,
-                        display: 'inline-block',
-                      }}
-                    >
-                      {cloud}
-                    </div>
-                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                      {entries.slice(0, 20).map((entry) => (
-                        <li
-                          key={entry.id}
-                          style={{
-                            padding: '10px 12px',
-                            borderBottom: '1px solid var(--border-color)',
-                            fontSize: '14px',
-                            color: 'var(--text-primary)',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            flexWrap: 'wrap',
-                            gap: '8px',
-                          }}
-                        >
-                          <span>{entry.message}</span>
-                          <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>{entry.created_at}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* GitHub log */}
+        {/* Activity: single card with Cloud + GitHub */}
         <div className="card">
-          <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '16px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            GitHub log
-          </h2>
+          <h2 className="section-title">Activity</h2>
           {logsLoading ? (
-            <p style={{ color: 'var(--text-muted)' }}>Loading GitHub log...</p>
-          ) : githubLogs.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>No GitHub activity yet. Creating a PR will add entries here.</p>
+            <p style={{ color: 'var(--text-muted)' }}>Loading…</p>
+          ) : cloudKeys.length === 0 && githubLogs.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)' }}>No activity yet. Create a request to see logs here.</p>
           ) : (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: '400px', overflowY: 'auto' }}>
-              {githubLogs.map((entry) => (
-                <li
-                  key={entry.id}
-                  style={{
-                    padding: '10px 12px',
-                    borderBottom: '1px solid var(--border-color)',
-                    fontSize: '14px',
-                    color: 'var(--text-primary)',
-                    fontFamily: 'ui-monospace, monospace',
-                  }}
-                >
-                  <span style={{ color: 'var(--text-muted)', marginRight: '12px', fontSize: '13px' }}>{entry.created_at}</span>
-                  <span style={{ fontWeight: 500 }}>{entry.message}</span>
-                  {entry.details && (
-                    <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>{maskDisplayValue(entry.details)}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <div className="home-activity">
+              {cloudKeys.length > 0 && (
+                <div className="home-activity-section">
+                  <h3 className="home-activity-heading">Cloud</h3>
+                  <ul className="home-activity-list">
+                    {cloudKeys.map((cloud) => {
+                      const entries = (cloudLogs[cloud] || []).slice(0, LOG_LIMIT);
+                      const style = CLOUD_COLORS[cloud] || { bg: 'var(--primary-color)', color: '#fff' };
+                      return entries.map((entry) => (
+                        <li key={entry.id} className="home-activity-item">
+                          <span className="home-activity-badge" style={{ background: style.bg, color: style.color }}>{cloud}</span>
+                          <span>{entry.message}</span>
+                          <span className="home-activity-meta">{entry.created_at}</span>
+                        </li>
+                      ));
+                    })}
+                  </ul>
+                </div>
+              )}
+              {githubLogs.length > 0 && (
+                <div className="home-activity-section">
+                  <h3 className="home-activity-heading">GitHub</h3>
+                  <ul className="home-activity-list">
+                    {githubLogs.slice(0, LOG_LIMIT).map((entry) => (
+                      <li key={entry.id} className="home-activity-item">
+                        <span className="home-activity-meta">{entry.created_at}</span>
+                        <span>{entry.message}</span>
+                        {entry.details && <span className="home-activity-detail">{maskDisplayValue(entry.details)}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {(cloudKeys.length > 0 || githubLogs.length > 0) && (
+                <p style={{ marginTop: 16, marginBottom: 0 }}>
+                  <Link href="/history" className="btn btn-secondary btn-sm">View History</Link>
+                </p>
+              )}
+            </div>
           )}
         </div>
       </div>

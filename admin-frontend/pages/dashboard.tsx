@@ -41,6 +41,14 @@ interface PRRequest {
 }
 
 const TREND_MAX_BAR_HEIGHT = 140;
+const STATUS_LABELS: Record<string, string> = {
+  completed: 'Completed',
+  rejected: 'Rejected',
+  in_progress: 'In progress',
+  pending_approval: 'Pending approval',
+  pending_devops_approval: 'Pending DevOps',
+  draft: 'Draft',
+};
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -49,7 +57,7 @@ export default function AdminDashboard() {
   const [recent, setRecent] = useState<PRRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'custom'>('today');
+  const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'custom'>('week');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
 
@@ -62,19 +70,18 @@ export default function AdminDashboard() {
       return;
     }
     fetchData();
-  }, [token, router, dateFilter, customFrom, customTo]);
+  }, [token, router, period, customFrom, customTo]);
 
   const fetchData = async () => {
     setLoading(true);
     setError('');
-    const dashboardParams = new URLSearchParams();
-    if (dateFilter === 'today' || dateFilter === 'week' || dateFilter === 'month') {
-      dashboardParams.set('period', dateFilter);
-    } else if (dateFilter === 'custom' && customFrom) {
-      dashboardParams.set('from', customFrom);
-      dashboardParams.set('to', customTo || customFrom);
+    const params = new URLSearchParams();
+    if (period !== 'custom') params.set('period', period);
+    else if (customFrom) {
+      params.set('from', customFrom);
+      params.set('to', customTo || customFrom);
     }
-    const dashboardUrl = dashboardParams.toString() ? `${apiUrl}/api/admin/dashboard-stats?${dashboardParams}` : `${apiUrl}/api/admin/dashboard-stats`;
+    const dashboardUrl = params.toString() ? `${apiUrl}/api/admin/dashboard-stats?${params}` : `${apiUrl}/api/admin/dashboard-stats`;
     try {
       const [statsRes, dashboardRes, requestsRes] = await Promise.all([
         fetch(`${apiUrl}/api/admin/stats`, { headers: { Authorization: `Bearer ${token}` } }),
@@ -85,9 +92,11 @@ export default function AdminDashboard() {
         router.replace('/login');
         return;
       }
-      const statsData = await statsRes.json().catch(() => ({}));
-      const dashboardData = await dashboardRes.json().catch(() => ({}));
-      const requestsData = await requestsRes.json().catch(() => ({}));
+      const [statsData, dashboardData, requestsData] = await Promise.all([
+        statsRes.json().catch(() => ({})),
+        dashboardRes.json().catch(() => ({})),
+        requestsRes.json().catch(() => ({})),
+      ]);
       if (statsData.stats) setStats(statsData.stats);
       if (dashboardData.total_users !== undefined) setQuickStats(dashboardData);
       if (requestsData.requests) setRecent(requestsData.requests);
@@ -101,6 +110,8 @@ export default function AdminDashboard() {
 
   const trend = quickStats?.trend ?? [];
   const trendMax = Math.max(1, ...trend.map((d) => d.count));
+  const dateFilter = quickStats?.date_filter;
+  const showPeriodSummary = period === 'custom' ? !!customFrom : true;
 
   const statusColors: Record<string, string> = {
     completed: 'var(--color-success)',
@@ -118,7 +129,7 @@ export default function AdminDashboard() {
   const pieByStatus = useMemo((): PieChartSegment[] => {
     if (!stats?.by_status) return [];
     return Object.entries(stats.by_status).map(([status, value]) => ({
-      label: status.replace(/_/g, ' '),
+      label: STATUS_LABELS[status] || status.replace(/_/g, ' '),
       value,
       color: statusColors[status] || 'var(--color-text-muted)',
     }));
@@ -146,6 +157,29 @@ export default function AdminDashboard() {
             </Link>
           </div>
 
+          {/* Single filter bar */}
+          <div className="dashboard-filter-bar">
+            <label className="dashboard-filter-label">Time range</label>
+            <select
+              value={period}
+              onChange={(e) => setPeriod(e.target.value as typeof period)}
+              className="input dashboard-filter-select"
+            >
+              <option value="today">Today</option>
+              <option value="week">Last 7 days</option>
+              <option value="month">This month</option>
+              <option value="custom">Custom</option>
+            </select>
+            {period === 'custom' && (
+              <>
+                <label className="dashboard-filter-label">From</label>
+                <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="input dashboard-filter-input" />
+                <label className="dashboard-filter-label">To</label>
+                <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="input dashboard-filter-input" />
+              </>
+            )}
+          </div>
+
           {error && (
             <div className="alert alert-error" role="alert">
               {error}
@@ -156,7 +190,7 @@ export default function AdminDashboard() {
             <p className="loading-text">Loading…</p>
           ) : (
             <>
-              {/* Top row: 5 KPI cards – graphical, user-visible */}
+              {/* KPI cards */}
               {quickStats && (
                 <div className="dashboard-kpi-grid">
                   <div className="dashboard-kpi-card dashboard-kpi-card--accent">
@@ -182,24 +216,17 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              {/* Request trend – last 14 days (bar chart) */}
+              {/* Request trend (14 days) */}
               <div className="dashboard-trend-card">
                 <h2 className="section-title">Request trend (last 14 days)</h2>
                 {trend.length === 0 ? (
-                  <div className="dashboard-trend-chart" style={{ alignItems: 'center', justifyContent: 'center' }}>
-                    <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 14 }}>No request data for the last 14 days.</p>
-                  </div>
+                  <p className="dashboard-pie-empty">No request data for the last 14 days.</p>
                 ) : (
                   <>
                     <div className="dashboard-trend-chart">
                       {trend.map((d) => (
-                        <div key={d.date} className="dashboard-trend-bar-wrap" title={`${d.date}: ${d.count} request(s)`}>
-                          <div
-                            className="dashboard-trend-bar"
-                            style={{
-                              height: `${Math.max(4, (d.count / trendMax) * TREND_MAX_BAR_HEIGHT)}px`,
-                            }}
-                          />
+                        <div key={d.date} className="dashboard-trend-bar-wrap" title={`${d.date}: ${d.count}`}>
+                          <div className="dashboard-trend-bar" style={{ height: `${Math.max(4, (d.count / trendMax) * TREND_MAX_BAR_HEIGHT)}px` }} />
                           <span className="dashboard-trend-bar__label">{d.date.slice(5)}</span>
                         </div>
                       ))}
@@ -212,158 +239,59 @@ export default function AdminDashboard() {
                 )}
               </div>
 
-              {/* Second row: Total PR requests + cloud + status */}
-              {stats && (
-                <div className="dashboard-stats-row">
-                  <div className="dashboard-kpi-card dashboard-kpi-card--accent">
-                    <div className="dashboard-kpi-card__value">{stats.total_requests}</div>
-                    <div className="dashboard-kpi-card__label">Total PR requests</div>
-                  </div>
-                  {Object.entries(stats.by_cloud || {}).map(([cloud, count]) => (
-                    <div key={cloud} className="dashboard-kpi-card">
-                      <div className="dashboard-kpi-card__value">{count}</div>
-                      <div className="dashboard-kpi-card__label">{cloud}</div>
-                    </div>
-                  ))}
-                  {Object.entries(stats.by_status || {}).map(([status, count]) => (
-                    <div key={status} className="dashboard-kpi-card">
-                      <div className="dashboard-kpi-card__value">{count}</div>
-                      <div className="dashboard-kpi-card__label">Status: {status.replace(/_/g, ' ')}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Pie charts – requests by status & by cloud */}
+              {/* Requests overview – pie charts only */}
               {stats && (pieByStatus.length > 0 || pieByCloud.length > 0) && (
                 <div className="dashboard-pie-row">
-                  <PieChart
-                    title="Requests by status"
-                    segments={pieByStatus}
-                    emptyMessage="No request status data"
-                  />
-                  <PieChart
-                    title="Requests by cloud"
-                    segments={pieByCloud}
-                    emptyMessage="No cloud data"
-                  />
+                  <PieChart title="Requests by status" segments={pieByStatus} emptyMessage="No status data" />
+                  <PieChart title="Requests by cloud" segments={pieByCloud} emptyMessage="No cloud data" />
                 </div>
               )}
 
-              {/* Cloud & status distribution – visual chips */}
-              {stats && (Object.keys(stats.by_cloud || {}).length > 0 || Object.keys(stats.by_status || {}).length > 0) && (
+              {/* Period summary (one card: filtered period + SLA) */}
+              {showPeriodSummary && (
                 <div className="card" style={{ marginBottom: 24 }}>
-                  <h2 className="section-title">Distribution</h2>
-                  {Object.keys(stats.by_cloud || {}).length > 0 && (
-                    <div style={{ marginBottom: 12 }}>
-                      <span style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 600 }}>By cloud</span>
-                      <div className="dashboard-distribution">
-                        {Object.entries(stats.by_cloud || {}).map(([cloud, count]) => (
-                          <div key={cloud} className="dashboard-distribution__item">
-                            <span className="dashboard-distribution__value">{count}</span>
-                            <span className="dashboard-distribution__label">{cloud}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {Object.keys(stats.by_status || {}).length > 0 && (
-                    <div>
-                      <span style={{ fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 600 }}>By status</span>
-                      <div className="dashboard-distribution">
-                        {Object.entries(stats.by_status || {}).map(([status, count]) => (
-                          <div key={status} className="dashboard-distribution__item">
-                            <span className="dashboard-distribution__value">{count}</span>
-                            <span className="dashboard-distribution__label">{status.replace(/_/g, ' ')}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Date filter & breakdown */}
-              <div className="card" style={{ marginBottom: 24 }}>
-                <h2 className="section-title">Requests by date</h2>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>Filter by</label>
-                    <select
-                      value={dateFilter}
-                      onChange={(e) => setDateFilter(e.target.value as typeof dateFilter)}
-                      className="input"
-                      style={{ minWidth: 140 }}
-                    >
-                      <option value="today">Today</option>
-                      <option value="week">Last 7 days</option>
-                      <option value="month">This month</option>
-                      <option value="custom">Custom range</option>
-                    </select>
-                  </div>
-                  {dateFilter === 'custom' && (
+                  <h2 className="section-title">
+                    {period === 'custom' ? 'Requests in selected period' : `Requests (${period === 'today' ? 'today' : period === 'week' ? 'last 7 days' : 'this month'})`}
+                  </h2>
+                  {period === 'custom' && !customFrom ? (
+                    <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>Select From date to see breakdown.</p>
+                  ) : dateFilter ? (
                     <>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>From</label>
-                        <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="input" />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>To</label>
-                        <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="input" />
-                      </div>
-                      {!customFrom && <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Select from date</span>}
-                    </>
-                  )}
-                </div>
-                {dateFilter === 'custom' && !customFrom && (
-                  <p style={{ padding: 16, color: 'var(--color-text-muted)', margin: 0 }}>Select From and To dates to see the breakdown.</p>
-                )}
-                {quickStats?.date_filter && (dateFilter !== 'custom' || customFrom) && (
-                  <div style={{ padding: 16, background: 'var(--color-bg)', borderRadius: 8 }}>
-                    <p style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600 }}>
-                      {quickStats.date_filter.from === quickStats.date_filter.to
-                        ? `${quickStats.date_filter.from}: ${quickStats.date_filter.total} request(s)`
-                        : `${quickStats.date_filter.from} to ${quickStats.date_filter.to}: ${quickStats.date_filter.total} request(s)`}
-                    </p>
-                    <div className="dashboard-distribution">
-                      {[
-                        { key: 'completed', label: 'Completed', color: 'var(--color-success)' },
-                        { key: 'rejected', label: 'Rejected', color: 'var(--color-danger)' },
-                        { key: 'in_progress', label: 'In progress', color: 'var(--color-primary)' },
-                        { key: 'pending_approval', label: 'Pending approval', color: 'var(--color-warning)' },
-                        { key: 'draft', label: 'Draft', color: 'var(--color-text-muted)' },
-                      ].map(({ key, label, color }) => {
-                        const count = quickStats.date_filter!.by_status[key] ?? 0;
-                        return (
-                          <div key={key} className="dashboard-distribution__item" style={{ borderLeft: `3px solid ${count > 0 ? color : 'var(--color-border)' }` }}>
-                            <span className="dashboard-distribution__value" style={count > 0 ? { color } : {}}>{count}</span>
-                            <span className="dashboard-distribution__label">{label}</span>
+                      <p style={{ margin: '0 0 12px', fontWeight: 600 }}>
+                        {dateFilter.from === dateFilter.to ? dateFilter.from : `${dateFilter.from} → ${dateFilter.to}`}: {dateFilter.total} request(s)
+                      </p>
+                      <div className="dashboard-distribution">
+                        {['completed', 'rejected', 'in_progress', 'pending_approval', 'pending_devops_approval', 'draft'].map((key) => {
+                          const count = dateFilter.by_status[key] ?? 0;
+                          const color = statusColors[key];
+                          return (
+                            <div key={key} className="dashboard-distribution__item" style={{ borderLeft: `3px solid ${count > 0 && color ? color : 'var(--color-border)' }` }}>
+                              <span className="dashboard-distribution__value" style={count > 0 && color ? { color } : {}}>{count}</span>
+                              <span className="dashboard-distribution__label">{STATUS_LABELS[key] || key.replace(/_/g, ' ')}</span>
+                            </div>
+                          );
+                        })}
+                        {Object.entries(dateFilter.by_status || {}).filter(([k]) => !['completed', 'rejected', 'in_progress', 'pending_approval', 'pending_devops_approval', 'draft'].includes(k)).map(([key, count]) => (
+                          <div key={key} className="dashboard-distribution__item">
+                            <span className="dashboard-distribution__value">{count}</span>
+                            <span className="dashboard-distribution__label">{key.replace(/_/g, ' ')}</span>
                           </div>
-                        );
-                      })}
-                      {Object.entries(quickStats.date_filter!.by_status || {}).filter(([k]) => !['completed', 'rejected', 'in_progress', 'pending_approval', 'draft'].includes(k)).map(([key, count]) => (
-                        <div key={key} className="dashboard-distribution__item">
-                          <span className="dashboard-distribution__value">{count}</span>
-                          <span className="dashboard-distribution__label">{key.replace(/_/g, ' ')}</span>
-                        </div>
-                      ))}
-                    </div>
-                    {quickStats.date_filter.total === 0 && (
-                      <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--color-text-muted)' }}>No requests in this period.</p>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {quickStats?.sla && quickStats.sla.completed_count > 0 && (
-                <div className="card" style={{ marginBottom: 24 }}>
-                  <h2 className="section-title">SLA metrics</h2>
-                  <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                    Avg time to complete: <strong style={{ color: 'var(--color-text)' }}>{quickStats.sla.avg_hours.toFixed(1)}h</strong> ({quickStats.sla.completed_count} completed)
-                  </p>
+                        ))}
+                      </div>
+                      {dateFilter.total === 0 && <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--color-text-muted)' }}>No requests in this period.</p>}
+                      {quickStats?.sla && quickStats.sla.completed_count > 0 && (
+                        <p style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
+                          Avg time to complete: <strong style={{ color: 'var(--color-text)' }}>{quickStats.sla.avg_hours.toFixed(1)}h</strong> ({quickStats.sla.completed_count} completed)
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>No data for this period.</p>
+                  )}
                 </div>
               )}
 
+              {/* Team comparison */}
               {quickStats?.team_comparison && quickStats.team_comparison.length > 0 && (
                 <div className="card" style={{ marginBottom: 24 }}>
                   <h2 className="section-title">Team comparison</h2>
@@ -396,80 +324,60 @@ export default function AdminDashboard() {
                 </div>
               )}
 
+              {/* Recent requests */}
               <div className="card">
-                <h2 className="section-title">Recent PR requests</h2>
+                <h2 className="section-title">Recent requests</h2>
                 {recent.length === 0 ? (
-                  <div className="empty-state">
-                    No PR requests yet. Requests from the portal will appear here.
-                  </div>
+                  <div className="empty-state">No PR requests yet.</div>
                 ) : (
-                  <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>ID</th>
-                          <th>Team</th>
-                          <th>Env</th>
-                          <th>Cloud</th>
-                          <th>Service</th>
-                          <th>Status</th>
-                          <th>Created</th>
-                          <th></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {recent.map((req) => (
-                          <tr key={req.id}>
-                            <td>{req.id}</td>
-                            <td>{req.team}</td>
-                            <td>{req.env}</td>
-                            <td>{req.cloud}</td>
-                            <td>{req.service}</td>
-                            <td>
-                              <span
-                                style={{
-                                  padding: '4px 10px',
-                                  borderRadius: 6,
-                                  fontSize: 12,
-                                  fontWeight: 600,
-                                  background: req.status === 'pending_approval' ? 'var(--color-warning-bg)' :
-                                    req.status === 'in_progress' ? 'var(--color-primary-light)' :
-                                    req.status === 'completed' ? 'var(--color-success-bg)' :
-                                    req.status === 'rejected' ? 'var(--color-danger-bg)' : 'var(--color-bg)',
-                                  color: req.status === 'pending_approval' ? 'var(--color-warning)' :
-                                    req.status === 'in_progress' ? 'var(--color-primary)' :
-                                    req.status === 'completed' ? 'var(--color-success)' :
-                                    req.status === 'rejected' ? 'var(--color-danger)' : 'var(--color-text-muted)',
-                                }}
-                              >
-                                {req.status === 'pending_approval' ? 'Pending approval' :
-                                  req.status === 'in_progress' ? 'In progress' :
-                                  req.status === 'completed' ? 'Completed' :
-                                  req.status === 'rejected' ? 'Rejected' : req.status}
-                              </span>
-                            </td>
-                            <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{new Date(req.created_at).toLocaleString()}</td>
-                            <td>
-                              {req.pr_url ? (
-                                <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
-                                  Open PR
-                                </a>
-                              ) : (
-                                <span style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>—</span>
-                              )}
-                            </td>
+                  <>
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>ID</th>
+                            <th>Team</th>
+                            <th>Env</th>
+                            <th>Cloud</th>
+                            <th>Service</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th></th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                {recent.length > 0 && (
-                  <p style={{ marginTop: 16 }}>
-                    <Link href="/requests" className="btn btn-secondary">
-                      View all requests
-                    </Link>
-                  </p>
+                        </thead>
+                        <tbody>
+                          {recent.map((req) => (
+                            <tr key={req.id}>
+                              <td>{req.id}</td>
+                              <td>{req.team}</td>
+                              <td>{req.env}</td>
+                              <td>{req.cloud}</td>
+                              <td>{req.service}</td>
+                              <td>
+                                <span
+                                  className="status-badge"
+                                  data-status={req.status}
+                                >
+                                  {req.status === 'pending_approval' ? 'Pending approval' : req.status === 'in_progress' ? 'In progress' : req.status === 'completed' ? 'Completed' : req.status === 'rejected' ? 'Rejected' : req.status}
+                                </span>
+                              </td>
+                              <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{new Date(req.created_at).toLocaleString()}</td>
+                              <td>
+                                {req.pr_url ? (
+                                  <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">Open PR</a>
+                                ) : (
+                                  <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p style={{ marginTop: 16 }}>
+                      <Link href="/requests" className="btn btn-secondary">View all requests</Link>
+                    </p>
+                  </>
                 )}
               </div>
             </>

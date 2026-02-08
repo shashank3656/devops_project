@@ -733,6 +733,42 @@ td code { font-size: var(--text-sm); background: var(--color-border); color: var
 .stat-card.stat-card-success .stat-card-value { color: var(--color-success); }
 .stat-card.stat-card-warning .stat-card-value { color: var(--color-warning); }
 
+/* Dashboard – filter bar (single place for time range) */
+.dashboard-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+.dashboard-filter-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-muted);
+}
+.dashboard-filter-select,
+.dashboard-filter-input {
+  min-width: 140px;
+  margin: 0;
+}
+
+/* Status badge in tables */
+.status-badge {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.status-badge[data-status="pending_approval"] { background: var(--color-warning-bg); color: var(--color-warning); }
+.status-badge[data-status="in_progress"] { background: var(--color-primary-light); color: var(--color-primary); }
+.status-badge[data-status="completed"] { background: var(--color-success-bg); color: var(--color-success); }
+.status-badge[data-status="rejected"] { background: var(--color-danger-bg); color: var(--color-danger); }
+.status-badge[data-status="draft"] { background: var(--color-bg); color: var(--color-text-muted); }
+
 /* Dashboard – graphical KPI and trend */
 .dashboard-kpi-grid {
   display: grid;

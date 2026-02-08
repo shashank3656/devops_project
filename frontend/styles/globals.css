@@ -316,6 +316,53 @@ body {
   margin-bottom: 1.5rem;
 }
 
+.section-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+}
+
+/* Home – stats row (no duplication) */
+.home-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.home-stat-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  text-align: center;
+  transition: box-shadow var(--transition-ui), border-color var(--transition-ui);
+}
+.home-stat-card:hover { box-shadow: var(--shadow-md); }
+.home-stat-card--primary .home-stat-value { color: var(--primary-color); }
+.home-stat-value { font-size: 1.75rem; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
+.home-stat-label { font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.25rem; }
+
+/* Home – activity (single section) */
+.home-activity { display: flex; flex-direction: column; gap: 1.5rem; }
+.home-activity-section { margin: 0; }
+.home-activity-heading { font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem; }
+.home-activity-list { list-style: none; padding: 0; margin: 0; }
+.home-activity-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+.home-activity-item:last-child { border-bottom: none; }
+.home-activity-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.home-activity-meta { color: var(--text-muted); font-size: 0.8125rem; margin-left: auto; }
+.home-activity-detail { color: var(--text-secondary); }
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
