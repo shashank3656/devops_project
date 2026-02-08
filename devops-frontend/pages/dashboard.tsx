@@ -55,7 +55,7 @@ export default function DevOpsDashboard() {
       .then(([ticketsRes, teamsRes]) => {
         if (ticketsRes.status === 401 || ticketsRes.status === 403) {
           router.replace('/login');
-          return [];
+          return Promise.resolve([{}, {}] as [{ tickets?: Ticket[]; error?: string }, { teams?: DevOpsTeam[] }]);
         }
         return Promise.all([ticketsRes.json(), teamsRes.json()]);
       })
