@@ -37,7 +37,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = router.pathname;
   const [collapsed, setCollapsed] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [newRequestsCount, setNewRequestsCount] = useState(0);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [pendingTickets, setPendingTickets] = useState<PendingRequest[]>([]);
@@ -50,7 +50,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
       if (stored !== null) setCollapsed(stored === 'true');
       const t = localStorage.getItem(THEME_KEY);
-      const resolved = t === 'light' ? 'light' : 'dark';
+      const resolved = t === 'dark' ? 'dark' : 'light';
       setTheme(resolved);
       document.documentElement.setAttribute('data-theme', resolved);
     } catch (_) {}
