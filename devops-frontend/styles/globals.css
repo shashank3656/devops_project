@@ -192,6 +192,18 @@ tbody tr td { color: var(--color-text); }
   color: var(--color-primary);
   background: var(--color-primary-light);
 }
+
+.devops-tickets-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.devops-filter-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
 code { background: var(--color-surface-elevated); color: var(--color-primary); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
 
 /* ---- DevOps layout: sidebar (220px) + main ---- */
