@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -33,42 +33,47 @@ export default function EditDevOpsTemplate() {
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(true);
 
+  const fetchTemplate = useCallback(async () => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token || typeof id !== 'string' || !id) return;
+    setFetchLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/devops/templates/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401 || res.status === 403) {
+        router.replace('/login');
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.template) {
+        const t = data.template as RequestTemplate;
+        setName(t.name);
+        setDescription(t.description || '');
+        setCloud(t.cloud || 'aws');
+        setEnv(t.env || 'prod');
+        setService(t.service || '');
+        setConfig(t.config || '{}');
+        setError('');
+      } else {
+        setError(data.error || 'Template not found');
+      }
+    } catch {
+      setError('Failed to load template. Check your connection.');
+    } finally {
+      setFetchLoading(false);
+    }
+  }, [id, router, apiUrl]);
+
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
       router.replace('/login');
       return;
     }
-    if (typeof id !== 'string' || !id) return;
-    (async () => {
-      setFetchLoading(true);
-      try {
-        const res = await fetch(`${apiUrl}/api/devops/templates/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.status === 401 || res.status === 403) {
-          router.replace('/login');
-          return;
-        }
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && data.template) {
-          const t = data.template as RequestTemplate;
-          setName(t.name);
-          setDescription(t.description || '');
-          setCloud(t.cloud || 'aws');
-          setEnv(t.env || 'prod');
-          setService(t.service || '');
-          setConfig(t.config || '{}');
-        } else {
-          setError(data.error || 'Template not found');
-        }
-      } catch (_) {
-        setError('Failed to load template');
-      } finally {
-        setFetchLoading(false);
-      }
-    })();
-  }, [id, router, apiUrl]);
+    if (typeof id === 'string' && id) fetchTemplate();
+  }, [id, router, fetchTemplate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,8 +113,8 @@ export default function EditDevOpsTemplate() {
         return;
       }
       setError(data.error || 'Failed to update template');
-    } catch (_) {
-      setError('Failed to update template');
+    } catch {
+      setError('Failed to update template. Check your connection.');
     } finally {
       setLoading(false);
     }
@@ -138,8 +143,11 @@ export default function EditDevOpsTemplate() {
           <div className="card" style={{ maxWidth: 560 }}>
             <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '8px' }}>Edit template</h2>
             {error && (
-              <div className="alert alert-error" role="alert" style={{ marginBottom: '16px' }}>
-                {error}
+              <div className="alert alert-error" role="alert" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                <span>{error}</span>
+                <button type="button" className="btn btn-secondary" style={{ padding: '8px 16px' }} onClick={fetchTemplate}>
+                  Retry
+                </button>
               </div>
             )}
             <form onSubmit={handleSubmit}>

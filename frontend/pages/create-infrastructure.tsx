@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
@@ -33,6 +33,8 @@ export default function CreateInfrastructure() {
   const [savedConfigs, setSavedConfigs] = useState<UserSavedConfig[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [loadingSaved, setLoadingSaved] = useState(false);
+  const [templatesError, setTemplatesError] = useState('');
+  const [savedConfigsError, setSavedConfigsError] = useState('');
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -43,27 +45,63 @@ export default function CreateInfrastructure() {
     }
   }, [router]);
 
-  useEffect(() => {
+  const fetchTemplates = useCallback(() => {
     const token = localStorage.getItem('token');
     if (!token || token === 'undefined') return;
     setLoadingTemplates(true);
+    setTemplatesError('');
     fetch(`${apiUrl}/api/templates`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.ok ? res.json() : { templates: [] })
-      .then((data) => setTemplates(data.templates || []))
-      .catch(() => setTemplates([]))
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(data.templates)) {
+          setTemplates(data.templates);
+          setTemplatesError('');
+        } else {
+          setTemplates([]);
+          setTemplatesError(data.error || 'Failed to load templates.');
+        }
+      })
+      .catch(() => {
+        setTemplates([]);
+        setTemplatesError('Failed to load templates. Check your connection.');
+      })
       .finally(() => setLoadingTemplates(false));
+  }, [apiUrl]);
+
+  const fetchSavedConfigs = useCallback(() => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    setLoadingSaved(true);
+    setSavedConfigsError('');
+    fetch(`${apiUrl}/api/me/saved-configs`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(data.saved_configs)) {
+          setSavedConfigs(data.saved_configs);
+          setSavedConfigsError('');
+        } else {
+          setSavedConfigs([]);
+          setSavedConfigsError(data.error || 'Failed to load saved configs.');
+        }
+      })
+      .catch(() => {
+        setSavedConfigs([]);
+        setSavedConfigsError('Failed to load saved configs. Check your connection.');
+      })
+      .finally(() => setLoadingSaved(false));
   }, [apiUrl]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token || token === 'undefined') return;
-    setLoadingSaved(true);
-    fetch(`${apiUrl}/api/me/saved-configs`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.ok ? res.json() : { saved_configs: [] })
-      .then((data) => setSavedConfigs(data.saved_configs || []))
-      .catch(() => setSavedConfigs([]))
-      .finally(() => setLoadingSaved(false));
-  }, [apiUrl]);
+    fetchTemplates();
+  }, [fetchTemplates]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    fetchSavedConfigs();
+  }, [fetchSavedConfigs]);
 
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated');
@@ -115,7 +153,7 @@ export default function CreateInfrastructure() {
             </div>
           </div>
 
-          {templates.length > 0 && (
+          {(templates.length > 0 || templatesError || loadingTemplates) && (
             <div className="card" style={{ marginBottom: '24px' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px', color: 'var(--text-primary)' }}>
                 Start from template
@@ -123,9 +161,19 @@ export default function CreateInfrastructure() {
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
                 Use a template to pre-fill cloud, environment and service (read-only).
               </p>
+              {templatesError && (
+                <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--error-bg, #fef2f2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                  <span style={{ color: 'var(--error-color, #dc2626)' }}>{templatesError}</span>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '8px 16px' }} onClick={fetchTemplates}>
+                    Retry
+                  </button>
+                </div>
+              )}
               {loadingTemplates ? (
                 <p style={{ color: 'var(--text-muted)' }}>Loading templates…</p>
-              ) : (
+              ) : !templatesError && templates.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)' }}>No templates are there.</p>
+              ) : !templatesError ? (
                 (() => {
                   const byCloud = templates.reduce<Record<string, RequestTemplate[]>>((acc, t) => {
                     const c = (t.cloud || 'other').toLowerCase();
@@ -163,11 +211,11 @@ export default function CreateInfrastructure() {
                     </div>
                   );
                 })()
-              )}
+              ) : null}
             </div>
           )}
 
-          {savedConfigs.length > 0 && (
+          {(savedConfigs.length > 0 || savedConfigsError || loadingSaved) && (
             <div className="card" style={{ marginBottom: '24px' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px', color: 'var(--text-primary)' }}>
                 My saved configurations
@@ -175,9 +223,19 @@ export default function CreateInfrastructure() {
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
                 Reuse a configuration you saved from history.
               </p>
+              {savedConfigsError && (
+                <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--error-bg, #fef2f2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                  <span style={{ color: 'var(--error-color, #dc2626)' }}>{savedConfigsError}</span>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '8px 16px' }} onClick={fetchSavedConfigs}>
+                    Retry
+                  </button>
+                </div>
+              )}
               {loadingSaved ? (
                 <p style={{ color: 'var(--text-muted)' }}>Loading…</p>
-              ) : (
+              ) : !savedConfigsError && savedConfigs.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)' }}>No saved configurations.</p>
+              ) : !savedConfigsError ? (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
                   {savedConfigs.map((s) => (
                     <button
@@ -194,7 +252,7 @@ export default function CreateInfrastructure() {
                     </button>
                   ))}
                 </div>
-              )}
+              ) : null}
             </div>
           )}
 

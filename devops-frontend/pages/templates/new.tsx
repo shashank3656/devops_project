@@ -58,8 +58,8 @@ export default function NewDevOpsTemplate() {
         return;
       }
       setError(data.error || 'Failed to create template');
-    } catch (_) {
-      setError('Failed to create template');
+    } catch {
+      setError('Failed to create template. Check your connection.');
     } finally {
       setLoading(false);
     }
