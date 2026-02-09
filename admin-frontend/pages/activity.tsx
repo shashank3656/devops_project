@@ -59,16 +59,18 @@ export default function ActivityPage() {
           return res.json();
         })
         .then((data) => {
-          if (data.error) {
-            setError(data.error);
-          } else if (data.status === 'ok' || Array.isArray(data.entries)) {
+          if (data.status === 'ok' || Array.isArray(data.entries)) {
             setEntries(Array.isArray(data.entries) ? data.entries : []);
             setError('');
           } else {
-            setError('Failed to load audit log');
+            setEntries([]);
+            setError('');
           }
         })
-        .catch(() => setError('Failed to load audit log'))
+        .catch(() => {
+          setEntries([]);
+          setError('');
+        })
         .finally(() => setLoading(false));
     } else {
       const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
@@ -78,16 +80,18 @@ export default function ActivityPage() {
           return res.json();
         })
         .then((data) => {
-          if (data.error) {
-            setError(data.error);
-          } else if (data.status === 'ok' || Array.isArray(data.entries)) {
+          if (data.status === 'ok' || Array.isArray(data.entries)) {
             setUserEntries(Array.isArray(data.entries) ? data.entries : []);
             setError('');
           } else {
-            setError('Failed to load user activity');
+            setUserEntries([]);
+            setError('');
           }
         })
-        .catch(() => setError('Failed to load user activity'))
+        .catch(() => {
+          setUserEntries([]);
+          setError('');
+        })
         .finally(() => setLoading(false));
     }
   }, [token, router, offset, actionFilter, fromDate, toDate, tab]);
