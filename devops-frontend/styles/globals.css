@@ -1,32 +1,31 @@
-/* DevOps portal – dark dashboard theme (Quantico-style, unique teal accent) */
+/* DevOps portal – same as Admin: soft blue-grey, white cards, top nav */
 :root {
-  /* Unique accent – teal (not green) */
-  --color-primary: #0d9488;
-  --color-primary-hover: #0f766e;
-  --color-primary-light: rgba(13, 148, 136, 0.15);
-  /* Dark dashboard base */
-  --color-bg: #1a1d20;
-  --color-surface: #272b30;
-  --color-surface-elevated: #2d3238;
-  --color-border: #3b4046;
-  --color-border-subtle: #2d3238;
-  --color-text: #f1f5f9;
-  --color-text-muted: #94a3b8;
+  /* Admin-style light theme */
+  --color-bg: #e2e8f0;
+  --color-bg-header: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-border: #cbd5e1;
+  --color-border-subtle: #e2e8f0;
+  --color-text: #1e293b;
+  --color-text-muted: #64748b;
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-light: rgba(37, 99, 235, 0.1);
   /* Semantic */
-  --color-success: #10b981;
-  --color-success-bg: rgba(16, 185, 129, 0.12);
-  --color-danger: #ef4444;
-  --color-danger-bg: rgba(239, 68, 68, 0.12);
+  --color-success: #16a34a;
+  --color-success-bg: rgba(22, 163, 74, 0.08);
+  --color-danger: #dc2626;
+  --color-danger-bg: rgba(220, 38, 38, 0.08);
   --color-warning: #f59e0b;
-  --color-error: #ef4444;
-  /* Sidebar – same dark as main, distinct active */
-  --sidebar-bg: #1a1d20;
-  --sidebar-border: #2d3238;
-  --sidebar-text: #f1f5f9;
-  --sidebar-text-muted: #94a3b8;
-  --sidebar-hover: #272b30;
-  --sidebar-active-bg: #272b30;
-  --sidebar-active-border: #0d9488;
+  --color-error: #dc2626;
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #e2e8f0;
+  --sidebar-text: #0f172a;
+  --sidebar-text-muted: #64748b;
+  --sidebar-hover: #f1f5f9;
+  --sidebar-active-bg: #2563eb;
+  --sidebar-active-border: #2563eb;
   /* Layout */
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 72px;
@@ -61,21 +60,176 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 a { color: var(--color-primary); text-decoration: none; transition: color var(--transition); }
-a:hover { color: #2dd4bf; text-decoration: underline; }
+a:hover { color: var(--color-primary-hover); text-decoration: underline; }
 
 .container { max-width: 1100px; margin: 0 auto; padding: var(--space-6); }
 
-/* Cards – slightly elevated dark surface */
+/* Portal top bar layout (same as Admin) */
+.portal-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+.portal-topbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-5);
+  height: 64px;
+  background: var(--color-bg-header);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.portal-topbar-left { display: flex; align-items: center; gap: 32px; min-width: 0; }
+.portal-topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+  color: var(--color-text);
+  flex-shrink: 0;
+}
+.portal-topbar-brand:hover { color: var(--color-text); text-decoration: none; opacity: 0.9; }
+.portal-topbar-logo { border-radius: var(--radius); display: block; }
+.portal-topbar-brand-text { font-size: var(--text-lg); font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
+.portal-topbar-nav { display: flex; align-items: center; gap: 2px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
+.portal-topbar-nav::-webkit-scrollbar { display: none; }
+.portal-topbar-nav-link {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: var(--radius);
+  transition: color var(--transition), background var(--transition);
+  border-bottom: 2px solid transparent;
+}
+.portal-topbar-nav-link:hover { color: var(--color-text); text-decoration: none; background: rgba(0, 0, 0, 0.04); }
+.portal-topbar-nav-link.active { color: var(--color-text); font-weight: 600; border-bottom-color: var(--color-primary); }
+.portal-topbar-right { display: flex; align-items: center; gap: var(--space-3); }
+.portal-topbar-actions { display: flex; align-items: center; gap: var(--space-2); }
+.portal-topbar-username { font-size: var(--text-sm); color: var(--color-text-muted); }
+.portal-topbar-icon-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.portal-topbar-icon-btn:hover { color: var(--color-primary); background: var(--color-primary-light); }
+.portal-topbar-approval-badge {
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-warning);
+  background: rgba(245, 158, 11, 0.15);
+  border-radius: 999px;
+}
+.portal-topbar-profile-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: transform var(--transition);
+}
+.portal-topbar-profile-btn:hover { transform: scale(1.05); }
+.portal-topbar-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+.portal-topbar-profile-wrap { position: relative; }
+.portal-profile-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  min-width: 180px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  overflow: hidden;
+}
+.portal-profile-dropdown-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.portal-profile-dropdown-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.portal-profile-dropdown-label { font-weight: var(--font-medium); color: var(--color-text); }
+.portal-profile-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  background: transparent;
+  font-size: var(--text-base);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition);
+  font-family: inherit;
+}
+.portal-profile-dropdown-item:hover { background: var(--sidebar-hover); }
+.portal-profile-dropdown-item svg { flex-shrink: 0; opacity: 0.8; }
+.portal-main {
+  flex: 1;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: var(--space-6);
+  background: var(--color-bg);
+}
+
+/* Cards – white, soft shadow (Admin style) */
 .card {
   background: var(--color-surface);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
+  border: none;
   padding: var(--space-6);
   margin-bottom: var(--space-6);
-  box-shadow: var(--shadow);
-  transition: box-shadow var(--transition), border-color var(--transition);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
+  transition: box-shadow var(--transition);
 }
-.card:hover { box-shadow: var(--shadow-md); border-color: var(--color-border); }
+.card:hover { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08); }
 .card-title {
   font-size: var(--text-lg);
   font-weight: var(--font-semibold);
