@@ -125,7 +125,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           {navLink('/dashboard', 'My tickets', <IconTickets />)}
           {isManager && navLink('/workload', 'Workload', <IconWorkload />, pendingCount)}
           {isManager && navLink('/tickets', 'All tickets', <IconTickets />)}
-          {isManager && navLink('/templates', 'Templates', <IconTemplates />)}
+          {navLink('/templates', 'Templates', <IconTemplates />)}
           {isManager && navLink('/team', 'Team', <IconUsers />)}
           {navLink('/profile', 'Profile', <IconUser />)}
         </nav>

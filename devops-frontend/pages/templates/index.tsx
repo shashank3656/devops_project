@@ -52,7 +52,7 @@ export default function DevOpsTemplatesList() {
         setTemplates(Array.isArray(data.templates) ? data.templates : []);
         setError('');
       } else {
-        setError(data.error || 'Failed to load templates. DevOps manager access required.');
+        setError(data.error || 'Failed to load templates.');
       }
     } catch (_) {
       setError('Failed to load templates. Check your connection and that the backend is running.');
