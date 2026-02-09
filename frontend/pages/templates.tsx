@@ -33,12 +33,12 @@ export default function TemplatesPage() {
           setError('');
         } else {
           setTemplates([]);
-          setError(data.error || 'Failed to load templates.');
+          setError(data.error || 'No templates are available currently.');
         }
       })
       .catch(() => {
         setTemplates([]);
-        setError('Failed to load templates. Check your connection.');
+        setError('No templates are available currently.');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -101,7 +101,7 @@ export default function TemplatesPage() {
           </div>
         ) : !error && templates.length === 0 ? (
           <div className="card" style={{ padding: '48px', textAlign: 'center' }}>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>No templates are there.</p>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>No templates are available currently.</p>
             <Link href="/create-infrastructure" className="btn btn-primary" style={{ textDecoration: 'none' }}>
               Create from scratch
             </Link>
