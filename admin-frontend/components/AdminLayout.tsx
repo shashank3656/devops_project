@@ -2,9 +2,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { ADMIN_SITE_NAME } from '../lib/site';
-import { IconDashboard, IconRequests, IconTeams, IconUsers, IconLogout, IconBell, IconChevronLeft, IconChevronRight, IconActivity, IconTemplates, IconSun, IconMoon, IconWebhook } from './Icons';
+import { IconLogout, IconBell, IconSun, IconMoon } from './Icons';
 
-const SIDEBAR_STORAGE_KEY = 'admin_sidebar_collapsed';
 const THEME_KEY = 'infra-portal-theme';
 const NOTIFY_POLL_MS = 30000;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -33,22 +32,51 @@ interface PendingRequest {
   created_at: string;
 }
 
+const NAV_ITEMS: { href: string; label: string }[] = [
+  { href: '/dashboard', label: 'Dashboard' },
+  { href: '/requests', label: 'PR Requests' },
+  { href: '/teams', label: 'Teams' },
+  { href: '/users', label: 'Users' },
+  { href: '/activity', label: 'Activity' },
+  { href: '/templates', label: 'Templates' },
+  { href: '/webhooks', label: 'Webhooks' },
+];
+
+function getProfileInitials(): string {
+  if (typeof window === 'undefined') return 'A';
+  try {
+    const raw = localStorage.getItem('admin_user');
+    if (!raw) return 'A';
+    const user = JSON.parse(raw) as { username?: string; email?: string };
+    const name = user?.username || user?.email || '';
+    if (!name) return 'A';
+    const parts = name.trim().split(/[\s@.]/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
+    return name.slice(0, 2).toUpperCase();
+  } catch {
+    return 'A';
+  }
+}
+
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = router.pathname;
-  const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [newRequestsCount, setNewRequestsCount] = useState(0);
   const [notifyOpen, setNotifyOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [pendingTickets, setPendingTickets] = useState<PendingRequest[]>([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
-  const [actioningId, setActioningId] = useState<number | null>(null);
+  const [profileInitials, setProfileInitials] = useState('A');
   const notifyRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setProfileInitials(getProfileInitials());
+  }, []);
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
-      if (stored !== null) setCollapsed(stored === 'true');
       const t = localStorage.getItem(THEME_KEY);
       const resolved = t === 'dark' ? 'dark' : 'light';
       setTheme(resolved);
@@ -71,7 +99,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     if (!token) return;
     fetch(`${apiUrl}/api/admin/notifications`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data && typeof data.new_requests === 'number') setNewRequestsCount(data.new_requests); })
+      .then((data) => {
+        if (data && typeof data.new_requests === 'number') setNewRequestsCount(data.new_requests);
+      })
       .catch(() => {});
   };
 
@@ -101,54 +131,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (notifyRef.current && !notifyRef.current.contains(e.target as Node)) setNotifyOpen(false);
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
     };
-    if (notifyOpen) {
+    if (notifyOpen || profileOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [notifyOpen]);
-
-  const handleApprove = async (id: number) => {
-    if (!token) return;
-    setActioningId(id);
-    try {
-      const res = await fetch(`${apiUrl}/api/admin/requests/${id}/approve`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        setPendingTickets((prev) => prev.filter((r) => r.id !== id));
-        fetchCount();
-      }
-    } finally {
-      setActioningId(null);
-    }
-  };
-
-  const handleReject = async (id: number) => {
-    if (!token) return;
-    const reasonInput = window.prompt('Reject this request? Add a reason (optional, visible to the user):');
-    if (reasonInput === null) return;
-    setActioningId(id);
-    try {
-      const res = await fetch(`${apiUrl}/api/admin/requests/${id}/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ reason: reasonInput.trim() }),
-      });
-      if (res.ok) {
-        setPendingTickets((prev) => prev.filter((r) => r.id !== id));
-        fetchCount();
-      }
-    } finally {
-      setActioningId(null);
-    }
-  };
-
-  const toggleSidebar = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    try {
-      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
-    } catch (_) {}
-  };
+  }, [notifyOpen, profileOpen]);
 
   const handleLogout = () => {
     localStorage.removeItem('admin_token');
@@ -156,73 +145,35 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     router.push('/login');
   };
 
-  const navLink = (href: string, label: string, icon: ReactNode) => {
-    const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
-    return (
-      <Link href={href} className={isActive ? 'active' : ''} title={collapsed ? label : undefined}>
-        <span className="admin-sidebar-icon" aria-hidden>{icon}</span>
-        <span className="admin-sidebar-label">{label}</span>
-      </Link>
-    );
-  };
-
   return (
-    <div className="admin-layout">
-      <aside className={`admin-sidebar ${collapsed ? 'admin-sidebar-collapsed' : ''}`}>
-        <div className="admin-sidebar-header">
-          <Link href="/dashboard" className="admin-sidebar-brand">
-            <img src="/logo.svg" alt="" width={36} height={36} />
-            <span className="admin-sidebar-brand-text">{ADMIN_SITE_NAME}</span>
+    <div className="admin-layout admin-layout-topbar">
+      <header className="admin-topbar-new">
+        <div className="admin-topbar-left">
+          <Link href="/dashboard" className="admin-topbar-brand">
+            <img src="/logo.svg" alt="" width={40} height={40} className="admin-topbar-logo" />
+            <span className="admin-topbar-brand-text">{ADMIN_SITE_NAME}</span>
           </Link>
-          <button
-            type="button"
-            className="admin-sidebar-toggle"
-            onClick={toggleSidebar}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? <IconChevronRight /> : <IconChevronLeft />}
-          </button>
+          <nav className="admin-topbar-nav">
+            {NAV_ITEMS.map(({ href, label }) => {
+              const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`admin-topbar-nav-link ${isActive ? 'active' : ''}`}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
-        <nav className="admin-sidebar-nav">
-          {navLink('/dashboard', 'Dashboard', <IconDashboard />)}
-          {navLink('/requests', 'PR Requests', <IconRequests />)}
-          {navLink('/teams', 'Teams', <IconTeams />)}
-          {navLink('/users', 'Users', <IconUsers />)}
-          {navLink('/activity', 'Activity', <IconActivity />)}
-          {navLink('/templates', 'Templates', <IconTemplates />)}
-          {navLink('/webhooks', 'Webhooks', <IconWebhook />)}
-        </nav>
-        <div className="admin-sidebar-footer">
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="btn btn-secondary"
-            title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-            style={{
-              width: '100%',
-              justifyContent: 'flex-start',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-3)',
-              padding: 'var(--space-3) var(--space-4)',
-            }}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </span>
-            <span className="admin-sidebar-label">{theme === 'dark' ? 'Light' : 'Dark'}</span>
-          </button>
-        </div>
-      </aside>
-      <div className="admin-main-wrap">
-        <header className="admin-topbar">
-          <div className="admin-topbar-spacer" />
+        <div className="admin-topbar-right">
           <div className="admin-topbar-actions" ref={notifyRef}>
             <div className="admin-topbar-notify-wrap">
               <button
                 type="button"
-                className="admin-topbar-notify"
+                className="admin-topbar-icon-btn"
                 onClick={() => setNotifyOpen((o) => !o)}
                 title={newRequestsCount > 0 ? `${newRequestsCount} new request(s) pending` : 'Notifications'}
                 aria-expanded={notifyOpen}
@@ -253,54 +204,63 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                       <p className="admin-notify-panel-empty">No pending request tickets.</p>
                     ) : (
                       pendingTickets.map((req) => (
-                        <div key={req.id} className="admin-notify-ticket">
-                          <div className="admin-notify-ticket-main">
-                            <span className="admin-notify-ticket-id">Ticket #{req.id}</span>
-                            <span className="admin-notify-ticket-meta">{req.team} / {req.env} · {req.cloud} · {req.service}</span>
-                            {(req.priority || req.due_date) && (
-                              <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
-                                {req.priority && `Priority: ${req.priority}`}
-                                {req.priority && req.due_date && ' · '}
-                                {req.due_date && `Due: ${new Date(req.due_date).toLocaleDateString()}`}
-                              </span>
-                            )}
-                            <span className="admin-notify-ticket-time">{formatTime(req.created_at)}</span>
-                          </div>
-                          <div className="admin-notify-ticket-actions">
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              style={{ padding: '6px 12px', fontSize: 13 }}
-                              disabled={actioningId !== null}
-                              onClick={() => handleApprove(req.id)}
-                            >
-                              {actioningId === req.id ? '…' : 'Approve'}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-danger"
-                              style={{ padding: '6px 12px', fontSize: 13 }}
-                              disabled={actioningId !== null}
-                              onClick={() => handleReject(req.id)}
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        </div>
+                        <Link
+                          key={req.id}
+                          href={`/requests?id=${req.id}`}
+                          className="admin-notify-ticket admin-notify-ticket-link"
+                          onClick={() => setNotifyOpen(false)}
+                        >
+                          <span className="admin-notify-ticket-id">Ticket #{req.id}</span>
+                          <span className="admin-notify-ticket-time">{formatTime(req.created_at)}</span>
+                        </Link>
                       ))
                     )}
                   </div>
                 </div>
               )}
             </div>
-            <button type="button" className="admin-topbar-logout btn btn-ghost" onClick={handleLogout} title="Logout">
-              <IconLogout />
-              <span>Logout</span>
+            <button
+              type="button"
+              className="admin-topbar-icon-btn"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+            >
+              {theme === 'dark' ? <IconSun /> : <IconMoon />}
             </button>
           </div>
-        </header>
-        <main className="admin-main">{children}</main>
-      </div>
+          <div className="admin-topbar-profile-wrap" ref={profileRef}>
+            <button
+              type="button"
+              className="admin-topbar-profile-btn"
+              onClick={() => setProfileOpen((o) => !o)}
+              aria-expanded={profileOpen}
+              aria-haspopup="true"
+              title="Profile"
+            >
+              <span className="admin-topbar-avatar" aria-hidden>
+                {profileInitials}
+              </span>
+            </button>
+            {profileOpen && (
+              <div className="admin-profile-dropdown">
+                <div className="admin-profile-dropdown-header">
+                  <span className="admin-profile-dropdown-avatar">{profileInitials}</span>
+                  <span className="admin-profile-dropdown-label">Admin</span>
+                </div>
+                <button
+                  type="button"
+                  className="admin-profile-dropdown-item"
+                  onClick={handleLogout}
+                >
+                  <IconLogout />
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+      <main className="admin-main">{children}</main>
     </div>
   );
 }

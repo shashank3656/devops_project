@@ -112,6 +112,35 @@ export default function AdminRequests() {
     fetchRequests({ offset });
   }, [token, router, offset]);
 
+  useEffect(() => {
+    const idParam = router.query.id;
+    if (!token || !router.isReady || !idParam) return;
+    const numId = typeof idParam === 'string' ? parseInt(idParam, 10) : NaN;
+    if (isNaN(numId) || numId <= 0) return;
+    fetch(`${apiUrl}/api/admin/requests/${numId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const req = data?.request;
+        if (!req) return;
+        setDetailRequest(req);
+        setDetailComments([]);
+        setDetailConfigOpen(false);
+        setCommentBody('');
+        fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
+          .then((r) => r.json())
+          .then((d) => setDetailComments(d.comments || []))
+          .catch(() => {});
+        fetch(`${apiUrl}/api/admin/requests/${req.id}`, { headers: { Authorization: `Bearer ${token}` } })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            if (d?.request) setDetailRequest((prev) => (prev ? { ...prev, ...d.request } : d.request));
+          })
+          .catch(() => {});
+        router.replace('/requests', undefined, { shallow: true });
+      })
+      .catch(() => {});
+  }, [router.isReady, router.query.id, token]);
+
   const handleFilter = (e: React.FormEvent) => {
     e.preventDefault();
     const form = e.currentTarget as HTMLFormElement;
