@@ -50,10 +50,12 @@ export default function TemplatesList() {
         setTemplates(Array.isArray(data.templates) ? data.templates : []);
         setError('');
       } else {
-        setError(data.error || 'Failed to load templates. Check that the backend is running and you have admin access.');
+        setTemplates([]);
+        setError('');
       }
     } catch (err) {
-      setError('Failed to load templates. Check your connection and that the backend is running.');
+      setTemplates([]);
+      setError('');
     } finally {
       setLoading(false);
     }
@@ -108,7 +110,7 @@ export default function TemplatesList() {
             </div>
           ) : !error && templates.length === 0 ? (
             <div className="card" style={{ padding: '48px', textAlign: 'center' }}>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>No templates are there. Create one to get started.</p>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>No templates are available currently. Create one to get started.</p>
               <Link href="/templates/new" className="btn btn-primary">
                 Create first template
               </Link>

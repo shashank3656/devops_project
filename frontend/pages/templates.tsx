@@ -33,12 +33,12 @@ export default function TemplatesPage() {
           setError('');
         } else {
           setTemplates([]);
-          setError(data.error || 'No templates are available currently.');
+          setError('');
         }
       })
       .catch(() => {
         setTemplates([]);
-        setError('No templates are available currently.');
+        setError('');
       })
       .finally(() => setLoading(false));
   }, []);
