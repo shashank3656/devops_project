@@ -1,13 +1,12 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { DEVOPS_SITE_NAME } from '../lib/site';
-import { IconTickets, IconWorkload, IconLogout, IconChevronLeft, IconChevronRight, IconSun, IconMoon, IconUser, IconUsers, IconTemplates } from './Icons';
+import { IconLogout, IconSun, IconMoon } from './Icons';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
-const DEVOPS_SIDEBAR_COLLAPSED_KEY = 'devops_sidebar_collapsed';
 const DEVOPS_THEME_KEY = 'infra-portal-theme';
 
 interface DevopsUser {
@@ -18,22 +17,43 @@ interface DevopsUser {
   devops_profile?: { is_manager: boolean; level: string; position?: string; onboard_date?: string };
 }
 
+function getProfileInitials(): string {
+  if (typeof window === 'undefined') return 'D';
+  try {
+    const raw = localStorage.getItem(DEVOPS_USER_KEY);
+    if (!raw) return 'D';
+    const user = JSON.parse(raw) as { username?: string; email?: string };
+    const name = user?.username || user?.email || '';
+    if (!name) return 'D';
+    const parts = name.trim().split(/[\s@.]/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
+    return name.slice(0, 2).toUpperCase();
+  } catch {
+    return 'D';
+  }
+}
+
 export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const pathname = router.pathname;
   const [user, setUser] = useState<DevopsUser | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
-  const [collapsed, setCollapsed] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileInitials, setProfileInitials] = useState('D');
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setProfileInitials(getProfileInitials());
+  }, []);
 
   useEffect(() => {
     try {
       const u = localStorage.getItem(DEVOPS_USER_KEY);
       if (u) setUser(JSON.parse(u));
-      const c = localStorage.getItem(DEVOPS_SIDEBAR_COLLAPSED_KEY);
-      if (c !== null) setCollapsed(c === 'true');
       const t = localStorage.getItem(DEVOPS_THEME_KEY);
-      const resolved = t === 'light' ? 'light' : 'dark';
+      const resolved = t === 'dark' ? 'dark' : 'light';
       setTheme(resolved);
       document.documentElement.setAttribute('data-theme', resolved);
     } catch (_) {}
@@ -64,13 +84,15 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('devops-notifications-refresh', onRefresh);
   }, [isManager, refreshPendingCount]);
 
-  const toggleSidebar = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    try {
-      localStorage.setItem(DEVOPS_SIDEBAR_COLLAPSED_KEY, String(next));
-    } catch (_) {}
-  };
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
+    };
+    if (profileOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [profileOpen]);
 
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark';
@@ -87,86 +109,90 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     router.replace('/login');
   };
 
-  const pathname = router.pathname;
-  const navLink = (href: string, label: string, icon: ReactNode, badge?: number) => {
-    const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
-    return (
-      <Link href={href} className={isActive ? 'devops-nav-active' : ''} title={collapsed ? label : undefined}>
-        <span className="devops-sidebar-icon" aria-hidden>{icon}</span>
-        <span className="devops-sidebar-label">{label}</span>
-        {badge != null && badge > 0 && (
-          <span className="devops-nav-badge" aria-label={`${badge} pending`}>
-            {badge > 99 ? '99+' : badge}
-          </span>
-        )}
-      </Link>
-    );
-  };
+  const baseNavItems: { href: string; label: string }[] = [
+    { href: '/dashboard', label: 'My tickets' },
+  ];
+  if (isManager) {
+    baseNavItems.push({ href: '/workload', label: 'Workload' });
+    baseNavItems.push({ href: '/tickets', label: 'All tickets' });
+  }
+  baseNavItems.push({ href: '/templates', label: 'Templates' });
+  if (isManager) baseNavItems.push({ href: '/team', label: 'Team' });
+  baseNavItems.push({ href: '/profile', label: 'Profile' });
 
   return (
-    <div className="devops-layout">
-      <aside className={`devops-sidebar ${collapsed ? 'devops-sidebar-collapsed' : ''}`}>
-        <div className="devops-sidebar-header">
-          <Link href="/dashboard" className="devops-sidebar-brand">
-            <img src="/logo.svg" alt="" width={36} height={36} />
-            <span className="devops-sidebar-brand-text">{DEVOPS_SITE_NAME}</span>
+    <div className="portal-layout">
+      <header className="portal-topbar">
+        <div className="portal-topbar-left">
+          <Link href="/dashboard" className="portal-topbar-brand">
+            <img src="/logo.svg" alt="" width={40} height={40} className="portal-topbar-logo" />
+            <span className="portal-topbar-brand-text">{DEVOPS_SITE_NAME}</span>
           </Link>
-          <button
-            type="button"
-            className="devops-sidebar-toggle"
-            onClick={toggleSidebar}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? <IconChevronRight /> : <IconChevronLeft />}
-          </button>
+          <nav className="portal-topbar-nav">
+            {baseNavItems.map(({ href, label }) => {
+              const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`portal-topbar-nav-link ${isActive ? 'active' : ''}`}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
-        <nav className="devops-sidebar-nav">
-          {navLink('/dashboard', 'My tickets', <IconTickets />)}
-          {isManager && navLink('/workload', 'Workload', <IconWorkload />, pendingCount)}
-          {isManager && navLink('/tickets', 'All tickets', <IconTickets />)}
-          {navLink('/templates', 'Templates', <IconTemplates />)}
-          {isManager && navLink('/team', 'Team', <IconUsers />)}
-          {navLink('/profile', 'Profile', <IconUser />)}
-        </nav>
-        <div className="devops-sidebar-footer">
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="btn btn-secondary"
-            title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-            style={{
-              width: '100%',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-3)',
-              padding: 'var(--space-3) var(--space-4)',
-              color: 'var(--sidebar-text-muted)',
-              background: 'transparent',
-              border: '1px solid var(--sidebar-border)',
-            }}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="portal-topbar-right">
+          <div className="portal-topbar-actions">
+            {isManager && pendingCount > 0 && (
+              <span className="portal-topbar-approval-badge" title={`${pendingCount} pending approval`}>
+                {pendingCount > 99 ? '99+' : pendingCount}
+              </span>
+            )}
+            {user && <span className="portal-topbar-username">{user.username}</span>}
+            <button
+              type="button"
+              className="portal-topbar-icon-btn"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+            >
               {theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </span>
-            {!collapsed && <span className="devops-sidebar-label">{theme === 'dark' ? 'Light' : 'Dark'}</span>}
-          </button>
-        </div>
-      </aside>
-      <div className="devops-main-wrap">
-        <header className="devops-topbar">
-          <div className="devops-topbar-spacer" />
-          <div className="devops-topbar-actions">
-            {user && <span className="devops-topbar-user">{user.username}</span>}
-            <button type="button" className="btn btn-ghost devops-topbar-logout" onClick={handleLogout} title="Logout">
-              <IconLogout />
-              <span>Logout</span>
             </button>
           </div>
-        </header>
-        <main className="devops-main">{children}</main>
-      </div>
+          <div className="portal-topbar-profile-wrap" ref={profileRef}>
+            <button
+              type="button"
+              className="portal-topbar-profile-btn"
+              onClick={() => setProfileOpen((o) => !o)}
+              aria-expanded={profileOpen}
+              aria-haspopup="true"
+              title="Profile"
+            >
+              <span className="portal-topbar-avatar" aria-hidden>
+                {profileInitials}
+              </span>
+            </button>
+            {profileOpen && (
+              <div className="portal-profile-dropdown">
+                <div className="portal-profile-dropdown-header">
+                  <span className="portal-profile-dropdown-avatar">{profileInitials}</span>
+                  <span className="portal-profile-dropdown-label">{user?.username || 'DevOps'}</span>
+                </div>
+                <button
+                  type="button"
+                  className="portal-profile-dropdown-item"
+                  onClick={handleLogout}
+                >
+                  <IconLogout />
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+      <main className="portal-main">{children}</main>
     </div>
   );
 }
