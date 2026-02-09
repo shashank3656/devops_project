@@ -155,27 +155,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Services navigation: IAM & Create Infrastructure */}
-        <div className="card" style={{ marginBottom: 24 }}>
-          <h2 className="section-title" style={{ marginBottom: 16 }}>Services</h2>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-            <Link
-              href="/iam"
-              className="home-service-card"
-            >
-              <span className="home-service-card-title">IAM</span>
-              <span className="home-service-card-desc">Identity and Access Management</span>
-            </Link>
-            <Link
-              href="/create-infrastructure"
-              className="home-service-card"
-            >
-              <span className="home-service-card-title">Create Infrastructure</span>
-              <span className="home-service-card-desc">Request new cloud resources</span>
-            </Link>
-          </div>
-        </div>
-
         {/* Summary: one row, clear metrics */}
         {!statsLoading && stats && (
           <div className="home-stats-row">
