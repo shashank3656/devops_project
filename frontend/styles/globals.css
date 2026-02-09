@@ -558,29 +558,6 @@ body {
 .home-stat-value { font-size: 1.75rem; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
 .home-stat-label { font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.25rem; }
 
-/* Home – services navigation (IAM, Create Infrastructure) */
-.home-service-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 20px;
-  min-width: 220px;
-  border: 2px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  text-decoration: none;
-  color: var(--color-text);
-  background: var(--color-surface);
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-.home-service-card:hover {
-  border-color: var(--color-primary);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
-  color: var(--color-text);
-  text-decoration: none;
-}
-.home-service-card-title { font-size: 1.25rem; font-weight: 700; color: var(--color-primary); }
-.home-service-card-desc { font-size: 0.875rem; color: var(--color-text-muted); }
-
 /* Home – activity (single section) */
 .home-activity { display: flex; flex-direction: column; gap: 1.5rem; }
 .home-activity-section { margin: 0; }
