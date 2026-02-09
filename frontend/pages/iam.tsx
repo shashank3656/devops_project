@@ -20,23 +20,18 @@ export default function IAMPage() {
         <title>IAM - InfraGate</title>
         <meta name="description" content="Identity and Access Management" />
       </Head>
-      <div style={{ padding: '24px 0' }}>
-        <h1 style={{ margin: 0, marginBottom: '8px', fontSize: '24px', fontWeight: 600 }}>IAM</h1>
-        <p style={{ color: 'var(--color-text-muted, var(--text-secondary))', marginBottom: '24px', fontSize: '14px' }}>
-          Identity and Access Management – manage access and permissions.
+      <div>
+        <h1 className="page-title" style={{ marginBottom: 8 }}>IAM</h1>
+        <p style={{ color: 'var(--color-text-muted, var(--text-secondary))', marginBottom: 24 }}>
+          Identity and Access Management
         </p>
-        <div className="card" style={{ maxWidth: 560 }}>
-          <p style={{ color: 'var(--color-text-muted, var(--text-secondary))', margin: 0 }}>
-            IAM features can be configured here. Use the links below to navigate.
+        <div className="card">
+          <p style={{ color: 'var(--color-text-muted)', marginBottom: 16 }}>
+            IAM services and settings will be available here.
           </p>
-          <div style={{ marginTop: '20px', display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-            <Link href="/home" className="btn btn-secondary" style={{ textDecoration: 'none' }}>
-              Back to Home
-            </Link>
-            <Link href="/create-infrastructure" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-              Create Infrastructure
-            </Link>
-          </div>
+          <Link href="/home" className="btn btn-secondary" style={{ textDecoration: 'none' }}>
+            Back to Home
+          </Link>
         </div>
       </div>
     </>
