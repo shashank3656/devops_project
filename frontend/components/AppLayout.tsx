@@ -20,15 +20,19 @@ export function getApiUrl(): string {
   return apiUrl;
 }
 
-function getUsername(): string {
-  if (typeof window === 'undefined') return '';
+function getProfileInitials(): string {
+  if (typeof window === 'undefined') return 'U';
   try {
     const raw = localStorage.getItem('user');
-    if (!raw) return '';
+    if (!raw) return 'U';
     const user = JSON.parse(raw) as { username?: string; email?: string; name?: string };
-    return user?.username || user?.name || user?.email || '';
+    const name = user?.name || user?.username || user?.email || '';
+    if (!name) return 'U';
+    const parts = name.trim().split(/[\s@.]/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
+    return name.slice(0, 2).toUpperCase();
   } catch {
-    return '';
+    return 'U';
   }
 }
 
@@ -48,10 +52,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [updatedRequestsCount, setUpdatedRequestsCount] = useState(0);
   const [pendingManagerApprovalCount, setPendingManagerApprovalCount] = useState(0);
   const [hasManagedTeams, setHasManagedTeams] = useState(false);
-  const [username, setUsername] = useState('');
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileInitials, setProfileInitials] = useState('U');
+  const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setUsername(getUsername());
+    setProfileInitials(getProfileInitials());
   }, []);
 
   useEffect(() => {
@@ -137,6 +143,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
+    };
+    if (profileOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [profileOpen]);
+
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark';
     setStoredTheme(next);
@@ -166,7 +182,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const navItems = [...BASE_NAV_ITEMS];
   if (hasManagedTeams) navItems.push({ href: '/my-teams', label: 'My teams' });
-  navItems.push({ href: '/profile', label: 'Profile' });
 
   if (teamCheck === 'loading') {
     return (
@@ -242,19 +257,42 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               {theme === 'dark' ? <IconSun /> : <IconMoon />}
             </button>
           </div>
-          <div className="portal-topbar-user-wrap">
-            <Link href="/profile" className="portal-topbar-username-link" title="Go to profile">
-              {username || 'Profile'}
-            </Link>
+          <div className="portal-topbar-profile-wrap" ref={profileRef}>
             <button
               type="button"
-              className="portal-topbar-logout-btn"
-              onClick={handleLogout}
-              title="Logout"
+              className="portal-topbar-profile-btn"
+              onClick={() => setProfileOpen((o) => !o)}
+              aria-expanded={profileOpen}
+              aria-haspopup="true"
+              title="Profile"
             >
-              <IconLogout />
-              <span>Logout</span>
+              <span className="portal-topbar-avatar" aria-hidden>
+                {profileInitials}
+              </span>
             </button>
+            {profileOpen && (
+              <div className="portal-profile-dropdown">
+                <div className="portal-profile-dropdown-header">
+                  <span className="portal-profile-dropdown-avatar">{profileInitials}</span>
+                  <span className="portal-profile-dropdown-label">Profile</span>
+                </div>
+                <Link
+                  href="/profile"
+                  className="portal-profile-dropdown-item"
+                  onClick={() => setProfileOpen(false)}
+                >
+                  Profile
+                </Link>
+                <button
+                  type="button"
+                  className="portal-profile-dropdown-item"
+                  onClick={handleLogout}
+                >
+                  <IconLogout />
+                  Logout
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>

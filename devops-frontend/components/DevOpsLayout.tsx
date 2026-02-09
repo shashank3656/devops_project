@@ -118,7 +118,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   }
   baseNavItems.push({ href: '/templates', label: 'Templates' });
   if (isManager) baseNavItems.push({ href: '/team', label: 'Team' });
-  baseNavItems.push({ href: '/profile', label: 'Profile' });
 
   return (
     <div className="portal-layout">
@@ -179,6 +178,13 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                   <span className="portal-profile-dropdown-avatar">{profileInitials}</span>
                   <span className="portal-profile-dropdown-label">{user?.username || 'DevOps'}</span>
                 </div>
+                <Link
+                  href="/profile"
+                  className="portal-profile-dropdown-item"
+                  onClick={() => setProfileOpen(false)}
+                >
+                  Profile
+                </Link>
                 <button
                   type="button"
                   className="portal-profile-dropdown-item"
