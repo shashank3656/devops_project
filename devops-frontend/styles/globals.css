@@ -208,8 +208,9 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   transition: background var(--transition);
   font-family: inherit;
 }
-.portal-profile-dropdown-item:hover { background: var(--sidebar-hover); }
+.portal-profile-dropdown-item:hover { background: var(--sidebar-hover); text-decoration: none; color: var(--color-text); }
 .portal-profile-dropdown-item svg { flex-shrink: 0; opacity: 0.8; }
+.portal-profile-dropdown-item[href] { text-decoration: none; }
 .portal-main {
   flex: 1;
   min-width: 0;
