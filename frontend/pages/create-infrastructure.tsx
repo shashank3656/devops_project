@@ -46,12 +46,12 @@ export default function CreateInfrastructure() {
           setSavedConfigsError('');
         } else {
           setSavedConfigs([]);
-          setSavedConfigsError(data.error || 'Failed to load saved configs.');
+          setSavedConfigsError('');
         }
       })
       .catch(() => {
         setSavedConfigs([]);
-        setSavedConfigsError('Failed to load saved configs. Check your connection.');
+        setSavedConfigsError('');
       })
       .finally(() => setLoadingSaved(false));
   }, [apiUrl]);
@@ -131,7 +131,7 @@ export default function CreateInfrastructure() {
               {loadingSaved ? (
                 <p style={{ color: 'var(--text-muted)' }}>Loading…</p>
               ) : !savedConfigsError && savedConfigs.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)' }}>No saved configurations.</p>
+                <p style={{ color: 'var(--text-muted)' }}>No saved configurations available.</p>
               ) : !savedConfigsError ? (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
                   {savedConfigs.map((s) => (
