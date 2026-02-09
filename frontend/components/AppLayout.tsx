@@ -16,6 +16,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconUsers,
+  IconTemplates,
 } from './Icons';
 
 const SIDEBAR_WIDTH = 240;
@@ -239,6 +240,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <nav className="app-sidebar-nav">
           {navItem('/home', 'Home', <IconHome />)}
           {navItem('/create-infrastructure', 'New Request', <IconPlus />)}
+          {navItem('/templates', 'Templates', <IconTemplates />)}
           <Link
             href="/history"
             title="History"

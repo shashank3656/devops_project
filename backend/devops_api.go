@@ -509,20 +509,20 @@ func devopsTeamsRouter(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"member": member, "status": "ok"})
 }
 
-// devopsTemplatesRouter handles /api/devops/templates - DevOps manager can list, create, update, delete templates
+// devopsTemplatesRouter handles /api/devops/templates - Any devops_user can list, create, update, delete templates
 func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
 		handleOptions(w, r)
 		return
 	}
-	managerID, ok := requireDevopsManager(w, r)
+	userID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
 	}
-	var managerIDPtr *int
-	if managerID > 0 {
-		managerIDPtr = &managerID
+	var userIDPtr *int
+	if userID > 0 {
+		userIDPtr = &userID
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -569,13 +569,13 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			if config == "" {
 				config = "{}"
 			}
-			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, managerIDPtr)
+			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, userIDPtr)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
-			AppendAuditLog(managerIDPtr, "template_create", "request_template", strconv.Itoa(t.ID), "devops_manager:"+name)
+			AppendAuditLog(userIDPtr, "template_create", "request_template", strconv.Itoa(t.ID), "devops:"+name)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(map[string]interface{}{"template": t, "status": "ok"})
@@ -638,7 +638,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
-		AppendAuditLog(managerIDPtr, "template_update", "request_template", strconv.Itoa(id), "devops_manager:"+name)
+		AppendAuditLog(userIDPtr, "template_update", "request_template", strconv.Itoa(id), "devops:"+name)
 		updated, _ := GetRequestTemplateByID(id)
 		json.NewEncoder(w).Encode(map[string]interface{}{"template": updated, "status": "ok"})
 		return
@@ -648,7 +648,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
-		AppendAuditLog(managerIDPtr, "template_delete", "request_template", strconv.Itoa(id), "devops_manager:"+t.Name)
+		AppendAuditLog(userIDPtr, "template_delete", "request_template", strconv.Itoa(id), "devops:"+t.Name)
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "deleted"})
 		return
 	default:
