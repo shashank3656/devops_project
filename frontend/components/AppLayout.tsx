@@ -20,19 +20,15 @@ export function getApiUrl(): string {
   return apiUrl;
 }
 
-function getProfileInitials(): string {
-  if (typeof window === 'undefined') return 'U';
+function getUsername(): string {
+  if (typeof window === 'undefined') return '';
   try {
     const raw = localStorage.getItem('user');
-    if (!raw) return 'U';
+    if (!raw) return '';
     const user = JSON.parse(raw) as { username?: string; email?: string; name?: string };
-    const name = user?.name || user?.username || user?.email || '';
-    if (!name) return 'U';
-    const parts = name.trim().split(/[\s@.]/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
-    return name.slice(0, 2).toUpperCase();
+    return user?.username || user?.name || user?.email || '';
   } catch {
-    return 'U';
+    return '';
   }
 }
 
@@ -52,12 +48,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [updatedRequestsCount, setUpdatedRequestsCount] = useState(0);
   const [pendingManagerApprovalCount, setPendingManagerApprovalCount] = useState(0);
   const [hasManagedTeams, setHasManagedTeams] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [profileInitials, setProfileInitials] = useState('U');
-  const profileRef = useRef<HTMLDivElement>(null);
+  const [username, setUsername] = useState('');
 
   useEffect(() => {
-    setProfileInitials(getProfileInitials());
+    setUsername(getUsername());
   }, []);
 
   useEffect(() => {
@@ -142,16 +136,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       window.removeEventListener('pending-manager-approval-refresh', onRefresh);
     };
   }, []);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
-    };
-    if (profileOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [profileOpen]);
 
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark';
@@ -258,35 +242,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               {theme === 'dark' ? <IconSun /> : <IconMoon />}
             </button>
           </div>
-          <div className="portal-topbar-profile-wrap" ref={profileRef}>
+          <div className="portal-topbar-user-wrap">
+            <Link href="/profile" className="portal-topbar-username-link" title="Go to profile">
+              {username || 'Profile'}
+            </Link>
             <button
               type="button"
-              className="portal-topbar-profile-btn"
-              onClick={() => setProfileOpen((o) => !o)}
-              aria-expanded={profileOpen}
-              aria-haspopup="true"
-              title="Profile"
+              className="portal-topbar-logout-btn"
+              onClick={handleLogout}
+              title="Logout"
             >
-              <span className="portal-topbar-avatar" aria-hidden>
-                {profileInitials}
-              </span>
+              <IconLogout />
+              <span>Logout</span>
             </button>
-            {profileOpen && (
-              <div className="portal-profile-dropdown">
-                <div className="portal-profile-dropdown-header">
-                  <span className="portal-profile-dropdown-avatar">{profileInitials}</span>
-                  <span className="portal-profile-dropdown-label">Profile</span>
-                </div>
-                <button
-                  type="button"
-                  className="portal-profile-dropdown-item"
-                  onClick={handleLogout}
-                >
-                  <IconLogout />
-                  Logout
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </header>
