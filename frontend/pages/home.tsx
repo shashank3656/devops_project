@@ -156,6 +156,58 @@ export default function Home() {
         )}
 
         {/* Summary: one row, clear metrics */}
+        {/* Services: IAM and Create Infrastructure */}
+        <div className="card" style={{ marginBottom: 24 }}>
+          <h2 className="section-title" style={{ marginBottom: 16 }}>Services</h2>
+          <p style={{ color: 'var(--color-text-muted, var(--text-secondary))', marginBottom: 20, fontSize: 14 }}>
+            Choose a service to get started.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+            <Link
+              href="/iam"
+              className="card card-interactive"
+              style={{
+                padding: 24,
+                margin: 0,
+                textDecoration: 'none',
+                color: 'inherit',
+                border: '2px solid var(--color-border, var(--border-color))',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: 8,
+              }}
+            >
+              <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-text, var(--text-primary))' }}>IAM</span>
+              <span style={{ fontSize: 14, color: 'var(--color-text-muted, var(--text-secondary))' }}>
+                Identity and Access Management
+              </span>
+              <span style={{ fontSize: 13, color: 'var(--color-primary)', fontWeight: 500 }}>Go to IAM →</span>
+            </Link>
+            <Link
+              href="/create-infrastructure"
+              className="card card-interactive"
+              style={{
+                padding: 24,
+                margin: 0,
+                textDecoration: 'none',
+                color: 'inherit',
+                border: '2px solid var(--color-border, var(--border-color))',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: 8,
+              }}
+            >
+              <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-text, var(--text-primary))' }}>Create Infrastructure</span>
+              <span style={{ fontSize: 14, color: 'var(--color-text-muted, var(--text-secondary))' }}>
+                Request cloud resources
+              </span>
+              <span style={{ fontSize: 13, color: 'var(--color-primary)', fontWeight: 500 }}>Go to Create Infrastructure →</span>
+            </Link>
+          </div>
+        </div>
+
         {!statsLoading && stats && (
           <div className="home-stats-row">
             <div className="home-stat-card home-stat-card--primary">
