@@ -46,6 +46,23 @@ func CreateDBQueryRequest(connectionID int, query string, userID int) (*DBQueryR
 	return &req, nil
 }
 
+// GetDBQueryRequestMinimal gets only id, connection_id, query, status - no JOINs, works with any schema
+func GetDBQueryRequestMinimal(id int) (*DBQueryRequest, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	var req DBQueryRequest
+	err := DB.QueryRow(`SELECT id, connection_id, query, status FROM db_query_requests WHERE id = $1`, id).
+		Scan(&req.ID, &req.ConnectionID, &req.Query, &req.Status)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &req, nil
+}
+
 func GetDBQueryRequestByID(id int) (*DBQueryRequest, error) {
 	if DB == nil {
 		return nil, nil
