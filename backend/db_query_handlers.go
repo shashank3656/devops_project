@@ -232,15 +232,18 @@ func dbQueryApproveHandler(w http.ResponseWriter, r *http.Request, id int) {
 		return
 	}
 	req, err := GetDBQueryRequestByID(id)
+	if err != nil || req == nil {
+		// Fallback: minimal query (no JOINs) - same pattern as reject which works
+		req, err = GetDBQueryRequestMinimal(id)
+	}
 	if err != nil {
-		log.Printf("[db-query] GetDBQueryRequestByID id=%d err=%v", id, err)
+		log.Printf("[db-query] GetDBQueryRequest id=%d err=%v", id, err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "not found", "status": "error"})
 		return
 	}
 	if req == nil {
-		log.Printf("[db-query] GetDBQueryRequestByID id=%d: no row in db_query_requests", id)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "not found", "status": "error"})
