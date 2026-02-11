@@ -105,6 +105,11 @@ export default function ActivityPage() {
       request_submit: 'Submitted draft',
       request_comment: 'Added comment',
       request_resubmit: 'Resubmitted request',
+      request_approved_by_manager: 'Approved by manager',
+      request_cancel: 'Cancelled request',
+      query_submit: 'Submitted query',
+      query_approved: 'Query approved',
+      query_reject: 'Query rejected',
     };
     return labels[a] || a;
   };

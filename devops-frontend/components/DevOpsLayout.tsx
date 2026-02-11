@@ -68,11 +68,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     fetch(`${apiUrl}/api/devops/notifications`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
-        if (data?.status === 'ok') {
-          const pr = typeof data.pending_approval_count === 'number' ? data.pending_approval_count : 0;
-          const q = typeof data.query_pending_count === 'number' ? data.query_pending_count : 0;
-          setPendingCount(pr + q);
-        }
+        if (data?.status === 'ok' && typeof data.pending_approval_count === 'number') setPendingCount(data.pending_approval_count);
       })
       .catch(() => {});
   }, [isManager, apiUrl]);
@@ -119,9 +115,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   if (isManager) {
     baseNavItems.push({ href: '/workload', label: 'Workload' });
     baseNavItems.push({ href: '/tickets', label: 'All tickets' });
-    baseNavItems.push({ href: '/db-query-pending', label: 'Query approvals' });
+    baseNavItems.push({ href: '/query-approvals', label: 'Query approvals' });
   }
-  baseNavItems.push({ href: '/db-query-audit', label: 'Query audit' });
   baseNavItems.push({ href: '/templates', label: 'Templates' });
   if (isManager) baseNavItems.push({ href: '/team', label: 'Team' });
 
