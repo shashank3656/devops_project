@@ -293,7 +293,7 @@ func MigrateDatabase() error {
 			id SERIAL PRIMARY KEY,
 			name VARCHAR(200) DEFAULT '',
 			db_type VARCHAR(20) NOT NULL DEFAULT 'postgres',
-			project VARCHAR(100) NOT NULL DEFAULT 'default',
+			project VARCHAR(100) DEFAULT '',
 			connection_string TEXT,
 			mongo_database VARCHAR(100) DEFAULT '',
 			mongo_collection VARCHAR(100) DEFAULT '',
@@ -301,12 +301,17 @@ func MigrateDatabase() error {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
-	// Add name column if missing (for tables created without it)
-	var nameCol int
-	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'db_connections' AND column_name = 'name'").Scan(&nameCol)
-	if nameCol == 0 {
-		log.Println("Migrating database: adding db_connections.name...")
-		_, _ = DB.Exec("ALTER TABLE db_connections ADD COLUMN name VARCHAR(200) DEFAULT ''")
+	// Add name, project columns if missing (for tables created without them)
+	for _, col := range []struct{ name, def string }{
+		{"name", "VARCHAR(200) DEFAULT ''"},
+		{"project", "VARCHAR(100) DEFAULT ''"},
+	} {
+		var count int
+		_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'db_connections' AND column_name = $1", col.name).Scan(&count)
+		if count == 0 {
+			log.Printf("Migrating database: adding db_connections.%s...", col.name)
+			_, _ = DB.Exec("ALTER TABLE db_connections ADD COLUMN " + col.name + " " + col.def)
+		}
 	}
 	var mongoDbCol int
 	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'db_connections' AND column_name = 'mongo_database'").Scan(&mongoDbCol)

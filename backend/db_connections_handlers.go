@@ -64,11 +64,15 @@ func adminDbConnectionsList(w http.ResponseWriter, r *http.Request) {
 		if name == "" {
 			name = fmt.Sprintf("Connection #%d", c.ID)
 		}
+		project := c.Project
+		if project == "" {
+			project = "default"
+		}
 		list[i] = map[string]interface{}{
 			"id":         c.ID,
 			"name":       name,
 			"db_type":    c.DBType,
-			"project":    c.Project,
+			"project":    project,
 			"created_at": c.CreatedAt,
 		}
 	}
@@ -100,10 +104,10 @@ func adminDbConnectionsCreate(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
 		return
 	}
-	if body.DBType == "" || body.Project == "" || body.Host == "" || body.Port == "" || body.Database == "" {
+	if body.DBType == "" || body.Host == "" || body.Port == "" || body.Database == "" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "db_type, project, host, port, database required", "status": "error"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "db_type, host, port, database required", "status": "error"})
 		return
 	}
 	if body.DBType == "mongodb" && body.MongoCollection == "" {
