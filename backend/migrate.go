@@ -330,16 +330,44 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_db_query_requests_requested_by ON db_query_requests(requested_by)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_db_query_requests_created_at ON db_query_requests(created_at DESC)")
 
-	// Seed default connection if empty
+	// Migration 20: db_connections separate fields (host, port, username, password, database, ssl_mode)
+	for _, col := range []string{"host", "port", "username", "password", "database", "ssl_mode"} {
+		var count int
+		_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'db_connections' AND column_name = $1", col).Scan(&count)
+		if count == 0 {
+			log.Printf("Migrating database: adding db_connections.%s...", col)
+			var alter string
+			switch col {
+			case "host":
+				alter = "ALTER TABLE db_connections ADD COLUMN host VARCHAR(255) DEFAULT ''"
+			case "port":
+				alter = "ALTER TABLE db_connections ADD COLUMN port VARCHAR(20) DEFAULT ''"
+			case "username":
+				alter = "ALTER TABLE db_connections ADD COLUMN username VARCHAR(255) DEFAULT ''"
+			case "password":
+				alter = "ALTER TABLE db_connections ADD COLUMN password TEXT DEFAULT ''"
+			case "database":
+				alter = "ALTER TABLE db_connections ADD COLUMN database VARCHAR(255) DEFAULT ''"
+			case "ssl_mode":
+				alter = "ALTER TABLE db_connections ADD COLUMN ssl_mode VARCHAR(50) DEFAULT 'disable'"
+			default:
+				continue
+			}
+			_, _ = DB.Exec(alter)
+		}
+	}
+	// Make connection_string nullable for backward compat with legacy rows
+	_, _ = DB.Exec("ALTER TABLE db_connections ALTER COLUMN connection_string DROP NOT NULL")
+
+	// Seed default connection if empty (using separate fields)
 	var connCount int
 	_ = DB.QueryRow("SELECT COUNT(*) FROM db_connections").Scan(&connCount)
 	if connCount == 0 {
-		dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		_, _ = DB.Exec(`INSERT INTO db_connections (name, db_type, project, host, port, username, password, database, ssl_mode) VALUES ($1, 'postgres', 'default', $2, $3, $4, $5, $6, 'disable')`,
+			"InfraGate (main)",
 			getEnv("DB_HOST", "postgres"), getEnv("DB_PORT", "5432"),
 			getEnv("DB_USER", "postgres"), getEnv("DB_PASSWORD", "postgres"),
 			getEnv("DB_NAME", "infra_portal"))
-		_, _ = DB.Exec(`INSERT INTO db_connections (name, db_type, project, connection_string) VALUES ($1, 'postgres', 'default', $2)`,
-			"InfraGate (main)", dsn)
 		log.Println("Seeded default db_connection")
 	}
 

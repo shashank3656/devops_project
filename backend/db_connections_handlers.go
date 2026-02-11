@@ -77,12 +77,17 @@ func adminDbConnectionsCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name             string `json:"name"`
-		DBType           string `json:"db_type"`
-		Project          string `json:"project"`
-		ConnectionString string `json:"connection_string"`
-		MongoDatabase    string `json:"mongo_database"`
-		MongoCollection  string `json:"mongo_collection"`
+		Name            string `json:"name"`
+		DBType          string `json:"db_type"`
+		Project         string `json:"project"`
+		Host            string `json:"host"`
+		Port            string `json:"port"`
+		Username        string `json:"username"`
+		Password        string `json:"password"`
+		Database        string `json:"database"`
+		SSLMode         string `json:"ssl_mode"`
+		MongoDatabase   string `json:"mongo_database"`
+		MongoCollection string `json:"mongo_collection"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -90,26 +95,35 @@ func adminDbConnectionsCreate(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
 		return
 	}
-	if body.Name == "" || body.DBType == "" || body.Project == "" || body.ConnectionString == "" {
+	if body.Name == "" || body.DBType == "" || body.Project == "" || body.Host == "" || body.Port == "" || body.Database == "" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "name, db_type, project, connection_string required", "status": "error"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "name, db_type, project, host, port, database required", "status": "error"})
 		return
 	}
-	if body.DBType == "mongodb" && (body.MongoDatabase == "" || body.MongoCollection == "") {
+	if body.DBType == "mongodb" && body.MongoCollection == "" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "mongo_database and mongo_collection required for MongoDB", "status": "error"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "mongo_collection required for MongoDB", "status": "error"})
 		return
+	}
+	sslMode := body.SSLMode
+	if sslMode != "disable" && sslMode != "required" && sslMode != "require" {
+		sslMode = "disable"
 	}
 	c := &DBConnection{
-		Name:             body.Name,
-		DBType:           body.DBType,
-		Project:          body.Project,
-		ConnectionString: body.ConnectionString,
-		MongoDatabase:    body.MongoDatabase,
-		MongoCollection:  body.MongoCollection,
-		CreatedBy:        &adminID,
+		Name:            body.Name,
+		DBType:          body.DBType,
+		Project:         body.Project,
+		Host:            body.Host,
+		Port:            body.Port,
+		Username:        body.Username,
+		Password:        body.Password,
+		Database:        body.Database,
+		SSLMode:         sslMode,
+		MongoDatabase:   body.MongoDatabase,
+		MongoCollection: body.MongoCollection,
+		CreatedBy:       &adminID,
 	}
 	if err := CreateDBConnection(c); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -138,6 +152,12 @@ func adminDbConnectionGet(w http.ResponseWriter, r *http.Request, id int) {
 			"name":             conn.Name,
 			"db_type":          conn.DBType,
 			"project":          conn.Project,
+			"host":             conn.Host,
+			"port":             conn.Port,
+			"username":         conn.Username,
+			"password":         conn.Password,
+			"database":         conn.Database,
+			"ssl_mode":         conn.SSLMode,
 			"mongo_database":   conn.MongoDatabase,
 			"mongo_collection": conn.MongoCollection,
 			"created_at":       conn.CreatedAt,
@@ -159,12 +179,17 @@ func adminDbConnectionUpdate(w http.ResponseWriter, r *http.Request, id int) {
 		return
 	}
 	var body struct {
-		Name             *string `json:"name"`
-		DBType           *string `json:"db_type"`
-		Project          *string `json:"project"`
-		ConnectionString *string `json:"connection_string"`
-		MongoDatabase    *string `json:"mongo_database"`
-		MongoCollection  *string `json:"mongo_collection"`
+		Name            *string `json:"name"`
+		DBType          *string `json:"db_type"`
+		Project         *string `json:"project"`
+		Host            *string `json:"host"`
+		Port            *string `json:"port"`
+		Username        *string `json:"username"`
+		Password        *string `json:"password"`
+		Database        *string `json:"database"`
+		SSLMode         *string `json:"ssl_mode"`
+		MongoDatabase   *string `json:"mongo_database"`
+		MongoCollection *string `json:"mongo_collection"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -181,8 +206,26 @@ func adminDbConnectionUpdate(w http.ResponseWriter, r *http.Request, id int) {
 	if body.Project != nil {
 		conn.Project = *body.Project
 	}
-	if body.ConnectionString != nil {
-		conn.ConnectionString = *body.ConnectionString
+	if body.Host != nil {
+		conn.Host = *body.Host
+	}
+	if body.Port != nil {
+		conn.Port = *body.Port
+	}
+	if body.Username != nil {
+		conn.Username = *body.Username
+	}
+	if body.Password != nil {
+		conn.Password = *body.Password
+	}
+	if body.Database != nil {
+		conn.Database = *body.Database
+	}
+	if body.SSLMode != nil {
+		s := *body.SSLMode
+		if s == "disable" || s == "required" || s == "require" {
+			conn.SSLMode = s
+		}
 	}
 	if body.MongoDatabase != nil {
 		conn.MongoDatabase = *body.MongoDatabase

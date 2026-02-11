@@ -366,18 +366,22 @@ func dbQueryResultHandler(w http.ResponseWriter, r *http.Request, id int) {
 }
 
 func executeQueryForConnection(conn *DBConnection, query string) ([]string, []map[string]interface{}, int, error) {
+	dsn := conn.GetDSN()
 	switch conn.DBType {
 	case "postgres", "postgresql":
-		return executeSQLQuery("postgres", conn.ConnectionString, query)
+		return executeSQLQuery("postgres", dsn, query)
 	case "mysql":
-		return executeSQLQuery("mysql", conn.ConnectionString, query)
+		return executeSQLQuery("mysql", dsn, query)
 	case "mongodb":
-		db := conn.MongoDatabase
+		db := conn.Database
+		if db == "" {
+			db = conn.MongoDatabase
+		}
 		coll := conn.MongoCollection
 		if db == "" || coll == "" {
 			return nil, nil, 0, fmt.Errorf("MongoDB connection requires database and collection")
 		}
-		return executeMongoQuery(conn.ConnectionString, db, coll, query)
+		return executeMongoQuery(dsn, db, coll, query)
 	default:
 		return nil, nil, 0, fmt.Errorf("unsupported db_type: %s", conn.DBType)
 	}
