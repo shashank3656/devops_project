@@ -127,7 +127,7 @@ export default function DbConnectionsPage() {
                   </select>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Project</label>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Project (optional, for grouping)</label>
                   <input type="text" className="input" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} placeholder="default" />
                 </div>
                 <div>
