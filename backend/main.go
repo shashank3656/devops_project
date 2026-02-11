@@ -519,6 +519,8 @@ func main() {
 	http.HandleFunc("/api/admin/webhooks/", adminWebhookDetailHandler)
 	http.HandleFunc("/api/admin/templates", adminTemplatesRouter)
 	http.HandleFunc("/api/admin/templates/", adminTemplatesRouter)
+	http.HandleFunc("/api/admin/db-connections", dbQueryConnectionsHandler)
+	http.HandleFunc("/api/admin/db-query", dbQueryExecuteHandler)
 	http.HandleFunc("/api/devops/me", devopsMeHandler)
 	http.HandleFunc("/api/devops/my-teams", devopsMyTeamsHandler)
 	http.HandleFunc("/api/devops/teams/", devopsTeamsRouter)
