@@ -41,6 +41,7 @@ const NAV_ITEMS: { href: string; label: string }[] = [
   { href: '/templates', label: 'Templates' },
   { href: '/webhooks', label: 'Webhooks' },
   { href: '/db-query', label: 'DB Query' },
+  { href: '/db-connections', label: 'DB Connections' },
 ];
 
 function getProfileInitials(): string {

@@ -122,6 +122,12 @@ export default function ActivityPage() {
       team_member_role_update: 'Member role updated',
       request_approve: 'Request approved',
       request_reject: 'Request rejected',
+      db_query: 'DB query executed',
+      db_query_approve: 'DB query approved',
+      db_query_reject: 'DB query rejected',
+      db_connection_create: 'DB connection created',
+      db_connection_update: 'DB connection updated',
+      db_connection_delete: 'DB connection deleted',
     };
     return labels[a] || a;
   };

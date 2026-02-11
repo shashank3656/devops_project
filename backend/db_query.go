@@ -6,13 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
-	"os"
 	"regexp"
 	"strings"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 const (
@@ -21,50 +23,8 @@ const (
 	dbQueryMaxLength = 10000
 )
 
-// dbQueryConnection represents a database connection for the query UI
-type dbQueryConnection struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	DSN  string `json:"-"`
-}
-
-// getDBQueryConnections returns configured database connections
-func getDBQueryConnections() []dbQueryConnection {
-	conns := []dbQueryConnection{}
-
-	// Main app DB (always available)
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		getEnv("DB_HOST", "postgres"),
-		getEnv("DB_PORT", "5432"),
-		getEnv("DB_USER", "postgres"),
-		getEnv("DB_PASSWORD", "postgres"),
-		getEnv("DB_NAME", "infra_portal"),
-	)
-	conns = append(conns, dbQueryConnection{
-		ID:   "main",
-		Name: "InfraGate (main)",
-		DSN:  dsn,
-	})
-
-	// Additional connections from env: DB_QUERY_1_NAME, DB_QUERY_1_DSN, etc.
-	for i := 1; i <= 5; i++ {
-		name := os.Getenv(fmt.Sprintf("DB_QUERY_%d_NAME", i))
-		dsn := os.Getenv(fmt.Sprintf("DB_QUERY_%d_DSN", i))
-		if name != "" && dsn != "" {
-			conns = append(conns, dbQueryConnection{
-				ID:   fmt.Sprintf("extra_%d", i),
-				Name: name,
-				DSN:  dsn,
-			})
-		}
-	}
-
-	return conns
-}
-
 var dangerousSQL = regexp.MustCompile(`(?i)\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE|CREATE|ALTER|GRANT|REVOKE|EXEC|EXECUTE|CALL)\b`)
 
-// isReadOnlyQuery checks that the query is a safe SELECT-only query
 func isReadOnlyQuery(q string) bool {
 	trimmed := strings.TrimSpace(q)
 	if len(trimmed) == 0 {
@@ -73,127 +33,38 @@ func isReadOnlyQuery(q string) bool {
 	if len(trimmed) > dbQueryMaxLength {
 		return false
 	}
-	// Must start with SELECT (allow WITH for CTEs)
 	upper := strings.ToUpper(trimmed)
 	if !strings.HasPrefix(upper, "SELECT") && !strings.HasPrefix(upper, "WITH") {
 		return false
 	}
-	// Reject known dangerous keywords
 	if dangerousSQL.MatchString(trimmed) {
 		return false
 	}
 	return true
 }
 
-// dbQueryConnectionsHandler GET /api/admin/db-connections - list available DB connections
-func dbQueryConnectionsHandler(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == "OPTIONS" {
-		handleOptions(w, r)
-		return
-	}
-	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if _, ok := requireAdmin(w, r); !ok {
-		return
-	}
-	conns := getDBQueryConnections()
-	list := make([]map[string]string, len(conns))
-	for i, c := range conns {
-		list[i] = map[string]string{"id": c.ID, "name": c.Name}
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"connections": list, "status": "ok"})
-}
-
-// dbQueryExecuteHandler POST /api/admin/db-query - execute read-only query
-func dbQueryExecuteHandler(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == "OPTIONS" {
-		handleOptions(w, r)
-		return
-	}
-	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	adminID, ok := requireAdmin(w, r)
-	if !ok {
-		return
-	}
-
-	var body struct {
-		ConnectionID string `json:"connection_id"`
-		Query        string `json:"query"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
-		return
-	}
-	if !isReadOnlyQuery(body.Query) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error":  "only SELECT queries are allowed. No INSERT, UPDATE, DELETE, DROP, etc.",
-			"status": "error",
-		})
-		return
-	}
-
-	conns := getDBQueryConnections()
-	var dsn string
-	for _, c := range conns {
-		if c.ID == body.ConnectionID {
-			dsn = c.DSN
-			break
-		}
-	}
-	if dsn == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid connection_id", "status": "error"})
-		return
-	}
-
-	db, err := sql.Open("postgres", dsn)
+// executeSQLQuery runs SELECT on Postgres or MySQL, returns columns, rows, count, error
+func executeSQLQuery(driver, dsn, query string) ([]string, []map[string]interface{}, int, error) {
+	db, err := sql.Open(driver, dsn)
 	if err != nil {
-		log.Printf("[db-query] open connection: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to connect to database", "status": "error"})
-		return
+		return nil, nil, 0, err
 	}
 	defer db.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), dbQueryTimeout)
 	defer cancel()
 
-	rows, err := db.QueryContext(ctx, body.Query)
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
-		log.Printf("[db-query] query error (admin=%d): %v", adminID, err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error":  "query failed: " + err.Error(),
-			"status": "error",
-		})
-		return
+		return nil, nil, 0, err
 	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to get columns", "status": "error"})
-		return
+		return nil, nil, 0, err
 	}
 
-	// Scan rows into []map[string]interface{}
 	result := []map[string]interface{}{}
 	values := make([]interface{}, len(columns))
 	valuePtrs := make([]interface{}, len(columns))
@@ -201,9 +72,8 @@ func dbQueryExecuteHandler(w http.ResponseWriter, r *http.Request) {
 		valuePtrs[i] = &values[i]
 	}
 
-	rowCount := 0
 	for rows.Next() {
-		if rowCount >= dbQueryMaxRows {
+		if len(result) >= dbQueryMaxRows {
 			break
 		}
 		if err := rows.Scan(valuePtrs...); err != nil {
@@ -223,22 +93,59 @@ func dbQueryExecuteHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		result = append(result, row)
-		rowCount++
 	}
-	if err := rows.Err(); err != nil {
-		log.Printf("[db-query] rows error: %v", err)
+	return columns, result, len(result), rows.Err()
+}
+
+// executeMongoQuery runs find with filter (query as JSON). Returns documents as rows
+func executeMongoQuery(connectionString, database, collection, filterJSON string) ([]string, []map[string]interface{}, int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dbQueryTimeout)
+	defer cancel()
+
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(connectionString))
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	defer func() { _ = client.Disconnect(ctx) }()
+
+	var filter bson.M
+	if filterJSON != "" {
+		var m map[string]interface{}
+		if err := json.Unmarshal([]byte(filterJSON), &m); err != nil {
+			return nil, nil, 0, fmt.Errorf("invalid filter JSON: %w", err)
+		}
+		filter = bson.M(m)
+	} else {
+		filter = bson.M{}
 	}
 
-	// Audit log
-	if adminID > 0 && DB != nil {
-		AppendAuditLog(&adminID, "db_query", "db_query", body.ConnectionID, fmt.Sprintf("rows=%d", len(result)))
+	coll := client.Database(database).Collection(collection)
+	opts := options.Find().SetLimit(int64(dbQueryMaxRows))
+	cursor, err := coll.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	defer cursor.Close(ctx)
+
+	var docs []map[string]interface{}
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, nil, 0, err
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"columns": columns,
-		"rows":    result,
-		"count":   len(result),
-		"status":  "ok",
-	})
+	// Flatten to rows with _id and other keys
+	columns := []string{"_id"}
+	seenCols := map[string]bool{"_id": true}
+	for _, d := range docs {
+		for k := range d {
+			if !seenCols[k] {
+				seenCols[k] = true
+				columns = append(columns, k)
+			}
+		}
+	}
+	rows := make([]map[string]interface{}, len(docs))
+	for i, d := range docs {
+		rows[i] = d
+	}
+	return columns, rows, len(rows), nil
 }
