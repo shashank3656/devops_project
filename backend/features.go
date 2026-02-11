@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,10 +15,19 @@ func AppendUserActivity(userID *int, action, resourceType, resourceID, details s
 	if DB == nil {
 		return
 	}
-	_, _ = DB.Exec(
+	var userIDVal interface{}
+	if userID != nil {
+		userIDVal = *userID
+	} else {
+		userIDVal = nil
+	}
+	_, err := DB.Exec(
 		"INSERT INTO user_activity (user_id, action, resource_type, resource_id, details) VALUES ($1, $2, $3, $4, $5)",
-		userID, action, resourceType, resourceID, details,
+		userIDVal, action, resourceType, resourceID, details,
 	)
+	if err != nil {
+		log.Printf("[user_activity] INSERT failed: %v (action=%q resource_id=%q)", err, action, resourceID)
+	}
 }
 
 // GetRequestTags returns tags for a request
