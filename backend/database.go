@@ -459,6 +459,24 @@ func createTables() error {
 		return fmt.Errorf("create admin_audit_log: %w", errAudit)
 	}
 
+	// user_activity: log user actions (create, submit, comment, etc.) for admin activity feed
+	_, errUserActivity := DB.Exec(`
+		CREATE TABLE IF NOT EXISTS user_activity (
+			id SERIAL PRIMARY KEY,
+			user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			action VARCHAR(100) NOT NULL,
+			resource_type VARCHAR(50) NOT NULL,
+			resource_id VARCHAR(50),
+			details TEXT,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if errUserActivity != nil {
+		return fmt.Errorf("create user_activity: %w", errUserActivity)
+	}
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_activity_user_id ON user_activity(user_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_activity_created_at ON user_activity(created_at DESC)")
+
 	log.Println("Database tables created/verified")
 	return nil
 }
