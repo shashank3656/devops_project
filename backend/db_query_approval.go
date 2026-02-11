@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -50,8 +51,9 @@ func GetDBQueryRequestByID(id int) (*DBQueryRequest, error) {
 		return nil, nil
 	}
 	var req DBQueryRequest
+	// Use COALESCE(name, alias) for connection name - schema may use alias
 	err := DB.QueryRow(`
-		SELECT q.id, q.connection_id, c.name, c.project, q.query, q.requested_by, u1.username,
+		SELECT q.id, q.connection_id, COALESCE(NULLIF(TRIM(c.name),''), c.alias, '') as conn_name, COALESCE(c.project,''), q.query, q.requested_by, u1.username,
 			q.status, q.approved_by, u2.username, q.approved_at, q.executed_at, q.result_rows, COALESCE(q.error_message,''), q.created_at
 		FROM db_query_requests q
 		JOIN db_connections c ON c.id = q.connection_id
@@ -64,7 +66,23 @@ func GetDBQueryRequestByID(id int) (*DBQueryRequest, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		// Fallback: schema may not have alias
+		err = DB.QueryRow(`
+			SELECT q.id, q.connection_id, COALESCE(c.name,''), COALESCE(c.project,''), q.query, q.requested_by, u1.username,
+				q.status, q.approved_by, u2.username, q.approved_at, q.executed_at, q.result_rows, COALESCE(q.error_message,''), q.created_at
+			FROM db_query_requests q
+			JOIN db_connections c ON c.id = q.connection_id
+			JOIN users u1 ON u1.id = q.requested_by
+			LEFT JOIN users u2 ON u2.id = q.approved_by
+			WHERE q.id = $1
+		`, id).Scan(&req.ID, &req.ConnectionID, &req.ConnectionName, &req.Project, &req.Query, &req.RequestedBy, &req.RequesterName,
+			&req.Status, &req.ApprovedBy, &req.ApprovedByName, &req.ApprovedAt, &req.ExecutedAt, &req.ResultRows, &req.ErrorMessage, &req.CreatedAt)
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &req, nil
 }
@@ -73,14 +91,25 @@ func ListDBQueryRequestsPending() ([]DBQueryRequest, error) {
 	if DB == nil {
 		return nil, nil
 	}
+	// Use COALESCE(name, alias) for connection name - schema may use alias
 	rows, err := DB.Query(`
-		SELECT q.id, q.connection_id, c.name, c.project, q.query, q.requested_by, u1.username, q.status, q.created_at
+		SELECT q.id, q.connection_id, COALESCE(NULLIF(TRIM(c.name),''), c.alias, '') as conn_name, COALESCE(c.project,''), q.query, q.requested_by, u1.username, q.status, q.created_at
 		FROM db_query_requests q
 		JOIN db_connections c ON c.id = q.connection_id
 		JOIN users u1 ON u1.id = q.requested_by
 		WHERE q.status = 'pending_approval'
 		ORDER BY q.created_at ASC
 	`)
+	if err != nil && (strings.Contains(err.Error(), "alias") || strings.Contains(err.Error(), "does not exist")) {
+		rows, err = DB.Query(`
+			SELECT q.id, q.connection_id, COALESCE(c.name,''), COALESCE(c.project,''), q.query, q.requested_by, u1.username, q.status, q.created_at
+			FROM db_query_requests q
+			JOIN db_connections c ON c.id = q.connection_id
+			JOIN users u1 ON u1.id = q.requested_by
+			WHERE q.status = 'pending_approval'
+			ORDER BY q.created_at ASC
+		`)
+	}
 	if err != nil {
 		return nil, err
 	}
