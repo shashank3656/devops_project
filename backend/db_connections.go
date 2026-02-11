@@ -91,10 +91,14 @@ func CreateDBConnection(c *DBConnection) error {
 	if DB == nil {
 		return fmt.Errorf("database not available")
 	}
-	// name and project are optional, used only for display/tracking
-	return DB.QueryRow(`INSERT INTO db_connections (name, db_type, project, host, port, username, password, database, ssl_mode, mongo_database, mongo_collection, created_by)
-		VALUES (COALESCE(NULLIF(TRIM($1),''), 'Connection'), $2, COALESCE(NULLIF(TRIM($3),''), 'default'), $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id, created_at`,
-		c.Name, c.DBType, c.Project, c.Host, c.Port, c.Username, c.Password, c.Database, c.SSLMode, c.MongoDatabase, c.MongoCollection, c.CreatedBy).
+	// name, alias, project are optional, used only for display/tracking
+	displayName := c.Name
+	if displayName == "" {
+		displayName = "Connection"
+	}
+	return DB.QueryRow(`INSERT INTO db_connections (name, alias, db_type, project, host, port, username, password, database, ssl_mode, mongo_database, mongo_collection, created_by)
+		VALUES ($1, $2, $3, COALESCE(NULLIF(TRIM($4),''), 'default'), $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id, created_at`,
+		displayName, displayName, c.DBType, c.Project, c.Host, c.Port, c.Username, c.Password, c.Database, c.SSLMode, c.MongoDatabase, c.MongoCollection, c.CreatedBy).
 		Scan(&c.ID, &c.CreatedAt)
 }
 
@@ -102,8 +106,12 @@ func UpdateDBConnection(c *DBConnection) error {
 	if DB == nil {
 		return fmt.Errorf("database not available")
 	}
-	_, err := DB.Exec(`UPDATE db_connections SET name=$1, db_type=$2, project=$3, host=$4, port=$5, username=$6, password=$7, database=$8, ssl_mode=$9, mongo_database=$10, mongo_collection=$11 WHERE id=$12`,
-		c.Name, c.DBType, c.Project, c.Host, c.Port, c.Username, c.Password, c.Database, c.SSLMode, c.MongoDatabase, c.MongoCollection, c.ID)
+	displayName := c.Name
+	if displayName == "" {
+		displayName = "Connection"
+	}
+	_, err := DB.Exec(`UPDATE db_connections SET name=$1, alias=$2, db_type=$3, project=$4, host=$5, port=$6, username=$7, password=$8, database=$9, ssl_mode=$10, mongo_database=$11, mongo_collection=$12 WHERE id=$13`,
+		displayName, displayName, c.DBType, c.Project, c.Host, c.Port, c.Username, c.Password, c.Database, c.SSLMode, c.MongoDatabase, c.MongoCollection, c.ID)
 	return err
 }
 
