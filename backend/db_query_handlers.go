@@ -111,6 +111,9 @@ func dbQuerySubmitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conn, err := GetDBConnectionByID(body.ConnectionID)
+	if err != nil {
+		log.Printf("[db-query] GetDBConnectionByID id=%d err=%v", body.ConnectionID, err)
+	}
 	if err != nil || conn == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -429,6 +432,9 @@ func executeDBQuery(w http.ResponseWriter, r *http.Request, adminBypass bool) {
 		return
 	}
 	conn, err := GetDBConnectionByID(body.ConnectionID)
+	if err != nil {
+		log.Printf("[db-query] GetDBConnectionByID id=%d err=%v", body.ConnectionID, err)
+	}
 	if err != nil || conn == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
