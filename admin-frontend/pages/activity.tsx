@@ -83,20 +83,17 @@ export default function ActivityPage() {
           return res.json();
         })
         .then((data) => {
-          if (data.error) {
-            setError(data.error);
-            setUserEntries([]);
-          } else if (data.status === 'ok' || Array.isArray(data.entries)) {
+          if (data.status === 'ok' || Array.isArray(data.entries)) {
             setUserEntries(Array.isArray(data.entries) ? data.entries : []);
             setError('');
           } else {
-            setError('Failed to load user activity');
             setUserEntries([]);
+            setError('');
           }
         })
         .catch(() => {
-          setError('Failed to load user activity');
           setUserEntries([]);
+          setError('');
         })
         .finally(() => setLoading(false));
     }
