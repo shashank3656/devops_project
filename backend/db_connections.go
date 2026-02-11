@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -28,14 +29,20 @@ func ListDBConnections(projectFilter string) ([]DBConnection, error) {
 	if DB == nil {
 		return nil, nil
 	}
-	query := `SELECT id, name, db_type, project, COALESCE(mongo_database,''), COALESCE(mongo_collection,''), created_by, created_at FROM db_connections WHERE 1=1`
 	args := []interface{}{}
+	where := " WHERE 1=1"
 	if projectFilter != "" {
-		query += ` AND project = $1`
+		where += ` AND project = $1`
 		args = append(args, projectFilter)
 	}
-	query += ` ORDER BY project, name`
+	// Try with alias first (some schemas use alias for display name)
+	query := `SELECT id, COALESCE(NULLIF(TRIM(name),''), COALESCE(alias,''), 'Connection') as name, db_type, project, COALESCE(mongo_database,''), COALESCE(mongo_collection,''), created_by, created_at FROM db_connections` + where + ` ORDER BY project, name`
 	rows, err := DB.Query(query, args...)
+	if err != nil && (strings.Contains(err.Error(), "alias") || strings.Contains(err.Error(), "does not exist")) {
+		// Fallback: schema may not have alias
+		query = `SELECT id, COALESCE(name,'Connection') as name, db_type, project, COALESCE(mongo_database,''), COALESCE(mongo_collection,''), created_by, created_at FROM db_connections` + where + ` ORDER BY project, name`
+		rows, err = DB.Query(query, args...)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -76,13 +83,33 @@ func GetDBConnectionByID(id int) (*DBConnection, error) {
 		return nil, nil
 	}
 	var c DBConnection
+	// Try full query first (with database/database_name)
 	err := DB.QueryRow(`SELECT id, name, db_type, project, COALESCE(host,''), COALESCE(port,''), COALESCE(username,''), COALESCE(password,''), COALESCE(database, database_name, ''), COALESCE(ssl_mode,'disable'), COALESCE(connection_string,''), COALESCE(mongo_database,''), COALESCE(mongo_collection,''), created_by, created_at FROM db_connections WHERE id = $1`, id).
 		Scan(&c.ID, &c.Name, &c.DBType, &c.Project, &c.Host, &c.Port, &c.Username, &c.Password, &c.Database, &c.SSLMode, &c.ConnectionString, &c.MongoDatabase, &c.MongoCollection, &c.CreatedBy, &c.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		// Fallback 1: try without database_name (schema may have database only)
+		err2 := DB.QueryRow(`SELECT id, name, db_type, project, COALESCE(host,''), COALESCE(port,''), COALESCE(username,''), COALESCE(password,''), COALESCE(database,''), COALESCE(ssl_mode,'disable'), COALESCE(connection_string,''), COALESCE(mongo_database,''), COALESCE(mongo_collection,''), created_by, created_at FROM db_connections WHERE id = $1`, id).
+			Scan(&c.ID, &c.Name, &c.DBType, &c.Project, &c.Host, &c.Port, &c.Username, &c.Password, &c.Database, &c.SSLMode, &c.ConnectionString, &c.MongoDatabase, &c.MongoCollection, &c.CreatedBy, &c.CreatedAt)
+		if err2 == nil {
+			return &c, nil
+		}
+		if err2 != sql.ErrNoRows {
+			// Fallback 2: try with database_name only (schema may have database_name instead of database)
+			err3 := DB.QueryRow(`SELECT id, name, db_type, project, COALESCE(host,''), COALESCE(port,''), COALESCE(username,''), COALESCE(password,''), COALESCE(database_name,''), COALESCE(ssl_mode,'disable'), COALESCE(connection_string,''), COALESCE(mongo_database,''), COALESCE(mongo_collection,''), created_by, created_at FROM db_connections WHERE id = $1`, id).
+				Scan(&c.ID, &c.Name, &c.DBType, &c.Project, &c.Host, &c.Port, &c.Username, &c.Password, &c.Database, &c.SSLMode, &c.ConnectionString, &c.MongoDatabase, &c.MongoCollection, &c.CreatedBy, &c.CreatedAt)
+			if err3 == sql.ErrNoRows {
+				return nil, nil
+			}
+			if err3 != nil {
+				return nil, err
+			}
+		} else {
+			return nil, nil
+		}
+		return &c, nil
 	}
 	return &c, nil
 }
