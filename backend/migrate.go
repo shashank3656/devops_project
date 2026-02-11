@@ -304,6 +304,7 @@ func MigrateDatabase() error {
 	// Add any missing columns (handles tables created with minimal/different schema)
 	dbConnCols := []struct{ name, def string }{
 		{"name", "VARCHAR(200) DEFAULT ''"},
+		{"alias", "VARCHAR(200) DEFAULT ''"},
 		{"project", "VARCHAR(100) DEFAULT ''"},
 		{"connection_string", "TEXT"},
 		{"mongo_database", "VARCHAR(100) DEFAULT ''"},
@@ -371,12 +372,19 @@ func MigrateDatabase() error {
 	// Make connection_string nullable for backward compat with legacy rows
 	_, _ = DB.Exec("ALTER TABLE db_connections ALTER COLUMN connection_string DROP NOT NULL")
 
+	// Make alias nullable if it exists (for tables where alias was NOT NULL)
+	var aliasCol int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'db_connections' AND column_name = 'alias'").Scan(&aliasCol)
+	if aliasCol > 0 {
+		_, _ = DB.Exec("ALTER TABLE db_connections ALTER COLUMN alias DROP NOT NULL")
+	}
+
 	// Seed default connection if empty (using separate fields)
 	var connCount int
 	_ = DB.QueryRow("SELECT COUNT(*) FROM db_connections").Scan(&connCount)
 	if connCount == 0 {
-		_, _ = DB.Exec(`INSERT INTO db_connections (name, db_type, project, host, port, username, password, database, ssl_mode) VALUES ($1, 'postgres', 'default', $2, $3, $4, $5, $6, 'disable')`,
-			"InfraGate (main)",
+		_, _ = DB.Exec(`INSERT INTO db_connections (name, alias, db_type, project, host, port, username, password, database, ssl_mode) VALUES ($1, $2, 'postgres', 'default', $3, $4, $5, $6, $7, 'disable')`,
+			"InfraGate (main)", "InfraGate (main)",
 			getEnv("DB_HOST", "postgres"), getEnv("DB_PORT", "5432"),
 			getEnv("DB_USER", "postgres"), getEnv("DB_PASSWORD", "postgres"),
 			getEnv("DB_NAME", "infra_portal"))
