@@ -232,7 +232,15 @@ func dbQueryApproveHandler(w http.ResponseWriter, r *http.Request, id int) {
 		return
 	}
 	req, err := GetDBQueryRequestByID(id)
-	if err != nil || req == nil {
+	if err != nil {
+		log.Printf("[db-query] GetDBQueryRequestByID id=%d err=%v", id, err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "not found", "status": "error"})
+		return
+	}
+	if req == nil {
+		log.Printf("[db-query] GetDBQueryRequestByID id=%d: no row in db_query_requests", id)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "not found", "status": "error"})
@@ -304,7 +312,33 @@ func dbQueryRejectHandler(w http.ResponseWriter, r *http.Request, id int) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Rejected"})
 }
 
-// devopsDbQueryRouter handles /api/devops/db-query/:id/approve and /api/devops/db-query/:id/reject
+// devopsDbQueryApproveHandler POST /api/devops/db-query/{id}/approve (Go 1.22 wildcard route)
+func devopsDbQueryApproveHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid id", "status": "error"})
+		return
+	}
+	dbQueryApproveHandler(w, r, id)
+}
+
+// devopsDbQueryRejectHandler POST /api/devops/db-query/{id}/reject (Go 1.22 wildcard route)
+func devopsDbQueryRejectHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid id", "status": "error"})
+		return
+	}
+	dbQueryRejectHandler(w, r, id)
+}
+
+// devopsDbQueryRouter handles /api/devops/db-query/:id/approve and /api/devops/db-query/:id/reject (fallback for prefix match)
 func devopsDbQueryRouter(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {

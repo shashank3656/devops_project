@@ -527,6 +527,8 @@ func main() {
 	http.HandleFunc("/api/me/db-query-requests", meDbQueryRequestsRouter)
 	http.HandleFunc("/api/me/db-query-requests/", meDbQueryRequestsRouter)
 	http.HandleFunc("/api/devops/db-query-pending", dbQueryPendingHandler)
+	http.HandleFunc("POST /api/devops/db-query/{id}/approve", devopsDbQueryApproveHandler)
+	http.HandleFunc("POST /api/devops/db-query/{id}/reject", devopsDbQueryRejectHandler)
 	http.HandleFunc("/api/devops/db-query/", devopsDbQueryRouter)
 	http.HandleFunc("/api/devops/me", devopsMeHandler)
 	http.HandleFunc("/api/devops/my-teams", devopsMyTeamsHandler)
