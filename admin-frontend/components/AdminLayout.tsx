@@ -39,7 +39,6 @@ const NAV_ITEMS: { href: string; label: string }[] = [
   { href: '/users', label: 'Users' },
   { href: '/activity', label: 'Activity' },
   { href: '/templates', label: 'Templates' },
-  { href: '/db-connections', label: 'DB Connections' },
   { href: '/webhooks', label: 'Webhooks' },
 ];
 
