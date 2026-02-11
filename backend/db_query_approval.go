@@ -51,7 +51,8 @@ func GetDBQueryRequestByID(id int) (*DBQueryRequest, error) {
 		return nil, nil
 	}
 	var req DBQueryRequest
-	// Use COALESCE(name, alias) for connection name - schema may use alias
+
+	// Try 1: full query with COALESCE(name, alias)
 	err := DB.QueryRow(`
 		SELECT q.id, q.connection_id, COALESCE(NULLIF(TRIM(c.name),''), c.alias, '') as conn_name, COALESCE(c.project,''), q.query, q.requested_by, u1.username,
 			q.status, q.approved_by, u2.username, q.approved_at, q.executed_at, q.result_rows, COALESCE(q.error_message,''), q.created_at
@@ -62,29 +63,57 @@ func GetDBQueryRequestByID(id int) (*DBQueryRequest, error) {
 		WHERE q.id = $1
 	`, id).Scan(&req.ID, &req.ConnectionID, &req.ConnectionName, &req.Project, &req.Query, &req.RequestedBy, &req.RequesterName,
 		&req.Status, &req.ApprovedBy, &req.ApprovedByName, &req.ApprovedAt, &req.ExecutedAt, &req.ResultRows, &req.ErrorMessage, &req.CreatedAt)
+	if err == nil {
+		return &req, nil
+	}
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
-	if err != nil {
-		// Fallback: schema may not have alias
-		err = DB.QueryRow(`
-			SELECT q.id, q.connection_id, COALESCE(c.name,''), COALESCE(c.project,''), q.query, q.requested_by, u1.username,
-				q.status, q.approved_by, u2.username, q.approved_at, q.executed_at, q.result_rows, COALESCE(q.error_message,''), q.created_at
-			FROM db_query_requests q
-			JOIN db_connections c ON c.id = q.connection_id
-			JOIN users u1 ON u1.id = q.requested_by
-			LEFT JOIN users u2 ON u2.id = q.approved_by
-			WHERE q.id = $1
-		`, id).Scan(&req.ID, &req.ConnectionID, &req.ConnectionName, &req.Project, &req.Query, &req.RequestedBy, &req.RequesterName,
-			&req.Status, &req.ApprovedBy, &req.ApprovedByName, &req.ApprovedAt, &req.ExecutedAt, &req.ResultRows, &req.ErrorMessage, &req.CreatedAt)
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		if err != nil {
-			return nil, err
-		}
+
+	// Try 2: without alias
+	err = DB.QueryRow(`
+		SELECT q.id, q.connection_id, COALESCE(c.name,''), COALESCE(c.project,''), q.query, q.requested_by, u1.username,
+			q.status, q.approved_by, u2.username, q.approved_at, q.executed_at, q.result_rows, COALESCE(q.error_message,''), q.created_at
+		FROM db_query_requests q
+		JOIN db_connections c ON c.id = q.connection_id
+		JOIN users u1 ON u1.id = q.requested_by
+		LEFT JOIN users u2 ON u2.id = q.approved_by
+		WHERE q.id = $1
+	`, id).Scan(&req.ID, &req.ConnectionID, &req.ConnectionName, &req.Project, &req.Query, &req.RequestedBy, &req.RequesterName,
+		&req.Status, &req.ApprovedBy, &req.ApprovedByName, &req.ApprovedAt, &req.ExecutedAt, &req.ResultRows, &req.ErrorMessage, &req.CreatedAt)
+	if err == nil {
+		return &req, nil
 	}
-	return &req, nil
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+
+	// Try 3: minimal - no JOIN to db_connections (in case JOIN fails due to schema)
+	err = DB.QueryRow(`
+		SELECT q.id, q.connection_id, q.query, q.requested_by, u1.username, q.status, q.approved_by, u2.username, q.approved_at, q.executed_at, q.result_rows, COALESCE(q.error_message,''), q.created_at
+		FROM db_query_requests q
+		JOIN users u1 ON u1.id = q.requested_by
+		LEFT JOIN users u2 ON u2.id = q.approved_by
+		WHERE q.id = $1
+	`, id).Scan(&req.ID, &req.ConnectionID, &req.Query, &req.RequestedBy, &req.RequesterName,
+		&req.Status, &req.ApprovedBy, &req.ApprovedByName, &req.ApprovedAt, &req.ExecutedAt, &req.ResultRows, &req.ErrorMessage, &req.CreatedAt)
+	if err == nil {
+		req.ConnectionName = ""
+		req.Project = ""
+		// Fetch connection name from db_connections if possible
+		if conn, _ := GetDBConnectionByID(req.ConnectionID); conn != nil {
+			req.ConnectionName = conn.Name
+			if req.ConnectionName == "" {
+				req.ConnectionName = fmt.Sprintf("Connection #%d", req.ConnectionID)
+			}
+			req.Project = conn.Project
+		}
+		return &req, nil
+	}
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return nil, err
 }
 
 func ListDBQueryRequestsPending() ([]DBQueryRequest, error) {
