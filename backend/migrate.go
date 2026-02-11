@@ -301,23 +301,23 @@ func MigrateDatabase() error {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
-	// Add name, project columns if missing (for tables created without them)
-	for _, col := range []struct{ name, def string }{
+	// Add any missing columns (handles tables created with minimal/different schema)
+	dbConnCols := []struct{ name, def string }{
 		{"name", "VARCHAR(200) DEFAULT ''"},
 		{"project", "VARCHAR(100) DEFAULT ''"},
-	} {
+		{"connection_string", "TEXT"},
+		{"mongo_database", "VARCHAR(100) DEFAULT ''"},
+		{"mongo_collection", "VARCHAR(100) DEFAULT ''"},
+		{"created_by", "INTEGER"},
+		{"created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"},
+	}
+	for _, col := range dbConnCols {
 		var count int
 		_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'db_connections' AND column_name = $1", col.name).Scan(&count)
 		if count == 0 {
 			log.Printf("Migrating database: adding db_connections.%s...", col.name)
 			_, _ = DB.Exec("ALTER TABLE db_connections ADD COLUMN " + col.name + " " + col.def)
 		}
-	}
-	var mongoDbCol int
-	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'db_connections' AND column_name = 'mongo_database'").Scan(&mongoDbCol)
-	if mongoDbCol == 0 {
-		_, _ = DB.Exec("ALTER TABLE db_connections ADD COLUMN mongo_database VARCHAR(100) DEFAULT ''")
-		_, _ = DB.Exec("ALTER TABLE db_connections ADD COLUMN mongo_collection VARCHAR(100) DEFAULT ''")
 	}
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_db_connections_project ON db_connections(project)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_db_connections_db_type ON db_connections(db_type)")
