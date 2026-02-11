@@ -267,6 +267,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Warning: failed to save PR request to database: %v", err)
 		// Don't fail the request, just log the warning
 	}
+	AppendUserActivity(userIDPtr, "request_create", "pr_request", strconv.Itoa(prRequest.ID), "direct PR created")
 
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{
@@ -460,6 +461,15 @@ func main() {
 			log.Printf("Warning: Database migration failed: %v", err)
 			log.Println("Continuing - some features may not work correctly")
 		}
+		// Verify user_activity table exists (for admin activity feed)
+		if DB != nil {
+			var n int
+			if err := DB.QueryRow("SELECT COUNT(*) FROM user_activity").Scan(&n); err != nil {
+				log.Printf("Warning: user_activity table check failed (%v) - User activity feed will not work", err)
+			} else {
+				log.Printf("user_activity table OK (%d rows)", n)
+			}
+		}
 		// Ensure default admin exists (credentials from env or admin/admin123)
 		EnsureDefaultAdmin()
 	}
@@ -522,12 +532,6 @@ func main() {
 	http.HandleFunc("/api/devops/requests/", devopsRequestActionHandler)
 	http.HandleFunc("/api/devops/templates", devopsTemplatesRouter)
 	http.HandleFunc("/api/devops/templates/", devopsTemplatesRouter)
-	http.HandleFunc("/api/devops/query-pending", devopsPendingQueryApprovalsHandler)
-	http.HandleFunc("/api/devops/query-audit", devopsQueryAuditHandler)
-	http.HandleFunc("/api/devops/query/", devopsQueryRouter)
-	http.HandleFunc("/api/query/connections", getDBConnectionsHandler)
-	http.HandleFunc("/api/query", queryHandler)
-	http.HandleFunc("/api/admin/db-connections", adminDBConnectionsHandler)
 	http.HandleFunc("/api/webhooks/github", githubWebhookHandler)
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/ready", readyHandler)

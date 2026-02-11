@@ -15,18 +15,12 @@ func AppendUserActivity(userID *int, action, resourceType, resourceID, details s
 	if DB == nil {
 		return
 	}
-	var userIDVal interface{}
-	if userID != nil {
-		userIDVal = *userID
-	} else {
-		userIDVal = nil
-	}
 	_, err := DB.Exec(
 		"INSERT INTO user_activity (user_id, action, resource_type, resource_id, details) VALUES ($1, $2, $3, $4, $5)",
-		userIDVal, action, resourceType, resourceID, details,
+		userID, action, resourceType, resourceID, details,
 	)
 	if err != nil {
-		log.Printf("[user_activity] INSERT failed: %v (action=%q resource_id=%q)", err, action, resourceID)
+		log.Printf("[user_activity] INSERT failed: action=%q resource=%s/%s err=%v", action, resourceType, resourceID, err)
 	}
 }
 

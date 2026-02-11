@@ -82,7 +82,7 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_tags_tag ON request_tags(tag)")
 
 	// Migration 4: user_activity table (user actions for activity feed)
-	_, _ = DB.Exec(`
+	if _, err := DB.Exec(`
 		CREATE TABLE IF NOT EXISTS user_activity (
 			id SERIAL PRIMARY KEY,
 			user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -92,9 +92,15 @@ func MigrateDatabase() error {
 			details TEXT,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
-	`)
-	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_activity_user_id ON user_activity(user_id)")
-	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_activity_created_at ON user_activity(created_at DESC)")
+	`); err != nil {
+		return fmt.Errorf("user_activity table creation: %w", err)
+	}
+	if _, err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_activity_user_id ON user_activity(user_id)"); err != nil {
+		log.Printf("warning: idx_user_activity_user_id: %v", err)
+	}
+	if _, err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_activity_created_at ON user_activity(created_at DESC)"); err != nil {
+		log.Printf("warning: idx_user_activity_created_at: %v", err)
+	}
 
 	// Migration 5: api_keys table (for programmatic access)
 	_, _ = DB.Exec(`
@@ -280,39 +286,6 @@ func MigrateDatabase() error {
 		)
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_outbound_webhooks_enabled ON outbound_webhooks(enabled)")
-
-	// Migration 18: db_connections (admin-configured DBs for Query Studio) and query_requests
-	_, _ = DB.Exec(`
-		CREATE TABLE IF NOT EXISTS db_connections (
-			id SERIAL PRIMARY KEY,
-			name VARCHAR(200) NOT NULL,
-			db_type VARCHAR(20) NOT NULL,
-			connection_string TEXT NOT NULL,
-			team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
-	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_db_connections_team_id ON db_connections(team_id)")
-
-	_, _ = DB.Exec(`
-		CREATE TABLE IF NOT EXISTS query_requests (
-			id SERIAL PRIMARY KEY,
-			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			approver_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-			db_connection_id INTEGER NOT NULL REFERENCES db_connections(id) ON DELETE CASCADE,
-			query_text TEXT NOT NULL,
-			status VARCHAR(50) NOT NULL DEFAULT 'pending_approval',
-			result_preview TEXT,
-			error_message TEXT,
-			submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			approved_at TIMESTAMP,
-			rejected_at TIMESTAMP,
-			executed_at TIMESTAMP
-		)
-	`)
-	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_query_requests_user_id ON query_requests(user_id)")
-	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_query_requests_status ON query_requests(status)")
-	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_query_requests_submitted_at ON query_requests(submitted_at DESC)")
 
 	log.Println("Database schema is up to date")
 	return nil

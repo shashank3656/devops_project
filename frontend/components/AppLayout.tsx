@@ -39,7 +39,6 @@ function getProfileInitials(): string {
 const BASE_NAV_ITEMS: { href: string; label: string }[] = [
   { href: '/home', label: 'Home' },
   { href: '/create-infrastructure', label: 'New Request' },
-  { href: '/query-studio', label: 'Query Studio' },
   { href: '/templates', label: 'Templates' },
   { href: '/history', label: 'History' },
 ];
