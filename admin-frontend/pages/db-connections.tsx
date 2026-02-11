@@ -19,7 +19,11 @@ export default function DbConnectionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', db_type: 'postgres', project: 'default', connection_string: '', mongo_database: '', mongo_collection: '' });
+  const [form, setForm] = useState({
+    name: '', db_type: 'postgres', project: 'default',
+    host: '', port: '5432', username: '', password: '', database: '', ssl_mode: 'disable',
+    mongo_collection: '',
+  });
   const [submitting, setSubmitting] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -59,7 +63,7 @@ export default function DbConnectionsPage() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setShowForm(false);
-        setForm({ name: '', db_type: 'postgres', project: 'default', connection_string: '', mongo_database: '', mongo_collection: '' });
+        setForm({ name: '', db_type: 'postgres', project: 'default', host: '', port: '5432', username: '', password: '', database: '', ssl_mode: 'disable', mongo_collection: '' });
         fetchConnections();
       } else {
         setError(data.error || 'Failed to create');
@@ -112,7 +116,11 @@ export default function DbConnectionsPage() {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Database type</label>
-                  <select className="input" value={form.db_type} onChange={(e) => setForm({ ...form, db_type: e.target.value })}>
+                  <select className="input" value={form.db_type} onChange={(e) => {
+                    const t = e.target.value;
+                    const defaultPort = t === 'postgres' ? '5432' : t === 'mysql' ? '3306' : '27017';
+                    setForm({ ...form, db_type: t, port: defaultPort });
+                  }}>
                     <option value="postgres">PostgreSQL</option>
                     <option value="mysql">MySQL</option>
                     <option value="mongodb">MongoDB</option>
@@ -122,21 +130,38 @@ export default function DbConnectionsPage() {
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Project</label>
                   <input type="text" className="input" value={form.project} onChange={(e) => setForm({ ...form, project: e.target.value })} placeholder="default" />
                 </div>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Connection string</label>
-                  <input type="password" className="input" value={form.connection_string} onChange={(e) => setForm({ ...form, connection_string: e.target.value })} required placeholder="host=... user=... password=... dbname=..." style={{ width: '100%' }} />
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Host</label>
+                  <input type="text" className="input" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} required placeholder="localhost" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Port</label>
+                  <input type="text" className="input" value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} required placeholder={form.db_type === 'postgres' ? '5432' : form.db_type === 'mysql' ? '3306' : '27017'} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Username</label>
+                  <input type="text" className="input" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="user" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Password</label>
+                  <input type="password" className="input" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="••••••••" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Database</label>
+                  <input type="text" className="input" value={form.database} onChange={(e) => setForm({ ...form, database: e.target.value })} required placeholder={form.db_type === 'mongodb' ? 'mydb' : 'mydb'} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>SSL mode</label>
+                  <select className="input" value={form.ssl_mode} onChange={(e) => setForm({ ...form, ssl_mode: e.target.value })}>
+                    <option value="disable">No SSL</option>
+                    <option value="required">Required</option>
+                  </select>
                 </div>
                 {form.db_type === 'mongodb' && (
-                  <>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>MongoDB database</label>
-                      <input type="text" className="input" value={form.mongo_database} onChange={(e) => setForm({ ...form, mongo_database: e.target.value })} required />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>MongoDB collection</label>
-                      <input type="text" className="input" value={form.mongo_collection} onChange={(e) => setForm({ ...form, mongo_collection: e.target.value })} required />
-                    </div>
-                  </>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>MongoDB collection</label>
+                    <input type="text" className="input" value={form.mongo_collection} onChange={(e) => setForm({ ...form, mongo_collection: e.target.value })} required placeholder="e.g. users" />
+                  </div>
                 )}
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
