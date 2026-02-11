@@ -62,13 +62,6 @@ func getDBQueryConnections() []dbQueryConnection {
 	return conns
 }
 
-func getEnv(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
 var dangerousSQL = regexp.MustCompile(`(?i)\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE|CREATE|ALTER|GRANT|REVOKE|EXEC|EXECUTE|CALL)\b`)
 
 // isReadOnlyQuery checks that the query is a safe SELECT-only query
