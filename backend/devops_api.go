@@ -351,17 +351,12 @@ func devopsNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"pending_approval_count": 0, "query_pending_count": 0, "status": "ok"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"pending_approval_count": 0, "status": "ok"})
 		return
 	}
 	count, _ := GetPendingDevopsApprovalCount()
-	queryCount, _ := GetPendingQueryCount()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"pending_approval_count": count,
-		"query_pending_count":    queryCount,
-		"status":                "ok",
-	})
+	json.NewEncoder(w).Encode(map[string]interface{}{"pending_approval_count": count, "status": "ok"})
 }
 
 // devopsPendingApprovalsHandler GET /api/devops/pending-approvals - manager only; list of requests pending_devops_approval

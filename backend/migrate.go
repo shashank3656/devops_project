@@ -281,40 +281,33 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_outbound_webhooks_enabled ON outbound_webhooks(enabled)")
 
-	// Migration 18: db_connections (admin-configured DB connections for query feature)
+	// Migration 18: db_connections (admin-configured DBs for Query Studio) and query_requests
 	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS db_connections (
 			id SERIAL PRIMARY KEY,
-			alias VARCHAR(100) NOT NULL UNIQUE,
+			name VARCHAR(200) NOT NULL,
 			db_type VARCHAR(20) NOT NULL,
-			host VARCHAR(255) NOT NULL,
-			port INT DEFAULT 5432,
-			database_name VARCHAR(255) NOT NULL,
-			username VARCHAR(255) NOT NULL,
-			password VARCHAR(500) NOT NULL,
-			enabled BOOLEAN DEFAULT TRUE,
+			connection_string TEXT NOT NULL,
+			team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
-	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_db_connections_enabled ON db_connections(enabled)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_db_connections_team_id ON db_connections(team_id)")
 
-	// Migration 19: query_requests (user-submitted DB queries, approval flow, audit)
 	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS query_requests (
 			id SERIAL PRIMARY KEY,
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			connection_id INTEGER NOT NULL REFERENCES db_connections(id) ON DELETE CASCADE,
-			connection_alias VARCHAR(100) NOT NULL,
-			db_type VARCHAR(20) NOT NULL,
+			approver_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			db_connection_id INTEGER NOT NULL REFERENCES db_connections(id) ON DELETE CASCADE,
 			query_text TEXT NOT NULL,
 			status VARCHAR(50) NOT NULL DEFAULT 'pending_approval',
-			approved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			result_preview TEXT,
+			error_message TEXT,
 			submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			approved_at TIMESTAMP,
-			executed_at TIMESTAMP,
-			result_summary TEXT,
-			result_rows TEXT,
-			error_message TEXT
+			rejected_at TIMESTAMP,
+			executed_at TIMESTAMP
 		)
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_query_requests_user_id ON query_requests(user_id)")
