@@ -322,6 +322,10 @@ func GetUserActivity(limit, offset int, userIDFilter int) ([]map[string]interfac
 // adminUserActivityHandler GET /api/admin/user-activity
 func adminUserActivityHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
 	if r.Method != "GET" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
