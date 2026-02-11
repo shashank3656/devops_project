@@ -291,16 +291,23 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS db_connections (
 			id SERIAL PRIMARY KEY,
-			name VARCHAR(200) NOT NULL,
+			name VARCHAR(200) DEFAULT '',
 			db_type VARCHAR(20) NOT NULL DEFAULT 'postgres',
 			project VARCHAR(100) NOT NULL DEFAULT 'default',
-			connection_string TEXT NOT NULL,
+			connection_string TEXT,
 			mongo_database VARCHAR(100) DEFAULT '',
 			mongo_collection VARCHAR(100) DEFAULT '',
 			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
+	// Add name column if missing (for tables created without it)
+	var nameCol int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'db_connections' AND column_name = 'name'").Scan(&nameCol)
+	if nameCol == 0 {
+		log.Println("Migrating database: adding db_connections.name...")
+		_, _ = DB.Exec("ALTER TABLE db_connections ADD COLUMN name VARCHAR(200) DEFAULT ''")
+	}
 	var mongoDbCol int
 	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'db_connections' AND column_name = 'mongo_database'").Scan(&mongoDbCol)
 	if mongoDbCol == 0 {

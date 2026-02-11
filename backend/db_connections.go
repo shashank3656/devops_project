@@ -91,8 +91,9 @@ func CreateDBConnection(c *DBConnection) error {
 	if DB == nil {
 		return fmt.Errorf("database not available")
 	}
+	// name is optional, used only for display/tracking
 	return DB.QueryRow(`INSERT INTO db_connections (name, db_type, project, host, port, username, password, database, ssl_mode, mongo_database, mongo_collection, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id, created_at`,
+		VALUES (COALESCE(NULLIF(TRIM($1),''), 'Connection'), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id, created_at`,
 		c.Name, c.DBType, c.Project, c.Host, c.Port, c.Username, c.Password, c.Database, c.SSLMode, c.MongoDatabase, c.MongoCollection, c.CreatedBy).
 		Scan(&c.ID, &c.CreatedAt)
 }
