@@ -287,6 +287,62 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_outbound_webhooks_enabled ON outbound_webhooks(enabled)")
 
+	// Migration 18: db_connections (admin-configured DBs for query UI)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS db_connections (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(200) NOT NULL,
+			db_type VARCHAR(20) NOT NULL DEFAULT 'postgres',
+			project VARCHAR(100) NOT NULL DEFAULT 'default',
+			connection_string TEXT NOT NULL,
+			mongo_database VARCHAR(100) DEFAULT '',
+			mongo_collection VARCHAR(100) DEFAULT '',
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	var mongoDbCol int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'db_connections' AND column_name = 'mongo_database'").Scan(&mongoDbCol)
+	if mongoDbCol == 0 {
+		_, _ = DB.Exec("ALTER TABLE db_connections ADD COLUMN mongo_database VARCHAR(100) DEFAULT ''")
+		_, _ = DB.Exec("ALTER TABLE db_connections ADD COLUMN mongo_collection VARCHAR(100) DEFAULT ''")
+	}
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_db_connections_project ON db_connections(project)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_db_connections_db_type ON db_connections(db_type)")
+
+	// Migration 19: db_query_requests (approval workflow)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS db_query_requests (
+			id SERIAL PRIMARY KEY,
+			connection_id INTEGER NOT NULL REFERENCES db_connections(id) ON DELETE CASCADE,
+			query TEXT NOT NULL,
+			requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			status VARCHAR(50) NOT NULL DEFAULT 'pending_approval',
+			approved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			approved_at TIMESTAMP,
+			executed_at TIMESTAMP,
+			result_rows INTEGER,
+			error_message TEXT,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_db_query_requests_status ON db_query_requests(status)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_db_query_requests_requested_by ON db_query_requests(requested_by)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_db_query_requests_created_at ON db_query_requests(created_at DESC)")
+
+	// Seed default connection if empty
+	var connCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM db_connections").Scan(&connCount)
+	if connCount == 0 {
+		dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+			getEnv("DB_HOST", "postgres"), getEnv("DB_PORT", "5432"),
+			getEnv("DB_USER", "postgres"), getEnv("DB_PASSWORD", "postgres"),
+			getEnv("DB_NAME", "infra_portal"))
+		_, _ = DB.Exec(`INSERT INTO db_connections (name, db_type, project, connection_string) VALUES ($1, 'postgres', 'default', $2)`,
+			"InfraGate (main)", dsn)
+		log.Println("Seeded default db_connection")
+	}
+
 	log.Println("Database schema is up to date")
 	return nil
 }

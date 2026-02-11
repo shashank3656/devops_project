@@ -303,6 +303,26 @@ func generateToken(userID int) string {
 	return fmt.Sprintf("%d:%d", userID, time.Now().Unix())
 }
 
+// validateBearerToken validates Authorization: Bearer <token>, writes 401 on failure, returns (userID, nil) on success
+func validateBearerToken(w http.ResponseWriter, r *http.Request) (int, error) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		return 0, fmt.Errorf("missing authorization")
+	}
+	token := strings.TrimSpace(authHeader[7:])
+	userID, err := validateToken(token)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return 0, err
+	}
+	return userID, nil
+}
+
 // validateToken validates a token and returns user ID
 func validateToken(token string) (int, error) {
 	var userID int
