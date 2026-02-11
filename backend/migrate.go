@@ -343,8 +343,8 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_db_query_requests_requested_by ON db_query_requests(requested_by)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_db_query_requests_created_at ON db_query_requests(created_at DESC)")
 
-	// Migration 20: db_connections separate fields (host, port, username, password, database, ssl_mode)
-	for _, col := range []string{"host", "port", "username", "password", "database", "ssl_mode"} {
+	// Migration 20: db_connections separate fields (host, port, username, password, database, database_name, ssl_mode)
+	for _, col := range []string{"host", "port", "username", "password", "database", "database_name", "ssl_mode"} {
 		var count int
 		_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'db_connections' AND column_name = $1", col).Scan(&count)
 		if count == 0 {
@@ -361,6 +361,8 @@ func MigrateDatabase() error {
 				alter = "ALTER TABLE db_connections ADD COLUMN password TEXT DEFAULT ''"
 			case "database":
 				alter = "ALTER TABLE db_connections ADD COLUMN database VARCHAR(255) DEFAULT ''"
+			case "database_name":
+				alter = "ALTER TABLE db_connections ADD COLUMN database_name VARCHAR(255) DEFAULT ''"
 			case "ssl_mode":
 				alter = "ALTER TABLE db_connections ADD COLUMN ssl_mode VARCHAR(50) DEFAULT 'disable'"
 			default:
@@ -372,22 +374,25 @@ func MigrateDatabase() error {
 	// Make connection_string nullable for backward compat with legacy rows
 	_, _ = DB.Exec("ALTER TABLE db_connections ALTER COLUMN connection_string DROP NOT NULL")
 
-	// Make alias nullable if it exists (for tables where alias was NOT NULL)
-	var aliasCol int
-	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'db_connections' AND column_name = 'alias'").Scan(&aliasCol)
-	if aliasCol > 0 {
-		_, _ = DB.Exec("ALTER TABLE db_connections ALTER COLUMN alias DROP NOT NULL")
+	// Make alias, database_name nullable if they exist (for tables where they were NOT NULL)
+	for _, col := range []string{"alias", "database_name"} {
+		var c int
+		_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'db_connections' AND column_name = $1", col).Scan(&c)
+		if c > 0 {
+			_, _ = DB.Exec("ALTER TABLE db_connections ALTER COLUMN " + col + " DROP NOT NULL")
+		}
 	}
 
 	// Seed default connection if empty (using separate fields)
 	var connCount int
 	_ = DB.QueryRow("SELECT COUNT(*) FROM db_connections").Scan(&connCount)
 	if connCount == 0 {
-		_, _ = DB.Exec(`INSERT INTO db_connections (name, alias, db_type, project, host, port, username, password, database, ssl_mode) VALUES ($1, $2, 'postgres', 'default', $3, $4, $5, $6, $7, 'disable')`,
+		dbName := getEnv("DB_NAME", "infra_portal")
+		_, _ = DB.Exec(`INSERT INTO db_connections (name, alias, db_type, project, host, port, username, password, database, database_name, ssl_mode) VALUES ($1, $2, 'postgres', 'default', $3, $4, $5, $6, $7, $7, 'disable')`,
 			"InfraGate (main)", "InfraGate (main)",
 			getEnv("DB_HOST", "postgres"), getEnv("DB_PORT", "5432"),
 			getEnv("DB_USER", "postgres"), getEnv("DB_PASSWORD", "postgres"),
-			getEnv("DB_NAME", "infra_portal"))
+			dbName)
 		log.Println("Seeded default db_connection")
 	}
 

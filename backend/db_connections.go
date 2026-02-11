@@ -76,7 +76,7 @@ func GetDBConnectionByID(id int) (*DBConnection, error) {
 		return nil, nil
 	}
 	var c DBConnection
-	err := DB.QueryRow(`SELECT id, name, db_type, project, COALESCE(host,''), COALESCE(port,''), COALESCE(username,''), COALESCE(password,''), COALESCE(database,''), COALESCE(ssl_mode,'disable'), COALESCE(connection_string,''), COALESCE(mongo_database,''), COALESCE(mongo_collection,''), created_by, created_at FROM db_connections WHERE id = $1`, id).
+	err := DB.QueryRow(`SELECT id, name, db_type, project, COALESCE(host,''), COALESCE(port,''), COALESCE(username,''), COALESCE(password,''), COALESCE(database, database_name, ''), COALESCE(ssl_mode,'disable'), COALESCE(connection_string,''), COALESCE(mongo_database,''), COALESCE(mongo_collection,''), created_by, created_at FROM db_connections WHERE id = $1`, id).
 		Scan(&c.ID, &c.Name, &c.DBType, &c.Project, &c.Host, &c.Port, &c.Username, &c.Password, &c.Database, &c.SSLMode, &c.ConnectionString, &c.MongoDatabase, &c.MongoCollection, &c.CreatedBy, &c.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -96,8 +96,8 @@ func CreateDBConnection(c *DBConnection) error {
 	if displayName == "" {
 		displayName = "Connection"
 	}
-	return DB.QueryRow(`INSERT INTO db_connections (name, alias, db_type, project, host, port, username, password, database, ssl_mode, mongo_database, mongo_collection, created_by)
-		VALUES ($1, $2, $3, COALESCE(NULLIF(TRIM($4),''), 'default'), $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id, created_at`,
+	return DB.QueryRow(`INSERT INTO db_connections (name, alias, db_type, project, host, port, username, password, database, database_name, ssl_mode, mongo_database, mongo_collection, created_by)
+		VALUES ($1, $2, $3, COALESCE(NULLIF(TRIM($4),''), 'default'), $5, $6, $7, $8, $9, $9, $10, $11, $12, $13) RETURNING id, created_at`,
 		displayName, displayName, c.DBType, c.Project, c.Host, c.Port, c.Username, c.Password, c.Database, c.SSLMode, c.MongoDatabase, c.MongoCollection, c.CreatedBy).
 		Scan(&c.ID, &c.CreatedAt)
 }
@@ -110,7 +110,7 @@ func UpdateDBConnection(c *DBConnection) error {
 	if displayName == "" {
 		displayName = "Connection"
 	}
-	_, err := DB.Exec(`UPDATE db_connections SET name=$1, alias=$2, db_type=$3, project=$4, host=$5, port=$6, username=$7, password=$8, database=$9, ssl_mode=$10, mongo_database=$11, mongo_collection=$12 WHERE id=$13`,
+	_, err := DB.Exec(`UPDATE db_connections SET name=$1, alias=$2, db_type=$3, project=$4, host=$5, port=$6, username=$7, password=$8, database=$9, database_name=$9, ssl_mode=$10, mongo_database=$11, mongo_collection=$12 WHERE id=$13`,
 		displayName, displayName, c.DBType, c.Project, c.Host, c.Port, c.Username, c.Password, c.Database, c.SSLMode, c.MongoDatabase, c.MongoCollection, c.ID)
 	return err
 }
