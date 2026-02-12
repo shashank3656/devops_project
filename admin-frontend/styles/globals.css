@@ -524,6 +524,9 @@ td code { font-size: var(--text-sm); background: var(--color-primary-light); col
   margin-left: var(--space-4);
 }
 @media (max-width: 900px) {
+  .admin-navbar__search { max-width: 140px; }
+}
+@media (max-width: 600px) {
   .admin-navbar__search { display: none; }
 }
 .admin-navbar__search-icon {
