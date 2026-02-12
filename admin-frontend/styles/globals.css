@@ -1115,6 +1115,9 @@ td code { font-size: var(--text-sm); background: var(--color-primary-light); col
   padding: var(--space-5);
   position: relative;
   overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
   transition: box-shadow var(--transition), transform var(--transition);
   animation: adminSlideUp 0.4s var(--ease-out) backwards;
 }
@@ -1127,6 +1130,19 @@ td code { font-size: var(--text-sm); background: var(--color-primary-light); col
   box-shadow: var(--shadow-md);
   transform: translateY(-4px);
 }
+.dashboard-kpi-card__icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+.dashboard-kpi-card__icon-svg { width: 24px; height: 24px; }
+.dashboard-kpi-card--warning .dashboard-kpi-card__icon { background: var(--color-warning-bg); color: var(--color-warning); }
 .dashboard-kpi-card--accent::before {
   content: '';
   position: absolute;
@@ -1157,6 +1173,28 @@ td code { font-size: var(--text-sm); background: var(--color-primary-light); col
 .dashboard-kpi-card__trend--up { color: var(--color-success); }
 .dashboard-kpi-card__trend--down { color: var(--color-danger); }
 .dashboard-kpi-card--warning .dashboard-kpi-card__value { color: var(--color-warning); }
+
+/* Charts row */
+.dashboard-charts-row {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+@media (max-width: 900px) {
+  .dashboard-charts-row { grid-template-columns: 1fr; }
+}
+.dashboard-line-card { min-height: 280px; }
+.dashboard-donut-card .dashboard-pie-card { padding: 0; }
+.dashboard-donut-card .dashboard-pie-card { margin: 0; box-shadow: none; border: none; }
+.dashboard-line-chart-wrap { min-height: 240px; }
+.dashboard-chart-empty {
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  margin: 0;
+}
 
 .dashboard-trend-card {
   background: var(--color-surface);

@@ -45,7 +45,7 @@ export default function PieChart({ title, segments, emptyMessage = 'No data' }: 
 
   return (
     <div className="dashboard-pie-card">
-      <h3 className="dashboard-pie-title">{title}</h3>
+      {title ? <h3 className="dashboard-pie-title">{title}</h3> : null}
       <div className="dashboard-pie-wrap">
         <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="dashboard-pie-svg">
           {hasData ? (
