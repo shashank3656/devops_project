@@ -64,13 +64,13 @@ export default function DevOpsLogin() {
   return (
     <>
       <Head>
-        <title>Login - InfraGate DevOps</title>
+        <title>Login - DevOps</title>
       </Head>
       <div className="login-page">
         <div className="login-page__left">
           <div className="login-page__brand">
             <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">InfraGate DevOps</h1>
+            <h1 className="login-page__title">DevOps</h1>
             <p className="login-page__tagline">
               Approve and manage infrastructure requests. Users are created from the Admin portal.
             </p>

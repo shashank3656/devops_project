@@ -281,6 +281,20 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </Link>
         </div>
         <nav className="user-sidebar__nav">
+          {baseNavItems.filter((item) => item.href === '/home').map(({ href, label, Icon }) => {
+            const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`user-sidebar__link ${isActive ? 'user-sidebar__link--active' : ''}`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <Icon className="user-sidebar__icon" />
+                {!sidebarCollapsed && <span className="user-sidebar__label">{label}</span>}
+              </Link>
+            );
+          })}
           {!sidebarCollapsed && (
             <div className="user-sidebar__expandable">
               <button
@@ -324,7 +338,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <IconPlus className="user-sidebar__icon" />
             </Link>
           )}
-          {baseNavItems.map(({ href, label, Icon }) => {
+          {baseNavItems.filter((item) => item.href !== '/home').map(({ href, label, Icon }) => {
             const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
             return (
               <Link

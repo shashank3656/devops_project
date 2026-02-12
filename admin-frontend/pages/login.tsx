@@ -52,13 +52,13 @@ export default function AdminLogin() {
   return (
     <>
       <Head>
-        <title>Admin Login - InfraGate Admin</title>
+        <title>Admin Login - Admin</title>
       </Head>
       <div className="login-page">
         <div className="login-page__left">
           <div className="login-page__brand">
             <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">InfraGate Admin</h1>
+            <h1 className="login-page__title">Admin</h1>
             <p className="login-page__tagline">
               Cloud-agnostic infrastructure management. Secure, self-service, and audit-ready.
             </p>
