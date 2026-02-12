@@ -14,8 +14,6 @@ import {
   IconActivity,
   IconTemplates,
   IconWebhook,
-  IconChevronLeft,
-  IconChevronRight,
   IconSearch,
   IconMenu,
 } from './Icons';
@@ -235,6 +233,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       {/* Left Sidebar - Dark, fixed */}
       <aside className={`admin-sidebar ${sidebarCollapsed ? 'admin-sidebar--collapsed' : ''} ${mobileMenuOpen ? 'admin-sidebar--mobile-open' : ''}`}>
         <div className="admin-sidebar__header">
+          <button
+            type="button"
+            className="admin-sidebar__hamburger"
+            onClick={toggleSidebar}
+            aria-label="Toggle sidebar"
+          >
+            <IconMenu />
+          </button>
           <Link href="/dashboard" className="admin-sidebar__brand">
             <img src="/logo.svg" alt="" width={36} height={36} className="admin-sidebar__logo" />
             {!sidebarCollapsed && <span className="admin-sidebar__brand-text">{ADMIN_SITE_NAME}</span>}
@@ -257,14 +263,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           })}
         </nav>
         <div className="admin-sidebar__footer">
-          <button
-            type="button"
-            className="admin-sidebar__link admin-sidebar__collapse-btn"
-            onClick={toggleSidebar}
-          >
-            {sidebarCollapsed ? <IconChevronRight className="admin-sidebar__icon" /> : <IconChevronLeft className="admin-sidebar__icon" />}
-            {!sidebarCollapsed && <span className="admin-sidebar__label">Collapse</span>}
-          </button>
           <button
             type="button"
             className="admin-sidebar__link"

@@ -11,8 +11,6 @@ import {
   IconWorkload,
   IconTemplates,
   IconUsers,
-  IconChevronLeft,
-  IconChevronRight,
   IconMenu,
 } from './Icons';
 
@@ -169,6 +167,14 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         className={`devops-sidebar-new ${sidebarCollapsed ? 'devops-sidebar-new--collapsed' : ''} ${mobileMenuOpen ? 'devops-sidebar-new--mobile-open' : ''}`}
       >
         <div className="devops-sidebar-new__header">
+          <button
+            type="button"
+            className="devops-sidebar-new__hamburger"
+            onClick={toggleSidebar}
+            aria-label="Toggle sidebar"
+          >
+            <IconMenu />
+          </button>
           <Link href="/dashboard" className="devops-sidebar-new__brand">
             <img src="/logo.svg" alt="" width={36} height={36} className="devops-sidebar-new__logo" />
             {!sidebarCollapsed && <span className="devops-sidebar-new__brand-text">{DEVOPS_SITE_NAME}</span>}
@@ -191,18 +197,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           })}
         </nav>
         <div className="devops-sidebar-new__footer">
-          <button
-            type="button"
-            className="devops-sidebar-new__link devops-sidebar-new__collapse-btn"
-            onClick={toggleSidebar}
-          >
-            {sidebarCollapsed ? (
-              <IconChevronRight className="devops-sidebar-new__icon" />
-            ) : (
-              <IconChevronLeft className="devops-sidebar-new__icon" />
-            )}
-            {!sidebarCollapsed && <span className="devops-sidebar-new__label">Collapse</span>}
-          </button>
           <button type="button" className="devops-sidebar-new__link" onClick={handleLogout}>
             <IconLogout className="devops-sidebar-new__icon" />
             {!sidebarCollapsed && <span className="devops-sidebar-new__label">Logout</span>}

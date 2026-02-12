@@ -13,8 +13,8 @@ import {
   IconTemplates,
   IconHistory,
   IconUsers,
-  IconChevronLeft,
   IconChevronRight,
+  IconChevronDown,
   IconMenu,
 } from './Icons';
 
@@ -82,6 +82,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileInitials, setProfileInitials] = useState('U');
+  const [newRequestExpanded, setNewRequestExpanded] = useState(false);
   const [teamCheck, setTeamCheck] = useState<'loading' | 'ok' | 'forbidden'>('loading');
   const [updatedRequestsCount, setUpdatedRequestsCount] = useState(0);
   const [pendingManagerApprovalCount, setPendingManagerApprovalCount] = useState(0);
@@ -227,9 +228,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     router.push('/login');
   };
 
+  const newRequestExpandedByPath = pathname.startsWith('/create-infrastructure');
+  const effectiveNewRequestExpanded = newRequestExpanded || newRequestExpandedByPath;
+
   const baseNavItems: { href: string; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
     { href: '/home', label: 'Home', Icon: IconHome },
-    { href: '/create-infrastructure', label: 'New Request', Icon: IconPlus },
     { href: '/templates', label: 'Templates', Icon: IconTemplates },
     { href: '/history', label: 'History', Icon: IconHistory },
   ];
@@ -264,12 +267,63 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <div className="user-layout user-layout-sidebar">
       <aside className={`user-sidebar ${sidebarCollapsed ? 'user-sidebar--collapsed' : ''} ${mobileMenuOpen ? 'user-sidebar--mobile-open' : ''}`}>
         <div className="user-sidebar__header">
+          <button
+            type="button"
+            className="user-sidebar__hamburger"
+            onClick={toggleSidebar}
+            aria-label="Toggle sidebar"
+          >
+            <IconMenu />
+          </button>
           <Link href="/home" className="user-sidebar__brand">
             <img src="/logo.svg" alt="" width={36} height={36} className="user-sidebar__logo" />
             {!sidebarCollapsed && <span className="user-sidebar__brand-text">{SITE_NAME}</span>}
           </Link>
         </div>
         <nav className="user-sidebar__nav">
+          {!sidebarCollapsed && (
+            <div className="user-sidebar__expandable">
+              <button
+                type="button"
+                className={`user-sidebar__link user-sidebar__expandable-trigger ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar__link--active' : ''}`}
+                onClick={() => setNewRequestExpanded(!effectiveNewRequestExpanded)}
+              >
+                <IconPlus className="user-sidebar__icon" />
+                <span className="user-sidebar__label">New Request</span>
+                <span className="user-sidebar__chevron">
+                  {effectiveNewRequestExpanded ? <IconChevronDown /> : <IconChevronRight />}
+                </span>
+              </button>
+              {effectiveNewRequestExpanded && (
+                <div className="user-sidebar__sub">
+                  <Link
+                    href="/create-infrastructure/iam"
+                    className={`user-sidebar__sublink ${pathname === '/create-infrastructure/iam' || pathname.startsWith('/create-infrastructure/iam/') ? 'user-sidebar__sublink--active' : ''}`}
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    IAM
+                  </Link>
+                  <Link
+                    href="/create-infrastructure/new"
+                    className={`user-sidebar__sublink ${pathname === '/create-infrastructure/new' || pathname.startsWith('/create-infrastructure/new') || pathname === '/select-service' || pathname === '/custom-json' || pathname === '/aws' ? 'user-sidebar__sublink--active' : ''}`}
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Create Infrastructure
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
+          {sidebarCollapsed && (
+            <Link
+              href="/create-infrastructure"
+              className={`user-sidebar__link ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar__link--active' : ''}`}
+              onClick={() => setMobileMenuOpen(false)}
+              title="New Request"
+            >
+              <IconPlus className="user-sidebar__icon" />
+            </Link>
+          )}
           {baseNavItems.map(({ href, label, Icon }) => {
             const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
             return (
@@ -286,14 +340,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           })}
         </nav>
         <div className="user-sidebar__footer">
-          <button
-            type="button"
-            className="user-sidebar__link user-sidebar__collapse-btn"
-            onClick={toggleSidebar}
-          >
-            {sidebarCollapsed ? <IconChevronRight className="user-sidebar__icon" /> : <IconChevronLeft className="user-sidebar__icon" />}
-            {!sidebarCollapsed && <span className="user-sidebar__label">Collapse</span>}
-          </button>
           <button type="button" className="user-sidebar__link" onClick={handleLogout}>
             <IconLogout className="user-sidebar__icon" />
             {!sidebarCollapsed && <span className="user-sidebar__label">Logout</span>}
