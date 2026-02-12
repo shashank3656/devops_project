@@ -104,6 +104,15 @@ export default function AdminRequests() {
       .finally(() => setLoading(false));
   };
 
+  // Apply search from URL on load and when q changes
+  useEffect(() => {
+    if (!router.isReady || !token) return;
+    const q = router.query.q;
+    const qStr = typeof q === 'string' ? q.trim() : '';
+    filtersRef.current.search = qStr;
+    setSearch(qStr);
+  }, [router.isReady, router.query.q]);
+
   useEffect(() => {
     if (!token) {
       router.replace('/login');
@@ -164,6 +173,9 @@ export default function AdminRequests() {
     setSortOrder(sortOrderVal);
     setAtRiskOnly(atRiskVal);
     setOffset(0);
+    const qs = new URLSearchParams();
+    if (searchVal) qs.set('q', searchVal);
+    router.replace(searchVal ? `/requests?${qs}` : '/requests', undefined, { shallow: true });
     fetchRequests({ team: teamVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal, offset: 0 });
   };
 
@@ -179,6 +191,7 @@ export default function AdminRequests() {
     setSortOrder('desc');
     setAtRiskOnly(false);
     setOffset(0);
+    router.replace('/requests', undefined, { shallow: true });
     fetchRequests({ team: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false, offset: 0 });
   };
 

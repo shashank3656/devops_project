@@ -100,6 +100,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [newRequestsCount, setNewRequestsCount] = useState(0);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -180,6 +181,35 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (notifyOpen) fetchPendingTickets();
   }, [notifyOpen]);
+
+  // Sync search box with URL when on /requests
+  useEffect(() => {
+    const q = router.query.q;
+    const val = typeof q === 'string' ? q : '';
+    setSearchQuery(val);
+  }, [router.query.q]);
+
+  // Cmd/Ctrl+K to focus search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = searchQuery.trim();
+    if (q) {
+      router.push(`/requests?q=${encodeURIComponent(q)}`);
+    } else {
+      router.push('/requests');
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -269,16 +299,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <IconMenu />
             </button>
             <h1 className="admin-navbar__title">{pageTitle}</h1>
-            <div className="admin-navbar__search">
+            <form className="admin-navbar__search" onSubmit={handleSearchSubmit} role="search">
               <IconSearch className="admin-navbar__search-icon" />
               <input
+                ref={searchInputRef}
                 type="search"
-                placeholder="Search..."
+                placeholder="Search requests (team, cloud, service…)"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="admin-navbar__search-input"
+                aria-label="Search requests"
               />
-            </div>
+            </form>
           </div>
           <div className="admin-navbar__right">
             <div className="admin-navbar__actions admin-navbar__notify-wrap" ref={notifyRef}>
