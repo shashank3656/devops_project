@@ -171,6 +171,9 @@ export default function AdminDashboard() {
                   <div className="dashboard-kpi-card dashboard-kpi-card--accent">
                     <div className="dashboard-kpi-card__value">{quickStats.total_users}</div>
                     <div className="dashboard-kpi-card__label">Total users</div>
+                    {quickStats.total_users > 0 && (
+                      <div className="dashboard-kpi-card__trend dashboard-kpi-card__trend--up">↑ Active</div>
+                    )}
                   </div>
                   <div className="dashboard-kpi-card">
                     <div className="dashboard-kpi-card__value">{quickStats.total_teams}</div>
@@ -179,6 +182,9 @@ export default function AdminDashboard() {
                   <div className={`dashboard-kpi-card ${quickStats.pending_approval === 0 ? 'dashboard-kpi-card--warning' : ''}`}>
                     <div className="dashboard-kpi-card__value">{quickStats.pending_approval}</div>
                     <div className="dashboard-kpi-card__label">Pending approval</div>
+                    {quickStats.pending_approval > 0 && (
+                      <div className="dashboard-kpi-card__trend dashboard-kpi-card__trend--down">Needs attention</div>
+                    )}
                   </div>
                   <div className="dashboard-kpi-card">
                     <div className="dashboard-kpi-card__value">{quickStats.requests_this_week}</div>
@@ -187,6 +193,9 @@ export default function AdminDashboard() {
                   <div className={`dashboard-kpi-card ${quickStats.unverified_users === 0 ? 'dashboard-kpi-card--warning' : ''}`}>
                     <div className="dashboard-kpi-card__value">{quickStats.unverified_users}</div>
                     <div className="dashboard-kpi-card__label">Unverified users</div>
+                    {quickStats.unverified_users > 0 && (
+                      <div className="dashboard-kpi-card__trend dashboard-kpi-card__trend--down">Review pending</div>
+                    )}
                   </div>
                 </div>
               )}
