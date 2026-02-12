@@ -2,11 +2,46 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { ADMIN_SITE_NAME } from '../lib/site';
-import { IconLogout, IconBell, IconSun, IconMoon, IconDashboard, IconRequests, IconTeams, IconUsers, IconActivity, IconTemplates, IconWebhook } from './Icons';
+import {
+  IconLogout,
+  IconBell,
+  IconSun,
+  IconMoon,
+  IconDashboard,
+  IconRequests,
+  IconTeams,
+  IconUsers,
+  IconActivity,
+  IconTemplates,
+  IconWebhook,
+  IconChevronLeft,
+  IconChevronRight,
+  IconSearch,
+  IconMenu,
+} from './Icons';
 
 const THEME_KEY = 'infra-portal-theme';
+const SIDEBAR_COLLAPSED_KEY = 'infra-admin-sidebar-collapsed';
 const NOTIFY_POLL_MS = 30000;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+
+const PAGE_TITLES: Record<string, string> = {
+  '/dashboard': 'Dashboard',
+  '/requests': 'PR Requests',
+  '/teams': 'Teams',
+  '/users': 'Users',
+  '/activity': 'Activity',
+  '/templates': 'Templates',
+  '/webhooks': 'Webhooks',
+};
+
+function getPageTitle(pathname: string): string {
+  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
+  for (const [path, title] of Object.entries(PAGE_TITLES)) {
+    if (path !== '/dashboard' && pathname.startsWith(path)) return title;
+  }
+  return 'Dashboard';
+}
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -62,6 +97,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = router.pathname;
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [newRequestsCount, setNewRequestsCount] = useState(0);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -84,6 +122,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     } catch (_) {}
   }, []);
 
+  useEffect(() => {
+    try {
+      const c = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+      setSidebarCollapsed(c === 'true');
+    } catch (_) {}
+  }, []);
+
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark';
     setTheme(next);
@@ -93,12 +138,20 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     } catch (_) {}
   };
 
+  const toggleSidebar = () => {
+    const next = !sidebarCollapsed;
+    setSidebarCollapsed(next);
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+    } catch (_) {}
+  };
+
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
 
   const fetchCount = () => {
     if (!token) return;
     fetch(`${apiUrl}/api/admin/notifications`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.ok ? res.json() : null)
+      .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && typeof data.new_requests === 'number') setNewRequestsCount(data.new_requests);
       })
@@ -116,7 +169,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     if (!token) return;
     setTicketsLoading(true);
     fetch(`${apiUrl}/api/admin/requests?status=pending_any&limit=15`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.ok ? res.json() : null)
+      .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.requests) setPendingTickets(data.requests);
       })
@@ -145,36 +198,93 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     router.push('/login');
   };
 
+  const pageTitle = getPageTitle(pathname);
+
   return (
-    <div className="admin-layout admin-layout-topbar">
-      <header className="admin-topbar-new">
-        <div className="admin-topbar-left">
-          <Link href="/dashboard" className="admin-topbar-brand">
-            <img src="/logo.svg" alt="" width={40} height={40} className="admin-topbar-logo" />
-            <span className="admin-topbar-brand-text">{ADMIN_SITE_NAME}</span>
+    <div className="admin-layout admin-layout-sidebar">
+      {/* Left Sidebar - Dark, fixed */}
+      <aside className={`admin-sidebar ${sidebarCollapsed ? 'admin-sidebar--collapsed' : ''} ${mobileMenuOpen ? 'admin-sidebar--mobile-open' : ''}`}>
+        <div className="admin-sidebar__header">
+          <Link href="/dashboard" className="admin-sidebar__brand">
+            <img src="/logo.svg" alt="" width={36} height={36} className="admin-sidebar__logo" />
+            {!sidebarCollapsed && <span className="admin-sidebar__brand-text">{ADMIN_SITE_NAME}</span>}
           </Link>
-          <nav className="admin-topbar-nav">
-            {NAV_ITEMS.map(({ href, label, Icon }) => {
-              const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`admin-topbar-nav-link ${isActive ? 'active' : ''}`}
-                >
-                  <Icon className="admin-nav-icon" />
-                  {label}
-                </Link>
-              );
-            })}
-          </nav>
         </div>
-        <div className="admin-topbar-right">
-          <div className="admin-topbar-actions" ref={notifyRef}>
-            <div className="admin-topbar-notify-wrap">
+        <nav className="admin-sidebar__nav">
+          {NAV_ITEMS.map(({ href, label, Icon }) => {
+            const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`admin-sidebar__link ${isActive ? 'admin-sidebar__link--active' : ''}`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <Icon className="admin-sidebar__icon" />
+                {!sidebarCollapsed && <span className="admin-sidebar__label">{label}</span>}
+              </Link>
+            );
+          })}
+        </nav>
+        <div className="admin-sidebar__footer">
+          <button
+            type="button"
+            className="admin-sidebar__link admin-sidebar__collapse-btn"
+            onClick={toggleSidebar}
+          >
+            {sidebarCollapsed ? <IconChevronRight className="admin-sidebar__icon" /> : <IconChevronLeft className="admin-sidebar__icon" />}
+            {!sidebarCollapsed && <span className="admin-sidebar__label">Collapse</span>}
+          </button>
+          <button
+            type="button"
+            className="admin-sidebar__link"
+            onClick={handleLogout}
+          >
+            <IconLogout className="admin-sidebar__icon" />
+            {!sidebarCollapsed && <span className="admin-sidebar__label">Logout</span>}
+          </button>
+        </div>
+      </aside>
+
+      {/* Mobile overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="admin-sidebar-overlay"
+          onClick={() => setMobileMenuOpen(false)}
+          aria-hidden
+        />
+      )}
+
+      {/* Main content wrapper */}
+      <div className="admin-main-wrapper">
+        {/* Top Navbar - White, 60px */}
+        <header className="admin-navbar">
+          <div className="admin-navbar__left">
+            <button
+              type="button"
+              className="admin-navbar__menu-btn"
+              onClick={() => setMobileMenuOpen((o) => !o)}
+              aria-label="Toggle menu"
+            >
+              <IconMenu />
+            </button>
+            <h1 className="admin-navbar__title">{pageTitle}</h1>
+            <div className="admin-navbar__search">
+              <IconSearch className="admin-navbar__search-icon" />
+              <input
+                type="search"
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="admin-navbar__search-input"
+              />
+            </div>
+          </div>
+          <div className="admin-navbar__right">
+            <div className="admin-navbar__actions admin-navbar__notify-wrap" ref={notifyRef}>
               <button
                 type="button"
-                className="admin-topbar-icon-btn"
+                className="admin-navbar__icon-btn"
                 onClick={() => setNotifyOpen((o) => !o)}
                 title={newRequestsCount > 0 ? `${newRequestsCount} new request(s) pending` : 'Notifications'}
                 aria-expanded={notifyOpen}
@@ -182,20 +292,20 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               >
                 <IconBell />
                 {newRequestsCount > 0 && (
-                  <span className="admin-topbar-badge" aria-label={`${newRequestsCount} new requests`}>
+                  <span className="admin-navbar__badge" aria-label={`${newRequestsCount} new requests`}>
                     {newRequestsCount > 99 ? '99+' : newRequestsCount}
                   </span>
                 )}
               </button>
               {notifyOpen && (
-                <div className="admin-notify-panel">
+                <div className="admin-notify-panel admin-notify-panel--navbar">
                   <div className="admin-notify-panel-header">
                     <h3 className="admin-notify-panel-title">Notifications</h3>
                     <button type="button" className="admin-notify-panel-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
                       ×
                     </button>
                   </div>
-                  <Link href="/requests" className="admin-notify-panel-more">
+                  <Link href="/requests" className="admin-notify-panel-more" onClick={() => setNotifyOpen(false)}>
                     Request tickets → View all in PR Requests
                   </Link>
                   <div className="admin-notify-panel-list">
@@ -219,49 +329,46 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   </div>
                 </div>
               )}
+              <button
+                type="button"
+                className="admin-navbar__icon-btn"
+                onClick={toggleTheme}
+                title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+              >
+                {theme === 'dark' ? <IconSun /> : <IconMoon />}
+              </button>
             </div>
-            <button
-              type="button"
-              className="admin-topbar-icon-btn"
-              onClick={toggleTheme}
-              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-            >
-              {theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </button>
-          </div>
-          <div className="admin-topbar-profile-wrap" ref={profileRef}>
-            <button
-              type="button"
-              className="admin-topbar-profile-btn"
-              onClick={() => setProfileOpen((o) => !o)}
-              aria-expanded={profileOpen}
-              aria-haspopup="true"
-              title="Profile"
-            >
-              <span className="admin-topbar-avatar" aria-hidden>
-                {profileInitials}
-              </span>
-            </button>
-            {profileOpen && (
-              <div className="admin-profile-dropdown">
-                <div className="admin-profile-dropdown-header">
-                  <span className="admin-profile-dropdown-avatar">{profileInitials}</span>
-                  <span className="admin-profile-dropdown-label">Admin</span>
+            <div className="admin-navbar__profile-wrap" ref={profileRef}>
+              <button
+                type="button"
+                className="admin-navbar__profile-btn"
+                onClick={() => setProfileOpen((o) => !o)}
+                aria-expanded={profileOpen}
+                aria-haspopup="true"
+                title="Profile"
+              >
+                <span className="admin-navbar__avatar">{profileInitials}</span>
+                <span className="admin-navbar__profile-label">Admin</span>
+              </button>
+              {profileOpen && (
+                <div className="admin-navbar__dropdown">
+                  <div className="admin-navbar__dropdown-header">
+                    <span className="admin-navbar__dropdown-avatar">{profileInitials}</span>
+                    <span className="admin-navbar__dropdown-label">Admin</span>
+                  </div>
+                  <button type="button" className="admin-navbar__dropdown-item" onClick={handleLogout}>
+                    <IconLogout />
+                    Logout
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className="admin-profile-dropdown-item"
-                  onClick={handleLogout}
-                >
-                  <IconLogout />
-                  Logout
-                </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-      </header>
-      <main className="admin-main">{children}</main>
+        </header>
+
+        {/* Main content area */}
+        <main className="admin-main">{children}</main>
+      </div>
     </div>
   );
 }
