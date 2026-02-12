@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { useToast } from '../context/ToastContext';
-import { getStoredTheme, setStoredTheme } from '../components/NavBar';
+import { getStoredTheme, setStoredTheme } from '../components/AppLayout';
 
 export default function Login() {
   const router = useRouter();
@@ -93,85 +93,89 @@ export default function Login() {
       <Head>
         <title>Login - InfraGate</title>
       </Head>
-      <div className="auth-page">
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="btn btn-secondary"
-          style={{
-            position: 'absolute',
-            top: 16,
-            right: 16,
-            padding: '8px 14px',
-            fontSize: 14,
-            borderRadius: 8,
-          }}
-          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-        >
-          {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
-        </button>
-        <div className="auth-card">
-          <div className="auth-header">
-            <h1 className="auth-title">InfraGate</h1>
-            <p className="auth-subtitle">Sign in to your account</p>
+      <div className="login-page">
+        <div className="login-page__left">
+          <div className="login-page__brand">
+            <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
+            <h1 className="login-page__title">InfraGate</h1>
+            <p className="login-page__tagline">
+              Cloud-agnostic infrastructure management. Self-service requests for your team.
+            </p>
           </div>
-
-          {error && (
-            <div className="error">
-              {error}
-              {error.includes('Cannot connect') && (
-                <p style={{ marginTop: '8px', fontSize: '13px', color: 'var(--text-muted)' }}>
-                  Backend URL: <code style={{ background: 'var(--bg-gray-100)', padding: '2px 6px', borderRadius: '4px' }}>{apiUrl}</code>
-                </p>
-              )}
-            </div>
-          )}
-
-          <form className="auth-form" onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label htmlFor="username">Username</label>
-              <input
-                id="username"
-                type="text"
-                className="input"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                disabled={loading}
-                placeholder="Enter your username"
-                autoComplete="username"
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="password">Password</label>
-              <input
-                id="password"
-                type="password"
-                className="input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={loading}
-                placeholder="Enter your password"
-                autoComplete="current-password"
-              />
-            </div>
-            <button type="submit" className="auth-btn" disabled={loading}>
-              {loading ? (
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                  <span className="loading" style={{ width: 18, height: 18, borderWidth: 2 }} />
-                  Signing in...
-                </span>
-              ) : (
-                'Sign In'
-              )}
+          <div className="login-page__decor">
+            <div className="login-page__blob login-page__blob--1" />
+            <div className="login-page__blob login-page__blob--2" />
+            <div className="login-page__blob login-page__blob--3" />
+          </div>
+        </div>
+        <div className="login-page__right">
+          <div className="login-page__card">
+            <h2 className="login-page__card-title">Welcome back</h2>
+            <p className="login-page__card-subtitle">Sign in to your account</p>
+            {error && (
+              <div className="alert alert-error" role="alert">
+                {error}
+                {error.includes('Cannot connect') && (
+                  <p style={{ marginTop: '8px', fontSize: '13px', opacity: 0.9 }}>
+                    Backend URL: <code style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '4px' }}>{apiUrl}</code>
+                  </p>
+                )}
+              </div>
+            )}
+            <form onSubmit={handleSubmit}>
+              <div className="form-group">
+                <label className="label" htmlFor="username">Username</label>
+                <input
+                  id="username"
+                  className="input"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  disabled={loading}
+                  autoComplete="username"
+                  autoFocus
+                  placeholder="Enter your username"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label" htmlFor="password">Password</label>
+                <input
+                  id="password"
+                  className="input"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                />
+              </div>
+              <button type="submit" className="btn btn-primary login-page__submit" disabled={loading}>
+                {loading ? (
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <span className="loading" style={{ width: 18, height: 18, borderWidth: 2 }} />
+                    Signing in…
+                  </span>
+                ) : (
+                  'Sign in'
+                )}
+              </button>
+            </form>
+            <p className="login-page__hint">
+              Contact your administrator for access. Sign-up is disabled.
+            </p>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="btn btn-secondary"
+              style={{ marginTop: 16, width: '100%' }}
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
             </button>
-          </form>
-
-          <p style={{ marginTop: 24, fontSize: 14, color: 'var(--text-muted)' }}>
-            Contact your administrator for access. Sign-up is disabled.
-          </p>
+          </div>
         </div>
       </div>
     </>
