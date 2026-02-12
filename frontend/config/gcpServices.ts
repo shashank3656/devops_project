@@ -21,11 +21,23 @@ export const gcpServices: Record<string, GCPService> = {
     displayName: 'Google Kubernetes Engine (GKE)',
     fields: [
       { name: 'cluster_name', label: 'Cluster Name', type: 'text', required: true, placeholder: 'my-gke-cluster' },
-      { name: 'region', label: 'Region', type: 'select', required: true, options: ['us-central1', 'us-east1', 'europe-west1', 'asia-southeast1'] },
-      { name: 'node_count', label: 'Node Count', type: 'number', required: true, defaultValue: 3 },
-      { name: 'machine_type', label: 'Machine Type', type: 'select', required: true, options: ['e2-medium', 'e2-standard-2', 'e2-standard-4'], defaultValue: 'e2-medium' },
-      { name: 'min_nodes', label: 'Min Nodes', type: 'number', defaultValue: 1 },
-      { name: 'max_nodes', label: 'Max Nodes', type: 'number', defaultValue: 5 }
+      { name: 'regional', label: 'Regional Cluster', type: 'boolean', defaultValue: true },
+      { name: 'region', label: 'Region', type: 'select', required: true, options: ['us-central1', 'us-east1', 'europe-west1', 'asia-southeast1', 'asia-east2'], defaultValue: 'asia-east2' },
+      { name: 'zones', label: 'Zones (comma-separated)', type: 'text', placeholder: 'a,b or us-central1-a', defaultValue: 'b' },
+      { name: 'maintenance_start_time', label: 'Maintenance Window Start', type: 'text', placeholder: '18:00', defaultValue: '18:00' },
+      { name: 'cluster_autoscaling_enabled', label: 'Cluster Autoscaling', type: 'boolean', defaultValue: false },
+      { name: 'autoscaling_profile', label: 'Autoscaling Profile', type: 'select', options: ['BALANCED', 'OPTIMIZE_UTILIZATION'], defaultValue: 'OPTIMIZE_UTILIZATION' },
+      { name: 'max_cpu_cores', label: 'Max CPU Cores', type: 'number', defaultValue: 32 },
+      { name: 'min_cpu_cores', label: 'Min CPU Cores', type: 'number', defaultValue: 0 },
+      { name: 'max_memory_gb', label: 'Max Memory (GB)', type: 'number', defaultValue: 130 },
+      { name: 'min_memory_gb', label: 'Min Memory (GB)', type: 'number', defaultValue: 0 },
+      { name: 'machine_type', label: 'Node Pool Machine Type', type: 'select', required: true, options: ['e2-medium', 'e2-standard-2', 'e2-standard-4', 'e2-standard-8'], defaultValue: 'e2-standard-4' },
+      { name: 'disk_type', label: 'Disk Type', type: 'select', options: ['pd-standard', 'pd-balanced', 'pd-ssd'], defaultValue: 'pd-standard' },
+      { name: 'disk_size_gb', label: 'Disk Size (GB)', type: 'number', defaultValue: 50 },
+      { name: 'node_autoscaling', label: 'Node Pool Autoscaling', type: 'boolean', defaultValue: true },
+      { name: 'min_count', label: 'Min Nodes', type: 'number', defaultValue: 3 },
+      { name: 'max_count', label: 'Max Nodes', type: 'number', defaultValue: 3 },
+      { name: 'auto_upgrade', label: 'Auto Upgrade Nodes', type: 'boolean', defaultValue: true }
     ]
   },
   'compute-engine': {
