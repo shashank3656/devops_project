@@ -189,10 +189,33 @@ export default function CustomJSON() {
     cloud: 'gcp',
     service: 'gke',
     config: {
-      cluster_name: 'my-gke-cluster',
-      region: 'us-central1',
-      node_count: 3,
-      machine_type: 'e2-medium'
+      gke_clusters: {
+        az2: {
+          regional: true,
+          region: 'asia-east2',
+          zones: ['b'],
+          maintenance_start_time: '18:00',
+          cluster_autoscaling: {
+            enabled: false,
+            autoscaling_profile: 'OPTIMIZE_UTILIZATION',
+            max_cpu_cores: 32,
+            min_cpu_cores: 0,
+            max_memory_gb: 130,
+            min_memory_gb: 0
+          },
+          node_pools: {
+            np1: {
+              machine_type: 'e2-standard-4',
+              disk_type: 'pd-standard',
+              disk_size_gb: 50,
+              autoscaling: true,
+              min_count: 3,
+              max_count: 3,
+              auto_upgrade: true
+            }
+          }
+        }
+      }
     }
   };
 
