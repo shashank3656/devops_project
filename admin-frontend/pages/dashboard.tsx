@@ -107,7 +107,7 @@ export default function AdminDashboard() {
       const [statsData, dashboardData, requestsData] = await Promise.all([
         statsRes.json().catch(() => ({})),
         dashboardRes.json().catch(() => ({})),
-        requestsData.json().catch(() => ({})),
+        requestsRes.json().catch(() => ({})),
       ]);
       if (statsData.stats) setStats(statsData.stats);
       if (dashboardData.total_users !== undefined) setQuickStats(dashboardData);
