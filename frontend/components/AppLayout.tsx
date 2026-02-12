@@ -41,7 +41,6 @@ const BASE_NAV_ITEMS: { href: string; label: string }[] = [
   { href: '/create-infrastructure', label: 'New Request' },
   { href: '/templates', label: 'Templates' },
   { href: '/history', label: 'History' },
-  { href: '/db-query', label: 'DB Query' },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

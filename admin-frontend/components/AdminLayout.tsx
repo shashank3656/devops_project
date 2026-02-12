@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { ADMIN_SITE_NAME } from '../lib/site';
-import { IconLogout, IconBell, IconSun, IconMoon } from './Icons';
+import { IconLogout, IconBell, IconSun, IconMoon, IconDashboard, IconRequests, IconTeams, IconUsers, IconActivity, IconTemplates, IconWebhook } from './Icons';
 
 const THEME_KEY = 'infra-portal-theme';
 const NOTIFY_POLL_MS = 30000;
@@ -32,16 +32,14 @@ interface PendingRequest {
   created_at: string;
 }
 
-const NAV_ITEMS: { href: string; label: string }[] = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/requests', label: 'PR Requests' },
-  { href: '/teams', label: 'Teams' },
-  { href: '/users', label: 'Users' },
-  { href: '/activity', label: 'Activity' },
-  { href: '/templates', label: 'Templates' },
-  { href: '/webhooks', label: 'Webhooks' },
-  { href: '/db-query', label: 'DB Query' },
-  { href: '/db-connections', label: 'DB Connections' },
+const NAV_ITEMS: { href: string; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+  { href: '/dashboard', label: 'Dashboard', Icon: IconDashboard },
+  { href: '/requests', label: 'PR Requests', Icon: IconRequests },
+  { href: '/teams', label: 'Teams', Icon: IconTeams },
+  { href: '/users', label: 'Users', Icon: IconUsers },
+  { href: '/activity', label: 'Activity', Icon: IconActivity },
+  { href: '/templates', label: 'Templates', Icon: IconTemplates },
+  { href: '/webhooks', label: 'Webhooks', Icon: IconWebhook },
 ];
 
 function getProfileInitials(): string {
@@ -156,7 +154,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <span className="admin-topbar-brand-text">{ADMIN_SITE_NAME}</span>
           </Link>
           <nav className="admin-topbar-nav">
-            {NAV_ITEMS.map(({ href, label }) => {
+            {NAV_ITEMS.map(({ href, label, Icon }) => {
               const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
               return (
                 <Link
@@ -164,6 +162,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   href={href}
                   className={`admin-topbar-nav-link ${isActive ? 'active' : ''}`}
                 >
+                  <Icon className="admin-nav-icon" />
                   {label}
                 </Link>
               );

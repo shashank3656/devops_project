@@ -54,70 +54,76 @@ export default function AdminLogin() {
       <Head>
         <title>Admin Login - InfraGate Admin</title>
       </Head>
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 24,
-        }}
-      >
-        <div className="card" style={{ maxWidth: 420, width: '100%' }}>
-          <h1 style={{ marginBottom: 8, fontSize: 24, fontWeight: 700 }}>
-            InfraGate Admin
-          </h1>
-          <p
-            className="label-optional"
-            style={{ marginBottom: 24, fontSize: 14 }}
-          >
-            Sign in with an admin account. Default: admin / admin123 (change
-            after first login).
-          </p>
-          {error && (
-            <div className="alert alert-error" role="alert">
-              {error}
-            </div>
-          )}
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label className="label" htmlFor="admin-username">
-                Username
-              </label>
-              <input
-                id="admin-username"
-                className="input"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                autoComplete="username"
-                autoFocus
-              />
-            </div>
-            <div className="form-group">
-              <label className="label" htmlFor="admin-password">
-                Password
-              </label>
-              <input
-                id="admin-password"
-                className="input"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
-            </div>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={loading}
-              style={{ width: '100%', padding: '12px 18px' }}
-            >
-              {loading ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
+      <div className="login-page">
+        <div className="login-page__left">
+          <div className="login-page__brand">
+            <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
+            <h1 className="login-page__title">InfraGate Admin</h1>
+            <p className="login-page__tagline">
+              Cloud-agnostic infrastructure management. Secure, self-service, and audit-ready.
+            </p>
+          </div>
+          <div className="login-page__decor">
+            <div className="login-page__blob login-page__blob--1" />
+            <div className="login-page__blob login-page__blob--2" />
+            <div className="login-page__blob login-page__blob--3" />
+          </div>
+        </div>
+        <div className="login-page__right">
+          <div className="login-page__card">
+            <h2 className="login-page__card-title">Welcome back</h2>
+            <p className="login-page__card-subtitle">
+              Sign in with your admin account
+            </p>
+            {error && (
+              <div className="alert alert-error" role="alert">
+                {error}
+              </div>
+            )}
+            <form onSubmit={handleSubmit}>
+              <div className="form-group">
+                <label className="label" htmlFor="admin-username">
+                  Username
+                </label>
+                <input
+                  id="admin-username"
+                  className="input"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  autoComplete="username"
+                  autoFocus
+                  placeholder="admin"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label" htmlFor="admin-password">
+                  Password
+                </label>
+                <input
+                  id="admin-password"
+                  className="input"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                />
+              </div>
+              <button
+                type="submit"
+                className="btn btn-primary login-page__submit"
+                disabled={loading}
+              >
+                {loading ? 'Signing in…' : 'Sign in'}
+              </button>
+            </form>
+            <p className="login-page__hint">
+              Default: admin / admin123 — change after first login
+            </p>
+          </div>
         </div>
       </div>
     </>
