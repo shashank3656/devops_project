@@ -115,7 +115,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   if (isManager) {
     baseNavItems.push({ href: '/workload', label: 'Workload' });
     baseNavItems.push({ href: '/tickets', label: 'All tickets' });
-    baseNavItems.push({ href: '/db-query-approvals', label: 'DB Query approvals' });
   }
   baseNavItems.push({ href: '/templates', label: 'Templates' });
   if (isManager) baseNavItems.push({ href: '/team', label: 'Team' });
