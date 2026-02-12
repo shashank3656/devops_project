@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect } from 'react';
 import AppLayout from '../components/AppLayout';
 import { ToastProvider } from '../context/ToastContext';
-import { getStoredTheme } from '../components/NavBar';
+import { getStoredTheme } from '../components/AppLayout';
 import { SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
 
@@ -26,6 +26,9 @@ export default function App({ Component, pageProps }: AppProps) {
         <title>{SITE_NAME}</title>
         <link rel="icon" type="image/svg+xml" href="/logo.svg" />
         <meta name="application-name" content={SITE_NAME} />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
       </Head>
       {showLayout ? (
         <AppLayout>

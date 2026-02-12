@@ -66,28 +66,62 @@ export default function DevOpsLogin() {
       <Head>
         <title>Login - InfraGate DevOps</title>
       </Head>
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div className="card" style={{ maxWidth: 420, width: '100%' }}>
-          <h1 style={{ marginBottom: 8, fontSize: 24, fontWeight: 700 }}>InfraGate DevOps</h1>
-          <p style={{ marginBottom: 24, fontSize: 14, color: 'var(--color-text-muted)' }}>
-            Sign in with your DevOps account. Users are created from the Admin portal.
-          </p>
-          {error && (
-            <div className="alert alert-error" role="alert">{error}</div>
-          )}
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label className="label" htmlFor="username">Username</label>
-              <input id="username" className="input" type="text" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus />
-            </div>
-            <div className="form-group">
-              <label className="label" htmlFor="password">Password</label>
-              <input id="password" className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            </div>
-            <button type="submit" className="btn btn-primary" disabled={loading} style={{ padding: '10px 24px' }}>
-              {loading ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
+      <div className="login-page">
+        <div className="login-page__left">
+          <div className="login-page__brand">
+            <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
+            <h1 className="login-page__title">InfraGate DevOps</h1>
+            <p className="login-page__tagline">
+              Approve and manage infrastructure requests. Users are created from the Admin portal.
+            </p>
+          </div>
+          <div className="login-page__decor">
+            <div className="login-page__blob login-page__blob--1" />
+            <div className="login-page__blob login-page__blob--2" />
+            <div className="login-page__blob login-page__blob--3" />
+          </div>
+        </div>
+        <div className="login-page__right">
+          <div className="login-page__card">
+            <h2 className="login-page__card-title">Welcome back</h2>
+            <p className="login-page__card-subtitle">Sign in with your DevOps account</p>
+            {error && (
+              <div className="alert alert-error" role="alert">{error}</div>
+            )}
+            <form onSubmit={handleSubmit}>
+              <div className="form-group">
+                <label className="label" htmlFor="username">Username</label>
+                <input
+                  id="username"
+                  className="input"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  autoFocus
+                  placeholder="devops"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label" htmlFor="password">Password</label>
+                <input
+                  id="password"
+                  className="input"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  placeholder="••••••••"
+                />
+              </div>
+              <button type="submit" className="btn btn-primary login-page__submit" disabled={loading}>
+                {loading ? 'Signing in…' : 'Sign in'}
+              </button>
+            </form>
+            <p className="login-page__hint">
+              Users are created from the Admin portal.
+            </p>
+          </div>
         </div>
       </div>
     </>
