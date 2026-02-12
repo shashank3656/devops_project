@@ -99,7 +99,29 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   flex-shrink: 0;
   padding: var(--space-5);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
+.devops-sidebar-new__hamburger {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: color var(--transition), background var(--transition);
+}
+.devops-sidebar-new__hamburger:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+.devops-sidebar-new__hamburger svg { width: 22px; height: 22px; }
 .devops-sidebar-new__brand {
   display: flex;
   align-items: center;
@@ -154,7 +176,6 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   padding: var(--space-3);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
-.devops-sidebar-new__collapse-btn { margin-bottom: var(--space-2); }
 .devops-sidebar-new-overlay {
   display: none;
   position: fixed;

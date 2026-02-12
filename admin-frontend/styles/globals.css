@@ -412,7 +412,29 @@ td code { font-size: var(--text-sm); background: var(--color-primary-light); col
   flex-shrink: 0;
   padding: var(--space-5);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
+.admin-sidebar__hamburger {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: color var(--transition), background var(--transition);
+}
+.admin-sidebar__hamburger:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+.admin-sidebar__hamburger svg { width: 22px; height: 22px; }
 .admin-sidebar__brand {
   display: flex;
   align-items: center;
@@ -467,8 +489,6 @@ td code { font-size: var(--text-sm); background: var(--color-primary-light); col
   padding: var(--space-3);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
-.admin-sidebar__collapse-btn { margin-bottom: var(--space-2); }
-
 /* Sidebar mobile */
 .admin-sidebar-overlay {
   display: none;

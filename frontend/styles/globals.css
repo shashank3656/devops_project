@@ -186,7 +186,29 @@ body {
   flex-shrink: 0;
   padding: var(--space-5);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
+.user-sidebar__hamburger {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: color var(--transition), background var(--transition);
+}
+.user-sidebar__hamburger:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+.user-sidebar__hamburger svg { width: 22px; height: 22px; }
 .user-sidebar__brand {
   display: flex;
   align-items: center;
@@ -241,7 +263,44 @@ body {
   padding: var(--space-3);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
-.user-sidebar__collapse-btn { margin-bottom: var(--space-2); }
+.user-sidebar__expandable { margin-bottom: 2px; }
+.user-sidebar__expandable-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  position: relative;
+}
+.user-sidebar__chevron {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.6);
+}
+.user-sidebar__chevron svg { width: 16px; height: 16px; }
+.user-sidebar__sub {
+  padding-left: var(--space-4);
+  margin-bottom: var(--space-2);
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  margin-left: calc(20px + var(--space-3));
+}
+.user-sidebar__sublink {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  border-radius: var(--radius);
+  margin-bottom: 2px;
+  transition: color var(--transition), background var(--transition);
+}
+.user-sidebar__sublink:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+.user-sidebar__sublink--active {
+  color: #fff;
+  background: rgba(79, 70, 229, 0.4);
+}
 .user-sidebar-overlay {
   display: none;
   position: fixed;
