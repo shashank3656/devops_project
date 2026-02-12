@@ -91,13 +91,13 @@ export default function Login() {
   return (
     <>
       <Head>
-        <title>Login - InfraGate</title>
+        <title>Login - User</title>
       </Head>
       <div className="login-page">
         <div className="login-page__left">
           <div className="login-page__brand">
             <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">InfraGate</h1>
+            <h1 className="login-page__title">User</h1>
             <p className="login-page__tagline">
               Cloud-agnostic infrastructure management. Self-service requests for your team.
             </p>

@@ -1,1 +1,1 @@
-export const DEVOPS_SITE_NAME = 'InfraGate DevOps';
+export const DEVOPS_SITE_NAME = 'DevOps';
