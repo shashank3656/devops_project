@@ -20,7 +20,16 @@ export default function WebhooksPage() {
   const [error, setError] = useState('');
   const [newUrl, setNewUrl] = useState('');
   const [newSecret, setNewSecret] = useState('');
-  const [newEvents, setNewEvents] = useState('approved,pr_created,rejected,assigned');
+  const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set(EVENT_OPTIONS));
+
+  const toggleEvent = (event: string) => {
+    setSelectedEvents((prev) => {
+      const next = new Set(prev);
+      if (next.has(event)) next.delete(event);
+      else next.add(event);
+      return next;
+    });
+  };
   const [creating, setCreating] = useState(false);
   const [toggleLoading, setToggleLoading] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
@@ -71,14 +80,14 @@ export default function WebhooksPage() {
         body: JSON.stringify({
           url: newUrl.trim(),
           secret: newSecret.trim() || undefined,
-          events: newEvents.trim() || 'approved,pr_created,rejected,assigned',
+          events: selectedEvents.size > 0 ? Array.from(selectedEvents).join(',') : 'approved,pr_created,rejected,assigned',
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setNewUrl('');
         setNewSecret('');
-        setNewEvents('approved,pr_created,rejected,assigned');
+        setSelectedEvents(new Set(EVENT_OPTIONS));
         fetchWebhooks();
       } else {
         setError(data.error || 'Failed to create webhook');
@@ -185,18 +194,19 @@ export default function WebhooksPage() {
                 />
               </div>
               <div className="form-group">
-                <label className="label" htmlFor="webhook-events">Events (comma-separated)</label>
-                <input
-                  id="webhook-events"
-                  type="text"
-                  className="input"
-                  placeholder="approved,pr_created,rejected,assigned"
-                  value={newEvents}
-                  onChange={(e) => setNewEvents(e.target.value)}
-                />
-                <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>
-                  approved, pr_created, rejected, assigned
-                </p>
+                <label className="label">Events</label>
+                <div className="webhook-events-checkboxes">
+                  {EVENT_OPTIONS.map((ev) => (
+                    <label key={ev} className="webhook-event-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={selectedEvents.has(ev)}
+                        onChange={() => toggleEvent(ev)}
+                      />
+                      <span>{ev}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
               <button type="submit" className="btn btn-primary" disabled={creating}>
                 {creating ? 'Adding…' : 'Add webhook'}

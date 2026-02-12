@@ -214,6 +214,28 @@ a:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 
 
 .form-group { margin-bottom: var(--space-5); }
 
+.webhook-events-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.webhook-event-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.webhook-event-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-primary);
+}
+
 .input {
   width: 100%;
   padding: 10px 14px;
