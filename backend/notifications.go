@@ -35,17 +35,20 @@ func NotifyRequestRejected(req *PRRequest, reason string) {
 }
 
 // NotifyPRCreated notifies the request creator that a PR was created for their request.
+// Slack/Teams are always sent (for channel visibility) even when creator is nil.
 func NotifyPRCreated(req *PRRequest, prURL string) {
-	if req == nil || req.CreatedBy == nil || *req.CreatedBy <= 0 {
+	if req == nil {
 		return
 	}
-	msg := "Request #" + strconv.Itoa(req.ID) + " was approved and a PR was created."
-	if prURL != "" {
-		msg += " PR: " + prURL
+	if req.CreatedBy != nil && *req.CreatedBy > 0 {
+		msg := "Request #" + strconv.Itoa(req.ID) + " was approved and a PR was created."
+		if prURL != "" {
+			msg += " PR: " + prURL
+		}
+		reqID := req.ID
+		_ = InsertUserNotification(*req.CreatedBy, &reqID, "pr_created", msg)
+		sendNotificationEmailIfConfigured(*req.CreatedBy, "PR created", msg)
 	}
-	reqID := req.ID
-	_ = InsertUserNotification(*req.CreatedBy, &reqID, "pr_created", msg)
-	sendNotificationEmailIfConfigured(*req.CreatedBy, "PR created", msg)
 	NotifySlackPRCreated(req, prURL)
 	NotifyTeamsPRCreated(req, prURL)
 }
