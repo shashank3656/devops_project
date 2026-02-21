@@ -276,13 +276,46 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load full user (verified, role) for response
+	// Load full user (verified, role, totp_enabled) for response
 	if fullUser, err := GetUserByID(user.ID); err == nil && fullUser != nil {
 		user.Verified = fullUser.Verified
 		user.Role = fullUser.Role
+		user.TotpEnabled = fullUser.TotpEnabled
 	} else {
 		user.Verified = false
 		user.Role = "viewer"
+	}
+
+	// 2FA: if totp_enabled, require OTP before issuing token
+	if user.TotpEnabled {
+		otpBytes := make([]byte, 6)
+		if _, err := rand.Read(otpBytes); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		var otp string
+		for _, b := range otpBytes {
+			otp += fmt.Sprintf("%d", b%10)
+		}
+		otpExpires := time.Now().Add(10 * time.Minute)
+		if err := SetUserVerificationToken(user.ID, otp, otpExpires); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		pendingBytes := make([]byte, 32)
+		rand.Read(pendingBytes)
+		pendingToken := hex.EncodeToString(pendingBytes)
+		_, _ = DB.Exec("INSERT INTO pending_2fa (token, user_id, expires_at) VALUES ($1, $2, $3)",
+			pendingToken, user.ID, otpExpires)
+		sendNotificationEmailIfConfigured(user.ID, "2FA code", "Your verification code is: "+otp)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"requires_otp":       true,
+			"pending_2fa_token":  pendingToken,
+			"message":            "Enter the 6-digit code sent to your email",
+			"otp_for_testing":    otp,
+		})
+		return
 	}
 
 	// Generate token
@@ -1089,6 +1122,129 @@ func verifyOtpHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"message": "Email verified successfully. You can now log in.", "status": "ok"})
+}
+
+// verify2faHandler verifies 2FA OTP and returns session token (POST /api/auth/verify-2fa)
+func verify2faHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if DB == nil {
+		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		return
+	}
+	var req struct {
+		PendingToken string `json:"pending_2fa_token"`
+		OTP          string `json:"otp"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	token := strings.TrimSpace(req.PendingToken)
+	otp := strings.TrimSpace(req.OTP)
+	if token == "" || otp == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "pending_2fa_token and otp required", "status": "error"})
+		return
+	}
+	var userID int
+	err := DB.QueryRow(
+		"SELECT user_id FROM pending_2fa WHERE token = $1 AND expires_at > NOW()",
+		token,
+	).Scan(&userID)
+	if err == sql.ErrNoRows || userID == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid or expired 2FA token", "status": "error"})
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	verifiedID, err := GetUserIDByIDAndOTP(userID, otp)
+	if err != nil || verifiedID == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid or expired OTP", "status": "error"})
+		return
+	}
+	_, _ = DB.Exec("DELETE FROM pending_2fa WHERE token = $1", token)
+	user, _ := GetUserByID(verifiedID)
+	if user == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	sessionToken := generateToken(verifiedID)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(AuthResponse{
+		Token:     sessionToken,
+		User:      *user,
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	})
+}
+
+// me2faHandler handles /api/me/2fa - GET status, POST enable, DELETE disable
+func me2faHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if DB == nil {
+		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		return
+	}
+	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
+	if err != nil || userID <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid token", "status": "error"})
+		return
+	}
+	switch r.Method {
+	case "GET":
+		user, _ := GetUserByID(userID)
+		enabled := user != nil && user.TotpEnabled
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"totp_enabled": enabled, "status": "ok"})
+		return
+	case "POST":
+		if err := UpdateUserTotpEnabled(userID, true); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"message": "2FA enabled. You will receive an email OTP on each login.", "status": "ok"})
+		return
+	case "DELETE":
+		if err := UpdateUserTotpEnabled(userID, false); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"message": "2FA disabled", "status": "ok"})
+		return
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 // resendVerificationHandler sends a new verification token (POST /api/resend-verification, Bearer required)

@@ -296,6 +296,53 @@ func MigrateDatabase() error {
 		log.Println("Database migration (terraform_plan_output) completed")
 	}
 
+	// Migration 19: request_config_history (for rollback - store config snapshots)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS request_config_history (
+			id SERIAL PRIMARY KEY,
+			request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			config TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			note VARCHAR(255) DEFAULT ''
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_config_history_request_id ON request_config_history(request_id)")
+
+	// Migration 20: pr_requests.linked_request_id (for environment promotion - link dev→staging→prod)
+	var linkedReqCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'pr_requests' AND column_name = 'linked_request_id'").Scan(&linkedReqCount)
+	if linkedReqCount == 0 {
+		log.Println("Migrating database: adding pr_requests.linked_request_id...")
+		_, _ = DB.Exec("ALTER TABLE pr_requests ADD COLUMN linked_request_id INTEGER REFERENCES pr_requests(id) ON DELETE SET NULL")
+		_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_requests_linked_request_id ON pr_requests(linked_request_id)")
+		log.Println("Database migration (linked_request_id) completed")
+	}
+
+	// Migration 22: pending_2fa (temporary tokens for 2FA flow)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS pending_2fa (
+			token VARCHAR(64) PRIMARY KEY,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			expires_at TIMESTAMP NOT NULL
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pending_2fa_expires ON pending_2fa(expires_at)")
+
+	// Migration 21: users.totp_secret, users.totp_enabled (for 2FA)
+	for _, col := range []string{"totp_secret", "totp_enabled"} {
+		var c int
+		_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'users' AND column_name = $1", col).Scan(&c)
+		if c == 0 {
+			log.Printf("Migrating database: adding users.%s...", col)
+			if col == "totp_secret" {
+				_, _ = DB.Exec("ALTER TABLE users ADD COLUMN totp_secret VARCHAR(64)")
+			} else {
+				_, _ = DB.Exec("ALTER TABLE users ADD COLUMN totp_enabled BOOLEAN DEFAULT FALSE")
+			}
+			log.Printf("Database migration (users.%s) completed", col)
+		}
+	}
+
 	log.Println("Database schema is up to date")
 	return nil
 }

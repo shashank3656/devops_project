@@ -14,6 +14,7 @@ func NotifyRequestApproved(req *PRRequest, message string) {
 	reqID := req.ID
 	_ = InsertUserNotification(*req.CreatedBy, &reqID, "approved", message)
 	sendNotificationEmailIfConfigured(*req.CreatedBy, "Request approved", message)
+	NotifySlackRequestApproved(req, "")
 }
 
 // NotifyRequestRejected notifies the request creator that the request was rejected.
@@ -28,6 +29,7 @@ func NotifyRequestRejected(req *PRRequest, reason string) {
 	reqID := req.ID
 	_ = InsertUserNotification(*req.CreatedBy, &reqID, "rejected", msg)
 	sendNotificationEmailIfConfigured(*req.CreatedBy, "Request rejected", msg)
+	NotifySlackRequestRejected(req, reason)
 }
 
 // NotifyPRCreated notifies the request creator that a PR was created for their request.
@@ -42,6 +44,7 @@ func NotifyPRCreated(req *PRRequest, prURL string) {
 	reqID := req.ID
 	_ = InsertUserNotification(*req.CreatedBy, &reqID, "pr_created", msg)
 	sendNotificationEmailIfConfigured(*req.CreatedBy, "PR created", msg)
+	NotifySlackPRCreated(req, prURL)
 }
 
 // NotifyTicketAssigned notifies the assignee that a ticket was assigned to them.

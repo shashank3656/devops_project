@@ -88,6 +88,7 @@ type User struct {
 	UserType        string    `json:"user_type"` // portal_user | devops_user
 	ManagerID       *int      `json:"manager_id"` // portal user's manager (for two-step approval)
 	IsPortalManager bool      `json:"is_portal_manager"` // portal user designated as group manager (same UX as DevOps manager)
+	TotpEnabled     bool      `json:"totp_enabled"`     // 2FA enabled (email OTP on login)
 	CreatedAt       time.Time `json:"created_at"`
 }
 
@@ -499,7 +500,7 @@ func SavePRRequest(req *PRRequest) error {
 	if err != nil {
 		return fmt.Errorf("failed to save PR request: %w", err)
 	}
-
+	_ = SaveRequestConfigHistory(req.ID, req.Config, "initial")
 	return nil
 }
 
@@ -988,6 +989,40 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 	return requests, nil
 }
 
+// GetPRRequestByApplicationID retrieves a request by application_id (most recent if multiple)
+func GetPRRequestByApplicationID(appID string) *PRRequest {
+	if appID == "" || DB == nil {
+		return nil
+	}
+	query := `
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at, COALESCE(terraform_plan_output,'') AS terraform_plan_output
+		FROM pr_requests WHERE application_id = $1 ORDER BY created_at DESC LIMIT 1
+	`
+	var r PRRequest
+	var createdBy, assignedTo sql.NullInt64
+	var dueDate sql.NullTime
+	err := DB.QueryRow(query, appID).Scan(
+		&r.ID, &r.Team, &r.Env, &r.Cloud, &r.Service, &r.ClientName,
+		&r.ApplicationID, &r.Priority, &dueDate, &r.PRURL, &r.Branch, &r.FilePath, &r.Status,
+		&r.RejectReason, &r.Config, &createdBy, &assignedTo, &r.CreatedAt, &r.UpdatedAt, &r.TerraformPlanOutput,
+	)
+	if err != nil || r.ID == 0 {
+		return nil
+	}
+	if createdBy.Valid {
+		val := int(createdBy.Int64)
+		r.CreatedBy = &val
+	}
+	if assignedTo.Valid && assignedTo.Int64 > 0 {
+		val := int(assignedTo.Int64)
+		r.AssignedTo = &val
+	}
+	if dueDate.Valid {
+		r.DueDate = &dueDate.Time
+	}
+	return &r
+}
+
 // GetPRRequestByID retrieves a single PR request by ID
 func GetPRRequestByID(id int) (*PRRequest, error) {
 	query := `
@@ -1212,6 +1247,66 @@ func GetWorkloadSummaryByPerson() ([]WorkloadSummaryRow, error) {
 	return out, nil
 }
 
+// SaveRequestConfigHistory appends a config snapshot for rollback
+func SaveRequestConfigHistory(requestID int, config, note string) error {
+	if DB == nil || requestID <= 0 {
+		return nil
+	}
+	_, err := DB.Exec(
+		"INSERT INTO request_config_history (request_id, config, note) VALUES ($1, $2, $3)",
+		requestID, config, note,
+	)
+	return err
+}
+
+// GetRequestConfigHistory returns config snapshots for a request (newest first)
+func GetRequestConfigHistory(requestID int, limit int) ([]struct {
+	ID        int
+	Config    string
+	CreatedAt time.Time
+	Note      string
+}, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	rows, err := DB.Query(
+		"SELECT id, config, created_at, COALESCE(note,'') FROM request_config_history WHERE request_id = $1 ORDER BY created_at DESC LIMIT $2",
+		requestID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []struct {
+		ID        int
+		Config    string
+		CreatedAt time.Time
+		Note      string
+	}
+	for rows.Next() {
+		var r struct {
+			ID        int
+			Config    string
+			CreatedAt time.Time
+			Note      string
+		}
+		if err := rows.Scan(&r.ID, &r.Config, &r.CreatedAt, &r.Note); err != nil {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// UpdatePRRequestConfig updates config for a request (used by rollback)
+func UpdatePRRequestConfig(id int, config string) error {
+	_, err := DB.Exec(
+		"UPDATE pr_requests SET config = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+		config, id,
+	)
+	return err
+}
+
 // UpdatePRRequestTerraformPlanOutput sets terraform_plan_output for a request (from CI or admin)
 func UpdatePRRequestTerraformPlanOutput(id int, output string) error {
 	_, err := DB.Exec(
@@ -1221,8 +1316,10 @@ func UpdatePRRequestTerraformPlanOutput(id int, output string) error {
 	return err
 }
 
-// UpdatePRRequestFull updates a draft request (config, priority, due_date, status). Only for draft requests. (config, priority, due_date, status). Only for draft requests.
+// UpdatePRRequestFull updates a draft request (config, priority, due_date, status). Only for draft requests.
 func UpdatePRRequestFull(id int, config string, priority string, dueDate *time.Time, status string) error {
+	// Save config to history before update (for rollback)
+	_ = SaveRequestConfigHistory(id, config, "draft update")
 	if dueDate == nil {
 		_, err := DB.Exec(
 			"UPDATE pr_requests SET config = $1, priority = $2, due_date = NULL, status = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4",
@@ -1279,15 +1376,27 @@ func GetUserByID(id int) (*User, error) {
 	var userType sql.NullString
 	var managerID sql.NullInt64
 	var isPortalManager sql.NullBool
+	var totpEnabled sql.NullBool
 	err := DB.QueryRow(
-		"SELECT id, username, email, COALESCE(verified, false), COALESCE(role, 'viewer'), COALESCE(user_type, 'portal_user'), manager_id, COALESCE(is_portal_manager, false), created_at FROM users WHERE id = $1",
+		"SELECT id, username, email, COALESCE(verified, false), COALESCE(role, 'viewer'), COALESCE(user_type, 'portal_user'), manager_id, COALESCE(is_portal_manager, false), COALESCE(totp_enabled, false), created_at FROM users WHERE id = $1",
 		id,
-	).Scan(&user.ID, &user.Username, &user.Email, &verified, &role, &userType, &managerID, &isPortalManager, &user.CreatedAt)
+	).Scan(&user.ID, &user.Username, &user.Email, &verified, &role, &userType, &managerID, &isPortalManager, &totpEnabled, &user.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to get user: %w", err)
+		// Fallback if totp_enabled column doesn't exist yet
+		err2 := DB.QueryRow(
+			"SELECT id, username, email, COALESCE(verified, false), COALESCE(role, 'viewer'), COALESCE(user_type, 'portal_user'), manager_id, COALESCE(is_portal_manager, false), created_at FROM users WHERE id = $1",
+			id,
+		).Scan(&user.ID, &user.Username, &user.Email, &verified, &role, &userType, &managerID, &isPortalManager, &user.CreatedAt)
+		if err2 != nil {
+			if err2 == sql.ErrNoRows {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("failed to get user: %w", err2)
+		}
+		totpEnabled = sql.NullBool{}
 	}
 	user.Verified = verified.Valid && verified.Bool
 	user.Role = "viewer"
@@ -1303,6 +1412,7 @@ func GetUserByID(id int) (*User, error) {
 		user.ManagerID = &m
 	}
 	user.IsPortalManager = isPortalManager.Valid && isPortalManager.Bool
+	user.TotpEnabled = totpEnabled.Valid && totpEnabled.Bool
 	return &user, nil
 }
 
@@ -1419,6 +1529,25 @@ func GetUserByVerificationToken(token string) (int, error) {
 	return userID, nil
 }
 
+// GetUserIDByIDAndOTP returns user ID if user exists and OTP matches and is not expired (for 2FA)
+func GetUserIDByIDAndOTP(userID int, otp string) (int, error) {
+	if userID <= 0 || otp == "" {
+		return 0, nil
+	}
+	var id int
+	err := DB.QueryRow(
+		"SELECT id FROM users WHERE id = $1 AND verification_token = $2 AND verification_token_expires_at > NOW()",
+		userID, otp,
+	).Scan(&id)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
 // GetUserIDByEmailAndOTP returns user ID if email and OTP match and are not expired
 func GetUserIDByEmailAndOTP(email, otp string) (int, error) {
 	var userID int
@@ -1441,6 +1570,12 @@ func SetUserVerified(userID int) error {
 		"UPDATE users SET verified = TRUE, verification_token = NULL, verification_token_expires_at = NULL WHERE id = $1",
 		userID,
 	)
+	return err
+}
+
+// UpdateUserTotpEnabled sets totp_enabled for user (2FA via email OTP)
+func UpdateUserTotpEnabled(userID int, enabled bool) error {
+	_, err := DB.Exec("UPDATE users SET totp_enabled = $1 WHERE id = $2", enabled, userID)
 	return err
 }
 

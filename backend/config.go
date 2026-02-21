@@ -9,6 +9,12 @@ var (
 	GitHubRepo  = getEnv("GITHUB_REPO", "infra-live")
 	GitHubToken = getEnv("GITHUB_TOKEN", "") // GitHub Personal Access Token
 	BaseBranch  = getEnv("BASE_BRANCH", "main")
+
+	// CIWebhookSecret - secret for CI to authenticate when posting pipeline status
+	CIWebhookSecret = getEnv("CI_WEBHOOK_SECRET", "")
+
+	// SlackWebhookURL - optional Slack incoming webhook for notifications
+	SlackWebhookURL = getEnv("SLACK_WEBHOOK_URL", "")
 )
 
 func getEnv(key, defaultValue string) string {

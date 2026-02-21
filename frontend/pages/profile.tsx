@@ -9,6 +9,7 @@ interface User {
   email: string;
   verified?: boolean;
   role?: string;
+  totp_enabled?: boolean;
   created_at: string;
 }
 
@@ -39,6 +40,8 @@ export default function Profile() {
   const [creatingKey, setCreatingKey] = useState(false);
   const [createdKeyValue, setCreatedKeyValue] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<number | null>(null);
+  const [totpEnabled, setTotpEnabled] = useState<boolean | null>(null);
+  const [totpToggling, setTotpToggling] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -52,6 +55,11 @@ export default function Profile() {
     }
     fetchMe();
   }, [router]);
+
+  useEffect(() => {
+    if (!user) return;
+    setTotpEnabled(user.totp_enabled ?? false);
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -78,6 +86,7 @@ export default function Profile() {
       if (res.ok) {
         const data = await res.json();
         setUser(data.user || null);
+        setTotpEnabled(data.user?.totp_enabled ?? false);
       } else if (res.status === 404) {
         setUser(null);
         toast('User not found.', 'error');
@@ -215,6 +224,32 @@ export default function Profile() {
       document.body.removeChild(input);
     };
     fallback();
+  };
+
+  const handleToggle2FA = async (enable: boolean) => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    if (enable && !confirm('Enable 2FA? You will receive an email OTP on each login.')) return;
+    if (!enable && !confirm('Disable 2FA? You will no longer need an OTP to log in.')) return;
+    setTotpToggling(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/me/2fa`, {
+        method: enable ? 'POST' : 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setTotpEnabled(enable);
+        setUser((u) => (u ? { ...u, totp_enabled: enable } : null));
+        toast(enable ? '2FA enabled' : '2FA disabled', 'success');
+      } else {
+        toast(data.error || 'Failed to update 2FA', 'error');
+      }
+    } catch (_) {
+      toast('Failed to update 2FA', 'error');
+    } finally {
+      setTotpToggling(false);
+    }
   };
 
   const handleResendVerification = async () => {
@@ -391,6 +426,36 @@ export default function Profile() {
                 {changing ? 'Updating...' : 'Update password'}
               </button>
             </form>
+          </div>
+          )}
+
+          {user && (
+          <div className="card" style={{ maxWidth: '500px', marginTop: '24px' }}>
+            <h2 style={{ fontSize: '18px', marginBottom: '8px', color: 'var(--text-primary)' }}>Two-factor authentication (2FA)</h2>
+            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+              When enabled, you will receive a 6-digit code by email on each login.
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <span style={{
+                padding: '4px 10px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 600,
+                background: (totpEnabled ?? user.totp_enabled) ? 'var(--success-bg)' : 'var(--info-bg)',
+                color: (totpEnabled ?? user.totp_enabled) ? 'var(--success-color)' : 'var(--info-color)',
+              }}>
+                {(totpEnabled ?? user.totp_enabled) ? '✓ 2FA enabled' : '2FA disabled'}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleToggle2FA(!(totpEnabled ?? user.totp_enabled))}
+                disabled={totpToggling}
+                className="btn btn-secondary"
+                style={{ padding: '8px 16px', fontSize: '14px' }}
+              >
+                {totpToggling ? 'Updating...' : (totpEnabled ?? user.totp_enabled) ? 'Disable 2FA' : 'Enable 2FA'}
+              </button>
+            </div>
           </div>
           )}
 

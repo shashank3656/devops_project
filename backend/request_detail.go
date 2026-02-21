@@ -85,6 +85,15 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 		case "clone":
 			handleRequestClone(w, r, id, req, userID)
 			return
+		case "rollback":
+			requestRollbackHandler(w, r, id, req, userID)
+			return
+		case "config-history":
+			handleRequestConfigHistory(w, r, id, req, userID)
+			return
+		case "promote":
+			handleRequestPromote(w, r, id, req, userID)
+			return
 		}
 	}
 

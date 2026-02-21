@@ -62,6 +62,10 @@ export default function AdminRequests() {
   const [terraformSaving, setTerraformSaving] = useState(false);
   const [costEstimate, setCostEstimate] = useState<{ link: string; cloud: string; service: string } | null>(null);
   const [cloningId, setCloningId] = useState<number | null>(null);
+  const [promotingId, setPromotingId] = useState<number | null>(null);
+  const [rollbackingId, setRollbackingId] = useState<number | null>(null);
+  const [configHistory, setConfigHistory] = useState<{ id: number; config: string; created_at: string; note?: string }[]>([]);
+  const [showConfigHistory, setShowConfigHistory] = useState(false);
   const limit = 20;
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -143,6 +147,8 @@ export default function AdminRequests() {
         setDetailRequest(req);
         setDetailComments([]);
         setDetailConfigOpen(false);
+        setShowConfigHistory(false);
+        setConfigHistory([]);
         setCommentBody('');
         fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
           .then((r) => r.json())
@@ -421,6 +427,76 @@ export default function AdminRequests() {
       setError('Failed to clone');
     } finally {
       setCloningId(null);
+    }
+  };
+
+  const handlePromote = async (id: number) => {
+    setPromotingId(id);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/request/${id}/promote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        fetchRequests({ offset });
+        if (detailRequest?.id === id) setDetailRequest(null);
+        const newId = data.id;
+        if (newId) window.location.href = `/requests?id=${newId}`;
+        setError('');
+      } else {
+        setError(data.error || 'Failed to promote');
+      }
+    } catch (_) {
+      setError('Failed to promote');
+    } finally {
+      setPromotingId(null);
+    }
+  };
+
+  const fetchConfigHistory = async (id: number) => {
+    try {
+      const res = await fetch(`${apiUrl}/api/request/${id}/config-history?limit=20`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setConfigHistory(d.history || []);
+        setShowConfigHistory(true);
+      }
+    } catch (_) {
+      setError('Failed to load config history');
+    }
+  };
+
+  const handleRollback = async (id: number, historyId?: number) => {
+    setRollbackingId(id);
+    setError('');
+    try {
+      const body = historyId ? { history_id: historyId } : {};
+      const res = await fetch(`${apiUrl}/api/request/${id}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setShowConfigHistory(false);
+        setConfigHistory([]);
+        const hr = await fetch(`${apiUrl}/api/admin/requests/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (hr.ok) {
+          const hd = await hr.json();
+          if (detailRequest?.id === id && hd.request) setDetailRequest(hd.request);
+        }
+        fetchRequests({ offset });
+      } else {
+        setError(data.error || 'Failed to rollback');
+      }
+    } catch (_) {
+      setError('Failed to rollback');
+    } finally {
+      setRollbackingId(null);
     }
   };
 
@@ -752,6 +828,18 @@ export default function AdminRequests() {
                               >
                                 {cloningId === req.id ? '…' : 'Clone'}
                               </button>
+                              {['completed', 'in_progress'].includes(req.status) && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{ padding: '6px 12px', fontSize: 13 }}
+                                  disabled={promotingId !== null}
+                                  onClick={(e) => { e.stopPropagation(); handlePromote(req.id); }}
+                                  title="Promote to next environment"
+                                >
+                                  {promotingId === req.id ? '…' : 'Promote'}
+                                </button>
+                              )}
                               {req.pr_url ? (
                                 <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
                                   Open PR
@@ -849,6 +937,30 @@ export default function AdminRequests() {
                   >
                     {cloningId === detailRequest.id ? '…' : 'Clone request'}
                   </button>
+                  {['completed', 'in_progress'].includes(detailRequest.status) && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 12px', fontSize: 13 }}
+                      disabled={promotingId !== null}
+                      onClick={() => handlePromote(detailRequest.id)}
+                      title="Create new request for next environment (dev→stage→prod)"
+                    >
+                      {promotingId === detailRequest.id ? '…' : 'Promote to next env'}
+                    </button>
+                  )}
+                  {['draft', 'in_progress'].includes(detailRequest.status) && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 12px', fontSize: 13 }}
+                      disabled={rollbackingId !== null}
+                      onClick={() => fetchConfigHistory(detailRequest.id)}
+                      title="Restore config from previous snapshot"
+                    >
+                      Rollback
+                    </button>
+                  )}
                   {detailRequest.pr_url && (
                     <a href={detailRequest.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
                       Open PR
@@ -930,6 +1042,42 @@ export default function AdminRequests() {
                       <pre style={{ marginTop: 8, padding: 12, background: 'var(--color-bg)', borderRadius: 8, overflow: 'auto', fontSize: 12, maxHeight: 280 }}>
                         {detailRequest.config}
                       </pre>
+                    )}
+                  </div>
+                )}
+
+                {showConfigHistory && detailRequest && (
+                  <div style={{ marginTop: 16, padding: 12, background: 'var(--color-bg)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <strong>Config history (rollback)</strong>
+                      <button type="button" className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setShowConfigHistory(false); setConfigHistory([]); }}>
+                        Close
+                      </button>
+                    </div>
+                    {configHistory.length === 0 ? (
+                      <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>No config snapshots yet.</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 200, overflowY: 'auto' }}>
+                        {configHistory.map((h) => (
+                          <div key={h.id} style={{ padding: 8, background: 'var(--color-bg)', borderRadius: 6, border: '1px solid var(--color-border)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                              <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                                #{h.id} · {h.note || 'snapshot'} · {new Date(h.created_at).toLocaleString()}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                style={{ padding: '4px 10px', fontSize: 12 }}
+                                disabled={rollbackingId !== null}
+                                onClick={() => handleRollback(detailRequest.id, h.id)}
+                              >
+                                Restore
+                              </button>
+                            </div>
+                            <pre style={{ margin: 0, fontSize: 11, overflow: 'auto', maxHeight: 60 }}>{String(h.config || '').slice(0, 200)}...</pre>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}
