@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 )
 
@@ -54,7 +53,7 @@ func ciWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	} else if payload.ApplicationID != "" {
 		req = GetPRRequestByApplicationID(payload.ApplicationID)
 	}
-	if req == nil || err != nil {
+	if req == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "request not found", "status": "error"})
