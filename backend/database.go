@@ -1855,6 +1855,55 @@ func GetAtRiskCount() (int, error) {
 	return count, err
 }
 
+// GetAtRiskRequestsForSLABreach returns at-risk requests that haven't been notified in the last 24h (for SLA breach alerts)
+func GetAtRiskRequestsForSLABreach(limit int) ([]PRRequest, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	query := `
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at
+		FROM pr_requests
+		WHERE due_date IS NOT NULL AND status NOT IN ('completed', 'rejected', 'cancelled')
+		  AND (due_date < NOW() OR due_date < NOW() + INTERVAL '24 hours')
+		  AND (sla_breach_notified_at IS NULL OR sla_breach_notified_at < NOW() - INTERVAL '24 hours')
+		ORDER BY due_date ASC
+		LIMIT $1
+	`
+	rows, err := DB.Query(query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var reqs []PRRequest
+	for rows.Next() {
+		var r PRRequest
+		var dueDate sql.NullTime
+		var createdBy, assignedTo sql.NullInt64
+		if err := rows.Scan(&r.ID, &r.Team, &r.Env, &r.Cloud, &r.Service, &r.ClientName, &r.ApplicationID, &r.Priority, &dueDate, &r.PRURL, &r.Branch, &r.FilePath, &r.Status, &r.RejectReason, &r.Config, &createdBy, &assignedTo, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if dueDate.Valid {
+			r.DueDate = &dueDate.Time
+		}
+		if createdBy.Valid {
+			id := int(createdBy.Int64)
+			r.CreatedBy = &id
+		}
+		if assignedTo.Valid {
+			id := int(assignedTo.Int64)
+			r.AssignedTo = &id
+		}
+		reqs = append(reqs, r)
+	}
+	return reqs, rows.Err()
+}
+
+// UpdateSLABreachNotified sets sla_breach_notified_at for a request (after sending SLA breach alert)
+func UpdateSLABreachNotified(requestID int) error {
+	_, err := DB.Exec("UPDATE pr_requests SET sla_breach_notified_at = NOW() WHERE id = $1", requestID)
+	return err
+}
+
 // GetPendingApprovalCount returns the number of requests pending any approval (user manager, devops, or legacy pending_approval)
 func GetPendingApprovalCount() (int, error) {
 	var count int

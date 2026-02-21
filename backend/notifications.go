@@ -15,6 +15,7 @@ func NotifyRequestApproved(req *PRRequest, message string) {
 	_ = InsertUserNotification(*req.CreatedBy, &reqID, "approved", message)
 	sendNotificationEmailIfConfigured(*req.CreatedBy, "Request approved", message)
 	NotifySlackRequestApproved(req, "")
+	NotifyTeamsRequestApproved(req, "")
 }
 
 // NotifyRequestRejected notifies the request creator that the request was rejected.
@@ -30,6 +31,7 @@ func NotifyRequestRejected(req *PRRequest, reason string) {
 	_ = InsertUserNotification(*req.CreatedBy, &reqID, "rejected", msg)
 	sendNotificationEmailIfConfigured(*req.CreatedBy, "Request rejected", msg)
 	NotifySlackRequestRejected(req, reason)
+	NotifyTeamsRequestRejected(req, reason)
 }
 
 // NotifyPRCreated notifies the request creator that a PR was created for their request.
@@ -45,6 +47,29 @@ func NotifyPRCreated(req *PRRequest, prURL string) {
 	_ = InsertUserNotification(*req.CreatedBy, &reqID, "pr_created", msg)
 	sendNotificationEmailIfConfigured(*req.CreatedBy, "PR created", msg)
 	NotifySlackPRCreated(req, prURL)
+	NotifyTeamsPRCreated(req, prURL)
+}
+
+// NotifySLABreach notifies the assignee (or creator) when a request exceeds SLA (overdue or due in 24h)
+func NotifySLABreach(req *PRRequest) {
+	if req == nil {
+		return
+	}
+	targetID := 0
+	if req.AssignedTo != nil && *req.AssignedTo > 0 {
+		targetID = *req.AssignedTo
+	} else if req.CreatedBy != nil && *req.CreatedBy > 0 {
+		targetID = *req.CreatedBy
+	}
+	if targetID <= 0 {
+		return
+	}
+	msg := "Request #" + strconv.Itoa(req.ID) + " is overdue or due within 24h. Team: " + req.Team + " | " + req.Cloud + " " + req.Service
+	reqID := req.ID
+	_ = InsertUserNotification(targetID, &reqID, "sla_breach", msg)
+	sendNotificationEmailIfConfigured(targetID, "SLA breach: Request overdue", msg)
+	NotifySlackSLABreach(req)
+	NotifyTeamsSLABreach(req, targetID)
 }
 
 // NotifyTicketAssigned notifies the assignee that a ticket was assigned to them.

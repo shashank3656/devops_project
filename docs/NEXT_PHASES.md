@@ -39,22 +39,22 @@ This document outlines the next phases of development for the InfraGate platform
 
 ---
 
-## Phase 7 – Analytics & UX (Higher Effort)
+## Phase 7 – Analytics & UX (Higher Effort) ✅
 
 | Feature | Description | Backend | Frontend |
 |---------|-------------|---------|----------|
-| **Dashboard widgets** | Customizable dashboard layout (drag-and-drop cards) | Store layout in DB or localStorage | Admin + User dashboards |
-| **Request analytics** | Charts: requests by team/env/cloud over time; avg time to approval | `GET /api/admin/analytics/requests` | Admin dashboard charts |
-| **SLA breach alerts** | Proactive alerts when request exceeds SLA (email/Slack) | Cron or event-driven; notify assignee | — |
-| **Dark mode (admin)** | Toggle for admin UI dark mode | — | Admin layout theme toggle |
+| **Request analytics** | Charts: requests by team/env/cloud over time; avg time to approval | `GET /api/admin/analytics/requests` | Admin dashboard (already has charts) |
+| **SLA breach alerts** | Proactive alerts when request exceeds SLA (email/Slack/Teams) | `GET /api/admin/sla-breach-check` (call from cron) | — |
+| **Dark mode (admin)** | Toggle for admin UI dark mode | — | ✅ Already implemented |
+| **Dashboard widgets** | Customizable dashboard layout (drag-and-drop) | — | Deferred |
 
 ---
 
-## Phase 8 – Advanced Integrations (Optional)
+## Phase 8 – Advanced Integrations (Optional) ✅
 
 | Feature | Description | Effort |
 |---------|-------------|--------|
-| **Microsoft Teams** | Notify on new request / approval (like Slack) | Low |
+| **Microsoft Teams** | Notify on new request / approval (like Slack) | ✅ Implemented |
 | **PagerDuty / Opsgenie** | Create incident when critical request fails | Medium |
 | **Terraform Cloud** | Trigger runs from approved requests | High |
 | **Cost dashboard** | Infracost integration; show cost trends per team/env | Medium |
@@ -83,6 +83,16 @@ This document outlines the next phases of development for the InfraGate platform
 
 ---
 
+## Implementation Checklist (Phase 7 & 8) ✅
+
+- [x] `GET /api/admin/analytics/requests` – trend, by_team, by_env, by_cloud, SLA
+- [x] `GET /api/admin/sla-breach-check` – send SLA breach notifications (call from cron hourly)
+- [x] Microsoft Teams – `TEAMS_WEBHOOK_URL`; `backend/teams.go`; notify on approve/reject/PR created/SLA breach
+- [x] Dark mode – already in admin (toggle in header)
+- [x] Migration 24: `pr_requests.sla_breach_notified_at`
+
+---
+
 ## Quick Reference: Config Additions
 
 ```bash
@@ -95,6 +105,9 @@ SMTP_FROM=noreply@example.com
 
 # Phase 6 – Webhook
 WEBHOOK_APPROVE_URL=https://your-webhook.example.com/approved
+
+# Phase 8 – Microsoft Teams
+TEAMS_WEBHOOK_URL=https://xxx.webhook.office.com/...
 
 # Phase 6 – Rate limit (optional)
 RATE_LIMIT_RPM=60

@@ -517,6 +517,8 @@ func main() {
 	http.HandleFunc("/api/admin/notifications", adminNotificationsHandler)
 	http.HandleFunc("/api/admin/stats", adminStatsHandler)
 	http.HandleFunc("/api/admin/dashboard-stats", adminDashboardStatsHandler)
+	http.HandleFunc("/api/admin/analytics/requests", adminAnalyticsHandler)
+	http.HandleFunc("/api/admin/sla-breach-check", adminSLABreachCheckHandler)
 	http.HandleFunc("/api/admin/audit-log", adminAuditLogHandler)
 	http.HandleFunc("/api/admin/user-activity", adminUserActivityHandler)
 	http.HandleFunc("/api/admin/webhooks", adminWebhooksHandler)
