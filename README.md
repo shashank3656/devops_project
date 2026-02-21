@@ -51,6 +51,7 @@ All documentation is available in the [`docs/`](./docs/) directory:
 - [Backend Documentation](./docs/backend-README.md)
 - [Admin Frontend](./docs/ADMIN_FRONTEND.md) (teams & members, runs on port 3001)
 - [Feature Guide](./docs/FEATURE_GUIDE.md) (admin secret rollout, email enablement, delete teams, and more)
+- [Next Phases](./docs/NEXT_PHASES.md) (Phase 5–8 roadmap: password reset, rate limiting, analytics, and more)
 
 ## Features
 
