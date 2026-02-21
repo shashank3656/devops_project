@@ -343,6 +343,17 @@ func MigrateDatabase() error {
 		}
 	}
 
+	// Migration 23: password_reset_tokens (for forgot password flow)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS password_reset_tokens (
+			token VARCHAR(64) PRIMARY KEY,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			expires_at TIMESTAMP NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires ON password_reset_tokens(expires_at)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }

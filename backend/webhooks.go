@@ -43,9 +43,46 @@ func githubWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("GitHub webhook: %s", eventType)
 }
 
+// FireWebhookApproveURL POSTs to WEBHOOK_APPROVE_URL when event is approved or pr_created (Phase 6)
+func FireWebhookApproveURL(event string, payload map[string]interface{}) {
+	if WebhookApproveURL == "" {
+		return
+	}
+	if event != "approved" && event != "pr_created" {
+		return
+	}
+	if payload == nil {
+		payload = make(map[string]interface{})
+	}
+	payload["event"] = event
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	go func() {
+		req, err := http.NewRequest("POST", WebhookApproveURL, bytes.NewReader(body))
+		if err != nil {
+			log.Printf("[Webhook] WEBHOOK_APPROVE_URL new request: %v", err)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Webhook-Event", event)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			log.Printf("[Webhook] WEBHOOK_APPROVE_URL POST: %v", err)
+			return
+		}
+		resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			log.Printf("[Webhook] WEBHOOK_APPROVE_URL status %d", resp.StatusCode)
+		}
+	}()
+}
+
 // FireOutboundWebhooks sends a POST request to each enabled webhook subscribed to the event (approved, pr_created, rejected, assigned).
 // Payload should include at least request_id, event, and request summary. Called after Notify* in admin/devops handlers.
 func FireOutboundWebhooks(event string, payload map[string]interface{}) {
+	FireWebhookApproveURL(event, payload)
 	if payload == nil {
 		payload = make(map[string]interface{})
 	}

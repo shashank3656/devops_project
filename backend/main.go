@@ -485,6 +485,8 @@ func main() {
 	http.HandleFunc("/api/logs/github", logsGitHubHandler)
 	http.HandleFunc("/api/auth/signup", signupHandler)
 	http.HandleFunc("/api/auth/login", loginHandler)
+	http.HandleFunc("/api/auth/forgot-password", forgotPasswordHandler)
+	http.HandleFunc("/api/auth/reset-password", resetPasswordHandler)
 	http.HandleFunc("/api/me", meHandler)
 	http.HandleFunc("/api/me/teams", meTeamsHandler)
 	http.HandleFunc("/api/me/teams/", meTeamMembersRouter)

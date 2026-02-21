@@ -1513,6 +1513,37 @@ func UpdateUserPassword(userID int, hashedPassword string) error {
 	return nil
 }
 
+// SavePasswordResetToken creates a password reset token for user (1 hour expiry)
+func SavePasswordResetToken(userID int, token string) error {
+	_, err := DB.Exec(
+		"INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL '1 hour')",
+		token, userID,
+	)
+	return err
+}
+
+// GetUserIDByPasswordResetToken returns user ID if token is valid and not expired
+func GetUserIDByPasswordResetToken(token string) (int, error) {
+	var userID int
+	err := DB.QueryRow(
+		"SELECT user_id FROM password_reset_tokens WHERE token = $1 AND expires_at > NOW()",
+		token,
+	).Scan(&userID)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return userID, nil
+}
+
+// ConsumePasswordResetToken deletes the token after use (one-time use)
+func ConsumePasswordResetToken(token string) error {
+	_, err := DB.Exec("DELETE FROM password_reset_tokens WHERE token = $1", token)
+	return err
+}
+
 // GetUserByVerificationToken returns user ID if token is valid and not expired
 func GetUserByVerificationToken(token string) (int, error) {
 	var userID int

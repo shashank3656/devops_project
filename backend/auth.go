@@ -742,6 +742,24 @@ func meTeamMembersRouter(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"members": members, "status": "ok"})
 		return
 	}
+	if r.Method == "DELETE" && len(parts) >= 3 {
+		targetUserID, _ := strconv.Atoi(parts[2])
+		if targetUserID <= 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid user id", "status": "error"})
+			return
+		}
+		if err := RemoveTeamMember(teamID, targetUserID); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "member removed"})
+		return
+	}
 	if r.Method != "POST" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1428,4 +1446,126 @@ func setVerifiedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"message": "user verified", "status": "ok"})
+}
+
+// forgotPasswordHandler POST /api/auth/forgot-password - sends reset link to user's email
+func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if DB == nil {
+		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		return
+	}
+	var body struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	email := strings.TrimSpace(body.Email)
+	if email == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "email required", "status": "error"})
+		return
+	}
+	user, err := GetUserByEmailOrUsername(email)
+	if err != nil || user == nil || user.Email == "" {
+		// Don't reveal if user exists - always return success
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "If an account exists with that email, you will receive a reset link."})
+		return
+	}
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	token := hex.EncodeToString(tokenBytes)
+	if err := SavePasswordResetToken(user.ID, token); err != nil {
+		log.Printf("[Auth] SavePasswordResetToken: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	resetURL := strings.TrimSuffix(FrontendURL, "/") + "/reset-password?token=" + token
+	subject := "Password reset - InfraGate"
+	bodyText := "You requested a password reset. Click the link below to set a new password (valid for 1 hour):\n\n" + resetURL + "\n\nIf you did not request this, ignore this email."
+	if err := SendEmail(user.Email, subject, bodyText); err != nil {
+		log.Printf("[Auth] SendEmail forgot-password: %v", err)
+		// Still return success to not reveal user existence
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "If an account exists with that email, you will receive a reset link."})
+}
+
+// resetPasswordHandler POST /api/auth/reset-password - sets new password using token
+func resetPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if DB == nil {
+		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		return
+	}
+	var body struct {
+		Token       string `json:"token"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	token := strings.TrimSpace(body.Token)
+	if token == "" {
+		token = r.URL.Query().Get("token")
+	}
+	if token == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "token required", "status": "error"})
+		return
+	}
+	if len(body.NewPassword) < 6 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "password must be at least 6 characters", "status": "error"})
+		return
+	}
+	userID, err := GetUserIDByPasswordResetToken(token)
+	if err != nil || userID <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid or expired token", "status": "error"})
+		return
+	}
+	hashed, err := bcrypt.GenerateFromPassword([]byte(body.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if err := UpdateUserPassword(userID, string(hashed)); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	_ = ConsumePasswordResetToken(token)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Password updated. You can now sign in."})
 }

@@ -58,17 +58,16 @@ func NotifyTicketAssigned(req *PRRequest, assigneeID int) {
 	sendNotificationEmailIfConfigured(assigneeID, "Ticket assigned", msg)
 }
 
-// sendNotificationEmailIfConfigured sends an email if SMTP is configured (env: SMTP_HOST or similar). No-op for now; hook for future.
+// sendNotificationEmailIfConfigured sends an email if SMTP is configured (env: SMTP_HOST).
 func sendNotificationEmailIfConfigured(userID int, subject, body string) {
-	// TODO: when SMTP is configured (e.g. SMTP_HOST), load user email and send
-	_ = userID
-	_ = subject
-	_ = body
-	if os.Getenv("SMTP_HOST") != "" {
-		user, err := GetUserByID(userID)
-		if err != nil || user == nil || user.Email == "" {
-			return
-		}
-		log.Printf("[Email] Would send to %s: %s - %s", user.Email, subject, body)
+	if os.Getenv("SMTP_HOST") == "" {
+		return
+	}
+	user, err := GetUserByID(userID)
+	if err != nil || user == nil || user.Email == "" {
+		return
+	}
+	if err := SendEmail(user.Email, subject, body); err != nil {
+		log.Printf("[Email] Failed to send to %s: %v", user.Email, err)
 	}
 }
