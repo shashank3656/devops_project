@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { useToast } from '../context/ToastContext';
 import { getStoredTheme, setStoredTheme } from '../components/AppLayout';
+import { SITE_NAME } from '../lib/site';
 
 export default function Login() {
   const router = useRouter();
@@ -149,13 +150,13 @@ export default function Login() {
   return (
     <>
       <Head>
-        <title>Login - User</title>
+        <title>Login - {SITE_NAME}</title>
       </Head>
       <div className="login-page">
         <div className="login-page__left">
           <div className="login-page__brand">
             <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">User</h1>
+            <h1 className="login-page__title">{SITE_NAME}</h1>
             <p className="login-page__tagline">
               Cloud-agnostic infrastructure management. Self-service requests for your team.
             </p>
