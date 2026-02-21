@@ -15,6 +15,12 @@ var (
 
 	// SlackWebhookURL - optional Slack incoming webhook for notifications
 	SlackWebhookURL = getEnv("SLACK_WEBHOOK_URL", "")
+
+	// FrontendURL - base URL for user frontend (for password reset links). Default: http://localhost:3000
+	FrontendURL = getEnv("FRONTEND_URL", "http://localhost:3000")
+
+	// WebhookApproveURL - optional URL to POST when request is approved
+	WebhookApproveURL = getEnv("WEBHOOK_APPROVE_URL", "")
 )
 
 func getEnv(key, defaultValue string) string {

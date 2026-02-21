@@ -149,8 +149,31 @@ export default function MyTeamsPage() {
                   <strong style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Members</strong>
                   <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
                     {(membersByTeam[team.id] || []).map((m) => (
-                      <li key={m.id} style={{ marginBottom: 4 }}>
-                        {m.username || m.email} — <span style={{ color: 'var(--text-secondary)' }}>{m.role}</span>
+                      <li key={m.id} style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>{m.username || m.email} — <span style={{ color: 'var(--text-secondary)' }}>{m.role}</span></span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ padding: '2px 8px', fontSize: 12 }}
+                          onClick={async () => {
+                            if (!confirm(`Remove ${m.username || m.email} from ${team.name}?`)) return;
+                            const token = localStorage.getItem('token');
+                            if (!token) return;
+                            const res = await fetch(`${apiUrl}/api/me/teams/${team.id}/members/${m.user_id}`, {
+                              method: 'DELETE',
+                              headers: { Authorization: `Bearer ${token}` },
+                            });
+                            if (res.ok) {
+                              toast('Member removed', 'success');
+                              loadMembers(team.id);
+                            } else {
+                              const d = await res.json().catch(() => ({}));
+                              toast(d.error || 'Failed to remove', 'error');
+                            }
+                          }}
+                        >
+                          Remove
+                        </button>
                       </li>
                     ))}
                     {(membersByTeam[team.id] || []).length === 0 && (

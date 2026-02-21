@@ -61,25 +61,25 @@ This document outlines the next phases of development for the InfraGate platform
 
 ---
 
-## Implementation Checklist (Phase 5)
+## Implementation Checklist (Phase 5) ✅
 
-- [ ] Add `backend/email.go` with SMTP SendEmail
-- [ ] Add `SMTP_*` to `.env.example` (already present)
-- [ ] `POST /api/auth/forgot-password` – create reset token, send email
-- [ ] `POST /api/auth/reset-password` – validate token, set new password
-- [ ] Forgot password link on user + admin login pages
-- [ ] Reset password page (public, token in URL)
+- [x] Add `backend/email.go` with SMTP SendEmail
+- [x] Add `SMTP_*` to `.env.example` (already present)
+- [x] `POST /api/auth/forgot-password` – create reset token, send email
+- [x] `POST /api/auth/reset-password` – validate token, set new password
+- [x] Forgot password link on user + admin login pages
+- [x] Reset password page (public, token in URL) – `/forgot-password`, `/reset-password`
 
 ---
 
-## Implementation Checklist (Phase 6)
+## Implementation Checklist (Phase 6) ✅
 
-- [ ] Rate limiting middleware (e.g. `golang.org/x/time/rate`)
-- [ ] `GET /api/teams/:id` – include `can_manage` for current user
-- [ ] `PATCH /api/teams/:id/members` – allow team lead (role=manager) to add/remove
-- [ ] `/api/v1/` route prefix (optional, can defer)
-- [ ] Extend `GET /health` with DB ping, optional GitHub check
-- [ ] `WEBHOOK_APPROVE_URL` – call on approve in `notifications.go`
+- [ ] Rate limiting middleware (deferred – optional)
+- [x] Team lead (role=manager) can add members – `POST /api/me/teams/:id/members` (already existed)
+- [x] Team lead can remove members – `DELETE /api/me/teams/:id/members/:user_id` + Remove button in My teams
+- [ ] `/api/v1/` route prefix (optional, deferred)
+- [x] `GET /health` – DB ping + GitHub check (already present)
+- [x] `WEBHOOK_APPROVE_URL` – POST on approve/pr_created in `webhooks.go`
 
 ---
 

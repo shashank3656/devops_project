@@ -198,6 +198,11 @@ export default function AdminLogin() {
               </button>
             </form>
             )}
+            {!pending2fa && (
+              <p style={{ marginTop: 12, fontSize: 13 }}>
+                <a href="/forgot-password" style={{ color: 'var(--primary-color)', textDecoration: 'none' }}>Forgot password?</a>
+              </p>
+            )}
             <p className="login-page__hint">
               Default: admin / admin123 — change after first login
             </p>
