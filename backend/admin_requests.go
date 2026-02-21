@@ -33,12 +33,14 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stats, _ := GetDashboardStats()
+	atRisk, _ := GetAtRiskCount()
 	resp := map[string]interface{}{
 		"total_users":        stats.TotalUsers,
 		"total_teams":        stats.TotalTeams,
 		"unverified_users":   stats.UnverifiedUsers,
 		"requests_this_week": stats.RequestsThisWeek,
 		"pending_approval":   stats.PendingApproval,
+		"at_risk_count":      atRisk,
 		"status":             "ok",
 	}
 
@@ -155,6 +157,32 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch audit log", "status": "error"})
+		return
+	}
+	if r.URL.Query().Get("format") == "csv" {
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment; filename=audit-log.csv")
+		csvLine := func(ss ...string) string {
+			for i, s := range ss {
+				if strings.Contains(s, ",") || strings.Contains(s, "\"") || strings.Contains(s, "\n") {
+					ss[i] = "\"" + strings.ReplaceAll(strings.ReplaceAll(s, "\"", "\"\""), "\n", " ") + "\""
+				}
+			}
+			return strings.Join(ss, ",")
+		}
+		w.Write([]byte(csvLine("id", "created_at", "admin_username", "action", "resource_type", "resource_id", "details") + "\n"))
+		all, _ := GetAuditLogs(10000, 0, actionFilter, fromDate, toDate)
+		for _, e := range all {
+			w.Write([]byte(csvLine(
+				strconv.Itoa(e.ID),
+				e.CreatedAt.Format("2006-01-02 15:04:05"),
+				e.AdminUsername,
+				e.Action,
+				e.ResourceType,
+				e.ResourceID,
+				e.Details,
+			) + "\n"))
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -535,6 +563,7 @@ func adminRequestDetailHandler(w http.ResponseWriter, r *http.Request, id int) {
 		"created_by": req.CreatedBy, "created_by_username": createdByUsername,
 		"assigned_to": req.AssignedTo,
 		"config": configMasked,
+		"terraform_plan_output": req.TerraformPlanOutput,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"request": resp, "status": "ok"})
@@ -748,6 +777,31 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "request_status": body.Status})
+		return
+
+	case "plan-output":
+		if r.Method != "PATCH" && r.Method != "PUT" && r.Method != "POST" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			Output string `json:"output"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			return
+		}
+		if err := UpdatePRRequestTerraformPlanOutput(id, body.Output); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		AppendAuditLog(adminIDPtr, "request_plan_output", "pr_request", strconv.Itoa(id), "terraform plan/output updated")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Terraform output updated"})
 		return
 
 	case "reassign":

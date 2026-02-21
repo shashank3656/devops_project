@@ -252,6 +252,27 @@ export default function History() {
     }
   };
 
+  const cloneRequest = async (id: number) => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    try {
+      const res = await fetch(`${apiUrl}/api/request/${id}/clone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast(d?.message || 'Request cloned as draft. Edit and submit from History.', 'success');
+        setDetailRequest(null);
+        fetchHistory();
+      } else {
+        toast(d?.error || 'Failed to clone', 'error');
+      }
+    } catch (_) {
+      toast('Failed to clone', 'error');
+    }
+  };
+
   const deleteDraft = async (id: number) => {
     if (!confirm('Delete this draft? This cannot be undone.')) return;
     const token = localStorage.getItem('token');
@@ -865,9 +886,10 @@ export default function History() {
                             {(currentUserId == null || req.created_by === currentUserId) && (
                               <button
                                 type="button"
-                                className="btn btn-primary"
+                                className="btn btn-secondary"
                                 style={{ padding: '6px 12px', fontSize: '13px' }}
-                                onClick={() => resubmitRequest(req.id)}
+                                onClick={() => cloneRequest(req.id)}
+                                title="Clone as new draft"
                               >
                                 Clone
                               </button>
@@ -1030,6 +1052,11 @@ export default function History() {
                       {detailRequest.status === 'rejected' && (
                         <button type="button" onClick={() => resubmitRequest(detailRequest.id)} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '14px' }}>
                           Resubmit as draft
+                        </button>
+                      )}
+                      {(currentUserId == null || detailRequest.created_by === currentUserId) && (
+                        <button type="button" onClick={() => cloneRequest(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }} title="Clone as new draft">
+                          Clone request
                         </button>
                       )}
                       {CANCELLABLE_STATUSES.includes(detailRequest.status) &&

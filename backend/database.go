@@ -65,6 +65,7 @@ type PRRequest struct {
 	CreatedByUsername string  `json:"created_by_username,omitempty"` // set in history for "who raised" when view=team
 	AssignedTo        *int    `json:"assigned_to"`                   // DevOps user assigned after PR creation (by priority)
 	Config            string  `json:"config"`
+	TerraformPlanOutput string `json:"terraform_plan_output,omitempty"` // Terraform plan/apply output from CI (display in UI)
 }
 
 // RequestComment is a comment on a PR request
@@ -990,7 +991,7 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 // GetPRRequestByID retrieves a single PR request by ID
 func GetPRRequestByID(id int) (*PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at, COALESCE(terraform_plan_output,'') AS terraform_plan_output
 		FROM pr_requests WHERE id = $1
 	`
 	var req PRRequest
@@ -999,7 +1000,7 @@ func GetPRRequestByID(id int) (*PRRequest, error) {
 	err := DB.QueryRow(query, id).Scan(
 		&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
 		&req.ApplicationID, &req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
-		&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt,
+		&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt, &req.TerraformPlanOutput,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1209,6 +1210,15 @@ func GetWorkloadSummaryByPerson() ([]WorkloadSummaryRow, error) {
 		out = append(out, r)
 	}
 	return out, nil
+}
+
+// UpdatePRRequestTerraformPlanOutput sets terraform_plan_output for a request (from CI or admin)
+func UpdatePRRequestTerraformPlanOutput(id int, output string) error {
+	_, err := DB.Exec(
+		"UPDATE pr_requests SET terraform_plan_output = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+		output, id,
+	)
+	return err
 }
 
 // UpdatePRRequestFull updates a draft request (config, priority, due_date, status). Only for draft requests. (config, priority, due_date, status). Only for draft requests.
@@ -1667,6 +1677,15 @@ func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string
 
 	var count int
 	err := DB.QueryRow(query, args...).Scan(&count)
+	return count, err
+}
+
+// GetAtRiskCount returns the number of requests with due_date overdue or due in 24h (for SLA tracking)
+func GetAtRiskCount() (int, error) {
+	var count int
+	err := DB.QueryRow(
+		"SELECT COUNT(*) FROM pr_requests WHERE due_date IS NOT NULL AND status NOT IN ('completed', 'rejected', 'cancelled') AND (due_date < NOW() OR due_date < NOW() + INTERVAL '24 hours')",
+	).Scan(&count)
 	return count, err
 }
 

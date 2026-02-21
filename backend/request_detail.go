@@ -82,6 +82,9 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 		case "cancel":
 			handleRequestCancel(w, r, id, req, userID)
 			return
+		case "clone":
+			handleRequestClone(w, r, id, req, userID)
+			return
 		}
 	}
 
@@ -98,6 +101,66 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
+// handleRequestClone clones any request as a new draft - POST /api/request/:id/clone (creator or admin)
+func handleRequestClone(w http.ResponseWriter, r *http.Request, id int, req *PRRequest, userID int) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	// Creator can clone; admin can clone any
+	canClone := req.CreatedBy != nil && *req.CreatedBy == userID
+	if !canClone {
+		_, isAdmin := requireAdmin(w, r)
+		canClone = isAdmin
+	}
+	if !canClone {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator or admin can clone this request", "status": "error"})
+		return
+	}
+	appID, err := GenerateApplicationID()
+	if err != nil {
+		log.Printf("Clone GenerateApplicationID: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	branchName := req.Team + "/" + req.Env + "/" + appID
+	createdBy := req.CreatedBy
+	if createdBy == nil && userID > 0 {
+		createdBy = &userID
+	}
+	newReq := &PRRequest{
+		Team:          req.Team,
+		Env:           req.Env,
+		Cloud:         req.Cloud,
+		Service:       req.Service,
+		ClientName:    req.ClientName,
+		ApplicationID: appID,
+		Priority:      req.Priority,
+		DueDate:       req.DueDate,
+		PRURL:         "",
+		Branch:        branchName,
+		FilePath:      req.FilePath,
+		Status:        "draft",
+		Config:        req.Config,
+		CreatedBy:     createdBy,
+	}
+	if err := SavePRRequest(newReq); err != nil {
+		log.Printf("Clone: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	AppendUserActivity(createdBy, "request_clone", "pr_request", strconv.Itoa(newReq.ID), "cloned from #"+strconv.Itoa(id))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"id":      newReq.ID,
+		"message": "Request cloned as draft. Edit and submit from History.",
+	})
 }
 
 // handleRequestResubmit clones a rejected (or any) request as a new draft - POST /api/request/:id/resubmit

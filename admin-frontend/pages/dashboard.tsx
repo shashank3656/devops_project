@@ -22,6 +22,7 @@ interface DashboardStats {
   unverified_users: number;
   requests_this_week: number;
   pending_approval: number;
+  at_risk_count?: number;
   date_filter?: {
     from: string;
     to: string;
@@ -206,6 +207,18 @@ export default function AdminDashboard() {
                       <div className="dashboard-kpi-card__label">Teams</div>
                     </div>
                   </div>
+                  {(quickStats.at_risk_count ?? 0) > 0 && (
+                    <Link href="/requests?at_risk=true" className="dashboard-kpi-card dashboard-kpi-card--danger" style={{ textDecoration: 'none', color: 'inherit' }}>
+                      <div className="dashboard-kpi-card__icon">
+                        <IconBell className="dashboard-kpi-card__icon-svg" />
+                      </div>
+                      <div>
+                        <div className="dashboard-kpi-card__value">{quickStats.at_risk_count}</div>
+                        <div className="dashboard-kpi-card__label">At risk (SLA)</div>
+                        <div className="dashboard-kpi-card__trend" style={{ color: 'var(--color-danger)' }}>Overdue / due in 24h</div>
+                      </div>
+                    </Link>
+                  )}
                   <div className={`dashboard-kpi-card ${quickStats.pending_approval === 0 ? '' : 'dashboard-kpi-card--warning'}`}>
                     <div className="dashboard-kpi-card__icon">
                       <IconBell className="dashboard-kpi-card__icon-svg" />
