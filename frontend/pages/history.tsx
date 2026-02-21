@@ -65,6 +65,8 @@ export default function History() {
   const [viewMode, setViewMode] = useState<'mine' | 'team'>('mine');
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const defaultedToTeamView = useRef(false);
+  const [configHistory, setConfigHistory] = useState<{ id: number; config: string; created_at: string; note?: string }[]>([]);
+  const [showConfigHistory, setShowConfigHistory] = useState(false);
   const rawConfigByRequestId = useRef<Record<number, string>>({});
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -147,6 +149,8 @@ export default function History() {
     setCanApproveByManager(false);
     setComments([]);
     setTags([]);
+    setConfigHistory([]);
+    setShowConfigHistory(false);
     setNewTag('');
     setDiffResult(null);
     setCommentBody('');
@@ -273,6 +277,60 @@ export default function History() {
     }
   };
 
+  const promoteRequest = async (id: number) => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    try {
+      const res = await fetch(`${apiUrl}/api/request/${id}/promote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast(d?.message || `Request created for ${d?.env || 'next env'}. Edit and submit from History.`, 'success');
+        setDetailRequest(null);
+        fetchHistory();
+      } else {
+        toast(d?.error || 'Failed to promote', 'error');
+      }
+    } catch (_) {
+      toast('Failed to promote', 'error');
+    }
+  };
+
+  const rollbackRequest = async (id: number, historyId?: number, config?: string) => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    try {
+      const body: { history_id?: number; config?: string } = {};
+      if (historyId) body.history_id = historyId;
+      if (config) body.config = config;
+      const res = await fetch(`${apiUrl}/api/request/${id}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body)
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast(d?.message || 'Config rolled back', 'success');
+        setConfigHistory([]);
+        setShowConfigHistory(false);
+        if (detailRequest?.id === id) {
+          const hr = await fetch(`${apiUrl}/api/history/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+          if (hr.ok) {
+            const hd = await hr.json();
+            setDetailRequest(hd.request || hd);
+          }
+        }
+        fetchHistory();
+      } else {
+        toast(d?.error || 'Failed to rollback', 'error');
+      }
+    } catch (_) {
+      toast('Failed to rollback', 'error');
+    }
+  };
+
   const deleteDraft = async (id: number) => {
     if (!confirm('Delete this draft? This cannot be undone.')) return;
     const token = localStorage.getItem('token');
@@ -347,6 +405,23 @@ export default function History() {
       toast('Failed to add comment', 'error');
     } finally {
       setCommentSubmitting(false);
+    }
+  };
+
+  const fetchConfigHistory = async (id: number) => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    try {
+      const res = await fetch(`${apiUrl}/api/request/${id}/config-history?limit=20`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setConfigHistory(d.history || []);
+        setShowConfigHistory(true);
+      }
+    } catch (_) {
+      toast('Failed to load config history', 'error');
     }
   };
 
@@ -894,6 +969,18 @@ export default function History() {
                                 Clone
                               </button>
                             )}
+                            {(currentUserId == null || req.created_by === currentUserId) &&
+                             ['completed', 'in_progress'].includes(req.status) && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ padding: '6px 12px', fontSize: '13px' }}
+                                onClick={() => promoteRequest(req.id)}
+                                title="Promote to next environment"
+                              >
+                                Promote
+                              </button>
+                            )}
                             {CANCELLABLE_STATUSES.includes(req.status) &&
                              (currentUserId == null || req.created_by === currentUserId) && (
                               <button
@@ -1059,6 +1146,18 @@ export default function History() {
                           Clone request
                         </button>
                       )}
+                      {(currentUserId == null || detailRequest.created_by === currentUserId) &&
+                       ['completed', 'in_progress'].includes(detailRequest.status) && (
+                        <button type="button" onClick={() => promoteRequest(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }} title="Create new request for next environment (dev→stage→prod)">
+                          Promote to next env
+                        </button>
+                      )}
+                      {(currentUserId == null || detailRequest.created_by === currentUserId) &&
+                       ['draft', 'in_progress'].includes(detailRequest.status) && (
+                        <button type="button" onClick={() => fetchConfigHistory(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }} title="Restore config from previous snapshot">
+                          Rollback
+                        </button>
+                      )}
                       {CANCELLABLE_STATUSES.includes(detailRequest.status) &&
                        (currentUserId == null || detailRequest.created_by === currentUserId) && (
                         <button type="button" onClick={() => cancelRequest(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }}>
@@ -1122,6 +1221,40 @@ export default function History() {
                         )}
                       </div>
                     </div>
+                    {showConfigHistory && detailRequest && (
+                      <div style={{ marginBottom: 12, padding: 12, background: 'var(--bg-gray-50)', borderRadius: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <strong>Config history (rollback)</strong>
+                          <button type="button" className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setShowConfigHistory(false); setConfigHistory([]); }}>
+                            Close
+                          </button>
+                        </div>
+                        {configHistory.length === 0 ? (
+                          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>No config snapshots yet.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 200, overflowY: 'auto' }}>
+                            {configHistory.map((h) => (
+                              <div key={h.id} style={{ padding: 8, background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border-color)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                    #{h.id} · {h.note || 'snapshot'} · {new Date(h.created_at).toLocaleString()}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    style={{ padding: '4px 10px', fontSize: 12 }}
+                                    onClick={() => rollbackRequest(detailRequest.id, h.id)}
+                                  >
+                                    Restore
+                                  </button>
+                                </div>
+                                <pre style={{ margin: 0, fontSize: 11, overflow: 'auto', maxHeight: 60 }}>{String(h.config || '').slice(0, 200)}...</pre>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {diffResult && diffResult.changes && diffResult.changes.length > 0 && (
                       <div style={{ marginBottom: 12, padding: 12, background: 'var(--bg-gray-50)', borderRadius: 8 }}>
                         <strong>Diff (this vs #{compareWithId})</strong>
