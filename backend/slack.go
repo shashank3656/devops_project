@@ -73,6 +73,23 @@ func NotifySlackRequestRejected(req *PRRequest, reason string) {
 	})
 }
 
+// NotifySlackSLABreach sends Slack notification when request exceeds SLA (overdue or due in 24h)
+func NotifySlackSLABreach(req *PRRequest) {
+	if req == nil {
+		return
+	}
+	text := "⚠️ SLA breach: Request #" + strconv.Itoa(req.ID) + " is overdue or due within 24h\nTeam: " + req.Team + " | Env: " + req.Env + " | " + req.Cloud + " " + req.Service
+	SendSlackNotification(text, []map[string]interface{}{
+		{
+			"type": "section",
+			"text": map[string]interface{}{
+				"type": "mrkdwn",
+				"text": "*SLA breach*\n" + text,
+			},
+		},
+	})
+}
+
 // NotifySlackPRCreated sends Slack notification when PR is created
 func NotifySlackPRCreated(req *PRRequest, prURL string) {
 	if req == nil || prURL == "" {

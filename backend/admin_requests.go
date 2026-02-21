@@ -189,6 +189,98 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"entries": entries, "status": "ok"})
 }
 
+// adminAnalyticsHandler GET /api/admin/analytics/requests - extended analytics (trend, by team/env/cloud, SLA)
+func adminAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"trend": []interface{}{}, "by_team": []interface{}{}, "by_env": []interface{}{}, "by_cloud": []interface{}{}, "sla": nil, "status": "ok"})
+		return
+	}
+	days := 14
+	if d := r.URL.Query().Get("days"); d != "" {
+		if n, err := strconv.Atoi(d); err == nil && n > 0 && n <= 90 {
+			days = n
+		}
+	}
+	teamFilter := strings.TrimSpace(r.URL.Query().Get("team"))
+	trend, _ := GetRequestsTrend(days, teamFilter)
+	teamComp, _ := GetTeamComparison("", "")
+	avgHours, slaCnt, _ := GetSLAMetrics(teamFilter, "", "")
+	slaResp := map[string]interface{}{"avg_hours": avgHours, "completed_count": slaCnt}
+	if slaCnt == 0 {
+		slaResp = nil
+	}
+	stats, _ := GetStats(0)
+	byEnv := []map[string]interface{}{}
+	byCloud := []map[string]interface{}{}
+	if stats != nil {
+		for k, v := range stats.ByEnv {
+			byEnv = append(byEnv, map[string]interface{}{"name": k, "count": v})
+		}
+		for k, v := range stats.ByCloud {
+			byCloud = append(byCloud, map[string]interface{}{"name": k, "count": v})
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"trend":    trend,
+		"by_team":  teamComp,
+		"by_env":   byEnv,
+		"by_cloud": byCloud,
+		"sla":      slaResp,
+		"status":   "ok",
+	})
+}
+
+// adminSLABreachCheckHandler GET /api/admin/sla-breach-check - find at-risk requests, send notifications, mark notified.
+// Call from cron (e.g. every hour) to send SLA breach alerts. Requires admin auth.
+func adminSLABreachCheckHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" && r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"notified": 0, "status": "ok"})
+		return
+	}
+	reqs, err := GetAtRiskRequestsForSLABreach(50)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	notified := 0
+	for _, req := range reqs {
+		NotifySLABreach(&req)
+		_ = UpdateSLABreachNotified(req.ID)
+		notified++
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"notified": notified, "status": "ok"})
+}
+
 // adminRequestsHandler GET /api/admin/requests - list all PR requests (admin only, no user filter)
 func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)

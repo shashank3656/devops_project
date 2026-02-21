@@ -16,6 +16,9 @@ var (
 	// SlackWebhookURL - optional Slack incoming webhook for notifications
 	SlackWebhookURL = getEnv("SLACK_WEBHOOK_URL", "")
 
+	// TeamsWebhookURL - optional Microsoft Teams incoming webhook for notifications
+	TeamsWebhookURL = getEnv("TEAMS_WEBHOOK_URL", "")
+
 	// FrontendURL - base URL for user frontend (for password reset links). Default: http://localhost:3000
 	FrontendURL = getEnv("FRONTEND_URL", "http://localhost:3000")
 

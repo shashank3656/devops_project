@@ -354,6 +354,15 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires ON password_reset_tokens(expires_at)")
 
+	// Migration 24: pr_requests.sla_breach_notified_at (for SLA breach alerts - avoid duplicate notifications)
+	var slaNotifiedCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'pr_requests' AND column_name = 'sla_breach_notified_at'").Scan(&slaNotifiedCount)
+	if slaNotifiedCount == 0 {
+		log.Println("Migrating database: adding pr_requests.sla_breach_notified_at...")
+		_, _ = DB.Exec("ALTER TABLE pr_requests ADD COLUMN sla_breach_notified_at TIMESTAMP")
+		log.Println("Database migration (sla_breach_notified_at) completed")
+	}
+
 	log.Println("Database schema is up to date")
 	return nil
 }
