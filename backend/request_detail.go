@@ -430,12 +430,9 @@ func handleRequestComments(w http.ResponseWriter, r *http.Request, requestID int
 	canAccess := req.CreatedBy != nil && *req.CreatedBy == userID
 	if !canAccess {
 		_, canAccess = requireAdmin(w, r)
-	}
-	if !canAccess {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "you do not have access to this request", "status": "error"})
-		return
+		if !canAccess {
+			return // requireAdmin already wrote 401/403; do not write again
+		}
 	}
 
 	switch r.Method {
