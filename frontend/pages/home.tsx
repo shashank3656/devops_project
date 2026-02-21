@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { maskDisplayValue } from '../lib/maskSensitive';
+import { SITE_NAME } from '../lib/site';
 
 interface Stats {
   total_requests: number;
@@ -125,35 +126,52 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Home - InfraGate</title>
+        <title>Home - {SITE_NAME}</title>
         <meta name="description" content="Infrastructure request portal" />
       </Head>
-      <div>
+      <div className="home-page">
         {showOnboarding && (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 1000,
-              padding: 20,
-            }}
-            onClick={dismissOnboarding}
-          >
-            <div className="card" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
-              <h3 style={{ marginBottom: 12 }}>Welcome</h3>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: 16 }}>
-                Create requests from <strong>New Request</strong>. Track them in <strong>History</strong>.
+          <div className="onboarding-overlay" onClick={dismissOnboarding}>
+            <div className="onboarding-modal card" onClick={(e) => e.stopPropagation()}>
+              <div className="onboarding-modal__icon">🚀</div>
+              <h3 className="onboarding-modal__title">Welcome to {SITE_NAME}</h3>
+              <p className="onboarding-modal__text">
+                Create infrastructure requests from <strong>New Request</strong>. Track them in <strong>History</strong>.
               </p>
-              <button type="button" className="btn btn-primary" onClick={dismissOnboarding}>
+              <button type="button" className="btn btn-primary onboarding-modal__btn" onClick={dismissOnboarding}>
                 Get started
               </button>
             </div>
           </div>
         )}
+
+        {/* Hero + Quick Actions */}
+        <section className="home-hero">
+          <h1 className="home-hero__title">Infrastructure Portal</h1>
+          <p className="home-hero__subtitle">Self-service cloud requests for your team</p>
+          <div className="home-quick-actions">
+            <Link href="/create-infrastructure/new" className="home-quick-action home-quick-action--primary">
+              <span className="home-quick-action__icon">➕</span>
+              <span className="home-quick-action__label">New Request</span>
+              <span className="home-quick-action__hint">Start from scratch</span>
+            </Link>
+            <Link href="/custom-json" className="home-quick-action">
+              <span className="home-quick-action__icon">📄</span>
+              <span className="home-quick-action__label">Custom JSON</span>
+              <span className="home-quick-action__hint">Paste your config</span>
+            </Link>
+            <Link href="/select-service" className="home-quick-action">
+              <span className="home-quick-action__icon">⚙️</span>
+              <span className="home-quick-action__label">Select Service</span>
+              <span className="home-quick-action__hint">Choose template</span>
+            </Link>
+            <Link href="/history" className="home-quick-action">
+              <span className="home-quick-action__icon">📋</span>
+              <span className="home-quick-action__label">History</span>
+              <span className="home-quick-action__hint">Track requests</span>
+            </Link>
+          </div>
+        </section>
 
         {/* Summary: one row, clear metrics */}
         {!statsLoading && stats && (
@@ -172,7 +190,7 @@ export default function Home() {
         )}
 
         {/* Activity: single card with Cloud + GitHub */}
-        <div className="card">
+        <div className="card home-activity-card">
           <h2 className="section-title">Activity</h2>
           {logsLoading ? (
             <p style={{ color: 'var(--text-muted)' }}>Loading…</p>
@@ -213,7 +231,7 @@ export default function Home() {
                 </div>
               )}
               {(cloudKeys.length > 0 || githubLogs.length > 0) && (
-                <p style={{ marginTop: 16, marginBottom: 0 }}>
+                <p className="home-activity-footer">
                   <Link href="/history" className="btn btn-secondary btn-sm">View History</Link>
                 </p>
               )}

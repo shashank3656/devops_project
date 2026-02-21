@@ -537,116 +537,83 @@ export default function History() {
       <Head>
         <title>History - Infrastructure Portal</title>
       </Head>
-      <div style={{ minHeight: '100vh', padding: '40px 20px' }}>
-        <div className="container">
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            marginBottom: '32px'
-          }}>
-            <h1 style={{ 
-              fontSize: '36px', 
-              fontWeight: 'bold',
-              color: 'var(--text-primary)',
-              margin: 0
-            }}>
-              PR Request History
-            </h1>
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              <button onClick={handleRefresh} className="btn btn-secondary" disabled={loading} title="Refresh">
-                🔄 Refresh
-              </button>
-              <button onClick={exportCSV} className="btn btn-secondary" disabled={loading}>
-                📥 Export CSV (filtered)
-              </button>
-            </div>
+      <div className="history-page">
+        <div className="history-page__header">
+          <h1 className="page-header__title">PR Request History</h1>
+          <div className="history-page__actions">
+            <button onClick={handleRefresh} className="btn btn-secondary" disabled={loading} title="Refresh">
+              🔄 Refresh
+            </button>
+            <button onClick={exportCSV} className="btn btn-secondary" disabled={loading}>
+              📥 Export CSV
+            </button>
           </div>
+        </div>
 
-          {/* Single Filter Box */}
-          <div className="card" style={{ marginBottom: '24px', padding: '24px' }}>
-            <h3 style={{ marginBottom: '20px', fontSize: '20px', fontWeight: '600', color: 'var(--text-primary)' }}>
-              Filter Requests
-            </h3>
-            <div style={{ 
-              display: 'flex', 
-              gap: '12px', 
-              alignItems: 'flex-end',
-              flexWrap: 'wrap'
-            }}>
-              <div style={{ flex: '0 0 auto', minWidth: '180px' }}>
-                <label htmlFor="filter-type" style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
-                  Filter By
-                </label>
-                <select
+        {/* Filter Box */}
+        <div className="card history-filter-card">
+          <h3 className="history-filter-card__title">Filter Requests</h3>
+          <div className="history-filter-card__row">
+            <div className="history-filter-field">
+              <label htmlFor="filter-type" className="history-filter-label">Filter By</label>
+              <select
                   id="filter-type"
                   value={filterType}
                   onChange={(e) => {
                     setFilterType(e.target.value as 'team' | 'pr_number' | 'env' | 'cloud' | 'search');
                     setFilterValue(''); // Clear value when changing filter type
                   }}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '8px',
-                    fontSize: '15px',
-                    backgroundColor: 'white',
-                    cursor: 'pointer'
-                  }}
+                  className="history-filter-select"
                 >
                   <option value="team">Team</option>
                   <option value="pr_number">PR Number</option>
                   <option value="env">Environment</option>
                   <option value="cloud">Cloud</option>
                   <option value="search">Search (all fields)</option>
-                </select>
-              </div>
-              <div style={{ flex: '1 1 300px', minWidth: '250px' }}>
-                <label htmlFor="filter-value" style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
+              </select>
+            </div>
+            <div className="history-filter-field history-filter-field--grow">
+              <label htmlFor="filter-value" className="history-filter-label">
                   {filterType === 'pr_number' ? 'PR Number' :
                    filterType === 'search' ? 'Search term' :
                    filterType === 'team' ? 'Team Name' :
                    filterType === 'env' ? 'Environment' : 'Cloud Provider'}
-                </label>
-                <input
-                  id="filter-value"
-                  type={filterType === 'pr_number' ? 'number' : 'text'}
-                  value={filterValue}
-                  onChange={(e) => setFilterValue(e.target.value)}
-                  placeholder={
-                    filterType === 'pr_number' ? 'Enter PR number (e.g., 123)' :
-                    filterType === 'search' ? 'Search team, env, cloud, service, branch, config…' :
-                    filterType === 'team' ? 'Enter team name' :
-                    filterType === 'env' ? 'Enter environment (dev, stage, prod)' :
-                    'Enter cloud provider (AWS, GCP, Azure)'
-                  }
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '8px',
-                    fontSize: '15px'
-                  }}
-                />
-              </div>
-              <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ fontSize: '14px', fontWeight: '500' }}>View:</span>
+              </label>
+              <input
+                id="filter-value"
+                type={filterType === 'pr_number' ? 'number' : 'text'}
+                value={filterValue}
+                onChange={(e) => setFilterValue(e.target.value)}
+                placeholder={
+                  filterType === 'pr_number' ? 'Enter PR number (e.g., 123)' :
+                  filterType === 'search' ? 'Search team, env, cloud, service…' :
+                  filterType === 'team' ? 'Enter team name' :
+                  filterType === 'env' ? 'Enter environment (dev, stage, prod)' :
+                  'Enter cloud provider (AWS, GCP, Azure)'
+                }
+                className="history-filter-input"
+              />
+            </div>
+            <div className="history-filter-actions">
+              <div className="history-filter-inline">
+                <span className="history-filter-label">View</span>
                 <select
                   value={viewMode}
                   onChange={(e) => { setViewMode(e.target.value as 'mine' | 'team'); setPage(0); }}
-                  style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', minWidth: '120px' }}
+                  className="history-filter-select"
+                  style={{ minWidth: 120 }}
                 >
                   <option value="mine">My tickets</option>
                   <option value="team">Group tickets</option>
                 </select>
               </div>
-              <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <label style={{ fontSize: '14px', fontWeight: '500' }}>Sort by</label>
+              <div className="history-filter-inline">
+                <span className="history-filter-label">Sort by</span>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                  style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', minWidth: '140px' }}
+                  className="history-filter-select"
+                  style={{ minWidth: 140 }}
                 >
                   <option value="created_at">Created (newest)</option>
                   <option value="id">Ticket #</option>
@@ -658,42 +625,27 @@ export default function History() {
                 <button
                   type="button"
                   onClick={() => setSortDesc((d) => !d)}
-                  className="btn btn-secondary"
-                  style={{ padding: '10px 14px' }}
+                  className="btn btn-secondary btn-sm"
                   title={sortDesc ? 'Descending' : 'Ascending'}
                 >
                   {sortDesc ? '↓' : '↑'}
                 </button>
               </div>
-              <div style={{ flex: '0 0 auto' }}>
-                <button
-                  onClick={() => {
-                    setFilterValue('');
-                    fetchHistory();
-                  }}
-                  className="btn btn-secondary"
-                  style={{ padding: '12px 24px', whiteSpace: 'nowrap' }}
-                >
-                  Clear
-                </button>
-              </div>
+              <button
+                onClick={() => { setFilterValue(''); fetchHistory(); }}
+                className="btn btn-secondary"
+              >
+                Clear
+              </button>
             </div>
           </div>
+        </div>
 
           {/* Table */}
-          <div className="card" style={{ overflowX: 'auto', padding: '0' }}>
+          <div className="card history-table-card">
             {loading ? (
-              <div style={{ textAlign: 'center', padding: '60px' }}>
-                <div style={{ 
-                  display: 'inline-block',
-                  width: '40px',
-                  height: '40px',
-                  border: '4px solid var(--border-color)',
-                  borderTop: '4px solid var(--primary-color)',
-                  borderRadius: '50%',
-                  animation: 'spin 0.8s linear infinite',
-                  marginBottom: '16px'
-                }}></div>
+              <div className="history-loading">
+                <div className="history-loading-spinner" />
                 <p style={{ color: 'var(--text-secondary)' }}>Loading requests...</p>
               </div>
             ) : error ? (
@@ -701,29 +653,26 @@ export default function History() {
                 <strong>Error:</strong> {error}
               </div>
             ) : requests.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '60px' }}>
-                <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '16px' }}>
+              <div className="history-empty">
+                <div className="history-empty__icon">📋</div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>
                   {filterValue ? 'No PR requests found matching your filter' : 'No requests yet'}
                 </p>
                 {!filterValue && (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '8px' }}>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.5rem' }}>
                     Create your first request from Custom JSON or Select Service.
                   </p>
                 )}
                 {filterValue ? (
                   <button
-                    onClick={() => {
-                      setFilterValue('');
-                      fetchHistory();
-                    }}
+                    onClick={() => { setFilterValue(''); fetchHistory(); }}
                     className="btn btn-secondary"
-                    style={{ marginTop: '16px' }}
+                    style={{ marginTop: '1rem' }}
                   >
                     Clear Filter
                   </button>
                 ) : (
-                  <div style={{ marginTop: '20px', display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <div className="history-empty__actions">
                     <button onClick={() => router.push('/custom-json')} className="btn btn-primary">
                       Custom JSON
                     </button>
@@ -740,128 +689,24 @@ export default function History() {
                     Showing tickets raised by you and your team members. Use <strong>Raised by</strong> to see who created each ticket.
                   </p>
                 )}
-                <table style={{ 
-                  width: '100%', 
-                  borderCollapse: 'collapse',
-                  minWidth: '800px'
-                }}>
+                <table className="history-table">
                   <thead>
-                    <tr style={{ 
-                      borderBottom: '2px solid var(--border-color)',
-                      background: 'var(--bg-gray-50)'
-                    }}>
-                      <th style={{ 
-                        padding: '16px', 
-                        textAlign: 'left',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        fontSize: '14px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>Ticket #</th>
-                      <th style={{ 
-                        padding: '16px', 
-                        textAlign: 'left',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        fontSize: '14px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>Team</th>
-                      {viewMode === 'team' && (
-                        <th style={{ 
-                          padding: '16px', 
-                          textAlign: 'left',
-                          fontWeight: '600',
-                          color: 'var(--text-primary)',
-                          fontSize: '14px',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px'
-                        }}>Raised by</th>
-                      )}
-                      <th style={{ 
-                        padding: '16px', 
-                        textAlign: 'left',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        fontSize: '14px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>Environment</th>
-                      <th style={{ 
-                        padding: '16px', 
-                        textAlign: 'left',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        fontSize: '14px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>Cloud</th>
-                      <th style={{ 
-                        padding: '16px', 
-                        textAlign: 'left',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        fontSize: '14px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>Service</th>
-                      <th style={{ 
-                        padding: '16px', 
-                        textAlign: 'left',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        fontSize: '14px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>Status</th>
-                      <th style={{ 
-                        padding: '16px', 
-                        textAlign: 'left',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        fontSize: '14px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>Created</th>
-                      <th style={{ 
-                        padding: '16px', 
-                        textAlign: 'left',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        fontSize: '14px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>PR Link</th>
-                      <th style={{ 
-                        padding: '16px', 
-                        textAlign: 'left',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        fontSize: '14px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>Actions</th>
+                    <tr>
+                      <th>Ticket #</th>
+                      <th>Team</th>
+                      {viewMode === 'team' && <th>Raised by</th>}
+                      <th>Environment</th>
+                      <th>Cloud</th>
+                      <th>Service</th>
+                      <th>Status</th>
+                      <th>Created</th>
+                      <th>PR Link</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedRequests.map((req, index) => (
-                      <tr 
-                        key={req.id} 
-                        onClick={() => openDetail(req)}
-                        style={{ 
-                          borderBottom: '1px solid var(--border-color)',
-                          transition: 'background 0.2s ease',
-                          background: index % 2 === 0 ? 'white' : 'var(--bg-gray-50)',
-                          cursor: 'pointer'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'var(--bg-gray-100)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = index % 2 === 0 ? 'white' : 'var(--bg-gray-50)';
-                        }}
-                      >
+                    {sortedRequests.map((req) => (
+                      <tr key={req.id} onClick={() => openDetail(req)}>
                         <td style={{ padding: '16px', fontWeight: '600', color: 'var(--primary-color)' }}>
                           #{req.id}
                         </td>
