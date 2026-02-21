@@ -21,6 +21,7 @@ interface PRRequest {
   created_at: string;
   updated_at?: string;
   created_by_username?: string;
+  terraform_plan_output?: string;
 }
 
 interface RequestComment {
@@ -56,6 +57,11 @@ export default function AdminRequests() {
   const [commentBody, setCommentBody] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [detailConfigOpen, setDetailConfigOpen] = useState(false);
+  const [detailTerraformOpen, setDetailTerraformOpen] = useState(false);
+  const [terraformOutputEdit, setTerraformOutputEdit] = useState('');
+  const [terraformSaving, setTerraformSaving] = useState(false);
+  const [costEstimate, setCostEstimate] = useState<{ link: string; cloud: string; service: string } | null>(null);
+  const [cloningId, setCloningId] = useState<number | null>(null);
   const limit = 20;
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -104,14 +110,17 @@ export default function AdminRequests() {
       .finally(() => setLoading(false));
   };
 
-  // Apply search from URL on load and when q changes
+  // Apply search and at_risk from URL on load
   useEffect(() => {
     if (!router.isReady || !token) return;
     const q = router.query.q;
     const qStr = typeof q === 'string' ? q.trim() : '';
     filtersRef.current.search = qStr;
     setSearch(qStr);
-  }, [router.isReady, router.query.q]);
+    const atRisk = router.query.at_risk === 'true' || router.query.at_risk === '1';
+    filtersRef.current.atRiskOnly = atRisk;
+    setAtRiskOnly(atRisk);
+  }, [router.isReady, router.query.q, router.query.at_risk]);
 
   useEffect(() => {
     if (!token) {
@@ -142,7 +151,10 @@ export default function AdminRequests() {
         fetch(`${apiUrl}/api/admin/requests/${req.id}`, { headers: { Authorization: `Bearer ${token}` } })
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => {
-            if (d?.request) setDetailRequest((prev) => (prev ? { ...prev, ...d.request } : d.request));
+            if (d?.request) {
+              setDetailRequest((prev) => (prev ? { ...prev, ...d.request } : d.request));
+              setTerraformOutputEdit(d.request?.terraform_plan_output || '');
+            }
           })
           .catch(() => {});
         router.replace('/requests', undefined, { shallow: true });
@@ -273,11 +285,40 @@ export default function AdminRequests() {
     }
   };
 
+  const saveTerraformOutput = async () => {
+    if (!detailRequest) return;
+    setTerraformSaving(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/requests/${detailRequest.id}/plan-output`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ output: terraformOutputEdit }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setDetailRequest((prev) => prev ? { ...prev, terraform_plan_output: terraformOutputEdit } : null);
+      } else {
+        setError(data.error || 'Failed to save');
+      }
+    } finally {
+      setTerraformSaving(false);
+    }
+  };
+
   const openDetail = async (req: PRRequest) => {
     setDetailRequest(req);
     setDetailComments([]);
     setDetailConfigOpen(false);
+    setDetailTerraformOpen(false);
+    setTerraformOutputEdit(req.terraform_plan_output || '');
     setCommentBody('');
+    setCostEstimate(null);
+    fetch(`${apiUrl}/api/cost-estimate?cloud=${encodeURIComponent(req.cloud || '')}&service=${encodeURIComponent(req.service || '')}&env=${encodeURIComponent(req.env || '')}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.link) setCostEstimate({ link: d.link, cloud: d.cloud || req.cloud, service: d.service || req.service });
+      })
+      .catch(() => {});
     fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.json())
       .then((d) => setDetailComments(d.comments || []))
@@ -287,6 +328,7 @@ export default function AdminRequests() {
       .then((d) => {
         if (d?.request) {
           setDetailRequest((prev) => prev ? { ...prev, ...d.request } : d.request);
+          setTerraformOutputEdit(d.request?.terraform_plan_output || '');
         }
       })
       .catch(() => {});
@@ -355,6 +397,30 @@ export default function AdminRequests() {
       setError('Failed to reject');
     } finally {
       setActioningId(null);
+    }
+  };
+
+  const handleClone = async (id: number) => {
+    setCloningId(id);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/request/${id}/clone`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        fetchRequests({ offset });
+        if (detailRequest?.id === id) setDetailRequest(null);
+        const newId = data.id;
+        if (newId) window.location.href = `/requests?id=${newId}`;
+      } else {
+        setError(data.error || 'Failed to clone');
+      }
+    } catch (_) {
+      setError('Failed to clone');
+    } finally {
+      setCloningId(null);
     }
   };
 
@@ -676,6 +742,16 @@ export default function AdminRequests() {
                                   {actioningId === req.id ? '…' : 'Mark completed'}
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ padding: '6px 12px', fontSize: 13 }}
+                                disabled={actioningId !== null || cloningId !== null}
+                                onClick={(e) => { e.stopPropagation(); handleClone(req.id); }}
+                                title="Clone as new draft"
+                              >
+                                {cloningId === req.id ? '…' : 'Clone'}
+                              </button>
                               {req.pr_url ? (
                                 <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
                                   Open PR
@@ -762,13 +838,23 @@ export default function AdminRequests() {
                   Created: {new Date(detailRequest.created_at).toLocaleString()}
                   {detailRequest.updated_at && ` · Updated: ${new Date(detailRequest.updated_at).toLocaleString()}`}
                 </p>
-                {detailRequest.pr_url && (
-                  <p style={{ marginBottom: 8 }}>
+                <div style={{ marginBottom: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 12px', fontSize: 13 }}
+                    disabled={cloningId !== null}
+                    onClick={() => handleClone(detailRequest.id)}
+                    title="Clone as new draft"
+                  >
+                    {cloningId === detailRequest.id ? '…' : 'Clone request'}
+                  </button>
+                  {detailRequest.pr_url && (
                     <a href={detailRequest.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
                       Open PR
                     </a>
-                  </p>
-                )}
+                  )}
+                </div>
                 {(detailRequest.priority || detailRequest.due_date) && (
                   <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--color-text-muted)' }}>
                     {detailRequest.priority && <span>Priority: {detailRequest.priority} </span>}
@@ -797,6 +883,18 @@ export default function AdminRequests() {
                     {statusLabel(detailRequest.status)}
                   </span>
                 </p>
+
+                {canApproveOrReject(detailRequest.status) && costEstimate?.link && (
+                  <div style={{ marginBottom: 16, padding: 12, background: 'var(--color-success-bg)', borderRadius: 8, border: '1px solid var(--color-success)' }}>
+                    <strong style={{ fontSize: 13, color: 'var(--color-success)' }}>Cost preview before approval</strong>
+                    <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--color-text)' }}>
+                      Estimate infrastructure cost for {detailRequest.service} on {detailRequest.cloud} ({detailRequest.env}) before approving.
+                    </p>
+                    <a href={costEstimate.link} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ marginTop: 8, padding: '6px 12px', fontSize: 13 }}>
+                      View cost calculator →
+                    </a>
+                  </div>
+                )}
 
                 {canApproveOrReject(detailRequest.status) && (
                   <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -835,6 +933,49 @@ export default function AdminRequests() {
                     )}
                   </div>
                 )}
+
+                <div style={{ marginTop: 16, borderTop: '1px solid var(--color-border)', paddingTop: 16 }}>
+                  <button
+                    type="button"
+                    onClick={() => setDetailTerraformOpen((o) => !o)}
+                    style={{ background: 'none', border: 'none', padding: 0, fontWeight: 600, cursor: 'pointer', color: 'var(--color-text)' }}
+                  >
+                    {detailTerraformOpen ? '▼' : '▶'} Terraform plan / output
+                  </button>
+                  {detailTerraformOpen && (
+                    <div style={{ marginTop: 8 }}>
+                      {detailRequest.terraform_plan_output ? (
+                        <>
+                          <pre style={{ padding: 12, background: 'var(--color-bg)', borderRadius: 8, overflow: 'auto', fontSize: 12, maxHeight: 200, whiteSpace: 'pre-wrap' }}>
+                            {detailRequest.terraform_plan_output}
+                          </pre>
+                          <textarea
+                            value={terraformOutputEdit}
+                            onChange={(e) => setTerraformOutputEdit(e.target.value)}
+                            placeholder="Paste Terraform plan or apply output from CI..."
+                            style={{ width: '100%', minHeight: 100, marginTop: 8, padding: 12, borderRadius: 8, fontSize: 12, fontFamily: 'monospace' }}
+                          />
+                          <button type="button" className="btn btn-primary" style={{ marginTop: 8 }} disabled={terraformSaving} onClick={saveTerraformOutput}>
+                            {terraformSaving ? 'Saving…' : 'Update output'}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <p style={{ fontSize: 14, color: 'var(--color-text-muted)', marginBottom: 8 }}>No Terraform output yet. Paste from CI or manual run.</p>
+                          <textarea
+                            value={terraformOutputEdit}
+                            onChange={(e) => setTerraformOutputEdit(e.target.value)}
+                            placeholder="Paste Terraform plan or apply output..."
+                            style={{ width: '100%', minHeight: 100, padding: 12, borderRadius: 8, fontSize: 12, fontFamily: 'monospace' }}
+                          />
+                          <button type="button" className="btn btn-primary" style={{ marginTop: 8 }} disabled={terraformSaving || !terraformOutputEdit.trim()} onClick={saveTerraformOutput}>
+                            {terraformSaving ? 'Saving…' : 'Save output'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 16, marginTop: 16 }}>
                   <strong>Comments</strong>

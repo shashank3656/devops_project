@@ -287,6 +287,15 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_outbound_webhooks_enabled ON outbound_webhooks(enabled)")
 
+	// Migration 18: pr_requests.terraform_plan_output (store Terraform plan/apply output from CI for display in UI)
+	var planOutputCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'pr_requests' AND column_name = 'terraform_plan_output'").Scan(&planOutputCount)
+	if planOutputCount == 0 {
+		log.Println("Migrating database: adding pr_requests.terraform_plan_output...")
+		_, _ = DB.Exec("ALTER TABLE pr_requests ADD COLUMN terraform_plan_output TEXT")
+		log.Println("Database migration (terraform_plan_output) completed")
+	}
+
 	log.Println("Database schema is up to date")
 	return nil
 }

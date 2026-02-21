@@ -1188,6 +1188,8 @@ td code { font-size: var(--text-sm); background: var(--color-primary-light); col
 }
 .dashboard-kpi-card__icon-svg { width: 24px; height: 24px; }
 .dashboard-kpi-card--warning .dashboard-kpi-card__icon { background: var(--color-warning-bg); color: var(--color-warning); }
+.dashboard-kpi-card--danger .dashboard-kpi-card__icon { background: var(--color-danger-bg); color: var(--color-danger); }
+.dashboard-kpi-card--danger .dashboard-kpi-card__value { color: var(--color-danger); }
 .dashboard-kpi-card--accent::before {
   content: '';
   position: absolute;

@@ -105,6 +105,7 @@ export default function ActivityPage() {
       request_submit: 'Submitted draft',
       request_comment: 'Added comment',
       request_resubmit: 'Resubmitted request',
+      request_clone: 'Cloned request',
       request_approved_by_manager: 'Manager approved',
       request_cancel: 'Cancelled request',
     };
@@ -122,6 +123,7 @@ export default function ActivityPage() {
       team_member_role_update: 'Member role updated',
       request_approve: 'Request approved',
       request_reject: 'Request rejected',
+      request_plan_output: 'Terraform output updated',
     };
     return labels[a] || a;
   };
@@ -156,7 +158,8 @@ export default function ActivityPage() {
           )}
 
           {tab === 'audit' && (
-          <div style={{ marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+          <div style={{ marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
             <label style={{ fontWeight: 500 }}>Action</label>
             <select
               value={actionFilter}
@@ -191,6 +194,31 @@ export default function ActivityPage() {
               className="input"
               style={{ width: 140 }}
             />
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                const params = new URLSearchParams({ format: 'csv', limit: '10000' });
+                if (actionFilter) params.set('action', actionFilter);
+                if (fromDate) params.set('from', fromDate);
+                if (toDate) params.set('to', toDate);
+                fetch(`${apiUrl}/api/admin/audit-log?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+                  .then((res) => res.text())
+                  .then((csv) => {
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  })
+                  .catch(() => {});
+              }}
+            >
+              Export CSV
+            </button>
           </div>
           )}
 
