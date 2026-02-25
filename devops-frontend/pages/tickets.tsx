@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -75,6 +76,7 @@ export default function DevOpsTickets() {
   const [atRisk, setAtRisk] = useState(false);
   const [offset, setOffset] = useState(0);
   const [filterExpanded, setFilterExpanded] = useState(true);
+  const [recentIds, setRecentIds] = useState<number[]>([]);
   const limit = 20;
 
   const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
@@ -112,6 +114,27 @@ export default function DevOpsTickets() {
       .finally(() => setLoading(false));
   }, [token, router, apiUrl, idFilter, team, cloud, status, search, requester, sortBy, sortOrder, atRisk, offset]);
 
+  useEffect(() => {
+    setRecentIds(getRecentRequestIds());
+  }, []);
+  useEffect(() => {
+    if (requests.length === 1 && idFilter.trim()) {
+      const id = parseInt(idFilter.trim(), 10);
+      if (!isNaN(id) && requests[0].id === id) addRecentRequestId(id);
+    }
+  }, [requests, idFilter]);
+
+  const goToRecent = (id: number) => {
+    setIdFilter(String(id));
+    setTeam('');
+    setCloud('');
+    setStatus('');
+    setSearch('');
+    setRequester('');
+    setAtRisk(false);
+    setOffset(0);
+  };
+
   const clearFilters = () => {
     setIdFilter('');
     setTeam('');
@@ -133,6 +156,23 @@ export default function DevOpsTickets() {
           <div className="devops-tickets-header">
             <div>
               <h1 className="devops-tickets-title">All tickets</h1>
+              {recentIds.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Recent:</span>
+                  {recentIds.map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 12px', fontSize: 13 }}
+                      onClick={() => goToRecent(id)}
+                      title={`Filter by ticket #${id}`}
+                    >
+                      #{id}
+                    </button>
+                  ))}
+                </div>
+              )}
               <p className="devops-tickets-subtitle">
                 Search and filter by ticket #, team, cloud, status, or requester. Sort by created, updated, priority, or due date.
               </p>
@@ -281,7 +321,7 @@ export default function DevOpsTickets() {
                       </thead>
                       <tbody>
                         {requests.map((req) => (
-                          <tr key={req.id}>
+                          <tr key={req.id} onClick={() => { addRecentRequestId(req.id); setRecentIds(getRecentRequestIds()); }} style={{ cursor: 'pointer' }}>
                             <td><code className="devops-ticket-id">#{req.id}</code></td>
                             <td>{req.team}</td>
                             <td><span className="devops-ticket-env">{req.env}</span></td>

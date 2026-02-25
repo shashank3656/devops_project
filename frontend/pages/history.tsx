@@ -4,6 +4,7 @@ import Head from 'next/head';
 import { useToast } from '../context/ToastContext';
 
 import { maskSensitiveJson } from '../lib/maskSensitive';
+import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
 
 const TEMPLATE_KEY = 'infra-request-template';
 
@@ -67,9 +68,37 @@ export default function History() {
   const defaultedToTeamView = useRef(false);
   const [configHistory, setConfigHistory] = useState<{ id: number; config: string; created_at: string; note?: string }[]>([]);
   const [showConfigHistory, setShowConfigHistory] = useState(false);
+  const [recentIds, setRecentIds] = useState<number[]>([]);
+  const [timeline, setTimeline] = useState<{ id: number; kind: string; action: string; username: string; details: string; body?: string; created_at: string }[]>([]);
+
+  const formatTimelineAction = (action: string) => {
+    const map: Record<string, string> = {
+      request_create: 'created request',
+      request_submit: 'submitted',
+      request_approved_by_manager: 'approved (manager)',
+      request_approve: 'approved',
+      request_reject: 'rejected',
+      request_comment: 'commented',
+      request_clone: 'cloned',
+      request_resubmit: 'resubmitted',
+      request_cancel: 'cancelled',
+      request_promote: 'promoted',
+      request_plan_output: 'updated plan output',
+      request_reassign: 'reassigned',
+    };
+    return map[action] || action.replace(/_/g, ' ');
+  };
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const rawConfigByRequestId = useRef<Record<number, string>>({});
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+
+  useEffect(() => {
+    setRecentIds(getRecentRequestIds());
+  }, []);
+  useEffect(() => {
+    if (detailRequest) setRecentIds(getRecentRequestIds());
+  }, [detailRequest]);
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem('isAuthenticated');
@@ -167,6 +196,7 @@ export default function History() {
       if (detailRes.ok) {
         const data = await detailRes.json();
         const full = data.request || req;
+        addRecentRequestId(full.id);
         setCanApproveByManager(Boolean(data.can_approve_by_manager));
         if (full.config) {
           rawConfigByRequestId.current[full.id] = full.config;
@@ -175,20 +205,44 @@ export default function History() {
           setDetailRequest(full);
         }
       } else {
+        addRecentRequestId(req.id);
         setDetailRequest(req);
       }
       if (commentsRes.ok) {
         const cData = await commentsRes.json();
         setComments(cData.comments || []);
       }
+      const timelineRes = await fetch(`${apiUrl}/api/request/${req.id}/timeline`, { headers });
+      if (timelineRes.ok) {
+        const tData = await timelineRes.json();
+        setTimeline(tData.timeline || []);
+      }
       if (tagsRes.ok) {
         const tData = await tagsRes.json();
         setTags(tData.tags || []);
       }
     } catch (_) {
+      addRecentRequestId(req.id);
       setDetailRequest(req);
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const fetchTimeline = async (id: number) => {
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    setTimelineLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/request/${id}/timeline`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const d = await res.json();
+        setTimeline(d.timeline || []);
+      }
+    } catch (_) {
+      setTimeline([]);
+    } finally {
+      setTimelineLoading(false);
     }
   };
 
@@ -396,6 +450,7 @@ export default function History() {
           const d = await listRes.json();
           setComments(d.comments || []);
         }
+        fetchTimeline(detailRequest.id);
         toast('Comment added', 'success');
       } else {
         const d = await res.json().catch(() => ({}));
@@ -540,6 +595,22 @@ export default function History() {
       <div className="history-page">
         <div className="history-page__header">
           <h1 className="page-header__title">PR Request History</h1>
+          {recentIds.length > 0 && (
+            <div className="history-recent" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Recent:</span>
+              {recentIds.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => openDetail({ id } as PRRequest)}
+                  title={`Open ticket #${id}`}
+                >
+                  #{id}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="history-page__actions">
             <button onClick={handleRefresh} className="btn btn-secondary" disabled={loading} title="Refresh">
               🔄 Refresh
@@ -1202,6 +1273,27 @@ export default function History() {
                             Add
                           </button>
                         </div>
+                      </div>
+                    </div>
+                    {/* Audit trail */}
+                    <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+                      <strong>Audit trail</strong>
+                      <div style={{ marginTop: '8px', maxHeight: '180px', overflowY: 'auto' }}>
+                        {timelineLoading ? (
+                          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Loading…</p>
+                        ) : timeline.length === 0 ? (
+                          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>No activity yet.</p>
+                        ) : (
+                          timeline.map((e) => (
+                            <div key={`${e.kind}-${e.id}`} style={{ marginBottom: '8px', padding: '6px 10px', background: 'var(--bg-gray-50)', borderRadius: '6px', fontSize: '13px' }}>
+                              <span style={{ fontWeight: 600 }}>{e.username || 'System'}</span>
+                              <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>{formatTimelineAction(e.action)}</span>
+                              {e.details && <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}— {e.details}</span>}
+                              {e.body && <p style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{e.body}</p>}
+                              <span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{new Date(e.created_at).toLocaleString()}</span>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
                     {/* Comments */}

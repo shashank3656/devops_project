@@ -208,17 +208,38 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    let gPressedAt = 0;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement;
-        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      const target = e.target as HTMLElement;
+      const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
         e.preventDefault();
-        toast('Shortcuts: ? help, Esc close modal, g then h = History, g then n = New Request', 'success');
+        toast('Shortcuts: ? help, g then h = Home, g then t = History, g then n = New Request', 'success');
+        return;
+      }
+      if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
+        gPressedAt = Date.now();
+        return;
+      }
+      if (gPressedAt && Date.now() - gPressedAt < 800) {
+        if (e.key === 'h') {
+          e.preventDefault();
+          router.push('/home');
+        } else if (e.key === 't') {
+          e.preventDefault();
+          router.push('/history');
+        } else if (e.key === 'n') {
+          e.preventDefault();
+          router.push('/create-infrastructure');
+        }
+        gPressedAt = 0;
+      } else {
+        gPressedAt = 0;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toast]);
+  }, [toast, router]);
 
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated');

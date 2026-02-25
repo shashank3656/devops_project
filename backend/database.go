@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1366,6 +1368,91 @@ func AddRequestComment(requestID, userID int, body string) error {
 		requestID, userID, body,
 	)
 	return err
+}
+
+// TimelineEntry is a single event in the request audit trail
+type TimelineEntry struct {
+	ID        int       `json:"id"`
+	Kind      string    `json:"kind"`      // "user_activity" | "admin_audit" | "comment"
+	Action    string    `json:"action"`   // e.g. request_create, request_comment, request_approve
+	Username  string    `json:"username"`
+	Details   string    `json:"details"`
+	Body      string    `json:"body,omitempty"` // for comments
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// GetRequestTimeline returns a merged timeline of user activity, admin audit, and comments for a request
+func GetRequestTimeline(requestID int) ([]TimelineEntry, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	rid := strconv.Itoa(requestID)
+	var out []TimelineEntry
+
+	// User activity
+	rowsUA, err := DB.Query(`
+		SELECT ua.id, ua.action, ua.details, ua.created_at, COALESCE(u.username, '') AS username
+		FROM user_activity ua
+		LEFT JOIN users u ON u.id = ua.user_id
+		WHERE ua.resource_type = 'pr_request' AND ua.resource_id = $1
+		ORDER BY ua.created_at ASC
+	`, rid)
+	if err == nil {
+		defer rowsUA.Close()
+		for rowsUA.Next() {
+			var e TimelineEntry
+			if err := rowsUA.Scan(&e.ID, &e.Action, &e.Details, &e.CreatedAt, &e.Username); err != nil {
+				continue
+			}
+			e.Kind = "user_activity"
+			out = append(out, e)
+		}
+	}
+
+	// Admin audit log
+	rowsAL, err := DB.Query(`
+		SELECT a.id, a.action, COALESCE(a.details,''), a.created_at, COALESCE(u.username, '') AS username
+		FROM admin_audit_log a
+		LEFT JOIN users u ON u.id = a.admin_user_id
+		WHERE a.resource_type = 'pr_request' AND a.resource_id = $1
+		ORDER BY a.created_at ASC
+	`, rid)
+	if err == nil {
+		defer rowsAL.Close()
+		for rowsAL.Next() {
+			var e TimelineEntry
+			if err := rowsAL.Scan(&e.ID, &e.Action, &e.Details, &e.CreatedAt, &e.Username); err != nil {
+				continue
+			}
+			e.Kind = "admin_audit"
+			out = append(out, e)
+		}
+	}
+
+	// Comments
+	rowsC, err := DB.Query(`
+		SELECT c.id, c.body, c.created_at, COALESCE(u.username, '') AS username
+		FROM request_comments c
+		LEFT JOIN users u ON u.id = c.user_id
+		WHERE c.request_id = $1
+		ORDER BY c.created_at ASC
+	`, requestID)
+	if err == nil {
+		defer rowsC.Close()
+		for rowsC.Next() {
+			var e TimelineEntry
+			if err := rowsC.Scan(&e.ID, &e.Body, &e.CreatedAt, &e.Username); err != nil {
+				continue
+			}
+			e.Kind = "comment"
+			e.Action = "request_comment"
+			out = append(out, e)
+		}
+	}
+
+	// Sort by created_at ASC
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out, nil
 }
 
 // GetUserByID retrieves a user by ID (without password). UserType and devops profile are loaded separately when needed.

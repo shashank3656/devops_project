@@ -1,18 +1,42 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { IconSun, IconMoon } from '../components/Icons';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
+const THEME_KEY = 'infra-portal-theme';
+function getStoredTheme(): 'light' | 'dark' {
+  if (typeof window === 'undefined') return 'light';
+  return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light';
+}
+function setStoredTheme(t: 'light' | 'dark') {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(THEME_KEY, t);
+  document.documentElement.setAttribute('data-theme', t);
+}
 
 export default function DevOpsLogin() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const t = getStoredTheme();
+    setTheme(t);
+    document.documentElement.setAttribute('data-theme', t);
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setStoredTheme(next);
+    setTheme(next);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,6 +110,9 @@ export default function DevOpsLogin() {
         </div>
         <div className="login-page__right">
           <div className="login-page__card">
+            <button type="button" className="login-page__theme-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
+              {theme === 'dark' ? <IconSun /> : <IconMoon />}
+            </button>
             <h2 className="login-page__card-title">Welcome back</h2>
             <p className="login-page__card-subtitle">Sign in with your DevOps account</p>
             {error && (
