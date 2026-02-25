@@ -38,11 +38,14 @@ export default function DevOpsLogin() {
       });
       const meData = await meRes.json().catch(() => ({}));
       if (!meRes.ok || meData.error) {
-        setError(meData.error || 'This portal is for DevOps users only. Create a DevOps user from the Admin portal.');
+        setError(meData.error || 'This portal is for DevOps users or admins only. Create a DevOps user from the Admin portal.');
         return;
       }
-      if (meData.user?.user_type !== 'devops_user') {
-        setError('This portal is for DevOps users only.');
+      // Allow devops_user or admin (role=admin) to access DevOps portal
+      const userType = meData.user?.user_type;
+      const isAdmin = meData.user?.role === 'admin';
+      if (userType !== 'devops_user' && !isAdmin) {
+        setError('This portal is for DevOps users or admins only.');
         return;
       }
       localStorage.setItem(DEVOPS_TOKEN_KEY, loginData.token);

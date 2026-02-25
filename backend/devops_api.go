@@ -10,7 +10,8 @@ import (
 	"time"
 )
 
-// requireDevopsUser validates Bearer token and ensures user is devops_user. Returns userID and ok.
+// requireDevopsUser validates Bearer token and ensures user is devops_user or admin. Returns userID and ok.
+// Admin users (role=admin) can access DevOps endpoints for template management.
 func requireDevopsUser(w http.ResponseWriter, r *http.Request) (userID int, ok bool) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
@@ -45,10 +46,11 @@ func requireDevopsUser(w http.ResponseWriter, r *http.Request) (userID int, ok b
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "user not found", "status": "error"})
 		return 0, false
 	}
-	if user.UserType != "devops_user" {
+	// Allow devops_user OR admin (for template management from either portal)
+	if user.UserType != "devops_user" && user.Role != "admin" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "DevOps portal access is for DevOps users only", "status": "error"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "DevOps portal access is for DevOps users or admins only", "status": "error"})
 		return 0, false
 	}
 	return uid, true
@@ -89,7 +91,7 @@ func devopsMeHandler(w http.ResponseWriter, r *http.Request) {
 	prof, _ := GetDevopsProfile(userID)
 	resp := map[string]interface{}{
 		"id": user.ID, "username": user.Username, "email": user.Email,
-		"user_type": user.UserType,
+		"user_type": user.UserType, "role": user.Role,
 	}
 	if prof != nil {
 		resp["devops_profile"] = map[string]interface{}{
