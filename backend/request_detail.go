@@ -94,6 +94,9 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 		case "promote":
 			handleRequestPromote(w, r, id, req, userID)
 			return
+		case "timeline":
+			handleRequestTimeline(w, r, id, userID)
+			return
 		}
 	}
 
@@ -474,4 +477,22 @@ func handleRequestComments(w http.ResponseWriter, r *http.Request, requestID int
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handleRequestTimeline GET /api/request/:id/timeline - audit trail for a request
+func handleRequestTimeline(w http.ResponseWriter, r *http.Request, id int, userID int) {
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	timeline, err := GetRequestTimeline(id)
+	if err != nil {
+		log.Printf("GetRequestTimeline: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch timeline", "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "timeline": timeline})
 }

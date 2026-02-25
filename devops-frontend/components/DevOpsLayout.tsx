@@ -143,6 +143,43 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     } catch (_) {}
   };
 
+  useEffect(() => {
+    let gPressedAt = 0;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
+        e.preventDefault();
+        const msg = isManager
+          ? 'Shortcuts: ? help, g then d = My tickets, g then t = All tickets, g then w = Workload'
+          : 'Shortcuts: ? help, g then d = My tickets';
+        alert(msg);
+        return;
+      }
+      if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
+        gPressedAt = Date.now();
+        return;
+      }
+      if (gPressedAt && Date.now() - gPressedAt < 800) {
+        if (e.key === 'd') {
+          e.preventDefault();
+          router.push('/dashboard');
+        } else if (e.key === 't' && isManager) {
+          e.preventDefault();
+          router.push('/tickets');
+        } else if (e.key === 'w' && isManager) {
+          e.preventDefault();
+          router.push('/workload');
+        }
+        gPressedAt = 0;
+      } else {
+        gPressedAt = 0;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [router, isManager]);
+
   const handleLogout = () => {
     localStorage.removeItem(DEVOPS_TOKEN_KEY);
     localStorage.removeItem(DEVOPS_USER_KEY);

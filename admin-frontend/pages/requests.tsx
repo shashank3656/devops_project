@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import AdminLayout from '../components/AdminLayout';
+import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
 
 interface PRRequest {
   id: number;
@@ -66,6 +67,8 @@ export default function AdminRequests() {
   const [rollbackingId, setRollbackingId] = useState<number | null>(null);
   const [configHistory, setConfigHistory] = useState<{ id: number; config: string; created_at: string; note?: string }[]>([]);
   const [showConfigHistory, setShowConfigHistory] = useState(false);
+  const [recentIds, setRecentIds] = useState<number[]>([]);
+  const [timeline, setTimeline] = useState<{ id: number; kind: string; action: string; username: string; details: string; body?: string; created_at: string }[]>([]);
   const limit = 20;
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -127,6 +130,13 @@ export default function AdminRequests() {
   }, [router.isReady, router.query.q, router.query.at_risk]);
 
   useEffect(() => {
+    setRecentIds(getRecentRequestIds());
+  }, []);
+  useEffect(() => {
+    if (detailRequest) setRecentIds(getRecentRequestIds());
+  }, [detailRequest]);
+
+  useEffect(() => {
     if (!token) {
       router.replace('/login');
       return;
@@ -144,6 +154,7 @@ export default function AdminRequests() {
       .then((data) => {
         const req = data?.request;
         if (!req) return;
+        addRecentRequestId(req.id);
         setDetailRequest(req);
         setDetailComments([]);
         setDetailConfigOpen(false);
@@ -154,6 +165,10 @@ export default function AdminRequests() {
           .then((r) => r.json())
           .then((d) => setDetailComments(d.comments || []))
           .catch(() => {});
+        fetch(`${apiUrl}/api/request/${req.id}/timeline`, { headers: { Authorization: `Bearer ${token}` } })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => { if (d?.timeline) setTimeline(d.timeline); })
+          .catch(() => setTimeline([]));
         fetch(`${apiUrl}/api/admin/requests/${req.id}`, { headers: { Authorization: `Bearer ${token}` } })
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => {
@@ -312,13 +327,19 @@ export default function AdminRequests() {
   };
 
   const openDetail = async (req: PRRequest) => {
+    addRecentRequestId(req.id);
     setDetailRequest(req);
     setDetailComments([]);
     setDetailConfigOpen(false);
     setDetailTerraformOpen(false);
+    setTimeline([]);
     setTerraformOutputEdit(req.terraform_plan_output || '');
     setCommentBody('');
     setCostEstimate(null);
+    fetch(`${apiUrl}/api/request/${req.id}/timeline`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.timeline) setTimeline(d.timeline); })
+      .catch(() => setTimeline([]));
     fetch(`${apiUrl}/api/cost-estimate?cloud=${encodeURIComponent(req.cloud || '')}&service=${encodeURIComponent(req.service || '')}&env=${encodeURIComponent(req.env || '')}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((d) => {
@@ -354,6 +375,9 @@ export default function AdminRequests() {
         const listRes = await fetch(`${apiUrl}/api/request/${detailRequest.id}/comments`, { headers: { Authorization: `Bearer ${token}` } });
         const d = await listRes.json().catch(() => ({}));
         setDetailComments(d.comments || []);
+        fetch(`${apiUrl}/api/request/${detailRequest.id}/timeline`, { headers: { Authorization: `Bearer ${token}` } })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((td) => { if (td?.timeline) setTimeline(td.timeline); });
       }
     } finally {
       setCommentSubmitting(false);
@@ -571,6 +595,24 @@ export default function AdminRequests() {
               Export CSV (filtered)
             </button>
           </div>
+
+          {recentIds.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Recent:</span>
+              {recentIds.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '6px 12px', fontSize: 13 }}
+                  onClick={() => openDetail({ id } as PRRequest)}
+                  title={`Open ticket #${id}`}
+                >
+                  #{id}
+                </button>
+              ))}
+            </div>
+          )}
 
           {error && (
             <div className="alert alert-error" role="alert">
@@ -1123,6 +1165,27 @@ export default function AdminRequests() {
                       )}
                     </div>
                   )}
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 16, marginTop: 16 }}>
+                  <strong>Audit trail</strong>
+                  <div style={{ marginTop: 8, maxHeight: 160, overflowY: 'auto' }}>
+                    {timeline.length === 0 ? (
+                      <p style={{ fontSize: 14, color: 'var(--color-text-muted)' }}>No activity yet.</p>
+                    ) : (
+                      timeline.map((e) => (
+                        <div key={`${e.kind}-${e.id}`} style={{ marginBottom: 8, padding: '6px 10px', background: 'var(--color-bg)', borderRadius: 6, fontSize: 13 }}>
+                          <span style={{ fontWeight: 600 }}>{e.username || 'System'}</span>
+                          <span style={{ color: 'var(--color-text-muted)', marginLeft: 6 }}>
+                            {({ request_create: 'created', request_submit: 'submitted', request_approve: 'approved', request_reject: 'rejected', request_comment: 'commented', request_clone: 'cloned', request_resubmit: 'resubmitted', request_cancel: 'cancelled', request_promote: 'promoted', request_plan_output: 'updated plan', request_reassign: 'reassigned', request_approved_by_manager: 'approved (manager)' } as Record<string, string>)[e.action] || e.action.replace(/_/g, ' ')}
+                          </span>
+                          {e.details && <span style={{ color: 'var(--color-text-muted)', marginLeft: 6 }}— {e.details}</span>}
+                          {e.body && <p style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{e.body}</p>}
+                          <span style={{ display: 'block', fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>{new Date(e.created_at).toLocaleString()}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
 
                 <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 16, marginTop: 16 }}>

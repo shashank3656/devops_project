@@ -187,17 +187,47 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     setSearchQuery(val);
   }, [router.query.q]);
 
-  // Cmd/Ctrl+K to focus search
+  // Cmd/Ctrl+K to focus search, ? help, g+t tickets, g+d dashboard
   useEffect(() => {
+    let gPressedAt = 0;
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         searchInputRef.current?.focus();
+        return;
+      }
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
+        e.preventDefault();
+        const msg = 'Shortcuts: ? help, ⌘K search, g then d = Dashboard, g then t = Tickets';
+        if (typeof window !== 'undefined' && (window as any).adminToast) {
+          (window as any).adminToast(msg, 'success');
+        } else {
+          alert(msg);
+        }
+        return;
+      }
+      if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
+        gPressedAt = Date.now();
+        return;
+      }
+      if (gPressedAt && Date.now() - gPressedAt < 800) {
+        if (e.key === 'd') {
+          e.preventDefault();
+          router.push('/dashboard');
+        } else if (e.key === 't') {
+          e.preventDefault();
+          router.push('/requests');
+        }
+        gPressedAt = 0;
+      } else {
+        gPressedAt = 0;
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [router]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
