@@ -548,6 +548,11 @@ func main() {
 	http.HandleFunc("/api-docs", swaggerUIHandler)
 	
 	log.Println("Backend server starting on :8080")
+	if SlackWebhookURL != "" {
+		log.Println("Slack notifications: enabled")
+	} else {
+		log.Println("Slack notifications: disabled (set SLACK_WEBHOOK_URL to enable)")
+	}
 	log.Println("Endpoints:")
 	log.Println("  POST /create-pr      - Create infrastructure PR directly (verified contributor/admin only)")
 	log.Println("  POST /api/request    - Submit request for approval (pending_approval; admin approves to create PR)")
