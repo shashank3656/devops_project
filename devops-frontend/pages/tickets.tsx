@@ -6,6 +6,42 @@ import { useApiUrl } from '../context/ApiUrlContext';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
+const CLOUDS = ['AWS', 'GCP', 'Azure'];
+const STATUS_OPTIONS = [
+  { value: '', label: 'All statuses' },
+  { value: 'pending_approval', label: 'Pending approval' },
+  { value: 'pending_user_manager_approval', label: 'Pending user manager' },
+  { value: 'pending_devops_approval', label: 'Pending DevOps approval' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'rejected', label: 'Rejected' },
+];
+
+function getStatusBadgeClass(status: string): string {
+  switch (status) {
+    case 'completed': return 'ticket-status--success';
+    case 'rejected': return 'ticket-status--danger';
+    case 'in_progress': return 'ticket-status--info';
+    case 'pending_approval':
+    case 'pending_user_manager_approval':
+    case 'pending_devops_approval':
+      return 'ticket-status--warning';
+    default: return 'ticket-status--default';
+  }
+}
+
+function formatStatus(status: string): string {
+  const map: Record<string, string> = {
+    pending_approval: 'Pending approval',
+    pending_user_manager_approval: 'Pending user mgr',
+    pending_devops_approval: 'Pending DevOps',
+    in_progress: 'In progress',
+    completed: 'Completed',
+    rejected: 'Rejected',
+  };
+  return map[status] || status;
+}
+
 interface TicketRow {
   id: number;
   team: string;
@@ -38,9 +74,12 @@ export default function DevOpsTickets() {
   const [sortOrder, setSortOrder] = useState('desc');
   const [atRisk, setAtRisk] = useState(false);
   const [offset, setOffset] = useState(0);
+  const [filterExpanded, setFilterExpanded] = useState(true);
   const limit = 20;
 
   const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
+
+  const hasActiveFilters = idFilter || team || cloud || status || search || requester || atRisk;
 
   useEffect(() => {
     if (!token) {
@@ -73,101 +112,213 @@ export default function DevOpsTickets() {
       .finally(() => setLoading(false));
   }, [token, router, apiUrl, idFilter, team, cloud, status, search, requester, sortBy, sortOrder, atRisk, offset]);
 
+  const clearFilters = () => {
+    setIdFilter('');
+    setTeam('');
+    setCloud('');
+    setStatus('');
+    setSearch('');
+    setRequester('');
+    setAtRisk(false);
+    setOffset(0);
+  };
+
   return (
     <>
       <Head>
         <title>All tickets - InfraGate DevOps</title>
       </Head>
       <DevOpsLayout>
-        <div className="container">
-          <h1 className="page-title">All tickets</h1>
-          <p style={{ color: 'var(--color-text-muted)', marginBottom: 24, fontSize: 14 }}>
-            Search and filter by ticket #, team, cloud, status, requester. Sort by created, updated, priority, or due date. Use &quot;At risk&quot; for overdue or due in 24h.
-          </p>
-          <div className="card" style={{ padding: 16, marginBottom: 24 }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-              <input type="text" placeholder="Ticket #" value={idFilter} onChange={(e) => setIdFilter(e.target.value)} style={{ width: 90 }} className="input" />
-              <input type="text" placeholder="Team" value={team} onChange={(e) => setTeam(e.target.value)} className="input" style={{ minWidth: 100 }} />
-              <input type="text" placeholder="Cloud" value={cloud} onChange={(e) => setCloud(e.target.value)} className="input" style={{ minWidth: 80 }} />
-              <select value={status} onChange={(e) => setStatus(e.target.value)} className="input" style={{ minWidth: 160 }}>
-                <option value="">All statuses</option>
-                <option value="pending_approval">Pending approval</option>
-                <option value="pending_user_manager_approval">Pending user manager</option>
-                <option value="pending_devops_approval">Pending DevOps approval</option>
-                <option value="in_progress">In progress</option>
-                <option value="completed">Completed</option>
-                <option value="rejected">Rejected</option>
-              </select>
-              <input type="text" placeholder="Requester ID" value={requester} onChange={(e) => setRequester(e.target.value)} className="input" style={{ width: 100 }} />
-              <input type="text" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} className="input" style={{ minWidth: 120 }} />
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="input">
-                <option value="created_at">Sort: Created</option>
-                <option value="updated_at">Sort: Updated</option>
-                <option value="priority">Sort: Priority</option>
-                <option value="due_date">Sort: Due date</option>
-              </select>
-              <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="input">
-                <option value="desc">Desc</option>
-                <option value="asc">Asc</option>
-              </select>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input type="checkbox" checked={atRisk} onChange={(e) => setAtRisk(e.target.checked)} />
-                At risk
-              </label>
+        <div className="devops-tickets-page">
+          <div className="devops-tickets-header">
+            <div>
+              <h1 className="devops-tickets-title">All tickets</h1>
+              <p className="devops-tickets-subtitle">
+                Search and filter by ticket #, team, cloud, status, or requester. Sort by created, updated, priority, or due date.
+              </p>
             </div>
           </div>
-          {loading ? (
-            <p className="loading-text">Loading…</p>
-          ) : (
-            <>
-              <p style={{ fontSize: 14, color: 'var(--color-text-muted)', marginBottom: 12 }}>Showing {requests.length} of {total}</p>
-              <div className="card">
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Team</th>
-                        <th>Env</th>
-                        <th>Cloud</th>
-                        <th>Service</th>
-                        <th>Requester</th>
-                        <th>Priority</th>
-                        <th>Due</th>
-                        <th>Status</th>
-                        <th>PR</th>
-                        <th>Updated</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {requests.map((req) => (
-                        <tr key={req.id}>
-                          <td><code>#{req.id}</code></td>
-                          <td>{req.team}</td>
-                          <td>{req.env}</td>
-                          <td>{req.cloud}</td>
-                          <td>{req.service}</td>
-                          <td>{req.created_by_username || '—'}</td>
-                          <td>{req.priority}</td>
-                          <td style={{ fontSize: 13 }}>
-                            {req.due_date ? new Date(req.due_date).toLocaleDateString() : '—'}
-                            {req.due_status === 'overdue' && <span style={{ marginLeft: 6, padding: '2px 6px', borderRadius: 4, fontSize: 11, background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>Overdue</span>}
-                            {req.due_status === 'due_soon' && <span style={{ marginLeft: 6, padding: '2px 6px', borderRadius: 4, fontSize: 11, background: 'var(--color-warning-bg)', color: 'var(--color-warning)' }}>Due in 24h</span>}
-                          </td>
-                          <td>{req.status}</td>
-                          <td>{req.pr_url ? <a href={req.pr_url} target="_blank" rel="noopener noreferrer">PR</a> : '—'}</td>
-                          <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{new Date(req.updated_at).toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+
+          {/* Filter card */}
+          <div className="devops-tickets-filter-card card">
+            <button
+              type="button"
+              className="devops-tickets-filter-toggle"
+              onClick={() => setFilterExpanded(!filterExpanded)}
+              aria-expanded={filterExpanded}
+            >
+              <span className="devops-tickets-filter-toggle__icon">{filterExpanded ? '▼' : '▶'}</span>
+              <span>Filters</span>
+              {hasActiveFilters && <span className="devops-tickets-filter-badge">{[idFilter, team, cloud, status, search, requester, atRisk].filter(Boolean).length}</span>}
+            </button>
+            {filterExpanded && (
+              <div className="devops-tickets-filter-grid">
+                <div className="devops-tickets-filter-group">
+                  <label className="devops-tickets-filter-label">Ticket #</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 123"
+                    value={idFilter}
+                    onChange={(e) => setIdFilter(e.target.value)}
+                    className="input devops-tickets-filter-input"
+                  />
+                </div>
+                <div className="devops-tickets-filter-group">
+                  <label className="devops-tickets-filter-label">Team</label>
+                  <input
+                    type="text"
+                    placeholder="Team name"
+                    value={team}
+                    onChange={(e) => setTeam(e.target.value)}
+                    className="input devops-tickets-filter-input"
+                  />
+                </div>
+                <div className="devops-tickets-filter-group">
+                  <label className="devops-tickets-filter-label">Cloud</label>
+                  <select value={cloud} onChange={(e) => setCloud(e.target.value)} className="input devops-tickets-filter-input">
+                    <option value="">All clouds</option>
+                    {CLOUDS.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="devops-tickets-filter-group">
+                  <label className="devops-tickets-filter-label">Status</label>
+                  <select value={status} onChange={(e) => setStatus(e.target.value)} className="input devops-tickets-filter-input">
+                    {STATUS_OPTIONS.map((o) => (
+                      <option key={o.value || 'all'} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="devops-tickets-filter-group">
+                  <label className="devops-tickets-filter-label">Requester</label>
+                  <input
+                    type="text"
+                    placeholder="Username or ID"
+                    value={requester}
+                    onChange={(e) => setRequester(e.target.value)}
+                    className="input devops-tickets-filter-input"
+                  />
+                </div>
+                <div className="devops-tickets-filter-group devops-tickets-filter-group--wide">
+                  <label className="devops-tickets-filter-label">Search</label>
+                  <input
+                    type="text"
+                    placeholder="Search across fields..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="input devops-tickets-filter-input"
+                  />
+                </div>
+                <div className="devops-tickets-filter-group">
+                  <label className="devops-tickets-filter-label">Sort by</label>
+                  <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="input devops-tickets-filter-input">
+                    <option value="created_at">Created</option>
+                    <option value="updated_at">Updated</option>
+                    <option value="priority">Priority</option>
+                    <option value="due_date">Due date</option>
+                  </select>
+                </div>
+                <div className="devops-tickets-filter-group">
+                  <label className="devops-tickets-filter-label">Order</label>
+                  <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="input devops-tickets-filter-input">
+                    <option value="desc">Newest first</option>
+                    <option value="asc">Oldest first</option>
+                  </select>
+                </div>
+                <div className="devops-tickets-filter-group devops-tickets-filter-group--checkbox">
+                  <label className="devops-tickets-filter-checkbox">
+                    <input type="checkbox" checked={atRisk} onChange={(e) => setAtRisk(e.target.checked)} />
+                    <span>At risk (overdue or due in 24h)</span>
+                  </label>
+                </div>
+                <div className="devops-tickets-filter-actions">
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters} disabled={!hasActiveFilters}>
+                    Clear
+                  </button>
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
-                <button type="button" className="btn btn-secondary" disabled={offset === 0} onClick={() => setOffset((o) => Math.max(0, o - limit))}>Previous</button>
-                <span style={{ fontSize: 14, color: 'var(--color-text-muted)' }}>Page {Math.floor(offset / limit) + 1}</span>
-                <button type="button" className="btn btn-secondary" disabled={offset + limit >= total} onClick={() => setOffset((o) => o + limit)}>Next</button>
+            )}
+          </div>
+
+          {/* Results */}
+          {loading ? (
+            <div className="devops-tickets-loading">
+              <div className="devops-tickets-spinner" />
+              <p>Loading tickets…</p>
+            </div>
+          ) : (
+            <>
+              <div className="devops-tickets-summary">
+                <span>Showing {requests.length} of {total} tickets</span>
               </div>
+              <div className="devops-tickets-table-card card">
+                {requests.length === 0 ? (
+                  <div className="devops-tickets-empty">
+                    <div className="devops-tickets-empty__icon">📋</div>
+                    <p>No tickets match your filters.</p>
+                    <button type="button" className="btn btn-secondary" onClick={clearFilters}>
+                      Clear filters
+                    </button>
+                  </div>
+                ) : (
+                  <div className="devops-tickets-table-wrap">
+                    <table className="devops-tickets-table">
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>Team</th>
+                          <th>Env</th>
+                          <th>Cloud</th>
+                          <th>Service</th>
+                          <th>Requester</th>
+                          <th>Priority</th>
+                          <th>Due</th>
+                          <th>Status</th>
+                          <th>PR</th>
+                          <th>Updated</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {requests.map((req) => (
+                          <tr key={req.id}>
+                            <td><code className="devops-ticket-id">#{req.id}</code></td>
+                            <td>{req.team}</td>
+                            <td><span className="devops-ticket-env">{req.env}</span></td>
+                            <td><span className={`devops-ticket-cloud devops-ticket-cloud--${(req.cloud || '').toLowerCase()}`}>{req.cloud}</span></td>
+                            <td>{req.service}</td>
+                            <td>{req.created_by_username || '—'}</td>
+                            <td><span className={`devops-ticket-priority devops-ticket-priority--${(req.priority || 'medium').toLowerCase()}`}>{req.priority}</span></td>
+                            <td>
+                              <span className="devops-ticket-due">
+                                {req.due_date ? new Date(req.due_date).toLocaleDateString() : '—'}
+                                {req.due_status === 'overdue' && <span className="devops-ticket-due-badge devops-ticket-due-badge--overdue">Overdue</span>}
+                                {req.due_status === 'due_soon' && <span className="devops-ticket-due-badge devops-ticket-due-badge--soon">Due in 24h</span>}
+                              </span>
+                            </td>
+                            <td><span className={`ticket-status ${getStatusBadgeClass(req.status)}`}>{formatStatus(req.status)}</span></td>
+                            <td>{req.pr_url ? <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="devops-ticket-pr-link">View PR</a> : '—'}</td>
+                            <td className="devops-ticket-updated">{new Date(req.updated_at).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+              {requests.length > 0 && total > limit && (
+                <div className="devops-tickets-pagination">
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => setOffset((o) => Math.max(0, o - limit))}>
+                    Previous
+                  </button>
+                  <span className="devops-tickets-pagination-info">
+                    Page {Math.floor(offset / limit) + 1} of {Math.ceil(total / limit)}
+                  </span>
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={offset + limit >= total} onClick={() => setOffset((o) => o + limit)}>
+                    Next
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
