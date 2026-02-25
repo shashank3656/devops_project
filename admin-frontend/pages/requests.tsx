@@ -1179,7 +1179,7 @@ export default function AdminRequests() {
                           <span style={{ color: 'var(--color-text-muted)', marginLeft: 6 }}>
                             {({ request_create: 'created', request_submit: 'submitted', request_approve: 'approved', request_reject: 'rejected', request_comment: 'commented', request_clone: 'cloned', request_resubmit: 'resubmitted', request_cancel: 'cancelled', request_promote: 'promoted', request_plan_output: 'updated plan', request_reassign: 'reassigned', request_approved_by_manager: 'approved (manager)' } as Record<string, string>)[e.action] || e.action.replace(/_/g, ' ')}
                           </span>
-                          {e.details && <span style={{ color: 'var(--color-text-muted)', marginLeft: 6 }}— {e.details}</span>}
+                          {e.details && <span style={{ color: 'var(--color-text-muted)', marginLeft: 6 }}> - {e.details}</span>}
                           {e.body && <p style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{e.body}</p>}
                           <span style={{ display: 'block', fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>{new Date(e.created_at).toLocaleString()}</span>
                         </div>
