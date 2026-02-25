@@ -1288,7 +1288,7 @@ export default function History() {
                             <div key={`${e.kind}-${e.id}`} style={{ marginBottom: '8px', padding: '6px 10px', background: 'var(--bg-gray-50)', borderRadius: '6px', fontSize: '13px' }}>
                               <span style={{ fontWeight: 600 }}>{e.username || 'System'}</span>
                               <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>{formatTimelineAction(e.action)}</span>
-                              {e.details && <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}— {e.details}</span>}
+                              {e.details && <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}> - {e.details}</span>}
                               {e.body && <p style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{e.body}</p>}
                               <span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{new Date(e.created_at).toLocaleString()}</span>
                             </div>
