@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import AdminLayout from '../components/AdminLayout';
@@ -21,6 +21,8 @@ export default function WebhooksPage() {
   const [newUrl, setNewUrl] = useState('');
   const [newSecret, setNewSecret] = useState('');
   const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set(EVENT_OPTIONS));
+  const [eventsDropdownOpen, setEventsDropdownOpen] = useState(false);
+  const eventsDropdownRef = React.useRef<HTMLDivElement>(null);
 
   const toggleEvent = (event: string) => {
     setSelectedEvents((prev) => {
@@ -30,6 +32,18 @@ export default function WebhooksPage() {
       return next;
     });
   };
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (eventsDropdownRef.current && !eventsDropdownRef.current.contains(e.target as Node)) {
+        setEventsDropdownOpen(false);
+      }
+    };
+    if (eventsDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [eventsDropdownOpen]);
   const [creating, setCreating] = useState(false);
   const [toggleLoading, setToggleLoading] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
@@ -193,19 +207,34 @@ export default function WebhooksPage() {
                   onChange={(e) => setNewSecret(e.target.value)}
                 />
               </div>
-              <div className="form-group">
+              <div className="form-group" ref={eventsDropdownRef}>
                 <label className="label">Events</label>
-                <div className="webhook-events-checkboxes">
-                  {EVENT_OPTIONS.map((ev) => (
-                    <label key={ev} className="webhook-event-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={selectedEvents.has(ev)}
-                        onChange={() => toggleEvent(ev)}
-                      />
-                      <span>{ev}</span>
-                    </label>
-                  ))}
+                <div className="webhook-events-dropdown">
+                  <button
+                    type="button"
+                    className="webhook-events-dropdown__trigger input"
+                    onClick={() => setEventsDropdownOpen((o) => !o)}
+                    aria-haspopup="listbox"
+                    aria-expanded={eventsDropdownOpen}
+                  >
+                    {selectedEvents.size === 0
+                      ? 'Select events'
+                      : Array.from(selectedEvents).sort().join(', ')}
+                  </button>
+                  {eventsDropdownOpen && (
+                    <div className="webhook-events-dropdown__panel" role="listbox">
+                      {EVENT_OPTIONS.map((ev) => (
+                        <label key={ev} className="webhook-events-dropdown__option">
+                          <input
+                            type="checkbox"
+                            checked={selectedEvents.has(ev)}
+                            onChange={() => toggleEvent(ev)}
+                          />
+                          <span>{ev}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               <button type="submit" className="btn btn-primary" disabled={creating}>
