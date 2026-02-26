@@ -478,6 +478,7 @@ func main() {
 	// Log email configuration status
 	if os.Getenv("SMTP_HOST") != "" {
 		log.Printf("[Email] SMTP configured: host=%s port=%s from=%s", os.Getenv("SMTP_HOST"), os.Getenv("SMTP_PORT"), os.Getenv("SMTP_FROM"))
+		log.Printf("[Email] Password reset links will use FRONTEND_URL=%s", os.Getenv("FRONTEND_URL"))
 	} else {
 		log.Printf("[Email] SMTP not configured (SMTP_HOST empty) - notification emails disabled")
 	}
