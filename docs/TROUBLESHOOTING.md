@@ -197,6 +197,69 @@ If you don’t use team-based managers, you can set a **manager** on the user in
 | Creator has **manager_id** set and no team manager | → **pending_user_manager_approval** |
 | Otherwise | → **pending_devops_approval** |
 
+## Password Reset Email Not Sending
+
+If forgot-password emails are not being received, follow these steps:
+
+### 1. Check backend logs
+
+On forgot-password request, the backend logs:
+
+- `[Auth] Forgot-password: no user found for email/username ...` — user not in DB; no email sent (by design)
+- `[Auth] Forgot-password: user found id=... email=...` — user found; email will be sent
+- `[Email] Sending to=... subject=...` — email send attempt
+- `[Auth] SendEmail forgot-password failed: ...` — SMTP error
+- `[Auth] Forgot-password email sent to ...` — success
+
+```bash
+docker-compose logs backend | grep -E "\[Auth\]|\[Email\]"
+```
+
+### 2. Verify user exists
+
+Ensure the email you enter is in the database. Use Admin → Users or:
+
+```sql
+SELECT id, username, email FROM users WHERE email = 'your@email.com';
+```
+
+### 3. Check SMTP configuration
+
+In `config/.env`:
+
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` must be set
+- For Gmail: use an **App Password** (not your normal password), from [Google Account → Security → App passwords](https://myaccount.google.com/apppasswords)
+- `SMTP_USE_TLS=true` for port 587
+
+### 4. Verify FRONTEND_URL
+
+Reset links in the email use `FRONTEND_URL`. For production, set:
+
+```
+FRONTEND_URL=http://20.219.96.249:3000
+```
+
+(or your actual frontend URL). If backend runs in Docker and `FRONTEND_URL` is `localhost`, the link in the email will not work from the user’s machine.
+
+### 5. Check firewall / network
+
+Port 587 (SMTP) must be reachable from the backend container. Check:
+
+```bash
+docker-compose exec backend env | grep SMTP
+```
+
+### Summary
+
+| Issue | Action |
+|-------|--------|
+| User not found | Add user in Admin or sign up |
+| SMTP auth failed | Use Gmail App Password |
+| Link doesn’t work | Set `FRONTEND_URL` to your public frontend URL |
+| No logs | Ensure backend is running and check `docker-compose logs backend` |
+
+---
+
 ## Still Having Issues?
 
 1. Check that both frontend and backend are running

@@ -1481,12 +1481,19 @@ func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err := GetUserByEmailOrUsername(email)
-	if err != nil || user == nil || user.Email == "" {
-		// Don't reveal if user exists - always return success
+	if err != nil {
+		log.Printf("[Auth] Forgot-password: GetUserByEmailOrUsername failed for %q: %v", email, err)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "If an account exists with that email, you will receive a reset link."})
 		return
 	}
+	if user == nil || user.Email == "" {
+		log.Printf("[Auth] Forgot-password: no user found for email/username %q - not sending email", email)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "If an account exists with that email, you will receive a reset link."})
+		return
+	}
+	log.Printf("[Auth] Forgot-password: user found id=%d email=%s - sending reset link", user.ID, user.Email)
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -1527,8 +1534,9 @@ func resetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Token       string `json:"token"`
-		NewPassword string `json:"new_password"`
+		Token            string `json:"token"`
+		NewPassword      string `json:"new_password"`
+		ConfirmPassword  string `json:"confirm_password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -1552,6 +1560,18 @@ func resetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "password must be at least 6 characters", "status": "error"})
 		return
 	}
+	if body.ConfirmPassword == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "confirm password is required", "status": "error"})
+		return
+	}
+	if body.NewPassword != body.ConfirmPassword {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "passwords do not match", "status": "error"})
+		return
+	}
 	userID, err := GetUserIDByPasswordResetToken(token)
 	if err != nil || userID <= 0 {
 		w.Header().Set("Content-Type", "application/json")
@@ -1565,10 +1585,12 @@ func resetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := UpdateUserPassword(userID, string(hashed)); err != nil {
+		log.Printf("[Auth] Reset-password: UpdateUserPassword failed userID=%d: %v", userID, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	_ = ConsumePasswordResetToken(token)
+	log.Printf("[Auth] Reset-password: password updated successfully for userID=%d", userID)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Password updated. You can now sign in."})
 }
