@@ -1959,6 +1959,10 @@ code {
 .history-empty__icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.6; }
 .history-empty__actions { margin-top: 1.25rem; display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
 
+/* Profile page */
+.profile-card { border-radius: 12px; }
+.profile-header { border-left: 4px solid var(--primary-color); }
+
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 10px;

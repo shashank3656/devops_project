@@ -13,6 +13,13 @@ interface User {
   created_at: string;
 }
 
+interface Team {
+  id: number;
+  name: string;
+  slug: string;
+  team_type?: string;
+}
+
 interface APIKeyRecord {
   id: number;
   user_id: number;
@@ -50,6 +57,8 @@ export default function Profile() {
     email_sla_breach: boolean;
   } | null>(null);
   const [notifPrefsSaving, setNotifPrefsSaving] = useState(false);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [managerUsername, setManagerUsername] = useState<string | null>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -105,6 +114,8 @@ export default function Profile() {
         const data = await res.json();
         setUser(data.user || null);
         setTotpEnabled(data.user?.totp_enabled ?? false);
+        setTeams(Array.isArray(data.teams) ? data.teams : []);
+        setManagerUsername(data.manager_username || null);
       } else if (res.status === 404) {
         setUser(null);
         toast('User not found.', 'error');
@@ -335,94 +346,68 @@ export default function Profile() {
         <title>Profile - Infrastructure Portal</title>
       </Head>
       <div style={{ minHeight: '100vh', padding: '40px 20px' }}>
-        <div className="container">
-          <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: '24px' }}>
-            Profile
-          </h1>
+        <div className="container" style={{ maxWidth: 720 }}>
+          {!loading && userFetched && !user ? (
+            <div className="card profile-card" style={{ textAlign: 'center', padding: 48 }}>
+              <p style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>User not found</p>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: 16 }}>You may need to sign in again.</p>
+              <button type="button" onClick={() => router.push('/login')} className="btn btn-primary">Go to login</button>
+            </div>
+          ) : user ? (
+            <>
+              {/* Profile header */}
+              <div className="card profile-card profile-header" style={{ marginBottom: 24, padding: 24 }}> 
+                <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+                  <div className="profile-avatar" style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--primary-gradient)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700 }}>
+                    {(user.username || user.email || 'U').slice(0, 2).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>{user.username}</h1>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 8 }}>{user.email}</p>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ padding: '4px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600, background: user.verified ? 'var(--success-bg)' : 'var(--warning-bg)', color: user.verified ? 'var(--success-color)' : 'var(--warning-color)' }}>
+                        {user.verified ? 'Verified' : 'Not verified'}
+                      </span>
+                      <span style={{ padding: '4px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600, background: 'var(--info-bg)', color: 'var(--info-color)' }}>
+                        {user.role || 'viewer'}
+                      </span>
+                    </div>
+                    {!user.verified && (
+                      <button type="button" onClick={handleResendVerification} disabled={resending} className="btn btn-secondary btn-sm" style={{ marginTop: 12 }}>
+                        {resending ? 'Sending...' : 'Resend verification'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
 
-          <div className="card" style={{ maxWidth: '500px', marginBottom: '32px' }}>
-            <h2 style={{ fontSize: '18px', marginBottom: '16px', color: 'var(--text-primary)' }}>Account</h2>
-            {!loading && userFetched && !user ? (
-              <div style={{ padding: '24px', textAlign: 'center' }}>
-                <p style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                  User not found
-                </p>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                  The user account could not be found. You may need to sign in again.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => router.push('/login')}
-                  className="btn btn-primary"
-                  style={{ padding: '10px 20px' }}
-                >
-                  Go to login
-                </button>
-              </div>
-            ) : user ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Username</span>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{user.username}</div>
+              {/* Teams & Manager row */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginBottom: 24 }}>
+                <div className="card profile-card" style={{ padding: 20 }}>
+                  <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Teams</h3>
+                  {teams.length === 0 ? (
+                    <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>—</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {teams.map((t) => (
+                        <span key={t.id} style={{ padding: '6px 12px', borderRadius: 8, fontSize: 13, background: 'var(--primary-tint)', color: 'var(--primary-color)', fontWeight: 500 }}>{t.name}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Email</span>
-                  <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{user.email}</div>
+                <div className="card profile-card" style={{ padding: 20 }}>
+                  <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Manager</h3>
+                  <p style={{ color: 'var(--text-primary)', fontSize: 14, fontWeight: 500 }}>{managerUsername || '—'}</p>
                 </div>
-                <div>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Status</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{
-                      padding: '4px 10px',
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      fontWeight: 600,
-                      background: user.verified ? 'var(--success-bg)' : 'var(--warning-bg)',
-                      color: user.verified ? 'var(--success-color)' : 'var(--warning-color)',
-                    }}>
-                      {user.verified ? '✓ Verified' : 'Not verified'}
-                    </span>
-                    <span style={{
-                      padding: '4px 10px',
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      fontWeight: 600,
-                      background: 'var(--info-bg)',
-                      color: 'var(--info-color)',
-                    }}>
-                      Role: {user.role || 'viewer'}
-                    </span>
-                  </div>
-                </div>
-                {!user.verified && (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={handleResendVerification}
-                      disabled={resending}
-                      className="btn btn-secondary"
-                      style={{ fontSize: '14px', padding: '8px 16px' }}
-                    >
-                      {resending ? 'Sending...' : 'Resend verification email'}
-                    </button>
-                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
-                      Verify your email and get contributor access to create PRs.
-                    </p>
-                  </div>
-                )}
-                <div>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Member since</span>
-                  <div style={{ color: 'var(--text-primary)' }}>
-                    {new Date(user.created_at).toLocaleDateString()}
-                  </div>
+                <div className="card profile-card" style={{ padding: 20 }}>
+                  <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Member since</h3>
+                  <p style={{ color: 'var(--text-primary)', fontSize: 14 }}>{new Date(user.created_at).toLocaleDateString()}</p>
                 </div>
               </div>
-            ) : null}
-          </div>
 
           {user && (
-          <div className="card" style={{ maxWidth: '500px' }}>
-            <h2 style={{ fontSize: '18px', marginBottom: '16px', color: 'var(--text-primary)' }}>
+          <div className="card profile-card" style={{ marginBottom: 24, padding: 24 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>
               Change password
             </h2>
             <form onSubmit={handleChangePassword}>
@@ -472,8 +457,8 @@ export default function Profile() {
           )}
 
           {user && notifPrefs && (
-          <div className="card" style={{ maxWidth: '500px', marginTop: '24px' }}>
-            <h2 style={{ fontSize: '18px', marginBottom: '8px', color: 'var(--text-primary)' }}>Notification preferences</h2>
+          <div className="card profile-card" style={{ marginBottom: 24, padding: 24 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>Notification preferences</h2>
             <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
               Choose which emails you receive for request updates.
             </p>
@@ -502,8 +487,8 @@ export default function Profile() {
           )}
 
           {user && (
-          <div className="card" style={{ maxWidth: '500px', marginTop: '24px' }}>
-            <h2 style={{ fontSize: '18px', marginBottom: '8px', color: 'var(--text-primary)' }}>Two-factor authentication (2FA)</h2>
+          <div className="card profile-card" style={{ marginBottom: 24, padding: 24 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>Two-factor authentication (2FA)</h2>
             <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
               When enabled, you will receive a 6-digit code by email on each login.
             </p>
@@ -532,8 +517,8 @@ export default function Profile() {
           )}
 
           {user && (
-          <div className="card" style={{ maxWidth: '640px', marginTop: '24px' }}>
-            <h2 style={{ fontSize: '18px', marginBottom: '8px', color: 'var(--text-primary)' }}>API keys</h2>
+          <div className="card profile-card" style={{ marginBottom: 24, padding: 24 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>API keys</h2>
             <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
               Create keys to call &quot;create request&quot; or &quot;get history&quot; without browser login. Use the key in the <code style={{ fontSize: '13px' }}>Authorization: Bearer ip_xxx</code> header. Scopes: <code>request:create</code>, <code>history:read</code>.
             </p>
@@ -608,6 +593,8 @@ export default function Profile() {
               </div>
             )}
           </div>
+          )}
+            </>
           )}
         </div>
       </div>
