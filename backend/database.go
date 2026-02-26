@@ -2644,7 +2644,7 @@ func GetUserByEmailOrUsername(emailOrUsername string) (*User, error) {
 	var isPortalManager sql.NullBool
 	err := DB.QueryRow(
 		`SELECT id, username, email, COALESCE(verified, false), COALESCE(role, 'viewer'), COALESCE(user_type, 'portal_user'), manager_id, COALESCE(is_portal_manager, false), created_at FROM users WHERE email = $1 OR username = $1`,
-		emailOrUsername, emailOrUsername,
+		emailOrUsername,
 	).Scan(&u.ID, &u.Username, &u.Email, &verified, &role, &userType, &managerID, &isPortalManager, &u.CreatedAt)
 	if err != nil {
 		return nil, err
