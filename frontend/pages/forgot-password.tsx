@@ -11,6 +11,7 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -30,6 +31,7 @@ export default function ForgotPassword() {
     e.preventDefault();
     if (!email.trim()) return;
     setLoading(true);
+    setError('');
     try {
       const res = await fetch(`${apiUrl}/api/auth/forgot-password`, {
         method: 'POST',
@@ -39,12 +41,16 @@ export default function ForgotPassword() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setSent(true);
-        toast('If an account exists with that email, you will receive a reset link.', 'success');
+        toast('Check your email for a reset link.', 'success');
       } else {
-        toast(data.error || 'Request failed', 'error');
+        const errMsg = data.error || 'Request failed';
+        setError(errMsg);
+        toast(errMsg, 'error');
       }
     } catch (err: any) {
-      toast(err?.message || 'Request failed', 'error');
+      const errMsg = err?.message || 'Request failed';
+      setError(errMsg);
+      toast(errMsg, 'error');
     } finally {
       setLoading(false);
     }
@@ -80,6 +86,11 @@ export default function ForgotPassword() {
               </p>
             ) : (
               <form onSubmit={handleSubmit}>
+                {error && (
+                  <p style={{ color: 'var(--error-color, #dc2626)', marginBottom: 16 }}>
+                    {error}
+                  </p>
+                )}
                 <div className="form-group">
                   <label className="label" htmlFor="email">Email</label>
                   <input
@@ -87,7 +98,7 @@ export default function ForgotPassword() {
                     className="input"
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => { setEmail(e.target.value); setError(''); }}
                     required
                     disabled={loading}
                     autoComplete="email"

@@ -1483,14 +1483,22 @@ func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := GetUserByEmailOrUsername(email)
 	if err != nil {
 		log.Printf("[Auth] Forgot-password: GetUserByEmailOrUsername failed for %q: %v", email, err)
+		if err == sql.ErrNoRows {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "No account found with that email", "status": "error"})
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "If an account exists with that email, you will receive a reset link."})
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Something went wrong. Please try again.", "status": "error"})
 		return
 	}
 	if user == nil || user.Email == "" {
 		log.Printf("[Auth] Forgot-password: no user found for email/username %q - not sending email", email)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "If an account exists with that email, you will receive a reset link."})
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "No account found with that email", "status": "error"})
 		return
 	}
 	log.Printf("[Auth] Forgot-password: user found id=%d email=%s - sending reset link", user.ID, user.Email)
