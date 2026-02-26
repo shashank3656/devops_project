@@ -307,7 +307,8 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		pendingToken := hex.EncodeToString(pendingBytes)
 		_, _ = DB.Exec("INSERT INTO pending_2fa (token, user_id, expires_at) VALUES ($1, $2, $3)",
 			pendingToken, user.ID, otpExpires)
-		sendNotificationEmailIfConfigured(user.ID, "2FA code", "Your verification code is: "+otp)
+		subj, body := EmailTemplate2FA(otp)
+		sendNotificationEmailIfConfigured(user.ID, subj, body)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"requires_otp":       true,
@@ -1498,11 +1499,13 @@ func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resetURL := strings.TrimSuffix(FrontendURL, "/") + "/reset-password?token=" + token
-	subject := "Password reset - InfraGate"
-	bodyText := "You requested a password reset. Click the link below to set a new password (valid for 1 hour):\n\n" + resetURL + "\n\nIf you did not request this, ignore this email."
+	log.Printf("[Auth] Forgot-password: user=%s resetURL=%s", user.Email, resetURL)
+	subject, bodyText, _ := EmailTemplatePasswordReset(resetURL)
 	if err := SendEmail(user.Email, subject, bodyText); err != nil {
-		log.Printf("[Auth] SendEmail forgot-password: %v", err)
+		log.Printf("[Auth] SendEmail forgot-password failed: %v", err)
 		// Still return success to not reveal user existence
+	} else {
+		log.Printf("[Auth] Forgot-password email sent to %s", user.Email)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "If an account exists with that email, you will receive a reset link."})
