@@ -27,7 +27,7 @@
   --sidebar-active-border: #4f46e5;
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 72px;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
@@ -703,6 +703,21 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   font-weight: 700;
   margin-bottom: var(--space-6);
   color: var(--color-text);
+}
+.devops-dashboard-header {
+  margin-bottom: var(--space-6);
+}
+.devops-dashboard-header__title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.02em;
+  margin: 0 0 4px 0;
+}
+.devops-dashboard-header__subtitle {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  margin: 0;
 }
 
 /* Buttons */
