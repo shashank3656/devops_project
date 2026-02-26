@@ -389,15 +389,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   </div>
                 </div>
               )}
-              <button
-                type="button"
-                className="admin-navbar__icon-btn"
-                onClick={toggleTheme}
-                title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-              >
-                {theme === 'dark' ? <IconSun /> : <IconMoon />}
-              </button>
             </div>
+            <button
+              type="button"
+              className="admin-navbar__theme-toggle"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+              aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            >
+              {theme === 'dark' ? <IconSun /> : <IconMoon />}
+            </button>
             <div className="admin-navbar__profile-wrap" ref={profileRef}>
               <button
                 type="button"
