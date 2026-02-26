@@ -48,7 +48,7 @@ services:
       - SMTP_USER=${SMTP_USER:-devops3656@gmail.com}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-avhbdsfwpllsgogm}
       - SMTP_FROM=${SMTP_FROM:-devops3656@gmail.com}
-      - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
       - GITHUB_OWNER=${GITHUB_OWNER}
       - GITHUB_REPO=${GITHUB_REPO}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
@@ -94,7 +94,7 @@ services:
       - SMTP_USER=${SMTP_USER:-devops3656@gmail.com}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-avhbdsfwpllsgogm}
       - SMTP_FROM=${SMTP_FROM:-devops3656@gmail.com}
-      - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
       - GITHUB_OWNER=${GITHUB_OWNER}
       - GITHUB_REPO=${GITHUB_REPO}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
