@@ -89,12 +89,19 @@ func NotifyTicketAssigned(req *PRRequest, assigneeID int) {
 // sendNotificationEmailIfConfigured sends an email if SMTP is configured (env: SMTP_HOST).
 func sendNotificationEmailIfConfigured(userID int, subject, body string) {
 	if os.Getenv("SMTP_HOST") == "" {
+		log.Printf("[Email] Skipping notification (SMTP_HOST not set) userID=%d subject=%q", userID, subject)
 		return
 	}
 	user, err := GetUserByID(userID)
-	if err != nil || user == nil || user.Email == "" {
+	if err != nil {
+		log.Printf("[Email] GetUserByID failed userID=%d: %v", userID, err)
 		return
 	}
+	if user == nil || user.Email == "" {
+		log.Printf("[Email] Skipping notification - user %d has no email", userID)
+		return
+	}
+	log.Printf("[Email] Sending notification to userID=%d email=%s subject=%q", userID, user.Email, subject)
 	if err := SendEmail(user.Email, subject, body); err != nil {
 		log.Printf("[Email] Failed to send to %s: %v", user.Email, err)
 	}

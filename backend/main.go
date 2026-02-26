@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -472,6 +473,13 @@ func main() {
 		}
 		// Ensure default admin exists (credentials from env or admin/admin123)
 		EnsureDefaultAdmin()
+	}
+
+	// Log email configuration status
+	if os.Getenv("SMTP_HOST") != "" {
+		log.Printf("[Email] SMTP configured: host=%s port=%s from=%s", os.Getenv("SMTP_HOST"), os.Getenv("SMTP_PORT"), os.Getenv("SMTP_FROM"))
+	} else {
+		log.Printf("[Email] SMTP not configured (SMTP_HOST empty) - notification emails disabled")
 	}
 
 	// API endpoints
