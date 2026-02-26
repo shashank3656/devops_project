@@ -70,6 +70,10 @@ export default function History() {
   const [showConfigHistory, setShowConfigHistory] = useState(false);
   const [recentIds, setRecentIds] = useState<number[]>([]);
   const [timeline, setTimeline] = useState<{ id: number; kind: string; action: string; username: string; details: string; body?: string; created_at: string }[]>([]);
+  const [dependsOn, setDependsOn] = useState<number[]>([]);
+  const [blockedBy, setBlockedBy] = useState<number[]>([]);
+  const [newDepId, setNewDepId] = useState('');
+  const [addingDep, setAddingDep] = useState(false);
 
   const formatTimelineAction = (action: string) => {
     const map: Record<string, string> = {
@@ -178,6 +182,8 @@ export default function History() {
     setCanApproveByManager(false);
     setComments([]);
     setTags([]);
+    setDependsOn([]);
+    setBlockedBy([]);
     setConfigHistory([]);
     setShowConfigHistory(false);
     setNewTag('');
@@ -198,6 +204,8 @@ export default function History() {
         const full = data.request || req;
         addRecentRequestId(full.id);
         setCanApproveByManager(Boolean(data.can_approve_by_manager));
+        setDependsOn(Array.isArray(data.depends_on) ? data.depends_on : []);
+        setBlockedBy(Array.isArray(data.blocked_by) ? data.blocked_by : []);
         if (full.config) {
           rawConfigByRequestId.current[full.id] = full.config;
           setDetailRequest({ ...full, config: maskSensitiveJson(full.config) });
@@ -1275,6 +1283,77 @@ export default function History() {
                         </div>
                       </div>
                     </div>
+                    {/* Dependencies */}
+                    {(dependsOn.length > 0 || blockedBy.length > 0 || (detailRequest && (currentUserId == null || detailRequest.created_by === currentUserId))) && (
+                      <div style={{ marginBottom: 20, padding: '12px 16px', background: 'var(--bg-gray-100)', borderRadius: 8 }}>
+                        <strong>Dependencies</strong>
+                        {dependsOn.length > 0 && (
+                          <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--text-secondary)' }}>
+                            Depends on: {dependsOn.map((id) => {
+                              const r = requests.find((x) => x.id === id);
+                              const canRemove = detailRequest && (currentUserId == null || detailRequest.created_by === currentUserId);
+                              return (
+                                <span key={id} style={{ marginRight: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  {r ? (
+                                    <button type="button" onClick={() => { setIdFilter(String(id)); setDetailRequest(null); openDetail(r); }} style={{ padding: '2px 8px', background: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                                      #{id}
+                                    </button>
+                                  ) : (
+                                    <a href="#" onClick={(e) => { e.preventDefault(); setIdFilter(String(id)); fetchHistory(); }} style={{ color: 'var(--primary-color)', fontSize: 13 }}>#{id}</a>
+                                  )}
+                                  {canRemove && (
+                                    <button type="button" onClick={async () => {
+                                      const token = localStorage.getItem('token');
+                                      if (!token || !detailRequest) return;
+                                      const res = await fetch(`${apiUrl}/api/request/${detailRequest.id}/dependencies/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+                                      if (res.ok) { setDependsOn((p) => p.filter((x) => x !== id)); toast('Dependency removed'); }
+                                    }} style={{ padding: '0 4px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--error-color)', fontSize: 14 }} title="Remove">×</button>
+                                  )}
+                                </span>
+                              );
+                            })}
+                          </p>
+                        )}
+                        {blockedBy.length > 0 && (
+                          <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--text-secondary)' }}>
+                            Blocking: {blockedBy.map((id) => {
+                              const r = requests.find((x) => x.id === id);
+                              return r ? (
+                                <button key={id} type="button" onClick={() => { setIdFilter(String(id)); setDetailRequest(null); openDetail(r); }} style={{ marginRight: 8, padding: '2px 8px', background: 'var(--info-color)', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                                  #{id}
+                                </button>
+                              ) : (
+                                <a key={id} href="#" onClick={(e) => { e.preventDefault(); setIdFilter(String(id)); fetchHistory(); }} style={{ marginRight: 8, color: 'var(--info-color)', fontSize: 13 }}>#{id}</a>
+                              );
+                            })}
+                          </p>
+                        )}
+                        {detailRequest && (currentUserId == null || detailRequest.created_by === currentUserId) && (
+                          <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <input type="number" placeholder="Request #" value={newDepId} onChange={(e) => setNewDepId(e.target.value)} className="input" style={{ width: 100, padding: '6px 10px' }} min={1} />
+                            <button type="button" className="btn btn-secondary btn-sm" disabled={addingDep || !newDepId.trim()} onClick={async () => {
+                              const depId = parseInt(newDepId.trim(), 10);
+                              if (isNaN(depId) || depId <= 0 || !detailRequest) return;
+                              setAddingDep(true);
+                              try {
+                                const token = localStorage.getItem('token');
+                                const res = await fetch(`${apiUrl}/api/request/${detailRequest.id}/dependencies`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                  body: JSON.stringify({ depends_on_request_id: depId }),
+                                });
+                                const d = await res.json().catch(() => ({}));
+                                if (res.ok) { setDependsOn((p) => [...p, depId]); setNewDepId(''); toast('Dependency added'); }
+                                else toast(d.error || 'Failed to add', 'error');
+                              } finally { setAddingDep(false); }
+                            }}>
+                              {addingDep ? '…' : 'Add dependency'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Audit trail */}
                     <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
                       <strong>Audit trail</strong>

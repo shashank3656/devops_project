@@ -1,0 +1,10 @@
+{
+  "name": "InfraGate DevOps",
+  "short_name": "DevOps",
+  "description": "DevOps portal for InfraGate infrastructure requests",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#6366f1",
+  "icons": [{"src": "/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}]
+}

@@ -694,6 +694,147 @@ func ListUserNotifications(userID int, limit, offset int, unreadOnly bool) ([]Us
 	return out, nil
 }
 
+// UserNotificationPreferences holds email on/off per notification type
+type UserNotificationPreferences struct {
+	UserID         int  `json:"user_id"`
+	EmailApproved  bool `json:"email_approved"`
+	EmailRejected  bool `json:"email_rejected"`
+	EmailPRCreated bool `json:"email_pr_created"`
+	EmailAssigned  bool `json:"email_assigned"`
+	EmailSLABreach bool `json:"email_sla_breach"`
+}
+
+// GetUserNotificationPreferences returns preferences for a user (defaults to true if not set)
+func GetUserNotificationPreferences(userID int) (*UserNotificationPreferences, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	var p UserNotificationPreferences
+	err := DB.QueryRow(
+		`SELECT user_id, COALESCE(email_approved, true), COALESCE(email_rejected, true), COALESCE(email_pr_created, true), COALESCE(email_assigned, true), COALESCE(email_sla_breach, true)
+		 FROM user_notification_preferences WHERE user_id = $1`,
+		userID,
+	).Scan(&p.UserID, &p.EmailApproved, &p.EmailRejected, &p.EmailPRCreated, &p.EmailAssigned, &p.EmailSLABreach)
+	if err == sql.ErrNoRows {
+		return &UserNotificationPreferences{UserID: userID, EmailApproved: true, EmailRejected: true, EmailPRCreated: true, EmailAssigned: true, EmailSLABreach: true}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// UpdateUserNotificationPreferences upserts notification preferences
+func UpdateUserNotificationPreferences(p *UserNotificationPreferences) error {
+	if DB == nil {
+		return nil
+	}
+	_, err := DB.Exec(
+		`INSERT INTO user_notification_preferences (user_id, email_approved, email_rejected, email_pr_created, email_assigned, email_sla_breach, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+		 ON CONFLICT (user_id) DO UPDATE SET
+		   email_approved = EXCLUDED.email_approved,
+		   email_rejected = EXCLUDED.email_rejected,
+		   email_pr_created = EXCLUDED.email_pr_created,
+		   email_assigned = EXCLUDED.email_assigned,
+		   email_sla_breach = EXCLUDED.email_sla_breach,
+		   updated_at = CURRENT_TIMESTAMP`,
+		p.UserID, p.EmailApproved, p.EmailRejected, p.EmailPRCreated, p.EmailAssigned, p.EmailSLABreach,
+	)
+	return err
+}
+
+// AddRequestDependency adds a dependency: request_id depends on depends_on_request_id
+func AddRequestDependency(requestID, dependsOnRequestID int) error {
+	if DB == nil {
+		return nil
+	}
+	if requestID == dependsOnRequestID {
+		return fmt.Errorf("request cannot depend on itself")
+	}
+	_, err := DB.Exec(
+		"INSERT INTO request_dependencies (request_id, depends_on_request_id) VALUES ($1, $2) ON CONFLICT (request_id, depends_on_request_id) DO NOTHING",
+		requestID, dependsOnRequestID,
+	)
+	return err
+}
+
+// RemoveRequestDependency removes a dependency
+func RemoveRequestDependency(requestID, dependsOnRequestID int) error {
+	if DB == nil {
+		return nil
+	}
+	_, err := DB.Exec(
+		"DELETE FROM request_dependencies WHERE request_id = $1 AND depends_on_request_id = $2",
+		requestID, dependsOnRequestID,
+	)
+	return err
+}
+
+// GetRequestDependencies returns request IDs that this request depends on
+func GetRequestDependencies(requestID int) ([]int, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	rows, err := DB.Query("SELECT depends_on_request_id FROM request_dependencies WHERE request_id = $1 ORDER BY depends_on_request_id", requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+// GetRequestsThatDependOn returns request IDs that depend on this request
+func GetRequestsThatDependOn(requestID int) ([]int, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	rows, err := DB.Query("SELECT request_id FROM request_dependencies WHERE depends_on_request_id = $1 ORDER BY request_id", requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+// UserWantsEmailForKind returns true if user has not disabled email for this notification kind
+func UserWantsEmailForKind(userID int, kind string) bool {
+	prefs, err := GetUserNotificationPreferences(userID)
+	if err != nil || prefs == nil {
+		return true
+	}
+	switch kind {
+	case "approved":
+		return prefs.EmailApproved
+	case "rejected":
+		return prefs.EmailRejected
+	case "pr_created":
+		return prefs.EmailPRCreated
+	case "assigned":
+		return prefs.EmailAssigned
+	case "sla_breach":
+		return prefs.EmailSLABreach
+	default:
+		return true
+	}
+}
+
 // MarkUserNotificationsRead marks notifications as read (ids empty = mark all for user)
 func MarkUserNotificationsRead(userID int, ids []int) error {
 	if DB == nil {

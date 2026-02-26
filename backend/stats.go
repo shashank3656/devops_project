@@ -135,11 +135,15 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	canApproveByManager := CanApproveByManager(req, userID)
+	dependsOn, _ := GetRequestDependencies(id)
+	blockedBy, _ := GetRequestsThatDependOn(id)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":                 "success",
 		"request":                req,
 		"can_approve_by_manager": canApproveByManager,
+		"depends_on":             dependsOn,
+		"blocked_by":             blockedBy,
 	})
 }

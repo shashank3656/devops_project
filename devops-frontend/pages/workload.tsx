@@ -58,6 +58,8 @@ export default function DevOpsWorkload() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actioningId, setActioningId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkActioning, setBulkActioning] = useState(false);
   const [filterUserId, setFilterUserId] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
 
@@ -144,6 +146,7 @@ export default function DevOpsWorkload() {
       .then((res) => res.json())
       .then((data) => {
         if (data?.status === 'ok') {
+          setPendingApprovals((prev) => prev.filter((r) => r.id !== id));
           fetchPending();
           fetchWorkload();
           window.dispatchEvent(new CustomEvent('devops-notifications-refresh'));
@@ -153,6 +156,75 @@ export default function DevOpsWorkload() {
       })
       .catch(() => setError('Approve request failed'))
       .finally(() => setActioningId(null));
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selectedIds.size === pendingApprovals.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(pendingApprovals.map((r) => r.id)));
+    }
+  };
+
+  const handleBulkApprove = () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkActioning(true);
+    fetch(`${apiUrl}/api/devops/requests/bulk-approve`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.status === 'ok') {
+          setPendingApprovals((prev) => prev.filter((r) => !ids.includes(r.id)));
+          setSelectedIds(new Set());
+          fetchPending();
+          fetchWorkload();
+          window.dispatchEvent(new CustomEvent('devops-notifications-refresh'));
+          if (data?.errors?.length) setError(data.errors.join('; '));
+        } else {
+          setError(data?.error || 'Bulk approve failed');
+        }
+      })
+      .catch(() => setError('Bulk approve failed'))
+      .finally(() => setBulkActioning(false));
+  };
+
+  const handleBulkReject = () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkActioning(true);
+    fetch(`${apiUrl}/api/devops/requests/bulk-reject`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, reason: '' }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.status === 'ok') {
+          setPendingApprovals((prev) => prev.filter((r) => !ids.includes(r.id)));
+          setSelectedIds(new Set());
+          fetchPending();
+          fetchWorkload();
+          window.dispatchEvent(new CustomEvent('devops-notifications-refresh'));
+          if (data?.errors?.length) setError(data.errors.join('; '));
+        } else {
+          setError(data?.error || 'Bulk reject failed');
+        }
+      })
+      .catch(() => setError('Bulk reject failed'))
+      .finally(() => setBulkActioning(false));
   };
 
   const handleReject = (id: number, reason?: string) => {
@@ -165,7 +237,9 @@ export default function DevOpsWorkload() {
       .then((res) => res.json())
       .then((data) => {
         if (data?.status === 'ok') {
+          setPendingApprovals((prev) => prev.filter((r) => r.id !== id));
           fetchPending();
+          fetchWorkload();
           window.dispatchEvent(new CustomEvent('devops-notifications-refresh'));
         } else {
           setError(data?.error || 'Reject failed');
@@ -266,10 +340,34 @@ export default function DevOpsWorkload() {
               </div>
             ) : (
               <div className="card">
+                {selectedIds.size > 0 && (
+                  <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 14, color: 'var(--color-text-muted)' }}>
+                      {selectedIds.size} selected
+                    </span>
+                    <button type="button" className="btn btn-primary btn-sm" disabled={bulkActioning} onClick={handleBulkApprove}>
+                      {bulkActioning ? '…' : 'Approve selected'}
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" disabled={bulkActioning} onClick={handleBulkReject}>
+                      Reject selected
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSelectedIds(new Set())}>
+                      Clear
+                    </button>
+                  </div>
+                )}
                 <div className="table-wrap">
                   <table>
                     <thead>
                       <tr>
+                        <th style={{ width: 40 }}>
+                          <input
+                            type="checkbox"
+                            checked={pendingApprovals.length > 0 && selectedIds.size === pendingApprovals.length}
+                            onChange={selectAll}
+                            title="Select all"
+                          />
+                        </th>
                         <th>Ticket #</th>
                         <th>Team</th>
                         <th>Env</th>
@@ -283,6 +381,13 @@ export default function DevOpsWorkload() {
                     <tbody>
                       {pendingApprovals.map((req) => (
                         <tr key={req.id}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(req.id)}
+                              onChange={() => toggleSelect(req.id)}
+                            />
+                          </td>
                           <td><code>#{req.id}</code></td>
                           <td>{req.team}</td>
                           <td>{req.env}</td>

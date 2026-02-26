@@ -363,6 +363,33 @@ func MigrateDatabase() error {
 		log.Println("Database migration (sla_breach_notified_at) completed")
 	}
 
+	// Migration 25: user_notification_preferences (email on/off per type)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS user_notification_preferences (
+			user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+			email_approved BOOLEAN DEFAULT TRUE,
+			email_rejected BOOLEAN DEFAULT TRUE,
+			email_pr_created BOOLEAN DEFAULT TRUE,
+			email_assigned BOOLEAN DEFAULT TRUE,
+			email_sla_breach BOOLEAN DEFAULT TRUE,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+
+	// Migration 26: request_dependencies (request_id, depends_on_request_id)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS request_dependencies (
+			id SERIAL PRIMARY KEY,
+			request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			depends_on_request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(request_id, depends_on_request_id),
+			CHECK (request_id != depends_on_request_id)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_dependencies_request ON request_dependencies(request_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_dependencies_depends ON request_dependencies(depends_on_request_id)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }

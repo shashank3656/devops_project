@@ -308,7 +308,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		_, _ = DB.Exec("INSERT INTO pending_2fa (token, user_id, expires_at) VALUES ($1, $2, $3)",
 			pendingToken, user.ID, otpExpires)
 		subj, body := EmailTemplate2FA(otp)
-		sendNotificationEmailIfConfigured(user.ID, subj, body)
+		sendNotificationEmailIfConfigured(user.ID, "2fa", subj, body)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"requires_otp":       true,
@@ -636,6 +636,91 @@ func meAPIKeyDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"message": "API key revoked", "status": "ok"})
+}
+
+// meNotificationPreferencesHandler GET /api/me/notification-preferences (get), PATCH (update)
+func meNotificationPreferencesHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" && r.Method != "PATCH" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		return
+	}
+	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
+	if err != nil || userID <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	if r.Method == "GET" {
+		prefs, err := GetUserNotificationPreferences(userID)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to get preferences", "status": "error"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"preferences": prefs, "status": "ok"})
+		return
+	}
+	var body struct {
+		EmailApproved  *bool `json:"email_approved"`
+		EmailRejected  *bool `json:"email_rejected"`
+		EmailPRCreated *bool `json:"email_pr_created"`
+		EmailAssigned  *bool `json:"email_assigned"`
+		EmailSLABreach *bool `json:"email_sla_breach"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	prefs, err := GetUserNotificationPreferences(userID)
+	if err != nil || prefs == nil {
+		prefs = &UserNotificationPreferences{UserID: userID, EmailApproved: true, EmailRejected: true, EmailPRCreated: true, EmailAssigned: true, EmailSLABreach: true}
+	}
+	if body.EmailApproved != nil {
+		prefs.EmailApproved = *body.EmailApproved
+	}
+	if body.EmailRejected != nil {
+		prefs.EmailRejected = *body.EmailRejected
+	}
+	if body.EmailPRCreated != nil {
+		prefs.EmailPRCreated = *body.EmailPRCreated
+	}
+	if body.EmailAssigned != nil {
+		prefs.EmailAssigned = *body.EmailAssigned
+	}
+	if body.EmailSLABreach != nil {
+		prefs.EmailSLABreach = *body.EmailSLABreach
+	}
+	if err := UpdateUserNotificationPreferences(prefs); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to update preferences", "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"preferences": prefs, "status": "ok"})
 }
 
 // meManagedTeamsHandler GET /api/me/managed-teams - portal teams the current user can manage (manager role or is_portal_manager)
