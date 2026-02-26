@@ -266,15 +266,16 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 </span>
               )}
               {user && <span className="devops-navbar__username">{user.username}</span>}
-              <button
-                type="button"
-                className="devops-navbar__icon-btn"
-                onClick={toggleTheme}
-                title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-              >
-                {theme === 'dark' ? <IconSun /> : <IconMoon />}
-              </button>
             </div>
+            <button
+              type="button"
+              className="devops-navbar__theme-toggle"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+              aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            >
+              {theme === 'dark' ? <IconSun /> : <IconMoon />}
+            </button>
             <div className="devops-navbar__profile-wrap" ref={profileRef}>
               <button
                 type="button"

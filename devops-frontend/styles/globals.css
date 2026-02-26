@@ -272,6 +272,28 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
 }
 .devops-navbar__icon-btn:hover { color: var(--color-primary); background: var(--color-primary-light); }
 .devops-navbar__icon-btn svg { width: 20px; height: 20px; }
+.devops-navbar__theme-toggle {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  flex-shrink: 0;
+}
+.devops-navbar__theme-toggle svg { width: 20px; height: 20px; color: #fff; }
+.devops-navbar__theme-toggle:hover { transform: scale(1.08); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+[data-theme="light"] .devops-navbar__theme-toggle {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+}
+[data-theme="dark"] .devops-navbar__theme-toggle {
+  background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 50%, #fcd34d 100%);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+}
 .devops-navbar__approval-badge {
   padding: 2px 8px;
   font-size: 12px;
