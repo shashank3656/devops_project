@@ -43,6 +43,12 @@ services:
     env_file:
       - config/.env
     environment:
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-devops3656@gmail.com}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-avhbdsfwpllsgogm}
+      - SMTP_FROM=${SMTP_FROM:-devops3656@gmail.com}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
       - GITHUB_OWNER=${GITHUB_OWNER}
       - GITHUB_REPO=${GITHUB_REPO}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
@@ -82,6 +88,12 @@ services:
     env_file:
       - config/.env
     environment:
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-devops3656@gmail.com}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-avhbdsfwpllsgogm}
+      - SMTP_FROM=${SMTP_FROM:-devops3656@gmail.com}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
       - GITHUB_OWNER=${GITHUB_OWNER}
       - GITHUB_REPO=${GITHUB_REPO}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
