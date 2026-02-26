@@ -501,6 +501,7 @@ func main() {
 	http.HandleFunc("/api/me/teams/", meTeamMembersRouter)
 	http.HandleFunc("/api/me/managed-teams", meManagedTeamsHandler)
 	http.HandleFunc("/api/me/notifications", meNotificationsHandler)
+	http.HandleFunc("/api/me/notification-preferences", meNotificationPreferencesHandler)
 	http.HandleFunc("/api/cost-estimate", costEstimateHandler)
 	http.HandleFunc("/api/me/pending-manager-approval", mePendingManagerApprovalHandler)
 	http.HandleFunc("/api/me/saved-configs", savedConfigsHandler)

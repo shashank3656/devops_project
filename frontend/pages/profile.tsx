@@ -42,6 +42,14 @@ export default function Profile() {
   const [revokingId, setRevokingId] = useState<number | null>(null);
   const [totpEnabled, setTotpEnabled] = useState<boolean | null>(null);
   const [totpToggling, setTotpToggling] = useState(false);
+  const [notifPrefs, setNotifPrefs] = useState<{
+    email_approved: boolean;
+    email_rejected: boolean;
+    email_pr_created: boolean;
+    email_assigned: boolean;
+    email_sla_breach: boolean;
+  } | null>(null);
+  const [notifPrefsSaving, setNotifPrefsSaving] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -71,6 +79,16 @@ export default function Profile() {
       .then((data) => { if (data?.api_keys) setApiKeys(data.api_keys); })
       .catch(() => {})
       .finally(() => setApiKeysLoading(false));
+  }, [user, apiUrl]);
+
+  useEffect(() => {
+    if (!user) return;
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    fetch(`${apiUrl}/api/me/notification-preferences`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (data?.preferences) setNotifPrefs(data.preferences); })
+      .catch(() => {});
   }, [user, apiUrl]);
 
   const fetchMe = async () => {
@@ -252,6 +270,30 @@ export default function Profile() {
     }
   };
 
+  const handleSaveNotifPrefs = async () => {
+    if (!notifPrefs) return;
+    const token = localStorage.getItem('token');
+    if (!token || token === 'undefined') return;
+    setNotifPrefsSaving(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/me/notification-preferences`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(notifPrefs),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast('Notification preferences saved', 'success');
+      } else {
+        toast(data.error || 'Failed to save', 'error');
+      }
+    } catch (_) {
+      toast('Failed to save preferences', 'error');
+    } finally {
+      setNotifPrefsSaving(false);
+    }
+  };
+
   const handleResendVerification = async () => {
     setResending(true);
     try {
@@ -426,6 +468,36 @@ export default function Profile() {
                 {changing ? 'Updating...' : 'Update password'}
               </button>
             </form>
+          </div>
+          )}
+
+          {user && notifPrefs && (
+          <div className="card" style={{ maxWidth: '500px', marginTop: '24px' }}>
+            <h2 style={{ fontSize: '18px', marginBottom: '8px', color: 'var(--text-primary)' }}>Notification preferences</h2>
+            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+              Choose which emails you receive for request updates.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+              {[
+                { key: 'email_approved' as const, label: 'Request approved' },
+                { key: 'email_rejected' as const, label: 'Request rejected' },
+                { key: 'email_pr_created' as const, label: 'PR created' },
+                { key: 'email_assigned' as const, label: 'Ticket assigned to me' },
+                { key: 'email_sla_breach' as const, label: 'SLA breach / overdue' },
+              ].map(({ key, label }) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={notifPrefs[key]}
+                    onChange={(e) => setNotifPrefs((p) => p ? { ...p, [key]: e.target.checked } : null)}
+                  />
+                  <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>{label}</span>
+                </label>
+              ))}
+            </div>
+            <button type="button" className="btn btn-primary" disabled={notifPrefsSaving} onClick={handleSaveNotifPrefs}>
+              {notifPrefsSaving ? 'Saving…' : 'Save preferences'}
+            </button>
           </div>
           )}
 

@@ -97,6 +97,9 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 		case "timeline":
 			handleRequestTimeline(w, r, id, userID)
 			return
+		case "dependencies":
+			handleRequestDependencies(w, r, id, req, userID)
+			return
 		}
 	}
 
@@ -495,4 +498,88 @@ func handleRequestTimeline(w http.ResponseWriter, r *http.Request, id int, userI
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "timeline": timeline})
+}
+
+// handleRequestDependencies GET /api/request/:id/dependencies, POST (add), DELETE /api/request/:id/dependencies/:depId
+func handleRequestDependencies(w http.ResponseWriter, r *http.Request, id int, req *PRRequest, userID int) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/request/")
+	path = strings.Trim(path, "/")
+	parts := strings.Split(path, "/")
+	// parts: [id, "dependencies"] or [id, "dependencies", depId]
+	if len(parts) < 2 || parts[1] != "dependencies" {
+		http.NotFound(w, r)
+		return
+	}
+	canAccess := req.CreatedBy != nil && *req.CreatedBy == userID
+	if !canAccess {
+		if _, isAdmin := requireAdmin(w, r); isAdmin {
+			canAccess = true
+		}
+	}
+	if !canAccess {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only creator or admin can manage dependencies", "status": "error"})
+		return
+	}
+	switch r.Method {
+	case "GET":
+		deps, err := GetRequestDependencies(id)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		blockedBy, _ := GetRequestsThatDependOn(id)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "ok",
+			"depends_on": deps,
+			"blocked_by": blockedBy,
+		})
+		return
+	case "POST":
+		var body struct {
+			DependsOnRequestID int `json:"depends_on_request_id"`
+		}
+		if json.NewDecoder(r.Body).Decode(&body) != nil || body.DependsOnRequestID <= 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "depends_on_request_id required", "status": "error"})
+			return
+		}
+		if err := AddRequestDependency(id, body.DependsOnRequestID); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Dependency added"})
+		return
+	case "DELETE":
+		if len(parts) < 3 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "depends_on_request_id required in path", "status": "error"})
+			return
+		}
+		depID, _ := strconv.Atoi(parts[2])
+		if depID <= 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid dependency id", "status": "error"})
+			return
+		}
+		if err := RemoveRequestDependency(id, depID); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Dependency removed"})
+		return
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }

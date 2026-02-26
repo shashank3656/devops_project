@@ -659,7 +659,105 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// devopsRequestActionHandler handles /api/devops/requests/:id/approve and /api/devops/requests/:id/reject (DevOps manager only)
+// devopsBulkActionHandler handles POST /api/devops/requests/bulk-approve and bulk-reject
+func devopsBulkActionHandler(w http.ResponseWriter, r *http.Request, managerID int, action string) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		IDs    []int  `json:"ids"`
+		Reason string `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	if len(body.IDs) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "ids array is required and must not be empty", "status": "error"})
+		return
+	}
+	if len(body.IDs) > 50 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "maximum 50 requests per bulk action", "status": "error"})
+		return
+	}
+	adminIDPtr := &managerID
+	approved := 0
+	rejected := 0
+	var errs []string
+	for _, id := range body.IDs {
+		if id <= 0 {
+			continue
+		}
+		req, err := GetPRRequestByID(id)
+		if err != nil || req == nil {
+			errs = append(errs, fmt.Sprintf("#%d: not found", id))
+			continue
+		}
+		if req.Status != "pending_devops_approval" {
+			errs = append(errs, fmt.Sprintf("#%d: not pending_devops_approval", id))
+			continue
+		}
+		if action == "bulk-approve" {
+			prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("#%d: %v", id, err))
+				continue
+			}
+			if err := UpdatePRRequestWithPR(id, prURL); err != nil {
+				errs = append(errs, fmt.Sprintf("#%d: update failed", id))
+				continue
+			}
+			_ = AssignRequestByPriority(id)
+			updated, _ := GetPRRequestByID(id)
+			if updated != nil {
+				NotifyPRCreated(updated, prURL)
+				p := RequestPayloadForWebhook(updated)
+				p["pr_url"] = prURL
+				FireOutboundWebhooks("pr_created", p)
+				if updated.AssignedTo != nil && *updated.AssignedTo > 0 {
+					NotifyTicketAssigned(updated, *updated.AssignedTo)
+					FireOutboundWebhooks("assigned", RequestPayloadForWebhook(updated))
+				}
+			}
+			AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), "devops_manager:"+prURL)
+			approved++
+		} else {
+			reason := strings.TrimSpace(body.Reason)
+			if err := UpdatePRRequestReject(id, reason); err != nil {
+				errs = append(errs, fmt.Sprintf("#%d: reject failed", id))
+				continue
+			}
+			NotifyRequestRejected(req, reason)
+			p := RequestPayloadForWebhook(req)
+			p["reject_reason"] = reason
+			FireOutboundWebhooks("rejected", p)
+			AppendAuditLog(adminIDPtr, "request_reject", "pr_request", strconv.Itoa(id), "devops_manager:"+reason)
+			rejected++
+		}
+	}
+	resp := map[string]interface{}{"status": "ok"}
+	if action == "bulk-approve" {
+		resp["approved"] = approved
+		resp["message"] = fmt.Sprintf("%d request(s) approved", approved)
+	} else {
+		resp["rejected"] = rejected
+		resp["message"] = fmt.Sprintf("%d request(s) rejected", rejected)
+	}
+	if len(errs) > 0 {
+		resp["errors"] = errs
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// devopsRequestActionHandler handles /api/devops/requests/:id/approve, :id/reject, bulk-approve, bulk-reject (DevOps manager only)
 func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
@@ -679,6 +777,13 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/devops/requests/")
 	path = strings.Trim(path, "/")
 	parts := strings.Split(path, "/")
+
+	// Bulk actions: /api/devops/requests/bulk-approve, bulk-reject
+	if len(parts) >= 1 && (parts[0] == "bulk-approve" || parts[0] == "bulk-reject") {
+		devopsBulkActionHandler(w, r, managerID, parts[0])
+		return
+	}
+
 	if len(parts) < 2 {
 		http.NotFound(w, r)
 		return

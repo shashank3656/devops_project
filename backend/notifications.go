@@ -13,7 +13,7 @@ func NotifyRequestApproved(req *PRRequest, message string) {
 	}
 	reqID := req.ID
 	_ = InsertUserNotification(*req.CreatedBy, &reqID, "approved", message)
-	sendNotificationEmailIfConfigured(*req.CreatedBy, "Request approved", message)
+	sendNotificationEmailIfConfigured(*req.CreatedBy, "approved", "Request approved", message)
 	NotifySlackRequestApproved(req, "")
 	NotifyTeamsRequestApproved(req, "")
 }
@@ -29,7 +29,7 @@ func NotifyRequestRejected(req *PRRequest, reason string) {
 	}
 	reqID := req.ID
 	_ = InsertUserNotification(*req.CreatedBy, &reqID, "rejected", msg)
-	sendNotificationEmailIfConfigured(*req.CreatedBy, "Request rejected", msg)
+	sendNotificationEmailIfConfigured(*req.CreatedBy, "rejected", "Request rejected", msg)
 	NotifySlackRequestRejected(req, reason)
 	NotifyTeamsRequestRejected(req, reason)
 }
@@ -47,7 +47,7 @@ func NotifyPRCreated(req *PRRequest, prURL string) {
 		}
 		reqID := req.ID
 		_ = InsertUserNotification(*req.CreatedBy, &reqID, "pr_created", msg)
-		sendNotificationEmailIfConfigured(*req.CreatedBy, "PR created", msg)
+		sendNotificationEmailIfConfigured(*req.CreatedBy, "pr_created", "PR created", msg)
 	}
 	NotifySlackPRCreated(req, prURL)
 	NotifyTeamsPRCreated(req, prURL)
@@ -70,7 +70,7 @@ func NotifySLABreach(req *PRRequest) {
 	msg := "Request #" + strconv.Itoa(req.ID) + " is overdue or due within 24h. Team: " + req.Team + " | " + req.Cloud + " " + req.Service
 	reqID := req.ID
 	_ = InsertUserNotification(targetID, &reqID, "sla_breach", msg)
-	sendNotificationEmailIfConfigured(targetID, "SLA breach: Request overdue", msg)
+	sendNotificationEmailIfConfigured(targetID, "sla_breach", "SLA breach: Request overdue", msg)
 	NotifySlackSLABreach(req)
 	NotifyTeamsSLABreach(req, targetID)
 }
@@ -83,11 +83,15 @@ func NotifyTicketAssigned(req *PRRequest, assigneeID int) {
 	msg := "Ticket #" + strconv.Itoa(req.ID) + " (" + req.Team + "/" + req.Env + ", " + req.Cloud + " " + req.Service + ") was assigned to you."
 	reqID := req.ID
 	_ = InsertUserNotification(assigneeID, &reqID, "assigned", msg)
-	sendNotificationEmailIfConfigured(assigneeID, "Ticket assigned", msg)
+	sendNotificationEmailIfConfigured(assigneeID, "assigned", "Ticket assigned", msg)
 }
 
-// sendNotificationEmailIfConfigured sends an email if SMTP is configured (env: SMTP_HOST).
-func sendNotificationEmailIfConfigured(userID int, subject, body string) {
+// sendNotificationEmailIfConfigured sends an email if SMTP is configured and user has not disabled this notification type.
+func sendNotificationEmailIfConfigured(userID int, kind, subject, body string) {
+	if !UserWantsEmailForKind(userID, kind) {
+		log.Printf("[Email] Skipping %s email for userID=%d (user preference)", kind, userID)
+		return
+	}
 	if os.Getenv("SMTP_HOST") == "" {
 		log.Printf("[Email] Skipping notification (SMTP_HOST not set) userID=%d subject=%q", userID, subject)
 		return
@@ -101,7 +105,7 @@ func sendNotificationEmailIfConfigured(userID int, subject, body string) {
 		log.Printf("[Email] Skipping notification - user %d has no email", userID)
 		return
 	}
-	log.Printf("[Email] Sending notification to userID=%d email=%s subject=%q", userID, user.Email, subject)
+	log.Printf("[Email] Sending %s notification to userID=%d email=%s subject=%q", kind, userID, user.Email, subject)
 	if err := SendEmail(user.Email, subject, body); err != nil {
 		log.Printf("[Email] Failed to send to %s: %v", user.Email, err)
 	}
