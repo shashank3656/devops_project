@@ -11,6 +11,7 @@ import {
   IconRequests,
   IconTeams,
   IconUsers,
+  IconUser,
   IconActivity,
   IconTemplates,
   IconWebhook,
@@ -31,6 +32,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/activity': 'Activity',
   '/templates': 'Templates',
   '/webhooks': 'Webhooks',
+  '/profile': 'Profile',
 };
 
 function getPageTitle(pathname: string): string {
@@ -417,6 +419,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     <span className="admin-navbar__dropdown-avatar">{profileInitials}</span>
                     <span className="admin-navbar__dropdown-label">Admin</span>
                   </div>
+                  <Link href="/profile" className="admin-navbar__dropdown-item" style={{ textDecoration: 'none', color: 'inherit' }} onClick={() => setProfileOpen(false)}>
+                    <IconUser />
+                    Profile
+                  </Link>
                   <button type="button" className="admin-navbar__dropdown-item" onClick={handleLogout}>
                     <IconLogout />
                     Logout

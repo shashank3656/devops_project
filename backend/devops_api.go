@@ -99,6 +99,12 @@ func devopsMeHandler(w http.ResponseWriter, r *http.Request) {
 			"onboard_date": prof.OnboardDate, "level": prof.Level,
 		}
 	}
+	teams, _ := GetDevopsTeamsForUser(userID)
+	if len(teams) > 0 {
+		resp["teams"] = teams
+	} else {
+		resp["teams"] = []interface{}{}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"user": resp, "status": "ok"})
 }

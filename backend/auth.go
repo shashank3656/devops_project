@@ -438,6 +438,19 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]interface{}{"user": user}
+	// Portal users: add teams, manager_username for profile
+	if user.UserType == "portal_user" || user.Role == "admin" {
+		if teams, err := GetTeamsForUserWithDetails(userID); err == nil && len(teams) > 0 {
+			resp["teams"] = teams
+		} else {
+			resp["teams"] = []interface{}{}
+		}
+		if user.ManagerID != nil && *user.ManagerID > 0 {
+			if mgr, err := GetUserByID(*user.ManagerID); err == nil && mgr != nil {
+				resp["manager_username"] = mgr.Username
+			}
+		}
+	}
 	// Portal managers (and users who can approve as group manager or manager_id) get count of tickets pending their approval
 	if user.UserType == "portal_user" || user.IsPortalManager {
 		if n, err := GetPendingManagerApprovalCount(userID); err == nil && n > 0 {
