@@ -804,6 +804,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), prURL)
+		LogCredentialAuditFromConfig(id, req.Team, req.Env, req.Cloud, req.Config, req.CreatedBy, adminIDPtr)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "pr_url": prURL, "message": "PR created and request set to in_progress"})
 		return

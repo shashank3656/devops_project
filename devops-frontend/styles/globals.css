@@ -791,6 +791,24 @@ tbody tr td { color: var(--color-text); }
 .loading-text { color: var(--color-text-muted); }
 .empty-state { padding: var(--space-6); text-align: center; color: var(--color-text-muted); }
 
+/* Credential Audit page */
+.credential-audit-header { margin-bottom: var(--space-6); }
+.credential-audit-title { font-size: 24px; font-weight: 700; color: var(--color-text); margin: 0 0 4px 0; letter-spacing: -0.02em; }
+.credential-audit-subtitle { font-size: 14px; color: var(--color-text-muted); margin: 0; }
+.credential-audit-filters { margin-bottom: var(--space-6); }
+.credential-audit-filters-title { font-size: 14px; font-weight: 600; color: var(--color-text-muted); margin-bottom: var(--space-3); }
+.credential-audit-filters-row { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: flex-end; }
+.credential-audit-label { display: block; font-size: 12px; font-weight: 500; color: var(--color-text-muted); margin-bottom: 4px; }
+.credential-audit-loading { padding: var(--space-8); text-align: center; color: var(--color-text-muted); }
+.credential-audit-table-card { padding: 0; overflow-x: auto; }
+.credential-audit-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.credential-audit-table th { padding: 12px 16px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); background: var(--color-bg-subtle); border-bottom: 1px solid var(--color-border); }
+.credential-audit-table td { padding: 12px 16px; border-bottom: 1px solid var(--color-border); }
+.credential-audit-table tbody tr:hover { background: var(--color-bg-subtle); }
+.credential-audit-cloud-badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+.credential-audit-link { color: var(--color-primary); text-decoration: none; font-weight: 500; }
+.credential-audit-link:hover { text-decoration: underline; }
+
 /* Stat/summary cards (dashboard style) */
 .stat-card {
   background: var(--color-surface);

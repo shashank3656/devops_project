@@ -733,6 +733,7 @@ func devopsBulkActionHandler(w http.ResponseWriter, r *http.Request, managerID i
 				}
 			}
 			AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), "devops_manager:"+prURL)
+			LogCredentialAuditFromConfig(id, req.Team, req.Env, req.Cloud, req.Config, req.CreatedBy, adminIDPtr)
 			approved++
 		} else {
 			reason := strings.TrimSpace(body.Reason)
@@ -851,6 +852,7 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), "devops_manager:"+prURL)
+		LogCredentialAuditFromConfig(id, req.Team, req.Env, req.Cloud, req.Config, req.CreatedBy, adminIDPtr)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "pr_url": prURL, "message": "PR created and request set to in_progress"})
 		return
@@ -887,4 +889,48 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// devopsCredentialAuditHandler GET /api/devops/credential-audit - list credential audit log (AWS access keys, GCP SA keys, etc.)
+func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := requireDevopsUser(w, r); !ok {
+		return
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		return
+	}
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	cloudFilter := strings.TrimSpace(q.Get("cloud"))
+	fromDate := strings.TrimSpace(q.Get("from"))
+	toDate := strings.TrimSpace(q.Get("to"))
+	entries, err := GetCredentialAuditLogs(limit, offset, cloudFilter, fromDate, toDate)
+	if err != nil {
+		log.Printf("credential audit: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch credential audit", "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"entries": entries, "status": "ok"})
 }
