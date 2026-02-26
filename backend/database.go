@@ -463,6 +463,27 @@ func createTables() error {
 		return fmt.Errorf("create admin_audit_log: %w", errAudit)
 	}
 
+	// credential_audit_log: who created AWS access keys, GCP service account keys, etc. (via approved requests)
+	_, errCredAudit := DB.Exec(`
+		CREATE TABLE IF NOT EXISTS credential_audit_log (
+			id SERIAL PRIMARY KEY,
+			request_id INTEGER REFERENCES pr_requests(id) ON DELETE SET NULL,
+			cloud VARCHAR(20) NOT NULL,
+			credential_type VARCHAR(100) NOT NULL,
+			team VARCHAR(255) DEFAULT '',
+			env VARCHAR(100) DEFAULT '',
+			created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			approved_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if errCredAudit != nil {
+		return fmt.Errorf("create credential_audit_log: %w", errCredAudit)
+	}
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_credential_audit_request_id ON credential_audit_log(request_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_credential_audit_created_at ON credential_audit_log(created_at DESC)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_credential_audit_cloud ON credential_audit_log(cloud)")
+
 	// user_activity: log user actions (create, submit, comment, etc.) for admin activity feed
 	_, errUserActivity := DB.Exec(`
 		CREATE TABLE IF NOT EXISTS user_activity (
@@ -2224,6 +2245,106 @@ func GetAuditLogs(limit, offset int, actionFilter, fromDate, toDate string) ([]A
 		}
 		if username.Valid {
 			e.AdminUsername = username.String
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}
+
+// CredentialAuditEntry is a single credential audit log row
+type CredentialAuditEntry struct {
+	ID               int       `json:"id"`
+	RequestID        *int      `json:"request_id"`
+	Cloud            string    `json:"cloud"`
+	CredentialType   string    `json:"credential_type"`
+	Team             string    `json:"team"`
+	Env              string    `json:"env"`
+	CreatedByUserID  *int      `json:"created_by_user_id"`
+	CreatedByUsername string   `json:"created_by_username,omitempty"`
+	ApprovedByUserID *int      `json:"approved_by_user_id"`
+	ApprovedByUsername string  `json:"approved_by_username,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+// InsertCredentialAuditLog inserts a credential audit entry
+func InsertCredentialAuditLog(requestID int, cloud, credentialType, team, env string, createdBy, approvedBy *int) error {
+	if DB == nil {
+		return nil
+	}
+	_, err := DB.Exec(
+		`INSERT INTO credential_audit_log (request_id, cloud, credential_type, team, env, created_by_user_id, approved_by_user_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		requestID, cloud, credentialType, team, env, createdBy, approvedBy,
+	)
+	return err
+}
+
+// GetCredentialAuditLogs returns credential audit entries with optional filters
+func GetCredentialAuditLogs(limit, offset int, cloudFilter, fromDate, toDate string) ([]CredentialAuditEntry, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	query := `
+		SELECT c.id, c.request_id, c.cloud, c.credential_type, COALESCE(c.team,''), COALESCE(c.env,''),
+		       c.created_by_user_id, c.approved_by_user_id, c.created_at,
+		       u1.username AS created_by_username, u2.username AS approved_by_username
+		FROM credential_audit_log c
+		LEFT JOIN users u1 ON u1.id = c.created_by_user_id
+		LEFT JOIN users u2 ON u2.id = c.approved_by_user_id
+		WHERE 1=1
+	`
+	args := []interface{}{}
+	argPos := 1
+	if cloudFilter != "" {
+		query += fmt.Sprintf(" AND c.cloud = $%d", argPos)
+		args = append(args, cloudFilter)
+		argPos++
+	}
+	if fromDate != "" {
+		query += fmt.Sprintf(" AND c.created_at >= $%d::date", argPos)
+		args = append(args, fromDate)
+		argPos++
+	}
+	if toDate != "" {
+		query += fmt.Sprintf(" AND c.created_at < ($%d::date + interval '1 day')", argPos)
+		args = append(args, toDate)
+		argPos++
+	}
+	query += " ORDER BY c.created_at DESC"
+	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argPos, argPos+1)
+	args = append(args, limit, offset)
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CredentialAuditEntry
+	for rows.Next() {
+		var e CredentialAuditEntry
+		var reqID sql.NullInt64
+		var createdBy, approvedBy sql.NullInt64
+		var createdByUser, approvedByUser sql.NullString
+		if err := rows.Scan(&e.ID, &reqID, &e.Cloud, &e.CredentialType, &e.Team, &e.Env,
+			&createdBy, &approvedBy, &e.CreatedAt, &createdByUser, &approvedByUser); err != nil {
+			return nil, err
+		}
+		if reqID.Valid {
+			id := int(reqID.Int64)
+			e.RequestID = &id
+		}
+		if createdBy.Valid {
+			id := int(createdBy.Int64)
+			e.CreatedByUserID = &id
+		}
+		if approvedBy.Valid {
+			id := int(approvedBy.Int64)
+			e.ApprovedByUserID = &id
+		}
+		if createdByUser.Valid {
+			e.CreatedByUsername = createdByUser.String
+		}
+		if approvedByUser.Valid {
+			e.ApprovedByUsername = approvedByUser.String
 		}
 		out = append(out, e)
 	}

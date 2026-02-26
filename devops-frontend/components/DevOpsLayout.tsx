@@ -12,6 +12,7 @@ import {
   IconTemplates,
   IconUsers,
   IconMenu,
+  IconShield,
 } from './Icons';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -49,6 +50,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/tickets': 'All tickets',
   '/templates': 'Templates',
   '/team': 'Team',
+  '/credential-audit': 'Credential Audit',
   '/profile': 'Profile',
 };
 
@@ -194,6 +196,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     baseNavItems.push({ href: '/tickets', label: 'All tickets', Icon: IconTickets });
   }
   baseNavItems.push({ href: '/templates', label: 'Templates', Icon: IconTemplates });
+  baseNavItems.push({ href: '/credential-audit', label: 'Credential Audit', Icon: IconShield });
   if (isManager) baseNavItems.push({ href: '/team', label: 'Team', Icon: IconUsers });
 
   const pageTitle = getPageTitle(pathname);
