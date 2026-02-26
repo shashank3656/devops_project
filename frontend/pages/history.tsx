@@ -1295,11 +1295,11 @@ export default function History() {
                               return (
                                 <span key={id} style={{ marginRight: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                                   {r ? (
-                                    <button type="button" onClick={() => { setIdFilter(String(id)); setDetailRequest(null); openDetail(r); }} style={{ padding: '2px 8px', background: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                                    <button type="button" onClick={() => { setDetailRequest(null); openDetail(r); }} style={{ padding: '2px 8px', background: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
                                       #{id}
                                     </button>
                                   ) : (
-                                    <a href="#" onClick={(e) => { e.preventDefault(); setIdFilter(String(id)); fetchHistory(); }} style={{ color: 'var(--primary-color)', fontSize: 13 }}>#{id}</a>
+                                    <a href="#" onClick={(e) => { e.preventDefault(); setFilterType('pr_number'); setFilterValue(String(id)); fetchHistory(); }} style={{ color: 'var(--primary-color)', fontSize: 13 }}>#{id}</a>
                                   )}
                                   {canRemove && (
                                     <button type="button" onClick={async () => {
@@ -1319,11 +1319,11 @@ export default function History() {
                             Blocking: {blockedBy.map((id) => {
                               const r = requests.find((x) => x.id === id);
                               return r ? (
-                                <button key={id} type="button" onClick={() => { setIdFilter(String(id)); setDetailRequest(null); openDetail(r); }} style={{ marginRight: 8, padding: '2px 8px', background: 'var(--info-color)', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                                <button key={id} type="button" onClick={() => { setDetailRequest(null); openDetail(r); }} style={{ marginRight: 8, padding: '2px 8px', background: 'var(--info-color)', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
                                   #{id}
                                 </button>
                               ) : (
-                                <a key={id} href="#" onClick={(e) => { e.preventDefault(); setIdFilter(String(id)); fetchHistory(); }} style={{ marginRight: 8, color: 'var(--info-color)', fontSize: 13 }}>#{id}</a>
+                                <a key={id} href="#" onClick={(e) => { e.preventDefault(); setFilterType('pr_number'); setFilterValue(String(id)); fetchHistory(); }} style={{ marginRight: 8, color: 'var(--info-color)', fontSize: 13 }}>#{id}</a>
                               );
                             })}
                           </p>
