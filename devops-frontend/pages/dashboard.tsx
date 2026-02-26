@@ -116,7 +116,10 @@ export default function DevOpsDashboard() {
       </Head>
       <DevOpsLayout>
         <div className="container">
-          <h1 className="page-title">My tickets</h1>
+          <div className="devops-dashboard-header">
+            <h1 className="devops-dashboard-header__title">My tickets</h1>
+            <p className="devops-dashboard-header__subtitle">Review and track infrastructure requests assigned to your teams</p>
+          </div>
           {stats != null && (
             <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
               <div className="stat-card">

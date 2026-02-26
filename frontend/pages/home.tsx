@@ -149,6 +149,12 @@ export default function Home() {
         <section className="home-hero">
           <h1 className="home-hero__title">Infrastructure Portal</h1>
           <p className="home-hero__subtitle">Self-service cloud requests for your team</p>
+          <div className="home-hero__search-wrap">
+            <Link href="/history" className="home-hero__search" aria-label="Search requests">
+              <span className="home-hero__search-icon">🔍</span>
+              <span>Search requests, teams, or services…</span>
+            </Link>
+          </div>
           <div className="home-quick-actions">
             <Link href="/create-infrastructure/new" className="home-quick-action home-quick-action--primary">
               <span className="home-quick-action__icon">➕</span>
@@ -172,6 +178,17 @@ export default function Home() {
             </Link>
           </div>
         </section>
+
+        {/* Quick tips */}
+        <div className="home-tips">
+          <h3 className="home-tips__title">Quick tips</h3>
+          <div className="home-tips__list">
+            <span className="home-tip"><strong>New Request</strong> — Start from scratch or use templates</span>
+            <span className="home-tip"><strong>History</strong> — Track status & PR links</span>
+            <span className="home-tip"><strong>Custom JSON</strong> — Paste existing config</span>
+            <span className="home-tip"><strong>Profile</strong> — API keys & 2FA</span>
+          </div>
+        </div>
 
         {/* Summary: one row, clear metrics */}
         {!statsLoading && stats && (

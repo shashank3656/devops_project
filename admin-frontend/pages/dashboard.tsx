@@ -144,8 +144,11 @@ export default function AdminDashboard() {
       </Head>
       <AdminLayout>
         <div className="container" style={{ maxWidth: 1200 }}>
-          <div className="page-header">
-            <h1 className="page-title">Analytics Dashboard</h1>
+          <div className="dashboard-welcome">
+            <div>
+              <h1 className="dashboard-welcome__title">Analytics Dashboard</h1>
+              <p className="dashboard-welcome__subtitle">Overview of users, teams, requests, and SLA metrics</p>
+            </div>
             <Link href="/requests" className="btn btn-primary">
               View all requests
             </Link>
