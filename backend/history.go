@@ -39,6 +39,10 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
 	prIDStr := r.URL.Query().Get("id") // PR number filter
 	userID := r.URL.Query().Get("user_id")
+	statusFilter := strings.TrimSpace(r.URL.Query().Get("status"))
+	fromDate := strings.TrimSpace(r.URL.Query().Get("from"))
+	toDate := strings.TrimSpace(r.URL.Query().Get("to"))
+	applicationID := strings.TrimSpace(r.URL.Query().Get("application_id"))
 
 	// Parse PR ID
 	prID := 0
@@ -93,8 +97,8 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 			createdByIn = memberIDs
 		}
 	}
-	// Fetch PR requests (no status/priority filter for user history; include drafts for owner)
-	requests, err := GetPRRequests(team, env, cloud, "", "", search, prID, userIDInt, createdByIn, limit, offset, "", "", false)
+	// Fetch PR requests (status, date range, application_id for user history)
+	requests, err := GetPRRequestsForHistory(team, env, cloud, statusFilter, search, prID, applicationID, fromDate, toDate, userIDInt, createdByIn, limit, offset)
 	if err != nil {
 		log.Printf("Error fetching PR requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -125,12 +129,12 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get total count for pagination
-	totalCount, _ := GetTotalCount(team, env, cloud, "", "", search, prID, userIDInt, createdByIn, false)
+	totalCount, _ := GetTotalCountForHistory(team, env, cloud, statusFilter, search, prID, applicationID, fromDate, toDate, userIDInt, createdByIn)
 
 	if r.URL.Query().Get("format") == "csv" {
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", "attachment; filename=history.csv")
-		all, _ := GetPRRequests(team, env, cloud, "", "", search, prID, userIDInt, createdByIn, 10000, 0, "", "", false)
+		all, _ := GetPRRequestsForHistory(team, env, cloud, statusFilter, search, prID, applicationID, fromDate, toDate, userIDInt, createdByIn, 10000, 0)
 		csvLine := func(ss ...string) string {
 			for i, s := range ss {
 				if strings.Contains(s, ",") || strings.Contains(s, "\"") || strings.Contains(s, "\n") {

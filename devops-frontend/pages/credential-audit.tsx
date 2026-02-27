@@ -127,6 +127,33 @@ export default function CredentialAuditPage() {
               <button type="button" className="btn btn-secondary" onClick={fetchEntries}>
                 Refresh
               </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                  if (!token) return;
+                  const params = new URLSearchParams();
+                  params.set('format', 'csv');
+                  if (cloudFilter) params.set('cloud', cloudFilter);
+                  if (fromDate) params.set('from', fromDate);
+                  if (toDate) params.set('to', toDate);
+                  fetch(`${apiUrl}/api/devops/credential-audit?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+                    .then((r) => r.text())
+                    .then((csv) => {
+                      const blob = new Blob([csv], { type: 'text/csv' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `credential-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    })
+                    .catch(() => {});
+                }}
+              >
+                Export CSV
+              </button>
             </div>
           </div>
 

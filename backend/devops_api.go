@@ -276,14 +276,14 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 			offset = n
 		}
 	}
-	requests, err := GetPRRequests(team, "", cloud, statusFilter, "", search, prID, 0, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly)
+	requests, err := GetPRRequests(team, "", cloud, statusFilter, "", search, prID, 0, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly, "", "")
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	totalCount, _ := GetTotalCount(team, "", cloud, statusFilter, "", search, prID, 0, createdByIn, atRiskOnly)
+	totalCount, _ := GetTotalCount(team, "", cloud, statusFilter, "", search, prID, 0, createdByIn, atRiskOnly, "", "")
 	userIDs := make([]int, 0)
 	for _, req := range requests {
 		if req.CreatedBy != nil && *req.CreatedBy > 0 {
@@ -381,7 +381,7 @@ func devopsPendingApprovalsHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	requests, err := GetPRRequests("", "", "", "pending_devops_approval", "", "", 0, 0, nil, 100, 0, "", "", false)
+	requests, err := GetPRRequests("", "", "", "pending_devops_approval", "", "", 0, 0, nil, 100, 0, "", "", false, "", "")
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -923,6 +923,23 @@ func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
 	cloudFilter := strings.TrimSpace(q.Get("cloud"))
 	fromDate := strings.TrimSpace(q.Get("from"))
 	toDate := strings.TrimSpace(q.Get("to"))
+	if q.Get("format") == "csv" {
+		allEntries, _ := GetCredentialAuditLogs(10000, 0, cloudFilter, fromDate, toDate)
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment; filename=credential-audit.csv")
+		w.Write([]byte("id,request_id,cloud,credential_type,team,env,created_by,approved_by,created_at\n"))
+		for _, e := range allEntries {
+			reqID := ""
+			if e.RequestID != nil {
+				reqID = strconv.Itoa(*e.RequestID)
+			}
+			line := fmt.Sprintf("%d,%s,%s,%s,%s,%s,%s,%s,%s\n",
+				e.ID, reqID, e.Cloud, e.CredentialType, e.Team, e.Env,
+				e.CreatedByUsername, e.ApprovedByUsername, e.CreatedAt.Format("2006-01-02 15:04:05"))
+			w.Write([]byte(line))
+		}
+		return
+	}
 	entries, err := GetCredentialAuditLogs(limit, offset, cloudFilter, fromDate, toDate)
 	if err != nil {
 		log.Printf("credential audit: %v", err)
