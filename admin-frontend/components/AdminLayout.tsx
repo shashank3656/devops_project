@@ -17,6 +17,7 @@ import {
   IconWebhook,
   IconSearch,
   IconMenu,
+  IconTrendingUp,
 } from './Icons';
 
 const THEME_KEY = 'infra-portal-theme';
@@ -27,6 +28,7 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/requests': 'PR Requests',
+  '/sla': 'SLA',
   '/teams': 'Teams',
   '/users': 'Users',
   '/activity': 'Activity',
@@ -70,6 +72,7 @@ interface PendingRequest {
 const NAV_ITEMS: { href: string; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
   { href: '/dashboard', label: 'Dashboard', Icon: IconDashboard },
   { href: '/requests', label: 'PR Requests', Icon: IconRequests },
+  { href: '/sla', label: 'SLA', Icon: IconTrendingUp },
   { href: '/teams', label: 'Teams', Icon: IconTeams },
   { href: '/users', label: 'Users', Icon: IconUsers },
   { href: '/activity', label: 'Activity', Icon: IconActivity },

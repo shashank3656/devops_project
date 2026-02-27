@@ -68,6 +68,7 @@ type PRRequest struct {
 	AssignedTo        *int    `json:"assigned_to"`                   // DevOps user assigned after PR creation (by priority)
 	Config            string  `json:"config"`
 	TerraformPlanOutput string `json:"terraform_plan_output,omitempty"` // Terraform plan/apply output from CI (display in UI)
+	JiraTicketID       string  `json:"jira_ticket_id,omitempty"`        // Jira/ticketing integration
 }
 
 // RequestComment is a comment on a PR request
@@ -834,6 +835,37 @@ func GetRequestsThatDependOn(requestID int) ([]int, error) {
 	return out, nil
 }
 
+// BlockedByItem holds id and status for requests that depend on another
+type BlockedByItem struct {
+	ID     int    `json:"id"`
+	Status string `json:"status"`
+}
+
+// GetBlockedByWithStatus returns requests that depend on this one, with their status (for dependency warning on approve)
+func GetBlockedByWithStatus(requestID int) ([]BlockedByItem, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	rows, err := DB.Query(`
+		SELECT p.id, COALESCE(p.status,'') FROM pr_requests p
+		INNER JOIN request_dependencies rd ON rd.request_id = p.id AND rd.depends_on_request_id = $1
+		ORDER BY p.id
+	`, requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BlockedByItem
+	for rows.Next() {
+		var item BlockedByItem
+		if err := rows.Scan(&item.ID, &item.Status); err != nil {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
 // UserWantsEmailForKind returns true if user has not disabled email for this notification kind
 func UserWantsEmailForKind(userID int, kind string) bool {
 	prefs, err := GetUserNotificationPreferences(userID)
@@ -1227,7 +1259,7 @@ func GetPRRequestByApplicationID(appID string) *PRRequest {
 // GetPRRequestByID retrieves a single PR request by ID
 func GetPRRequestByID(id int) (*PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at, COALESCE(terraform_plan_output,'') AS terraform_plan_output
+		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at, COALESCE(terraform_plan_output,'') AS terraform_plan_output, COALESCE(jira_ticket_id,'') AS jira_ticket_id
 		FROM pr_requests WHERE id = $1
 	`
 	var req PRRequest
@@ -1236,7 +1268,7 @@ func GetPRRequestByID(id int) (*PRRequest, error) {
 	err := DB.QueryRow(query, id).Scan(
 		&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
 		&req.ApplicationID, &req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
-		&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt, &req.TerraformPlanOutput,
+		&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt, &req.TerraformPlanOutput, &req.JiraTicketID,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil

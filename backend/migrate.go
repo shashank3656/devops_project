@@ -390,6 +390,23 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_dependencies_request ON request_dependencies(request_id)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_dependencies_depends ON request_dependencies(depends_on_request_id)")
 
+	// Migration 27: pr_requests.jira_ticket_id (Jira/ticketing integration)
+	var jiraCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'pr_requests' AND column_name = 'jira_ticket_id'").Scan(&jiraCount)
+	if jiraCount == 0 {
+		log.Println("Migrating database: adding pr_requests.jira_ticket_id...")
+		_, _ = DB.Exec("ALTER TABLE pr_requests ADD COLUMN jira_ticket_id VARCHAR(100)")
+		_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_requests_jira_ticket_id ON pr_requests(jira_ticket_id) WHERE jira_ticket_id IS NOT NULL AND jira_ticket_id != ''")
+	}
+
+	// Migration 28: request_templates.version (template versioning)
+	var versionCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'request_templates' AND column_name = 'version'").Scan(&versionCount)
+	if versionCount == 0 {
+		log.Println("Migrating database: adding request_templates.version...")
+		_, _ = DB.Exec("ALTER TABLE request_templates ADD COLUMN version INTEGER DEFAULT 1")
+	}
+
 	log.Println("Database schema is up to date")
 	return nil
 }
