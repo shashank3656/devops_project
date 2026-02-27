@@ -4,6 +4,11 @@ import Head from 'next/head';
 import AdminLayout from '../components/AdminLayout';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
 
+interface BlockedByItem {
+  id: number;
+  status: string;
+}
+
 interface PRRequest {
   id: number;
   team: string;
@@ -23,6 +28,9 @@ interface PRRequest {
   updated_at?: string;
   created_by_username?: string;
   terraform_plan_output?: string;
+  jira_ticket_id?: string;
+  blocked_by?: number[];
+  blocked_by_with_status?: BlockedByItem[];
 }
 
 interface RequestComment {
@@ -68,6 +76,9 @@ export default function AdminRequests() {
   const [configHistory, setConfigHistory] = useState<{ id: number; config: string; created_at: string; note?: string }[]>([]);
   const [showConfigHistory, setShowConfigHistory] = useState(false);
   const [recentIds, setRecentIds] = useState<number[]>([]);
+  const [jiraEdit, setJiraEdit] = useState('');
+  const [jiraSaving, setJiraSaving] = useState(false);
+  const [bulkStatusValue, setBulkStatusValue] = useState('');
   const [timeline, setTimeline] = useState<{ id: number; kind: string; action: string; username: string; details: string; body?: string; created_at: string }[]>([]);
   const limit = 20;
 
@@ -133,7 +144,10 @@ export default function AdminRequests() {
     setRecentIds(getRecentRequestIds());
   }, []);
   useEffect(() => {
-    if (detailRequest) setRecentIds(getRecentRequestIds());
+        if (detailRequest) {
+          setRecentIds(getRecentRequestIds());
+          setJiraEdit(detailRequest.jira_ticket_id || '');
+        }
   }, [detailRequest]);
 
   useEffect(() => {
@@ -251,6 +265,10 @@ export default function AdminRequests() {
   const toggleSelectAllPending = () => {
     if (selectedIds.size >= pendingIds.length) setSelectedIds(new Set());
     else setSelectedIds(new Set(pendingIds));
+  };
+  const toggleSelectAll = () => {
+    if (selectedIds.size >= requests.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(requests.map((r) => r.id)));
   };
 
   const handleBulkApprove = async () => {
@@ -385,6 +403,15 @@ export default function AdminRequests() {
   };
 
   const handleApprove = async (id: number) => {
+    const req = detailRequest?.id === id ? detailRequest : requests.find((r) => r.id === id);
+    const blocked = req?.blocked_by_with_status || [];
+    const blockedIncomplete = blocked.filter((b) => b.status !== 'completed' && b.status !== 'rejected');
+    if (blockedIncomplete.length > 0) {
+      const ok = window.confirm(
+        `This request blocks ${blockedIncomplete.length} other request(s) that are not yet completed/rejected. Proceed with approval?`
+      );
+      if (!ok) return;
+    }
     setActioningId(id);
     setError('');
     try {
@@ -402,6 +429,54 @@ export default function AdminRequests() {
       setError('Failed to approve');
     } finally {
       setActioningId(null);
+    }
+  };
+
+  const handleSaveJira = async () => {
+    if (!detailRequest || jiraSaving) return;
+    setJiraSaving(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/requests/${detailRequest.id}/jira`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ jira_ticket_id: jiraEdit.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setDetailRequest((prev) => (prev ? { ...prev, jira_ticket_id: jiraEdit.trim() } : prev));
+      } else {
+        setError(data.error || 'Failed to update Jira ticket');
+      }
+    } catch (_) {
+      setError('Failed to update Jira ticket');
+    } finally {
+      setJiraSaving(false);
+    }
+  };
+
+  const handleBulkStatus = async () => {
+    if (!bulkStatusValue || selectedIds.size === 0) return;
+    setBulkActioning(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/requests/bulk-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ids: Array.from(selectedIds), status: bulkStatusValue }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        fetchRequests({ offset });
+        setSelectedIds(new Set());
+        setBulkStatusValue('');
+      } else {
+        setError(data.error || 'Bulk status update failed');
+      }
+    } catch (_) {
+      setError('Bulk status update failed');
+    } finally {
+      setBulkActioning(false);
     }
   };
 
@@ -724,8 +799,9 @@ export default function AdminRequests() {
               </div>
             ) : (
               <>
-                {pendingIds.length > 0 && (
-                  <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  {pendingIds.length > 0 && (
+                    <>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                       <input
                         type="checkbox"
@@ -752,13 +828,43 @@ export default function AdminRequests() {
                     >
                       Reject selected
                     </button>
-                  </div>
-                )}
+                    </>
+                  )}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.size === requests.length && requests.length > 0}
+                      onChange={toggleSelectAll}
+                    />
+                    Select all ({requests.length})
+                  </label>
+                  <span style={{ marginLeft: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <select
+                      value={bulkStatusValue}
+                      onChange={(e) => setBulkStatusValue(e.target.value)}
+                      style={{ padding: '6px 10px', borderRadius: 6, fontSize: 13 }}
+                    >
+                      <option value="">Bulk status…</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="completed">Completed</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 14px', fontSize: 13 }}
+                      disabled={selectedIds.size === 0 || !bulkStatusValue || bulkActioning}
+                      onClick={handleBulkStatus}
+                    >
+                      Apply
+                    </button>
+                  </span>
+                </div>
                 <div className="table-wrap">
                   <table>
                     <thead>
                       <tr>
-                        {pendingIds.length > 0 ? <th style={{ width: 44 }} title="Select">☐</th> : null}
+                        <th style={{ width: 44 }} title="Select">☐</th>
                         <th>ID</th>
                         <th>Team</th>
                         <th>Env</th>
@@ -774,17 +880,13 @@ export default function AdminRequests() {
                     <tbody>
                       {requests.map((req) => (
                         <tr key={req.id} style={{ cursor: 'pointer' }} onClick={() => openDetail(req)}>
-                          {pendingIds.length > 0 ? (
-                            <td onClick={(e) => e.stopPropagation()}>
-                              {(req.status === 'pending_approval' || req.status === 'pending_user_manager_approval' || req.status === 'pending_devops_approval') ? (
-                                <input
-                                  type="checkbox"
-                                  checked={selectedIds.has(req.id)}
-                                  onChange={() => toggleSelect(req.id)}
-                                />
-                              ) : null}
-                            </td>
-                          ) : null}
+                          <td onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(req.id)}
+                              onChange={() => toggleSelect(req.id)}
+                            />
+                          </td>
                           <td>{req.id}</td>
                           <td>{req.team}</td>
                           <td>{req.env}</td>
@@ -1013,6 +1115,24 @@ export default function AdminRequests() {
                   <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--color-text-muted)' }}>
                     {detailRequest.priority && <span>Priority: {detailRequest.priority} </span>}
                     {detailRequest.due_date && <span>Due: {new Date(detailRequest.due_date).toLocaleDateString()}</span>}
+                  </p>
+                )}
+                <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <strong style={{ fontSize: 14 }}>Jira ticket:</strong>
+                  <input
+                    type="text"
+                    value={jiraEdit}
+                    onChange={(e) => setJiraEdit(e.target.value)}
+                    placeholder="e.g. PROJ-123"
+                    style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 13, minWidth: 140 }}
+                  />
+                  <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }} disabled={jiraSaving} onClick={handleSaveJira}>
+                    {jiraSaving ? '…' : 'Save'}
+                  </button>
+                </div>
+                {detailRequest.blocked_by_with_status && detailRequest.blocked_by_with_status.length > 0 && (
+                  <p style={{ marginBottom: 8, fontSize: 13, color: 'var(--color-warning)' }}>
+                    <strong>Blocks:</strong> Request(s) #{detailRequest.blocked_by_with_status.map((b) => b.id).join(', #')} depend on this one.
                   </p>
                 )}
                 <p style={{ marginBottom: 16 }}>

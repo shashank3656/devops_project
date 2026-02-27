@@ -7,6 +7,18 @@ import { maskSensitiveJson } from '../lib/maskSensitive';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
 
 const TEMPLATE_KEY = 'infra-request-template';
+const HISTORY_FILTER_PRESETS_KEY = 'infra-history-filter-presets';
+const HISTORY_LAST_FILTERS_KEY = 'infra-history-last-filters';
+
+interface FilterPreset {
+  name: string;
+  filterType: string;
+  filterValue: string;
+  statusFilter: string;
+  fromDate: string;
+  toDate: string;
+  viewMode: 'mine' | 'team';
+}
 
 interface PRRequest {
   id: number;
@@ -78,6 +90,8 @@ export default function History() {
   const [newDepId, setNewDepId] = useState('');
   const [addingDep, setAddingDep] = useState(false);
   const [selectedRowIndex, setSelectedRowIndex] = useState(0);
+  const [presets, setPresets] = useState<FilterPreset[]>([]);
+  const [presetName, setPresetName] = useState('');
 
   const formatTimelineAction = (action: string) => {
     const map: Record<string, string> = {
@@ -103,6 +117,20 @@ export default function History() {
 
   useEffect(() => {
     setRecentIds(getRecentRequestIds());
+    try {
+      const raw = localStorage.getItem(HISTORY_FILTER_PRESETS_KEY);
+      if (raw) setPresets(JSON.parse(raw));
+      const last = localStorage.getItem(HISTORY_LAST_FILTERS_KEY);
+      if (last) {
+        const l = JSON.parse(last) as FilterPreset;
+        setFilterType((l.filterType as any) || 'team');
+        setFilterValue(l.filterValue || '');
+        setStatusFilter(l.statusFilter || '');
+        setFromDate(l.fromDate || '');
+        setToDate(l.toDate || '');
+        setViewMode(l.viewMode || 'mine');
+      }
+    } catch (_) {}
   }, []);
   useEffect(() => {
     if (detailRequest) setRecentIds(getRecentRequestIds());
@@ -120,6 +148,53 @@ export default function History() {
   useEffect(() => {
     setSelectedRowIndex(0);
   }, [requests.length, page]);
+
+  useEffect(() => {
+    try {
+      const p: FilterPreset = {
+        name: '',
+        filterType,
+        filterValue,
+        statusFilter,
+        fromDate,
+        toDate,
+        viewMode,
+      };
+      localStorage.setItem(HISTORY_LAST_FILTERS_KEY, JSON.stringify(p));
+    } catch (_) {}
+  }, [filterType, filterValue, statusFilter, fromDate, toDate, viewMode]);
+
+  const savePreset = () => {
+    const name = presetName.trim() || `Preset ${presets.length + 1}`;
+    const p: FilterPreset = { name, filterType, filterValue, statusFilter, fromDate, toDate, viewMode };
+    const next = presets.filter((x) => x.name !== name).concat([p]);
+    setPresets(next);
+    setPresetName('');
+    try {
+      localStorage.setItem(HISTORY_FILTER_PRESETS_KEY, JSON.stringify(next));
+    } catch (_) {}
+    toast(`Saved preset "${name}"`, 'success');
+  };
+
+  const loadPreset = (p: FilterPreset) => {
+    setFilterType(p.filterType as any);
+    setFilterValue(p.filterValue);
+    setStatusFilter(p.statusFilter);
+    setFromDate(p.fromDate);
+    setToDate(p.toDate);
+    setViewMode(p.viewMode);
+    setPage(0);
+    toast(`Loaded preset "${p.name}"`, 'success');
+  };
+
+  const deletePreset = (name: string) => {
+    const next = presets.filter((x) => x.name !== name);
+    setPresets(next);
+    try {
+      localStorage.setItem(HISTORY_FILTER_PRESETS_KEY, JSON.stringify(next));
+    } catch (_) {}
+    toast('Preset deleted', 'success');
+  };
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -785,6 +860,36 @@ export default function History() {
               >
                 Clear
               </button>
+              <div className="history-filter-inline" style={{ marginLeft: 12, gap: 6 }}>
+                <input
+                  type="text"
+                  value={presetName}
+                  onChange={(e) => setPresetName(e.target.value)}
+                  placeholder="Preset name"
+                  className="history-filter-input"
+                  style={{ width: 100 }}
+                />
+                <button type="button" className="btn btn-secondary btn-sm" onClick={savePreset}>
+                  Save preset
+                </button>
+                {presets.length > 0 && (
+                  <select
+                    className="history-filter-select"
+                    style={{ minWidth: 120 }}
+                    value=""
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      if (name) loadPreset(presets.find((p) => p.name === name)!);
+                      e.target.value = '';
+                    }}
+                  >
+                    <option value="">Load preset…</option>
+                    {presets.map((p) => (
+                      <option key={p.name} value={p.name}>{p.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
             </div>
           </div>
         </div>

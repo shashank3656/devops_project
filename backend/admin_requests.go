@@ -588,6 +588,56 @@ func adminBulkRejectHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// adminBulkStatusHandler POST /api/admin/requests/bulk-status with body {"ids": [1,2,3], "status": "completed"}
+func adminBulkStatusHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	adminID, ok := requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		IDs    []int  `json:"ids"`
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "ids array and status required", "status": "error"})
+		return
+	}
+	if body.Status != "in_progress" && body.Status != "completed" && body.Status != "rejected" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "status must be in_progress, completed, or rejected", "status": "error"})
+		return
+	}
+	var adminIDPtr *int
+	if adminID > 0 {
+		adminIDPtr = &adminID
+	}
+	var updated, failed []int
+	for _, id := range body.IDs {
+		if id <= 0 {
+			continue
+		}
+		if err := UpdatePRRequestStatus(id, body.Status); err != nil {
+			failed = append(failed, id)
+			continue
+		}
+		AppendAuditLog(adminIDPtr, "request_status", "pr_request", strconv.Itoa(id), "bulk:"+body.Status)
+		updated = append(updated, id)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"updated": updated,
+		"failed":  failed,
+	})
+}
+
 // maskConfigForAdmin redacts common secret-like keys in JSON config (recursive). Keys matched case-insensitive (password, secret, token, key, api_key, etc).
 func maskConfigForAdmin(raw string) string {
 	if raw == "" {
@@ -656,7 +706,14 @@ func adminRequestDetailHandler(w http.ResponseWriter, r *http.Request, id int) {
 		"assigned_to": req.AssignedTo,
 		"config": configMasked,
 		"terraform_plan_output": req.TerraformPlanOutput,
+		"jira_ticket_id": req.JiraTicketID,
 	}
+	dependsOn, _ := GetRequestDependencies(id)
+	blockedBy, _ := GetRequestsThatDependOn(id)
+	blockedByWithStatus, _ := GetBlockedByWithStatus(id)
+	resp["depends_on"] = dependsOn
+	resp["blocked_by"] = blockedBy
+	resp["blocked_by_with_status"] = blockedByWithStatus
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"request": resp, "status": "ok"})
 }
@@ -722,6 +779,10 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) >= 1 && parts[0] == "bulk-reject" {
 		adminBulkRejectHandler(w, r)
+		return
+	}
+	if len(parts) >= 1 && parts[0] == "bulk-status" {
+		adminBulkStatusHandler(w, r)
 		return
 	}
 	if len(parts) == 1 && parts[0] != "" && r.Method == "GET" {
@@ -947,6 +1008,30 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		AppendAuditLog(adminIDPtr, "request_reassign", "pr_request", strconv.Itoa(id), "")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "assigned_to": body.AssignedTo})
+		return
+
+	case "jira":
+		if r.Method != "PATCH" && r.Method != "PUT" && r.Method != "POST" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			JiraTicketID string `json:"jira_ticket_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			return
+		}
+		ticketID := strings.TrimSpace(body.JiraTicketID)
+		if _, err := DB.Exec("UPDATE pr_requests SET jira_ticket_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2", ticketID, id); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		AppendAuditLog(adminIDPtr, "request_jira", "pr_request", strconv.Itoa(id), ticketID)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "jira_ticket_id": ticketID})
 		return
 
 	default:

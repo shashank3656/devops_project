@@ -45,6 +45,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/create-infrastructure': 'New Request',
   '/templates': 'Templates',
   '/history': 'History',
+  '/notifications': 'Notifications',
   '/my-teams': 'My teams',
   '/profile': 'Profile',
 };
@@ -402,7 +403,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <div className="user-navbar__right">
             <div className="user-navbar__actions">
               <Link
-                href="/history"
+                href="/notifications"
                 className="user-navbar__icon-btn"
                 title={updatedRequestsCount > 0 ? `${updatedRequestsCount} request update(s)` : 'Notifications'}
               >

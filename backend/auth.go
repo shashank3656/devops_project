@@ -323,10 +323,16 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	token := generateToken(user.ID)
 
 	w.Header().Set("Content-Type", "application/json")
+	timeoutMins := 24 * 60
+	if m := os.Getenv("SESSION_TIMEOUT_MINUTES"); m != "" {
+		if n, _ := strconv.Atoi(m); n > 0 {
+			timeoutMins = n
+		}
+	}
 	json.NewEncoder(w).Encode(AuthResponse{
 		Token:     token,
 		User:      user,
-		ExpiresAt: time.Now().Add(24 * time.Hour),
+		ExpiresAt: time.Now().Add(time.Duration(timeoutMins) * time.Minute),
 	})
 }
 
@@ -346,8 +352,14 @@ func validateToken(token string) (int, error) {
 		return 0, fmt.Errorf("invalid token format")
 	}
 
-	// Check if token is expired (24 hours)
-	if time.Now().Unix()-timestamp > 24*3600 {
+	// Check if token is expired (SESSION_TIMEOUT_MINUTES or default 24h)
+	timeoutMins := 24 * 60
+	if m := os.Getenv("SESSION_TIMEOUT_MINUTES"); m != "" {
+		if n, _ := strconv.Atoi(m); n > 0 {
+			timeoutMins = n
+		}
+	}
+	if time.Now().Unix()-timestamp > int64(timeoutMins*60) {
 		return 0, fmt.Errorf("token expired")
 	}
 
