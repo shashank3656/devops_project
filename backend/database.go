@@ -1008,8 +1008,35 @@ func GetUsernamesByUserIDs(userIDs []int) (map[int]string, error) {
 	return out, nil
 }
 
-// GetPRRequests retrieves PR requests with optional filters. sortBy: created_at|updated_at|priority|due_date; sortOrder: asc|desc; atRiskOnly: due_date overdue or due in 24h.
-func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, limit, offset int, sortBy, sortOrder string, atRiskOnly bool) ([]PRRequest, error) {
+// GetPRRequestsForHistory is like GetPRRequests but adds fromDate, toDate, applicationID for user history.
+func GetPRRequestsForHistory(team, env, cloud, statusFilter, search string, prID int, applicationID, fromDate, toDate string, userIDInt int, createdByIn []int, limit, offset int) ([]PRRequest, error) {
+	s := search
+	if applicationID != "" {
+		if s != "" {
+			s = s + " " + applicationID
+		} else {
+			s = applicationID
+		}
+	}
+	return GetPRRequests(team, env, cloud, statusFilter, "", s, prID, userIDInt, createdByIn, limit, offset, "created_at", "desc", false, fromDate, toDate)
+}
+
+// GetTotalCountForHistory is like GetTotalCount but for history filters.
+func GetTotalCountForHistory(team, env, cloud, statusFilter, search string, prID int, applicationID, fromDate, toDate string, userIDInt int, createdByIn []int) (int, error) {
+	s := search
+	if applicationID != "" {
+		if s != "" {
+			s = s + " " + applicationID
+		} else {
+			s = applicationID
+		}
+	}
+	return GetTotalCount(team, env, cloud, statusFilter, "", s, prID, userIDInt, createdByIn, false, fromDate, toDate)
+}
+
+
+// GetPRRequests retrieves PR requests with optional filters. fromDate, toDate: YYYY-MM-DD for created_at range.
+func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, limit, offset int, sortBy, sortOrder string, atRiskOnly bool, fromDate, toDate string) ([]PRRequest, error) {
 	query := `
 		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at
 		FROM pr_requests
@@ -1020,8 +1047,8 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 
 	if search != "" {
 		searchVal := "%" + search + "%"
-		query += fmt.Sprintf(` AND (team ILIKE $%d OR env ILIKE $%d OR cloud ILIKE $%d OR service ILIKE $%d OR COALESCE(client_name,'') ILIKE $%d OR branch ILIKE $%d OR COALESCE(config,'')::text ILIKE $%d)`,
-			argPos, argPos, argPos, argPos, argPos, argPos, argPos)
+		query += fmt.Sprintf(` AND (team ILIKE $%d OR env ILIKE $%d OR cloud ILIKE $%d OR service ILIKE $%d OR COALESCE(client_name,'') ILIKE $%d OR COALESCE(application_id,'') ILIKE $%d OR branch ILIKE $%d OR COALESCE(config,'')::text ILIKE $%d)`,
+			argPos, argPos, argPos, argPos, argPos, argPos, argPos, argPos)
 		args = append(args, searchVal)
 		argPos++
 	}
@@ -1081,6 +1108,16 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 	}
 	if atRiskOnly {
 		query += " AND due_date IS NOT NULL AND (due_date < NOW() OR due_date < NOW() + INTERVAL '24 hours')"
+	}
+	if fromDate != "" {
+		query += fmt.Sprintf(" AND created_at >= $%d::date", argPos)
+		args = append(args, fromDate)
+		argPos++
+	}
+	if toDate != "" {
+		query += fmt.Sprintf(" AND created_at < ($%d::date + interval '1 day')", argPos)
+		args = append(args, toDate)
+		argPos++
 	}
 	orderCol := "created_at"
 	switch sortBy {
@@ -2025,16 +2062,16 @@ func GetStats(userIDInt int) (*Stats, error) {
 	return stats, nil
 }
 
-// GetTotalCount returns total count of PR requests (for pagination). Same filters as GetPRRequests including atRiskOnly.
-func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, atRiskOnly bool) (int, error) {
+// GetTotalCount returns total count of PR requests (for pagination). Same filters as GetPRRequests. fromDate, toDate optional.
+func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, atRiskOnly bool, fromDate, toDate string) (int, error) {
 	query := "SELECT COUNT(*) FROM pr_requests WHERE 1=1"
 	args := []interface{}{}
 	argPos := 1
 
 	if search != "" {
 		searchVal := "%" + search + "%"
-		query += fmt.Sprintf(` AND (team ILIKE $%d OR env ILIKE $%d OR cloud ILIKE $%d OR service ILIKE $%d OR COALESCE(client_name,'') ILIKE $%d OR branch ILIKE $%d OR COALESCE(config,'')::text ILIKE $%d)`,
-			argPos, argPos, argPos, argPos, argPos, argPos, argPos)
+		query += fmt.Sprintf(` AND (team ILIKE $%d OR env ILIKE $%d OR cloud ILIKE $%d OR service ILIKE $%d OR COALESCE(client_name,'') ILIKE $%d OR COALESCE(application_id,'') ILIKE $%d OR branch ILIKE $%d OR COALESCE(config,'')::text ILIKE $%d)`,
+			argPos, argPos, argPos, argPos, argPos, argPos, argPos, argPos)
 		args = append(args, searchVal)
 		argPos++
 	}
@@ -2088,6 +2125,16 @@ func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string
 	}
 	if atRiskOnly {
 		query += " AND due_date IS NOT NULL AND (due_date < NOW() OR due_date < NOW() + INTERVAL '24 hours')"
+	}
+	if fromDate != "" {
+		query += fmt.Sprintf(" AND created_at >= $%d::date", argPos)
+		args = append(args, fromDate)
+		argPos++
+	}
+	if toDate != "" {
+		query += fmt.Sprintf(" AND created_at < ($%d::date + interval '1 day')", argPos)
+		args = append(args, toDate)
+		argPos++
 	}
 
 	var count int

@@ -47,8 +47,11 @@ export default function History() {
   const [requests, setRequests] = useState<PRRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filterType, setFilterType] = useState<'team' | 'pr_number' | 'env' | 'cloud' | 'search'>('team');
+  const [filterType, setFilterType] = useState<'team' | 'pr_number' | 'env' | 'cloud' | 'search' | 'application_id'>('team');
   const [filterValue, setFilterValue] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(0);
   const [detailRequest, setDetailRequest] = useState<PRRequest | null>(null);
@@ -74,6 +77,7 @@ export default function History() {
   const [blockedBy, setBlockedBy] = useState<number[]>([]);
   const [newDepId, setNewDepId] = useState('');
   const [addingDep, setAddingDep] = useState(false);
+  const [selectedRowIndex, setSelectedRowIndex] = useState(0);
 
   const formatTimelineAction = (action: string) => {
     const map: Record<string, string> = {
@@ -111,7 +115,11 @@ export default function History() {
       return;
     }
     fetchHistory();
-  }, [filterType, filterValue, page, viewMode]);
+  }, [filterType, filterValue, page, viewMode, statusFilter, fromDate, toDate]);
+
+  useEffect(() => {
+    setSelectedRowIndex(0);
+  }, [requests.length, page]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -146,10 +154,15 @@ export default function History() {
           params.append('id', filterValue.trim());
         } else if (filterType === 'search') {
           params.append('q', filterValue.trim());
+        } else if (filterType === 'application_id') {
+          params.append('application_id', filterValue.trim());
         } else {
           params.append(filterType, filterValue.trim());
         }
       }
+      if (statusFilter) params.append('status', statusFilter);
+      if (fromDate) params.append('from', fromDate);
+      if (toDate) params.append('to', toDate);
       params.append('limit', String(PAGE_SIZE));
       params.append('offset', String(page * PAGE_SIZE));
       if (viewMode === 'team') params.append('view', 'team');
@@ -496,8 +509,12 @@ export default function History() {
     if (filterValue.trim()) {
       if (filterType === 'pr_number') params.append('id', filterValue.trim());
       else if (filterType === 'search') params.append('q', filterValue.trim());
+      else if (filterType === 'application_id') params.append('application_id', filterValue.trim());
       else params.append(filterType, filterValue.trim());
     }
+    if (statusFilter) params.append('status', statusFilter);
+    if (fromDate) params.append('from', fromDate);
+    if (toDate) params.append('to', toDate);
     if (viewMode === 'team') params.append('view', 'team');
     params.set('format', 'csv');
     fetch(`${apiUrl}/api/history?${params.toString()}`, { headers })
@@ -584,6 +601,33 @@ export default function History() {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
+  // j/k keyboard shortcuts for list navigation (j=down, k=up, Enter=open)
+  const sortedRequestsRef = useRef<PRRequest[]>([]);
+  const selectedRowIndexRef = useRef(0);
+  sortedRequestsRef.current = sortedRequests;
+  selectedRowIndexRef.current = selectedRowIndex;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable) return;
+      const list = sortedRequestsRef.current;
+      const idx = selectedRowIndexRef.current;
+      if (list.length === 0) return;
+      if (e.key === 'j' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setSelectedRowIndex((i) => Math.min(i + 1, list.length - 1));
+      } else if (e.key === 'k' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setSelectedRowIndex((i) => Math.max(i - 1, 0));
+      } else if (e.key === 'Enter' && idx >= 0 && idx < list.length) {
+        e.preventDefault();
+        openDetail(list[idx]);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { 
@@ -639,13 +683,14 @@ export default function History() {
                   id="filter-type"
                   value={filterType}
                   onChange={(e) => {
-                    setFilterType(e.target.value as 'team' | 'pr_number' | 'env' | 'cloud' | 'search');
+                    setFilterType(e.target.value as 'team' | 'pr_number' | 'env' | 'cloud' | 'search' | 'application_id');
                     setFilterValue(''); // Clear value when changing filter type
                   }}
                   className="history-filter-select"
                 >
                   <option value="team">Team</option>
                   <option value="pr_number">PR Number</option>
+                  <option value="application_id">Application ID</option>
                   <option value="env">Environment</option>
                   <option value="cloud">Cloud</option>
                   <option value="search">Search (all fields)</option>
@@ -656,6 +701,7 @@ export default function History() {
                   {filterType === 'pr_number' ? 'PR Number' :
                    filterType === 'search' ? 'Search term' :
                    filterType === 'team' ? 'Team Name' :
+                   filterType === 'application_id' ? 'Application ID' :
                    filterType === 'env' ? 'Environment' : 'Cloud Provider'}
               </label>
               <input
@@ -667,11 +713,34 @@ export default function History() {
                   filterType === 'pr_number' ? 'Enter PR number (e.g., 123)' :
                   filterType === 'search' ? 'Search team, env, cloud, service…' :
                   filterType === 'team' ? 'Enter team name' :
+                  filterType === 'application_id' ? 'Enter application ID' :
                   filterType === 'env' ? 'Enter environment (dev, stage, prod)' :
                   'Enter cloud provider (AWS, GCP, Azure)'
                 }
                 className="history-filter-input"
               />
+            </div>
+            <div className="history-filter-field">
+              <label className="history-filter-label">Status</label>
+              <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} className="history-filter-select" style={{ minWidth: 140 }}>
+                <option value="">All</option>
+                <option value="draft">Draft</option>
+                <option value="pending_approval">Pending approval</option>
+                <option value="pending_devops_approval">Pending DevOps</option>
+                <option value="pending_user_manager_approval">Pending manager</option>
+                <option value="in_progress">In progress</option>
+                <option value="completed">Completed</option>
+                <option value="rejected">Rejected</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div className="history-filter-field">
+              <label className="history-filter-label">From date</label>
+              <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setPage(0); }} className="history-filter-input" />
+            </div>
+            <div className="history-filter-field">
+              <label className="history-filter-label">To date</label>
+              <input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setPage(0); }} className="history-filter-input" />
             </div>
             <div className="history-filter-actions">
               <div className="history-filter-inline">
@@ -768,6 +837,9 @@ export default function History() {
                     Showing tickets raised by you and your team members. Use <strong>Raised by</strong> to see who created each ticket.
                   </p>
                 )}
+                <p style={{ padding: '8px 16px 0', margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
+                  Tip: Use <kbd style={{ padding: '2px 6px', background: 'var(--bg-button-secondary)', borderRadius: 4 }}>j</kbd> / <kbd style={{ padding: '2px 6px', background: 'var(--bg-button-secondary)', borderRadius: 4 }}>k</kbd> to move, <kbd style={{ padding: '2px 6px', background: 'var(--bg-button-secondary)', borderRadius: 4 }}>Enter</kbd> to open
+                </p>
                 <table className="history-table">
                   <thead>
                     <tr>
@@ -784,8 +856,12 @@ export default function History() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedRequests.map((req) => (
-                      <tr key={req.id} onClick={() => openDetail(req)}>
+                    {sortedRequests.map((req, idx) => (
+                      <tr
+                        key={req.id}
+                        onClick={() => { setSelectedRowIndex(idx); openDetail(req); }}
+                        style={{ background: idx === selectedRowIndex ? 'var(--primary-tint)' : undefined, cursor: 'pointer' }}
+                      >
                         <td style={{ padding: '16px', fontWeight: '600', color: 'var(--primary-color)' }}>
                           #{req.id}
                         </td>

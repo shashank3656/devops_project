@@ -338,7 +338,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// userID 0 = all requests
-	requests, err := GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil, limit, offset, sortBy, sortOrder, atRiskOnly)
+	requests, err := GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil, limit, offset, sortBy, sortOrder, atRiskOnly, "", "")
 	if err != nil {
 		log.Printf("Admin requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -346,7 +346,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch requests", "status": "error"})
 		return
 	}
-	totalCount, _ := GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil, atRiskOnly)
+	totalCount, _ := GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil, atRiskOnly, "", "")
 
 	// Enrich with due_status and created_by_username for UI
 	userIDs := make([]int, 0)
@@ -384,7 +384,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", "attachment; filename=requests.csv")
 		// Export all matching (use higher limit for CSV)
-		all, _ := GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil, 10000, 0, sortBy, sortOrder, atRiskOnly)
+		all, _ := GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil, 10000, 0, sortBy, sortOrder, atRiskOnly, "", "")
 		csvLine := func(ss ...string) string {
 			for i, s := range ss {
 				if strings.Contains(s, ",") || strings.Contains(s, "\"") || strings.Contains(s, "\n") {
