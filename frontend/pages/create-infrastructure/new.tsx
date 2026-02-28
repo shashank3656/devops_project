@@ -91,8 +91,8 @@ export default function CreateInfrastructureNew() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Request Studio</span>
-            <h1 className="portal-page__title">Choose the cleanest path into delivery.</h1>
+            <span className="portal-page__eyebrow">Create Infrastructure</span>
+            <h1 className="portal-page__title">Create Infrastructure Request</h1>
             <p className="portal-page__subtitle">
               Start from a cloud lane, reuse a saved configuration, or switch to direct payload entry when you need tighter control.
             </p>
@@ -102,7 +102,7 @@ export default function CreateInfrastructureNew() {
               Custom JSON
             </Link>
             <Link href="/history" className="btn btn-secondary">
-              Open timeline
+              Open request history
             </Link>
           </div>
         </div>
@@ -111,8 +111,8 @@ export default function CreateInfrastructureNew() {
           <section className="portal-surface">
             <div className="portal-surface__header">
               <div>
-                <span className="portal-surface__eyebrow">Saved starters</span>
-                <h2 className="portal-surface__title">Resume from known-good request patterns</h2>
+                <span className="portal-surface__eyebrow">Saved Configurations</span>
+                <h2 className="portal-surface__title">Reuse Saved Configurations</h2>
                 <p className="portal-surface__subtitle">Pull forward a saved request and continue from the cloud, environment, and service state you already trust.</p>
               </div>
             </div>

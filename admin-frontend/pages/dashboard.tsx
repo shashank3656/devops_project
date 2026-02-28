@@ -133,15 +133,15 @@ export default function AdminDashboard() {
         <div className="portal-page">
           <div className="portal-page__header">
             <div>
-              <span className="portal-page__eyebrow">Ops Command</span>
-              <h1 className="portal-page__title">Read the platform before it becomes reactive.</h1>
+              <span className="portal-page__eyebrow">Dashboard</span>
+              <h1 className="portal-page__title">Admin Dashboard</h1>
               <p className="portal-page__subtitle">
                 Monitor request volume, approval pressure, team output, and SLA posture from one operational surface.
               </p>
             </div>
             <div className="portal-page__actions">
               <Link href="/requests" className="btn btn-primary">
-                Open request control
+                Open requests
               </Link>
             </div>
           </div>
@@ -149,8 +149,8 @@ export default function AdminDashboard() {
           <section className="portal-surface">
             <div className="portal-surface__header">
               <div>
-                <span className="portal-surface__eyebrow">Time horizon</span>
-                <h2 className="portal-surface__title">Tune the reporting window</h2>
+                <span className="portal-surface__eyebrow">Time Range</span>
+                <h2 className="portal-surface__title">Dashboard Filters</h2>
               </div>
             </div>
             <div className="portal-field-grid">
@@ -219,8 +219,8 @@ export default function AdminDashboard() {
                 <article className="portal-surface">
                   <div className="portal-surface__header">
                     <div>
-                      <span className="portal-surface__eyebrow">Trendline</span>
-                      <h2 className="portal-surface__title">Recent movement</h2>
+                      <span className="portal-surface__eyebrow">Trends</span>
+                      <h2 className="portal-surface__title">Request Trends</h2>
                     </div>
                   </div>
                   <DashboardLineChart data={trend} />
@@ -228,8 +228,8 @@ export default function AdminDashboard() {
                 <article className="portal-surface">
                   <div className="portal-surface__header">
                     <div>
-                      <span className="portal-surface__eyebrow">Status split</span>
-                      <h2 className="portal-surface__title">Request distribution</h2>
+                      <span className="portal-surface__eyebrow">Status</span>
+                      <h2 className="portal-surface__title">Request Status</h2>
                       {dateFilter && (
                         <p className="portal-surface__subtitle">
                           {dateFilter.from === dateFilter.to ? dateFilter.from : `${dateFilter.from} to ${dateFilter.to}`} / {dateFilter.total} requests
@@ -246,7 +246,7 @@ export default function AdminDashboard() {
                   <div className="portal-surface__header">
                     <div>
                       <span className="portal-surface__eyebrow">Summary</span>
-                      <h2 className="portal-surface__title">Period overview</h2>
+                      <h2 className="portal-surface__title">Dashboard Summary</h2>
                       <p className="portal-surface__subtitle">
                         {dateFilter.from === dateFilter.to ? dateFilter.from : `${dateFilter.from} to ${dateFilter.to}`} / {dateFilter.total} requests
                       </p>
@@ -267,8 +267,8 @@ export default function AdminDashboard() {
                 <section className="portal-surface portal-surface--table">
                   <div className="portal-surface__header" style={{ padding: 24, marginBottom: 0 }}>
                     <div>
-                      <span className="portal-surface__eyebrow">Team benchmark</span>
-                      <h2 className="portal-surface__title">Team comparison</h2>
+                      <span className="portal-surface__eyebrow">Teams</span>
+                      <h2 className="portal-surface__title">Team Comparison</h2>
                     </div>
                   </div>
                   <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
@@ -303,8 +303,8 @@ export default function AdminDashboard() {
               <section className="portal-surface portal-surface--table">
                 <div className="portal-surface__header" style={{ padding: 24, marginBottom: 0 }}>
                   <div>
-                    <span className="portal-surface__eyebrow">Request radar</span>
-                    <h2 className="portal-surface__title">Recent requests</h2>
+                    <span className="portal-surface__eyebrow">Requests</span>
+                    <h2 className="portal-surface__title">Recent Requests</h2>
                   </div>
                 </div>
                 {recent.length === 0 ? (

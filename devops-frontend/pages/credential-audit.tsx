@@ -102,8 +102,8 @@ export default function CredentialAuditPage() {
         <div className="portal-page">
           <header className="portal-page__header">
             <div className="portal-page__header-main">
-              <span className="portal-page__eyebrow">Security</span>
-              <h1 className="portal-page__title">Credential audit trail</h1>
+              <span className="portal-page__eyebrow">Credential Audit</span>
+              <h1 className="portal-page__title">Credential Audit</h1>
               <p className="portal-page__subtitle">
                 Existing audit features remain unchanged, but the page now uses a clearer filtering and evidence-review pattern.
               </p>
@@ -225,7 +225,7 @@ export default function CredentialAuditPage() {
                           <td>{entry.approved_by_username || '-'}</td>
                           <td>
                             {entry.request_id ? (
-                              <Link href="/tickets" className="credential-audit-link" title="View in Ticket Explorer">
+                              <Link href="/tickets" className="credential-audit-link" title="View in Tickets">
                                 #{entry.request_id}
                               </Link>
                             ) : (

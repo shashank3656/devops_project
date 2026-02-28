@@ -4,12 +4,12 @@ import { useEffect } from 'react';
 import { ADMIN_SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
 
-const THEME_KEY = 'infra-portal-theme';
-
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
-    const t = typeof window !== 'undefined' ? localStorage.getItem(THEME_KEY) : null;
-    document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('infra-portal-theme', 'dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
   }, []);
   return (
     <>

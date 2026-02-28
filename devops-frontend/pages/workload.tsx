@@ -312,8 +312,8 @@ export default function DevOpsWorkload() {
         <div className="portal-page">
           <header className="portal-page__header">
             <div className="portal-page__header-main">
-              <span className="portal-page__eyebrow">Operations Board</span>
-              <h1 className="portal-page__title">Workload and approval flow</h1>
+              <span className="portal-page__eyebrow">Workload</span>
+              <h1 className="portal-page__title">Workload Management</h1>
               <p className="portal-page__subtitle">
                 The existing manager workflows stay intact while the page shifts into a clearer command-center layout for approvals and delivery load.
               </p>

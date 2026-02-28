@@ -108,8 +108,8 @@ export default function UsersList() {
         <div className="portal-page">
           <div className="portal-page__header">
             <div>
-              <span className="portal-page__eyebrow">Identity Center</span>
-              <h1 className="portal-page__title">Oversee every operator in the platform.</h1>
+              <span className="portal-page__eyebrow">Users</span>
+              <h1 className="portal-page__title">User Management</h1>
               <p className="portal-page__subtitle">
                 Create portal and DevOps users, export the directory, and clean up dormant access when needed.
               </p>

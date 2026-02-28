@@ -140,7 +140,7 @@ export default function Home() {
             <div className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
               <h3 className="modal-title">Welcome to {SITE_NAME}</h3>
               <p className="modal-body">
-                Use Request Studio to launch infrastructure changes, Template Library to reuse approved patterns, and Request Timeline to review every request state.
+                Use Create Infrastructure to launch changes, Templates to reuse approved patterns, and Request History to review every request state.
               </p>
               <div className="modal-actions">
                 <button type="button" className="btn btn-primary" onClick={dismissOnboarding}>
@@ -154,18 +154,18 @@ export default function Home() {
         <section className="portal-surface launchpad-hero">
           <div className="launchpad-hero__content">
             <div>
-              <span className="portal-page__eyebrow">Launchpad</span>
-              <h1 className="launchpad-hero__title">Provision faster without losing control.</h1>
+              <span className="portal-page__eyebrow">Dashboard</span>
+              <h1 className="launchpad-hero__title">User Dashboard</h1>
               <p className="launchpad-hero__subtitle">
                 Build new requests, reuse trusted templates, and track request movement across cloud and GitHub from one operating view.
               </p>
               <div className="launchpad-action-grid" style={{ marginTop: 22 }}>
                 <Link href="/create-infrastructure/new" className="launchpad-action-card">
-                  <strong>Open Request Studio</strong>
+                  <strong>Open Create Infrastructure</strong>
                   <p>Start a fresh infrastructure request with guided cloud selection.</p>
                 </Link>
                 <Link href="/templates" className="launchpad-action-card">
-                  <strong>Browse templates</strong>
+                  <strong>Browse Templates</strong>
                   <p>Use validated starting points for repeatable platform work.</p>
                 </Link>
                 <Link href="/custom-json" className="launchpad-action-card">
@@ -173,14 +173,14 @@ export default function Home() {
                   <p>Paste or adapt an existing request payload and move straight to review.</p>
                 </Link>
                 <Link href="/history" className="launchpad-action-card">
-                  <strong>Inspect request timeline</strong>
+                  <strong>Open Request History</strong>
                   <p>Review statuses, PR links, change history, and operator comments.</p>
                 </Link>
               </div>
             </div>
 
             <aside className="launchpad-hero__pulse">
-              <span className="portal-page__eyebrow">Workspace pulse</span>
+              <span className="portal-page__eyebrow">Request Overview</span>
               <strong>{statsLoading ? '...' : stats?.total_requests ?? 0}</strong>
               <p>Total requests tracked across your workspace.</p>
               <div className="launchpad-tips" style={{ marginTop: 18 }}>

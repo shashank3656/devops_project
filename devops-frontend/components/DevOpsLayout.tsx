@@ -6,8 +6,6 @@ import { useApiUrl } from '../context/ApiUrlContext';
 import { DEVOPS_SITE_NAME } from '../lib/site';
 import {
   IconLogout,
-  IconSun,
-  IconMoon,
   IconTickets,
   IconWorkload,
   IconTemplates,
@@ -46,11 +44,11 @@ function getProfileInitials(): string {
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'Mission Control',
+  '/dashboard': 'Dashboard',
   '/workload': 'Workload',
-  '/tickets': 'Ticket Explorer',
-  '/templates': 'Template Studio',
-  '/team': 'Team',
+  '/tickets': 'Tickets',
+  '/templates': 'Templates',
+  '/team': 'Teams',
   '/credential-audit': 'Credential Audit',
   '/profile': 'Profile',
 };
@@ -60,7 +58,7 @@ function getPageTitle(pathname: string): string {
   for (const [path, title] of Object.entries(PAGE_TITLES)) {
     if (path !== '/dashboard' && pathname.startsWith(path)) return title;
   }
-  return 'Mission Control';
+  return 'Dashboard';
 }
 
 export default function DevOpsLayout({ children }: { children: ReactNode }) {
@@ -69,7 +67,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const pathname = router.pathname;
   const [user, setUser] = useState<DevopsUser | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -84,10 +81,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     try {
       const u = localStorage.getItem(DEVOPS_USER_KEY);
       if (u) setUser(JSON.parse(u));
-      const t = localStorage.getItem(DEVOPS_THEME_KEY);
-      const resolved = t === 'light' ? 'light' : 'dark';
-      setTheme(resolved);
-      document.documentElement.setAttribute('data-theme', resolved);
+      localStorage.setItem(DEVOPS_THEME_KEY, 'dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
       const c = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
       setSidebarCollapsed(c === 'true');
     } catch (_) {}
@@ -129,15 +124,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     }
   }, [profileOpen]);
 
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    try {
-      localStorage.setItem(DEVOPS_THEME_KEY, next);
-      document.documentElement.setAttribute('data-theme', next);
-    } catch (_) {}
-  };
-
   const toggleSidebar = () => {
     const next = !sidebarCollapsed;
     setSidebarCollapsed(next);
@@ -154,8 +140,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
         e.preventDefault();
         const msg = isManager
-          ? 'Shortcuts: ? help, g then d = Mission Control, g then t = Ticket Explorer, g then w = Workload'
-          : 'Shortcuts: ? help, g then d = Mission Control';
+          ? 'Shortcuts: ? help, g then d = Dashboard, g then t = Tickets, g then w = Workload'
+          : 'Shortcuts: ? help, g then d = Dashboard';
         alert(msg);
         return;
       }
@@ -190,23 +176,23 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   };
 
   const baseNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
-    { href: '/dashboard', label: 'Mission Control', Icon: IconTickets },
+    { href: '/dashboard', label: 'Dashboard', Icon: IconTickets },
   ];
   if (isManager) {
     baseNavItems.push({ href: '/workload', label: 'Workload', Icon: IconWorkload });
-    baseNavItems.push({ href: '/tickets', label: 'Ticket Explorer', Icon: IconTickets });
+    baseNavItems.push({ href: '/tickets', label: 'Tickets', Icon: IconTickets });
   }
-  baseNavItems.push({ href: '/templates', label: 'Template Studio', Icon: IconTemplates });
+  baseNavItems.push({ href: '/templates', label: 'Templates', Icon: IconTemplates });
   baseNavItems.push({ href: '/credential-audit', label: 'Credential Audit', Icon: IconShield });
-  if (isManager) baseNavItems.push({ href: '/team', label: 'Team', Icon: IconUsers });
+  if (isManager) baseNavItems.push({ href: '/team', label: 'Teams', Icon: IconUsers });
 
   const pageTitle = getPageTitle(pathname);
   const roleLabel = isManager ? 'Manager' : 'Contributor';
   const statusLabel = isManager
     ? pendingCount > 0
-      ? `${pendingCount} approvals open`
-      : 'Approval queue clear'
-    : 'Delivery active';
+      ? `${pendingCount} pending approvals`
+      : 'No pending approvals'
+    : 'Active session';
 
   return (
     <div className="devops-layout devops-layout-sidebar">
@@ -226,7 +212,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             <img src="/logo.svg" alt="" width={36} height={36} className="devops-sidebar-new__logo" />
             {!sidebarCollapsed && (
               <span className="devops-sidebar-new__brand-copy">
-                <span className="devops-sidebar-new__eyebrow">Platform Ops</span>
+                <span className="devops-sidebar-new__eyebrow">DevOps Portal</span>
                 <span className="devops-sidebar-new__brand-text">{DEVOPS_SITE_NAME}</span>
               </span>
             )}
@@ -234,17 +220,17 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         </div>
         {!sidebarCollapsed && (
           <div className="devops-sidebar-new__summary">
-            <span className="devops-sidebar-new__summary-label">{isManager ? 'Approval radar' : 'Shift mode'}</span>
+            <span className="devops-sidebar-new__summary-label">{isManager ? 'Pending Approvals' : 'System Status'}</span>
             <strong className="devops-sidebar-new__summary-value">{isManager ? pendingCount : 'Live'}</strong>
             <p className="devops-sidebar-new__summary-copy">
               {isManager
                 ? `${pendingCount} requests are waiting for DevOps sign-off.`
-                : 'Tickets, templates, and audit flows are ready for action.'}
+                : 'Tickets, templates, and audit activity are ready.'}
             </p>
           </div>
         )}
         <nav className="devops-sidebar-new__nav">
-          {!sidebarCollapsed && <span className="devops-sidebar-new__nav-title">Workspace</span>}
+          {!sidebarCollapsed && <span className="devops-sidebar-new__nav-title">Modules</span>}
           {baseNavItems.map(({ href, label, Icon }) => {
             const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
             return (
@@ -284,7 +270,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               <IconMenu />
             </button>
             <div className="devops-navbar__title-wrap">
-              <span className="devops-navbar__kicker">DevOps workspace</span>
+              <span className="devops-navbar__kicker">DevOps Portal</span>
               <h1 className="devops-navbar__title">{pageTitle}</h1>
             </div>
             <span className={`devops-navbar__status-chip ${isManager && pendingCount > 0 ? 'devops-navbar__status-chip--alert' : ''}`}>
@@ -301,15 +287,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               {user && <span className="devops-navbar__username">{user.username}</span>}
               <span className="devops-navbar__role">{roleLabel}</span>
             </div>
-            <button
-              type="button"
-              className="devops-navbar__theme-toggle"
-              onClick={toggleTheme}
-              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-              aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            >
-              {theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </button>
             <div className="devops-navbar__profile-wrap" ref={profileRef}>
               <button
                 type="button"

@@ -99,8 +99,8 @@ export default function TeamsList() {
         <div className="portal-page">
           <div className="portal-page__header">
             <div>
-              <span className="portal-page__eyebrow">Team Directory</span>
-              <h1 className="portal-page__title">Manage operating groups and ownership lanes.</h1>
+              <span className="portal-page__eyebrow">Teams</span>
+              <h1 className="portal-page__title">Team Management</h1>
               <p className="portal-page__subtitle">
                 Create new teams, inspect membership entry points, and remove unused groups from the platform.
               </p>

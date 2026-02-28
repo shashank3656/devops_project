@@ -3,13 +3,10 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useToast } from '../context/ToastContext';
-import { getStoredTheme, setStoredTheme } from '../components/AppLayout';
-import { IconSun, IconMoon } from '../components/Icons';
 
 export default function ResetPassword() {
   const router = useRouter();
   const { toast } = useToast();
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [token, setToken] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -24,16 +21,9 @@ export default function ResetPassword() {
   }, [router.query.token]);
 
   useEffect(() => {
-    const t = getStoredTheme();
-    setTheme(t);
-    document.documentElement.setAttribute('data-theme', t);
+    document.documentElement.setAttribute('data-theme', 'dark');
+    localStorage.setItem('user-portal-theme', 'dark');
   }, []);
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setStoredTheme(next);
-    setTheme(next);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,9 +66,6 @@ export default function ResetPassword() {
         <div className="login-page">
           <div className="login-page__right" style={{ margin: 'auto' }}>
             <div className="login-page__card">
-              <button type="button" onClick={toggleTheme} className="login-page__theme-btn" title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
-                {theme === 'dark' ? <IconSun /> : <IconMoon />}
-              </button>
               <h2 className="login-page__card-title">Invalid link</h2>
               <p className="login-page__card-subtitle">
                 This reset link is invalid or has expired. Request a new one from the login page.
@@ -115,9 +102,6 @@ export default function ResetPassword() {
         </div>
         <div className="login-page__right">
           <div className="login-page__card">
-            <button type="button" onClick={toggleTheme} className="login-page__theme-btn" title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
-              {theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </button>
             <h2 className="login-page__card-title">Set new password</h2>
             <p className="login-page__card-subtitle">
               Enter your new password below.

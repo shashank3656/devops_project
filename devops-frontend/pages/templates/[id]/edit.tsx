@@ -129,8 +129,8 @@ export default function EditDevOpsTemplate() {
         <div className="portal-page portal-page--narrow">
           <header className="portal-page__header">
             <div className="portal-page__header-main">
-              <span className="portal-page__eyebrow">Template Studio</span>
-              <h1 className="portal-page__title">Edit blueprint</h1>
+              <span className="portal-page__eyebrow">Templates</span>
+              <h1 className="portal-page__title">Edit Template</h1>
               <p className="portal-page__subtitle">
                 Existing template editing behavior is unchanged, but the authoring flow now follows the same design language as the rest of the portal.
               </p>

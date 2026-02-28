@@ -633,8 +633,8 @@ export default function AdminRequests() {
         <div className="portal-page">
           <div className="portal-page__header">
             <div>
-              <span className="portal-page__eyebrow">Request Control</span>
-              <h1 className="portal-page__title">Drive approvals, rejection paths, and queue hygiene.</h1>
+              <span className="portal-page__eyebrow">Requests</span>
+              <h1 className="portal-page__title">Request Management</h1>
               <p className="portal-page__subtitle">
                 Search by team, environment, cloud, or priority, then act on individual requests or in bulk.
               </p>

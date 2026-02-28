@@ -75,7 +75,7 @@ export default function DevOpsProfilePage() {
             <header className="portal-page__header">
               <div className="portal-page__header-main">
                 <span className="portal-page__eyebrow">Profile</span>
-                <h1 className="portal-page__title">Identity and ownership</h1>
+                <h1 className="portal-page__title">Profile Settings</h1>
                 <p className="portal-page__subtitle">
                   Current profile data is unchanged; this redesign makes role, level, and team ownership easier to scan.
                 </p>

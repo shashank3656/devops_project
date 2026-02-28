@@ -77,15 +77,15 @@ export default function TemplatesPage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Template Library</span>
-            <h1 className="portal-page__title">Start from approved delivery patterns.</h1>
+            <span className="portal-page__eyebrow">Templates</span>
+            <h1 className="portal-page__title">Infrastructure Templates</h1>
             <p className="portal-page__subtitle">
               Templates pre-fill cloud, environment, and service selections so repeatable requests move faster through approval.
             </p>
           </div>
           <div className="portal-page__actions">
             <Link href="/create-infrastructure/new" className="btn btn-primary">
-              Open Request Studio
+              Open Create Infrastructure
             </Link>
           </div>
         </div>

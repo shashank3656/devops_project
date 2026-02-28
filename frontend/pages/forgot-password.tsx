@@ -2,12 +2,9 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useToast } from '../context/ToastContext';
-import { getStoredTheme, setStoredTheme } from '../components/AppLayout';
-import { IconSun, IconMoon } from '../components/Icons';
 
 export default function ForgotPassword() {
   const { toast } = useToast();
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -16,16 +13,9 @@ export default function ForgotPassword() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
-    const t = getStoredTheme();
-    setTheme(t);
-    document.documentElement.setAttribute('data-theme', t);
+    document.documentElement.setAttribute('data-theme', 'dark');
+    localStorage.setItem('user-portal-theme', 'dark');
   }, []);
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setStoredTheme(next);
-    setTheme(next);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,9 +63,6 @@ export default function ForgotPassword() {
         </div>
         <div className="login-page__right">
           <div className="login-page__card">
-            <button type="button" onClick={toggleTheme} className="login-page__theme-btn" title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
-              {theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </button>
             <h2 className="login-page__card-title">Forgot password</h2>
             <p className="login-page__card-subtitle">
               Enter your email and we&apos;ll send you a link to reset your password.

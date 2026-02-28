@@ -7,8 +7,6 @@ import { useToast } from '../context/ToastContext';
 import {
   IconLogout,
   IconBell,
-  IconSun,
-  IconMoon,
   IconHome,
   IconPlus,
   IconTemplates,
@@ -30,25 +28,27 @@ export function getApiUrl(): string {
 }
 
 export function getStoredTheme(): 'light' | 'dark' {
-  if (typeof window === 'undefined') return 'dark';
-  const stored = localStorage.getItem(THEME_KEY);
-  return stored === 'light' ? 'light' : 'dark';
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(THEME_KEY, 'dark');
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+  return 'dark';
 }
 
-export function setStoredTheme(theme: 'light' | 'dark') {
+export function setStoredTheme(_theme: 'light' | 'dark') {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(THEME_KEY, theme);
-  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem(THEME_KEY, 'dark');
+  document.documentElement.setAttribute('data-theme', 'dark');
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  '/home': 'Launchpad',
-  '/create-infrastructure': 'Request Studio',
-  '/templates': 'Template Library',
-  '/history': 'Request Timeline',
-  '/notifications': 'Alerts',
-  '/my-teams': 'Team Control',
-  '/profile': 'Identity Center',
+  '/home': 'Dashboard',
+  '/create-infrastructure': 'Create Infrastructure',
+  '/templates': 'Templates',
+  '/history': 'Request History',
+  '/notifications': 'Notifications',
+  '/my-teams': 'My Teams',
+  '/profile': 'Profile',
 };
 
 function getPageTitle(pathname: string): string {
@@ -56,7 +56,7 @@ function getPageTitle(pathname: string): string {
   for (const [path, title] of Object.entries(PAGE_TITLES)) {
     if (path !== '/home' && pathname.startsWith(path)) return title;
   }
-  return 'Launchpad';
+  return 'Dashboard';
 }
 
 function getUserIdentity(): { initials: string; label: string } {
@@ -85,7 +85,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { toast } = useToast();
   const pathname = router.pathname;
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -105,9 +104,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const stored = getStoredTheme();
-    setTheme(stored);
-    document.documentElement.setAttribute('data-theme', stored);
+    getStoredTheme();
   }, []);
 
   useEffect(() => {
@@ -226,7 +223,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
         e.preventDefault();
-        toast('Shortcuts: ? help, g then h = Launchpad, g then t = Timeline, g then n = Request Studio', 'success');
+        toast('Shortcuts: ? help, g then h = Dashboard, g then t = Request History, g then n = Create Infrastructure', 'success');
         return;
       }
       if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
@@ -254,12 +251,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [toast, router]);
 
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setStoredTheme(next);
-    setTheme(next);
-  };
-
   const toggleSidebar = () => {
     const next = !sidebarCollapsed;
     setSidebarCollapsed(next);
@@ -279,13 +270,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const newRequestExpandedByPath = pathname.startsWith('/create-infrastructure');
   const effectiveNewRequestExpanded = newRequestExpanded || newRequestExpandedByPath;
   const baseNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
-    { href: '/home', label: 'Launchpad', Icon: IconHome },
-    { href: '/templates', label: 'Template Library', Icon: IconTemplates },
-    { href: '/history', label: 'Request Timeline', Icon: IconHistory },
+    { href: '/home', label: 'Dashboard', Icon: IconHome },
+    { href: '/templates', label: 'Templates', Icon: IconTemplates },
+    { href: '/history', label: 'Request History', Icon: IconHistory },
   ];
 
   if (hasManagedTeams) {
-    baseNavItems.push({ href: '/my-teams', label: 'Team Control', Icon: IconUsers });
+    baseNavItems.push({ href: '/my-teams', label: 'My Teams', Icon: IconUsers });
   }
 
   if (teamCheck === 'loading') {
@@ -313,12 +304,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }
 
   const pageTitle = getPageTitle(pathname);
-  const workspaceLabel = hasManagedTeams ? 'Team lead workspace' : 'Builder workspace';
-  const statusLabel = pendingManagerApprovalCount > 0
-    ? `${pendingManagerApprovalCount} approvals waiting`
+  const workspaceLabel = hasManagedTeams ? 'Manager Portal' : 'User Portal';
+  const summaryLabel = pendingManagerApprovalCount > 0
+    ? 'Pending Approvals'
     : updatedRequestsCount > 0
-      ? `${updatedRequestsCount} fresh updates`
-      : 'Delivery lane clear';
+      ? 'Request Updates'
+      : 'System Status';
+  const statusLabel = pendingManagerApprovalCount > 0
+    ? `${pendingManagerApprovalCount} approvals pending`
+    : updatedRequestsCount > 0
+      ? `${updatedRequestsCount} request updates`
+      : 'No new updates';
 
   return (
     <div className="user-layout user-layout-sidebar user-shell">
@@ -336,7 +332,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <img src="/logo.svg" alt="" width={36} height={36} className="user-sidebar-shell__logo" />
             {!sidebarCollapsed && (
               <span className="user-sidebar-shell__brand-copy">
-                <span className="user-sidebar-shell__eyebrow">Self Service</span>
+                <span className="user-sidebar-shell__eyebrow">User Portal</span>
                 <span className="user-sidebar-shell__brand-text">{SITE_NAME}</span>
               </span>
             )}
@@ -345,7 +341,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
         {!sidebarCollapsed && (
           <div className="user-sidebar-shell__summary">
-            <span className="user-sidebar-shell__summary-label">{workspaceLabel}</span>
+            <span className="user-sidebar-shell__summary-label">{summaryLabel}</span>
             <strong className="user-sidebar-shell__summary-value">
               {pendingManagerApprovalCount > 0 ? pendingManagerApprovalCount : updatedRequestsCount > 0 ? updatedRequestsCount : 'Live'}
             </strong>
@@ -354,13 +350,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 ? 'Approvals are waiting in your queue.'
                 : hasManagedTeams
                   ? 'Your team requests, templates, and alerts are in sync.'
-                  : 'Use templates or request studio to launch new work.'}
+                  : 'Use templates or create infrastructure to launch new work.'}
             </p>
           </div>
         )}
 
         <nav className="user-sidebar-shell__nav">
-          {!sidebarCollapsed && <span className="user-sidebar-shell__nav-title">Workspace</span>}
+          {!sidebarCollapsed && <span className="user-sidebar-shell__nav-title">Modules</span>}
           {baseNavItems.filter((item) => item.href === '/home').map(({ href, label, Icon }) => {
             const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
             return (
@@ -384,7 +380,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 onClick={() => setNewRequestExpanded(!effectiveNewRequestExpanded)}
               >
                 <IconPlus className="user-sidebar-shell__icon" />
-                <span className="user-sidebar-shell__label">Request Studio</span>
+                <span className="user-sidebar-shell__label">Create Infrastructure</span>
                 <span className="user-sidebar-shell__chevron">
                   {effectiveNewRequestExpanded ? <IconChevronDown /> : <IconChevronRight />}
                 </span>
@@ -416,7 +412,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               href="/create-infrastructure"
               className={`user-sidebar-shell__link ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar-shell__link--active' : ''}`}
               onClick={() => setMobileMenuOpen(false)}
-              title="Request Studio"
+              title="Create Infrastructure"
             >
               <IconPlus className="user-sidebar-shell__icon" />
             </Link>
@@ -462,7 +458,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <IconMenu />
             </button>
             <div className="user-topbar__title-wrap">
-              <span className="user-topbar__kicker">{workspaceLabel}</span>
+              <span className="user-topbar__kicker">User Portal</span>
               <h1 className="user-topbar__title">{pageTitle}</h1>
             </div>
             <span className={`user-topbar__status-chip ${pendingManagerApprovalCount > 0 ? 'user-topbar__status-chip--alert' : ''}`}>
@@ -492,16 +488,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 </span>
               )}
             </div>
-
-            <button
-              type="button"
-              className="user-topbar__theme-toggle"
-              onClick={toggleTheme}
-              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-              aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            >
-              {theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </button>
 
             <div className="user-topbar__profile-wrap" ref={profileRef}>
               <button

@@ -4,7 +4,6 @@ import { useRouter } from 'next/router';
 import { useEffect } from 'react';
 import AppLayout from '../components/AppLayout';
 import { ToastProvider } from '../context/ToastContext';
-import { getStoredTheme } from '../components/AppLayout';
 import { SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
 
@@ -14,8 +13,10 @@ export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
 
   useEffect(() => {
-    const theme = getStoredTheme();
-    document.documentElement.setAttribute('data-theme', theme);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('user-portal-theme', 'dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
   }, []);
 
   const showLayout = AUTHED_PATHS.some((p) => router.pathname === p || router.pathname.startsWith(p + '/'));

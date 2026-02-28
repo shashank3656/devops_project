@@ -75,8 +75,8 @@ export default function NewDevOpsTemplate() {
         <div className="portal-page portal-page--narrow">
           <header className="portal-page__header">
             <div className="portal-page__header-main">
-              <span className="portal-page__eyebrow">Template Studio</span>
-              <h1 className="portal-page__title">Create a new blueprint</h1>
+              <span className="portal-page__eyebrow">Templates</span>
+              <h1 className="portal-page__title">Create Template</h1>
               <p className="portal-page__subtitle">
                 Keep the current template feature set while moving it into a more structured, form-first authoring flow.
               </p>
