@@ -47,28 +47,28 @@ func GenerateApplicationID() (string, error) {
 var DB *sql.DB
 
 type PRRequest struct {
-	ID            int        `json:"id"`
-	Team          string     `json:"team"`
-	Env           string     `json:"env"`
-	Cloud         string     `json:"cloud"`
-	Service       string     `json:"service"`
-	ClientName    string     `json:"client_name"`
-	ApplicationID string     `json:"application_id"` // unique 10-char alphanumeric, used in branch/PR
-	Priority      string     `json:"priority"`      // low, medium, high, critical
-	DueDate       *time.Time `json:"due_date"`
-	PRURL         string     `json:"pr_url"`
-	Branch        string     `json:"branch"`
-	FilePath      string     `json:"file_path"`
-	Status       string     `json:"status"` // draft, pending_user_manager_approval, pending_devops_approval, pending_approval, in_progress, completed, rejected
-	RejectReason string     `json:"reject_reason"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	CreatedBy         *int    `json:"created_by"`
-	CreatedByUsername string  `json:"created_by_username,omitempty"` // set in history for "who raised" when view=team
-	AssignedTo        *int    `json:"assigned_to"`                   // DevOps user assigned after PR creation (by priority)
-	Config            string  `json:"config"`
-	TerraformPlanOutput string `json:"terraform_plan_output,omitempty"` // Terraform plan/apply output from CI (display in UI)
-	JiraTicketID       string  `json:"jira_ticket_id,omitempty"`        // Jira/ticketing integration
+	ID                  int        `json:"id"`
+	Team                string     `json:"team"`
+	Env                 string     `json:"env"`
+	Cloud               string     `json:"cloud"`
+	Service             string     `json:"service"`
+	ClientName          string     `json:"client_name"`
+	ApplicationID       string     `json:"application_id"` // unique 10-char alphanumeric, used in branch/PR
+	Priority            string     `json:"priority"`       // low, medium, high, critical
+	DueDate             *time.Time `json:"due_date"`
+	PRURL               string     `json:"pr_url"`
+	Branch              string     `json:"branch"`
+	FilePath            string     `json:"file_path"`
+	Status              string     `json:"status"` // draft, pending_user_manager_approval, pending_devops_approval, pending_approval, in_progress, completed, rejected
+	RejectReason        string     `json:"reject_reason"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	CreatedBy           *int       `json:"created_by"`
+	CreatedByUsername   string     `json:"created_by_username,omitempty"` // set in history for "who raised" when view=team
+	AssignedTo          *int       `json:"assigned_to"`                   // DevOps user assigned after PR creation (by priority)
+	Config              string     `json:"config"`
+	TerraformPlanOutput string     `json:"terraform_plan_output,omitempty"` // Terraform plan/apply output from CI (display in UI)
+	JiraTicketID        string     `json:"jira_ticket_id,omitempty"`        // Jira/ticketing integration
 }
 
 // RequestComment is a comment on a PR request
@@ -87,21 +87,21 @@ type User struct {
 	Email           string    `json:"email"`
 	Password        string    `json:"-"` // Don't return password in JSON
 	Verified        bool      `json:"verified"`
-	Role            string    `json:"role"` // viewer | contributor | admin
-	UserType        string    `json:"user_type"` // portal_user | devops_user
-	ManagerID       *int      `json:"manager_id"` // portal user's manager (for two-step approval)
+	Role            string    `json:"role"`              // viewer | contributor | admin
+	UserType        string    `json:"user_type"`         // portal_user | devops_user
+	ManagerID       *int      `json:"manager_id"`        // portal user's manager (for two-step approval)
 	IsPortalManager bool      `json:"is_portal_manager"` // portal user designated as group manager (same UX as DevOps manager)
-	TotpEnabled     bool      `json:"totp_enabled"`     // 2FA enabled (email OTP on login)
+	TotpEnabled     bool      `json:"totp_enabled"`      // 2FA enabled (email OTP on login)
 	CreatedAt       time.Time `json:"created_at"`
 }
 
 // DevopsProfile holds DevOps-specific fields for users with user_type = devops_user
 type DevopsProfile struct {
-	UserID      int       `json:"user_id"`
-	IsManager   bool      `json:"is_manager"`
-	Position    string    `json:"position"`
-	OnboardDate *string   `json:"onboard_date"` // YYYY-MM-DD
-	Level       string    `json:"level"`       // L1, L2, L3, L4
+	UserID      int     `json:"user_id"`
+	IsManager   bool    `json:"is_manager"`
+	Position    string  `json:"position"`
+	OnboardDate *string `json:"onboard_date"` // YYYY-MM-DD
+	Level       string  `json:"level"`        // L1, L2, L3, L4
 }
 
 // Team is a group created by admin (for admin frontend). team_type: portal (user portal group) | devops (DevOps team)
@@ -109,7 +109,7 @@ type Team struct {
 	ID           int       `json:"id"`
 	Name         string    `json:"name"`
 	Slug         string    `json:"slug"`
-	TeamType     string    `json:"team_type"` // portal | devops
+	TeamType     string    `json:"team_type"`               // portal | devops
 	DefaultEnv   string    `json:"default_env,omitempty"`   // e.g. dev, prod; prefill when user from this team creates request
 	DefaultCloud string    `json:"default_cloud,omitempty"` // e.g. aws; optional prefill
 	CreatedAt    time.Time `json:"created_at"`
@@ -129,7 +129,7 @@ type TeamMember struct {
 type OutboundWebhook struct {
 	ID        int       `json:"id"`
 	URL       string    `json:"url"`
-	Secret    string    `json:"-"` // never returned in list
+	Secret    string    `json:"-"`      // never returned in list
 	Events    string    `json:"events"` // comma-separated: approved, pr_created, rejected, assigned
 	Enabled   bool      `json:"enabled"`
 	CreatedAt time.Time `json:"created_at"`
@@ -296,7 +296,7 @@ func InitDB() error {
 
 	// Set connection pool settings
 	DB.SetMaxOpenConns(25)                 // Maximum number of open connections
-	DB.SetMaxIdleConns(5)                   // Maximum number of idle connections
+	DB.SetMaxIdleConns(5)                  // Maximum number of idle connections
 	DB.SetConnMaxLifetime(5 * time.Minute) // Maximum connection lifetime
 
 	log.Println("Database connection established with connection pooling")
@@ -648,13 +648,13 @@ func GetGitHubLogs(limit int) ([]GitHubLogEntry, error) {
 
 // UserNotification is a single in-app notification row
 type UserNotification struct {
-	ID         int        `json:"id"`
-	UserID     int        `json:"user_id"`
-	RequestID  *int       `json:"request_id"`
-	Kind       string     `json:"kind"`
-	Message    string     `json:"message"`
-	ReadAt     *time.Time `json:"read_at"`
-	CreatedAt  time.Time  `json:"created_at"`
+	ID        int        `json:"id"`
+	UserID    int        `json:"user_id"`
+	RequestID *int       `json:"request_id"`
+	Kind      string     `json:"kind"`
+	Message   string     `json:"message"`
+	ReadAt    *time.Time `json:"read_at"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // InsertUserNotification creates an in-app notification for a user
@@ -1066,7 +1066,6 @@ func GetTotalCountForHistory(team, env, cloud, statusFilter, search string, prID
 	return GetTotalCount(team, env, cloud, statusFilter, "", s, prID, userIDInt, createdByIn, false, fromDate, toDate)
 }
 
-
 // GetPRRequests retrieves PR requests with optional filters. fromDate, toDate: YYYY-MM-DD for created_at range.
 func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, limit, offset int, sortBy, sortOrder string, atRiskOnly bool, fromDate, toDate string) ([]PRRequest, error) {
 	query := `
@@ -1338,9 +1337,9 @@ func GetPRRequestsByAssignedTo(assigneeID int, limit, offset int) ([]PRRequest, 
 
 // WorkloadItem is a request with assignee info for the DevOps manager workload view
 type WorkloadItem struct {
-	Request         PRRequest `json:"request"`
-	AssigneeID      int       `json:"assignee_id"`
-	AssigneeUsername string   `json:"assignee_username"`
+	Request          PRRequest `json:"request"`
+	AssigneeID       int       `json:"assignee_id"`
+	AssigneeUsername string    `json:"assignee_username"`
 }
 
 // GetWorkloadAssignedRequests returns all requests that have an assignee (for DevOps manager workload view)
@@ -1411,10 +1410,10 @@ func getWorkloadInProgress(includeUnassigned bool) ([]WorkloadItem, error) {
 
 // WorkloadSummaryRow is one row for workload capacity view (by team or by person)
 type WorkloadSummaryRow struct {
-	Key                string `json:"key"`                  // team name or username
-	Open               int    `json:"open"`                 // pending_* + in_progress
-	InProgress         int    `json:"in_progress"`          // status = in_progress
-	CompletedThisWeek  int    `json:"completed_this_week"`   // status = completed and updated_at in current week
+	Key               string `json:"key"`                 // team name or username
+	Open              int    `json:"open"`                // pending_* + in_progress
+	InProgress        int    `json:"in_progress"`         // status = in_progress
+	CompletedThisWeek int    `json:"completed_this_week"` // status = completed and updated_at in current week
 }
 
 // GetWorkloadSummaryByTeam returns per-team open, in_progress, completed_this_week
@@ -1604,8 +1603,8 @@ func AddRequestComment(requestID, userID int, body string) error {
 // TimelineEntry is a single event in the request audit trail
 type TimelineEntry struct {
 	ID        int       `json:"id"`
-	Kind      string    `json:"kind"`      // "user_activity" | "admin_audit" | "comment"
-	Action    string    `json:"action"`   // e.g. request_create, request_comment, request_approve
+	Kind      string    `json:"kind"`   // "user_activity" | "admin_audit" | "comment"
+	Action    string    `json:"action"` // e.g. request_create, request_comment, request_approve
 	Username  string    `json:"username"`
 	Details   string    `json:"details"`
 	Body      string    `json:"body,omitempty"` // for comments
@@ -2332,17 +2331,17 @@ func GetAuditLogs(limit, offset int, actionFilter, fromDate, toDate string) ([]A
 
 // CredentialAuditEntry is a single credential audit log row
 type CredentialAuditEntry struct {
-	ID               int       `json:"id"`
-	RequestID        *int      `json:"request_id"`
-	Cloud            string    `json:"cloud"`
-	CredentialType   string    `json:"credential_type"`
-	Team             string    `json:"team"`
-	Env              string    `json:"env"`
-	CreatedByUserID  *int      `json:"created_by_user_id"`
-	CreatedByUsername string   `json:"created_by_username,omitempty"`
-	ApprovedByUserID *int      `json:"approved_by_user_id"`
-	ApprovedByUsername string  `json:"approved_by_username,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID                 int       `json:"id"`
+	RequestID          *int      `json:"request_id"`
+	Cloud              string    `json:"cloud"`
+	CredentialType     string    `json:"credential_type"`
+	Team               string    `json:"team"`
+	Env                string    `json:"env"`
+	CreatedByUserID    *int      `json:"created_by_user_id"`
+	CreatedByUsername  string    `json:"created_by_username,omitempty"`
+	ApprovedByUserID   *int      `json:"approved_by_user_id"`
+	ApprovedByUsername string    `json:"approved_by_username,omitempty"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 // InsertCredentialAuditLog inserts a credential audit entry
@@ -2455,10 +2454,10 @@ func GetDashboardStats() (DashboardStats, error) {
 
 // DateRangeStats holds request counts by status for a date range
 type DateRangeStats struct {
-	From      string            `json:"from"`
-	To        string            `json:"to"`
-	Total     int               `json:"total"`
-	ByStatus  map[string]int    `json:"by_status"`
+	From     string         `json:"from"`
+	To       string         `json:"to"`
+	Total    int            `json:"total"`
+	ByStatus map[string]int `json:"by_status"`
 }
 
 // GetRequestsByStatusInDateRange returns total and per-status counts for requests created in the date range (inclusive)
@@ -3055,13 +3054,18 @@ func CreateRequestTemplate(name, description, cloud, env, service, config string
 		return nil, fmt.Errorf("database not available")
 	}
 	var t RequestTemplate
+	var createdByValue sql.NullInt64
 	err := DB.QueryRow(
 		`INSERT INTO request_templates (name, description, cloud, env, service, config, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING id, name, description, cloud, env, service, config, created_by, created_at`,
 		name, description, cloud, env, service, config, createdBy,
-	).Scan(&t.ID, &t.Name, &t.Description, &t.Cloud, &t.Env, &t.Service, &t.Config, &t.CreatedBy, &t.CreatedAt)
+	).Scan(&t.ID, &t.Name, &t.Description, &t.Cloud, &t.Env, &t.Service, &t.Config, &createdByValue, &t.CreatedAt)
 	if err != nil {
 		return nil, err
+	}
+	if createdByValue.Valid && createdByValue.Int64 > 0 {
+		id := int(createdByValue.Int64)
+		t.CreatedBy = &id
 	}
 	return &t, nil
 }

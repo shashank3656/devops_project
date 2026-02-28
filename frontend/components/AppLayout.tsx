@@ -1,13 +1,11 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ReactNode, useEffect, useRef, useState } from 'react';
-import { SITE_NAME } from '../lib/site';
+import type { ComponentType, ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useToast } from '../context/ToastContext';
 import {
   IconLogout,
   IconBell,
-  IconSun,
-  IconMoon,
   IconHome,
   IconPlus,
   IconTemplates,
@@ -29,24 +27,26 @@ export function getApiUrl(): string {
 }
 
 export function getStoredTheme(): 'light' | 'dark' {
-  if (typeof window === 'undefined') return 'dark';
-  const stored = localStorage.getItem(THEME_KEY);
-  return stored === 'light' ? 'light' : 'dark';
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(THEME_KEY, 'dark');
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+  return 'dark';
 }
 
-export function setStoredTheme(theme: 'light' | 'dark') {
+export function setStoredTheme(_theme: 'light' | 'dark') {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(THEME_KEY, theme);
-  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem(THEME_KEY, 'dark');
+  document.documentElement.setAttribute('data-theme', 'dark');
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  '/home': 'Home',
-  '/create-infrastructure': 'New Request',
+  '/home': 'Dashboard',
+  '/create-infrastructure': 'Create Infrastructure',
   '/templates': 'Templates',
-  '/history': 'History',
+  '/history': 'Request History',
   '/notifications': 'Notifications',
-  '/my-teams': 'My teams',
+  '/my-teams': 'My Teams',
   '/profile': 'Profile',
 };
 
@@ -55,49 +55,87 @@ function getPageTitle(pathname: string): string {
   for (const [path, title] of Object.entries(PAGE_TITLES)) {
     if (path !== '/home' && pathname.startsWith(path)) return title;
   }
-  return 'Home';
+  return 'Dashboard';
 }
 
-function getProfileInitials(): string {
-  if (typeof window === 'undefined') return 'U';
+function getUserIdentity(): { initials: string; label: string } {
+  if (typeof window === 'undefined') {
+    return { initials: 'U', label: 'Portal User' };
+  }
+
   try {
     const raw = localStorage.getItem('user');
-    if (!raw) return 'U';
+    if (!raw) return { initials: 'U', label: 'Portal User' };
+
     const user = JSON.parse(raw) as { username?: string; email?: string; name?: string };
-    const name = user?.name || user?.username || user?.email || '';
-    if (!name) return 'U';
-    const parts = name.trim().split(/[\s@.]/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
-    return name.slice(0, 2).toUpperCase();
+    const label = user?.name || user?.username || user?.email || 'Portal User';
+    const parts = label.trim().split(/[\s@.]/).filter(Boolean);
+    const initials = parts.length >= 2
+      ? (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2)
+      : label.slice(0, 2).toUpperCase() || 'U';
+
+    return { initials, label };
   } catch {
-    return 'U';
+    return { initials: 'U', label: 'Portal User' };
   }
+}
+
+interface UserNotificationItem {
+  id: number;
+  request_id: number | null;
+  kind: string;
+  message: string;
+  read_at: string | null;
+  created_at: string;
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min ago`;
+  if (diffHours < 24) return `${diffHours} hour(s) ago`;
+  return d.toLocaleDateString();
+}
+
+function formatNotificationKind(kind: string): string {
+  return (kind || 'notification')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { toast } = useToast();
   const pathname = router.pathname;
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notifyOpen, setNotifyOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileInitials, setProfileInitials] = useState('U');
+  const [profileLabel, setProfileLabel] = useState('Portal User');
   const [newRequestExpanded, setNewRequestExpanded] = useState(false);
   const [teamCheck, setTeamCheck] = useState<'loading' | 'ok' | 'forbidden'>('loading');
   const [updatedRequestsCount, setUpdatedRequestsCount] = useState(0);
   const [pendingManagerApprovalCount, setPendingManagerApprovalCount] = useState(0);
   const [hasManagedTeams, setHasManagedTeams] = useState(false);
+  const [recentNotifications, setRecentNotifications] = useState<UserNotificationItem[]>([]);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setProfileInitials(getProfileInitials());
+    const identity = getUserIdentity();
+    setProfileInitials(identity.initials);
+    setProfileLabel(identity.label);
   }, []);
 
   useEffect(() => {
-    const stored = getStoredTheme();
-    setTheme(stored);
-    document.documentElement.setAttribute('data-theme', stored);
+    getStoredTheme();
   }, []);
 
   useEffect(() => {
@@ -143,41 +181,66 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
   }, [router.pathname]);
 
-  useEffect(() => {
+  const refreshUserNotifications = (showLoading = false) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token || token === 'undefined') return;
-    const fetchNotifications = () => {
-      try {
-        const since = localStorage.getItem(HISTORY_LAST_SEEN_KEY);
-        const sinceParam = since || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const t = localStorage.getItem('token');
-        if (!t) return;
-        fetch(`${apiUrl}/api/me/notifications?since=${encodeURIComponent(sinceParam)}`, { headers: { Authorization: `Bearer ${t}` } })
-          .then((res) => (res.ok ? res.json() : null))
-          .then((data) => { if (data && typeof data.updated_count === 'number') setUpdatedRequestsCount(data.updated_count); })
-          .catch(() => {});
-      } catch (_) {}
-    };
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, NOTIFY_POLL_MS);
-    return () => clearInterval(interval);
-  }, []);
+    if (showLoading) setNotificationsLoading(true);
+    try {
+      const since = localStorage.getItem(HISTORY_LAST_SEEN_KEY);
+      const sinceParam = since || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      fetch(`${apiUrl}/api/me/notifications?limit=8&since=${encodeURIComponent(sinceParam)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!data) return;
+          if (Array.isArray(data.notifications)) setRecentNotifications(data.notifications);
+          if (typeof data.unread_count === 'number') setUnreadNotificationsCount(data.unread_count);
+          if (typeof data.updated_count === 'number') setUpdatedRequestsCount(data.updated_count);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (showLoading) setNotificationsLoading(false);
+        });
+    } catch (_) {
+      if (showLoading) setNotificationsLoading(false);
+    }
+  };
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token || token === 'undefined') return;
+    refreshUserNotifications();
+    const interval = setInterval(() => refreshUserNotifications(), NOTIFY_POLL_MS);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (notifyOpen) refreshUserNotifications(true);
+  }, [notifyOpen]);
+
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token || token === 'undefined') return;
+
     const fetchPendingApproval = () => {
       const t = localStorage.getItem('token');
       if (!t) return;
       fetch(`${apiUrl}/api/me/pending-manager-approval`, { headers: { Authorization: `Bearer ${t}` } })
         .then((res) => (res.ok ? res.json() : null))
-        .then((data) => { if (data && typeof data.pending_manager_approval_count === 'number') setPendingManagerApprovalCount(data.pending_manager_approval_count); })
+        .then((data) => {
+          if (data && typeof data.pending_manager_approval_count === 'number') {
+            setPendingManagerApprovalCount(data.pending_manager_approval_count);
+          }
+        })
         .catch(() => {});
     };
+
     fetchPendingApproval();
     const interval = setInterval(fetchPendingApproval, NOTIFY_POLL_MS);
     const onRefresh = () => fetchPendingApproval();
     window.addEventListener('pending-manager-approval-refresh', onRefresh);
+
     return () => {
       clearInterval(interval);
       window.removeEventListener('pending-manager-approval-refresh', onRefresh);
@@ -186,36 +249,29 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
+      if (notifyRef.current && !notifyRef.current.contains(e.target as Node)) {
+        setNotifyOpen(false);
+      }
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
     };
-    if (profileOpen) {
+
+    if (notifyOpen || profileOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [profileOpen]);
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setStoredTheme(next);
-    setTheme(next);
-  };
-
-  const toggleSidebar = () => {
-    const next = !sidebarCollapsed;
-    setSidebarCollapsed(next);
-    try {
-      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
-    } catch (_) {}
-  };
+  }, [notifyOpen, profileOpen]);
 
   useEffect(() => {
     let gPressedAt = 0;
+
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
         e.preventDefault();
-        toast('Shortcuts: ? help, g then h = Home, g then t = History, g then n = New Request', 'success');
+        toast('Shortcuts: ? help, g then h = Dashboard, g then t = Request History, g then n = Create Infrastructure', 'success');
         return;
       }
       if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
@@ -238,9 +294,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         gPressedAt = 0;
       }
     };
+
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [toast, router]);
+
+  const toggleSidebar = () => {
+    const next = !sidebarCollapsed;
+    setSidebarCollapsed(next);
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+    } catch (_) {}
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated');
@@ -252,13 +317,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   const newRequestExpandedByPath = pathname.startsWith('/create-infrastructure');
   const effectiveNewRequestExpanded = newRequestExpanded || newRequestExpandedByPath;
-
-  const baseNavItems: { href: string; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
-    { href: '/home', label: 'Home', Icon: IconHome },
+  const baseNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
+    { href: '/home', label: 'Dashboard', Icon: IconHome },
     { href: '/templates', label: 'Templates', Icon: IconTemplates },
-    { href: '/history', label: 'History', Icon: IconHistory },
+    { href: '/history', label: 'Request History', Icon: IconHistory },
   ];
-  if (hasManagedTeams) baseNavItems.push({ href: '/my-teams', label: 'My teams', Icon: IconUsers });
+
+  if (hasManagedTeams) {
+    baseNavItems.push({ href: '/my-teams', label: 'My Teams', Icon: IconUsers });
+  }
 
   if (teamCheck === 'loading') {
     return (
@@ -267,6 +334,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </div>
     );
   }
+
   if (teamCheck === 'forbidden') {
     return (
       <div className="user-layout-forbidden">
@@ -284,173 +352,280 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }
 
   const pageTitle = getPageTitle(pathname);
+  const summaryLabel = pendingManagerApprovalCount > 0
+    ? 'Pending Approvals'
+    : updatedRequestsCount > 0
+      ? 'Request Updates'
+      : 'System Status';
+  const statusLabel = pendingManagerApprovalCount > 0
+    ? `${pendingManagerApprovalCount} approvals pending`
+    : updatedRequestsCount > 0
+      ? `${updatedRequestsCount} request updates`
+      : 'No new updates';
+  const requestActivityBadge = pendingManagerApprovalCount > 0
+    ? (pendingManagerApprovalCount > 99 ? '99+' : String(pendingManagerApprovalCount))
+    : updatedRequestsCount > 0
+      ? (updatedRequestsCount > 99 ? '99+' : String(updatedRequestsCount))
+      : null;
+  const sidebarStatusItems = [
+    {
+      label: hasManagedTeams ? 'manager-queue' : 'request-feed',
+      tone: pendingManagerApprovalCount > 0 ? 'warn' : 'ok',
+      meta: pendingManagerApprovalCount > 0 ? `${pendingManagerApprovalCount} open` : 'clear',
+    },
+    { label: 'template-library', tone: 'ok', meta: 'ready' },
+    { label: 'team-access', tone: hasManagedTeams ? 'ok' : 'idle', meta: hasManagedTeams ? 'lead' : 'member' },
+  ];
+  const notifyBadgeCount = pendingManagerApprovalCount > 0
+    ? pendingManagerApprovalCount
+    : unreadNotificationsCount > 0
+      ? unreadNotificationsCount
+      : updatedRequestsCount;
 
   return (
-    <div className="user-layout user-layout-sidebar">
-      <aside className={`user-sidebar ${sidebarCollapsed ? 'user-sidebar--collapsed' : ''} ${mobileMenuOpen ? 'user-sidebar--mobile-open' : ''}`}>
-        <div className="user-sidebar__header">
+    <div className="user-layout user-layout-sidebar user-shell">
+      <aside className={`user-sidebar-shell ${sidebarCollapsed ? 'user-sidebar-shell--collapsed' : ''} ${mobileMenuOpen ? 'user-sidebar-shell--mobile-open' : ''}`}>
+        <div className="user-sidebar-shell__header">
           <button
             type="button"
-            className="user-sidebar__hamburger"
+            className="user-sidebar-shell__hamburger"
             onClick={toggleSidebar}
             aria-label="Toggle sidebar"
           >
             <IconMenu />
           </button>
-          <Link href="/home" className="user-sidebar__brand">
-            <img src="/logo.svg" alt="" width={36} height={36} className="user-sidebar__logo" />
-            {!sidebarCollapsed && <span className="user-sidebar__brand-text">{SITE_NAME}</span>}
-          </Link>
-        </div>
-        <nav className="user-sidebar__nav">
-          {baseNavItems.filter((item) => item.href === '/home').map(({ href, label, Icon }) => {
-            const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`user-sidebar__link ${isActive ? 'user-sidebar__link--active' : ''}`}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <Icon className="user-sidebar__icon" />
-                {!sidebarCollapsed && <span className="user-sidebar__label">{label}</span>}
-              </Link>
-            );
-          })}
           {!sidebarCollapsed && (
-            <div className="user-sidebar__expandable">
-              <button
-                type="button"
-                className={`user-sidebar__link user-sidebar__expandable-trigger ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar__link--active' : ''}`}
-                onClick={() => setNewRequestExpanded(!effectiveNewRequestExpanded)}
-              >
-                <IconPlus className="user-sidebar__icon" />
-                <span className="user-sidebar__label">New Request</span>
-                <span className="user-sidebar__chevron">
-                  {effectiveNewRequestExpanded ? <IconChevronDown /> : <IconChevronRight />}
-                </span>
-              </button>
-              {effectiveNewRequestExpanded && (
-                <div className="user-sidebar__sub">
-                  <Link
-                    href="/create-infrastructure/iam"
-                    className={`user-sidebar__sublink ${pathname === '/create-infrastructure/iam' || pathname.startsWith('/create-infrastructure/iam/') ? 'user-sidebar__sublink--active' : ''}`}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    IAM
-                  </Link>
-                  <Link
-                    href="/create-infrastructure/new"
-                    className={`user-sidebar__sublink ${pathname === '/create-infrastructure/new' || pathname.startsWith('/create-infrastructure/new') || pathname === '/select-service' || pathname === '/custom-json' || pathname === '/aws' ? 'user-sidebar__sublink--active' : ''}`}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    Create Infrastructure
-                  </Link>
-                </div>
-              )}
-            </div>
-          )}
-          {sidebarCollapsed && (
-            <Link
-              href="/create-infrastructure"
-              className={`user-sidebar__link ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar__link--active' : ''}`}
-              onClick={() => setMobileMenuOpen(false)}
-              title="New Request"
-            >
-              <IconPlus className="user-sidebar__icon" />
+            <Link href="/home" className="user-sidebar-shell__brand">
+              <>
+                <span className="user-sidebar-shell__brand-word user-sidebar-shell__brand-word--primary">User</span>
+                <span className="user-sidebar-shell__brand-word">Portal</span>
+              </>
             </Link>
           )}
-          {baseNavItems.filter((item) => item.href !== '/home').map(({ href, label, Icon }) => {
-            const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
-            return (
+        </div>
+        <div className="user-sidebar-shell__body">
+          <nav className="user-sidebar-shell__nav">
+            {!sidebarCollapsed && <span className="user-sidebar-shell__nav-title">Modules</span>}
+            {baseNavItems.filter((item) => item.href === '/home').map(({ href, label, Icon }) => {
+              const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`user-sidebar-shell__link ${isActive ? 'user-sidebar-shell__link--active' : ''}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Icon className="user-sidebar-shell__icon" />
+                  {!sidebarCollapsed && <span className="user-sidebar-shell__label">{label}</span>}
+                </Link>
+              );
+            })}
+
+            {!sidebarCollapsed && (
+              <div className="user-sidebar-shell__expandable">
+                <button
+                  type="button"
+                  className={`user-sidebar-shell__link user-sidebar-shell__expandable-trigger ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar-shell__link--active' : ''}`}
+                  onClick={() => setNewRequestExpanded(!effectiveNewRequestExpanded)}
+                >
+                  <IconPlus className="user-sidebar-shell__icon" />
+                  <span className="user-sidebar-shell__label">Create Infrastructure</span>
+                  <span className="user-sidebar-shell__chevron">
+                    {effectiveNewRequestExpanded ? <IconChevronDown /> : <IconChevronRight />}
+                  </span>
+                </button>
+
+                {effectiveNewRequestExpanded && (
+                  <div className="user-sidebar-shell__sub">
+                    <Link
+                      href="/create-infrastructure/iam"
+                      className={`user-sidebar-shell__sublink ${pathname === '/create-infrastructure/iam' || pathname.startsWith('/create-infrastructure/iam/') ? 'user-sidebar-shell__sublink--active' : ''}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      IAM
+                    </Link>
+                    <Link
+                      href="/create-infrastructure/new"
+                      className={`user-sidebar-shell__sublink ${pathname === '/create-infrastructure/new' || pathname.startsWith('/create-infrastructure/new') || pathname === '/select-service' || pathname === '/custom-json' || pathname === '/aws' ? 'user-sidebar-shell__sublink--active' : ''}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      Create Infrastructure
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {sidebarCollapsed && (
               <Link
-                key={href}
-                href={href}
-                className={`user-sidebar__link ${isActive ? 'user-sidebar__link--active' : ''}`}
+                href="/create-infrastructure"
+                className={`user-sidebar-shell__link ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar-shell__link--active' : ''}`}
                 onClick={() => setMobileMenuOpen(false)}
+                title="Create Infrastructure"
               >
-                <Icon className="user-sidebar__icon" />
-                {!sidebarCollapsed && <span className="user-sidebar__label">{label}</span>}
+                <IconPlus className="user-sidebar-shell__icon" />
               </Link>
-            );
-          })}
-        </nav>
-        <div className="user-sidebar__footer">
-          <button type="button" className="user-sidebar__link" onClick={handleLogout}>
-            <IconLogout className="user-sidebar__icon" />
-            {!sidebarCollapsed && <span className="user-sidebar__label">Logout</span>}
-          </button>
+            )}
+
+            {baseNavItems.filter((item) => item.href !== '/home').map(({ href, label, Icon }) => {
+              const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
+              const badge = href === '/history' ? requestActivityBadge : null;
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`user-sidebar-shell__link ${isActive ? 'user-sidebar-shell__link--active' : ''}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Icon className="user-sidebar-shell__icon" />
+                  {!sidebarCollapsed && <span className="user-sidebar-shell__label">{label}</span>}
+                  {!sidebarCollapsed && badge && <span className="user-sidebar-shell__badge">{badge}</span>}
+                </Link>
+              );
+            })}
+          </nav>
+
+          {!sidebarCollapsed && (
+            <div className="user-sidebar-shell__status-panel">
+              <span className="user-sidebar-shell__status-title">{summaryLabel}</span>
+              <div className="user-sidebar-shell__status-list">
+                {sidebarStatusItems.map((item) => (
+                  <div key={item.label} className="user-sidebar-shell__status-item">
+                    <span className={`user-sidebar-shell__status-dot user-sidebar-shell__status-dot--${item.tone}`} aria-hidden />
+                    <span className="user-sidebar-shell__status-name">{item.label}</span>
+                    <span className="user-sidebar-shell__status-meta">{item.meta}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="user-sidebar-shell__footer">
+            <button type="button" className="user-sidebar-shell__link" onClick={handleLogout}>
+              <IconLogout className="user-sidebar-shell__icon" />
+              {!sidebarCollapsed && <span className="user-sidebar-shell__label">Logout</span>}
+            </button>
+          </div>
         </div>
       </aside>
 
       {mobileMenuOpen && (
-        <div className="user-sidebar-overlay" onClick={() => setMobileMenuOpen(false)} aria-hidden />
+        <div className="user-sidebar-shell-overlay" onClick={() => setMobileMenuOpen(false)} aria-hidden />
       )}
 
-      <div className="user-main-wrapper">
-        <header className="user-navbar">
-          <div className="user-navbar__left">
+      <div className="user-main-shell">
+        <header className="user-topbar">
+          <div className="user-topbar__left">
             <button
               type="button"
-              className="user-navbar__menu-btn"
+              className="user-topbar__menu-btn"
               onClick={() => setMobileMenuOpen((o) => !o)}
               aria-label="Toggle menu"
             >
               <IconMenu />
             </button>
-            <h1 className="user-navbar__title">{pageTitle}</h1>
-          </div>
-          <div className="user-navbar__right">
-            <div className="user-navbar__actions">
-              <Link
-                href="/notifications"
-                className="user-navbar__icon-btn"
-                title={updatedRequestsCount > 0 ? `${updatedRequestsCount} request update(s)` : 'Notifications'}
-              >
-                <IconBell />
-                {updatedRequestsCount > 0 && (
-                  <span className="user-navbar__badge" aria-label={`${updatedRequestsCount} updates`}>
-                    {updatedRequestsCount > 99 ? '99+' : updatedRequestsCount}
-                  </span>
-                )}
-              </Link>
-              {pendingManagerApprovalCount > 0 && (
-                <span className="user-navbar__approval-badge" title={`${pendingManagerApprovalCount} need your approval`}>
-                  {pendingManagerApprovalCount > 99 ? '99+' : pendingManagerApprovalCount}
-                </span>
-              )}
+            <div className="user-topbar__title-wrap">
+              <span className="user-topbar__kicker">User Portal</span>
+              <h1 className="user-topbar__title">{pageTitle}</h1>
             </div>
-            <button
-              type="button"
-              className="user-navbar__theme-toggle"
-              onClick={toggleTheme}
-              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-              aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            >
-              {theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </button>
-            <div className="user-navbar__profile-wrap" ref={profileRef}>
+            <span className={`user-topbar__status-chip ${pendingManagerApprovalCount > 0 ? 'user-topbar__status-chip--alert' : ''}`}>
+              {statusLabel}
+            </span>
+          </div>
+
+          <div className="user-topbar__right">
+            <div className="user-topbar__actions">
+              <span className="user-topbar__workspace">{profileLabel}</span>
+              <span className="user-topbar__role">{hasManagedTeams ? 'Lead' : 'Requester'}</span>
+              <div className="user-topbar__notify-wrap" ref={notifyRef}>
+                <button
+                  type="button"
+                  className="user-topbar__icon-btn"
+                  onClick={() => {
+                    setNotifyOpen((open) => !open);
+                    setProfileOpen(false);
+                  }}
+                  title={notifyBadgeCount > 0 ? `${notifyBadgeCount} notifications` : 'Notifications'}
+                  aria-expanded={notifyOpen}
+                  aria-haspopup="true"
+                >
+                  <IconBell />
+                  {notifyBadgeCount > 0 && (
+                    <span className="user-topbar__badge" aria-label={`${notifyBadgeCount} updates`}>
+                      {notifyBadgeCount > 99 ? '99+' : notifyBadgeCount}
+                    </span>
+                  )}
+                </button>
+
+                {notifyOpen && (
+                  <div className="user-topbar__notify-panel">
+                    <div className="user-topbar__notify-header">
+                      <h3 className="user-topbar__notify-title">Notifications</h3>
+                      <button type="button" className="user-topbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
+                        x
+                      </button>
+                    </div>
+                    <Link href="/notifications" className="user-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                      Open notifications
+                    </Link>
+                    <div className="user-topbar__notify-list">
+                      {hasManagedTeams && pendingManagerApprovalCount > 0 && (
+                        <Link href="/history" className="user-topbar__notify-ticket" onClick={() => setNotifyOpen(false)}>
+                          <strong>Manager approvals</strong>
+                          <span>{pendingManagerApprovalCount} request(s) are waiting for your review.</span>
+                          <small>Open request history</small>
+                        </Link>
+                      )}
+                      {notificationsLoading ? (
+                        <p className="user-topbar__notify-empty">Loading...</p>
+                      ) : recentNotifications.length === 0 && pendingManagerApprovalCount === 0 ? (
+                        <p className="user-topbar__notify-empty">No recent notifications.</p>
+                      ) : (
+                        recentNotifications.map((notification) => (
+                          <Link
+                            key={notification.id}
+                            href={notification.request_id ? `/history?id=${notification.request_id}` : '/notifications'}
+                            className="user-topbar__notify-ticket"
+                            onClick={() => setNotifyOpen(false)}
+                          >
+                            <strong>{formatNotificationKind(notification.kind)}</strong>
+                            <span>{notification.message}</span>
+                            <small>{formatTime(notification.created_at)}</small>
+                          </Link>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="user-topbar__profile-wrap" ref={profileRef}>
               <button
                 type="button"
-                className="user-navbar__profile-btn"
-                onClick={() => setProfileOpen((o) => !o)}
+                className="user-topbar__profile-btn"
+                onClick={() => {
+                  setProfileOpen((o) => !o);
+                  setNotifyOpen(false);
+                }}
                 aria-expanded={profileOpen}
                 aria-haspopup="true"
                 title="Profile"
               >
-                <span className="user-navbar__avatar">{profileInitials}</span>
-                <span className="user-navbar__profile-label">Profile</span>
+                <span className="user-topbar__avatar">{profileInitials}</span>
+                <span className="user-topbar__profile-label">{profileLabel}</span>
               </button>
+
               {profileOpen && (
-                <div className="user-navbar__dropdown">
-                  <div className="user-navbar__dropdown-header">
-                    <span className="user-navbar__dropdown-avatar">{profileInitials}</span>
-                    <span className="user-navbar__dropdown-label">Profile</span>
+                <div className="user-topbar__dropdown">
+                  <div className="user-topbar__dropdown-header">
+                    <span className="user-topbar__dropdown-avatar">{profileInitials}</span>
+                    <span className="user-topbar__dropdown-label">{profileLabel}</span>
                   </div>
-                  <Link href="/profile" className="user-navbar__dropdown-item" onClick={() => setProfileOpen(false)}>
+                  <Link href="/profile" className="user-topbar__dropdown-item" onClick={() => setProfileOpen(false)}>
                     Profile
                   </Link>
-                  <button type="button" className="user-navbar__dropdown-item" onClick={handleLogout}>
+                  <button type="button" className="user-topbar__dropdown-item" onClick={handleLogout}>
                     <IconLogout />
                     Logout
                   </button>
@@ -459,7 +634,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
         </header>
-        <main className="user-main">{children}</main>
+
+        <main className="user-main-shell__content">{children}</main>
       </div>
     </div>
   );

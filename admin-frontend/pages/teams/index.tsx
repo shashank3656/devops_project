@@ -96,27 +96,33 @@ export default function TeamsList() {
         <title>Teams - Admin</title>
       </Head>
       <AdminLayout>
-        <div className="container">
-          <div className="page-header">
-            <h1 className="page-title">Teams</h1>
+        <div className="portal-page">
+          <div className="portal-page__header">
+            <div>
+              <span className="portal-page__eyebrow">Teams</span>
+              <h1 className="portal-page__title">Team Management</h1>
+              <p className="portal-page__subtitle">
+                Create new teams, inspect membership entry points, and remove unused groups from the platform.
+              </p>
+            </div>
             <Link href="/teams/new" className="btn btn-primary">
               Create team
             </Link>
           </div>
 
-          <div className="card">
+          <div className="portal-surface portal-surface--table">
             {error && (
               <div className="alert alert-error" role="alert">
                 {error}
               </div>
             )}
             {successMessage && (
-              <div className="alert alert-info" role="alert" style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', border: '1px solid #a7f3d0' }}>
+              <div className="alert alert-info" role="alert" style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', border: '1px solid #a7f3d0', margin: 24 }}>
                 {successMessage}
               </div>
             )}
             {loading ? (
-              <p className="loading-text">Loading teams…</p>
+              <div className="empty-state" style={{ padding: 24 }}>Loading teams...</div>
             ) : teams.length === 0 ? (
               <div className="empty-state">
                 <p>No teams are onboarded yet.</p>
@@ -152,7 +158,7 @@ export default function TeamsList() {
                           {new Date(t.created_at).toLocaleDateString()}
                         </td>
                         <td>
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <div className="portal-page__actions">
                             <Link
                               href={`/teams/${t.id}`}
                               className="btn btn-secondary"
@@ -168,7 +174,7 @@ export default function TeamsList() {
                               onClick={() => handleDeleteTeam(t)}
                               title="Delete team"
                             >
-                              {deletingId === t.id ? 'Deleting…' : 'Delete'}
+                              {deletingId === t.id ? 'Deleting...' : 'Delete'}
                             </button>
                           </div>
                         </td>

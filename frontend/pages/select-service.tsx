@@ -141,15 +141,21 @@ export default function SelectService() {
   useEffect(() => {
     const config = getServiceConfig();
     if (config) {
-      const initialValues: Record<string, any> = {};
-      config.fields.forEach(field => {
-        if (field.defaultValue !== undefined) {
-          initialValues[field.name] = field.defaultValue;
-        } else {
-          initialValues[field.name] = '';
-        }
+      setFormValues((prev) => {
+        const nextValues: Record<string, any> = {};
+        config.fields.forEach((field) => {
+          if (prev[field.name] !== undefined) {
+            nextValues[field.name] = prev[field.name];
+          } else if (field.defaultValue !== undefined) {
+            nextValues[field.name] = field.defaultValue;
+          } else {
+            nextValues[field.name] = '';
+          }
+        });
+        return nextValues;
       });
-      setFormValues(initialValues);
+    } else {
+      setFormValues({});
     }
   }, [service, cloud]);
 
