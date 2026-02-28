@@ -1,3 +1,4 @@
+import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
@@ -43,22 +44,24 @@ export default function DevOpsTeamPage() {
       return;
     }
     fetch(`${apiUrl}/api/devops/my-teams`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => {
-        if (r.status === 401) {
+      .then((response) => {
+        if (response.status === 401) {
           router.replace('/login');
           return null;
         }
-        return r.json();
+        return response.json();
       })
       .then((data) => {
         if (!data?.teams) return;
-        const list = data.teams as Team[];
-        setTeams(list);
-        list.forEach((t) => {
-          fetch(`${apiUrl}/api/devops/teams/${t.id}/members`, { headers: { Authorization: `Bearer ${token}` } })
-            .then((res) => res.ok ? res.json() : null)
-            .then((d) => {
-              if (d?.members) setMembersByTeam((prev) => ({ ...prev, [t.id]: d.members }));
+        const nextTeams = data.teams as Team[];
+        setTeams(nextTeams);
+        nextTeams.forEach((team) => {
+          fetch(`${apiUrl}/api/devops/teams/${team.id}/members`, { headers: { Authorization: `Bearer ${token}` } })
+            .then((response) => (response.ok ? response.json() : null))
+            .then((membersData) => {
+              if (membersData?.members) {
+                setMembersByTeam((previous) => ({ ...previous, [team.id]: membersData.members }));
+              }
             })
             .catch(() => {});
         });
@@ -71,15 +74,17 @@ export default function DevOpsTeamPage() {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
     fetch(`${apiUrl}/api/devops/teams/${teamId}/members`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.ok ? r.json() : null)
-      .then((d) => {
-        if (d?.members) setMembersByTeam((prev) => ({ ...prev, [teamId]: d.members }));
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data?.members) {
+          setMembersByTeam((previous) => ({ ...previous, [teamId]: data.members }));
+        }
       })
       .catch(() => {});
   };
 
-  const handleAddMember = async (e: React.FormEvent, teamId: number) => {
-    e.preventDefault();
+  const handleAddMember = async (event: FormEvent, teamId: number) => {
+    event.preventDefault();
     const email = addEmail.trim();
     if (!email) return;
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -91,7 +96,6 @@ export default function DevOpsTeamPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ email, role: addRole }),
       });
-      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setAddEmail('');
         setAddRole('member');
@@ -105,78 +109,162 @@ export default function DevOpsTeamPage() {
 
   return (
     <DevOpsLayout>
-      <Head><title>Team — {DEVOPS_SITE_NAME}</title></Head>
-      <div className="container">
-        <h1 className="page-title">Team</h1>
-        <p style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-6)' }}>
-          Manage members of your DevOps teams. Add users by email.
-        </p>
-        {loading ? (
-          <p className="loading-text">Loading teams…</p>
-        ) : teams.length === 0 ? (
-          <div className="card">
-            <p className="empty-state">You are not in any DevOps teams, or you cannot manage any.</p>
+      <Head>
+        <title>Team - {DEVOPS_SITE_NAME}</title>
+      </Head>
+      <div className="portal-page">
+        <header className="portal-page__header">
+          <div className="portal-page__header-main">
+            <span className="portal-page__eyebrow">Teams</span>
+            <h1 className="portal-page__title">Team Management</h1>
+            <p className="portal-page__subtitle">
+              All current team-management features remain in place, now organized as clearer team surfaces with explicit member actions.
+            </p>
           </div>
+        </header>
+
+        <section className="portal-stat-grid">
+          <article className="portal-stat-card">
+            <span className="portal-stat-card__label">Teams</span>
+            <strong className="portal-stat-card__value">{teams.length}</strong>
+            <p className="portal-stat-card__copy">DevOps teams available to the current manager.</p>
+          </article>
+          <article className="portal-stat-card">
+            <span className="portal-stat-card__label">Members</span>
+            <strong className="portal-stat-card__value">
+              {Object.values(membersByTeam).reduce((total, members) => total + members.length, 0)}
+            </strong>
+            <p className="portal-stat-card__copy">Total visible team members across the current workspace.</p>
+          </article>
+          <article className="portal-stat-card">
+            <span className="portal-stat-card__label">Open forms</span>
+            <strong className="portal-stat-card__value">{addingTeamId ? 1 : 0}</strong>
+            <p className="portal-stat-card__copy">Member onboarding form state inside the redesigned team view.</p>
+          </article>
+          <article className="portal-stat-card">
+            <span className="portal-stat-card__label">State</span>
+            <strong className="portal-stat-card__value">{loading ? 'Syncing' : 'Ready'}</strong>
+            <p className="portal-stat-card__copy">Team membership actions still use the existing API workflow.</p>
+          </article>
+        </section>
+
+        {loading ? (
+          <section className="portal-surface">
+            <div className="portal-empty">
+              <p>Loading teams...</p>
+            </div>
+          </section>
+        ) : teams.length === 0 ? (
+          <section className="portal-surface">
+            <div className="portal-empty">
+              <p>You are not in any DevOps teams, or you cannot manage any.</p>
+            </div>
+          </section>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-            {teams.map((team) => (
-              <div key={team.id} className="card">
-                <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 'var(--space-4)' }}>{team.name}</h2>
-                <div style={{ marginBottom: 'var(--space-4)' }}>
-                  <strong style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Members</strong>
-                  <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
-                    {(membersByTeam[team.id] || []).map((m) => (
-                      <li key={m.id} style={{ marginBottom: 4 }}>
-                        {m.username || m.email} — <span style={{ color: 'var(--color-text-muted)' }}>{m.role}</span>
-                      </li>
-                    ))}
-                    {(membersByTeam[team.id] || []).length === 0 && (
-                      <li style={{ color: 'var(--color-text-muted)' }}>No members yet.</li>
+          <div className="portal-team-layout">
+            {teams.map((team) => {
+              const members = membersByTeam[team.id] || [];
+              return (
+                <section key={team.id} className="portal-surface">
+                  <div className="portal-surface__header">
+                    <div>
+                      <span className="portal-surface__eyebrow">Squad</span>
+                      <h2 className="portal-surface__title">{team.name}</h2>
+                      <p className="portal-surface__subtitle">
+                        {team.team_type || 'DevOps team'} | {members.length} members
+                      </p>
+                    </div>
+                    <div className="portal-page__actions">
+                      {addingTeamId === team.id ? (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => {
+                            setAddingTeamId(null);
+                            setAddEmail('');
+                            setAddRole('member');
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      ) : (
+                        <button type="button" className="btn btn-primary" onClick={() => setAddingTeamId(team.id)}>
+                          Add member
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="portal-stack">
+                    <div>
+                      <div className="portal-pill-row" style={{ marginBottom: 14 }}>
+                        <span className="portal-pill">{team.slug}</span>
+                        <span className="portal-pill">{team.team_type || 'platform'}</span>
+                      </div>
+                      {members.length === 0 ? (
+                        <div className="portal-empty" style={{ padding: '18px 0 0', textAlign: 'left' }}>
+                          <p>No members yet.</p>
+                        </div>
+                      ) : (
+                        <ul className="portal-member-list">
+                          {members.map((member) => (
+                            <li key={member.id} className="portal-member-list__item">
+                              <div>
+                                <span className="portal-member-list__name">{member.username || member.email}</span>
+                                <span className="portal-member-list__meta">{member.email}</span>
+                              </div>
+                              <span className="portal-badge portal-badge--neutral">{member.role}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    {addingTeamId === team.id && (
+                      <form onSubmit={(event) => handleAddMember(event, team.id)} className="portal-stack">
+                        <div className="portal-field-grid portal-field-grid--two">
+                          <div className="form-group">
+                            <label htmlFor={`add-email-${team.id}`} className="label">
+                              Email
+                            </label>
+                            <input
+                              id={`add-email-${team.id}`}
+                              type="text"
+                              className="input"
+                              value={addEmail}
+                              onChange={(event) => setAddEmail(event.target.value)}
+                              placeholder="user@example.com"
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label htmlFor={`add-role-${team.id}`} className="label">
+                              Role
+                            </label>
+                            <select
+                              id={`add-role-${team.id}`}
+                              className="input"
+                              value={addRole}
+                              onChange={(event) => setAddRole(event.target.value)}
+                            >
+                              {DEVOPS_ROLES.map((role) => (
+                                <option key={role} value={role}>
+                                  {role}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="portal-form-actions">
+                          <button type="submit" className="btn btn-primary" disabled={submitting}>
+                            {submitting ? 'Adding...' : 'Invite member'}
+                          </button>
+                        </div>
+                      </form>
                     )}
-                  </ul>
-                </div>
-                {addingTeamId === team.id ? (
-                  <form onSubmit={(e) => handleAddMember(e, team.id)} style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'flex-end' }}>
-                    <div>
-                      <label htmlFor={`add-email-${team.id}`} className="label">Email</label>
-                      <input
-                        id={`add-email-${team.id}`}
-                        type="text"
-                        className="input"
-                        value={addEmail}
-                        onChange={(e) => setAddEmail(e.target.value)}
-                        placeholder="user@example.com"
-                        style={{ minWidth: 200 }}
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor={`add-role-${team.id}`} className="label">Role</label>
-                      <select
-                        id={`add-role-${team.id}`}
-                        className="input"
-                        value={addRole}
-                        onChange={(e) => setAddRole(e.target.value)}
-                        style={{ minWidth: 120 }}
-                      >
-                        {DEVOPS_ROLES.map((r) => (
-                          <option key={r} value={r}>{r}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <button type="submit" className="btn btn-primary" disabled={submitting}>
-                      {submitting ? 'Adding…' : 'Add'}
-                    </button>
-                    <button type="button" className="btn btn-secondary" onClick={() => { setAddingTeamId(null); setAddEmail(''); }}>
-                      Cancel
-                    </button>
-                  </form>
-                ) : (
-                  <button type="button" className="btn btn-secondary" onClick={() => setAddingTeamId(team.id)}>
-                    Add member
-                  </button>
-                )}
-              </div>
-            ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         )}
       </div>

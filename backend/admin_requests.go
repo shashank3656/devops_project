@@ -84,10 +84,10 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 		dateStats, err := GetRequestsByStatusInDateRange(fromDate, toDate)
 		if err == nil {
 			resp["date_filter"] = map[string]interface{}{
-				"from":       dateStats.From,
-				"to":         dateStats.To,
-				"total":      dateStats.Total,
-				"by_status":  dateStats.ByStatus,
+				"from":      dateStats.From,
+				"to":        dateStats.To,
+				"total":     dateStats.Total,
+				"by_status": dateStats.ByStatus,
 			}
 		}
 	}
@@ -411,12 +411,12 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":       "success",
-		"requests":     enriched,
-		"count":        len(enriched),
-		"total_count":  totalCount,
-		"limit":        limit,
-		"offset":       offset,
+		"status":      "success",
+		"requests":    enriched,
+		"count":       len(enriched),
+		"total_count": totalCount,
+		"limit":       limit,
+		"offset":      offset,
 	})
 }
 
@@ -703,10 +703,11 @@ func adminRequestDetailHandler(w http.ResponseWriter, r *http.Request, id int) {
 		"status": req.Status, "reject_reason": req.RejectReason,
 		"created_at": req.CreatedAt, "updated_at": req.UpdatedAt,
 		"created_by": req.CreatedBy, "created_by_username": createdByUsername,
-		"assigned_to": req.AssignedTo,
-		"config": configMasked,
+		"assigned_to":           req.AssignedTo,
+		"config":                configMasked,
 		"terraform_plan_output": req.TerraformPlanOutput,
-		"jira_ticket_id": req.JiraTicketID,
+		"jira_ticket_id":        req.JiraTicketID,
+		"cost_risk_preview":     BuildCostRiskPreview(req),
 	}
 	dependsOn, _ := GetRequestDependencies(id)
 	blockedBy, _ := GetRequestsThatDependOn(id)

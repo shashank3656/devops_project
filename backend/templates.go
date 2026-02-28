@@ -92,7 +92,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := strings.TrimPrefix(r.URL.Path, "/api/admin/templates/")
+	path := strings.TrimPrefix(r.URL.Path, "/api/admin/templates")
 	path = strings.Trim(path, "/")
 	w.Header().Set("Content-Type", "application/json")
 	if path == "" {

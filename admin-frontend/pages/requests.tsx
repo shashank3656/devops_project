@@ -9,6 +9,23 @@ interface BlockedByItem {
   status: string;
 }
 
+interface CostRiskSignal {
+  severity: 'low' | 'medium' | 'high';
+  category: string;
+  title: string;
+  detail: string;
+}
+
+interface CostRiskPreview {
+  cost_link: string;
+  estimated_band: string;
+  estimated_monthly: string;
+  estimate_basis: string;
+  risk_level: 'low' | 'medium' | 'high';
+  summary: string;
+  signals: CostRiskSignal[];
+}
+
 interface PRRequest {
   id: number;
   team: string;
@@ -31,6 +48,7 @@ interface PRRequest {
   jira_ticket_id?: string;
   blocked_by?: number[];
   blocked_by_with_status?: BlockedByItem[];
+  cost_risk_preview?: CostRiskPreview | null;
 }
 
 interface RequestComment {
@@ -40,6 +58,28 @@ interface RequestComment {
   username: string;
   body: string;
   created_at: string;
+}
+
+function getPreviewRiskClass(level?: string): string {
+  switch (level) {
+    case 'high':
+      return 'portal-preview-risk portal-preview-risk--high';
+    case 'medium':
+      return 'portal-preview-risk portal-preview-risk--medium';
+    default:
+      return 'portal-preview-risk portal-preview-risk--low';
+  }
+}
+
+function getPreviewSignalClass(severity?: string): string {
+  switch (severity) {
+    case 'high':
+      return 'portal-preview-signal portal-preview-signal--high';
+    case 'medium':
+      return 'portal-preview-signal portal-preview-signal--medium';
+    default:
+      return 'portal-preview-signal portal-preview-signal--low';
+  }
 }
 
 export default function AdminRequests() {
@@ -69,7 +109,6 @@ export default function AdminRequests() {
   const [detailTerraformOpen, setDetailTerraformOpen] = useState(false);
   const [terraformOutputEdit, setTerraformOutputEdit] = useState('');
   const [terraformSaving, setTerraformSaving] = useState(false);
-  const [costEstimate, setCostEstimate] = useState<{ link: string; cloud: string; service: string } | null>(null);
   const [cloningId, setCloningId] = useState<number | null>(null);
   const [promotingId, setPromotingId] = useState<number | null>(null);
   const [rollbackingId, setRollbackingId] = useState<number | null>(null);
@@ -353,17 +392,10 @@ export default function AdminRequests() {
     setTimeline([]);
     setTerraformOutputEdit(req.terraform_plan_output || '');
     setCommentBody('');
-    setCostEstimate(null);
     fetch(`${apiUrl}/api/request/${req.id}/timeline`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d?.timeline) setTimeline(d.timeline); })
       .catch(() => setTimeline([]));
-    fetch(`${apiUrl}/api/cost-estimate?cloud=${encodeURIComponent(req.cloud || '')}&service=${encodeURIComponent(req.service || '')}&env=${encodeURIComponent(req.env || '')}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.link) setCostEstimate({ link: d.link, cloud: d.cloud || req.cloud, service: d.service || req.service });
-      })
-      .catch(() => {});
     fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.json())
       .then((d) => setDetailComments(d.comments || []))
@@ -630,12 +662,13 @@ export default function AdminRequests() {
         <title>PR Requests - InfraGate Admin</title>
       </Head>
       <AdminLayout>
-        <div className="container" style={{ maxWidth: 1200 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
+        <div className="portal-page">
+          <div className="portal-page__header">
             <div>
-              <h1 className="page-title" style={{ marginBottom: 8 }}>PR Requests</h1>
-              <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>
-                All infrastructure PR requests. Use filters to narrow by team, env, cloud, or priority.
+              <span className="portal-page__eyebrow">Requests</span>
+              <h1 className="portal-page__title">Request Management</h1>
+              <p className="portal-page__subtitle">
+                Search by team, environment, cloud, or priority, then act on individual requests or in bulk.
               </p>
             </div>
             <button
@@ -1039,7 +1072,7 @@ export default function AdminRequests() {
             >
               <div
                 className="card"
-                style={{ maxWidth: 560, width: '100%', maxHeight: '90vh', overflow: 'auto' }}
+                style={{ maxWidth: 760, width: '100%', maxHeight: '90vh', overflow: 'auto' }}
                 onClick={(e) => e.stopPropagation()}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -1158,15 +1191,64 @@ export default function AdminRequests() {
                   </span>
                 </p>
 
-                {canApproveOrReject(detailRequest.status) && costEstimate?.link && (
-                  <div style={{ marginBottom: 16, padding: 12, background: 'var(--color-success-bg)', borderRadius: 8, border: '1px solid var(--color-success)' }}>
-                    <strong style={{ fontSize: 13, color: 'var(--color-success)' }}>Cost preview before approval</strong>
-                    <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--color-text)' }}>
-                      Estimate infrastructure cost for {detailRequest.service} on {detailRequest.cloud} ({detailRequest.env}) before approving.
-                    </p>
-                    <a href={costEstimate.link} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ marginTop: 8, padding: '6px 12px', fontSize: 13 }}>
-                      View cost calculator →
-                    </a>
+                {detailRequest.cost_risk_preview && (
+                  <div className="portal-preview-panel" style={{ marginBottom: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap' }}>
+                      <div>
+                        <div className="portal-preview-eyebrow">Cost And Risk</div>
+                        <strong className="portal-preview-value" style={{ fontSize: 18 }}>Approval Preview</strong>
+                      </div>
+                      <span className={getPreviewRiskClass(detailRequest.cost_risk_preview.risk_level)}>
+                        {detailRequest.cost_risk_preview.risk_level} risk
+                      </span>
+                    </div>
+
+                    <div className="portal-preview-grid">
+                      <div className="portal-preview-card">
+                        <span className="portal-preview-eyebrow">Estimated monthly</span>
+                        <strong className="portal-preview-value">{detailRequest.cost_risk_preview.estimated_monthly}</strong>
+                        <p className="portal-preview-copy">
+                          {detailRequest.cost_risk_preview.estimated_band} footprint. {detailRequest.cost_risk_preview.estimate_basis}
+                        </p>
+                      </div>
+                      <div className="portal-preview-card">
+                        <span className="portal-preview-eyebrow">Review summary</span>
+                        <strong className="portal-preview-value">{detailRequest.cost_risk_preview.signals.length} signals</strong>
+                        <p className="portal-preview-copy">{detailRequest.cost_risk_preview.summary}</p>
+                      </div>
+                    </div>
+
+                    {detailRequest.cost_risk_preview.cost_link && (
+                      <div className="portal-preview-actions">
+                        <a href={detailRequest.cost_risk_preview.cost_link} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
+                          Open cost calculator
+                        </a>
+                      </div>
+                    )}
+
+                    <div className="portal-preview-signals">
+                      {detailRequest.cost_risk_preview.signals.length > 0 ? (
+                        detailRequest.cost_risk_preview.signals.map((signal) => (
+                          <article key={`${signal.category}-${signal.title}`} className={getPreviewSignalClass(signal.severity)}>
+                            <div className="portal-preview-signal__top">
+                              <strong className="portal-preview-signal__title">{signal.title}</strong>
+                              <span className={getPreviewRiskClass(signal.severity)}>{signal.severity}</span>
+                            </div>
+                            <p className="portal-preview-signal__detail">{signal.detail}</p>
+                          </article>
+                        ))
+                      ) : (
+                        <article className={getPreviewSignalClass('low')}>
+                          <div className="portal-preview-signal__top">
+                            <strong className="portal-preview-signal__title">No major heuristic risks</strong>
+                            <span className={getPreviewRiskClass('low')}>low</span>
+                          </div>
+                          <p className="portal-preview-signal__detail">
+                            The request did not trigger major risk heuristics, but approval should still validate ownership, rollout safety, and expected spend.
+                          </p>
+                        </article>
+                      )}
+                    </div>
                   </div>
                 )}
 
