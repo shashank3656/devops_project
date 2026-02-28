@@ -88,6 +88,23 @@ interface BlockedByItem {
   status: string;
 }
 
+interface CostRiskSignal {
+  severity: 'low' | 'medium' | 'high';
+  category: string;
+  title: string;
+  detail: string;
+}
+
+interface CostRiskPreview {
+  cost_link: string;
+  estimated_band: string;
+  estimated_monthly: string;
+  estimate_basis: string;
+  risk_level: 'low' | 'medium' | 'high';
+  summary: string;
+  signals: CostRiskSignal[];
+}
+
 interface TicketDetail extends TicketRow {
   client_name?: string;
   application_id?: string;
@@ -100,6 +117,7 @@ interface TicketDetail extends TicketRow {
   depends_on?: number[];
   blocked_by?: number[];
   blocked_by_with_status?: BlockedByItem[];
+  cost_risk_preview?: CostRiskPreview | null;
 }
 
 interface RequestComment {
@@ -119,6 +137,28 @@ interface RequestTimelineEvent {
   details: string;
   body?: string;
   created_at: string;
+}
+
+function getPreviewRiskClass(level?: string): string {
+  switch (level) {
+    case 'high':
+      return 'portal-preview-risk portal-preview-risk--high';
+    case 'medium':
+      return 'portal-preview-risk portal-preview-risk--medium';
+    default:
+      return 'portal-preview-risk portal-preview-risk--low';
+  }
+}
+
+function getPreviewSignalClass(severity?: string): string {
+  switch (severity) {
+    case 'high':
+      return 'portal-preview-signal portal-preview-signal--high';
+    case 'medium':
+      return 'portal-preview-signal portal-preview-signal--medium';
+    default:
+      return 'portal-preview-signal portal-preview-signal--low';
+  }
 }
 
 export default function DevOpsTickets() {
@@ -711,6 +751,67 @@ export default function DevOpsTickets() {
                             </p>
                           </div>
                         </div>
+
+                        {detailRequest.cost_risk_preview && (
+                          <div className="portal-preview-panel">
+                            <div className="portal-surface__header">
+                              <div>
+                                <span className="portal-surface__eyebrow">Cost And Risk</span>
+                                <h3 className="portal-surface__title">Approval Preview</h3>
+                              </div>
+                              <span className={getPreviewRiskClass(detailRequest.cost_risk_preview.risk_level)}>
+                                {detailRequest.cost_risk_preview.risk_level} risk
+                              </span>
+                            </div>
+
+                            <div className="portal-preview-grid">
+                              <div className="portal-preview-card">
+                                <span className="portal-preview-eyebrow">Estimated monthly</span>
+                                <strong className="portal-preview-value">{detailRequest.cost_risk_preview.estimated_monthly}</strong>
+                                <p className="portal-preview-copy">
+                                  {detailRequest.cost_risk_preview.estimated_band} footprint. {detailRequest.cost_risk_preview.estimate_basis}
+                                </p>
+                              </div>
+                              <div className="portal-preview-card">
+                                <span className="portal-preview-eyebrow">Review summary</span>
+                                <strong className="portal-preview-value">{detailRequest.cost_risk_preview.signals.length} signals</strong>
+                                <p className="portal-preview-copy">{detailRequest.cost_risk_preview.summary}</p>
+                              </div>
+                            </div>
+
+                            {detailRequest.cost_risk_preview.cost_link && (
+                              <div className="portal-preview-actions">
+                                <a href={detailRequest.cost_risk_preview.cost_link} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">
+                                  Open cost calculator
+                                </a>
+                              </div>
+                            )}
+
+                            <div className="portal-preview-signals">
+                              {detailRequest.cost_risk_preview.signals.length > 0 ? (
+                                detailRequest.cost_risk_preview.signals.map((signal) => (
+                                  <article key={`${signal.category}-${signal.title}`} className={getPreviewSignalClass(signal.severity)}>
+                                    <div className="portal-preview-signal__top">
+                                      <strong className="portal-preview-signal__title">{signal.title}</strong>
+                                      <span className={getPreviewRiskClass(signal.severity)}>{signal.severity}</span>
+                                    </div>
+                                    <p className="portal-preview-signal__detail">{signal.detail}</p>
+                                  </article>
+                                ))
+                              ) : (
+                                <article className={getPreviewSignalClass('low')}>
+                                  <div className="portal-preview-signal__top">
+                                    <strong className="portal-preview-signal__title">No major heuristic risks</strong>
+                                    <span className={getPreviewRiskClass('low')}>low</span>
+                                  </div>
+                                  <p className="portal-preview-signal__detail">
+                                    The request did not trigger major risk heuristics, but approval should still verify ownership, rollback, and expected spend.
+                                  </p>
+                                </article>
+                              )}
+                            </div>
+                          </div>
+                        )}
 
                         {detailRequest.reject_reason && (
                           <div className="devops-approval-workspace__reason">

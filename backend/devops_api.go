@@ -790,6 +790,7 @@ func devopsRequestDetailHandler(w http.ResponseWriter, id int) {
 		"config":                maskConfigForAdmin(req.Config),
 		"terraform_plan_output": req.TerraformPlanOutput,
 		"jira_ticket_id":        req.JiraTicketID,
+		"cost_risk_preview":     BuildCostRiskPreview(req),
 	}
 	dependsOn, _ := GetRequestDependencies(id)
 	blockedBy, _ := GetRequestsThatDependOn(id)
