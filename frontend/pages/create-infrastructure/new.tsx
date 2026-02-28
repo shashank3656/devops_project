@@ -4,9 +4,24 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 
 const CLOUDS = [
-  { id: 'aws', name: 'Amazon Web Services', short: 'AWS', color: '#FF9900', description: 'Provision AWS resources: EC2, S3, RDS, Lambda, and more with guided configuration.' },
-  { id: 'azure', name: 'Microsoft Azure', short: 'Azure', color: '#0078D4', description: 'Deploy Azure resources: VMs, Storage, Databases, and services with guided inputs.' },
-  { id: 'gcp', name: 'Google Cloud Platform', short: 'GCP', color: '#4285F4', description: 'Create GCP resources: Compute Engine, Cloud Storage, BigQuery, and more.' },
+  {
+    id: 'aws',
+    name: 'Amazon Web Services',
+    short: 'AWS',
+    description: 'Provision AWS resources with guided request capture for compute, storage, database, and identity workflows.',
+  },
+  {
+    id: 'azure',
+    name: 'Microsoft Azure',
+    short: 'Azure',
+    description: 'Launch Azure resource requests with the same review, approval, and PR generation pipeline.',
+  },
+  {
+    id: 'gcp',
+    name: 'Google Cloud Platform',
+    short: 'GCP',
+    description: 'Create GCP infrastructure requests using standardized inputs for repeatable delivery.',
+  },
 ] as const;
 
 interface UserSavedConfig {
@@ -16,6 +31,10 @@ interface UserSavedConfig {
   env: string;
   service: string;
   created_at: string;
+}
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleDateString();
 }
 
 export default function CreateInfrastructureNew() {
@@ -68,115 +87,112 @@ export default function CreateInfrastructureNew() {
         <title>Create Infrastructure - InfraGate</title>
         <meta name="description" content="Create infrastructure resources" />
       </Head>
-      <div style={{ padding: '40px 20px' }}>
-        <div className="container">
-          <Link
-            href="/create-infrastructure"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 24, textDecoration: 'none' }}
-          >
-            ← Back to New Request
-          </Link>
-          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
-            <h1 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>
-              Create Infrastructure
-            </h1>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
-              <Link href="/custom-json" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-                Custom JSON
-              </Link>
-              <Link href="/history" className="btn btn-secondary" style={{ textDecoration: 'none' }}>
-                Logs
-              </Link>
-              <Link href="/home" className="btn btn-secondary" style={{ textDecoration: 'none' }}>
-                Home
-              </Link>
-            </div>
-          </div>
 
-          {(savedConfigs.length > 0 || savedConfigsError || loadingSaved) && (
-            <div className="card" style={{ marginBottom: '24px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px', color: 'var(--color-text)' }}>
-                My saved configurations
-              </h2>
-              <p style={{ color: 'var(--color-text-muted)', fontSize: '14px', marginBottom: '16px' }}>
-                Reuse a configuration you saved from history.
-              </p>
-              {loadingSaved ? (
-                <p style={{ color: 'var(--color-text-muted)' }}>Loading…</p>
-              ) : !savedConfigsError && savedConfigs.length === 0 ? (
-                <p style={{ color: 'var(--color-text-muted)' }}>No saved configurations available.</p>
-              ) : !savedConfigsError ? (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-                  {savedConfigs.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      className="btn btn-secondary"
-                      style={{ padding: '12px 20px', textAlign: 'left' }}
-                      onClick={() => router.push(`/select-service?cloud=${encodeURIComponent(s.cloud)}&env=${encodeURIComponent(s.env)}&service=${encodeURIComponent(s.service)}&saved_id=${s.id}`)}
-                    >
-                      <span style={{ fontWeight: 600 }}>{s.name}</span>
-                      <span style={{ display: 'block', fontSize: '12px', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                        {s.cloud} / {s.env} / {s.service}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          )}
-
-          <div className="card" style={{ textAlign: 'center' }}>
-            <p style={{ color: 'var(--color-text-muted)', marginBottom: '32px', fontSize: '16px' }}>
-              Choose how you want to create your infrastructure resources
+      <div className="portal-page">
+        <div className="portal-page__header">
+          <div>
+            <span className="portal-page__eyebrow">Request Studio</span>
+            <h1 className="portal-page__title">Choose the cleanest path into delivery.</h1>
+            <p className="portal-page__subtitle">
+              Start from a cloud lane, reuse a saved configuration, or switch to direct payload entry when you need tighter control.
             </p>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-              gap: '24px',
-              maxWidth: '960px',
-              margin: '0 auto',
-            }}>
-              {CLOUDS.map((c) => (
-                <div
-                  key={c.id}
-                  onClick={() => router.push(`/select-service?cloud=${c.id}`)}
-                  className="card card-interactive"
-                  style={{
-                    padding: '32px 24px',
-                    border: '2px solid var(--color-border)',
-                    margin: 0,
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'border-color 0.2s, box-shadow 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = c.color;
-                    e.currentTarget.style.boxShadow = `0 4px 12px ${c.color}20`;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--color-border)';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                >
-                  <div style={{ height: '48px', display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
-                    <img
-                      src={`/${c.id}-logo.png`}
-                      alt={c.short}
-                      style={{ height: 48, width: 'auto', objectFit: 'contain' }}
-                    />
-                  </div>
-                  <h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '8px', color: 'var(--color-text)' }}>
-                    {c.name}
-                  </h3>
-                  <p style={{ color: 'var(--color-text-muted)', fontSize: '14px', lineHeight: 1.6, margin: 0 }}>
-                    {c.description}
-                  </p>
-                </div>
-              ))}
-            </div>
+          </div>
+          <div className="portal-page__actions">
+            <Link href="/custom-json" className="btn btn-secondary">
+              Custom JSON
+            </Link>
+            <Link href="/history" className="btn btn-secondary">
+              Open timeline
+            </Link>
           </div>
         </div>
+
+        {(savedConfigs.length > 0 || savedConfigsError || loadingSaved) && (
+          <section className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Saved starters</span>
+                <h2 className="portal-surface__title">Resume from known-good request patterns</h2>
+                <p className="portal-surface__subtitle">Pull forward a saved request and continue from the cloud, environment, and service state you already trust.</p>
+              </div>
+            </div>
+
+            {loadingSaved ? (
+              <div className="empty-state">Loading saved configurations...</div>
+            ) : savedConfigs.length === 0 ? (
+              <div className="empty-state">No saved configurations available yet.</div>
+            ) : (
+              <div className="request-saved-grid">
+                {savedConfigs.map((config) => (
+                  <button
+                    key={config.id}
+                    type="button"
+                    className="request-saved-card"
+                    onClick={() =>
+                      router.push(
+                        `/select-service?cloud=${encodeURIComponent(config.cloud)}&env=${encodeURIComponent(config.env)}&service=${encodeURIComponent(config.service)}&saved_id=${config.id}`,
+                      )
+                    }
+                  >
+                    <div>
+                      <h3 className="request-saved-card__title">{config.name}</h3>
+                      <p>Resume a request path based on this saved configuration.</p>
+                    </div>
+                    <div className="request-saved-card__meta">
+                      <span className="portal-pill">{config.cloud}</span>
+                      <span className="portal-pill">{config.env}</span>
+                      <span className="portal-pill">{config.service}</span>
+                    </div>
+                    <small>Saved on {formatDate(config.created_at)}</small>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        <section className="request-studio-grid">
+          {CLOUDS.map((cloud) => (
+            <button
+              key={cloud.id}
+              type="button"
+              className="request-cloud-card"
+              onClick={() => router.push(`/select-service?cloud=${cloud.id}`)}
+            >
+              <img src={`/${cloud.id}-logo.png`} alt={cloud.short} className="request-cloud-card__logo" />
+              <div>
+                <h2 className="request-cloud-card__title">{cloud.name}</h2>
+                <p>{cloud.description}</p>
+              </div>
+              <div className="request-studio-actions">
+                <span className="portal-badge portal-badge--neutral">Guided flow</span>
+                <span className="portal-badge portal-badge--success">PR-backed</span>
+              </div>
+            </button>
+          ))}
+        </section>
+
+        <section className="portal-grid">
+          <article className="request-choice-card">
+            <strong>Need maximum control?</strong>
+            <p>Use Custom JSON when you already have a payload and want to submit it directly into the review flow.</p>
+            <div className="request-studio-actions">
+              <Link href="/custom-json" className="btn btn-primary">
+                Open Custom JSON
+              </Link>
+            </div>
+          </article>
+
+          <article className="request-choice-card">
+            <strong>Prefer service-led selection?</strong>
+            <p>Switch to service picking first when the cloud is known but the implementation route is still open.</p>
+            <div className="request-studio-actions">
+              <Link href="/select-service" className="btn btn-secondary">
+                Select service
+              </Link>
+            </div>
+          </article>
+        </section>
       </div>
     </>
   );

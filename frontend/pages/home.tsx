@@ -29,14 +29,18 @@ interface GitHubLogEntry {
   created_at: string;
 }
 
-const CLOUD_COLORS: Record<string, { bg: string; color: string }> = {
-  AWS: { bg: 'var(--aws-color)', color: '#fff' },
-  GCP: { bg: 'var(--gcp-color)', color: '#fff' },
-  Azure: { bg: 'var(--azure-color)', color: '#fff' },
+const CLOUD_COLORS: Record<string, string> = {
+  AWS: 'portal-badge portal-badge--warning',
+  GCP: 'portal-badge portal-badge--neutral',
+  Azure: 'portal-badge portal-badge--success',
 };
 
 const ONBOARDING_KEY = 'infra-portal-onboarding-done';
 const LOG_LIMIT = 15;
+
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString();
+}
 
 export default function Home() {
   const router = useRouter();
@@ -67,7 +71,7 @@ export default function Home() {
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
+      if (token && token !== 'undefined') headers.Authorization = `Bearer ${token}`;
       const res = await fetch(`${apiUrl}/api/stats`, { headers });
       if (res.ok) {
         const data = await res.json();
@@ -85,7 +89,7 @@ export default function Home() {
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
+      if (token && token !== 'undefined') headers.Authorization = `Bearer ${token}`;
       const [cloudRes, githubRes] = await Promise.all([
         fetch(`${apiUrl}/api/logs/cloud`, { headers }),
         fetch(`${apiUrl}/api/logs/github`, { headers }),
@@ -129,132 +133,154 @@ export default function Home() {
         <title>Home - {SITE_NAME}</title>
         <meta name="description" content="Infrastructure request portal" />
       </Head>
-      <div className="home-page">
+
+      <div className="portal-page">
         {showOnboarding && (
-          <div className="onboarding-overlay" onClick={dismissOnboarding}>
-            <div className="onboarding-modal card" onClick={(e) => e.stopPropagation()}>
-              <div className="onboarding-modal__icon">🚀</div>
-              <h3 className="onboarding-modal__title">Welcome to {SITE_NAME}</h3>
-              <p className="onboarding-modal__text">
-                Create infrastructure requests from <strong>New Request</strong>. Track them in <strong>History</strong>.
+          <div className="modal-overlay" onClick={dismissOnboarding}>
+            <div className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+              <h3 className="modal-title">Welcome to {SITE_NAME}</h3>
+              <p className="modal-body">
+                Use Request Studio to launch infrastructure changes, Template Library to reuse approved patterns, and Request Timeline to review every request state.
               </p>
-              <button type="button" className="btn btn-primary onboarding-modal__btn" onClick={dismissOnboarding}>
-                Get started
-              </button>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-primary" onClick={dismissOnboarding}>
+                  Enter workspace
+                </button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Hero + Quick Actions */}
-        <section className="home-hero">
-          <h1 className="home-hero__title">Infrastructure Portal</h1>
-          <p className="home-hero__subtitle">Self-service cloud requests for your team</p>
-          <div className="home-hero__search-wrap">
-            <Link href="/history" className="home-hero__search" aria-label="Search requests">
-              <span className="home-hero__search-icon">🔍</span>
-              <span>Search requests, teams, or services…</span>
-            </Link>
-          </div>
-          <div className="home-quick-actions">
-            <Link href="/create-infrastructure/new" className="home-quick-action home-quick-action--primary">
-              <span className="home-quick-action__icon">➕</span>
-              <span className="home-quick-action__label">New Request</span>
-              <span className="home-quick-action__hint">Start from scratch</span>
-            </Link>
-            <Link href="/custom-json" className="home-quick-action">
-              <span className="home-quick-action__icon">📄</span>
-              <span className="home-quick-action__label">Custom JSON</span>
-              <span className="home-quick-action__hint">Paste your config</span>
-            </Link>
-            <Link href="/select-service" className="home-quick-action">
-              <span className="home-quick-action__icon">⚙️</span>
-              <span className="home-quick-action__label">Select Service</span>
-              <span className="home-quick-action__hint">Choose template</span>
-            </Link>
-            <Link href="/history" className="home-quick-action">
-              <span className="home-quick-action__icon">📋</span>
-              <span className="home-quick-action__label">History</span>
-              <span className="home-quick-action__hint">Track requests</span>
-            </Link>
+        <section className="portal-surface launchpad-hero">
+          <div className="launchpad-hero__content">
+            <div>
+              <span className="portal-page__eyebrow">Launchpad</span>
+              <h1 className="launchpad-hero__title">Provision faster without losing control.</h1>
+              <p className="launchpad-hero__subtitle">
+                Build new requests, reuse trusted templates, and track request movement across cloud and GitHub from one operating view.
+              </p>
+              <div className="launchpad-action-grid" style={{ marginTop: 22 }}>
+                <Link href="/create-infrastructure/new" className="launchpad-action-card">
+                  <strong>Open Request Studio</strong>
+                  <p>Start a fresh infrastructure request with guided cloud selection.</p>
+                </Link>
+                <Link href="/templates" className="launchpad-action-card">
+                  <strong>Browse templates</strong>
+                  <p>Use validated starting points for repeatable platform work.</p>
+                </Link>
+                <Link href="/custom-json" className="launchpad-action-card">
+                  <strong>Submit custom JSON</strong>
+                  <p>Paste or adapt an existing request payload and move straight to review.</p>
+                </Link>
+                <Link href="/history" className="launchpad-action-card">
+                  <strong>Inspect request timeline</strong>
+                  <p>Review statuses, PR links, change history, and operator comments.</p>
+                </Link>
+              </div>
+            </div>
+
+            <aside className="launchpad-hero__pulse">
+              <span className="portal-page__eyebrow">Workspace pulse</span>
+              <strong>{statsLoading ? '...' : stats?.total_requests ?? 0}</strong>
+              <p>Total requests tracked across your workspace.</p>
+              <div className="launchpad-tips" style={{ marginTop: 18 }}>
+                <div className="launchpad-tip">
+                  <strong>Templates first</strong>
+                  <p>Use approved templates to reduce back-and-forth during review.</p>
+                </div>
+                <div className="launchpad-tip">
+                  <strong>Track in timeline</strong>
+                  <p>Review comments, diffs, and PR links before raising follow-up work.</p>
+                </div>
+              </div>
+            </aside>
           </div>
         </section>
 
-        {/* Quick tips */}
-        <div className="home-tips">
-          <h3 className="home-tips__title">Quick tips</h3>
-          <div className="home-tips__list">
-            <span className="home-tip"><strong>New Request</strong> — Start from scratch or use templates</span>
-            <span className="home-tip"><strong>History</strong> — Track status & PR links</span>
-            <span className="home-tip"><strong>Custom JSON</strong> — Paste existing config</span>
-            <span className="home-tip"><strong>Profile</strong> — API keys & 2FA</span>
-          </div>
-        </div>
-
-        {/* Summary: one row, clear metrics */}
         {!statsLoading && stats && (
-          <div className="home-stats-row">
-            <div className="home-stat-card home-stat-card--primary">
-              <div className="home-stat-value">{stats.total_requests}</div>
-              <div className="home-stat-label">Total requests</div>
-            </div>
+          <section className="portal-stat-grid">
+            <article className="portal-stat-card">
+              <span className="portal-stat-card__label">Total requests</span>
+              <span className="portal-stat-card__value">{stats.total_requests}</span>
+              <p className="portal-stat-card__copy">All requests in your accessible scope.</p>
+            </article>
             {Object.entries(stats.by_cloud || {}).slice(0, 3).map(([cloud, count]) => (
-              <div key={cloud} className="home-stat-card">
-                <div className="home-stat-value">{count}</div>
-                <div className="home-stat-label">{cloud}</div>
-              </div>
+              <article key={cloud} className="portal-stat-card">
+                <span className="portal-stat-card__label">{cloud}</span>
+                <span className="portal-stat-card__value">{count}</span>
+                <p className="portal-stat-card__copy">Requests routed through {cloud}.</p>
+              </article>
             ))}
-          </div>
+          </section>
         )}
 
-        {/* Activity: single card with Cloud + GitHub */}
-        <div className="card home-activity-card">
-          <h2 className="section-title">Activity</h2>
-          {logsLoading ? (
-            <p style={{ color: 'var(--text-muted)' }}>Loading…</p>
-          ) : cloudKeys.length === 0 && githubLogs.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>No activity yet. Create a request to see logs here.</p>
-          ) : (
-            <div className="home-activity">
-              {cloudKeys.length > 0 && (
-                <div className="home-activity-section">
-                  <h3 className="home-activity-heading">Cloud</h3>
-                  <ul className="home-activity-list">
-                    {cloudKeys.map((cloud) => {
-                      const entries = (cloudLogs[cloud] || []).slice(0, LOG_LIMIT);
-                      const style = CLOUD_COLORS[cloud] || { bg: 'var(--primary-color)', color: '#fff' };
-                      return entries.map((entry) => (
-                        <li key={entry.id} className="home-activity-item">
-                          <span className="home-activity-badge" style={{ background: style.bg, color: style.color }}>{cloud}</span>
-                          <span>{entry.message}</span>
-                          <span className="home-activity-meta">{entry.created_at}</span>
-                        </li>
-                      ));
-                    })}
-                  </ul>
-                </div>
-              )}
-              {githubLogs.length > 0 && (
-                <div className="home-activity-section">
-                  <h3 className="home-activity-heading">GitHub</h3>
-                  <ul className="home-activity-list">
-                    {githubLogs.slice(0, LOG_LIMIT).map((entry) => (
-                      <li key={entry.id} className="home-activity-item">
-                        <span className="home-activity-meta">{entry.created_at}</span>
-                        <span>{entry.message}</span>
-                        {entry.details && <span className="home-activity-detail">{maskDisplayValue(entry.details)}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {(cloudKeys.length > 0 || githubLogs.length > 0) && (
-                <p className="home-activity-footer">
-                  <Link href="/history" className="btn btn-secondary btn-sm">View History</Link>
-                </p>
-              )}
+        <section className="portal-grid">
+          <article className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Cloud activity</span>
+                <h2 className="portal-surface__title">Recent platform events</h2>
+                <p className="portal-surface__subtitle">Latest actions emitted by your infrastructure requests.</p>
+              </div>
+              <Link href="/history" className="btn btn-secondary btn-sm">
+                Open timeline
+              </Link>
             </div>
-          )}
-        </div>
+
+            {logsLoading ? (
+              <div className="empty-state">Loading activity...</div>
+            ) : cloudKeys.length === 0 ? (
+              <div className="empty-state">No cloud activity yet. Create a request to populate this feed.</div>
+            ) : (
+              <div className="launchpad-activity-list">
+                {cloudKeys.flatMap((cloud) =>
+                  (cloudLogs[cloud] || []).slice(0, LOG_LIMIT).map((entry) => (
+                    <div key={`${cloud}-${entry.id}`} className="launchpad-activity-item">
+                      <div>
+                        <span className={CLOUD_COLORS[cloud] || 'portal-badge portal-badge--neutral'}>{cloud}</span>
+                        <strong style={{ display: 'block', marginTop: 10 }}>{entry.message}</strong>
+                        <span>{entry.team} / {entry.env} / {entry.service}</span>
+                      </div>
+                      <small>{formatDateTime(entry.created_at)}</small>
+                    </div>
+                  )),
+                )}
+              </div>
+            )}
+          </article>
+
+          <article className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">GitHub trace</span>
+                <h2 className="portal-surface__title">Automation feedback</h2>
+                <p className="portal-surface__subtitle">Recent GitHub-side events for submitted requests.</p>
+              </div>
+              <Link href="/notifications" className="btn btn-secondary btn-sm">
+                View alerts
+              </Link>
+            </div>
+
+            {logsLoading ? (
+              <div className="empty-state">Loading GitHub events...</div>
+            ) : githubLogs.length === 0 ? (
+              <div className="empty-state">No GitHub activity recorded yet.</div>
+            ) : (
+              <div className="launchpad-activity-list">
+                {githubLogs.slice(0, LOG_LIMIT).map((entry) => (
+                  <div key={entry.id} className="launchpad-activity-item">
+                    <div>
+                      <span className="portal-badge portal-badge--neutral">{entry.event_type || 'github'}</span>
+                      <strong style={{ display: 'block', marginTop: 10 }}>{entry.message}</strong>
+                      {entry.details && <span>{maskDisplayValue(entry.details)}</span>}
+                    </div>
+                    <small>{formatDateTime(entry.created_at)}</small>
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+        </section>
       </div>
     </>
   );

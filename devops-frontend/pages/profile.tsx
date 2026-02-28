@@ -41,12 +41,12 @@ export default function DevOpsProfilePage() {
       return;
     }
     fetch(`${apiUrl}/api/devops/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => {
-        if (r.status === 401) {
+      .then((response) => {
+        if (response.status === 401) {
           router.replace('/login');
           return null;
         }
-        return r.json();
+        return response.json();
       })
       .then((data) => {
         if (data?.user) setUser(data.user);
@@ -56,63 +56,108 @@ export default function DevOpsProfilePage() {
   }, [apiUrl, router]);
 
   const teams = user?.teams || [];
+  const initials = (user?.username || 'U').slice(0, 2).toUpperCase();
 
   return (
     <DevOpsLayout>
-      <Head><title>Profile — {DEVOPS_SITE_NAME}</title></Head>
-      <div className="container" style={{ maxWidth: 720 }}>
+      <Head>
+        <title>Profile - {DEVOPS_SITE_NAME}</title>
+      </Head>
+      <div className="portal-page portal-page--narrow">
         {loading ? (
-          <p className="loading-text">Loading…</p>
+          <section className="portal-surface">
+            <div className="portal-empty">
+              <p>Loading profile...</p>
+            </div>
+          </section>
         ) : user ? (
           <>
-            <div className="card" style={{ marginBottom: 24, padding: 24, borderLeft: '4px solid var(--color-primary)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-                <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700 }}>
-                  {(user.username || 'U').slice(0, 2).toUpperCase()}
-                </div>
-                <div style={{ flex: 1, minWidth: 200 }}>
-                  <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--color-text)', marginBottom: 4 }}>{user.username}</h1>
-                  {user.email && <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 8 }}>{user.email}</p>}
-                  <span style={{ padding: '4px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600, background: 'var(--color-primary-tint, #eef2ff)', color: 'var(--color-primary)' }}>
-                    {user.devops_profile?.is_manager ? 'DevOps Manager' : 'DevOps Member'}
-                  </span>
+            <header className="portal-page__header">
+              <div className="portal-page__header-main">
+                <span className="portal-page__eyebrow">Profile</span>
+                <h1 className="portal-page__title">Identity and ownership</h1>
+                <p className="portal-page__subtitle">
+                  Current profile data is unchanged; this redesign makes role, level, and team ownership easier to scan.
+                </p>
+              </div>
+            </header>
+
+            <section className="portal-surface">
+              <div className="portal-profile-hero">
+                <div className="portal-avatar">{initials}</div>
+                <div>
+                  <h2 className="portal-profile-hero__title">{user.username}</h2>
+                  {user.email && <p className="portal-profile-hero__meta">{user.email}</p>}
+                  <div className="portal-pill-row">
+                    <span className="portal-badge portal-badge--neutral">
+                      {user.devops_profile?.is_manager ? 'DevOps Manager' : 'DevOps Member'}
+                    </span>
+                    {user.devops_profile?.level && <span className="portal-pill">{user.devops_profile.level}</span>}
+                    {user.devops_profile?.position && <span className="portal-pill">{user.devops_profile.position}</span>}
+                  </div>
                 </div>
               </div>
-            </div>
+            </section>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
-              <div className="card" style={{ padding: 20 }}>
-                <h3 style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Teams</h3>
-                {teams.length === 0 ? <p style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>—</p> : (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {teams.map((t) => (
-                      <span key={t.id} style={{ padding: '6px 12px', borderRadius: 8, fontSize: 13, background: 'var(--color-primary-tint, #eef2ff)', color: 'var(--color-primary)', fontWeight: 500 }}>{t.name}</span>
+            <section className="portal-grid">
+              <article className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Teams</span>
+                    <h2 className="portal-surface__title">Assigned squads</h2>
+                  </div>
+                </div>
+                {teams.length === 0 ? (
+                  <div className="portal-empty" style={{ padding: 0, textAlign: 'left' }}>
+                    <p>No team assignments yet.</p>
+                  </div>
+                ) : (
+                  <div className="portal-pill-row">
+                    {teams.map((team) => (
+                      <span key={team.id} className="portal-pill">
+                        {team.name}
+                      </span>
                     ))}
                   </div>
                 )}
-              </div>
-              {user.devops_profile?.position && (
-                <div className="card" style={{ padding: 20 }}>
-                  <h3 style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Position</h3>
-                  <p style={{ color: 'var(--color-text)', fontSize: 14 }}>{user.devops_profile.position}</p>
+              </article>
+
+              <article className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Profile data</span>
+                    <h2 className="portal-surface__title">Role details</h2>
+                  </div>
                 </div>
-              )}
-              {user.devops_profile?.level && (
-                <div className="card" style={{ padding: 20 }}>
-                  <h3 style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Level</h3>
-                  <p style={{ color: 'var(--color-text)', fontSize: 14 }}>{user.devops_profile.level}</p>
+                <div className="portal-profile-grid">
+                  <div className="portal-kv">
+                    <span className="portal-kv__label">Role</span>
+                    <span className="portal-kv__value">{user.devops_profile?.is_manager ? 'Manager' : 'Member'}</span>
+                  </div>
+                  <div className="portal-kv">
+                    <span className="portal-kv__label">Level</span>
+                    <span className="portal-kv__value">{user.devops_profile?.level || '-'}</span>
+                  </div>
+                  <div className="portal-kv">
+                    <span className="portal-kv__label">Position</span>
+                    <span className="portal-kv__value">{user.devops_profile?.position || '-'}</span>
+                  </div>
+                  <div className="portal-kv">
+                    <span className="portal-kv__label">Onboard date</span>
+                    <span className="portal-kv__value">
+                      {user.devops_profile?.onboard_date ? new Date(user.devops_profile.onboard_date).toLocaleDateString() : '-'}
+                    </span>
+                  </div>
                 </div>
-              )}
-              {user.devops_profile?.onboard_date && (
-                <div className="card" style={{ padding: 20 }}>
-                  <h3 style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Onboard date</h3>
-                  <p style={{ color: 'var(--color-text)', fontSize: 14 }}>{new Date(user.devops_profile.onboard_date).toLocaleDateString()}</p>
-                </div>
-              )}
-            </div>
+              </article>
+            </section>
           </>
         ) : (
-          <p className="loading-text">Could not load profile.</p>
+          <section className="portal-surface">
+            <div className="portal-empty">
+              <p>Could not load profile.</p>
+            </div>
+          </section>
         )}
       </div>
     </DevOpsLayout>

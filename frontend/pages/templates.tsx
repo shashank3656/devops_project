@@ -52,14 +52,20 @@ export default function TemplatesPage() {
     fetchTemplates();
   }, [router, fetchTemplates]);
 
-  const byCloud = templates.reduce<Record<string, RequestTemplate[]>>((acc, t) => {
-    const c = (t.cloud || 'other').toLowerCase();
-    if (!acc[c]) acc[c] = [];
-    acc[c].push(t);
+  const byCloud = templates.reduce<Record<string, RequestTemplate[]>>((acc, template) => {
+    const cloud = (template.cloud || 'other').toLowerCase();
+    if (!acc[cloud]) acc[cloud] = [];
+    acc[cloud].push(template);
     return acc;
   }, {});
+
   const cloudOrder = ['aws', 'gcp', 'azure'];
-  const clouds = Array.from(new Set([...cloudOrder.filter((c) => byCloud[c]?.length), ...Object.keys(byCloud).filter((c) => !cloudOrder.includes(c))]));
+  const clouds = Array.from(
+    new Set([
+      ...cloudOrder.filter((cloud) => byCloud[cloud]?.length),
+      ...Object.keys(byCloud).filter((cloud) => !cloudOrder.includes(cloud)),
+    ]),
+  );
 
   return (
     <>
@@ -67,94 +73,78 @@ export default function TemplatesPage() {
         <title>Templates - Infrastructure Portal</title>
         <meta name="description" content="Browse request templates to create infrastructure" />
       </Head>
-      <div style={{ padding: '24px' }} className="container">
-        <h1 style={{ margin: 0, marginBottom: '8px', fontSize: '24px', fontWeight: 600 }}>Templates</h1>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '14px' }}>
-          Use a template to pre-fill cloud, environment and service when creating infrastructure.
-        </p>
+
+      <div className="portal-page">
+        <div className="portal-page__header">
+          <div>
+            <span className="portal-page__eyebrow">Template Library</span>
+            <h1 className="portal-page__title">Start from approved delivery patterns.</h1>
+            <p className="portal-page__subtitle">
+              Templates pre-fill cloud, environment, and service selections so repeatable requests move faster through approval.
+            </p>
+          </div>
+          <div className="portal-page__actions">
+            <Link href="/create-infrastructure/new" className="btn btn-primary">
+              Open Request Studio
+            </Link>
+          </div>
+        </div>
 
         {error && (
-          <div
-            role="alert"
-            style={{
-              marginBottom: '16px',
-              padding: '12px 16px',
-              background: 'var(--error-bg, #fef2f2)',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '12px',
-            }}
-          >
-            <span style={{ color: 'var(--error-color, #dc2626)' }}>{error}</span>
-            <button type="button" className="btn btn-secondary" style={{ padding: '8px 16px' }} onClick={fetchTemplates}>
-              Retry
-            </button>
+          <div className="alert alert-error" role="alert">
+            {error}
           </div>
         )}
 
         {loading ? (
-          <div className="card" style={{ padding: '48px', textAlign: 'center' }}>
-            Loading…
+          <div className="portal-surface">
+            <div className="empty-state">Loading templates...</div>
           </div>
-        ) : !error && templates.length === 0 ? (
-          <div className="card" style={{ padding: '48px', textAlign: 'center' }}>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>No templates are available currently.</p>
-            <Link href="/create-infrastructure" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-              Create from scratch
-            </Link>
+        ) : templates.length === 0 ? (
+          <div className="portal-surface">
+            <div className="empty-state">
+              No templates are available currently.
+            </div>
           </div>
-        ) : !error ? (
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            {clouds.map((cloudKey) => (
-              <div key={cloudKey} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <div
-                  style={{
-                    padding: '12px 16px',
-                    background: 'var(--bg-gray-50)',
-                    fontWeight: 600,
-                    fontSize: '14px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                  }}
-                >
-                  {cloudKey}
-                </div>
-                <div style={{ padding: '16px', display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-                  {(byCloud[cloudKey] || []).map((t) => (
-                    <div
-                      key={t.id}
-                      className="card"
-                      style={{
-                        padding: '16px',
-                        minWidth: 200,
-                        maxWidth: 280,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px',
-                      }}
-                    >
-                      <div style={{ fontWeight: 600, fontSize: '15px' }}>{t.name}</div>
-                      <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{t.env} / {t.service}</div>
-                      {t.description && (
-                        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', flex: 1 }}>{t.description}</div>
-                      )}
-                      <Link
-                        href={`/select-service?cloud=${encodeURIComponent(t.cloud)}&env=${encodeURIComponent(t.env)}&service=${encodeURIComponent(t.service)}&template_id=${t.id}`}
-                        className="btn btn-primary"
-                        style={{ marginTop: '4px', textAlign: 'center', textDecoration: 'none', padding: '8px 16px' }}
-                      >
-                        Use this template
-                      </Link>
-                    </div>
-                  ))}
+        ) : (
+          clouds.map((cloud) => (
+            <section key={cloud} className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">{cloud.toUpperCase()}</span>
+                  <h2 className="portal-surface__title">{cloud.toUpperCase()} templates</h2>
                 </div>
               </div>
-            ))}
-          </div>
-        ) : null}
+
+              <div className="portal-template-grid">
+                {(byCloud[cloud] || []).map((template) => (
+                  <article key={template.id} className="portal-template-card">
+                    <div className="portal-template-card__top">
+                      <div>
+                        <h3 className="portal-template-card__name">{template.name}</h3>
+                        <p className="portal-template-card__description">
+                          {template.description || 'Template-driven request starter for repeatable infrastructure work.'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="portal-template-card__meta">
+                      <span className="portal-pill">{template.env}</span>
+                      <span className="portal-pill">{template.service}</span>
+                    </div>
+                    <div className="portal-template-card__actions">
+                      <Link
+                        href={`/select-service?cloud=${encodeURIComponent(template.cloud)}&env=${encodeURIComponent(template.env)}&service=${encodeURIComponent(template.service)}&template_id=${template.id}`}
+                        className="btn btn-primary"
+                      >
+                        Use template
+                      </Link>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ))
+        )}
       </div>
     </>
   );
