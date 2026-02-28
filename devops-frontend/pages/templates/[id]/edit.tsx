@@ -36,7 +36,7 @@ export default function EditDevOpsTemplate() {
 
   const fetchTemplate = useCallback(async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token || typeof id !== 'string' || !id) return;
+    if (!token || token === 'undefined' || typeof id !== 'string' || !id) return;
     setFetchLoading(true);
     setError('');
     try {
@@ -68,7 +68,7 @@ export default function EditDevOpsTemplate() {
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token) {
+    if (!token || token === 'undefined') {
       router.replace('/login');
       return;
     }
@@ -92,11 +92,16 @@ export default function EditDevOpsTemplate() {
     }
     setLoading(true);
     try {
+      const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+      if (!token || token === 'undefined') {
+        router.replace('/login');
+        return;
+      }
       const res = await fetch(`${apiUrl}/api/devops/templates/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem(DEVOPS_TOKEN_KEY)}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           name: name.trim(),
@@ -107,6 +112,10 @@ export default function EditDevOpsTemplate() {
           config: configStr,
         }),
       });
+      if (res.status === 401 || res.status === 403) {
+        router.replace('/login');
+        return;
+      }
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         router.push('/templates?updated=1');

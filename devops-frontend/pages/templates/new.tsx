@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -22,6 +22,13 @@ export default function NewDevOpsTemplate() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token || token === 'undefined') {
+      router.replace('/login');
+    }
+  }, [router]);
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
@@ -38,11 +45,16 @@ export default function NewDevOpsTemplate() {
     }
     setLoading(true);
     try {
+      const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+      if (!token || token === 'undefined') {
+        router.replace('/login');
+        return;
+      }
       const res = await fetch(`${apiUrl}/api/devops/templates`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem(DEVOPS_TOKEN_KEY)}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           name: name.trim(),
@@ -53,6 +65,10 @@ export default function NewDevOpsTemplate() {
           config: configStr,
         }),
       });
+      if (res.status === 401 || res.status === 403) {
+        router.replace('/login');
+        return;
+      }
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.template) {
         router.push('/templates?created=1');
