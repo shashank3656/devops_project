@@ -16,6 +16,7 @@ import {
   IconChevronRight,
   IconChevronDown,
   IconMenu,
+  IconCode,
 } from './Icons';
 
 const THEME_KEY = 'user-portal-theme';
@@ -45,6 +46,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/create-infrastructure': 'New Request',
   '/templates': 'Templates',
   '/history': 'History',
+  '/sql-editor': 'SQL Editor',
   '/notifications': 'Notifications',
   '/my-teams': 'My teams',
   '/profile': 'Profile',
@@ -255,6 +257,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   const baseNavItems: { href: string; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
     { href: '/home', label: 'Home', Icon: IconHome },
+    { href: '/sql-editor', label: 'SQL Editor', Icon: IconCode },
     { href: '/templates', label: 'Templates', Icon: IconTemplates },
     { href: '/history', label: 'History', Icon: IconHistory },
   ];

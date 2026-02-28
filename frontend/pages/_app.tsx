@@ -8,7 +8,7 @@ import { getStoredTheme } from '../components/AppLayout';
 import { SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
 
-const AUTHED_PATHS = ['/home', '/create-infrastructure', '/templates', '/select-service', '/custom-json', '/history', '/profile', '/my-teams', '/request-success', '/notifications'];
+const AUTHED_PATHS = ['/home', '/create-infrastructure', '/templates', '/select-service', '/custom-json', '/history', '/profile', '/my-teams', '/request-success', '/notifications', '/sql-editor'];
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
