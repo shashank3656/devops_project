@@ -64,6 +64,10 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+[data-theme="dark"] body {
+  background: #0f172a;
+  color: rgba(255, 255, 255, 0.9);
+}
 a { color: var(--color-primary); text-decoration: none; transition: color var(--transition); }
 a:hover { color: var(--color-primary-hover); text-decoration: underline; }
 
@@ -137,10 +141,32 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
+.devops-sidebar-new__modules-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.5);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  text-transform: uppercase;
+}
 .devops-sidebar-new__nav {
   flex: 1;
   overflow-y: auto;
   padding: var(--space-3);
+}
+.devops-sidebar-new__badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  background: #dc2626;
+  color: #fff;
+  border-radius: 10px;
 }
 .devops-sidebar-new__link {
   display: flex;
@@ -212,6 +238,44 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   border-bottom: 1px solid var(--color-border);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
+.devops-navbar--dark {
+  background: #0f172a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+.devops-navbar--dark .devops-navbar__title { color: #38bdf8; font-weight: 700; }
+.devops-navbar--dark .devops-navbar__menu-btn { color: rgba(255,255,255,0.8); }
+.devops-navbar--dark .devops-navbar__menu-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+.devops-navbar__live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #22c55e;
+  margin-left: var(--space-4);
+}
+.devops-navbar__live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+  animation: devops-live-pulse 2s ease-in-out infinite;
+}
+@keyframes devops-live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.devops-navbar__pending-text {
+  font-size: 13px;
+  color: #38bdf8;
+  margin-left: var(--space-4);
+}
+.devops-navbar--dark .devops-navbar__username { color: rgba(255,255,255,0.9); }
+.devops-navbar--dark .devops-navbar__profile-label { color: rgba(255,255,255,0.9); }
+.devops-navbar--dark .devops-navbar__profile-btn:hover { background: rgba(255,255,255,0.1); }
+.devops-navbar--dark .devops-navbar__avatar { background: #38bdf8; }
 .devops-navbar__left {
   display: flex;
   align-items: center;
@@ -395,6 +459,9 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   overflow-y: auto;
   padding: var(--space-6);
   background: var(--color-bg);
+}
+[data-theme="dark"] .devops-main-new {
+  background: #0f172a;
 }
 
 /* Login page – split layout (Admin-style) */

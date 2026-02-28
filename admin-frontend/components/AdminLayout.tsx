@@ -99,7 +99,7 @@ function getProfileInitials(): string {
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = router.pathname;
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -120,7 +120,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const t = localStorage.getItem(THEME_KEY);
-      const resolved = t === 'dark' ? 'dark' : 'light';
+      const resolved = t === 'light' ? 'light' : 'dark';
       setTheme(resolved);
       document.documentElement.setAttribute('data-theme', resolved);
     } catch (_) {}
@@ -282,6 +282,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </Link>
         </div>
         <nav className="admin-sidebar__nav">
+          <div className="admin-sidebar__modules-label">MODULES</div>
           {NAV_ITEMS.map(({ href, label, Icon }) => {
             const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
             return (
@@ -320,8 +321,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
       {/* Main content wrapper */}
       <div className="admin-main-wrapper">
-        {/* Top Navbar - White, 60px */}
-        <header className="admin-navbar">
+        {/* Top Navbar - Dark style when dark theme */}
+        <header className={`admin-navbar ${theme === 'dark' ? 'admin-navbar--dark' : ''}`}>
           <div className="admin-navbar__left">
             <button
               type="button"
@@ -331,7 +332,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             >
               <IconMenu />
             </button>
-            <h1 className="admin-navbar__title">{pageTitle}</h1>
+            <h1 className="admin-navbar__title">{ADMIN_SITE_NAME}</h1>
+            <span className="admin-navbar__live">
+              <span className="admin-navbar__live-dot" />
+              LIVE
+            </span>
+            {newRequestsCount > 0 && (
+              <span className="admin-navbar__pending-text">{newRequestsCount} pending approval{newRequestsCount !== 1 ? 's' : ''}</span>
+            )}
             <form className="admin-navbar__search" onSubmit={handleSearchSubmit} role="search">
               <IconSearch className="admin-navbar__search-icon" />
               <input

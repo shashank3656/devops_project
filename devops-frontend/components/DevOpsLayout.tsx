@@ -68,7 +68,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const pathname = router.pathname;
   const [user, setUser] = useState<DevopsUser | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -84,7 +84,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       const u = localStorage.getItem(DEVOPS_USER_KEY);
       if (u) setUser(JSON.parse(u));
       const t = localStorage.getItem(DEVOPS_THEME_KEY);
-      const resolved = t === 'dark' ? 'dark' : 'light';
+      const resolved = t === 'light' ? 'light' : 'dark';
       setTheme(resolved);
       document.documentElement.setAttribute('data-theme', resolved);
       const c = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
@@ -188,7 +188,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     router.replace('/login');
   };
 
-  const baseNavItems: { href: string; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+  const baseNavItems: { href: string; label: string; Icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
     { href: '/dashboard', label: 'My tickets', Icon: IconTickets },
   ];
   if (isManager) {
@@ -196,7 +196,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     baseNavItems.push({ href: '/tickets', label: 'All tickets', Icon: IconTickets });
   }
   baseNavItems.push({ href: '/templates', label: 'Templates', Icon: IconTemplates });
-  baseNavItems.push({ href: '/credential-audit', label: 'Credential Audit', Icon: IconShield });
+  baseNavItems.push({ href: '/tickets', label: 'Approvals', Icon: IconShield, badge: isManager && pendingCount > 0 ? pendingCount : undefined });
+  baseNavItems.push({ href: '/credential-audit', label: 'Audit Log', Icon: IconShield });
   if (isManager) baseNavItems.push({ href: '/team', label: 'Team', Icon: IconUsers });
 
   const pageTitle = getPageTitle(pathname);
@@ -221,17 +222,25 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </Link>
         </div>
         <nav className="devops-sidebar-new__nav">
-          {baseNavItems.map(({ href, label, Icon }) => {
+          {!sidebarCollapsed && <div className="devops-sidebar-new__modules-label">MODULES</div>}
+          {baseNavItems.map(({ href, label, Icon, badge }) => {
             const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
             return (
               <Link
-                key={href}
+                key={href + label}
                 href={href}
                 className={`devops-sidebar-new__link ${isActive ? 'devops-sidebar-new__link--active' : ''}`}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 <Icon className="devops-sidebar-new__icon" />
-                {!sidebarCollapsed && <span className="devops-sidebar-new__label">{label}</span>}
+                {!sidebarCollapsed && (
+                  <>
+                    <span className="devops-sidebar-new__label">{label}</span>
+                    {badge != null && badge > 0 && (
+                      <span className="devops-sidebar-new__badge">{badge > 99 ? '99+' : badge}</span>
+                    )}
+                  </>
+                )}
               </Link>
             );
           })}
@@ -249,7 +258,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       )}
 
       <div className="devops-main-wrapper-new">
-        <header className="devops-navbar">
+        <header className="devops-navbar devops-navbar--dark">
           <div className="devops-navbar__left">
             <button
               type="button"
@@ -259,7 +268,14 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             >
               <IconMenu />
             </button>
-            <h1 className="devops-navbar__title">{pageTitle}</h1>
+            <h1 className="devops-navbar__title">{DEVOPS_SITE_NAME}</h1>
+            <span className="devops-navbar__live">
+              <span className="devops-navbar__live-dot" />
+              LIVE
+            </span>
+            {isManager && pendingCount > 0 && (
+              <span className="devops-navbar__pending-text">{pendingCount} pending approval{pendingCount !== 1 ? 's' : ''}</span>
+            )}
           </div>
           <div className="devops-navbar__right">
             <div className="devops-navbar__actions">
@@ -268,7 +284,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                   {pendingCount > 99 ? '99+' : pendingCount}
                 </span>
               )}
-              {user && <span className="devops-navbar__username">{user.username}</span>}
+              {user && <span className="devops-navbar__username">{user.email || user.username}</span>}
             </div>
             <button
               type="button"
