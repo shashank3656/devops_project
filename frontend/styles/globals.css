@@ -139,6 +139,10 @@ body {
   color: var(--color-text);
   line-height: 1.5;
 }
+[data-theme="dark"] body {
+  background: #0f172a;
+  color: rgba(255, 255, 255, 0.9);
+}
 
 /* User portal – Admin-style: sidebar + navbar */
 .user-layout {
@@ -224,6 +228,14 @@ body {
   font-weight: 700;
   letter-spacing: -0.02em;
   white-space: nowrap;
+}
+.user-sidebar__modules-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.5);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  text-transform: uppercase;
 }
 .user-sidebar__nav {
   flex: 1;
@@ -327,6 +339,40 @@ body {
 @media (max-width: 768px) {
   .user-main-wrapper { margin-left: 0; }
 }
+.user-navbar__live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #22c55e;
+  margin-left: var(--space-4);
+}
+.user-navbar__live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+  animation: user-live-pulse 2s ease-in-out infinite;
+}
+@keyframes user-live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.user-navbar--dark {
+  background: #0f172a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+.user-navbar--dark .user-navbar__title { color: #38bdf8; font-weight: 700; }
+.user-navbar--dark .user-navbar__menu-btn { color: rgba(255,255,255,0.8); }
+.user-navbar--dark .user-navbar__menu-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+.user-navbar--dark .user-navbar__icon-btn { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.9); }
+.user-navbar--dark .user-navbar__icon-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+.user-navbar--dark .user-navbar__profile-btn:hover { background: rgba(255,255,255,0.1); }
+.user-navbar--dark .user-navbar__profile-label { color: rgba(255,255,255,0.9); }
+.user-navbar--dark .user-navbar__avatar { background: #38bdf8; }
 .user-navbar {
   flex-shrink: 0;
   display: flex;
@@ -850,6 +896,9 @@ body {
   overflow-y: auto;
   padding: var(--space-6);
   background: var(--color-bg);
+}
+[data-theme="dark"] .user-main {
+  background: #0f172a;
 }
 .user-main .page-header {
   margin-bottom: 1.5rem;

@@ -29,9 +29,9 @@ export function getApiUrl(): string {
 }
 
 export function getStoredTheme(): 'light' | 'dark' {
-  if (typeof window === 'undefined') return 'light';
+  if (typeof window === 'undefined') return 'dark';
   const stored = localStorage.getItem(THEME_KEY);
-  return stored === 'dark' ? 'dark' : 'light';
+  return stored === 'light' ? 'light' : 'dark';
 }
 
 export function setStoredTheme(theme: 'light' | 'dark') {
@@ -78,7 +78,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { toast } = useToast();
   const pathname = router.pathname;
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -303,6 +303,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </Link>
         </div>
         <nav className="user-sidebar__nav">
+          <div className="user-sidebar__modules-label">MODULES</div>
           {baseNavItems.filter((item) => item.href === '/home').map(({ href, label, Icon }) => {
             const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
             return (
@@ -388,7 +389,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       )}
 
       <div className="user-main-wrapper">
-        <header className="user-navbar">
+        <header className={`user-navbar ${theme === 'dark' ? 'user-navbar--dark' : ''}`}>
           <div className="user-navbar__left">
             <button
               type="button"
@@ -398,7 +399,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             >
               <IconMenu />
             </button>
-            <h1 className="user-navbar__title">{pageTitle}</h1>
+            <h1 className="user-navbar__title">{SITE_NAME}</h1>
+            <span className="user-navbar__live">
+              <span className="user-navbar__live-dot" />
+              LIVE
+            </span>
           </div>
           <div className="user-navbar__right">
             <div className="user-navbar__actions">
