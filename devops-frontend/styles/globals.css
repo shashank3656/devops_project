@@ -463,15 +463,99 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
   box-shadow: 0 8px 20px rgba(245, 158, 11, 0.22);
 }
-.devops-navbar__approval-badge {
+.devops-navbar__icon-btn {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.48);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.devops-navbar__icon-btn:hover {
+  color: #fff;
+  background: rgba(30, 41, 59, 0.72);
+}
+.devops-navbar__badge {
+  position: absolute;
+  top: 0;
+  right: 0;
   padding: 4px 9px;
+  border-radius: 999px;
+  background: #0ea5e9;
+  color: #fff;
   font-size: 12px;
   font-weight: 700;
-  color: #fcd34d;
-  background: rgba(251, 191, 36, 0.14);
-  border-radius: 999px;
 }
+.devops-navbar__notify-wrap,
 .devops-navbar__profile-wrap { position: relative; }
+.devops-navbar__notify-panel,
+.devops-navbar__dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 260px;
+  background: rgba(28, 30, 38, 0.98);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 20px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.22);
+  z-index: 1000;
+  overflow: hidden;
+  backdrop-filter: blur(16px);
+}
+.devops-navbar__notify-header,
+.devops-navbar__dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+.devops-navbar__notify-title,
+.devops-navbar__dropdown-label {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.devops-navbar__notify-close {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.devops-navbar__notify-link {
+  display: block;
+  padding: 14px 16px 0;
+  color: var(--color-primary);
+}
+.devops-navbar__notify-list {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+.devops-navbar__notify-ticket {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.38);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  text-decoration: none;
+}
+.devops-navbar__notify-ticket strong {
+  color: var(--color-text);
+}
+.devops-navbar__notify-ticket span,
+.devops-navbar__notify-ticket small,
+.devops-navbar__notify-empty {
+  color: var(--color-text-muted);
+}
 .devops-navbar__profile-btn {
   display: flex;
   align-items: center;
@@ -504,26 +588,6 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   font-weight: 600;
   color: var(--color-text);
   padding-right: 6px;
-}
-.devops-navbar__dropdown {
-  position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
-  min-width: 220px;
-  background: rgba(28, 30, 38, 0.98);
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 20px;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.22);
-  z-index: 1000;
-  overflow: hidden;
-  backdrop-filter: blur(16px);
-}
-.devops-navbar__dropdown-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
 }
 .devops-navbar__dropdown-avatar {
   width: 36px;
@@ -2997,8 +3061,11 @@ code { background: var(--color-surface-elevated); color: var(--color-primary); p
   border-color: rgba(148, 163, 184, 0.2);
 }
 [data-theme="light"] .devops-navbar__title { color: var(--color-text); }
+[data-theme="light"] .devops-navbar__notify-panel,
+[data-theme="light"] .devops-navbar__dropdown,
 [data-theme="light"] .devops-navbar__profile-btn,
 [data-theme="light"] .devops-navbar__menu-btn,
+[data-theme="light"] .devops-navbar__icon-btn,
 [data-theme="light"] .devops-sidebar-new__hamburger,
 [data-theme="light"] .login-page__theme-btn {
   background: #f8fafc;
@@ -3261,7 +3328,7 @@ tbody tr:hover,
 }
 
 .devops-navbar__status-chip--alert,
-.devops-navbar__approval-badge {
+.devops-navbar__badge {
   background: transparent;
   border: 1px solid rgba(255, 176, 0, 0.44);
   color: var(--color-warning);
@@ -3292,6 +3359,28 @@ tbody tr:hover,
   border: 1px solid rgba(32, 118, 191, 0.72);
   color: var(--color-primary);
   box-shadow: none;
+}
+
+.devops-navbar__icon-btn,
+.devops-navbar__profile-btn,
+.devops-navbar__menu-btn,
+.devops-navbar__notify-panel,
+.devops-navbar__dropdown {
+  background: rgba(3, 12, 24, 0.98);
+  border-color: rgba(18, 58, 96, 0.92);
+  box-shadow: none;
+}
+
+.devops-navbar__notify-link,
+.devops-navbar__dropdown-item {
+  color: var(--color-primary);
+}
+
+.devops-navbar__notify-ticket,
+.devops-navbar__dropdown-item:hover,
+.devops-navbar__notify-link:hover {
+  background: rgba(8, 31, 56, 0.82);
+  border-color: rgba(32, 118, 191, 0.9);
 }
 
 .portal-preview-panel {

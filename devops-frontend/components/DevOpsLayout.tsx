@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApiUrl } from '../context/ApiUrlContext';
 import {
   IconLogout,
+  IconBell,
   IconTickets,
   IconWorkload,
   IconTemplates,
@@ -60,6 +61,26 @@ function getPageTitle(pathname: string): string {
   return 'Dashboard';
 }
 
+interface PendingApprovalItem {
+  id: number;
+  team?: string;
+  cloud?: string;
+  service?: string;
+  created_at: string;
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min ago`;
+  if (diffHours < 24) return `${diffHours} hour(s) ago`;
+  return d.toLocaleDateString();
+}
+
 export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -68,8 +89,12 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [pendingCount, setPendingCount] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notifyOpen, setNotifyOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileInitials, setProfileInitials] = useState('D');
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalItem[]>([]);
+  const [pendingApprovalsLoading, setPendingApprovalsLoading] = useState(false);
+  const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -113,15 +138,34 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('devops-notifications-refresh', onRefresh);
   }, [isManager, refreshPendingCount]);
 
+  const refreshPendingApprovals = useCallback(() => {
+    if (!isManager) return;
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    setPendingApprovalsLoading(true);
+    fetch(`${apiUrl}/api/devops/pending-approvals`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        setPendingApprovals(Array.isArray(data?.requests) ? data.requests : []);
+      })
+      .catch(() => setPendingApprovals([]))
+      .finally(() => setPendingApprovalsLoading(false));
+  }, [apiUrl, isManager]);
+
+  useEffect(() => {
+    if (notifyOpen) refreshPendingApprovals();
+  }, [notifyOpen, refreshPendingApprovals]);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      if (notifyRef.current && !notifyRef.current.contains(e.target as Node)) setNotifyOpen(false);
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
     };
-    if (profileOpen) {
+    if (notifyOpen || profileOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [profileOpen]);
+  }, [notifyOpen, profileOpen]);
 
   const toggleSidebar = () => {
     const next = !sidebarCollapsed;
@@ -302,19 +346,73 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </div>
           <div className="devops-navbar__right">
             <div className="devops-navbar__actions">
-              {isManager && pendingCount > 0 && (
-                <span className="devops-navbar__approval-badge" title={`${pendingCount} pending approval`}>
-                  {pendingCount > 99 ? '99+' : pendingCount}
-                </span>
-              )}
               {user && <span className="devops-navbar__username">{user.username}</span>}
               <span className="devops-navbar__role">{roleLabel}</span>
+              {isManager && (
+                <div className="devops-navbar__notify-wrap" ref={notifyRef}>
+                  <button
+                    type="button"
+                    className="devops-navbar__icon-btn"
+                    onClick={() => {
+                      setNotifyOpen((open) => !open);
+                      setProfileOpen(false);
+                    }}
+                    title={pendingCount > 0 ? `${pendingCount} pending approvals` : 'Pending approvals'}
+                    aria-expanded={notifyOpen}
+                    aria-haspopup="true"
+                  >
+                    <IconBell />
+                    {pendingCount > 0 && (
+                      <span className="devops-navbar__badge" aria-label={`${pendingCount} pending approvals`}>
+                        {pendingCount > 99 ? '99+' : pendingCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {notifyOpen && (
+                    <div className="devops-navbar__notify-panel">
+                      <div className="devops-navbar__notify-header">
+                        <h3 className="devops-navbar__notify-title">Pending Approvals</h3>
+                        <button type="button" className="devops-navbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
+                          x
+                        </button>
+                      </div>
+                      <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                        Open tickets
+                      </Link>
+                      <div className="devops-navbar__notify-list">
+                        {pendingApprovalsLoading ? (
+                          <p className="devops-navbar__notify-empty">Loading...</p>
+                        ) : pendingApprovals.length === 0 ? (
+                          <p className="devops-navbar__notify-empty">No pending approval tickets.</p>
+                        ) : (
+                          pendingApprovals.slice(0, 8).map((request) => (
+                            <Link
+                              key={request.id}
+                              href={`/tickets?id=${request.id}`}
+                              className="devops-navbar__notify-ticket"
+                              onClick={() => setNotifyOpen(false)}
+                            >
+                              <strong>Ticket #{request.id}</strong>
+                              <span>{request.team || 'Team'} / {request.cloud || 'Cloud'} / {request.service || 'Service'}</span>
+                              <small>{formatTime(request.created_at)}</small>
+                            </Link>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="devops-navbar__profile-wrap" ref={profileRef}>
               <button
                 type="button"
                 className="devops-navbar__profile-btn"
-                onClick={() => setProfileOpen((o) => !o)}
+                onClick={() => {
+                  setProfileOpen((o) => !o);
+                  setNotifyOpen(false);
+                }}
                 aria-expanded={profileOpen}
                 aria-haspopup="true"
                 title="Profile"
