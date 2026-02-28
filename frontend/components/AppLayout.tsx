@@ -16,7 +16,6 @@ import {
   IconChevronRight,
   IconChevronDown,
   IconMenu,
-  IconCode,
 } from './Icons';
 
 const THEME_KEY = 'user-portal-theme';
@@ -46,7 +45,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/create-infrastructure': 'New Request',
   '/templates': 'Templates',
   '/history': 'History',
-  '/sql-editor': 'SQL Editor',
   '/notifications': 'Notifications',
   '/my-teams': 'My teams',
   '/profile': 'Profile',
@@ -257,7 +255,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   const baseNavItems: { href: string; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
     { href: '/home', label: 'Home', Icon: IconHome },
-    { href: '/sql-editor', label: 'SQL Editor', Icon: IconCode },
     { href: '/templates', label: 'Templates', Icon: IconTemplates },
     { href: '/history', label: 'History', Icon: IconHistory },
   ];
@@ -306,7 +303,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </Link>
         </div>
         <nav className="user-sidebar__nav">
-          <div className="user-sidebar__modules-label">MODULES</div>
           {baseNavItems.filter((item) => item.href === '/home').map(({ href, label, Icon }) => {
             const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
             return (
@@ -392,7 +388,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       )}
 
       <div className="user-main-wrapper">
-        <header className={`user-navbar ${theme === 'dark' ? 'user-navbar--dark' : ''}`}>
+        <header className="user-navbar">
           <div className="user-navbar__left">
             <button
               type="button"
@@ -402,11 +398,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             >
               <IconMenu />
             </button>
-            <h1 className="user-navbar__title">{SITE_NAME}</h1>
-            <span className="user-navbar__live">
-              <span className="user-navbar__live-dot" />
-              LIVE
-            </span>
+            <h1 className="user-navbar__title">{pageTitle}</h1>
           </div>
           <div className="user-navbar__right">
             <div className="user-navbar__actions">

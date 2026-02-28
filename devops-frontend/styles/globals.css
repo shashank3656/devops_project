@@ -1,30 +1,31 @@
-/* DevOps portal – Admin-style: same design system, sidebar + navbar */
+/* DevOps portal – Dark theme (DevOps Portal SQL Editor style) */
 :root {
-  --color-bg: #f8fafc;
-  --color-bg-subtle: #f1f5f9;
-  --color-bg-header: #ffffff;
-  --color-surface: #ffffff;
-  --color-surface-elevated: #ffffff;
-  --color-border: #e5e7eb;
-  --color-border-subtle: #e2e8f0;
-  --color-text: #0f172a;
-  --color-text-muted: #64748b;
-  --color-primary: #6366f1;
-  --color-primary-hover: #4f46e5;
-  --color-primary-light: rgba(79, 70, 229, 0.1);
-  --color-danger: #dc2626;
-  --color-danger-bg: rgba(220, 38, 38, 0.08);
-  --color-success: #059669;
-  --color-success-bg: rgba(5, 150, 105, 0.08);
-  --color-warning: #d97706;
-  --color-warning-bg: rgba(217, 119, 6, 0.08);
-  --sidebar-bg: #ffffff;
-  --sidebar-border: #e2e8f0;
-  --sidebar-text: #0f172a;
-  --sidebar-text-muted: #64748b;
-  --sidebar-hover: #f8fafc;
-  --sidebar-active-bg: #4f46e5;
-  --sidebar-active-border: #4f46e5;
+  /* Dark palette – #1C1E26 base, teal accent */
+  --color-bg: #1c1e26;
+  --color-bg-subtle: #16181f;
+  --color-bg-header: #1c1e26;
+  --color-surface: #23262e;
+  --color-surface-elevated: #2a2d36;
+  --color-border: #334155;
+  --color-border-subtle: #272a33;
+  --color-text: #f1f5f9;
+  --color-text-muted: #94a3b8;
+  --color-primary: #0d9488;
+  --color-primary-hover: #14b8a6;
+  --color-primary-light: rgba(13, 148, 136, 0.15);
+  --color-danger: #f87171;
+  --color-danger-bg: rgba(248, 113, 113, 0.12);
+  --color-success: #34d399;
+  --color-success-bg: rgba(52, 211, 153, 0.12);
+  --color-warning: #fbbf24;
+  --color-warning-bg: rgba(251, 191, 36, 0.12);
+  --sidebar-bg: #16181f;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-text: #e2e8f0;
+  --sidebar-text-muted: #94a3b8;
+  --sidebar-hover: rgba(255, 255, 255, 0.06);
+  --sidebar-active-bg: rgba(13, 148, 136, 0.25);
+  --sidebar-active-border: #0d9488;
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 72px;
   --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -58,15 +59,11 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: 1.6;
-  background: linear-gradient(180deg, var(--color-bg) 0%, var(--color-bg-subtle) 100%);
+  background: var(--color-bg);
   color: var(--color-text);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-[data-theme="dark"] body {
-  background: #0f172a;
-  color: rgba(255, 255, 255, 0.9);
 }
 a { color: var(--color-primary); text-decoration: none; transition: color var(--transition); }
 a:hover { color: var(--color-primary-hover); text-decoration: underline; }
@@ -89,7 +86,7 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   top: 0;
   bottom: 0;
   width: 240px;
-  background: #1e293b;
+  background: var(--sidebar-bg);
   display: flex;
   flex-direction: column;
   z-index: 100;
@@ -141,32 +138,10 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
-.devops-sidebar-new__modules-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.5);
-  padding: var(--space-3) var(--space-4) var(--space-2);
-  text-transform: uppercase;
-}
 .devops-sidebar-new__nav {
   flex: 1;
   overflow-y: auto;
   padding: var(--space-3);
-}
-.devops-sidebar-new__badge {
-  margin-left: auto;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 600;
-  background: #dc2626;
-  color: #fff;
-  border-radius: 10px;
 }
 .devops-sidebar-new__link {
   display: flex;
@@ -191,10 +166,11 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   background: rgba(255, 255, 255, 0.08);
 }
 .devops-sidebar-new__link--active {
-  color: #fff;
-  background: rgba(79, 70, 229, 0.5);
+  color: var(--color-primary);
+  background: var(--sidebar-active-bg);
+  border-left: 3px solid var(--color-primary);
 }
-.devops-sidebar-new__link--active:hover { background: rgba(79, 70, 229, 0.6); }
+.devops-sidebar-new__link--active:hover { background: var(--sidebar-active-bg); }
 .devops-sidebar-new__icon { width: 20px; height: 20px; flex-shrink: 0; }
 .devops-sidebar-new__label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .devops-sidebar-new__footer {
@@ -234,48 +210,9 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   justify-content: space-between;
   height: 60px;
   padding: 0 var(--space-6);
-  background: #fff;
+  background: var(--color-bg-header);
   border-bottom: 1px solid var(--color-border);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
-.devops-navbar--dark {
-  background: #0f172a;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: none;
-}
-.devops-navbar--dark .devops-navbar__title { color: #38bdf8; font-weight: 700; }
-.devops-navbar--dark .devops-navbar__menu-btn { color: rgba(255,255,255,0.8); }
-.devops-navbar--dark .devops-navbar__menu-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
-.devops-navbar__live {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #22c55e;
-  margin-left: var(--space-4);
-}
-.devops-navbar__live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 8px #22c55e;
-  animation: devops-live-pulse 2s ease-in-out infinite;
-}
-@keyframes devops-live-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-.devops-navbar__pending-text {
-  font-size: 13px;
-  color: #38bdf8;
-  margin-left: var(--space-4);
-}
-.devops-navbar--dark .devops-navbar__username { color: rgba(255,255,255,0.9); }
-.devops-navbar--dark .devops-navbar__profile-label { color: rgba(255,255,255,0.9); }
-.devops-navbar--dark .devops-navbar__profile-btn:hover { background: rgba(255,255,255,0.1); }
-.devops-navbar--dark .devops-navbar__avatar { background: #38bdf8; }
 .devops-navbar__left {
   display: flex;
   align-items: center;
@@ -302,6 +239,7 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
 .devops-navbar__title {
   font-size: 20px;
   font-weight: 600;
+  color: var(--color-text);
   color: var(--color-text);
   margin: 0;
   white-space: nowrap;
@@ -455,13 +393,11 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
 .devops-main-new {
   flex: 1;
   min-width: 0;
+  background: var(--color-bg);
   overflow-x: hidden;
   overflow-y: auto;
   padding: var(--space-6);
   background: var(--color-bg);
-}
-[data-theme="dark"] .devops-main-new {
-  background: #0f172a;
 }
 
 /* Login page – split layout (Admin-style) */
@@ -748,17 +684,17 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   background: var(--color-bg);
 }
 
-/* Cards – white, soft shadow (Admin style) */
+/* Cards */
 .card {
   background: var(--color-surface);
   border-radius: var(--radius-lg);
-  border: none;
+  border: 1px solid var(--color-border);
   padding: var(--space-6);
   margin-bottom: var(--space-6);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
-  transition: box-shadow var(--transition);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: box-shadow var(--transition), border-color var(--transition);
 }
-.card:hover { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08); }
+.card:hover { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2); }
 .card-title {
   font-size: var(--text-lg);
   font-weight: var(--font-semibold);
@@ -1324,29 +1260,33 @@ code { background: var(--color-surface-elevated); color: var(--color-primary); p
 .devops-sidebar-collapsed .devops-sidebar-footer .btn-secondary { justify-content: center; }
 .devops-sidebar-collapsed .devops-sidebar-toggle { margin-left: 0; }
 
-/* Light theme (toggle) – optional lighter look */
+/* Light theme (toggle) */
 [data-theme="light"] {
-  --color-bg: #f1f5f9;
+  --color-bg: #f8fafc;
+  --color-bg-subtle: #f1f5f9;
+  --color-bg-header: #ffffff;
   --color-surface: #ffffff;
   --color-surface-elevated: #f8fafc;
   --color-border: #e2e8f0;
   --color-border-subtle: #e2e8f0;
   --color-text: #0f172a;
   --color-text-muted: #64748b;
+  --color-primary: #0d9488;
+  --color-primary-hover: #0f766e;
   --sidebar-bg: #1e293b;
   --sidebar-border: #334155;
   --sidebar-text: #f1f5f9;
   --sidebar-text-muted: #94a3b8;
   --sidebar-hover: #334155;
-  --sidebar-active-bg: rgba(13, 148, 136, 0.2);
+  --sidebar-active-bg: rgba(13, 148, 136, 0.25);
   --sidebar-active-border: #0d9488;
 }
-[data-theme="light"] body { background: var(--color-bg); }
+[data-theme="light"] body { background: linear-gradient(180deg, var(--color-bg) 0%, var(--color-bg-subtle) 100%); }
 [data-theme="light"] .card { background: var(--color-surface); border-color: var(--color-border); }
 [data-theme="light"] .devops-main { background: var(--color-bg); }
-[data-theme="light"] .devops-topbar { background: var(--color-surface); border-color: var(--color-border); }
+[data-theme="light"] .devops-navbar { background: #fff; border-color: var(--color-border); }
+[data-theme="light"] .devops-navbar__title { color: var(--color-text); }
 [data-theme="light"] .input { background: #fff; border-color: var(--color-border); color: var(--color-text); }
 [data-theme="light"] th { background: var(--color-surface-elevated); color: var(--color-text-muted); }
-[data-theme="light"] .devops-topbar-logout:hover { background: var(--color-bg); }
 [data-theme="light"] .btn-secondary { background: #f1f5f9; color: var(--color-text); }
 [data-theme="light"] .btn-ghost:hover:not(:disabled) { background: #f1f5f9; }
