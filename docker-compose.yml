@@ -1,3 +1,261 @@
+# version: '3.8'
+
+# # Infrastructure Portal - Docker Compose
+# #
+# # Single command to spin up all containers (postgres + backend + user frontend + admin frontend):
+# #   docker-compose up -d
+# #
+# # Development (hot reload, includes admin-frontend; use override so admin-frontend uses dev backend):
+# #   docker-compose --profile dev -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+# #
+# # Environment variables: config/.env (copy from config/.env.example)
+
+# services:
+#   # PostgreSQL Database
+#   postgres:
+#     image: postgres:15-alpine
+#     container_name: infra-postgres
+#     environment:
+#       - POSTGRES_USER=${DB_USER:-postgres}
+#       - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+#       - POSTGRES_DB=${DB_NAME:-infra_portal}
+#     ports:
+#       - "127.0.0.1:5432:5432"
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+#     restart: unless-stopped
+#     networks:
+#       - infra-network
+
+#   # Development Backend (with hot reload)
+#   backend:
+#     build:
+#       context: ./backend
+#       dockerfile: Dockerfile.dev
+#     container_name: infra-backend-dev
+#     ports:
+#       - "8080:8080"
+#     env_file:
+#       - config/.env
+#     volumes:
+#       # Mount source code for hot reload
+#       - ./backend:/app
+#       # Exclude vendor directory to avoid vendoring conflicts
+#       - /app/vendor
+#     # Command runs go run . from the mounted volume
+#     # Use -mod=mod to ignore vendor directory if it exists
+#     command: sh -c "go mod download && go run -mod=mod ."
+#     depends_on:
+#       postgres:
+#         condition: service_healthy
+#     restart: unless-stopped
+#     networks:
+#       - infra-network
+#     profiles:
+#       - dev
+
+#   # Production Backend (compiled binary)
+#   backend-prod:
+#     build:
+#       context: ./backend
+#       dockerfile: Dockerfile
+#     container_name: infra-backend
+#     ports:
+#       - "8080:8080"
+#     env_file:
+#       - config/.env
+#     depends_on:
+#       postgres:
+#         condition: service_healthy
+#     healthcheck:
+#       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 3
+#       start_period: 10s
+#     restart: unless-stopped
+#     networks:
+#       - infra-network
+#     profiles:
+#       - prod
+#       - default
+
+#   # Development Frontend (with hot reload)
+#   frontend:
+#     build:
+#       context: ./frontend
+#       dockerfile: Dockerfile
+#     container_name: infra-frontend-dev
+#     ports:
+#       - "3000:3000"
+#     env_file:
+#       - config/.env
+#     environment:
+#       - NODE_ENV=development
+#       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
+#       - WATCHPACK_POLLING=true
+#     volumes:
+#       # Mount source code for hot reload
+#       - ./frontend:/app
+#       - /app/node_modules
+#       - /app/.next
+#     # Override command to run dev server
+#     command: sh -c "npm install && npm run dev"
+#     depends_on:
+#       - backend
+#     restart: unless-stopped
+#     networks:
+#       - infra-network
+#     profiles:
+#       - dev
+
+#   # Production Frontend (built and optimized)
+#   frontend-prod:
+#     build:
+#       context: ./frontend
+#       dockerfile: Dockerfile
+#       args:
+#         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+#     container_name: infra-frontend
+#     ports:
+#       - "3000:3000"
+#     env_file:
+#       - config/.env 
+#     environment:
+#       - NODE_ENV=production
+#       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
+#     depends_on:
+#       backend-prod:
+#         condition: service_healthy
+#       postgres:
+#         condition: service_healthy
+#     healthcheck:
+#       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://20.219.96.249:3000"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 3
+#       start_period: 40s
+#     restart: unless-stopped
+#     networks:
+#       - infra-network
+#     profiles:
+#       - prod
+#       - default
+
+#   # Admin Frontend (runs separately on port 3001 - same backend/DB)
+#   admin-frontend:
+#     build:
+#       context: ./admin-frontend
+#       dockerfile: Dockerfile
+#       args:
+#         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+#     container_name: infra-admin-frontend
+#     ports:
+#       - "3001:3001"
+#     environment:
+#       - NODE_ENV=production
+#       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
+#     depends_on:
+#       - backend
+#     restart: unless-stopped
+#     networks:
+#       - infra-network
+#     profiles:
+#       - dev
+  
+#   admin-frontend-prod:
+#     build:
+#       context: ./admin-frontend
+#       dockerfile: Dockerfile
+#       args:
+#         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+#     container_name: infra-admin-frontend
+#     ports:
+#       - "3001:3001"
+#     environment:
+#       - NODE_ENV=production
+#       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
+#     depends_on:
+#       - backend-prod
+#     restart: unless-stopped
+#     networks:
+#       - infra-network
+#     profiles:
+#       - prod
+
+#   # DevOps Frontend (port 3002 - for DevOps users: my tickets + manager workload)
+#   # Backend URL is read at runtime from container env (/api/config). Set NEXT_PUBLIC_API_URL in config/.env.
+#   devops-frontend:
+#     build:
+#       context: ./devops-frontend
+#       dockerfile: Dockerfile
+#       args:
+#         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+#     container_name: infra-devops-frontend
+#     ports:
+#       - "3002:3002"
+#     env_file:
+#       - config/.env
+#     environment:
+#       - NODE_ENV=production
+#       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+#     depends_on:
+#       - backend
+#       - postgres
+#     healthcheck:
+#       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3002"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 3
+#       start_period: 40s
+#     restart: unless-stopped
+#     networks:
+#       - infra-network
+#     profiles:
+#       - dev
+  
+#   devops-frontend-prod:
+#     build:
+#       context: ./devops-frontend
+#       dockerfile: Dockerfile
+#       args:
+#         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+#     container_name: infra-devops-frontend
+#     ports:
+#       - "3002:3002"
+#     env_file:
+#       - config/.env
+#     environment:
+#       - NODE_ENV=production
+#       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+#     depends_on:
+#       - backend-prod
+#       - postgres
+#     healthcheck:
+#       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3002"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 3
+#       start_period: 40s
+#     restart: unless-stopped
+#     networks:
+#       - infra-network
+#     profiles:
+#       - prod
+
+# volumes:
+#   postgres_data:
+
+# networks:
+#   infra-network:
+#     driver: bridge
+
+
 version: '3.8'
 
 # Infrastructure Portal - Docker Compose
@@ -20,7 +278,7 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
       - POSTGRES_DB=${DB_NAME:-infra_portal}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -42,6 +300,25 @@ services:
       - "8080:8080"
     env_file:
       - config/.env
+    environment:
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-devops3656@gmail.com}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-avhbdsfwpllsgogm}
+      - SMTP_FROM=${SMTP_FROM:-devops3656@gmail.com}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
+      - GITHUB_OWNER=${GITHUB_OWNER}
+      - GITHUB_REPO=${GITHUB_REPO}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - BASE_BRANCH=${BASE_BRANCH}
+      - DB_HOST=${DB_HOST:-postgres}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_NAME=${DB_NAME:-infra_portal}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/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}
+      - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
     volumes:
       # Mount source code for hot reload
       - ./backend:/app
@@ -69,6 +346,25 @@ services:
       - "8080:8080"
     env_file:
       - config/.env
+    environment:
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-devops3656@gmail.com}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-avhbdsfwpllsgogm}
+      - SMTP_FROM=${SMTP_FROM:-devops3656@gmail.com}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
+      - GITHUB_OWNER=${GITHUB_OWNER}
+      - GITHUB_REPO=${GITHUB_REPO}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - BASE_BRANCH=${BASE_BRANCH}
+      - DB_HOST=${DB_HOST:-postgres}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_NAME=${DB_NAME:-infra_portal}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL}
+      - FRONTEND_URL=${FRONTEND_URL:-http://20.219.96.249:3000}
     depends_on:
       postgres:
         condition: service_healthy
