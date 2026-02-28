@@ -142,7 +142,7 @@ func handleRequestClone(w http.ResponseWriter, r *http.Request, id int, req *PRR
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	branchName := req.Team + "/" + req.Env + "/" + appID
+	filePath, branchName := BuildRequestGitArtifacts(req.Team, req.Env, appID)
 	createdBy := req.CreatedBy
 	if createdBy == nil && userID > 0 {
 		createdBy = &userID
@@ -158,7 +158,7 @@ func handleRequestClone(w http.ResponseWriter, r *http.Request, id int, req *PRR
 		DueDate:       req.DueDate,
 		PRURL:         "",
 		Branch:        branchName,
-		FilePath:      req.FilePath,
+		FilePath:      filePath,
 		Status:        "draft",
 		Config:        req.Config,
 		CreatedBy:     createdBy,
@@ -197,7 +197,7 @@ func handleRequestResubmit(w http.ResponseWriter, r *http.Request, id int, req *
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	branchName := req.Team + "/" + req.Env + "/" + appID
+	filePath, branchName := BuildRequestGitArtifacts(req.Team, req.Env, appID)
 	newReq := &PRRequest{
 		Team:          req.Team,
 		Env:           req.Env,
@@ -209,7 +209,7 @@ func handleRequestResubmit(w http.ResponseWriter, r *http.Request, id int, req *
 		DueDate:       req.DueDate,
 		PRURL:         "",
 		Branch:        branchName,
-		FilePath:      req.FilePath,
+		FilePath:      filePath,
 		Status:        "draft",
 		Config:        req.Config,
 		CreatedBy:     req.CreatedBy,
@@ -534,7 +534,7 @@ func handleRequestDependencies(w http.ResponseWriter, r *http.Request, id int, r
 		blockedBy, _ := GetRequestsThatDependOn(id)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status": "ok",
+			"status":     "ok",
 			"depends_on": deps,
 			"blocked_by": blockedBy,
 		})
