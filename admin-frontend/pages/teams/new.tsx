@@ -83,7 +83,7 @@ export default function NewTeam() {
               </div>
               <div className="form-group">
                 <label className="label" htmlFor="team-slug">
-                  Slug{' '}
+                  Team slug{' '}
                   <span className="label-optional">
                     (optional, auto-generated from name if empty)
                   </span>
@@ -95,6 +95,9 @@ export default function NewTeam() {
                   onChange={(e) => setSlug(e.target.value)}
                   placeholder="e.g. platform-team"
                 />
+                <p style={{ marginTop: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                  Group ID is auto-generated as a 12-character lowercase alphanumeric value and used in Git/PR folder paths.
+                </p>
               </div>
               <div className="form-group">
                 <label className="label" htmlFor="team-type">Group type</label>

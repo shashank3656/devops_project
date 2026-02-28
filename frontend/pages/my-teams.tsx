@@ -9,6 +9,7 @@ interface Team {
   id: number;
   name: string;
   slug: string;
+  application_id: string;
   team_type: string;
   created_at: string;
 }
@@ -178,7 +179,9 @@ export default function MyTeamsPage() {
                   <div>
                     <span className="portal-surface__eyebrow">{team.team_type || 'team'}</span>
                     <h2 className="portal-surface__title">{team.name}</h2>
-                    <p className="portal-surface__subtitle">{team.slug}</p>
+                    <p className="portal-surface__subtitle">
+                      Group ID: {team.application_id || 'Pending'} | Slug: {team.slug}
+                    </p>
                   </div>
                   <span className="portal-badge portal-badge--neutral">
                     {(membersByTeam[team.id] || []).length} members
