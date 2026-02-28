@@ -37,7 +37,7 @@ export default function DevOpsTemplatesList() {
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token) {
+    if (!token || token === 'undefined') {
       router.replace('/login');
       return;
     }
@@ -48,8 +48,13 @@ export default function DevOpsTemplatesList() {
     setLoading(true);
     setError('');
     try {
+      const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+      if (!token || token === 'undefined') {
+        router.replace('/login');
+        return;
+      }
       const res = await fetch(`${apiUrl}/api/devops/templates`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem(DEVOPS_TOKEN_KEY)}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401 || res.status === 403) {
         router.replace('/login');
@@ -75,10 +80,19 @@ export default function DevOpsTemplatesList() {
     setDeletingId(template.id);
     setError('');
     try {
+      const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+      if (!token || token === 'undefined') {
+        router.replace('/login');
+        return;
+      }
       const res = await fetch(`${apiUrl}/api/devops/templates/${template.id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem(DEVOPS_TOKEN_KEY)}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401 || res.status === 403) {
+        router.replace('/login');
+        return;
+      }
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setTemplates((previous) => previous.filter((item) => item.id !== template.id));
