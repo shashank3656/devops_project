@@ -48,7 +48,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'My tickets',
   '/workload': 'Workload',
   '/tickets': 'All tickets',
-  '/approvals': 'Approvals',
   '/templates': 'Templates',
   '/team': 'Team',
   '/credential-audit': 'Credential Audit',
@@ -189,7 +188,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     router.replace('/login');
   };
 
-  const baseNavItems: { href: string; label: string; Icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
+  const baseNavItems: { href: string; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
     { href: '/dashboard', label: 'My tickets', Icon: IconTickets },
   ];
   if (isManager) {
@@ -197,8 +196,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     baseNavItems.push({ href: '/tickets', label: 'All tickets', Icon: IconTickets });
   }
   baseNavItems.push({ href: '/templates', label: 'Templates', Icon: IconTemplates });
-  baseNavItems.push({ href: '/approvals', label: 'Approvals', Icon: IconShield, badge: isManager && pendingCount > 0 ? pendingCount : undefined });
-  baseNavItems.push({ href: '/credential-audit', label: 'Audit Log', Icon: IconShield });
+  baseNavItems.push({ href: '/credential-audit', label: 'Credential Audit', Icon: IconShield });
   if (isManager) baseNavItems.push({ href: '/team', label: 'Team', Icon: IconUsers });
 
   const pageTitle = getPageTitle(pathname);
@@ -223,25 +221,17 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </Link>
         </div>
         <nav className="devops-sidebar-new__nav">
-          {!sidebarCollapsed && <div className="devops-sidebar-new__modules-label">MODULES</div>}
-          {baseNavItems.map(({ href, label, Icon, badge }) => {
+          {baseNavItems.map(({ href, label, Icon }) => {
             const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
             return (
               <Link
-                key={href + label}
+                key={href}
                 href={href}
                 className={`devops-sidebar-new__link ${isActive ? 'devops-sidebar-new__link--active' : ''}`}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 <Icon className="devops-sidebar-new__icon" />
-                {!sidebarCollapsed && (
-                  <>
-                    <span className="devops-sidebar-new__label">{label}</span>
-                    {badge != null && badge > 0 && (
-                      <span className="devops-sidebar-new__badge">{badge > 99 ? '99+' : badge}</span>
-                    )}
-                  </>
-                )}
+                {!sidebarCollapsed && <span className="devops-sidebar-new__label">{label}</span>}
               </Link>
             );
           })}
@@ -259,7 +249,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       )}
 
       <div className="devops-main-wrapper-new">
-        <header className="devops-navbar devops-navbar--dark">
+        <header className="devops-navbar">
           <div className="devops-navbar__left">
             <button
               type="button"
@@ -269,14 +259,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             >
               <IconMenu />
             </button>
-            <h1 className="devops-navbar__title">{DEVOPS_SITE_NAME}</h1>
-            <span className="devops-navbar__live">
-              <span className="devops-navbar__live-dot" />
-              LIVE
-            </span>
-            {isManager && pendingCount > 0 && (
-              <span className="devops-navbar__pending-text">{pendingCount} pending approval{pendingCount !== 1 ? 's' : ''}</span>
-            )}
+            <h1 className="devops-navbar__title">{pageTitle}</h1>
           </div>
           <div className="devops-navbar__right">
             <div className="devops-navbar__actions">
@@ -285,7 +268,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                   {pendingCount > 99 ? '99+' : pendingCount}
                 </span>
               )}
-              {user && <span className="devops-navbar__username">{user.email || user.username}</span>}
+              {user && <span className="devops-navbar__username">{user.username}</span>}
             </div>
             <button
               type="button"
