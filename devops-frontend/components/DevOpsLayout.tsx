@@ -3,7 +3,6 @@ import { useRouter } from 'next/router';
 import type { ComponentType, ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApiUrl } from '../context/ApiUrlContext';
-import { DEVOPS_SITE_NAME } from '../lib/site';
 import {
   IconLogout,
   IconTickets,
@@ -193,6 +192,24 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       ? `${pendingCount} pending approvals`
       : 'No pending approvals'
     : 'Active session';
+  const sidebarStatusItems = isManager
+    ? [
+        { label: 'approval-queue', tone: pendingCount > 0 ? 'warn' : 'ok', meta: pendingCount > 0 ? `${pendingCount} open` : 'clear' },
+        { label: 'template-registry', tone: 'ok', meta: 'ready' },
+        { label: 'audit-stream', tone: 'ok', meta: 'live' },
+      ]
+    : [
+        { label: 'session-scope', tone: 'ok', meta: 'live' },
+        { label: 'template-registry', tone: 'ok', meta: 'ready' },
+        { label: 'audit-stream', tone: 'idle', meta: 'view' },
+      ];
+
+  const getSidebarBadge = (href: string): string | null => {
+    if (href === '/tickets' && isManager && pendingCount > 0) {
+      return pendingCount > 99 ? '99+' : String(pendingCount);
+    }
+    return null;
+  };
 
   return (
     <div className="devops-layout devops-layout-sidebar">
@@ -208,49 +225,55 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           >
             <IconMenu />
           </button>
-          <Link href="/dashboard" className="devops-sidebar-new__brand">
-            <img src="/logo.svg" alt="" width={36} height={36} className="devops-sidebar-new__logo" />
-            {!sidebarCollapsed && (
-              <span className="devops-sidebar-new__brand-copy">
-                <span className="devops-sidebar-new__eyebrow">DevOps Portal</span>
-                <span className="devops-sidebar-new__brand-text">{DEVOPS_SITE_NAME}</span>
-              </span>
-            )}
-          </Link>
+          {!sidebarCollapsed && (
+            <Link href="/dashboard" className="devops-sidebar-new__brand">
+              <>
+                <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">DevOps</span>
+                <span className="devops-sidebar-new__brand-word">Portal</span>
+              </>
+            </Link>
+          )}
         </div>
-        {!sidebarCollapsed && (
-          <div className="devops-sidebar-new__summary">
-            <span className="devops-sidebar-new__summary-label">{isManager ? 'Pending Approvals' : 'System Status'}</span>
-            <strong className="devops-sidebar-new__summary-value">{isManager ? pendingCount : 'Live'}</strong>
-            <p className="devops-sidebar-new__summary-copy">
-              {isManager
-                ? `${pendingCount} requests are waiting for DevOps sign-off.`
-                : 'Tickets, templates, and audit activity are ready.'}
-            </p>
+        <div className="devops-sidebar-new__body">
+          <nav className="devops-sidebar-new__nav">
+            {!sidebarCollapsed && <span className="devops-sidebar-new__nav-title">Modules</span>}
+            {baseNavItems.map(({ href, label, Icon }) => {
+              const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+              const badge = getSidebarBadge(href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`devops-sidebar-new__link ${isActive ? 'devops-sidebar-new__link--active' : ''}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Icon className="devops-sidebar-new__icon" />
+                  {!sidebarCollapsed && <span className="devops-sidebar-new__label">{label}</span>}
+                  {!sidebarCollapsed && badge && <span className="devops-sidebar-new__badge">{badge}</span>}
+                </Link>
+              );
+            })}
+          </nav>
+          {!sidebarCollapsed && (
+            <div className="devops-sidebar-new__status-panel">
+              <span className="devops-sidebar-new__status-title">System Health</span>
+              <div className="devops-sidebar-new__status-list">
+                {sidebarStatusItems.map((item) => (
+                  <div key={item.label} className="devops-sidebar-new__status-item">
+                    <span className={`devops-sidebar-new__status-dot devops-sidebar-new__status-dot--${item.tone}`} aria-hidden />
+                    <span className="devops-sidebar-new__status-name">{item.label}</span>
+                    <span className="devops-sidebar-new__status-meta">{item.meta}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="devops-sidebar-new__footer">
+            <button type="button" className="devops-sidebar-new__link" onClick={handleLogout}>
+              <IconLogout className="devops-sidebar-new__icon" />
+              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Logout</span>}
+            </button>
           </div>
-        )}
-        <nav className="devops-sidebar-new__nav">
-          {!sidebarCollapsed && <span className="devops-sidebar-new__nav-title">Modules</span>}
-          {baseNavItems.map(({ href, label, Icon }) => {
-            const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`devops-sidebar-new__link ${isActive ? 'devops-sidebar-new__link--active' : ''}`}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <Icon className="devops-sidebar-new__icon" />
-                {!sidebarCollapsed && <span className="devops-sidebar-new__label">{label}</span>}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="devops-sidebar-new__footer">
-          <button type="button" className="devops-sidebar-new__link" onClick={handleLogout}>
-            <IconLogout className="devops-sidebar-new__icon" />
-            {!sidebarCollapsed && <span className="devops-sidebar-new__label">Logout</span>}
-          </button>
         </div>
       </aside>
 
