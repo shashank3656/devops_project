@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import type { ComponentType, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { SITE_NAME } from '../lib/site';
 import { useToast } from '../context/ToastContext';
 import {
   IconLogout,
@@ -304,7 +303,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }
 
   const pageTitle = getPageTitle(pathname);
-  const workspaceLabel = hasManagedTeams ? 'Manager Portal' : 'User Portal';
   const summaryLabel = pendingManagerApprovalCount > 0
     ? 'Pending Approvals'
     : updatedRequestsCount > 0
@@ -315,6 +313,20 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     : updatedRequestsCount > 0
       ? `${updatedRequestsCount} request updates`
       : 'No new updates';
+  const requestActivityBadge = pendingManagerApprovalCount > 0
+    ? (pendingManagerApprovalCount > 99 ? '99+' : String(pendingManagerApprovalCount))
+    : updatedRequestsCount > 0
+      ? (updatedRequestsCount > 99 ? '99+' : String(updatedRequestsCount))
+      : null;
+  const sidebarStatusItems = [
+    {
+      label: hasManagedTeams ? 'manager-queue' : 'request-feed',
+      tone: pendingManagerApprovalCount > 0 ? 'warn' : 'ok',
+      meta: pendingManagerApprovalCount > 0 ? `${pendingManagerApprovalCount} open` : 'clear',
+    },
+    { label: 'template-library', tone: 'ok', meta: 'ready' },
+    { label: 'team-access', tone: hasManagedTeams ? 'ok' : 'idle', meta: hasManagedTeams ? 'lead' : 'member' },
+  ];
 
   return (
     <div className="user-layout user-layout-sidebar user-shell">
@@ -328,117 +340,118 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           >
             <IconMenu />
           </button>
-          <Link href="/home" className="user-sidebar-shell__brand">
-            <img src="/logo.svg" alt="" width={36} height={36} className="user-sidebar-shell__logo" />
-            {!sidebarCollapsed && (
-              <span className="user-sidebar-shell__brand-copy">
-                <span className="user-sidebar-shell__eyebrow">User Portal</span>
-                <span className="user-sidebar-shell__brand-text">{SITE_NAME}</span>
-              </span>
-            )}
-          </Link>
-        </div>
-
-        {!sidebarCollapsed && (
-          <div className="user-sidebar-shell__summary">
-            <span className="user-sidebar-shell__summary-label">{summaryLabel}</span>
-            <strong className="user-sidebar-shell__summary-value">
-              {pendingManagerApprovalCount > 0 ? pendingManagerApprovalCount : updatedRequestsCount > 0 ? updatedRequestsCount : 'Live'}
-            </strong>
-            <p className="user-sidebar-shell__summary-copy">
-              {pendingManagerApprovalCount > 0
-                ? 'Approvals are waiting in your queue.'
-                : hasManagedTeams
-                  ? 'Your team requests, templates, and alerts are in sync.'
-                  : 'Use templates or create infrastructure to launch new work.'}
-            </p>
-          </div>
-        )}
-
-        <nav className="user-sidebar-shell__nav">
-          {!sidebarCollapsed && <span className="user-sidebar-shell__nav-title">Modules</span>}
-          {baseNavItems.filter((item) => item.href === '/home').map(({ href, label, Icon }) => {
-            const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`user-sidebar-shell__link ${isActive ? 'user-sidebar-shell__link--active' : ''}`}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <Icon className="user-sidebar-shell__icon" />
-                {!sidebarCollapsed && <span className="user-sidebar-shell__label">{label}</span>}
-              </Link>
-            );
-          })}
-
           {!sidebarCollapsed && (
-            <div className="user-sidebar-shell__expandable">
-              <button
-                type="button"
-                className={`user-sidebar-shell__link user-sidebar-shell__expandable-trigger ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar-shell__link--active' : ''}`}
-                onClick={() => setNewRequestExpanded(!effectiveNewRequestExpanded)}
+            <Link href="/home" className="user-sidebar-shell__brand">
+              <>
+                <span className="user-sidebar-shell__brand-word user-sidebar-shell__brand-word--primary">User</span>
+                <span className="user-sidebar-shell__brand-word">Portal</span>
+              </>
+            </Link>
+          )}
+        </div>
+        <div className="user-sidebar-shell__body">
+          <nav className="user-sidebar-shell__nav">
+            {!sidebarCollapsed && <span className="user-sidebar-shell__nav-title">Modules</span>}
+            {baseNavItems.filter((item) => item.href === '/home').map(({ href, label, Icon }) => {
+              const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`user-sidebar-shell__link ${isActive ? 'user-sidebar-shell__link--active' : ''}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Icon className="user-sidebar-shell__icon" />
+                  {!sidebarCollapsed && <span className="user-sidebar-shell__label">{label}</span>}
+                </Link>
+              );
+            })}
+
+            {!sidebarCollapsed && (
+              <div className="user-sidebar-shell__expandable">
+                <button
+                  type="button"
+                  className={`user-sidebar-shell__link user-sidebar-shell__expandable-trigger ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar-shell__link--active' : ''}`}
+                  onClick={() => setNewRequestExpanded(!effectiveNewRequestExpanded)}
+                >
+                  <IconPlus className="user-sidebar-shell__icon" />
+                  <span className="user-sidebar-shell__label">Create Infrastructure</span>
+                  <span className="user-sidebar-shell__chevron">
+                    {effectiveNewRequestExpanded ? <IconChevronDown /> : <IconChevronRight />}
+                  </span>
+                </button>
+
+                {effectiveNewRequestExpanded && (
+                  <div className="user-sidebar-shell__sub">
+                    <Link
+                      href="/create-infrastructure/iam"
+                      className={`user-sidebar-shell__sublink ${pathname === '/create-infrastructure/iam' || pathname.startsWith('/create-infrastructure/iam/') ? 'user-sidebar-shell__sublink--active' : ''}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      IAM
+                    </Link>
+                    <Link
+                      href="/create-infrastructure/new"
+                      className={`user-sidebar-shell__sublink ${pathname === '/create-infrastructure/new' || pathname.startsWith('/create-infrastructure/new') || pathname === '/select-service' || pathname === '/custom-json' || pathname === '/aws' ? 'user-sidebar-shell__sublink--active' : ''}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      Create Infrastructure
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {sidebarCollapsed && (
+              <Link
+                href="/create-infrastructure"
+                className={`user-sidebar-shell__link ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar-shell__link--active' : ''}`}
+                onClick={() => setMobileMenuOpen(false)}
+                title="Create Infrastructure"
               >
                 <IconPlus className="user-sidebar-shell__icon" />
-                <span className="user-sidebar-shell__label">Create Infrastructure</span>
-                <span className="user-sidebar-shell__chevron">
-                  {effectiveNewRequestExpanded ? <IconChevronDown /> : <IconChevronRight />}
-                </span>
-              </button>
+              </Link>
+            )}
 
-              {effectiveNewRequestExpanded && (
-                <div className="user-sidebar-shell__sub">
-                  <Link
-                    href="/create-infrastructure/iam"
-                    className={`user-sidebar-shell__sublink ${pathname === '/create-infrastructure/iam' || pathname.startsWith('/create-infrastructure/iam/') ? 'user-sidebar-shell__sublink--active' : ''}`}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    IAM
-                  </Link>
-                  <Link
-                    href="/create-infrastructure/new"
-                    className={`user-sidebar-shell__sublink ${pathname === '/create-infrastructure/new' || pathname.startsWith('/create-infrastructure/new') || pathname === '/select-service' || pathname === '/custom-json' || pathname === '/aws' ? 'user-sidebar-shell__sublink--active' : ''}`}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    Create Infrastructure
-                  </Link>
-                </div>
-              )}
+            {baseNavItems.filter((item) => item.href !== '/home').map(({ href, label, Icon }) => {
+              const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
+              const badge = href === '/history' ? requestActivityBadge : null;
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`user-sidebar-shell__link ${isActive ? 'user-sidebar-shell__link--active' : ''}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Icon className="user-sidebar-shell__icon" />
+                  {!sidebarCollapsed && <span className="user-sidebar-shell__label">{label}</span>}
+                  {!sidebarCollapsed && badge && <span className="user-sidebar-shell__badge">{badge}</span>}
+                </Link>
+              );
+            })}
+          </nav>
+
+          {!sidebarCollapsed && (
+            <div className="user-sidebar-shell__status-panel">
+              <span className="user-sidebar-shell__status-title">{summaryLabel}</span>
+              <div className="user-sidebar-shell__status-list">
+                {sidebarStatusItems.map((item) => (
+                  <div key={item.label} className="user-sidebar-shell__status-item">
+                    <span className={`user-sidebar-shell__status-dot user-sidebar-shell__status-dot--${item.tone}`} aria-hidden />
+                    <span className="user-sidebar-shell__status-name">{item.label}</span>
+                    <span className="user-sidebar-shell__status-meta">{item.meta}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
-          {sidebarCollapsed && (
-            <Link
-              href="/create-infrastructure"
-              className={`user-sidebar-shell__link ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar-shell__link--active' : ''}`}
-              onClick={() => setMobileMenuOpen(false)}
-              title="Create Infrastructure"
-            >
-              <IconPlus className="user-sidebar-shell__icon" />
-            </Link>
-          )}
-
-          {baseNavItems.filter((item) => item.href !== '/home').map(({ href, label, Icon }) => {
-            const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`user-sidebar-shell__link ${isActive ? 'user-sidebar-shell__link--active' : ''}`}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <Icon className="user-sidebar-shell__icon" />
-                {!sidebarCollapsed && <span className="user-sidebar-shell__label">{label}</span>}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="user-sidebar-shell__footer">
-          <button type="button" className="user-sidebar-shell__link" onClick={handleLogout}>
-            <IconLogout className="user-sidebar-shell__icon" />
-            {!sidebarCollapsed && <span className="user-sidebar-shell__label">Logout</span>}
-          </button>
+          <div className="user-sidebar-shell__footer">
+            <button type="button" className="user-sidebar-shell__link" onClick={handleLogout}>
+              <IconLogout className="user-sidebar-shell__icon" />
+              {!sidebarCollapsed && <span className="user-sidebar-shell__label">Logout</span>}
+            </button>
+          </div>
         </div>
       </aside>
 

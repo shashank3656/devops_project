@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import type { ComponentType, FormEvent, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { ADMIN_SITE_NAME } from '../lib/site';
 import {
   IconLogout,
   IconBell,
@@ -253,6 +252,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   const pageTitle = getPageTitle(pathname);
   const statusLabel = newRequestsCount > 0 ? `${newRequestsCount} pending requests` : 'No pending requests';
+  const sidebarStatusItems = [
+    { label: 'request-queue', tone: newRequestsCount > 0 ? 'warn' : 'ok', meta: newRequestsCount > 0 ? `${newRequestsCount} open` : 'clear' },
+    { label: 'access-control', tone: 'ok', meta: 'live' },
+    { label: 'webhook-relay', tone: 'ok', meta: 'ready' },
+  ];
+
+  const getSidebarBadge = (href: string): string | null => {
+    if (href === '/requests' && newRequestsCount > 0) {
+      return newRequestsCount > 99 ? '99+' : String(newRequestsCount);
+    }
+    return null;
+  };
 
   return (
     <div className="admin-layout admin-layout-sidebar admin-shell">
@@ -266,52 +277,57 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           >
             <IconMenu />
           </button>
-          <Link href="/dashboard" className="admin-sidebar-shell__brand">
-            <img src="/logo.svg" alt="" width={36} height={36} className="admin-sidebar-shell__logo" />
-            {!sidebarCollapsed && (
-              <span className="admin-sidebar-shell__brand-copy">
-                <span className="admin-sidebar-shell__eyebrow">Admin Portal</span>
-                <span className="admin-sidebar-shell__brand-text">{ADMIN_SITE_NAME}</span>
-              </span>
-            )}
-          </Link>
+          {!sidebarCollapsed && (
+            <Link href="/dashboard" className="admin-sidebar-shell__brand">
+              <>
+                <span className="admin-sidebar-shell__brand-word admin-sidebar-shell__brand-word--primary">Admin</span>
+                <span className="admin-sidebar-shell__brand-word">Portal</span>
+              </>
+            </Link>
+          )}
         </div>
+        <div className="admin-sidebar-shell__body">
+          <nav className="admin-sidebar-shell__nav">
+            {!sidebarCollapsed && <span className="admin-sidebar-shell__nav-title">Modules</span>}
+            {NAV_ITEMS.map(({ href, label, Icon }) => {
+              const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+              const badge = getSidebarBadge(href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`admin-sidebar-shell__link ${isActive ? 'admin-sidebar-shell__link--active' : ''}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Icon className="admin-sidebar-shell__icon" />
+                  {!sidebarCollapsed && <span className="admin-sidebar-shell__label">{label}</span>}
+                  {!sidebarCollapsed && badge && <span className="admin-sidebar-shell__badge">{badge}</span>}
+                </Link>
+              );
+            })}
+          </nav>
 
-        {!sidebarCollapsed && (
-          <div className="admin-sidebar-shell__summary">
-            <span className="admin-sidebar-shell__summary-label">Pending Requests</span>
-            <strong className="admin-sidebar-shell__summary-value">{newRequestsCount || '0'}</strong>
-            <p className="admin-sidebar-shell__summary-copy">
-              {newRequestsCount > 0
-                ? 'New request traffic needs review in the control queue.'
-                : 'No new escalations detected across the admin backlog.'}
-            </p>
+          {!sidebarCollapsed && (
+            <div className="admin-sidebar-shell__status-panel">
+              <span className="admin-sidebar-shell__status-title">Control Health</span>
+              <div className="admin-sidebar-shell__status-list">
+                {sidebarStatusItems.map((item) => (
+                  <div key={item.label} className="admin-sidebar-shell__status-item">
+                    <span className={`admin-sidebar-shell__status-dot admin-sidebar-shell__status-dot--${item.tone}`} aria-hidden />
+                    <span className="admin-sidebar-shell__status-name">{item.label}</span>
+                    <span className="admin-sidebar-shell__status-meta">{item.meta}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="admin-sidebar-shell__footer">
+            <button type="button" className="admin-sidebar-shell__link" onClick={handleLogout}>
+              <IconLogout className="admin-sidebar-shell__icon" />
+              {!sidebarCollapsed && <span className="admin-sidebar-shell__label">Logout</span>}
+            </button>
           </div>
-        )}
-
-        <nav className="admin-sidebar-shell__nav">
-          {!sidebarCollapsed && <span className="admin-sidebar-shell__nav-title">Modules</span>}
-          {NAV_ITEMS.map(({ href, label, Icon }) => {
-            const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`admin-sidebar-shell__link ${isActive ? 'admin-sidebar-shell__link--active' : ''}`}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <Icon className="admin-sidebar-shell__icon" />
-                {!sidebarCollapsed && <span className="admin-sidebar-shell__label">{label}</span>}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="admin-sidebar-shell__footer">
-          <button type="button" className="admin-sidebar-shell__link" onClick={handleLogout}>
-            <IconLogout className="admin-sidebar-shell__icon" />
-            {!sidebarCollapsed && <span className="admin-sidebar-shell__label">Logout</span>}
-          </button>
         </div>
       </aside>
 
