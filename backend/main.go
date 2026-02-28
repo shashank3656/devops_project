@@ -198,12 +198,6 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	clientName, _ := payload["client_name"].(string)
 	payload["client_name"] = clientName
 
-	// Create file path: <team-id>/envs/<env>/request.json
-	filePath := fmt.Sprintf(
-		"%s/envs/%s/request.json",
-		team, env,
-	)
-
 	// Marshal payload with indentation for readability
 	content, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
@@ -228,7 +222,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to generate application id", "status": "error"})
 		return
 	}
-	branchName := fmt.Sprintf("%s/%s/%s", team, env, appID)
+	filePath, branchName := BuildRequestGitArtifacts(team, env, appID)
 
 	prURL, err := CreateGitHubPR(branchName, filePath, content, appID)
 	if err != nil {
@@ -277,7 +271,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		"branch": branchName,
 		"id":     prRequest.ID,
 	}
-	
+
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Printf("Error encoding response: %v", err)
 		http.Error(w, "error encoding response", http.StatusInternalServerError)
@@ -364,7 +358,6 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	draft, _ := payload["draft"].(bool)
 
-	filePath := fmt.Sprintf("%s/envs/%s/request.json", team, env)
 	appID, appErr := GenerateApplicationID()
 	if appErr != nil {
 		log.Printf("GenerateApplicationID: %v", appErr)
@@ -373,7 +366,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to generate application id", "status": "error"})
 		return
 	}
-	branchName := fmt.Sprintf("%s/%s/%s", team, env, appID)
+	filePath, branchName := BuildRequestGitArtifacts(team, env, appID)
 	content, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -445,17 +438,22 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		msg = "Draft saved. You can edit or submit it from History."
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":     prRequest.ID,
-		"status": status,
+		"id":      prRequest.ID,
+		"status":  status,
 		"message": msg,
 	})
 }
 
 func main() {
+	allowStartWithoutDB := strings.EqualFold(strings.TrimSpace(os.Getenv("ALLOW_START_WITHOUT_DB")), "true")
+
 	// Initialize database
 	if err := InitDB(); err != nil {
+		if !allowStartWithoutDB {
+			log.Fatalf("Database initialization failed: %v", err)
+		}
 		log.Printf("Warning: Database initialization failed: %v", err)
-		log.Println("Continuing without database - history features will not work")
+		log.Println("ALLOW_START_WITHOUT_DB=true, continuing without database - database-backed features will fail")
 	} else {
 		// Run migration to update schema if needed
 		if err := MigrateDatabase(); err != nil {
@@ -553,11 +551,11 @@ func main() {
 	http.HandleFunc("/api/webhooks/ci", ciWebhookHandler)
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/ready", readyHandler)
-	
+
 	// Swagger/OpenAPI endpoint (will be served from static files or generated)
 	http.HandleFunc("/swagger.json", swaggerHandler)
 	http.HandleFunc("/api-docs", swaggerUIHandler)
-	
+
 	log.Println("Backend server starting on :8080")
 	if SlackWebhookURL != "" {
 		log.Println("Slack notifications: enabled")
@@ -601,7 +599,7 @@ func main() {
 	log.Println("  GET  /health         - Health check")
 	log.Println("  GET  /swagger.json    - OpenAPI spec")
 	log.Println("  GET  /api-docs       - Swagger UI")
-	
+
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -16,32 +17,177 @@ import (
 	_ "github.com/lib/pq"
 )
 
-const applicationIDChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+const (
+	defaultDBHost                = "postgres"
+	defaultDBPort                = "5432"
+	defaultDBName                = "infra_portal"
+	defaultDBSSLMode             = "disable"
+	defaultDBPingTimeoutSeconds  = 5
+	defaultDBMaxOpenConns        = 25
+	defaultDBMaxIdleConns        = 5
+	defaultDBConnMaxLifetimeMins = 5
+	defaultDBConnMaxIdleMins     = 2
+)
 
-// GenerateApplicationID returns a unique 10-char alphanumeric ID (no special chars)
-func GenerateApplicationID() (string, error) {
+const requestApplicationIDChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+const teamApplicationIDChars = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+func generateUniqueID(length int, charset string, existsFn func(string) (bool, error)) (string, error) {
 	for i := 0; i < 100; i++ {
-		b := make([]byte, 10)
+		b := make([]byte, length)
 		if _, err := rand.Read(b); err != nil {
 			return "", err
 		}
 		for j := range b {
-			b[j] = applicationIDChars[int(b[j])%len(applicationIDChars)]
+			b[j] = charset[int(b[j])%len(charset)]
 		}
 		id := string(b)
-		if DB == nil {
+		if existsFn == nil || DB == nil {
 			return id, nil
 		}
-		var exists int
-		err := DB.QueryRow("SELECT 1 FROM pr_requests WHERE application_id = $1 LIMIT 1", id).Scan(&exists)
-		if err == sql.ErrNoRows {
-			return id, nil
-		}
+		exists, err := existsFn(id)
 		if err != nil {
 			return "", err
 		}
+		if !exists {
+			return id, nil
+		}
 	}
-	return "", fmt.Errorf("could not generate unique application_id after 100 attempts")
+	return "", fmt.Errorf("could not generate unique id after 100 attempts")
+}
+
+// GenerateApplicationID returns a unique 10-char alphanumeric ID for requests.
+func GenerateApplicationID() (string, error) {
+	return generateUniqueID(10, requestApplicationIDChars, func(id string) (bool, error) {
+		var exists int
+		err := DB.QueryRow("SELECT 1 FROM pr_requests WHERE application_id = $1 LIMIT 1", id).Scan(&exists)
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	})
+}
+
+// GenerateTeamApplicationID returns a unique 12-char lowercase alphanumeric ID for team groups.
+func GenerateTeamApplicationID() (string, error) {
+	return generateUniqueID(12, teamApplicationIDChars, func(id string) (bool, error) {
+		var exists int
+		err := DB.QueryRow("SELECT 1 FROM teams WHERE application_id = $1 LIMIT 1", id).Scan(&exists)
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	})
+}
+
+func normalizeTeamSlug(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		return "team"
+	}
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash && b.Len() > 0 {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	normalized := strings.Trim(b.String(), "-")
+	if normalized == "" {
+		return "team"
+	}
+	return normalized
+}
+
+func ResolveTeamPathKey(teamNameOrSlug string) string {
+	trimmed := strings.TrimSpace(teamNameOrSlug)
+	if trimmed == "" {
+		return "team"
+	}
+	if DB != nil {
+		if team, err := GetTeamByNameOrSlug(trimmed); err == nil && team != nil {
+			if team.ApplicationID != "" {
+				return team.ApplicationID
+			}
+			if team.Slug != "" {
+				return normalizeTeamSlug(team.Slug)
+			}
+		}
+	}
+	return normalizeTeamSlug(trimmed)
+}
+
+func BuildRequestGitArtifacts(teamNameOrSlug, env, requestApplicationID string) (filePath string, branchName string) {
+	teamPathKey := ResolveTeamPathKey(teamNameOrSlug)
+	filePath = fmt.Sprintf("%s/envs/%s/request.json", teamPathKey, env)
+	branchName = fmt.Sprintf("%s/%s/%s", teamPathKey, env, requestApplicationID)
+	return filePath, branchName
+}
+
+func getEnvTrimmed(key string) string {
+	return strings.TrimSpace(os.Getenv(key))
+}
+
+func getEnvOrDefault(key, fallback string) string {
+	if value := getEnvTrimmed(key); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func getEnvIntOrDefault(key string, fallback int) int {
+	value := getEnvTrimmed(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
+func buildDatabaseDSN() (dsn string, redacted string, err error) {
+	if databaseURL := getEnvTrimmed("DATABASE_URL"); databaseURL != "" {
+		return databaseURL, "DATABASE_URL", nil
+	}
+
+	dbHost := getEnvOrDefault("DB_HOST", defaultDBHost)
+	dbPort := getEnvOrDefault("DB_PORT", defaultDBPort)
+	dbUser := getEnvTrimmed("DB_USER")
+	dbPassword := os.Getenv("DB_PASSWORD")
+	dbName := getEnvOrDefault("DB_NAME", defaultDBName)
+	dbSSLMode := getEnvOrDefault("DB_SSLMODE", defaultDBSSLMode)
+	connectTimeout := getEnvIntOrDefault("DB_CONNECT_TIMEOUT_SECONDS", defaultDBPingTimeoutSeconds)
+
+	if dbUser == "" {
+		return "", "", fmt.Errorf("DB_USER is required when DATABASE_URL is not set")
+	}
+	if dbPassword == "" {
+		return "", "", fmt.Errorf("DB_PASSWORD is required when DATABASE_URL is not set")
+	}
+
+	dsn = fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s connect_timeout=%d",
+		dbHost, dbPort, dbUser, dbPassword, dbName, dbSSLMode, connectTimeout,
+	)
+	redacted = fmt.Sprintf(
+		"host=%s port=%s user=%s dbname=%s sslmode=%s",
+		dbHost, dbPort, dbUser, dbName, dbSSLMode,
+	)
+	return dsn, redacted, nil
 }
 
 var DB *sql.DB
@@ -106,14 +252,15 @@ type DevopsProfile struct {
 
 // Team is a group created by admin (for admin frontend). team_type: portal (user portal group) | devops (DevOps team)
 type Team struct {
-	ID           int       `json:"id"`
-	Name         string    `json:"name"`
-	Slug         string    `json:"slug"`
-	TeamType     string    `json:"team_type"`               // portal | devops
-	DefaultEnv   string    `json:"default_env,omitempty"`   // e.g. dev, prod; prefill when user from this team creates request
-	DefaultCloud string    `json:"default_cloud,omitempty"` // e.g. aws; optional prefill
-	CreatedAt    time.Time `json:"created_at"`
-	CreatedBy    *int      `json:"created_by"`
+	ID            int       `json:"id"`
+	Name          string    `json:"name"`
+	Slug          string    `json:"slug"`
+	ApplicationID string    `json:"application_id"`
+	TeamType      string    `json:"team_type"`               // portal | devops
+	DefaultEnv    string    `json:"default_env,omitempty"`   // e.g. dev, prod; prefill when user from this team creates request
+	DefaultCloud  string    `json:"default_cloud,omitempty"` // e.g. aws; optional prefill
+	CreatedAt     time.Time `json:"created_at"`
+	CreatedBy     *int      `json:"created_by"`
 }
 
 // TeamMember links a user to a team. For portal teams: role is developer | senior_developer | lead | manager. For devops: member | lead.
@@ -259,50 +406,36 @@ type UserSavedConfig struct {
 
 // InitDB initializes the PostgreSQL database connection
 func InitDB() error {
-	dbHost := os.Getenv("DB_HOST")
-	if dbHost == "" {
-		dbHost = "postgres"
-	}
-	dbPort := os.Getenv("DB_PORT")
-	if dbPort == "" {
-		dbPort = "5432"
-	}
-	dbUser := os.Getenv("DB_USER")
-	if dbUser == "" {
-		dbUser = "postgres"
-	}
-	dbPassword := os.Getenv("DB_PASSWORD")
-	if dbPassword == "" {
-		dbPassword = "postgres"
-	}
-	dbName := os.Getenv("DB_NAME")
-	if dbName == "" {
-		dbName = "infra_portal"
+	dsn, redactedDSN, err := buildDatabaseDSN()
+	if err != nil {
+		return fmt.Errorf("database configuration invalid: %w", err)
 	}
 
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		dbHost, dbPort, dbUser, dbPassword, dbName)
-
-	var err error
 	DB, err = sql.Open("postgres", dsn)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Test connection
-	if err := DB.Ping(); err != nil {
+	pingTimeout := time.Duration(getEnvIntOrDefault("DB_PING_TIMEOUT_SECONDS", defaultDBPingTimeoutSeconds)) * time.Second
+	pingCtx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+	defer cancel()
+	if err := DB.PingContext(pingCtx); err != nil {
+		_ = DB.Close()
+		DB = nil
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	// Set connection pool settings
-	DB.SetMaxOpenConns(25)                 // Maximum number of open connections
-	DB.SetMaxIdleConns(5)                  // Maximum number of idle connections
-	DB.SetConnMaxLifetime(5 * time.Minute) // Maximum connection lifetime
+	DB.SetMaxOpenConns(getEnvIntOrDefault("DB_MAX_OPEN_CONNS", defaultDBMaxOpenConns))
+	DB.SetMaxIdleConns(getEnvIntOrDefault("DB_MAX_IDLE_CONNS", defaultDBMaxIdleConns))
+	DB.SetConnMaxLifetime(time.Duration(getEnvIntOrDefault("DB_CONN_MAX_LIFETIME_MINUTES", defaultDBConnMaxLifetimeMins)) * time.Minute)
+	DB.SetConnMaxIdleTime(time.Duration(getEnvIntOrDefault("DB_CONN_MAX_IDLE_TIME_MINUTES", defaultDBConnMaxIdleMins)) * time.Minute)
 
-	log.Println("Database connection established with connection pooling")
+	log.Printf("Database connection established (%s)", redactedDSN)
 
 	// Create tables
 	if err := createTables(); err != nil {
+		_ = DB.Close()
+		DB = nil
 		return fmt.Errorf("failed to create tables: %w", err)
 	}
 
@@ -360,6 +493,7 @@ func createTables() error {
 		id SERIAL PRIMARY KEY,
 		name VARCHAR(200) NOT NULL,
 		slug VARCHAR(100) UNIQUE NOT NULL,
+		application_id VARCHAR(12) UNIQUE,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
 	);`
@@ -2533,17 +2667,23 @@ func GetPendingManagerApprovalCount(managerUserID int) (int, error) {
 // CreateTeam creates a new team (admin only). teamType: "portal" | "devops". defaultEnv, defaultCloud optional.
 func CreateTeam(name, slug, teamType string, createdBy *int, defaultEnv, defaultCloud string) (*Team, error) {
 	if slug == "" {
-		slug = strings.ToLower(strings.ReplaceAll(name, " ", "-"))
+		slug = normalizeTeamSlug(name)
+	} else {
+		slug = normalizeTeamSlug(slug)
 	}
 	if teamType != "devops" && teamType != "portal" {
 		teamType = "portal"
 	}
+	groupID, err := GenerateTeamApplicationID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate team application id: %w", err)
+	}
 	var t Team
-	err := DB.QueryRow(
-		`INSERT INTO teams (name, slug, team_type, created_by, default_env, default_cloud) VALUES ($1, $2, $3, $4, NULLIF(TRIM($5),''), NULLIF(TRIM($6),''))
-		 RETURNING id, name, slug, COALESCE(team_type,'portal'), COALESCE(default_env,''), COALESCE(default_cloud,''), created_at, created_by`,
-		name, slug, teamType, createdBy, defaultEnv, defaultCloud,
-	).Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy)
+	err = DB.QueryRow(
+		`INSERT INTO teams (name, slug, application_id, team_type, created_by, default_env, default_cloud) VALUES ($1, $2, $3, $4, $5, NULLIF(TRIM($6),''), NULLIF(TRIM($7),''))
+		 RETURNING id, name, slug, COALESCE(application_id,''), COALESCE(team_type,'portal'), COALESCE(default_env,''), COALESCE(default_cloud,''), created_at, created_by`,
+		name, slug, groupID, teamType, createdBy, defaultEnv, defaultCloud,
+	).Scan(&t.ID, &t.Name, &t.Slug, &t.ApplicationID, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy)
 	if err != nil {
 		return nil, err
 	}
@@ -2648,7 +2788,7 @@ func RevokeAPIKey(keyID, userID int) error {
 
 // GetTeams returns all teams
 func GetTeams() ([]Team, error) {
-	rows, err := DB.Query(`SELECT id, name, slug, COALESCE(team_type,'portal'), COALESCE(default_env,''), COALESCE(default_cloud,''), created_at, created_by FROM teams ORDER BY name`)
+	rows, err := DB.Query(`SELECT id, name, slug, COALESCE(application_id,''), COALESCE(team_type,'portal'), COALESCE(default_env,''), COALESCE(default_cloud,''), created_at, created_by FROM teams ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -2656,7 +2796,7 @@ func GetTeams() ([]Team, error) {
 	var out []Team
 	for rows.Next() {
 		var t Team
-		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.ApplicationID, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -2668,8 +2808,27 @@ func GetTeams() ([]Team, error) {
 func GetTeamByID(id int) (*Team, error) {
 	var t Team
 	err := DB.QueryRow(
-		`SELECT id, name, slug, COALESCE(team_type,'portal'), COALESCE(default_env,''), COALESCE(default_cloud,''), created_at, created_by FROM teams WHERE id = $1`, id,
-	).Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy)
+		`SELECT id, name, slug, COALESCE(application_id,''), COALESCE(team_type,'portal'), COALESCE(default_env,''), COALESCE(default_cloud,''), created_at, created_by FROM teams WHERE id = $1`, id,
+	).Scan(&t.ID, &t.Name, &t.Slug, &t.ApplicationID, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func GetTeamByNameOrSlug(teamNameOrSlug string) (*Team, error) {
+	if DB == nil {
+		return nil, nil
+	}
+	var t Team
+	err := DB.QueryRow(
+		`SELECT id, name, slug, COALESCE(application_id,''), COALESCE(team_type,'portal'), COALESCE(default_env,''), COALESCE(default_cloud,''), created_at, created_by
+		 FROM teams WHERE name = $1 OR slug = $1 ORDER BY id ASC LIMIT 1`,
+		teamNameOrSlug,
+	).Scan(&t.ID, &t.Name, &t.Slug, &t.ApplicationID, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -2839,7 +2998,7 @@ func GetGroupManagerForUserInTeam(userID int, teamNameOrSlug string) int {
 // GetTeamsForUserWithDetails returns team details (id, name, slug, team_type, default_env, default_cloud) for a user
 func GetTeamsForUserWithDetails(userID int) ([]Team, error) {
 	rows, err := DB.Query(
-		`SELECT t.id, t.name, t.slug, COALESCE(t.team_type,'portal'), COALESCE(t.default_env,''), COALESCE(t.default_cloud,''), t.created_at, t.created_by
+		`SELECT t.id, t.name, t.slug, COALESCE(t.application_id,''), COALESCE(t.team_type,'portal'), COALESCE(t.default_env,''), COALESCE(t.default_cloud,''), t.created_at, t.created_by
 		 FROM teams t INNER JOIN team_members m ON m.team_id = t.id
 		 WHERE m.user_id = $1 ORDER BY t.name`,
 		userID,
@@ -2851,7 +3010,7 @@ func GetTeamsForUserWithDetails(userID int) ([]Team, error) {
 	var out []Team
 	for rows.Next() {
 		var t Team
-		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.ApplicationID, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -2869,7 +3028,7 @@ func GetPortalTeamsManagedByUser(userID int) ([]Team, error) {
 	var out []Team
 	// Teams where I have role=manager
 	rows, err := DB.Query(
-		`SELECT t.id, t.name, t.slug, COALESCE(t.team_type,'portal'), t.created_at, t.created_by
+		`SELECT t.id, t.name, t.slug, COALESCE(t.application_id,''), COALESCE(t.team_type,'portal'), t.created_at, t.created_by
 		 FROM teams t INNER JOIN team_members m ON m.team_id = t.id AND m.user_id = $1 AND m.role = 'manager'
 		 WHERE COALESCE(t.team_type,'portal') = 'portal' ORDER BY t.name`,
 		userID,
@@ -2879,7 +3038,7 @@ func GetPortalTeamsManagedByUser(userID int) ([]Team, error) {
 	}
 	for rows.Next() {
 		var t Team
-		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.CreatedAt, &t.CreatedBy); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.ApplicationID, &t.TeamType, &t.CreatedAt, &t.CreatedBy); err != nil {
 			continue
 		}
 		if !seen[t.ID] {
@@ -2891,7 +3050,7 @@ func GetPortalTeamsManagedByUser(userID int) ([]Team, error) {
 	if u.IsPortalManager {
 		// Also include any portal team I'm a member of (any role)
 		rows2, err2 := DB.Query(
-			`SELECT t.id, t.name, t.slug, COALESCE(t.team_type,'portal'), t.created_at, t.created_by
+			`SELECT t.id, t.name, t.slug, COALESCE(t.application_id,''), COALESCE(t.team_type,'portal'), t.created_at, t.created_by
 			 FROM teams t INNER JOIN team_members m ON m.team_id = t.id AND m.user_id = $1
 			 WHERE COALESCE(t.team_type,'portal') = 'portal' ORDER BY t.name`,
 			userID,
@@ -2899,7 +3058,7 @@ func GetPortalTeamsManagedByUser(userID int) ([]Team, error) {
 		if err2 == nil {
 			for rows2.Next() {
 				var t Team
-				if err := rows2.Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.CreatedAt, &t.CreatedBy); err != nil {
+				if err := rows2.Scan(&t.ID, &t.Name, &t.Slug, &t.ApplicationID, &t.TeamType, &t.CreatedAt, &t.CreatedBy); err != nil {
 					continue
 				}
 				if !seen[t.ID] {
@@ -2936,7 +3095,7 @@ func CanUserManagePortalTeam(userID, teamID int) bool {
 // GetDevopsTeamsForUser returns devops teams the user belongs to (for DevOps portal).
 func GetDevopsTeamsForUser(userID int) ([]Team, error) {
 	rows, err := DB.Query(
-		`SELECT t.id, t.name, t.slug, COALESCE(t.team_type,'portal'), t.created_at, t.created_by
+		`SELECT t.id, t.name, t.slug, COALESCE(t.application_id,''), COALESCE(t.team_type,'portal'), t.created_at, t.created_by
 		 FROM teams t INNER JOIN team_members m ON m.team_id = t.id AND m.user_id = $1
 		 WHERE COALESCE(t.team_type,'portal') = 'devops' ORDER BY t.name`,
 		userID,
@@ -2948,7 +3107,7 @@ func GetDevopsTeamsForUser(userID int) ([]Team, error) {
 	var out []Team
 	for rows.Next() {
 		var t Team
-		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.TeamType, &t.CreatedAt, &t.CreatedBy); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.ApplicationID, &t.TeamType, &t.CreatedAt, &t.CreatedBy); err != nil {
 			continue
 		}
 		out = append(out, t)

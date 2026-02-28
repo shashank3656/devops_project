@@ -8,6 +8,7 @@ interface Team {
   id: number;
   name: string;
   slug: string;
+  application_id: string;
   created_at: string;
   created_by: number | null;
 }
@@ -138,6 +139,7 @@ export default function TeamsList() {
                   <thead>
                     <tr>
                       <th>Name</th>
+                      <th>Group ID</th>
                       <th>Slug</th>
                       <th>Created</th>
                       <th style={{ width: 140 }}></th>
@@ -150,6 +152,9 @@ export default function TeamsList() {
                           <Link href={`/teams/${t.id}`} style={{ fontWeight: 500 }}>
                             {t.name}
                           </Link>
+                        </td>
+                        <td>
+                          <code>{t.application_id || 'Pending'}</code>
                         </td>
                         <td>
                           <code>{t.slug}</code>
