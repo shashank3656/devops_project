@@ -2362,8 +2362,8 @@ kbd {
 }
 
 .user-sidebar-shell__brand-word {
-  font-size: 17px;
-  letter-spacing: 0.14em;
+  font-size: 15px;
+  letter-spacing: 0.12em;
   white-space: nowrap;
 }
 
@@ -2448,7 +2448,7 @@ kbd {
   border-radius: 0;
   background: transparent;
   color: #648fbc;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   text-decoration: none;
   transition: color var(--transition), background var(--transition), border-color var(--transition), transform var(--transition);
@@ -2572,7 +2572,7 @@ kbd {
   align-items: center;
   gap: 12px;
   color: #648fbc;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .user-sidebar-shell__status-dot {
@@ -2666,7 +2666,7 @@ kbd {
 
 .user-topbar__title {
   margin: 0;
-  font-size: 24px;
+  font-size: 20px;
   line-height: 1;
   letter-spacing: -0.04em;
   color: var(--text-primary);
@@ -2896,8 +2896,8 @@ kbd {
 
 .portal-page__title {
   margin: 0;
-  font-size: clamp(2rem, 4vw, 3rem);
-  line-height: 0.98;
+  font-size: clamp(1.6rem, 3vw, 2.3rem);
+  line-height: 1.02;
   letter-spacing: -0.05em;
   color: var(--text-primary);
 }
@@ -2946,7 +2946,7 @@ kbd {
 
 .portal-surface__title {
   margin: 0;
-  font-size: 22px;
+  font-size: 18px;
   letter-spacing: -0.04em;
   color: var(--text-primary);
 }
@@ -2982,7 +2982,7 @@ kbd {
 .portal-stat-card__value {
   display: block;
   margin: 10px 0 8px;
-  font-size: 30px;
+  font-size: 24px;
   line-height: 1;
   letter-spacing: -0.05em;
   color: var(--text-primary);

@@ -539,7 +539,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := strings.TrimPrefix(r.URL.Path, "/api/devops/templates/")
+	path := strings.TrimPrefix(r.URL.Path, "/api/devops/templates")
 	path = strings.Trim(path, "/")
 	w.Header().Set("Content-Type", "application/json")
 	if path == "" {
