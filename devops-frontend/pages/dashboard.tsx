@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
+import type { CSSProperties } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -6,6 +7,8 @@ import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const WEEK_IN_MS = 7 * DAY_IN_MS;
 
 interface Ticket {
   id: number;
@@ -33,6 +36,101 @@ interface DevOpsTeam {
   team_type: string;
 }
 
+interface TeamSummary {
+  team: string;
+  in_progress: number;
+  completed: number;
+  rejected: number;
+  pending_approval: number;
+  other: number;
+  total: number;
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  pending_approval: 'Pending approval',
+  pending_user_manager_approval: 'Pending user manager',
+  pending_devops_approval: 'Pending DevOps',
+  in_progress: 'In progress',
+  completed: 'Completed',
+  rejected: 'Rejected',
+};
+
+const STATUS_DESCRIPTIONS: Record<string, string> = {
+  approval_queue: 'Requests waiting on human sign-off before engineering work starts.',
+  pending_devops_approval: 'Requests ready for platform triage and intake.',
+  in_progress: 'Changes actively moving through implementation and validation.',
+  completed: 'Delivered requests with the latest successful outcome.',
+};
+
+function formatStatus(status: string): string {
+  return STATUS_LABELS[status] || status.replace(/_/g, ' ');
+}
+
+function normalizePriority(priority: string): 'critical' | 'high' | 'medium' | 'low' {
+  const value = priority.toLowerCase();
+  if (value.includes('critical') || value.includes('p0')) return 'critical';
+  if (value.includes('high') || value.includes('urgent') || value.includes('p1')) return 'high';
+  if (value.includes('medium') || value.includes('normal') || value.includes('p2')) return 'medium';
+  return 'low';
+}
+
+function formatPriority(priority: string): string {
+  const normalized = normalizePriority(priority);
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function isPendingStatus(status: string): boolean {
+  return status === 'pending_approval' || status === 'pending_user_manager_approval' || status === 'pending_devops_approval';
+}
+
+function isClosedStatus(status: string): boolean {
+  return status === 'completed' || status === 'rejected';
+}
+
+function getStatusBadgeClass(status: string): string {
+  switch (status) {
+    case 'completed':
+      return 'ticket-status ticket-status--success';
+    case 'rejected':
+      return 'ticket-status ticket-status--danger';
+    case 'in_progress':
+      return 'ticket-status ticket-status--info';
+    case 'pending_approval':
+    case 'pending_user_manager_approval':
+    case 'pending_devops_approval':
+      return 'ticket-status ticket-status--warning';
+    default:
+      return 'ticket-status ticket-status--default';
+  }
+}
+
+function getPriorityClass(priority: string): string {
+  return `devops-ticket-priority devops-ticket-priority--${normalizePriority(priority)}`;
+}
+
+function getCloudClass(cloud: string): string {
+  const normalized = cloud.toLowerCase();
+  if (normalized === 'aws' || normalized === 'gcp' || normalized === 'azure') {
+    return `devops-ticket-cloud devops-ticket-cloud--${normalized}`;
+  }
+  return 'devops-ticket-cloud';
+}
+
+function formatShortDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatCompactCount(value: number): string {
+  return new Intl.NumberFormat().format(value);
+}
+
 export default function DevOpsDashboard() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -41,6 +139,7 @@ export default function DevOpsDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [statusFilter, setStatusFilter] = useState('');
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -84,146 +183,480 @@ export default function DevOpsDashboard() {
       .catch(() => {});
   }, [apiUrl]);
 
-  const [statusFilter, setStatusFilter] = useState<string>('');
-
-  const teamStatus = useMemo(() => {
-    const byTeam: Record<string, { in_progress: number; completed: number; rejected: number; pending_approval: number; other: number }> = {};
-    tickets.forEach((t) => {
-      const team = t.team || 'Other';
-      if (!byTeam[team]) byTeam[team] = { in_progress: 0, completed: 0, rejected: 0, pending_approval: 0, other: 0 };
-      if (t.status === 'in_progress') byTeam[team].in_progress += 1;
-      else if (t.status === 'completed') byTeam[team].completed += 1;
-      else if (t.status === 'rejected') byTeam[team].rejected += 1;
-      else if (t.status === 'pending_approval' || t.status === 'pending_devops_approval') byTeam[team].pending_approval += 1;
-      else byTeam[team].other += 1;
+  const sortedTickets = useMemo(() => {
+    return [...tickets].sort((left, right) => {
+      return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
     });
-    return Object.entries(byTeam).map(([team, counts]) => ({
-      team,
-      ...counts,
-      total: counts.in_progress + counts.completed + counts.rejected + counts.pending_approval + counts.other,
-    }));
+  }, [tickets]);
+
+  const teamStatus = useMemo<TeamSummary[]>(() => {
+    const byTeam: Record<string, TeamSummary> = {};
+    tickets.forEach((ticket) => {
+      const team = ticket.team || 'Other';
+      if (!byTeam[team]) {
+        byTeam[team] = {
+          team,
+          in_progress: 0,
+          completed: 0,
+          rejected: 0,
+          pending_approval: 0,
+          other: 0,
+          total: 0,
+        };
+      }
+      const entry = byTeam[team];
+      entry.total += 1;
+      if (ticket.status === 'in_progress') entry.in_progress += 1;
+      else if (ticket.status === 'completed') entry.completed += 1;
+      else if (ticket.status === 'rejected') entry.rejected += 1;
+      else if (isPendingStatus(ticket.status)) entry.pending_approval += 1;
+      else entry.other += 1;
+    });
+    return Object.values(byTeam).sort((left, right) => right.total - left.total);
   }, [tickets]);
 
   const filteredTickets = useMemo(() => {
-    if (!statusFilter) return tickets;
-    return tickets.filter((t) => t.status === statusFilter);
-  }, [tickets, statusFilter]);
+    if (!statusFilter) return sortedTickets;
+    return sortedTickets.filter((ticket) => ticket.status === statusFilter);
+  }, [sortedTickets, statusFilter]);
+
+  const pendingApprovalCount = stats?.pending_approval ?? tickets.filter((ticket) => isPendingStatus(ticket.status)).length;
+  const inProgressCount = stats?.in_progress ?? tickets.filter((ticket) => ticket.status === 'in_progress').length;
+  const completedCount = tickets.filter((ticket) => ticket.status === 'completed').length;
+  const rejectedCount = tickets.filter((ticket) => ticket.status === 'rejected').length;
+  const openCount = tickets.filter((ticket) => !isClosedStatus(ticket.status)).length;
+  const highRiskCount = tickets.filter((ticket) => {
+    return !isClosedStatus(ticket.status) && ['critical', 'high'].includes(normalizePriority(ticket.priority));
+  }).length;
+  const updatedLast24Hours = tickets.filter((ticket) => {
+    return Date.now() - new Date(ticket.updated_at).getTime() <= DAY_IN_MS;
+  }).length;
+  const resolvedLastWeek = tickets.filter((ticket) => {
+    return ticket.status === 'completed' && Date.now() - new Date(ticket.updated_at).getTime() <= WEEK_IN_MS;
+  }).length;
+  const completionRate = tickets.length ? Math.round((completedCount / tickets.length) * 100) : 0;
+  const activeTeamCount = teamStatus.filter((team) => team.total > 0).length;
+  const safeCompletionRate = Math.max(0, Math.min(100, completionRate));
+
+  const workflowLanes = useMemo(() => {
+    const laneDefinitions = [
+      {
+        key: 'approval_queue',
+        label: 'Approval queue',
+        tone: 'amber',
+        matches: (ticket: Ticket) => ticket.status === 'pending_approval' || ticket.status === 'pending_user_manager_approval',
+      },
+      {
+        key: 'pending_devops_approval',
+        label: 'DevOps intake',
+        tone: 'sky',
+        matches: (ticket: Ticket) => ticket.status === 'pending_devops_approval',
+      },
+      {
+        key: 'in_progress',
+        label: 'In progress',
+        tone: 'teal',
+        matches: (ticket: Ticket) => ticket.status === 'in_progress',
+      },
+      {
+        key: 'completed',
+        label: 'Completed',
+        tone: 'green',
+        matches: (ticket: Ticket) => ticket.status === 'completed',
+      },
+    ] as const;
+
+    return laneDefinitions.map((lane) => {
+      const laneTickets = sortedTickets.filter(lane.matches);
+      return {
+        ...lane,
+        count: laneTickets.length,
+        tickets: laneTickets.slice(0, 3),
+        description: STATUS_DESCRIPTIONS[lane.key],
+      };
+    });
+  }, [sortedTickets]);
+
+  const urgentTickets = useMemo(() => {
+    return sortedTickets
+      .filter((ticket) => !isClosedStatus(ticket.status) && ['critical', 'high'].includes(normalizePriority(ticket.priority)))
+      .slice(0, 4);
+  }, [sortedTickets]);
+
+  const recentActivity = useMemo(() => sortedTickets.slice(0, 6), [sortedTickets]);
+
+  const teamPulse = useMemo(() => {
+    const zeroState = (): TeamSummary => ({
+      team: '',
+      in_progress: 0,
+      completed: 0,
+      rejected: 0,
+      pending_approval: 0,
+      other: 0,
+      total: 0,
+    });
+
+    const merged = teams.map((team) => {
+      const summary = teamStatus.find((entry) => entry.team === team.name) || zeroState();
+      return {
+        ...summary,
+        team: team.name,
+      };
+    });
+
+    const extras = teamStatus.filter((entry) => !teams.some((team) => team.name === entry.team));
+    return [...merged, ...extras].sort((left, right) => right.total - left.total);
+  }, [teams, teamStatus]);
+
+  const quickActions = [
+    {
+      href: '/templates/new',
+      label: 'Launch template',
+      description: 'Start a new golden-path infrastructure request.',
+    },
+    pendingApprovalCount > 0
+      ? {
+          href: '/workload',
+          label: 'Review backlog',
+          description: `${formatCompactCount(pendingApprovalCount)} approvals need attention.`,
+        }
+      : {
+          href: '/templates',
+          label: 'Template library',
+          description: 'Browse reusable delivery flows and scaffolds.',
+        },
+    {
+      href: '/credential-audit',
+      label: 'Credential audit',
+      description: 'Check secrets hygiene and ownership before the next release.',
+    },
+    {
+      href: '/profile',
+      label: 'Profile setup',
+      description: 'Keep role, level, and ownership details current.',
+    },
+  ];
+
+  const heroGaugeStyle: CSSProperties = {
+    background: `conic-gradient(var(--color-primary) 0 ${safeCompletionRate}%, rgba(148, 163, 184, 0.18) ${safeCompletionRate}% 100%)`,
+  };
 
   return (
     <>
       <Head>
-        <title>My tickets - InfraGate DevOps</title>
+        <title>Mission Control - InfraGate DevOps</title>
       </Head>
       <DevOpsLayout>
-        <div className="container">
-          <div className="devops-dashboard-header">
-            <h1 className="devops-dashboard-header__title">My tickets</h1>
-            <p className="devops-dashboard-header__subtitle">Review and track infrastructure requests assigned to your teams</p>
-          </div>
-          {stats != null && (
-            <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-              <div className="stat-card">
-                <div className="stat-card-label">Pending your approval</div>
-                <div className="stat-card-value">{stats.pending_approval}</div>
-                <Link href="/workload" className="stat-card-link">Review on Workload →</Link>
-              </div>
-              <div className="stat-card">
-                <div className="stat-card-label">In progress</div>
-                <div className="stat-card-value">{stats.in_progress}</div>
+        <div className="devops-portal">
+          <section className="devops-portal__hero">
+            <div className="devops-portal__hero-copy">
+              <span className="devops-portal__eyebrow">New DevOps Portal</span>
+              <h1 className="devops-portal__headline">Mission control for infrastructure delivery</h1>
+              <p className="devops-portal__subhead">
+                Track approvals, active changes, and release pressure from a single control surface built for platform teams.
+              </p>
+              <div className="devops-portal__chips">
+                <span className="devops-portal__chip">{loading ? 'Syncing ticket feed' : 'Live queue online'}</span>
+                <span className="devops-portal__chip">{formatCompactCount(openCount)} open threads</span>
+                <span className="devops-portal__chip">{formatCompactCount(Math.max(activeTeamCount, teams.length))} teams in view</span>
               </div>
             </div>
-          )}
 
-          {/* Team status – my DevOps teams & ticket status by team */}
-          <div className="card" style={{ marginBottom: 24 }}>
-            <h2 className="card-title">Team status</h2>
-            {teams.length === 0 && teamStatus.length === 0 ? (
-              <p className="empty-state" style={{ margin: 0 }}>You are not in any DevOps teams yet. Ticket status by team will appear here once you have teams and tickets.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {teams.length > 0 && (
+            <div className="devops-hero-pulse">
+              <div className="devops-hero-pulse__gauge" style={heroGaugeStyle}>
+                <div className="devops-hero-pulse__gauge-center">
+                  <strong>{safeCompletionRate}%</strong>
+                  <span>resolved</span>
+                </div>
+              </div>
+              <div className="devops-hero-pulse__body">
+                <span className="devops-hero-pulse__label">System pulse</span>
+                <p className="devops-hero-pulse__copy">
+                  Delivery completion across {formatCompactCount(tickets.length)} tracked requests.
+                </p>
+                <div className="devops-hero-pulse__metrics">
                   <div>
-                    <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 8 }}>My teams</h3>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {teams.map((t) => (
-                        <Link key={t.id} href="/team" className="devops-team-pill">
-                          {t.name}
+                    <span>Backlog</span>
+                    <strong>{formatCompactCount(pendingApprovalCount)}</strong>
+                  </div>
+                  <div>
+                    <span>In flight</span>
+                    <strong>{formatCompactCount(inProgressCount)}</strong>
+                  </div>
+                  <div>
+                    <span>Resolved 7d</span>
+                    <strong>{formatCompactCount(resolvedLastWeek)}</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {error && <div className="alert alert-error">{error}</div>}
+
+          <section className="devops-kpi-grid">
+            <article className="devops-kpi-card devops-kpi-card--primary">
+              <span className="devops-kpi-card__label">Open queue</span>
+              <strong className="devops-kpi-card__value">{formatCompactCount(openCount)}</strong>
+              <p className="devops-kpi-card__detail">Requests that still need action before closure.</p>
+            </article>
+            <article className="devops-kpi-card devops-kpi-card--amber">
+              <span className="devops-kpi-card__label">Awaiting approval</span>
+              <strong className="devops-kpi-card__value">{formatCompactCount(pendingApprovalCount)}</strong>
+              <p className="devops-kpi-card__detail">Human approval stages holding the delivery queue.</p>
+            </article>
+            <article className="devops-kpi-card devops-kpi-card--teal">
+              <span className="devops-kpi-card__label">Updated in 24h</span>
+              <strong className="devops-kpi-card__value">{formatCompactCount(updatedLast24Hours)}</strong>
+              <p className="devops-kpi-card__detail">Recently touched tickets across your assigned teams.</p>
+            </article>
+            <article className="devops-kpi-card devops-kpi-card--rose">
+              <span className="devops-kpi-card__label">High-risk items</span>
+              <strong className="devops-kpi-card__value">{formatCompactCount(highRiskCount)}</strong>
+              <p className="devops-kpi-card__detail">Open critical and high-priority changes requiring focus.</p>
+            </article>
+          </section>
+
+          <section className="devops-portal__grid devops-portal__grid--asymmetric">
+            <article className="devops-panel">
+              <div className="devops-panel__header">
+                <div>
+                  <span className="devops-panel__eyebrow">Workflow board</span>
+                  <h2 className="devops-panel__title">Where the queue is moving</h2>
+                </div>
+              </div>
+              <div className="devops-workflow-grid">
+                {workflowLanes.map((lane) => (
+                  <div key={lane.key} className={`devops-workflow-card devops-workflow-card--${lane.tone}`}>
+                    <div className="devops-workflow-card__top">
+                      <div>
+                        <span className="devops-workflow-card__label">{lane.label}</span>
+                        <strong className="devops-workflow-card__count">{formatCompactCount(lane.count)}</strong>
+                      </div>
+                    </div>
+                    <p className="devops-workflow-card__copy">{lane.description}</p>
+                    {lane.tickets.length === 0 ? (
+                      <p className="devops-workflow-card__empty">No tickets in this lane right now.</p>
+                    ) : (
+                      <div className="devops-workflow-card__list">
+                        {lane.tickets.map((ticket) => (
+                          <div key={ticket.id} className="devops-mini-ticket">
+                            <div className="devops-mini-ticket__top">
+                              <span className="devops-mini-ticket__id">#{ticket.id}</span>
+                              <span className={getPriorityClass(ticket.priority)}>{formatPriority(ticket.priority)}</span>
+                            </div>
+                            <strong className="devops-mini-ticket__service">{ticket.service}</strong>
+                            <div className="devops-mini-ticket__meta">
+                              <span>{ticket.team || 'Unassigned'}</span>
+                              <span>{formatShortDate(ticket.updated_at)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </article>
+
+            <article className="devops-panel">
+              <div className="devops-panel__header">
+                <div>
+                  <span className="devops-panel__eyebrow">Operator radar</span>
+                  <h2 className="devops-panel__title">What needs attention next</h2>
+                </div>
+              </div>
+
+              <div className="devops-insight-grid">
+                <div className="devops-insight-card">
+                  <span className="devops-insight-card__label">Resolved 7d</span>
+                  <strong className="devops-insight-card__value">{formatCompactCount(resolvedLastWeek)}</strong>
+                </div>
+                <div className="devops-insight-card">
+                  <span className="devops-insight-card__label">Rejected</span>
+                  <strong className="devops-insight-card__value">{formatCompactCount(rejectedCount)}</strong>
+                </div>
+                <div className="devops-insight-card">
+                  <span className="devops-insight-card__label">Assigned teams</span>
+                  <strong className="devops-insight-card__value">{formatCompactCount(Math.max(activeTeamCount, teams.length))}</strong>
+                </div>
+                <div className="devops-insight-card">
+                  <span className="devops-insight-card__label">In progress</span>
+                  <strong className="devops-insight-card__value">{formatCompactCount(inProgressCount)}</strong>
+                </div>
+              </div>
+
+              <div className="devops-focus-card">
+                <div className="devops-focus-card__header">
+                  <h3 className="devops-focus-card__title">Priority focus</h3>
+                  <span className="devops-focus-card__meta">{formatCompactCount(highRiskCount)} active</span>
+                </div>
+                {urgentTickets.length === 0 ? (
+                  <p className="devops-focus-card__empty">No critical or high-priority tickets are open.</p>
+                ) : (
+                  <div className="devops-focus-list">
+                    {urgentTickets.map((ticket) => (
+                      <div key={ticket.id} className="devops-focus-item">
+                        <div>
+                          <strong>#{ticket.id}</strong>
+                          <p>{ticket.service}</p>
+                        </div>
+                        <div className="devops-focus-item__meta">
+                          <span className={getStatusBadgeClass(ticket.status)}>{formatStatus(ticket.status)}</span>
+                          <span className={getPriorityClass(ticket.priority)}>{formatPriority(ticket.priority)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="devops-action-grid">
+                {quickActions.map((action) => (
+                  <Link key={action.href} href={action.href} className="devops-action-card">
+                    <span className="devops-action-card__label">{action.label}</span>
+                    <p className="devops-action-card__copy">{action.description}</p>
+                  </Link>
+                ))}
+              </div>
+            </article>
+          </section>
+
+          <section className="devops-portal__grid">
+            <article className="devops-panel">
+              <div className="devops-panel__header">
+                <div>
+                  <span className="devops-panel__eyebrow">Team pulse</span>
+                  <h2 className="devops-panel__title">Capacity across assigned teams</h2>
+                </div>
+              </div>
+              {teamPulse.length === 0 ? (
+                <div className="empty-state">
+                  <p>You are not in any DevOps teams yet. Team health appears here once teams are assigned.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="devops-team-grid">
+                    {teamPulse.slice(0, 6).map((team) => {
+                      const total = team.total || 1;
+                      const pendingWidth = `${(team.pending_approval / total) * 100}%`;
+                      const progressWidth = `${(team.in_progress / total) * 100}%`;
+                      const completedWidth = `${(team.completed / total) * 100}%`;
+                      const tone = team.pending_approval + team.in_progress > team.completed ? 'active' : 'stable';
+                      return (
+                        <div key={team.team} className="devops-team-card">
+                          <div className="devops-team-card__top">
+                            <div>
+                              <strong className="devops-team-card__name">{team.team}</strong>
+                              <p className="devops-team-card__copy">
+                                {formatCompactCount(team.total)} tickets across approval, delivery, and closeout.
+                              </p>
+                            </div>
+                            <span className={`devops-team-card__tone devops-team-card__tone--${tone}`}>
+                              {team.pending_approval + team.in_progress > team.completed ? 'Hot' : 'Stable'}
+                            </span>
+                          </div>
+                          <div className="devops-team-card__bar">
+                            <span className="devops-team-card__segment devops-team-card__segment--amber" style={{ width: pendingWidth }} />
+                            <span className="devops-team-card__segment devops-team-card__segment--teal" style={{ width: progressWidth }} />
+                            <span className="devops-team-card__segment devops-team-card__segment--green" style={{ width: completedWidth }} />
+                          </div>
+                          <div className="devops-team-card__stats">
+                            <span>Pending {team.pending_approval}</span>
+                            <span>Active {team.in_progress}</span>
+                            <span>Done {team.completed}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {teams.length > 0 && (
+                    <div className="devops-team-pill-row">
+                      {teams.map((team) => (
+                        <Link key={team.id} href="/team" className="devops-team-pill">
+                          {team.name}
                         </Link>
                       ))}
                     </div>
-                  </div>
-                )}
-                {teamStatus.length > 0 && (
-                  <div>
-                    <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 8 }}>Ticket status by team</h3>
-                    <div className="table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Team</th>
-                            <th>Total</th>
-                            <th>In progress</th>
-                            <th>Completed</th>
-                            <th>Rejected</th>
-                            <th>Pending approval</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {teamStatus.map((row) => (
-                            <tr key={row.team}>
-                              <td><strong>{row.team}</strong></td>
-                              <td>{row.total}</td>
-                              <td>{row.in_progress}</td>
-                              <td>{row.completed}</td>
-                              <td>{row.rejected}</td>
-                              <td>{row.pending_approval}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+                  )}
+                </>
+              )}
+            </article>
 
-          {error && <div className="alert alert-error">{error}</div>}
-          {loading ? (
-            <p className="loading-text">Loading…</p>
-          ) : tickets.length === 0 ? (
-            <div className="card">
-              <div className="empty-state">
-                <p>No tickets assigned to you yet. Tickets appear here after an admin approves a request and a PR is created.</p>
+            <article className="devops-panel">
+              <div className="devops-panel__header">
+                <div>
+                  <span className="devops-panel__eyebrow">Activity feed</span>
+                  <h2 className="devops-panel__title">Latest ticket movement</h2>
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="card">
-              <div className="devops-tickets-filter">
-                <label className="devops-filter-label">Status</label>
+              {recentActivity.length === 0 ? (
+                <div className="empty-state">
+                  <p>No ticket activity yet. New work will appear here as requests move through the queue.</p>
+                </div>
+              ) : (
+                <div className="devops-activity-feed">
+                  {recentActivity.map((ticket) => (
+                    <div key={ticket.id} className="devops-activity-item">
+                      <div className="devops-activity-item__left">
+                        <strong className="devops-activity-item__title">#{ticket.id} {ticket.service}</strong>
+                        <p className="devops-activity-item__copy">
+                          {ticket.team || 'Unassigned'} | {ticket.cloud} | {ticket.env}
+                        </p>
+                      </div>
+                      <div className="devops-activity-item__right">
+                        <span className={getStatusBadgeClass(ticket.status)}>{formatStatus(ticket.status)}</span>
+                        <span className="devops-activity-item__time">{formatShortDate(ticket.updated_at)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
+          </section>
+
+          <section className="devops-panel">
+            <div className="devops-panel__header devops-panel__header--table">
+              <div>
+                <span className="devops-panel__eyebrow">Ticket explorer</span>
+                <h2 className="devops-panel__title">Recent requests</h2>
+              </div>
+              <div className="devops-table-controls">
+                <label className="devops-filter-label" htmlFor="dashboard-status-filter">
+                  Status
+                </label>
                 <select
+                  id="dashboard-status-filter"
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="input"
-                  style={{ width: 'auto', minWidth: 140 }}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                  className="input devops-table-controls__select"
                 >
                   <option value="">All</option>
+                  <option value="pending_approval">Pending approval</option>
+                  <option value="pending_user_manager_approval">Pending user manager</option>
+                  <option value="pending_devops_approval">Pending DevOps</option>
                   <option value="in_progress">In progress</option>
                   <option value="completed">Completed</option>
                   <option value="rejected">Rejected</option>
-                  <option value="pending_approval">Pending approval</option>
-                  <option value="pending_devops_approval">Pending DevOps</option>
                 </select>
               </div>
+            </div>
+
+            {loading ? (
+              <p className="loading-text">Loading dashboard...</p>
+            ) : tickets.length === 0 ? (
+              <div className="empty-state">
+                <p>No tickets assigned to you yet. Tickets appear here after an admin approves a request and a PR is created.</p>
+              </div>
+            ) : (
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th>Ticket #</th>
-                      <th>Team</th>
-                      <th>Env</th>
-                      <th>Cloud</th>
+                      <th>Ticket</th>
                       <th>Service</th>
+                      <th>Team</th>
+                      <th>Cloud</th>
                       <th>Priority</th>
                       <th>Status</th>
                       <th>PR</th>
@@ -233,26 +666,50 @@ export default function DevOpsDashboard() {
                   <tbody>
                     {filteredTickets.length === 0 ? (
                       <tr>
-                        <td colSpan={9} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 24 }}>No tickets match the filter.</td>
+                        <td colSpan={8} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 24 }}>
+                          No tickets match the filter.
+                        </td>
                       </tr>
-                    ) : filteredTickets.map((t) => (
-                      <tr key={t.id}>
-                        <td><code>#{t.id}</code></td>
-                        <td>{t.team}</td>
-                        <td>{t.env}</td>
-                        <td>{t.cloud}</td>
-                        <td>{t.service}</td>
-                        <td>{t.priority}</td>
-                        <td>{t.status}</td>
-                        <td>{t.pr_url ? <a href={t.pr_url} target="_blank" rel="noopener noreferrer">Open PR</a> : '-'}</td>
-                        <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{new Date(t.updated_at).toLocaleString()}</td>
-                      </tr>
-                    ))}
+                    ) : (
+                      filteredTickets.slice(0, 12).map((ticket) => (
+                        <tr key={ticket.id}>
+                          <td>
+                            <code>#{ticket.id}</code>
+                          </td>
+                          <td>
+                            <div className="devops-ticket-cell">
+                              <strong>{ticket.service}</strong>
+                              {ticket.application_id && <span>{ticket.application_id}</span>}
+                            </div>
+                          </td>
+                          <td>{ticket.team || 'Unassigned'}</td>
+                          <td>
+                            <span className={getCloudClass(ticket.cloud)}>{ticket.cloud}</span>
+                          </td>
+                          <td>
+                            <span className={getPriorityClass(ticket.priority)}>{formatPriority(ticket.priority)}</span>
+                          </td>
+                          <td>
+                            <span className={getStatusBadgeClass(ticket.status)}>{formatStatus(ticket.status)}</span>
+                          </td>
+                          <td>
+                            {ticket.pr_url ? (
+                              <a href={ticket.pr_url} target="_blank" rel="noopener noreferrer" className="devops-ticket-pr-link">
+                                Open PR
+                              </a>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td className="devops-ticket-updated">{formatShortDate(ticket.updated_at)}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
+            )}
+          </section>
         </div>
       </DevOpsLayout>
     </>
