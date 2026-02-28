@@ -2769,3 +2769,253 @@ code { background: var(--color-surface-elevated); color: var(--color-primary); p
   background: rgba(255, 255, 255, 0.96);
   border-color: #e2e8f0;
 }
+
+/* Cyber ops theme override */
+:root {
+  --font-display: 'Orbitron', 'IBM Plex Mono', monospace;
+  --font-sans: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  --color-bg: #020814;
+  --color-bg-subtle: #06101d;
+  --color-bg-header: rgba(2, 8, 20, 0.96);
+  --color-surface: #04111f;
+  --color-surface-elevated: #071629;
+  --color-border: rgba(27, 92, 149, 0.58);
+  --color-border-subtle: rgba(18, 58, 96, 0.92);
+  --color-text: #8fb3d9;
+  --color-text-muted: #52779f;
+  --color-primary: #11d8ff;
+  --color-primary-hover: #67e8ff;
+  --color-primary-light: rgba(17, 216, 255, 0.12);
+  --color-success: #00d084;
+  --color-warning: #ffb000;
+  --color-danger: #ff7b54;
+  --sidebar-bg: #030c18;
+  --sidebar-border: rgba(18, 58, 96, 0.92);
+  --sidebar-hover: rgba(7, 28, 52, 0.82);
+  --sidebar-active-bg: rgba(9, 41, 74, 0.96);
+  --sidebar-active-border: #0f6ab8;
+}
+
+body {
+  font-family: var(--font-sans);
+  letter-spacing: 0.01em;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.25)),
+    #020814;
+  color: var(--color-text);
+}
+
+a,
+.btn,
+.input,
+select,
+textarea,
+th,
+td,
+.devops-navbar__username,
+.devops-navbar__profile-label,
+.devops-sidebar-new__label,
+.devops-sidebar-new__summary-copy,
+.portal-surface__subtitle,
+.portal-stat-card__copy,
+.portal-kv__value,
+.portal-pill,
+.portal-badge,
+.portal-list__item p,
+.portal-member-list__meta {
+  font-family: var(--font-sans);
+}
+
+.devops-layout {
+  background:
+    linear-gradient(180deg, rgba(1, 7, 18, 0.98), rgba(2, 8, 20, 1)),
+    #020814;
+}
+
+.devops-sidebar-new,
+.devops-navbar,
+.card,
+.portal-surface,
+.portal-stat-card,
+.portal-template-card,
+.portal-list__item,
+.portal-member-list__item,
+.devops-kpi-card,
+.devops-workflow-card,
+.devops-focus-card,
+.devops-action-card,
+.devops-insight-card,
+.devops-mini-ticket,
+.devops-team-card,
+.devops-hero-pulse,
+.devops-tickets-filter-card,
+.devops-tickets-table-card,
+.table-wrap {
+  background: rgba(3, 12, 24, 0.96);
+  border-color: rgba(18, 58, 96, 0.92);
+  box-shadow: none;
+}
+
+.devops-sidebar-new,
+.devops-navbar,
+.portal-surface,
+.portal-stat-card,
+.portal-template-card,
+.portal-list__item,
+.portal-member-list__item,
+.table-wrap {
+  border-radius: 18px;
+}
+
+.devops-sidebar-new__brand-text,
+.devops-sidebar-new__eyebrow,
+.devops-navbar__title,
+.devops-navbar__kicker,
+.portal-page__eyebrow,
+.portal-page__title,
+.portal-surface__eyebrow,
+.portal-surface__title,
+.portal-stat-card__label,
+.portal-kv__label,
+.portal-template-card__name,
+.devops-kpi-card__label,
+.devops-section-label,
+.devops-team-card__title,
+.devops-mini-ticket__title {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.devops-navbar__title,
+.portal-page__title,
+.portal-surface__title {
+  color: var(--color-primary);
+  text-shadow: 0 0 12px rgba(17, 216, 255, 0.12);
+}
+
+.devops-sidebar-new__brand-text,
+.devops-sidebar-new__eyebrow,
+.devops-navbar__kicker,
+.portal-page__eyebrow,
+.portal-surface__eyebrow,
+.portal-stat-card__label,
+.portal-kv__label {
+  color: #2d8bd3;
+}
+
+.btn {
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-ghost {
+  background: rgba(5, 20, 38, 0.98);
+  border: 1px solid rgba(32, 118, 191, 0.9);
+  color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px rgba(17, 216, 255, 0.08);
+}
+
+.btn-primary:hover:not(:disabled),
+.btn-secondary:hover:not(:disabled),
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(8, 31, 56, 0.98);
+  border-color: var(--color-primary);
+  color: #aaf2ff;
+  transform: none;
+  box-shadow: 0 0 0 1px rgba(17, 216, 255, 0.16);
+}
+
+.input,
+select.input,
+textarea.input,
+.devops-tickets-filter-input {
+  background: rgba(2, 10, 21, 0.98);
+  border-color: rgba(32, 118, 191, 0.72);
+  border-radius: 12px;
+  color: #d1e7ff;
+}
+
+.input::placeholder,
+.devops-tickets-filter-input::placeholder {
+  color: #476b92;
+}
+
+.input:focus,
+select.input:focus,
+textarea.input:focus,
+.devops-tickets-filter-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px rgba(17, 216, 255, 0.22);
+}
+
+th,
+.devops-tickets-table th,
+.credential-audit-table th {
+  background: rgba(4, 17, 31, 1);
+  color: #2d8bd3;
+}
+
+td {
+  color: var(--color-text);
+}
+
+tbody tr:hover,
+.devops-tickets-table tbody tr:hover td {
+  background: rgba(7, 28, 52, 0.82);
+}
+
+.devops-navbar__status-chip {
+  background: transparent;
+  border-color: rgba(0, 208, 132, 0.56);
+  color: #00d084;
+}
+
+.devops-navbar__status-chip--alert,
+.devops-navbar__approval-badge {
+  background: transparent;
+  border: 1px solid rgba(255, 176, 0, 0.44);
+  color: var(--color-warning);
+}
+
+.devops-navbar__role,
+.portal-pill,
+.portal-badge--neutral {
+  background: rgba(5, 20, 38, 0.98);
+  border: 1px solid rgba(32, 118, 191, 0.72);
+  color: #83c7ff;
+}
+
+.portal-badge--success {
+  background: rgba(0, 208, 132, 0.08);
+  color: #00d084;
+}
+
+.portal-badge--warning {
+  background: rgba(255, 176, 0, 0.08);
+  color: var(--color-warning);
+}
+
+.portal-avatar,
+.devops-navbar__avatar,
+.devops-navbar__dropdown-avatar {
+  background: rgba(6, 28, 52, 0.98);
+  border: 1px solid rgba(32, 118, 191, 0.72);
+  color: var(--color-primary);
+  box-shadow: none;
+}
+
+[data-theme="light"] body {
+  background:
+    linear-gradient(180deg, rgba(240, 247, 255, 0.9), rgba(225, 239, 255, 0.95)),
+    #e8f3ff;
+}
+
+[data-theme="light"] .devops-layout {
+  background:
+    linear-gradient(180deg, rgba(235, 245, 255, 0.96), rgba(220, 236, 255, 1)),
+    #e8f3ff;
+}

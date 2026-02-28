@@ -2782,3 +2782,328 @@ tbody tr:hover {
   background: #ffffff;
   border-color: #dbe4f0;
 }
+
+/* Cyber ops theme override */
+:root {
+  --font-display: 'Orbitron', 'IBM Plex Mono', monospace;
+  --font-sans: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  --color-bg: #020814;
+  --color-bg-subtle: #06101d;
+  --color-bg-header: rgba(2, 8, 20, 0.96);
+  --color-surface: #04111f;
+  --color-surface-elevated: #071629;
+  --color-border: rgba(27, 92, 149, 0.58);
+  --color-border-light: rgba(18, 58, 96, 0.92);
+  --color-text: #8fb3d9;
+  --color-text-muted: #52779f;
+  --color-primary: #11d8ff;
+  --color-primary-hover: #67e8ff;
+  --color-primary-light: rgba(17, 216, 255, 0.12);
+  --primary-color: #11d8ff;
+  --primary-dark: #0da8d4;
+  --primary-hover: #67e8ff;
+  --primary-light: #11d8ff;
+  --primary-gradient: none;
+  --primary-tint: rgba(17, 216, 255, 0.12);
+  --secondary-color: #6c8fb3;
+  --bg-page: #020814;
+  --bg-surface: #04111f;
+  --bg-surface-elevated: #071629;
+  --bg-sidebar: #030c18;
+  --bg-input: #020a15;
+  --bg-button-secondary: #051426;
+  --text-primary: #8fb3d9;
+  --text-secondary: #6e93b8;
+  --text-muted: #52779f;
+  --border-color: rgba(27, 92, 149, 0.58);
+  --border-light: rgba(18, 58, 96, 0.92);
+  --card-bg: #04111f;
+  --border: rgba(27, 92, 149, 0.58);
+  --muted: #52779f;
+  --primary: #11d8ff;
+}
+
+body {
+  font-family: var(--font-sans);
+  letter-spacing: 0.01em;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.25)),
+    #020814;
+  color: var(--text-primary);
+}
+
+a,
+.btn,
+.input,
+select,
+textarea,
+th,
+td,
+.admin-topbar__workspace,
+.admin-topbar__profile-label,
+.admin-sidebar-shell__label,
+.admin-sidebar-shell__summary-copy,
+.portal-surface__subtitle,
+.portal-stat-card__copy,
+.portal-kv__value,
+.portal-pill,
+.portal-badge,
+.portal-list__item p,
+.portal-member-list__meta,
+.admin-topbar__notify-ticket span,
+.admin-topbar__notify-ticket small,
+.admin-topbar__dropdown-item,
+.modal-body {
+  font-family: var(--font-sans);
+}
+
+.admin-layout,
+.admin-shell {
+  background:
+    linear-gradient(180deg, rgba(1, 7, 18, 0.98), rgba(2, 8, 20, 1)),
+    #020814;
+}
+
+.admin-sidebar-shell,
+.admin-topbar,
+.card,
+.portal-surface,
+.portal-stat-card,
+.portal-template-card,
+.portal-list__item,
+.portal-member-list__item,
+.filters-bar,
+.table-wrap,
+.modal,
+.sla-card,
+.sla-status-list li,
+.sla-table-wrap {
+  background: rgba(3, 12, 24, 0.96);
+  border-color: rgba(18, 58, 96, 0.92);
+  box-shadow: none;
+}
+
+.admin-sidebar-shell,
+.admin-topbar,
+.portal-surface,
+.portal-stat-card,
+.portal-template-card,
+.portal-list__item,
+.portal-member-list__item,
+.filters-bar,
+.table-wrap,
+.modal,
+.sla-card,
+.sla-table-wrap {
+  border-radius: 18px;
+}
+
+.admin-sidebar-shell__brand-text,
+.admin-sidebar-shell__eyebrow,
+.admin-topbar__title,
+.admin-topbar__kicker,
+.portal-page__eyebrow,
+.portal-page__title,
+.portal-surface__eyebrow,
+.portal-surface__title,
+.portal-stat-card__label,
+.portal-kv__label,
+.portal-template-card__name,
+.admin-topbar__notify-title,
+.admin-topbar__dropdown-label,
+.modal-title,
+.sla-dashboard__header h2,
+.sla-dashboard__section h3,
+.sla-card__label {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.admin-topbar__title,
+.portal-page__title,
+.portal-surface__title,
+.admin-topbar__notify-title,
+.admin-topbar__dropdown-label,
+.modal-title,
+.sla-dashboard__header h2,
+.sla-dashboard__section h3 {
+  color: var(--primary-color);
+  text-shadow: 0 0 12px rgba(17, 216, 255, 0.12);
+}
+
+.admin-sidebar-shell__brand-text,
+.admin-sidebar-shell__eyebrow,
+.admin-topbar__kicker,
+.portal-page__eyebrow,
+.portal-surface__eyebrow,
+.portal-stat-card__label,
+.portal-kv__label,
+.sla-card__label {
+  color: #2d8bd3;
+}
+
+.btn {
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-ghost {
+  background: rgba(5, 20, 38, 0.98);
+  border: 1px solid rgba(32, 118, 191, 0.9);
+  color: var(--primary-color);
+  box-shadow: inset 0 0 0 1px rgba(17, 216, 255, 0.08);
+}
+
+.btn-primary:hover:not(:disabled),
+.btn-secondary:hover:not(:disabled),
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(8, 31, 56, 0.98);
+  border-color: var(--primary-color);
+  color: #aaf2ff;
+  transform: none;
+  box-shadow: 0 0 0 1px rgba(17, 216, 255, 0.16);
+}
+
+.input,
+select.input,
+textarea.input,
+.admin-topbar__search-input,
+.filters-bar .input {
+  background: rgba(2, 10, 21, 0.98);
+  border-color: rgba(32, 118, 191, 0.72);
+  border-radius: 12px;
+  color: #d1e7ff;
+}
+
+.input::placeholder,
+.admin-topbar__search-input::placeholder {
+  color: #476b92;
+}
+
+.input:focus,
+select.input:focus,
+textarea.input:focus,
+.admin-topbar__search-input:focus,
+.filters-bar .input:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 1px rgba(17, 216, 255, 0.22);
+}
+
+.admin-topbar__search-icon {
+  color: #2d8bd3;
+}
+
+th,
+.sla-table thead th {
+  background: rgba(4, 17, 31, 1);
+  color: #2d8bd3;
+}
+
+td,
+.sla-table td,
+.sla-card__value,
+.sla-status-list__count,
+.sla-trend__count {
+  color: var(--text-primary);
+}
+
+tbody tr:hover,
+.sla-table tbody tr:hover {
+  background: rgba(7, 28, 52, 0.82);
+}
+
+.admin-topbar__status-chip {
+  background: transparent;
+  border-color: rgba(0, 208, 132, 0.56);
+  color: #00d084;
+}
+
+.admin-topbar__status-chip--alert,
+.admin-topbar__badge {
+  background: transparent;
+  border: 1px solid rgba(255, 176, 0, 0.44);
+  color: #ffb000;
+}
+
+.admin-topbar__role,
+.portal-pill,
+.portal-badge--neutral,
+.sla-status-list li {
+  background: rgba(5, 20, 38, 0.98);
+  border: 1px solid rgba(32, 118, 191, 0.72);
+  color: #83c7ff;
+}
+
+.portal-badge--success {
+  background: rgba(0, 208, 132, 0.08);
+  color: #00d084;
+}
+
+.portal-badge--warning {
+  background: rgba(255, 176, 0, 0.08);
+  color: #ffb000;
+}
+
+.portal-avatar,
+.admin-topbar__avatar,
+.admin-topbar__dropdown-avatar {
+  background: rgba(6, 28, 52, 0.98);
+  border: 1px solid rgba(32, 118, 191, 0.72);
+  color: var(--primary-color);
+  box-shadow: none;
+}
+
+.admin-topbar__icon-btn,
+.admin-topbar__theme-toggle,
+.admin-topbar__profile-btn,
+.admin-sidebar-shell__hamburger,
+.admin-topbar__menu-btn,
+.admin-topbar__notify-panel,
+.admin-topbar__dropdown {
+  background: rgba(3, 12, 24, 0.98);
+  border-color: rgba(18, 58, 96, 0.92);
+  box-shadow: none;
+}
+
+.admin-topbar__notify-link,
+.admin-topbar__dropdown-item {
+  color: var(--primary-color);
+}
+
+.admin-topbar__notify-ticket,
+.admin-topbar__dropdown-item:hover,
+.admin-topbar__notify-link:hover,
+.admin-sidebar-shell__link:hover,
+.admin-sidebar-shell__link--active {
+  background: rgba(8, 31, 56, 0.82);
+  border-color: rgba(32, 118, 191, 0.9);
+}
+
+.sla-dashboard__loading,
+.sla-dashboard__error,
+.sla-trend__label,
+.sla-status-list__status {
+  color: var(--text-muted);
+}
+
+.sla-trend__bar {
+  background: var(--primary-color);
+  box-shadow: 0 0 10px rgba(17, 216, 255, 0.14);
+}
+
+[data-theme="light"] body {
+  background:
+    linear-gradient(180deg, rgba(240, 247, 255, 0.9), rgba(225, 239, 255, 0.95)),
+    #e8f3ff;
+}
+
+[data-theme="light"] .admin-layout,
+[data-theme="light"] .admin-shell {
+  background:
+    linear-gradient(180deg, rgba(235, 245, 255, 0.96), rgba(220, 236, 255, 1)),
+    #e8f3ff;
+}

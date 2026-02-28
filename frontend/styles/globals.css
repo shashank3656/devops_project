@@ -3548,3 +3548,271 @@ kbd {
   background: #ffffff;
   border-color: #dbe4f0;
 }
+
+/* Cyber ops theme override */
+:root {
+  --font-display: 'Orbitron', 'IBM Plex Mono', monospace;
+  --font-sans: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  --color-bg: #020814;
+  --color-bg-subtle: #06101d;
+  --color-bg-header: rgba(2, 8, 20, 0.96);
+  --color-surface: #04111f;
+  --color-surface-elevated: #071629;
+  --color-border: rgba(27, 92, 149, 0.58);
+  --color-border-light: rgba(18, 58, 96, 0.92);
+  --color-text: #8fb3d9;
+  --color-text-muted: #52779f;
+  --color-primary: #11d8ff;
+  --color-primary-hover: #67e8ff;
+  --color-primary-light: rgba(17, 216, 255, 0.12);
+  --primary-color: #11d8ff;
+  --primary-dark: #0da8d4;
+  --primary-hover: #67e8ff;
+  --primary-light: #11d8ff;
+  --primary-gradient: none;
+  --primary-tint: rgba(17, 216, 255, 0.12);
+  --secondary-color: #6c8fb3;
+  --bg-page: #020814;
+  --bg-surface: #04111f;
+  --bg-surface-elevated: #071629;
+  --bg-sidebar: #030c18;
+  --bg-input: #020a15;
+  --bg-button-secondary: #051426;
+  --text-primary: #8fb3d9;
+  --text-secondary: #6e93b8;
+  --text-muted: #52779f;
+  --border-color: rgba(27, 92, 149, 0.58);
+  --border-light: rgba(18, 58, 96, 0.92);
+}
+
+body {
+  font-family: var(--font-sans);
+  letter-spacing: 0.01em;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.25)),
+    #020814;
+  color: var(--text-primary);
+}
+
+a,
+.btn,
+.input,
+select,
+textarea,
+th,
+td,
+.user-topbar__workspace,
+.user-topbar__profile-label,
+.user-sidebar-shell__label,
+.user-sidebar-shell__summary-copy,
+.portal-surface__subtitle,
+.portal-stat-card__copy,
+.portal-kv__value,
+.portal-pill,
+.portal-badge,
+.portal-list__item p,
+.portal-member-list__meta {
+  font-family: var(--font-sans);
+}
+
+.user-shell,
+.user-layout {
+  background:
+    linear-gradient(180deg, rgba(1, 7, 18, 0.98), rgba(2, 8, 20, 1)),
+    #020814;
+}
+
+.user-sidebar-shell,
+.user-topbar,
+.card,
+.portal-surface,
+.portal-stat-card,
+.portal-template-card,
+.portal-list__item,
+.portal-member-list__item,
+.launchpad-action-card,
+.launchpad-tip,
+.launchpad-hero__pulse,
+.launchpad-activity-item,
+.request-choice-card,
+.request-cloud-card,
+.request-saved-card,
+.history-filter-card,
+.history-table-card,
+.table-wrap,
+.modal {
+  background: rgba(3, 12, 24, 0.96);
+  border-color: rgba(18, 58, 96, 0.92);
+  box-shadow: none;
+}
+
+.user-sidebar-shell,
+.user-topbar,
+.portal-surface,
+.portal-stat-card,
+.portal-template-card,
+.portal-list__item,
+.portal-member-list__item,
+.table-wrap,
+.history-filter-card,
+.history-table-card,
+.modal {
+  border-radius: 18px;
+}
+
+.user-sidebar-shell__brand-text,
+.user-sidebar-shell__eyebrow,
+.user-topbar__title,
+.user-topbar__kicker,
+.portal-page__eyebrow,
+.portal-page__title,
+.portal-surface__eyebrow,
+.portal-surface__title,
+.portal-stat-card__label,
+.portal-kv__label,
+.portal-template-card__name,
+.history-filter-label,
+.history-filter-card__title,
+.request-cloud-card__title,
+.request-saved-card__title,
+.portal-profile-hero__title {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.user-topbar__title,
+.portal-page__title,
+.portal-surface__title,
+.launchpad-hero__title,
+.request-cloud-card__title,
+.request-saved-card__title,
+.portal-profile-hero__title {
+  color: var(--primary-color);
+  text-shadow: 0 0 12px rgba(17, 216, 255, 0.12);
+}
+
+.user-sidebar-shell__brand-text,
+.user-sidebar-shell__eyebrow,
+.user-topbar__kicker,
+.portal-page__eyebrow,
+.portal-surface__eyebrow,
+.portal-stat-card__label,
+.portal-kv__label,
+.history-filter-label {
+  color: #2d8bd3;
+}
+
+.btn {
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-ghost {
+  background: rgba(5, 20, 38, 0.98);
+  border: 1px solid rgba(32, 118, 191, 0.9);
+  color: var(--primary-color);
+  box-shadow: inset 0 0 0 1px rgba(17, 216, 255, 0.08);
+}
+
+.btn-primary:hover:not(:disabled),
+.btn-secondary:hover:not(:disabled),
+.btn-ghost:hover:not(:disabled),
+.launchpad-action-card:hover,
+.request-cloud-card:hover,
+.request-saved-card:hover {
+  background: rgba(8, 31, 56, 0.98);
+  border-color: var(--primary-color);
+  color: #aaf2ff;
+  transform: none;
+  box-shadow: 0 0 0 1px rgba(17, 216, 255, 0.16);
+}
+
+.input,
+select.input,
+textarea.input,
+.history-filter-input,
+.history-filter-select {
+  background: rgba(2, 10, 21, 0.98);
+  border-color: rgba(32, 118, 191, 0.72);
+  border-radius: 12px;
+  color: #d1e7ff;
+}
+
+.input::placeholder,
+.history-filter-input::placeholder {
+  color: #476b92;
+}
+
+.input:focus,
+select.input:focus,
+textarea.input:focus,
+.history-filter-input:focus,
+.history-filter-select:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 1px rgba(17, 216, 255, 0.22);
+}
+
+th,
+.history-table thead th {
+  background: rgba(4, 17, 31, 1);
+  color: #2d8bd3;
+}
+
+td {
+  color: var(--text-primary);
+}
+
+tbody tr:hover,
+.history-table tbody tr:hover {
+  background: rgba(7, 28, 52, 0.82);
+}
+
+.user-topbar__status-chip {
+  background: transparent;
+  border-color: rgba(0, 208, 132, 0.56);
+  color: #00d084;
+}
+
+.user-topbar__status-chip--alert,
+.user-topbar__approval-badge {
+  background: transparent;
+  border: 1px solid rgba(255, 176, 0, 0.44);
+  color: #ffb000;
+}
+
+.user-topbar__role,
+.portal-pill,
+.portal-badge--neutral {
+  background: rgba(5, 20, 38, 0.98);
+  border: 1px solid rgba(32, 118, 191, 0.72);
+  color: #83c7ff;
+}
+
+.portal-badge--success {
+  background: rgba(0, 208, 132, 0.08);
+  color: #00d084;
+}
+
+.portal-badge--warning {
+  background: rgba(255, 176, 0, 0.08);
+  color: #ffb000;
+}
+
+.portal-avatar,
+.user-topbar__avatar,
+.user-topbar__dropdown-avatar {
+  background: rgba(6, 28, 52, 0.98);
+  border: 1px solid rgba(32, 118, 191, 0.72);
+  color: var(--primary-color);
+  box-shadow: none;
+}
+
+[data-theme="light"] body {
+  background:
+    linear-gradient(180deg, rgba(240, 247, 255, 0.9), rgba(225, 239, 255, 0.95)),
+    #e8f3ff;
+}
