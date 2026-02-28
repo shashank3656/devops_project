@@ -191,7 +191,7 @@ export default function Profile() {
         setCreatedKeyValue(data.key);
         setNewKeyName('');
         setApiKeys((prev) => (data.api_key ? [data.api_key, ...prev] : prev));
-        toast('API key created. Copy it now; it won’t be shown again.', 'success');
+        toast('API key created. Copy it now; it will not be shown again.', 'success');
       } else {
         toast(data.error || 'Failed to create API key', 'error');
       }
@@ -331,9 +331,9 @@ export default function Profile() {
         <Head>
           <title>Profile - Infrastructure Portal</title>
         </Head>
-        <div style={{ minHeight: '100vh', padding: '40px 20px', textAlign: 'center' }}>
-          <div className="container">
-            <p style={{ color: 'var(--text-secondary)' }}>Loading profile...</p>
+        <div className="portal-page">
+          <div className="portal-surface">
+            <div className="empty-state">Loading profile...</div>
           </div>
         </div>
       </>
@@ -345,258 +345,248 @@ export default function Profile() {
       <Head>
         <title>Profile - Infrastructure Portal</title>
       </Head>
-      <div style={{ minHeight: '100vh', padding: '40px 20px' }}>
-        <div className="container" style={{ maxWidth: 720 }}>
-          {!loading && userFetched && !user ? (
-            <div className="card profile-card" style={{ textAlign: 'center', padding: 48 }}>
-              <p style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>User not found</p>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: 16 }}>You may need to sign in again.</p>
-              <button type="button" onClick={() => router.push('/login')} className="btn btn-primary">Go to login</button>
+      <div className="portal-page portal-page--narrow">
+        {!loading && userFetched && !user ? (
+          <div className="portal-surface">
+            <div className="empty-state">
+              <p>User not found. You may need to sign in again.</p>
+              <div className="portal-form-actions" style={{ justifyContent: 'center', marginTop: 16 }}>
+                <button type="button" onClick={() => router.push('/login')} className="btn btn-primary">
+                  Go to login
+                </button>
+              </div>
             </div>
-          ) : user ? (
-            <>
-              {/* Profile header */}
-              <div className="card profile-card profile-header" style={{ marginBottom: 24, padding: 24 }}> 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-                  <div className="profile-avatar" style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--primary-gradient)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700 }}>
-                    {(user.username || user.email || 'U').slice(0, 2).toUpperCase()}
+          </div>
+        ) : user ? (
+          <>
+            <section className="portal-surface">
+              <div className="portal-profile-hero">
+                <div className="portal-avatar">
+                  {(user.username || user.email || 'U').slice(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <h1 className="portal-profile-hero__title">{user.username}</h1>
+                  <p className="portal-profile-hero__meta">{user.email}</p>
+                  <div className="portal-page__actions">
+                    <span className={`portal-badge ${user.verified ? 'portal-badge--success' : 'portal-badge--warning'}`}>
+                      {user.verified ? 'Verified' : 'Not verified'}
+                    </span>
+                    <span className="portal-badge portal-badge--neutral">{user.role || 'viewer'}</span>
                   </div>
-                  <div style={{ flex: 1, minWidth: 200 }}>
-                    <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>{user.username}</h1>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 8 }}>{user.email}</p>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ padding: '4px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600, background: user.verified ? 'var(--success-bg)' : 'var(--warning-bg)', color: user.verified ? 'var(--success-color)' : 'var(--warning-color)' }}>
-                        {user.verified ? 'Verified' : 'Not verified'}
-                      </span>
-                      <span style={{ padding: '4px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600, background: 'var(--info-bg)', color: 'var(--info-color)' }}>
-                        {user.role || 'viewer'}
-                      </span>
-                    </div>
-                    {!user.verified && (
-                      <button type="button" onClick={handleResendVerification} disabled={resending} className="btn btn-secondary btn-sm" style={{ marginTop: 12 }}>
+                  {!user.verified && (
+                    <div className="portal-form-actions" style={{ marginTop: 14 }}>
+                      <button type="button" onClick={handleResendVerification} disabled={resending} className="btn btn-secondary btn-sm">
                         {resending ? 'Sending...' : 'Resend verification'}
                       </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Teams & Manager row */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginBottom: 24 }}>
-                <div className="card profile-card" style={{ padding: 20 }}>
-                  <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Teams</h3>
-                  {teams.length === 0 ? (
-                    <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>—</p>
-                  ) : (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {teams.map((t) => (
-                        <span key={t.id} style={{ padding: '6px 12px', borderRadius: 8, fontSize: 13, background: 'var(--primary-tint)', color: 'var(--primary-color)', fontWeight: 500 }}>{t.name}</span>
-                      ))}
                     </div>
                   )}
                 </div>
-                <div className="card profile-card" style={{ padding: 20 }}>
-                  <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Manager</h3>
-                  <p style={{ color: 'var(--text-primary)', fontSize: 14, fontWeight: 500 }}>{managerUsername || '—'}</p>
+              </div>
+            </section>
+
+            <section className="portal-profile-grid">
+              <article className="portal-surface portal-surface--tight">
+                <div className="portal-kv">
+                  <span className="portal-kv__label">Teams</span>
+                  <div className="portal-page__actions">
+                    {teams.length === 0 ? (
+                      <span className="portal-pill">No teams</span>
+                    ) : (
+                      teams.map((team) => <span key={team.id} className="portal-pill">{team.name}</span>)
+                    )}
+                  </div>
                 </div>
-                <div className="card profile-card" style={{ padding: 20 }}>
-                  <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Member since</h3>
-                  <p style={{ color: 'var(--text-primary)', fontSize: 14 }}>{new Date(user.created_at).toLocaleDateString()}</p>
+              </article>
+              <article className="portal-surface portal-surface--tight">
+                <div className="portal-kv">
+                  <span className="portal-kv__label">Manager</span>
+                  <span className="portal-kv__value">{managerUsername || '-'}</span>
+                </div>
+              </article>
+              <article className="portal-surface portal-surface--tight">
+                <div className="portal-kv">
+                  <span className="portal-kv__label">Member since</span>
+                  <span className="portal-kv__value">{new Date(user.created_at).toLocaleDateString()}</span>
+                </div>
+              </article>
+              <article className="portal-surface portal-surface--tight">
+                <div className="portal-kv">
+                  <span className="portal-kv__label">Authentication</span>
+                  <span className="portal-kv__value">{totpEnabled ?? user.totp_enabled ? '2FA enabled' : '2FA disabled'}</span>
+                </div>
+              </article>
+            </section>
+
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Credentials</span>
+                  <h2 className="portal-surface__title">Change password</h2>
+                </div>
+              </div>
+              <form onSubmit={handleChangePassword}>
+                <div className="portal-field-grid portal-field-grid--two">
+                  <div>
+                    <label className="label">Current password</label>
+                    <input type="password" className="input" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
+                  </div>
+                  <div>
+                    <label className="label">New password</label>
+                    <input type="password" className="input" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={6} />
+                  </div>
+                  <div>
+                    <label className="label">Confirm new password</label>
+                    <input type="password" className="input" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required minLength={6} />
+                  </div>
+                </div>
+                <div className="portal-form-actions">
+                  <button type="submit" className="btn btn-primary" disabled={changing}>
+                    {changing ? 'Updating...' : 'Update password'}
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            {notifPrefs && (
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Signal routing</span>
+                    <h2 className="portal-surface__title">Notification preferences</h2>
+                    <p className="portal-surface__subtitle">Choose which request events should reach your inbox.</p>
+                  </div>
+                </div>
+                <div className="portal-stack">
+                  {[
+                    { key: 'email_approved' as const, label: 'Request approved' },
+                    { key: 'email_rejected' as const, label: 'Request rejected' },
+                    { key: 'email_pr_created' as const, label: 'PR created' },
+                    { key: 'email_assigned' as const, label: 'Ticket assigned to me' },
+                    { key: 'email_sla_breach' as const, label: 'SLA breach or overdue' },
+                  ].map(({ key, label }) => (
+                    <label key={key} className="portal-list__item" style={{ cursor: 'pointer' }}>
+                      <span>{label}</span>
+                      <input
+                        type="checkbox"
+                        checked={notifPrefs[key]}
+                        onChange={(e) => setNotifPrefs((prev) => (prev ? { ...prev, [key]: e.target.checked } : null))}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="portal-form-actions">
+                  <button type="button" className="btn btn-primary" disabled={notifPrefsSaving} onClick={handleSaveNotifPrefs}>
+                    {notifPrefsSaving ? 'Saving...' : 'Save preferences'}
+                  </button>
+                </div>
+              </section>
+            )}
+
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Access control</span>
+                  <h2 className="portal-surface__title">Two-factor authentication</h2>
+                  <p className="portal-surface__subtitle">Email-based OTP is used during login when this control is enabled.</p>
+                </div>
+                <span className={`portal-badge ${(totpEnabled ?? user.totp_enabled) ? 'portal-badge--success' : 'portal-badge--neutral'}`}>
+                  {(totpEnabled ?? user.totp_enabled) ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+              <div className="portal-form-actions">
+                <button
+                  type="button"
+                  onClick={() => handleToggle2FA(!(totpEnabled ?? user.totp_enabled))}
+                  disabled={totpToggling}
+                  className="btn btn-secondary"
+                >
+                  {totpToggling ? 'Updating...' : (totpEnabled ?? user.totp_enabled) ? 'Disable 2FA' : 'Enable 2FA'}
+                </button>
+              </div>
+            </section>
+
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">API keys</span>
+                  <h2 className="portal-surface__title">Programmatic access</h2>
+                  <p className="portal-surface__subtitle">
+                    Create keys for request creation and history reads without browser login. Use them in the <code>Authorization: Bearer ip_xxx</code> header.
+                  </p>
                 </div>
               </div>
 
-          {user && (
-          <div className="card profile-card" style={{ marginBottom: 24, padding: 24 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>
-              Change password
-            </h2>
-            <form onSubmit={handleChangePassword}>
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: 'var(--text-secondary)' }}>
-                Current password
-              </label>
-              <input
-                type="password"
-                className="input"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                required
-                placeholder="Current password"
-                style={{ marginBottom: '16px' }}
-              />
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: 'var(--text-secondary)' }}>
-                New password
-              </label>
-              <input
-                type="password"
-                className="input"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-                minLength={6}
-                placeholder="At least 6 characters"
-                style={{ marginBottom: '16px' }}
-              />
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: 'var(--text-secondary)' }}>
-                Confirm new password
-              </label>
-              <input
-                type="password"
-                className="input"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                minLength={6}
-                placeholder="Confirm new password"
-                style={{ marginBottom: '20px' }}
-              />
-              <button type="submit" className="btn btn-primary" disabled={changing}>
-                {changing ? 'Updating...' : 'Update password'}
-              </button>
-            </form>
-          </div>
-          )}
-
-          {user && notifPrefs && (
-          <div className="card profile-card" style={{ marginBottom: 24, padding: 24 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>Notification preferences</h2>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              Choose which emails you receive for request updates.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
-              {[
-                { key: 'email_approved' as const, label: 'Request approved' },
-                { key: 'email_rejected' as const, label: 'Request rejected' },
-                { key: 'email_pr_created' as const, label: 'PR created' },
-                { key: 'email_assigned' as const, label: 'Ticket assigned to me' },
-                { key: 'email_sla_breach' as const, label: 'SLA breach / overdue' },
-              ].map(({ key, label }) => (
-                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={notifPrefs[key]}
-                    onChange={(e) => setNotifPrefs((p) => p ? { ...p, [key]: e.target.checked } : null)}
-                  />
-                  <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>{label}</span>
-                </label>
-              ))}
-            </div>
-            <button type="button" className="btn btn-primary" disabled={notifPrefsSaving} onClick={handleSaveNotifPrefs}>
-              {notifPrefsSaving ? 'Saving…' : 'Save preferences'}
-            </button>
-          </div>
-          )}
-
-          {user && (
-          <div className="card profile-card" style={{ marginBottom: 24, padding: 24 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>Two-factor authentication (2FA)</h2>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              When enabled, you will receive a 6-digit code by email on each login.
-            </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              <span style={{
-                padding: '4px 10px',
-                borderRadius: '8px',
-                fontSize: '13px',
-                fontWeight: 600,
-                background: (totpEnabled ?? user.totp_enabled) ? 'var(--success-bg)' : 'var(--info-bg)',
-                color: (totpEnabled ?? user.totp_enabled) ? 'var(--success-color)' : 'var(--info-color)',
-              }}>
-                {(totpEnabled ?? user.totp_enabled) ? '✓ 2FA enabled' : '2FA disabled'}
-              </span>
-              <button
-                type="button"
-                onClick={() => handleToggle2FA(!(totpEnabled ?? user.totp_enabled))}
-                disabled={totpToggling}
-                className="btn btn-secondary"
-                style={{ padding: '8px 16px', fontSize: '14px' }}
-              >
-                {totpToggling ? 'Updating...' : (totpEnabled ?? user.totp_enabled) ? 'Disable 2FA' : 'Enable 2FA'}
-              </button>
-            </div>
-          </div>
-          )}
-
-          {user && (
-          <div className="card profile-card" style={{ marginBottom: 24, padding: 24 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>API keys</h2>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              Create keys to call &quot;create request&quot; or &quot;get history&quot; without browser login. Use the key in the <code style={{ fontSize: '13px' }}>Authorization: Bearer ip_xxx</code> header. Scopes: <code>request:create</code>, <code>history:read</code>.
-            </p>
-            {createdKeyValue && (
-              <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--success-bg)', borderRadius: '8px' }}>
-                <strong style={{ fontSize: '13px' }}>New key (copy now — not shown again):</strong>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+              {createdKeyValue && (
+                <div className="portal-selection-bar">
+                  <span className="portal-selection-bar__count">New key created. Copy it now because it will not be shown again.</span>
                   <input
                     type="text"
+                    className="input"
                     readOnly
                     value={createdKeyValue}
                     onClick={(e) => (e.target as HTMLInputElement).select()}
-                    style={{ flex: '1', minWidth: 200, fontSize: '12px', fontFamily: 'monospace', padding: '8px 10px' }}
                     aria-label="New API key"
+                    style={{ minWidth: 260, flex: 1 }}
                   />
-                  <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '13px' }} onClick={() => copyKey(createdKeyValue)}>Copy</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => copyKey(createdKeyValue)}>
+                    Copy
+                  </button>
                 </div>
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px', marginBottom: 0 }}>If Copy fails, select the key above and copy manually (Ctrl+C / Cmd+C).</p>
-              </div>
-            )}
-            <form onSubmit={handleCreateAPIKey} style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end', marginBottom: '20px' }}>
-              <input
-                type="text"
-                className="input"
-                placeholder="Key name (e.g. CI job)"
-                value={newKeyName}
-                onChange={(e) => setNewKeyName(e.target.value)}
-                style={{ minWidth: '180px' }}
-              />
-              <input
-                type="text"
-                className="input"
-                placeholder="request:create,history:read"
-                value={newKeyScopes}
-                onChange={(e) => setNewKeyScopes(e.target.value)}
-                style={{ minWidth: '220px' }}
-              />
-              <button type="submit" className="btn btn-primary" disabled={creatingKey || !newKeyName.trim()}>
-                {creatingKey ? 'Creating…' : 'Create API key'}
-              </button>
-            </form>
-            {apiKeysLoading ? (
-              <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Loading keys…</p>
-            ) : apiKeys.length === 0 ? (
-              <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>No API keys yet.</p>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', fontSize: '14px' }}>
-                  <thead>
-                    <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}>
-                      <th style={{ padding: '8px 12px 8px 0' }}>Name</th>
-                      <th style={{ padding: '8px 12px 8px 0' }}>Scopes</th>
-                      <th style={{ padding: '8px 12px 8px 0' }}>Last used</th>
-                      <th style={{ padding: '8px 0' }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {apiKeys.map((k) => (
-                      <tr key={k.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                        <td style={{ padding: '8px 12px 8px 0', color: 'var(--text-primary)' }}>{k.name}</td>
-                        <td style={{ padding: '8px 12px 8px 0', color: 'var(--text-secondary)', fontSize: '13px' }}>{k.scopes || '—'}</td>
-                        <td style={{ padding: '8px 12px 8px 0', color: 'var(--text-secondary)' }}>{k.last_used_at ? new Date(k.last_used_at).toLocaleString() : '—'}</td>
-                        <td style={{ padding: '8px 0' }}>
-                          <button type="button" className="btn btn-danger" style={{ padding: '6px 12px', fontSize: '13px' }} disabled={revokingId === k.id} onClick={() => handleRevokeAPIKey(k.id)}>
-                            {revokingId === k.id ? 'Revoking…' : 'Revoke'}
-                          </button>
-                        </td>
+              )}
+
+              <form onSubmit={handleCreateAPIKey}>
+                <div className="portal-field-grid portal-field-grid--two">
+                  <div>
+                    <label className="label">Key name</label>
+                    <input type="text" className="input" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="CI job" />
+                  </div>
+                  <div>
+                    <label className="label">Scopes</label>
+                    <input type="text" className="input" value={newKeyScopes} onChange={(e) => setNewKeyScopes(e.target.value)} placeholder="request:create,history:read" />
+                  </div>
+                </div>
+                <div className="portal-form-actions">
+                  <button type="submit" className="btn btn-primary" disabled={creatingKey || !newKeyName.trim()}>
+                    {creatingKey ? 'Creating...' : 'Create API key'}
+                  </button>
+                </div>
+              </form>
+
+              {apiKeysLoading ? (
+                <div className="empty-state" style={{ marginTop: 16 }}>Loading keys...</div>
+              ) : apiKeys.length === 0 ? (
+                <div className="empty-state" style={{ marginTop: 16 }}>No API keys yet.</div>
+              ) : (
+                <div className="table-wrap" style={{ marginTop: 16 }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Scopes</th>
+                        <th>Last used</th>
+                        <th></th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-          )}
-            </>
-          ) : null}
-        </div>
+                    </thead>
+                    <tbody>
+                      {apiKeys.map((key) => (
+                        <tr key={key.id}>
+                          <td>{key.name}</td>
+                          <td>{key.scopes || '-'}</td>
+                          <td>{key.last_used_at ? new Date(key.last_used_at).toLocaleString() : '-'}</td>
+                          <td>
+                            <button type="button" className="btn btn-danger btn-sm" disabled={revokingId === key.id} onClick={() => handleRevokeAPIKey(key.id)}>
+                              {revokingId === key.id ? 'Revoking...' : 'Revoke'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </>
+        ) : null}
       </div>
     </>
   );

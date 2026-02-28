@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import Head from 'next/head';
-import Link from 'next/link';
 import AdminLayout from '../components/AdminLayout';
 
 interface Webhook {
@@ -166,14 +165,19 @@ export default function WebhooksPage() {
         <title>Webhooks - Admin</title>
       </Head>
       <AdminLayout>
-        <div className="container">
-          <h1 className="page-title" style={{ marginBottom: 8 }}>Webhooks</h1>
-          <p style={{ color: 'var(--color-text-muted)', marginBottom: 24, fontSize: 14 }}>
-            Outbound webhooks are called when request state changes (e.g. approved, PR created, rejected, assigned). Payload is JSON with <code>event</code>, <code>request_id</code>, and request fields. Optional secret for <code>X-Webhook-Signature: sha256=...</code>.
-          </p>
+        <div className="portal-page">
+          <div className="portal-page__header">
+            <div>
+              <span className="portal-page__eyebrow">Webhooks</span>
+              <h1 className="portal-page__title">Webhook Management</h1>
+              <p className="portal-page__subtitle">
+                Outbound webhooks fire when request status changes. Payloads include the event, request id, and request fields, with optional HMAC signing.
+              </p>
+            </div>
+          </div>
 
           {error && (
-            <div className="alert alert-error" role="alert" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+            <div className="alert alert-error" role="alert" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
               <span>{error}</span>
               <button type="button" className="btn btn-secondary" style={{ padding: '8px 16px' }} onClick={() => { setError(''); fetchWebhooks(); }}>
                 Retry
@@ -181,8 +185,14 @@ export default function WebhooksPage() {
             </div>
           )}
 
-          <div className="card" style={{ maxWidth: 640, marginBottom: 24 }}>
-            <h2 className="card-title">Add webhook</h2>
+          <div className="portal-grid">
+          <div className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Create route</span>
+                <h2 className="portal-surface__title">Add webhook</h2>
+              </div>
+            </div>
             <form onSubmit={handleCreate}>
               <div className="form-group">
                 <label className="label" htmlFor="webhook-url">URL *</label>
@@ -238,15 +248,20 @@ export default function WebhooksPage() {
                 </div>
               </div>
               <button type="submit" className="btn btn-primary" disabled={creating}>
-                {creating ? 'Adding…' : 'Add webhook'}
+                {creating ? 'Adding...' : 'Add webhook'}
               </button>
             </form>
           </div>
 
-          <div className="card">
-            <h2 className="card-title">Webhooks</h2>
+          <div className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Current routes</span>
+                <h2 className="portal-surface__title">Webhooks</h2>
+              </div>
+            </div>
             {loading ? (
-              <p className="loading-text">Loading…</p>
+              <div className="empty-state">Loading...</div>
             ) : !error && webhooks.length === 0 ? (
               <p style={{ color: 'var(--color-text-muted)' }}>No webhooks configured.</p>
             ) : !error ? (
@@ -263,8 +278,8 @@ export default function WebhooksPage() {
                   <tbody>
                     {webhooks.map((w) => (
                       <tr key={w.id}>
-                        <td style={{ wordBreak: 'break-all', color: 'var(--color-text-primary)' }}>{w.url}</td>
-                        <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{w.events || '—'}</td>
+                        <td style={{ wordBreak: 'break-all', color: 'var(--color-text)' }}>{w.url}</td>
+                        <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{w.events || '-'}</td>
                         <td>
                           <span style={{
                             padding: '4px 8px',
@@ -285,7 +300,7 @@ export default function WebhooksPage() {
                             disabled={toggleLoading === w.id}
                             onClick={() => handleToggle(w)}
                           >
-                            {toggleLoading === w.id ? '…' : w.enabled ? 'Disable' : 'Enable'}
+                            {toggleLoading === w.id ? '...' : w.enabled ? 'Disable' : 'Enable'}
                           </button>
                           <button
                             type="button"
@@ -294,7 +309,7 @@ export default function WebhooksPage() {
                             disabled={deleteLoading === w.id}
                             onClick={() => handleDelete(w.id)}
                           >
-                            {deleteLoading === w.id ? '…' : 'Delete'}
+                            {deleteLoading === w.id ? '...' : 'Delete'}
                           </button>
                         </td>
                       </tr>
@@ -303,6 +318,7 @@ export default function WebhooksPage() {
                 </table>
               </div>
             ) : null}
+          </div>
           </div>
         </div>
       </AdminLayout>

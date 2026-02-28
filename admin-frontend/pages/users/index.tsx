@@ -105,10 +105,16 @@ export default function UsersList() {
         <title>Users - InfraGate Admin</title>
       </Head>
       <AdminLayout>
-        <div className="container">
-          <div className="page-header">
-            <h1 className="page-title">Users</h1>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="portal-page">
+          <div className="portal-page__header">
+            <div>
+              <span className="portal-page__eyebrow">Users</span>
+              <h1 className="portal-page__title">User Management</h1>
+              <p className="portal-page__subtitle">
+                Create portal and DevOps users, export the directory, and clean up dormant access when needed.
+              </p>
+            </div>
+            <div className="portal-page__actions">
               <Link href="/users/new" className="btn btn-primary">
                 Create portal user
               </Link>
@@ -141,19 +147,19 @@ export default function UsersList() {
             </div>
           </div>
 
-          <div className="card">
+          <div className="portal-surface portal-surface--table">
             {error && (
               <div className="alert alert-error" role="alert">
                 {error}
               </div>
             )}
             {successMessage && (
-              <div className="alert alert-info" role="alert" style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', border: '1px solid #a7f3d0' }}>
+              <div className="alert alert-info" role="alert" style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', border: '1px solid #a7f3d0', margin: 24 }}>
                 {successMessage}
               </div>
             )}
             {loading ? (
-              <p className="loading-text">Loading users…</p>
+              <div className="empty-state" style={{ padding: 24 }}>Loading users...</div>
             ) : users.length === 0 ? (
               <div className="empty-state">
                 <p>No users are onboarded yet.</p>
@@ -184,7 +190,7 @@ export default function UsersList() {
                             <span style={{ marginLeft: 6, fontSize: 12, color: 'var(--color-primary)' }}>(Manager)</span>
                           )}
                           {u.user_type === 'devops_user' && u.devops_profile?.level && (
-                            <span style={{ marginLeft: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>· {u.devops_profile.level}</span>
+                            <span style={{ marginLeft: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>/ {u.devops_profile.level}</span>
                           )}
                         </td>
                         <td>
@@ -227,7 +233,7 @@ export default function UsersList() {
                   Cancel
                 </button>
                 <button type="button" className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
-                  {deleting ? 'Deleting…' : 'Delete'}
+                  {deleting ? 'Deleting...' : 'Delete'}
                 </button>
               </div>
             </div>

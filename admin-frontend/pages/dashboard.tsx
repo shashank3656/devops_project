@@ -5,16 +5,8 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import AdminLayout from '../components/AdminLayout';
 import PieChart from '../components/PieChart';
-import { IconUser, IconTeams, IconBell, IconRequests, IconShoppingBag } from '../components/Icons';
 
 const DashboardLineChart = dynamic(() => import('../components/DashboardLineChart'), { ssr: false });
-
-interface Stats {
-  total_requests: number;
-  by_cloud: Record<string, number>;
-  by_status: Record<string, number>;
-  by_env: Record<string, number>;
-}
 
 interface DashboardStats {
   total_users: number;
@@ -65,7 +57,6 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [stats, setStats] = useState<Stats | null>(null);
   const [quickStats, setQuickStats] = useState<DashboardStats | null>(null);
   const [recent, setRecent] = useState<PRRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,24 +87,20 @@ export default function AdminDashboard() {
     }
     const dashboardUrl = params.toString() ? `${apiUrl}/api/admin/dashboard-stats?${params}` : `${apiUrl}/api/admin/dashboard-stats`;
     try {
-      const [statsRes, dashboardRes, requestsRes] = await Promise.all([
-        fetch(`${apiUrl}/api/admin/stats`, { headers: { Authorization: `Bearer ${token}` } }),
+      const [dashboardRes, requestsRes] = await Promise.all([
         fetch(dashboardUrl, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${apiUrl}/api/admin/requests?limit=10`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
-      if (statsRes.status === 401 || statsRes.status === 403 || requestsRes.status === 401 || requestsRes.status === 403) {
+      if (dashboardRes.status === 401 || dashboardRes.status === 403 || requestsRes.status === 401 || requestsRes.status === 403) {
         router.replace('/login');
         return;
       }
-      const [statsData, dashboardData, requestsData] = await Promise.all([
-        statsRes.json().catch(() => ({})),
+      const [dashboardData, requestsData] = await Promise.all([
         dashboardRes.json().catch(() => ({})),
         requestsRes.json().catch(() => ({})),
       ]);
-      if (statsData.stats) setStats(statsData.stats);
       if (dashboardData.total_users !== undefined) setQuickStats(dashboardData);
       if (requestsData.requests) setRecent(requestsData.requests);
-      if (statsData.error) setError(statsData.error);
     } catch (_) {
       setError('Failed to load dashboard');
     } finally {
@@ -143,38 +130,53 @@ export default function AdminDashboard() {
         <title>Dashboard - Admin</title>
       </Head>
       <AdminLayout>
-        <div className="container" style={{ maxWidth: 1200 }}>
-          <div className="dashboard-welcome">
+        <div className="portal-page">
+          <div className="portal-page__header">
             <div>
-              <h1 className="dashboard-welcome__title">Analytics Dashboard</h1>
-              <p className="dashboard-welcome__subtitle">Overview of users, teams, requests, and SLA metrics</p>
+              <span className="portal-page__eyebrow">Dashboard</span>
+              <h1 className="portal-page__title">Admin Dashboard</h1>
+              <p className="portal-page__subtitle">
+                Monitor request volume, approval pressure, team output, and SLA posture from one operational surface.
+              </p>
             </div>
-            <Link href="/requests" className="btn btn-primary">
-              View all requests
-            </Link>
+            <div className="portal-page__actions">
+              <Link href="/requests" className="btn btn-primary">
+                Open requests
+              </Link>
+            </div>
           </div>
 
-          <div className="dashboard-filter-bar">
-            <label className="dashboard-filter-label">Time range</label>
-            <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value as typeof period)}
-              className="input dashboard-filter-select"
-            >
-              <option value="today">Today</option>
-              <option value="week">Last 7 days</option>
-              <option value="month">This month</option>
-              <option value="custom">Custom</option>
-            </select>
-            {period === 'custom' && (
-              <>
-                <label className="dashboard-filter-label">From</label>
-                <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="input dashboard-filter-input" />
-                <label className="dashboard-filter-label">To</label>
-                <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="input dashboard-filter-input" />
-              </>
-            )}
-          </div>
+          <section className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Time Range</span>
+                <h2 className="portal-surface__title">Dashboard Filters</h2>
+              </div>
+            </div>
+            <div className="portal-field-grid">
+              <div>
+                <label className="label">Time range</label>
+                <select value={period} onChange={(e) => setPeriod(e.target.value as typeof period)} className="input">
+                  <option value="today">Today</option>
+                  <option value="week">Last 7 days</option>
+                  <option value="month">This month</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              {period === 'custom' && (
+                <>
+                  <div>
+                    <label className="label">From</label>
+                    <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="input" />
+                  </div>
+                  <div>
+                    <label className="label">To</label>
+                    <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="input" />
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
 
           {error && (
             <div className="alert alert-error" role="alert">
@@ -183,133 +185,93 @@ export default function AdminDashboard() {
           )}
 
           {loading ? (
-            <p className="loading-text">Loading…</p>
+            <div className="portal-surface">
+              <div className="empty-state">Loading dashboard...</div>
+            </div>
           ) : (
             <>
-              {/* Summary cards with icons */}
               {quickStats && (
-                <div className="dashboard-kpi-grid">
-                  <div className="dashboard-kpi-card dashboard-kpi-card--accent">
-                    <div className="dashboard-kpi-card__icon">
-                      <IconUser className="dashboard-kpi-card__icon-svg" />
-                    </div>
-                    <div>
-                      <div className="dashboard-kpi-card__value">{quickStats.total_users}</div>
-                      <div className="dashboard-kpi-card__label">Total users</div>
-                      {quickStats.total_users > 0 && (
-                        <div className="dashboard-kpi-card__trend dashboard-kpi-card__trend--up">↑ Active</div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="dashboard-kpi-card">
-                    <div className="dashboard-kpi-card__icon">
-                      <IconTeams className="dashboard-kpi-card__icon-svg" />
-                    </div>
-                    <div>
-                      <div className="dashboard-kpi-card__value">{quickStats.total_teams}</div>
-                      <div className="dashboard-kpi-card__label">Teams</div>
-                    </div>
-                  </div>
-                  {(quickStats.at_risk_count ?? 0) > 0 && (
-                    <Link href="/requests?at_risk=true" className="dashboard-kpi-card dashboard-kpi-card--danger" style={{ textDecoration: 'none', color: 'inherit' }}>
-                      <div className="dashboard-kpi-card__icon">
-                        <IconBell className="dashboard-kpi-card__icon-svg" />
-                      </div>
-                      <div>
-                        <div className="dashboard-kpi-card__value">{quickStats.at_risk_count}</div>
-                        <div className="dashboard-kpi-card__label">At risk (SLA)</div>
-                        <div className="dashboard-kpi-card__trend" style={{ color: 'var(--color-danger)' }}>Overdue / due in 24h</div>
-                      </div>
-                    </Link>
-                  )}
-                  <div className={`dashboard-kpi-card ${quickStats.pending_approval === 0 ? '' : 'dashboard-kpi-card--warning'}`}>
-                    <div className="dashboard-kpi-card__icon">
-                      <IconBell className="dashboard-kpi-card__icon-svg" />
-                    </div>
-                    <div>
-                      <div className="dashboard-kpi-card__value">{quickStats.pending_approval}</div>
-                      <div className="dashboard-kpi-card__label">Pending approval</div>
-                      {quickStats.pending_approval > 0 && (
-                        <div className="dashboard-kpi-card__trend dashboard-kpi-card__trend--down">Needs attention</div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="dashboard-kpi-card">
-                    <div className="dashboard-kpi-card__icon">
-                      <IconRequests className="dashboard-kpi-card__icon-svg" />
-                    </div>
-                    <div>
-                      <div className="dashboard-kpi-card__value">{quickStats.requests_this_week}</div>
-                      <div className="dashboard-kpi-card__label">Requests this week</div>
-                    </div>
-                  </div>
-                  <div className={`dashboard-kpi-card ${quickStats.unverified_users === 0 ? '' : 'dashboard-kpi-card--warning'}`}>
-                    <div className="dashboard-kpi-card__icon">
-                      <IconShoppingBag className="dashboard-kpi-card__icon-svg" />
-                    </div>
-                    <div>
-                      <div className="dashboard-kpi-card__value">{quickStats.unverified_users}</div>
-                      <div className="dashboard-kpi-card__label">Unverified users</div>
-                      {quickStats.unverified_users > 0 && (
-                        <div className="dashboard-kpi-card__trend dashboard-kpi-card__trend--down">Review pending</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                <section className="portal-stat-grid">
+                  <article className="portal-stat-card">
+                    <span className="portal-stat-card__label">Total users</span>
+                    <span className="portal-stat-card__value">{quickStats.total_users}</span>
+                    <p className="portal-stat-card__copy">Active identities with portal access.</p>
+                  </article>
+                  <article className="portal-stat-card">
+                    <span className="portal-stat-card__label">Teams</span>
+                    <span className="portal-stat-card__value">{quickStats.total_teams}</span>
+                    <p className="portal-stat-card__copy">Managed groups across the platform.</p>
+                  </article>
+                  <article className="portal-stat-card">
+                    <span className="portal-stat-card__label">Pending approval</span>
+                    <span className="portal-stat-card__value">{quickStats.pending_approval}</span>
+                    <p className="portal-stat-card__copy">Requests still waiting on admin action.</p>
+                  </article>
+                  <article className="portal-stat-card">
+                    <span className="portal-stat-card__label">Requests this week</span>
+                    <span className="portal-stat-card__value">{quickStats.requests_this_week}</span>
+                    <p className="portal-stat-card__copy">New workload entering the queue.</p>
+                  </article>
+                </section>
               )}
 
-              {/* Charts row: Line chart + Donut */}
-              <div className="dashboard-charts-row">
-                <div className="card dashboard-line-card">
-                  <h2 className="section-title">Recent movement</h2>
+              <section className="portal-grid">
+                <article className="portal-surface">
+                  <div className="portal-surface__header">
+                    <div>
+                      <span className="portal-surface__eyebrow">Trends</span>
+                      <h2 className="portal-surface__title">Request Trends</h2>
+                    </div>
+                  </div>
                   <DashboardLineChart data={trend} />
-                </div>
-                <div className="card dashboard-donut-card">
-                  <h2 className="section-title">Status distribution</h2>
-                  {dateFilter && (
-                    <p style={{ margin: '-8px 0 12px', fontSize: 13, color: 'var(--color-text-muted)' }}>
-                      {dateFilter.from === dateFilter.to ? dateFilter.from : `${dateFilter.from} → ${dateFilter.to}`}: {dateFilter.total} request(s)
-                    </p>
-                  )}
-                  <PieChart
-                    title=""
-                    segments={statusSegments}
-                    emptyMessage="No requests in this period"
-                  />
-                </div>
-              </div>
+                </article>
+                <article className="portal-surface">
+                  <div className="portal-surface__header">
+                    <div>
+                      <span className="portal-surface__eyebrow">Status</span>
+                      <h2 className="portal-surface__title">Request Status</h2>
+                      {dateFilter && (
+                        <p className="portal-surface__subtitle">
+                          {dateFilter.from === dateFilter.to ? dateFilter.from : `${dateFilter.from} to ${dateFilter.to}`} / {dateFilter.total} requests
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <PieChart title="" segments={statusSegments} emptyMessage="No requests in this period" />
+                </article>
+              </section>
 
-              {/* Period summary + SLA (when no chart data, show pills) */}
-              {showPeriodSummary && dateFilter && !hasStatusData && (
-                <div className="card" style={{ marginBottom: 24 }}>
-                  <h2 className="section-title">
-                    {period === 'custom' ? 'Requests in selected period' : `Requests (${period === 'today' ? 'today' : period === 'week' ? 'last 7 days' : 'this month'})`}
-                  </h2>
-                  <p style={{ margin: '0 0 12px', fontWeight: 600 }}>
-                    {dateFilter.from === dateFilter.to ? dateFilter.from : `${dateFilter.from} → ${dateFilter.to}`}: {dateFilter.total} request(s)
-                  </p>
-                  <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>No requests in this period.</p>
+              {(showPeriodSummary && dateFilter) && (
+                <section className="portal-surface">
+                  <div className="portal-surface__header">
+                    <div>
+                      <span className="portal-surface__eyebrow">Summary</span>
+                      <h2 className="portal-surface__title">Dashboard Summary</h2>
+                      <p className="portal-surface__subtitle">
+                        {dateFilter.from === dateFilter.to ? dateFilter.from : `${dateFilter.from} to ${dateFilter.to}`} / {dateFilter.total} requests
+                      </p>
+                    </div>
+                  </div>
+                  {!hasStatusData && <div className="empty-state">No requests landed in the selected period.</div>}
                   {quickStats?.sla && quickStats.sla.completed_count > 0 && (
-                    <p style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
-                      Avg time to complete: <strong style={{ color: 'var(--color-text)' }}>{quickStats.sla.avg_hours.toFixed(1)}h</strong> ({quickStats.sla.completed_count} completed)
-                    </p>
+                    <div className="portal-selection-bar">
+                      <span className="portal-selection-bar__count">
+                        Average time to complete: {quickStats.sla.avg_hours.toFixed(1)}h across {quickStats.sla.completed_count} completed requests.
+                      </span>
+                    </div>
                   )}
-                </div>
+                </section>
               )}
 
-              {showPeriodSummary && dateFilter && hasStatusData && quickStats?.sla && quickStats.sla.completed_count > 0 && (
-                <div className="card" style={{ marginBottom: 24 }}>
-                  <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                    Avg time to complete: <strong style={{ color: 'var(--color-text)' }}>{quickStats.sla.avg_hours.toFixed(1)}h</strong> ({quickStats.sla.completed_count} completed)
-                  </p>
-                </div>
-              )}
-
-              {/* Team comparison */}
               {quickStats?.team_comparison && quickStats.team_comparison.length > 0 && (
-                <div className="card" style={{ marginBottom: 24 }}>
-                  <h2 className="section-title">Team comparison</h2>
-                  <div className="table-wrap">
+                <section className="portal-surface portal-surface--table">
+                  <div className="portal-surface__header" style={{ padding: 24, marginBottom: 0 }}>
+                    <div>
+                      <span className="portal-surface__eyebrow">Teams</span>
+                      <h2 className="portal-surface__title">Team Comparison</h2>
+                    </div>
+                  </div>
+                  <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
                     <table>
                       <thead>
                         <tr>
@@ -322,75 +284,84 @@ export default function AdminDashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {quickStats.team_comparison.map((t) => (
-                          <tr key={t.team}>
-                            <td><strong>{t.team}</strong></td>
-                            <td>{t.total}</td>
-                            <td>{t.completed}</td>
-                            <td>{t.rejected}</td>
-                            <td>{t.pending}</td>
-                            <td>{t.rate.toFixed(0)}%</td>
+                        {quickStats.team_comparison.map((team) => (
+                          <tr key={team.team}>
+                            <td><strong>{team.team}</strong></td>
+                            <td>{team.total}</td>
+                            <td>{team.completed}</td>
+                            <td>{team.rejected}</td>
+                            <td>{team.pending}</td>
+                            <td>{team.rate.toFixed(0)}%</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                </div>
+                </section>
               )}
 
-              {/* Recent requests */}
-              <div className="card">
-                <h2 className="section-title">Recent requests</h2>
+              <section className="portal-surface portal-surface--table">
+                <div className="portal-surface__header" style={{ padding: 24, marginBottom: 0 }}>
+                  <div>
+                    <span className="portal-surface__eyebrow">Requests</span>
+                    <h2 className="portal-surface__title">Recent Requests</h2>
+                  </div>
+                </div>
                 {recent.length === 0 ? (
-                  <div className="empty-state">No PR requests yet.</div>
+                  <div className="empty-state" style={{ padding: 24 }}>No PR requests yet.</div>
                 ) : (
-                  <>
-                    <div className="table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>ID</th>
-                            <th>Team</th>
-                            <th>Env</th>
-                            <th>Cloud</th>
-                            <th>Service</th>
-                            <th>Status</th>
-                            <th>Created</th>
-                            <th></th>
+                  <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>Team</th>
+                          <th>Env</th>
+                          <th>Cloud</th>
+                          <th>Service</th>
+                          <th>Status</th>
+                          <th>Created</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recent.map((req) => (
+                          <tr key={req.id}>
+                            <td>{req.id}</td>
+                            <td>{req.team}</td>
+                            <td>{req.env}</td>
+                            <td>{req.cloud}</td>
+                            <td>{req.service}</td>
+                            <td>
+                              <span className="status-badge" data-status={req.status}>
+                                {req.status === 'pending_approval'
+                                  ? 'Pending approval'
+                                  : req.status === 'in_progress'
+                                    ? 'In progress'
+                                    : req.status === 'completed'
+                                      ? 'Completed'
+                                      : req.status === 'rejected'
+                                        ? 'Rejected'
+                                        : req.status}
+                              </span>
+                            </td>
+                            <td>{new Date(req.created_at).toLocaleString()}</td>
+                            <td>
+                              {req.pr_url ? (
+                                <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">
+                                  Open PR
+                                </a>
+                              ) : (
+                                <span style={{ color: 'var(--color-text-muted)' }}>-</span>
+                              )}
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {recent.map((req) => (
-                            <tr key={req.id}>
-                              <td>{req.id}</td>
-                              <td>{req.team}</td>
-                              <td>{req.env}</td>
-                              <td>{req.cloud}</td>
-                              <td>{req.service}</td>
-                              <td>
-                                <span className="status-badge" data-status={req.status}>
-                                  {req.status === 'pending_approval' ? 'Pending approval' : req.status === 'in_progress' ? 'In progress' : req.status === 'completed' ? 'Completed' : req.status === 'rejected' ? 'Rejected' : req.status}
-                                </span>
-                              </td>
-                              <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{new Date(req.created_at).toLocaleString()}</td>
-                              <td>
-                                {req.pr_url ? (
-                                  <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">Open PR</a>
-                                ) : (
-                                  <span style={{ color: 'var(--color-text-muted)' }}>—</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <p style={{ marginTop: 16 }}>
-                      <Link href="/requests" className="btn btn-secondary">View all requests</Link>
-                    </p>
-                  </>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
-              </div>
+              </section>
             </>
           )}
         </div>

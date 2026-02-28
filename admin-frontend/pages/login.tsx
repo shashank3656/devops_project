@@ -1,22 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { IconSun, IconMoon } from '../components/Icons';
-
-const THEME_KEY = 'infra-portal-theme';
-function getStoredTheme(): 'light' | 'dark' {
-  if (typeof window === 'undefined') return 'light';
-  return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light';
-}
-function setStoredTheme(t: 'light' | 'dark') {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(THEME_KEY, t);
-  document.documentElement.setAttribute('data-theme', t);
-}
 
 export default function AdminLogin() {
   const router = useRouter();
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -27,16 +14,9 @@ export default function AdminLogin() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
-    const t = getStoredTheme();
-    setTheme(t);
-    document.documentElement.setAttribute('data-theme', t);
+    document.documentElement.setAttribute('data-theme', 'dark');
+    localStorage.setItem('infra-portal-theme', 'dark');
   }, []);
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setStoredTheme(next);
-    setTheme(next);
-  };
 
   const finishAdminLogin = (data: { token: string; user?: { role?: string } }) => {
     if (data.user?.role !== 'admin') {
@@ -136,9 +116,6 @@ export default function AdminLogin() {
         </div>
         <div className="login-page__right">
           <div className="login-page__card">
-            <button type="button" className="login-page__theme-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
-              {theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </button>
             <h2 className="login-page__card-title">Welcome back</h2>
             <p className="login-page__card-subtitle">
               Sign in with your admin account

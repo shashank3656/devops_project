@@ -20,6 +20,23 @@ interface FilterPreset {
   viewMode: 'mine' | 'team';
 }
 
+interface CostRiskSignal {
+  severity: 'low' | 'medium' | 'high';
+  category: string;
+  title: string;
+  detail: string;
+}
+
+interface CostRiskPreview {
+  cost_link: string;
+  estimated_band: string;
+  estimated_monthly: string;
+  estimate_basis: string;
+  risk_level: 'low' | 'medium' | 'high';
+  summary: string;
+  signals: CostRiskSignal[];
+}
+
 interface PRRequest {
   id: number;
   team: string;
@@ -40,6 +57,7 @@ interface PRRequest {
   created_by: number | null;
   created_by_username?: string;
   config?: string;
+  cost_risk_preview?: CostRiskPreview | null;
 }
 
 interface RequestComment {
@@ -49,6 +67,28 @@ interface RequestComment {
   username: string;
   body: string;
   created_at: string;
+}
+
+function getPreviewRiskClass(level?: string): string {
+  switch (level) {
+    case 'high':
+      return 'portal-preview-risk portal-preview-risk--high';
+    case 'medium':
+      return 'portal-preview-risk portal-preview-risk--medium';
+    default:
+      return 'portal-preview-risk portal-preview-risk--low';
+  }
+}
+
+function getPreviewSignalClass(severity?: string): string {
+  switch (severity) {
+    case 'high':
+      return 'portal-preview-signal portal-preview-signal--high';
+    case 'medium':
+      return 'portal-preview-signal portal-preview-signal--medium';
+    default:
+      return 'portal-preview-signal portal-preview-signal--low';
+  }
 }
 
 const PAGE_SIZE = 10;
@@ -1164,7 +1204,7 @@ export default function History() {
                 onClick={e => e.stopPropagation()}
                 className="card"
                 style={{
-                  maxWidth: '600px',
+                  maxWidth: '760px',
                   width: '100%',
                   maxHeight: '85vh',
                   overflow: 'auto'
@@ -1223,6 +1263,66 @@ export default function History() {
                       <div style={{ marginBottom: '12px', padding: '12px', background: 'var(--error-bg)', borderRadius: '8px', borderLeft: '4px solid var(--error-color)' }}>
                         <strong style={{ color: 'var(--error-color)' }}>Rejection reason (from admin):</strong>
                         <p style={{ margin: '6px 0 0', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>{detailRequest.reject_reason}</p>
+                      </div>
+                    )}
+                    {detailRequest.cost_risk_preview && (
+                      <div className="portal-preview-panel" style={{ marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+                          <div>
+                            <div className="portal-preview-eyebrow">Cost And Risk</div>
+                            <strong className="portal-preview-value" style={{ fontSize: 18 }}>Manager Review Preview</strong>
+                          </div>
+                          <span className={getPreviewRiskClass(detailRequest.cost_risk_preview.risk_level)}>
+                            {detailRequest.cost_risk_preview.risk_level} risk
+                          </span>
+                        </div>
+
+                        <div className="portal-preview-grid">
+                          <div className="portal-preview-card">
+                            <span className="portal-preview-eyebrow">Estimated monthly</span>
+                            <strong className="portal-preview-value">{detailRequest.cost_risk_preview.estimated_monthly}</strong>
+                            <p className="portal-preview-copy">
+                              {detailRequest.cost_risk_preview.estimated_band} footprint. {detailRequest.cost_risk_preview.estimate_basis}
+                            </p>
+                          </div>
+                          <div className="portal-preview-card">
+                            <span className="portal-preview-eyebrow">Review summary</span>
+                            <strong className="portal-preview-value">{detailRequest.cost_risk_preview.signals.length} signals</strong>
+                            <p className="portal-preview-copy">{detailRequest.cost_risk_preview.summary}</p>
+                          </div>
+                        </div>
+
+                        {detailRequest.cost_risk_preview.cost_link && (
+                          <div className="portal-preview-actions">
+                            <a href={detailRequest.cost_risk_preview.cost_link} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
+                              Open cost calculator
+                            </a>
+                          </div>
+                        )}
+
+                        <div className="portal-preview-signals">
+                          {detailRequest.cost_risk_preview.signals.length > 0 ? (
+                            detailRequest.cost_risk_preview.signals.map((signal) => (
+                              <article key={`${signal.category}-${signal.title}`} className={getPreviewSignalClass(signal.severity)}>
+                                <div className="portal-preview-signal__top">
+                                  <strong className="portal-preview-signal__title">{signal.title}</strong>
+                                  <span className={getPreviewRiskClass(signal.severity)}>{signal.severity}</span>
+                                </div>
+                                <p className="portal-preview-signal__detail">{signal.detail}</p>
+                              </article>
+                            ))
+                          ) : (
+                            <article className={getPreviewSignalClass('low')}>
+                              <div className="portal-preview-signal__top">
+                                <strong className="portal-preview-signal__title">No major heuristic risks</strong>
+                                <span className={getPreviewRiskClass('low')}>low</span>
+                              </div>
+                              <p className="portal-preview-signal__detail">
+                                The request did not trigger major risk heuristics, but manager approval should still verify ownership, rollout safety, and expected spend.
+                              </p>
+                            </article>
+                          )}
+                        </div>
                       </div>
                     )}
                     <div style={{ marginBottom: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>

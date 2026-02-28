@@ -5,12 +5,12 @@ import { ApiUrlProvider } from '../context/ApiUrlContext';
 import { DEVOPS_SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
 
-const THEME_KEY = 'infra-portal-theme';
-
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
-    const t = typeof window !== 'undefined' ? localStorage.getItem(THEME_KEY) : null;
-    document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('infra-portal-theme', 'dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
   }, []);
   return (
     <ApiUrlProvider>
@@ -23,7 +23,7 @@ export default function App({ Component, pageProps }: AppProps) {
         <meta name="theme-color" content="#0d9488" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Orbitron:wght@500;600;700&display=swap" rel="stylesheet" />
       </Head>
       <Component {...pageProps} />
       </>
