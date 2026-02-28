@@ -1,38 +1,31 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 
 const THEME_KEY = 'infra-portal-theme';
 
 export function getStoredTheme(): 'light' | 'dark' {
-  if (typeof window === 'undefined') return 'light';
-  const stored = localStorage.getItem(THEME_KEY);
-  return stored === 'dark' ? 'dark' : 'light';
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(THEME_KEY, 'dark');
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+  return 'dark';
 }
 
-export function setStoredTheme(theme: 'light' | 'dark') {
+export function setStoredTheme(_theme: 'light' | 'dark') {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(THEME_KEY, theme);
-  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem(THEME_KEY, 'dark');
+  document.documentElement.setAttribute('data-theme', 'dark');
 }
 
 export default function NavBar() {
   const router = useRouter();
   const { toast } = useToast();
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
   useEffect(() => {
-    const stored = getStoredTheme();
-    setTheme(stored);
-    document.documentElement.setAttribute('data-theme', stored);
+    getStoredTheme();
   }, []);
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setStoredTheme(next);
-    setTheme(next);
-  };
 
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated');
@@ -90,15 +83,6 @@ export default function NavBar() {
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="btn btn-secondary"
-          style={{ padding: '8px 14px', fontSize: '14px' }}
-          title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-        >
-          {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
-        </button>
         <button onClick={handleLogout} className="btn btn-secondary" style={{ padding: '8px 16px' }}>
           Logout
         </button>

@@ -192,10 +192,10 @@ func devopsWorkloadHandler(w http.ResponseWriter, r *http.Request) {
 	byPerson, _ := GetWorkloadSummaryByPerson()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"workload":   workload,
-		"by_team":    byTeam,
-		"by_person":  byPerson,
-		"status":     "ok",
+		"workload":  workload,
+		"by_team":   byTeam,
+		"by_person": byPerson,
+		"status":    "ok",
 	})
 }
 
@@ -539,7 +539,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := strings.TrimPrefix(r.URL.Path, "/api/devops/templates/")
+	path := strings.TrimPrefix(r.URL.Path, "/api/devops/templates")
 	path = strings.Trim(path, "/")
 	w.Header().Set("Content-Type", "application/json")
 	if path == "" {
@@ -764,6 +764,113 @@ func devopsBulkActionHandler(w http.ResponseWriter, r *http.Request, managerID i
 	json.NewEncoder(w).Encode(resp)
 }
 
+func devopsRequestDetailHandler(w http.ResponseWriter, id int) {
+	req, err := GetPRRequestByID(id)
+	if err != nil || req == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "request not found", "status": "error"})
+		return
+	}
+	createdByUsername := ""
+	if req.CreatedBy != nil && *req.CreatedBy > 0 {
+		names, _ := GetUsernamesByUserIDs([]int{*req.CreatedBy})
+		if names != nil {
+			createdByUsername = names[*req.CreatedBy]
+		}
+	}
+	resp := map[string]interface{}{
+		"id": req.ID, "team": req.Team, "env": req.Env, "cloud": req.Cloud, "service": req.Service,
+		"client_name": req.ClientName, "application_id": req.ApplicationID, "priority": req.Priority,
+		"due_date": req.DueDate, "due_status": dueStatus(req.DueDate), "pr_url": req.PRURL, "branch": req.Branch, "file_path": req.FilePath,
+		"status": req.Status, "reject_reason": req.RejectReason,
+		"created_at": req.CreatedAt, "updated_at": req.UpdatedAt,
+		"created_by": req.CreatedBy, "created_by_username": createdByUsername,
+		"assigned_to":           req.AssignedTo,
+		"config":                maskConfigForAdmin(req.Config),
+		"terraform_plan_output": req.TerraformPlanOutput,
+		"jira_ticket_id":        req.JiraTicketID,
+		"cost_risk_preview":     BuildCostRiskPreview(req),
+	}
+	dependsOn, _ := GetRequestDependencies(id)
+	blockedBy, _ := GetRequestsThatDependOn(id)
+	blockedByWithStatus, _ := GetBlockedByWithStatus(id)
+	resp["depends_on"] = dependsOn
+	resp["blocked_by"] = blockedBy
+	resp["blocked_by_with_status"] = blockedByWithStatus
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"request": resp, "status": "ok"})
+}
+
+func devopsRequestCommentsHandler(w http.ResponseWriter, r *http.Request, requestID int, userID int) {
+	switch r.Method {
+	case "GET":
+		comments, err := GetRequestComments(requestID)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch comments", "status": "error"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "comments": comments})
+		return
+	case "POST":
+		var body struct {
+			Body string `json:"body"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Body) == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "body is required", "status": "error"})
+			return
+		}
+		if err := AddRequestComment(requestID, userID, strings.TrimSpace(body.Body)); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to add comment", "status": "error"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Comment added"})
+		return
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func devopsRequestTimelineHandler(w http.ResponseWriter, requestID int) {
+	timeline, err := GetRequestTimeline(requestID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch timeline", "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "timeline": timeline})
+}
+
+func devopsRequestDependenciesHandler(w http.ResponseWriter, requestID int) {
+	dependsOn, err := GetRequestDependencies(requestID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch dependencies", "status": "error"})
+		return
+	}
+	blockedBy, _ := GetRequestsThatDependOn(requestID)
+	blockedByWithStatus, _ := GetBlockedByWithStatus(requestID)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":                 "ok",
+		"depends_on":             dependsOn,
+		"blocked_by":             blockedBy,
+		"blocked_by_with_status": blockedByWithStatus,
+	})
+}
+
 // devopsRequestActionHandler handles /api/devops/requests/:id/approve, :id/reject, bulk-approve, bulk-reject (DevOps manager only)
 func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
@@ -791,6 +898,14 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(parts) == 1 && parts[0] != "" && r.Method == "GET" {
+		id, err := strconv.Atoi(parts[0])
+		if err == nil && id > 0 {
+			devopsRequestDetailHandler(w, id)
+			return
+		}
+	}
+
 	if len(parts) < 2 {
 		http.NotFound(w, r)
 		return
@@ -815,6 +930,23 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		adminIDPtr = &managerID
 	}
 	switch action {
+	case "comments":
+		devopsRequestCommentsHandler(w, r, id, managerID)
+		return
+	case "timeline":
+		if r.Method != "GET" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		devopsRequestTimelineHandler(w, id)
+		return
+	case "dependencies":
+		if r.Method != "GET" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		devopsRequestDependenciesHandler(w, id)
+		return
 	case "approve":
 		if r.Method != "POST" {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

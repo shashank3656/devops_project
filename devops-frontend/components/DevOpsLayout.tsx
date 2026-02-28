@@ -1,12 +1,11 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import type { ComponentType, ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApiUrl } from '../context/ApiUrlContext';
-import { DEVOPS_SITE_NAME } from '../lib/site';
 import {
   IconLogout,
-  IconSun,
-  IconMoon,
+  IconBell,
   IconTickets,
   IconWorkload,
   IconTemplates,
@@ -45,11 +44,11 @@ function getProfileInitials(): string {
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'My tickets',
+  '/dashboard': 'Dashboard',
   '/workload': 'Workload',
-  '/tickets': 'All tickets',
+  '/tickets': 'Tickets',
   '/templates': 'Templates',
-  '/team': 'Team',
+  '/team': 'Teams',
   '/credential-audit': 'Credential Audit',
   '/profile': 'Profile',
 };
@@ -59,7 +58,27 @@ function getPageTitle(pathname: string): string {
   for (const [path, title] of Object.entries(PAGE_TITLES)) {
     if (path !== '/dashboard' && pathname.startsWith(path)) return title;
   }
-  return 'My tickets';
+  return 'Dashboard';
+}
+
+interface PendingApprovalItem {
+  id: number;
+  team?: string;
+  cloud?: string;
+  service?: string;
+  created_at: string;
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min ago`;
+  if (diffHours < 24) return `${diffHours} hour(s) ago`;
+  return d.toLocaleDateString();
 }
 
 export default function DevOpsLayout({ children }: { children: ReactNode }) {
@@ -68,11 +87,14 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const pathname = router.pathname;
   const [user, setUser] = useState<DevopsUser | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notifyOpen, setNotifyOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileInitials, setProfileInitials] = useState('D');
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalItem[]>([]);
+  const [pendingApprovalsLoading, setPendingApprovalsLoading] = useState(false);
+  const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -83,10 +105,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     try {
       const u = localStorage.getItem(DEVOPS_USER_KEY);
       if (u) setUser(JSON.parse(u));
-      const t = localStorage.getItem(DEVOPS_THEME_KEY);
-      const resolved = t === 'light' ? 'light' : 'dark';
-      setTheme(resolved);
-      document.documentElement.setAttribute('data-theme', resolved);
+      localStorage.setItem(DEVOPS_THEME_KEY, 'dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
       const c = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
       setSidebarCollapsed(c === 'true');
     } catch (_) {}
@@ -118,24 +138,34 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('devops-notifications-refresh', onRefresh);
   }, [isManager, refreshPendingCount]);
 
+  const refreshPendingApprovals = useCallback(() => {
+    if (!isManager) return;
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    setPendingApprovalsLoading(true);
+    fetch(`${apiUrl}/api/devops/pending-approvals`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        setPendingApprovals(Array.isArray(data?.requests) ? data.requests : []);
+      })
+      .catch(() => setPendingApprovals([]))
+      .finally(() => setPendingApprovalsLoading(false));
+  }, [apiUrl, isManager]);
+
+  useEffect(() => {
+    if (notifyOpen) refreshPendingApprovals();
+  }, [notifyOpen, refreshPendingApprovals]);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      if (notifyRef.current && !notifyRef.current.contains(e.target as Node)) setNotifyOpen(false);
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
     };
-    if (profileOpen) {
+    if (notifyOpen || profileOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [profileOpen]);
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    try {
-      localStorage.setItem(DEVOPS_THEME_KEY, next);
-      document.documentElement.setAttribute('data-theme', next);
-    } catch (_) {}
-  };
+  }, [notifyOpen, profileOpen]);
 
   const toggleSidebar = () => {
     const next = !sidebarCollapsed;
@@ -153,8 +183,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
         e.preventDefault();
         const msg = isManager
-          ? 'Shortcuts: ? help, g then d = My tickets, g then t = All tickets, g then w = Workload'
-          : 'Shortcuts: ? help, g then d = My tickets';
+          ? 'Shortcuts: ? help, g then d = Dashboard, g then t = Tickets, g then w = Workload'
+          : 'Shortcuts: ? help, g then d = Dashboard';
         alert(msg);
         return;
       }
@@ -188,18 +218,42 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     router.replace('/login');
   };
 
-  const baseNavItems: { href: string; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
-    { href: '/dashboard', label: 'My tickets', Icon: IconTickets },
+  const baseNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
+    { href: '/dashboard', label: 'Dashboard', Icon: IconTickets },
   ];
   if (isManager) {
     baseNavItems.push({ href: '/workload', label: 'Workload', Icon: IconWorkload });
-    baseNavItems.push({ href: '/tickets', label: 'All tickets', Icon: IconTickets });
+    baseNavItems.push({ href: '/tickets', label: 'Tickets', Icon: IconTickets });
   }
   baseNavItems.push({ href: '/templates', label: 'Templates', Icon: IconTemplates });
   baseNavItems.push({ href: '/credential-audit', label: 'Credential Audit', Icon: IconShield });
-  if (isManager) baseNavItems.push({ href: '/team', label: 'Team', Icon: IconUsers });
+  if (isManager) baseNavItems.push({ href: '/team', label: 'Teams', Icon: IconUsers });
 
   const pageTitle = getPageTitle(pathname);
+  const roleLabel = isManager ? 'Manager' : 'Contributor';
+  const statusLabel = isManager
+    ? pendingCount > 0
+      ? `${pendingCount} pending approvals`
+      : 'No pending approvals'
+    : 'Active session';
+  const sidebarStatusItems = isManager
+    ? [
+        { label: 'approval-queue', tone: pendingCount > 0 ? 'warn' : 'ok', meta: pendingCount > 0 ? `${pendingCount} open` : 'clear' },
+        { label: 'template-registry', tone: 'ok', meta: 'ready' },
+        { label: 'audit-stream', tone: 'ok', meta: 'live' },
+      ]
+    : [
+        { label: 'session-scope', tone: 'ok', meta: 'live' },
+        { label: 'template-registry', tone: 'ok', meta: 'ready' },
+        { label: 'audit-stream', tone: 'idle', meta: 'view' },
+      ];
+
+  const getSidebarBadge = (href: string): string | null => {
+    if (href === '/tickets' && isManager && pendingCount > 0) {
+      return pendingCount > 99 ? '99+' : String(pendingCount);
+    }
+    return null;
+  };
 
   return (
     <div className="devops-layout devops-layout-sidebar">
@@ -215,32 +269,55 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           >
             <IconMenu />
           </button>
-          <Link href="/dashboard" className="devops-sidebar-new__brand">
-            <img src="/logo.svg" alt="" width={36} height={36} className="devops-sidebar-new__logo" />
-            {!sidebarCollapsed && <span className="devops-sidebar-new__brand-text">{DEVOPS_SITE_NAME}</span>}
-          </Link>
+          {!sidebarCollapsed && (
+            <Link href="/dashboard" className="devops-sidebar-new__brand">
+              <>
+                <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">DevOps</span>
+                <span className="devops-sidebar-new__brand-word">Portal</span>
+              </>
+            </Link>
+          )}
         </div>
-        <nav className="devops-sidebar-new__nav">
-          {baseNavItems.map(({ href, label, Icon }) => {
-            const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`devops-sidebar-new__link ${isActive ? 'devops-sidebar-new__link--active' : ''}`}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <Icon className="devops-sidebar-new__icon" />
-                {!sidebarCollapsed && <span className="devops-sidebar-new__label">{label}</span>}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="devops-sidebar-new__footer">
-          <button type="button" className="devops-sidebar-new__link" onClick={handleLogout}>
-            <IconLogout className="devops-sidebar-new__icon" />
-            {!sidebarCollapsed && <span className="devops-sidebar-new__label">Logout</span>}
-          </button>
+        <div className="devops-sidebar-new__body">
+          <nav className="devops-sidebar-new__nav">
+            {!sidebarCollapsed && <span className="devops-sidebar-new__nav-title">Modules</span>}
+            {baseNavItems.map(({ href, label, Icon }) => {
+              const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+              const badge = getSidebarBadge(href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`devops-sidebar-new__link ${isActive ? 'devops-sidebar-new__link--active' : ''}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Icon className="devops-sidebar-new__icon" />
+                  {!sidebarCollapsed && <span className="devops-sidebar-new__label">{label}</span>}
+                  {!sidebarCollapsed && badge && <span className="devops-sidebar-new__badge">{badge}</span>}
+                </Link>
+              );
+            })}
+          </nav>
+          {!sidebarCollapsed && (
+            <div className="devops-sidebar-new__status-panel">
+              <span className="devops-sidebar-new__status-title">System Health</span>
+              <div className="devops-sidebar-new__status-list">
+                {sidebarStatusItems.map((item) => (
+                  <div key={item.label} className="devops-sidebar-new__status-item">
+                    <span className={`devops-sidebar-new__status-dot devops-sidebar-new__status-dot--${item.tone}`} aria-hidden />
+                    <span className="devops-sidebar-new__status-name">{item.label}</span>
+                    <span className="devops-sidebar-new__status-meta">{item.meta}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="devops-sidebar-new__footer">
+            <button type="button" className="devops-sidebar-new__link" onClick={handleLogout}>
+              <IconLogout className="devops-sidebar-new__icon" />
+              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Logout</span>}
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -259,31 +336,83 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             >
               <IconMenu />
             </button>
-            <h1 className="devops-navbar__title">{pageTitle}</h1>
+            <div className="devops-navbar__title-wrap">
+              <span className="devops-navbar__kicker">DevOps Portal</span>
+              <h1 className="devops-navbar__title">{pageTitle}</h1>
+            </div>
+            <span className={`devops-navbar__status-chip ${isManager && pendingCount > 0 ? 'devops-navbar__status-chip--alert' : ''}`}>
+              {statusLabel}
+            </span>
           </div>
           <div className="devops-navbar__right">
             <div className="devops-navbar__actions">
-              {isManager && pendingCount > 0 && (
-                <span className="devops-navbar__approval-badge" title={`${pendingCount} pending approval`}>
-                  {pendingCount > 99 ? '99+' : pendingCount}
-                </span>
-              )}
               {user && <span className="devops-navbar__username">{user.username}</span>}
+              <span className="devops-navbar__role">{roleLabel}</span>
+              {isManager && (
+                <div className="devops-navbar__notify-wrap" ref={notifyRef}>
+                  <button
+                    type="button"
+                    className="devops-navbar__icon-btn"
+                    onClick={() => {
+                      setNotifyOpen((open) => !open);
+                      setProfileOpen(false);
+                    }}
+                    title={pendingCount > 0 ? `${pendingCount} pending approvals` : 'Pending approvals'}
+                    aria-expanded={notifyOpen}
+                    aria-haspopup="true"
+                  >
+                    <IconBell />
+                    {pendingCount > 0 && (
+                      <span className="devops-navbar__badge" aria-label={`${pendingCount} pending approvals`}>
+                        {pendingCount > 99 ? '99+' : pendingCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {notifyOpen && (
+                    <div className="devops-navbar__notify-panel">
+                      <div className="devops-navbar__notify-header">
+                        <h3 className="devops-navbar__notify-title">Pending Approvals</h3>
+                        <button type="button" className="devops-navbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
+                          x
+                        </button>
+                      </div>
+                      <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                        Open tickets
+                      </Link>
+                      <div className="devops-navbar__notify-list">
+                        {pendingApprovalsLoading ? (
+                          <p className="devops-navbar__notify-empty">Loading...</p>
+                        ) : pendingApprovals.length === 0 ? (
+                          <p className="devops-navbar__notify-empty">No pending approval tickets.</p>
+                        ) : (
+                          pendingApprovals.slice(0, 8).map((request) => (
+                            <Link
+                              key={request.id}
+                              href={`/tickets?id=${request.id}`}
+                              className="devops-navbar__notify-ticket"
+                              onClick={() => setNotifyOpen(false)}
+                            >
+                              <strong>Ticket #{request.id}</strong>
+                              <span>{request.team || 'Team'} / {request.cloud || 'Cloud'} / {request.service || 'Service'}</span>
+                              <small>{formatTime(request.created_at)}</small>
+                            </Link>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            <button
-              type="button"
-              className="devops-navbar__theme-toggle"
-              onClick={toggleTheme}
-              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-              aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            >
-              {theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </button>
             <div className="devops-navbar__profile-wrap" ref={profileRef}>
               <button
                 type="button"
                 className="devops-navbar__profile-btn"
-                onClick={() => setProfileOpen((o) => !o)}
+                onClick={() => {
+                  setProfileOpen((o) => !o);
+                  setNotifyOpen(false);
+                }}
                 aria-expanded={profileOpen}
                 aria-haspopup="true"
                 title="Profile"

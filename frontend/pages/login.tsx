@@ -2,9 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { useToast } from '../context/ToastContext';
-import { getStoredTheme, setStoredTheme } from '../components/AppLayout';
 import { SITE_NAME } from '../lib/site';
-import { IconSun, IconMoon } from '../components/Icons';
 
 export default function Login() {
   const router = useRouter();
@@ -13,7 +11,6 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [pending2fa, setPending2fa] = useState<{ token: string } | null>(null);
   const [otp, setOtp] = useState('');
 
@@ -28,16 +25,9 @@ export default function Login() {
   }, []);
 
   useEffect(() => {
-    const t = getStoredTheme();
-    setTheme(t);
-    document.documentElement.setAttribute('data-theme', t);
+    document.documentElement.setAttribute('data-theme', 'dark');
+    localStorage.setItem('user-portal-theme', 'dark');
   }, []);
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setStoredTheme(next);
-    setTheme(next);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,15 +162,6 @@ export default function Login() {
         </div>
         <div className="login-page__right">
           <div className="login-page__card">
-            <button
-              type="button"
-              className="login-page__theme-btn"
-              onClick={toggleTheme}
-              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            >
-              {theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </button>
             <h2 className="login-page__card-title">Welcome back</h2>
             <p className="login-page__card-subtitle">Sign in to your account</p>
             {error && (

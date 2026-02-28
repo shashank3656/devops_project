@@ -1,12 +1,10 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ReactNode, useEffect, useRef, useState } from 'react';
-import { ADMIN_SITE_NAME } from '../lib/site';
+import type { ComponentType, FormEvent, ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   IconLogout,
   IconBell,
-  IconSun,
-  IconMoon,
   IconDashboard,
   IconRequests,
   IconTeams,
@@ -27,8 +25,8 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
-  '/requests': 'PR Requests',
-  '/sla': 'SLA',
+  '/requests': 'Requests',
+  '/sla': 'SLA Dashboard',
   '/teams': 'Teams',
   '/users': 'Users',
   '/activity': 'Activity',
@@ -69,10 +67,10 @@ interface PendingRequest {
   created_at: string;
 }
 
-const NAV_ITEMS: { href: string; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+const NAV_ITEMS: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
   { href: '/dashboard', label: 'Dashboard', Icon: IconDashboard },
-  { href: '/requests', label: 'PR Requests', Icon: IconRequests },
-  { href: '/sla', label: 'SLA', Icon: IconTrendingUp },
+  { href: '/requests', label: 'Requests', Icon: IconRequests },
+  { href: '/sla', label: 'SLA Dashboard', Icon: IconTrendingUp },
   { href: '/teams', label: 'Teams', Icon: IconTeams },
   { href: '/users', label: 'Users', Icon: IconUsers },
   { href: '/activity', label: 'Activity', Icon: IconActivity },
@@ -80,49 +78,50 @@ const NAV_ITEMS: { href: string; label: string; Icon: React.ComponentType<{ clas
   { href: '/webhooks', label: 'Webhooks', Icon: IconWebhook },
 ];
 
-function getProfileInitials(): string {
-  if (typeof window === 'undefined') return 'A';
+function getAdminIdentity(): { initials: string; label: string } {
+  if (typeof window === 'undefined') return { initials: 'A', label: 'Admin Operator' };
   try {
     const raw = localStorage.getItem('admin_user');
-    if (!raw) return 'A';
+    if (!raw) return { initials: 'A', label: 'Admin Operator' };
     const user = JSON.parse(raw) as { username?: string; email?: string };
-    const name = user?.username || user?.email || '';
-    if (!name) return 'A';
-    const parts = name.trim().split(/[\s@.]/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
-    return name.slice(0, 2).toUpperCase();
+    const label = user?.username || user?.email || 'Admin Operator';
+    const parts = label.trim().split(/[\s@.]/).filter(Boolean);
+    const initials = parts.length >= 2
+      ? (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2)
+      : label.slice(0, 2).toUpperCase() || 'A';
+    return { initials, label };
   } catch {
-    return 'A';
+    return { initials: 'A', label: 'Admin Operator' };
   }
 }
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = router.pathname;
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const [newRequestsCount, setNewRequestsCount] = useState(0);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [pendingTickets, setPendingTickets] = useState<PendingRequest[]>([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
   const [profileInitials, setProfileInitials] = useState('A');
+  const [profileLabel, setProfileLabel] = useState('Admin Operator');
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setProfileInitials(getProfileInitials());
+    const identity = getAdminIdentity();
+    setProfileInitials(identity.initials);
+    setProfileLabel(identity.label);
   }, []);
 
   useEffect(() => {
     try {
-      const t = localStorage.getItem(THEME_KEY);
-      const resolved = t === 'light' ? 'light' : 'dark';
-      setTheme(resolved);
-      document.documentElement.setAttribute('data-theme', resolved);
+      localStorage.setItem(THEME_KEY, 'dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
     } catch (_) {}
   }, []);
 
@@ -133,14 +132,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     } catch (_) {}
   }, []);
 
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    try {
-      localStorage.setItem(THEME_KEY, next);
-      document.documentElement.setAttribute('data-theme', next);
-    } catch (_) {}
-  };
+  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
 
   const toggleSidebar = () => {
     const next = !sidebarCollapsed;
@@ -149,8 +141,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
     } catch (_) {}
   };
-
-  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
 
   const fetchCount = () => {
     if (!token) return;
@@ -185,14 +175,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     if (notifyOpen) fetchPendingTickets();
   }, [notifyOpen]);
 
-  // Sync search box with URL when on /requests
   useEffect(() => {
     const q = router.query.q;
     const val = typeof q === 'string' ? q : '';
     setSearchQuery(val);
   }, [router.query.q]);
 
-  // Cmd/Ctrl+K to focus search, ? help, g+t tickets, g+d dashboard
   useEffect(() => {
     let gPressedAt = 0;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -205,9 +193,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       }
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
         e.preventDefault();
-        const msg = 'Shortcuts: ? help, ⌘K search, g then d = Dashboard, g then t = Tickets';
-        if (typeof window !== 'undefined' && (window as any).adminToast) {
-          (window as any).adminToast(msg, 'success');
+        const msg = 'Shortcuts: ? help, Ctrl/Cmd+K search, g then d = Dashboard, g then r = Requests';
+        if (typeof window !== 'undefined' && (window as { adminToast?: (message: string, type?: string) => void }).adminToast) {
+          (window as { adminToast?: (message: string, type?: string) => void }).adminToast?.(msg, 'success');
         } else {
           alert(msg);
         }
@@ -221,7 +209,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         if (e.key === 'd') {
           e.preventDefault();
           router.push('/dashboard');
-        } else if (e.key === 't') {
+        } else if (e.key === 'r') {
           e.preventDefault();
           router.push('/requests');
         }
@@ -230,11 +218,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         gPressedAt = 0;
       }
     };
+
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [router]);
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
+  const handleSearchSubmit = (e: FormEvent) => {
     e.preventDefault();
     const q = searchQuery.trim();
     if (q) {
@@ -262,94 +251,133 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   };
 
   const pageTitle = getPageTitle(pathname);
+  const statusLabel = newRequestsCount > 0 ? `${newRequestsCount} pending requests` : 'No pending requests';
+  const sidebarStatusItems = [
+    { label: 'request-queue', tone: newRequestsCount > 0 ? 'warn' : 'ok', meta: newRequestsCount > 0 ? `${newRequestsCount} open` : 'clear' },
+    { label: 'access-control', tone: 'ok', meta: 'live' },
+    { label: 'webhook-relay', tone: 'ok', meta: 'ready' },
+  ];
+
+  const getSidebarBadge = (href: string): string | null => {
+    if (href === '/requests' && newRequestsCount > 0) {
+      return newRequestsCount > 99 ? '99+' : String(newRequestsCount);
+    }
+    return null;
+  };
 
   return (
-    <div className="admin-layout admin-layout-sidebar">
-      {/* Left Sidebar - Dark, fixed */}
-      <aside className={`admin-sidebar ${sidebarCollapsed ? 'admin-sidebar--collapsed' : ''} ${mobileMenuOpen ? 'admin-sidebar--mobile-open' : ''}`}>
-        <div className="admin-sidebar__header">
+    <div className="admin-layout admin-layout-sidebar admin-shell">
+      <aside className={`admin-sidebar-shell ${sidebarCollapsed ? 'admin-sidebar-shell--collapsed' : ''} ${mobileMenuOpen ? 'admin-sidebar-shell--mobile-open' : ''}`}>
+        <div className="admin-sidebar-shell__header">
           <button
             type="button"
-            className="admin-sidebar__hamburger"
+            className="admin-sidebar-shell__hamburger"
             onClick={toggleSidebar}
             aria-label="Toggle sidebar"
           >
             <IconMenu />
           </button>
-          <Link href="/dashboard" className="admin-sidebar__brand">
-            <img src="/logo.svg" alt="" width={36} height={36} className="admin-sidebar__logo" />
-            {!sidebarCollapsed && <span className="admin-sidebar__brand-text">{ADMIN_SITE_NAME}</span>}
-          </Link>
+          {!sidebarCollapsed && (
+            <Link href="/dashboard" className="admin-sidebar-shell__brand">
+              <>
+                <span className="admin-sidebar-shell__brand-word admin-sidebar-shell__brand-word--primary">Admin</span>
+                <span className="admin-sidebar-shell__brand-word">Portal</span>
+              </>
+            </Link>
+          )}
         </div>
-        <nav className="admin-sidebar__nav">
-          {NAV_ITEMS.map(({ href, label, Icon }) => {
-            const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`admin-sidebar__link ${isActive ? 'admin-sidebar__link--active' : ''}`}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <Icon className="admin-sidebar__icon" />
-                {!sidebarCollapsed && <span className="admin-sidebar__label">{label}</span>}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="admin-sidebar__footer">
-          <button
-            type="button"
-            className="admin-sidebar__link"
-            onClick={handleLogout}
-          >
-            <IconLogout className="admin-sidebar__icon" />
-            {!sidebarCollapsed && <span className="admin-sidebar__label">Logout</span>}
-          </button>
+        <div className="admin-sidebar-shell__body">
+          <nav className="admin-sidebar-shell__nav">
+            {!sidebarCollapsed && <span className="admin-sidebar-shell__nav-title">Modules</span>}
+            {NAV_ITEMS.map(({ href, label, Icon }) => {
+              const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+              const badge = getSidebarBadge(href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`admin-sidebar-shell__link ${isActive ? 'admin-sidebar-shell__link--active' : ''}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Icon className="admin-sidebar-shell__icon" />
+                  {!sidebarCollapsed && <span className="admin-sidebar-shell__label">{label}</span>}
+                  {!sidebarCollapsed && badge && <span className="admin-sidebar-shell__badge">{badge}</span>}
+                </Link>
+              );
+            })}
+          </nav>
+
+          {!sidebarCollapsed && (
+            <div className="admin-sidebar-shell__status-panel">
+              <span className="admin-sidebar-shell__status-title">Control Health</span>
+              <div className="admin-sidebar-shell__status-list">
+                {sidebarStatusItems.map((item) => (
+                  <div key={item.label} className="admin-sidebar-shell__status-item">
+                    <span className={`admin-sidebar-shell__status-dot admin-sidebar-shell__status-dot--${item.tone}`} aria-hidden />
+                    <span className="admin-sidebar-shell__status-name">{item.label}</span>
+                    <span className="admin-sidebar-shell__status-meta">{item.meta}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="admin-sidebar-shell__footer">
+            <button type="button" className="admin-sidebar-shell__link" onClick={handleLogout}>
+              <IconLogout className="admin-sidebar-shell__icon" />
+              {!sidebarCollapsed && <span className="admin-sidebar-shell__label">Logout</span>}
+            </button>
+          </div>
         </div>
       </aside>
 
-      {/* Mobile overlay */}
       {mobileMenuOpen && (
-        <div
-          className="admin-sidebar-overlay"
-          onClick={() => setMobileMenuOpen(false)}
-          aria-hidden
-        />
+        <div className="admin-sidebar-shell-overlay" onClick={() => setMobileMenuOpen(false)} aria-hidden />
       )}
 
-      {/* Main content wrapper */}
-      <div className="admin-main-wrapper">
-        {/* Top Navbar - White, 60px */}
-        <header className="admin-navbar">
-          <div className="admin-navbar__left">
+      <div className="admin-main-shell">
+        <header className="admin-topbar">
+          <div className="admin-topbar__left">
             <button
               type="button"
-              className="admin-navbar__menu-btn"
+              className="admin-topbar__menu-btn"
               onClick={() => setMobileMenuOpen((o) => !o)}
               aria-label="Toggle menu"
             >
               <IconMenu />
             </button>
-            <h1 className="admin-navbar__title">{pageTitle}</h1>
-            <form className="admin-navbar__search" onSubmit={handleSearchSubmit} role="search">
-              <IconSearch className="admin-navbar__search-icon" />
+            <div className="admin-topbar__title-wrap">
+              <span className="admin-topbar__kicker">Admin Portal</span>
+              <h1 className="admin-topbar__title">{pageTitle}</h1>
+            </div>
+            <span className={`admin-topbar__status-chip ${newRequestsCount > 0 ? 'admin-topbar__status-chip--alert' : ''}`}>
+              {statusLabel}
+            </span>
+          </div>
+
+          <div className="admin-topbar__right">
+            <form className="admin-topbar__search" onSubmit={handleSearchSubmit} role="search">
+              <IconSearch className="admin-topbar__search-icon" />
               <input
                 ref={searchInputRef}
                 type="search"
-                placeholder="Search requests (team, cloud, service…)"
+                placeholder="Search requests, teams, clouds, services"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="admin-navbar__search-input"
+                className="admin-topbar__search-input"
                 aria-label="Search requests"
               />
             </form>
-          </div>
-          <div className="admin-navbar__right">
-            <div className="admin-navbar__actions admin-navbar__notify-wrap" ref={notifyRef}>
+
+            <div className="admin-topbar__actions">
+              <span className="admin-topbar__workspace">{profileLabel}</span>
+              <span className="admin-topbar__role">Admin</span>
+            </div>
+
+            <div className="admin-topbar__notify-wrap" ref={notifyRef}>
               <button
                 type="button"
-                className="admin-navbar__icon-btn"
+                className="admin-topbar__icon-btn"
                 onClick={() => setNotifyOpen((o) => !o)}
                 title={newRequestsCount > 0 ? `${newRequestsCount} new request(s) pending` : 'Notifications'}
                 aria-expanded={notifyOpen}
@@ -357,37 +385,39 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               >
                 <IconBell />
                 {newRequestsCount > 0 && (
-                  <span className="admin-navbar__badge" aria-label={`${newRequestsCount} new requests`}>
+                  <span className="admin-topbar__badge" aria-label={`${newRequestsCount} new requests`}>
                     {newRequestsCount > 99 ? '99+' : newRequestsCount}
                   </span>
                 )}
               </button>
+
               {notifyOpen && (
-                <div className="admin-notify-panel admin-notify-panel--navbar">
-                  <div className="admin-notify-panel-header">
-                    <h3 className="admin-notify-panel-title">Notifications</h3>
-                    <button type="button" className="admin-notify-panel-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
-                      ×
+                <div className="admin-topbar__notify-panel">
+                  <div className="admin-topbar__notify-header">
+                    <h3 className="admin-topbar__notify-title">Pending Requests</h3>
+                    <button type="button" className="admin-topbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
+                      x
                     </button>
                   </div>
-                  <Link href="/requests" className="admin-notify-panel-more" onClick={() => setNotifyOpen(false)}>
-                    Request tickets → View all in PR Requests
+                  <Link href="/requests" className="admin-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                    Open requests
                   </Link>
-                  <div className="admin-notify-panel-list">
+                  <div className="admin-topbar__notify-list">
                     {ticketsLoading ? (
-                      <p className="admin-notify-panel-loading">Loading…</p>
+                      <p className="admin-topbar__notify-empty">Loading...</p>
                     ) : pendingTickets.length === 0 ? (
-                      <p className="admin-notify-panel-empty">No pending request tickets.</p>
+                      <p className="admin-topbar__notify-empty">No pending request tickets.</p>
                     ) : (
                       pendingTickets.map((req) => (
                         <Link
                           key={req.id}
                           href={`/requests?id=${req.id}`}
-                          className="admin-notify-ticket admin-notify-ticket-link"
+                          className="admin-topbar__notify-ticket"
                           onClick={() => setNotifyOpen(false)}
                         >
-                          <span className="admin-notify-ticket-id">Ticket #{req.id}</span>
-                          <span className="admin-notify-ticket-time">{formatTime(req.created_at)}</span>
+                          <strong>Ticket #{req.id}</strong>
+                          <span>{req.team} / {req.cloud} / {req.service}</span>
+                          <small>{formatTime(req.created_at)}</small>
                         </Link>
                       ))
                     )}
@@ -395,38 +425,31 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              className="admin-navbar__theme-toggle"
-              onClick={toggleTheme}
-              title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-              aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            >
-              {theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </button>
-            <div className="admin-navbar__profile-wrap" ref={profileRef}>
+
+            <div className="admin-topbar__profile-wrap" ref={profileRef}>
               <button
                 type="button"
-                className="admin-navbar__profile-btn"
+                className="admin-topbar__profile-btn"
                 onClick={() => setProfileOpen((o) => !o)}
                 aria-expanded={profileOpen}
                 aria-haspopup="true"
                 title="Profile"
               >
-                <span className="admin-navbar__avatar">{profileInitials}</span>
-                <span className="admin-navbar__profile-label">Admin</span>
+                <span className="admin-topbar__avatar">{profileInitials}</span>
+                <span className="admin-topbar__profile-label">{profileLabel}</span>
               </button>
+
               {profileOpen && (
-                <div className="admin-navbar__dropdown">
-                  <div className="admin-navbar__dropdown-header">
-                    <span className="admin-navbar__dropdown-avatar">{profileInitials}</span>
-                    <span className="admin-navbar__dropdown-label">Admin</span>
+                <div className="admin-topbar__dropdown">
+                  <div className="admin-topbar__dropdown-header">
+                    <span className="admin-topbar__dropdown-avatar">{profileInitials}</span>
+                    <span className="admin-topbar__dropdown-label">{profileLabel}</span>
                   </div>
-                  <Link href="/profile" className="admin-navbar__dropdown-item" style={{ textDecoration: 'none', color: 'inherit' }} onClick={() => setProfileOpen(false)}>
+                  <Link href="/profile" className="admin-topbar__dropdown-item" onClick={() => setProfileOpen(false)}>
                     <IconUser />
                     Profile
                   </Link>
-                  <button type="button" className="admin-navbar__dropdown-item" onClick={handleLogout}>
+                  <button type="button" className="admin-topbar__dropdown-item" onClick={handleLogout}>
                     <IconLogout />
                     Logout
                   </button>
@@ -436,8 +459,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        {/* Main content area */}
-        <main className="admin-main">{children}</main>
+        <main className="admin-main-shell__content">{children}</main>
       </div>
     </div>
   );

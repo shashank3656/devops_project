@@ -1,23 +1,8 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { useRouter } from 'next/router';
-import { IconSun, IconMoon } from '../components/Icons';
-
-const THEME_KEY = 'infra-portal-theme';
-function getStoredTheme(): 'light' | 'dark' {
-  if (typeof window === 'undefined') return 'light';
-  return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light';
-}
-function setStoredTheme(t: 'light' | 'dark') {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(THEME_KEY, t);
-  document.documentElement.setAttribute('data-theme', t);
-}
 
 export default function AdminForgotPassword() {
-  const router = useRouter();
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -26,16 +11,9 @@ export default function AdminForgotPassword() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
-    const t = getStoredTheme();
-    setTheme(t);
-    document.documentElement.setAttribute('data-theme', t);
+    document.documentElement.setAttribute('data-theme', 'dark');
+    localStorage.setItem('infra-portal-theme', 'dark');
   }, []);
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setStoredTheme(next);
-    setTheme(next);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,9 +56,6 @@ export default function AdminForgotPassword() {
         </div>
         <div className="login-page__right">
           <div className="login-page__card">
-            <button type="button" className="login-page__theme-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
-              {theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </button>
             <h2 className="login-page__card-title">Forgot password</h2>
             <p className="login-page__card-subtitle">
               Enter your admin email and we&apos;ll send you a reset link.

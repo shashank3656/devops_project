@@ -58,50 +58,60 @@ export default function AdminProfilePage() {
 
   return (
     <AdminLayout>
-      <Head><title>Profile — {ADMIN_SITE_NAME}</title></Head>
-      <div className="container" style={{ maxWidth: 720 }}>
+      <Head><title>Profile - {ADMIN_SITE_NAME}</title></Head>
+      <div className="portal-page portal-page--narrow">
         {loading ? (
-          <p className="loading-text">Loading…</p>
+          <div className="portal-surface">
+            <div className="empty-state">Loading...</div>
+          </div>
         ) : user ? (
           <>
-            <div className="card" style={{ marginBottom: 24, padding: 24, borderLeft: '4px solid var(--color-primary)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-                <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700 }}>
+            <div className="portal-surface">
+              <div className="portal-profile-hero">
+                <div className="portal-avatar">
                   {(user.username || user.email || 'A').slice(0, 2).toUpperCase()}
                 </div>
-                <div style={{ flex: 1, minWidth: 200 }}>
-                  <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--color-text)', marginBottom: 4 }}>{user.username}</h1>
-                  <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 8 }}>{user.email}</p>
-                  <span style={{ padding: '4px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600, background: 'var(--color-primary-tint, #eef2ff)', color: 'var(--color-primary)' }}>
+                <div>
+                  <h1 className="portal-profile-hero__title">{user.username}</h1>
+                  <p className="portal-profile-hero__meta">{user.email}</p>
+                  <span className="portal-badge portal-badge--neutral">
                     {user.role || 'admin'}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
-              <div className="card" style={{ padding: 20 }}>
-                <h3 style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Teams</h3>
-                {teams.length === 0 ? <p style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>—</p> : (
+            <div className="portal-profile-grid">
+              <div className="portal-surface portal-surface--tight">
+                <div className="portal-kv">
+                  <span className="portal-kv__label">Teams</span>
+                {teams.length === 0 ? <p style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>-</p> : (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {teams.map((t) => (
-                      <span key={t.id} style={{ padding: '6px 12px', borderRadius: 8, fontSize: 13, background: 'var(--color-primary-tint, #eef2ff)', color: 'var(--color-primary)', fontWeight: 500 }}>{t.name}</span>
+                      <span key={t.id} className="portal-pill">{t.name}</span>
                     ))}
                   </div>
                 )}
+                </div>
               </div>
-              <div className="card" style={{ padding: 20 }}>
-                <h3 style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Manager</h3>
-                <p style={{ color: 'var(--color-text)', fontSize: 14 }}>{managerUsername || '—'}</p>
+              <div className="portal-surface portal-surface--tight">
+                <div className="portal-kv">
+                  <span className="portal-kv__label">Manager</span>
+                  <span className="portal-kv__value">{managerUsername || '-'}</span>
+                </div>
               </div>
-              <div className="card" style={{ padding: 20 }}>
-                <h3 style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Member since</h3>
-                <p style={{ color: 'var(--color-text)', fontSize: 14 }}>{new Date(user.created_at).toLocaleDateString()}</p>
+              <div className="portal-surface portal-surface--tight">
+                <div className="portal-kv">
+                  <span className="portal-kv__label">Member since</span>
+                  <span className="portal-kv__value">{new Date(user.created_at).toLocaleDateString()}</span>
+                </div>
               </div>
             </div>
           </>
         ) : (
-          <p className="loading-text">Could not load profile.</p>
+          <div className="portal-surface">
+            <div className="empty-state">Could not load profile.</div>
+          </div>
         )}
       </div>
     </AdminLayout>
