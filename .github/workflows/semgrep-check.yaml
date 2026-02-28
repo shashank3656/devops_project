@@ -50,9 +50,10 @@ jobs:
             --severity ERROR \
             --error
 
+      # Upload SARIF only if not a fork PR
       - name: Upload Go SARIF to GitHub Security Tab
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep-go-results.sarif
           category: semgrep-go
@@ -97,8 +98,8 @@ jobs:
             --error
 
       - name: Upload React SARIF to GitHub Security Tab
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep-react-results.sarif
           category: semgrep-react
@@ -138,8 +139,8 @@ jobs:
             --error
 
       - name: Upload SCA SARIF to GitHub Security Tab
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep-sca-results.sarif
           category: semgrep-sca
@@ -154,7 +155,7 @@ jobs:
 
 
   # ─────────────────────────────────────────────
-  # JOB 4: Security Gate — Block PR if any job failed
+  # JOB 4: Security Gate
   # ─────────────────────────────────────────────
   security-gate:
     name: Security Gate
