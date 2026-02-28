@@ -20,7 +20,7 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
       - POSTGRES_DB=${DB_NAME:-infra_portal}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -42,25 +42,6 @@ services:
       - "8080:8080"
     env_file:
       - config/.env
-    environment:
-      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
-      - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_USER=${SMTP_USER:-devops3656@gmail.com}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-avhbdsfwpllsgogm}
-      - SMTP_FROM=${SMTP_FROM:-devops3656@gmail.com}
-      - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
-      - GITHUB_OWNER=${GITHUB_OWNER}
-      - GITHUB_REPO=${GITHUB_REPO}
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - BASE_BRANCH=${BASE_BRANCH}
-      - DB_HOST=${DB_HOST:-postgres}
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-postgres}
-      - DB_NAME=${DB_NAME:-infra_portal}
-      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/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}
-      - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
     volumes:
       # Mount source code for hot reload
       - ./backend:/app
@@ -88,25 +69,6 @@ services:
       - "8080:8080"
     env_file:
       - config/.env
-    environment:
-      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
-      - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_USER=${SMTP_USER:-devops3656@gmail.com}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-avhbdsfwpllsgogm}
-      - SMTP_FROM=${SMTP_FROM:-devops3656@gmail.com}
-      - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
-      - GITHUB_OWNER=${GITHUB_OWNER}
-      - GITHUB_REPO=${GITHUB_REPO}
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - BASE_BRANCH=${BASE_BRANCH}
-      - DB_HOST=${DB_HOST:-postgres}
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-postgres}
-      - DB_NAME=${DB_NAME:-infra_portal}
-      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
-      - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL}
-      - FRONTEND_URL=${FRONTEND_URL:-http://20.219.96.249:3000}
     depends_on:
       postgres:
         condition: service_healthy

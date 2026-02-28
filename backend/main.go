@@ -445,10 +445,15 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	allowStartWithoutDB := strings.EqualFold(strings.TrimSpace(os.Getenv("ALLOW_START_WITHOUT_DB")), "true")
+
 	// Initialize database
 	if err := InitDB(); err != nil {
+		if !allowStartWithoutDB {
+			log.Fatalf("Database initialization failed: %v", err)
+		}
 		log.Printf("Warning: Database initialization failed: %v", err)
-		log.Println("Continuing without database - history features will not work")
+		log.Println("ALLOW_START_WITHOUT_DB=true, continuing without database - database-backed features will fail")
 	} else {
 		// Run migration to update schema if needed
 		if err := MigrateDatabase(); err != nil {
