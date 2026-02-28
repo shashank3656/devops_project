@@ -160,10 +160,13 @@ export default function TemplatesList() {
                         <span className="portal-pill">{template.service}</span>
                       </div>
                       <div className="portal-template-card__actions">
-                        <Link href={`/templates/${template.id}/edit`} className="btn btn-secondary">
+                        <Link href={`/templates/${template.id}`} className="btn btn-secondary btn-sm">
+                          View
+                        </Link>
+                        <Link href={`/templates/${template.id}/edit`} className="btn btn-secondary btn-sm">
                           Edit
                         </Link>
-                        <button type="button" className="btn btn-secondary" disabled={deletingId === template.id} onClick={() => handleDelete(template)}>
+                        <button type="button" className="btn btn-secondary btn-sm" disabled={deletingId === template.id} onClick={() => handleDelete(template)}>
                           {deletingId === template.id ? 'Deleting...' : 'Delete'}
                         </button>
                       </div>

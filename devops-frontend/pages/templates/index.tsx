@@ -223,6 +223,9 @@ export default function DevOpsTemplatesList() {
                       </div>
 
                       <div className="portal-template-card__actions">
+                        <Link href={`/templates/${template.id}`} className="btn btn-secondary btn-sm">
+                          View
+                        </Link>
                         <Link href={`/templates/${template.id}/edit`} className="btn btn-secondary btn-sm">
                           Edit
                         </Link>

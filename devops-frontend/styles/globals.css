@@ -1264,6 +1264,37 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   gap: 10px;
   flex-wrap: wrap;
 }
+.portal-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+.portal-detail-card {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.42);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+.portal-detail-card__value {
+  display: block;
+  margin-top: 8px;
+  font-size: 15px;
+  color: var(--color-text);
+}
+.portal-code-block {
+  margin: 0;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  background: rgba(2, 6, 23, 0.78);
+  color: var(--color-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
 .portal-badge {
   display: inline-flex;
   align-items: center;
