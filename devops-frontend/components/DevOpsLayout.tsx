@@ -48,6 +48,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'My tickets',
   '/workload': 'Workload',
   '/tickets': 'All tickets',
+  '/approvals': 'Approvals',
   '/templates': 'Templates',
   '/team': 'Team',
   '/credential-audit': 'Credential Audit',
@@ -196,7 +197,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     baseNavItems.push({ href: '/tickets', label: 'All tickets', Icon: IconTickets });
   }
   baseNavItems.push({ href: '/templates', label: 'Templates', Icon: IconTemplates });
-  baseNavItems.push({ href: '/tickets', label: 'Approvals', Icon: IconShield, badge: isManager && pendingCount > 0 ? pendingCount : undefined });
+  baseNavItems.push({ href: '/approvals', label: 'Approvals', Icon: IconShield, badge: isManager && pendingCount > 0 ? pendingCount : undefined });
   baseNavItems.push({ href: '/credential-audit', label: 'Audit Log', Icon: IconShield });
   if (isManager) baseNavItems.push({ href: '/team', label: 'Team', Icon: IconUsers });
 
