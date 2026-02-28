@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -14,6 +15,18 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+)
+
+const (
+	defaultDBHost                = "postgres"
+	defaultDBPort                = "5432"
+	defaultDBName                = "infra_portal"
+	defaultDBSSLMode             = "disable"
+	defaultDBPingTimeoutSeconds  = 5
+	defaultDBMaxOpenConns        = 25
+	defaultDBMaxIdleConns        = 5
+	defaultDBConnMaxLifetimeMins = 5
+	defaultDBConnMaxIdleMins     = 2
 )
 
 const requestApplicationIDChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -121,6 +134,60 @@ func BuildRequestGitArtifacts(teamNameOrSlug, env, requestApplicationID string) 
 	filePath = fmt.Sprintf("%s/envs/%s/request.json", teamPathKey, env)
 	branchName = fmt.Sprintf("%s/%s/%s", teamPathKey, env, requestApplicationID)
 	return filePath, branchName
+}
+
+func getEnvTrimmed(key string) string {
+	return strings.TrimSpace(os.Getenv(key))
+}
+
+func getEnvOrDefault(key, fallback string) string {
+	if value := getEnvTrimmed(key); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func getEnvIntOrDefault(key string, fallback int) int {
+	value := getEnvTrimmed(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
+func buildDatabaseDSN() (dsn string, redacted string, err error) {
+	if databaseURL := getEnvTrimmed("DATABASE_URL"); databaseURL != "" {
+		return databaseURL, "DATABASE_URL", nil
+	}
+
+	dbHost := getEnvOrDefault("DB_HOST", defaultDBHost)
+	dbPort := getEnvOrDefault("DB_PORT", defaultDBPort)
+	dbUser := getEnvTrimmed("DB_USER")
+	dbPassword := os.Getenv("DB_PASSWORD")
+	dbName := getEnvOrDefault("DB_NAME", defaultDBName)
+	dbSSLMode := getEnvOrDefault("DB_SSLMODE", defaultDBSSLMode)
+	connectTimeout := getEnvIntOrDefault("DB_CONNECT_TIMEOUT_SECONDS", defaultDBPingTimeoutSeconds)
+
+	if dbUser == "" {
+		return "", "", fmt.Errorf("DB_USER is required when DATABASE_URL is not set")
+	}
+	if dbPassword == "" {
+		return "", "", fmt.Errorf("DB_PASSWORD is required when DATABASE_URL is not set")
+	}
+
+	dsn = fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s connect_timeout=%d",
+		dbHost, dbPort, dbUser, dbPassword, dbName, dbSSLMode, connectTimeout,
+	)
+	redacted = fmt.Sprintf(
+		"host=%s port=%s user=%s dbname=%s sslmode=%s",
+		dbHost, dbPort, dbUser, dbName, dbSSLMode,
+	)
+	return dsn, redacted, nil
 }
 
 var DB *sql.DB
@@ -339,50 +406,36 @@ type UserSavedConfig struct {
 
 // InitDB initializes the PostgreSQL database connection
 func InitDB() error {
-	dbHost := os.Getenv("DB_HOST")
-	if dbHost == "" {
-		dbHost = "postgres"
-	}
-	dbPort := os.Getenv("DB_PORT")
-	if dbPort == "" {
-		dbPort = "5432"
-	}
-	dbUser := os.Getenv("DB_USER")
-	if dbUser == "" {
-		dbUser = "postgres"
-	}
-	dbPassword := os.Getenv("DB_PASSWORD")
-	if dbPassword == "" {
-		dbPassword = "postgres"
-	}
-	dbName := os.Getenv("DB_NAME")
-	if dbName == "" {
-		dbName = "infra_portal"
+	dsn, redactedDSN, err := buildDatabaseDSN()
+	if err != nil {
+		return fmt.Errorf("database configuration invalid: %w", err)
 	}
 
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		dbHost, dbPort, dbUser, dbPassword, dbName)
-
-	var err error
 	DB, err = sql.Open("postgres", dsn)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Test connection
-	if err := DB.Ping(); err != nil {
+	pingTimeout := time.Duration(getEnvIntOrDefault("DB_PING_TIMEOUT_SECONDS", defaultDBPingTimeoutSeconds)) * time.Second
+	pingCtx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+	defer cancel()
+	if err := DB.PingContext(pingCtx); err != nil {
+		_ = DB.Close()
+		DB = nil
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	// Set connection pool settings
-	DB.SetMaxOpenConns(25)                 // Maximum number of open connections
-	DB.SetMaxIdleConns(5)                  // Maximum number of idle connections
-	DB.SetConnMaxLifetime(5 * time.Minute) // Maximum connection lifetime
+	DB.SetMaxOpenConns(getEnvIntOrDefault("DB_MAX_OPEN_CONNS", defaultDBMaxOpenConns))
+	DB.SetMaxIdleConns(getEnvIntOrDefault("DB_MAX_IDLE_CONNS", defaultDBMaxIdleConns))
+	DB.SetConnMaxLifetime(time.Duration(getEnvIntOrDefault("DB_CONN_MAX_LIFETIME_MINUTES", defaultDBConnMaxLifetimeMins)) * time.Minute)
+	DB.SetConnMaxIdleTime(time.Duration(getEnvIntOrDefault("DB_CONN_MAX_IDLE_TIME_MINUTES", defaultDBConnMaxIdleMins)) * time.Minute)
 
-	log.Println("Database connection established with connection pooling")
+	log.Printf("Database connection established (%s)", redactedDSN)
 
 	// Create tables
 	if err := createTables(); err != nil {
+		_ = DB.Close()
+		DB = nil
 		return fmt.Errorf("failed to create tables: %w", err)
 	}
 

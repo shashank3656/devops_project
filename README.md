@@ -7,7 +7,7 @@ Cloud-agnostic self-service infrastructure platform for managing infrastructure 
 1. **Setup Environment:**
    ```bash
    cp config/.env.example config/.env
-   # Edit config/.env with your GitHub credentials
+   # Edit config/.env with your real database, admin, and GitHub credentials
    
    # Sync env vars for docker-compose (or export them manually)
    ./scripts/sync-env.sh
@@ -74,6 +74,11 @@ All data is stored in the **backend** (PostgreSQL): users, teams, team members, 
 ## Configuration
 
 Environment variables are stored in `config/.env`. See `config/.env.example` for required variables (GitHub, database, admin secret). Optional: `SMTP_*` and `EMAIL_ENABLED` for email notifications—see [Feature Guide](./docs/FEATURE_GUIDE.md).
+
+Database notes:
+- Set real `DB_USER`, `DB_PASSWORD`, and `DB_NAME` values in `config/.env`
+- Re-run `./scripts/sync-env.sh` after changing DB credentials so `docker-compose` picks them up
+- PostgreSQL is now bound to `127.0.0.1:5432` in compose to avoid public exposure by default
 
 **Important for EC2 Deployment:**
 - Update `NEXT_PUBLIC_API_URL` in `config/.env` to your EC2 IP/domain
