@@ -137,8 +137,8 @@ export default function ActivityPage() {
         <div className="portal-page portal-page--narrow">
           <div className="portal-page__header">
             <div>
-              <span className="portal-page__eyebrow">Audit Trail</span>
-              <h1 className="portal-page__title">Inspect operator actions and user-side motion.</h1>
+              <span className="portal-page__eyebrow">Activity</span>
+              <h1 className="portal-page__title">Activity Log</h1>
               <p className="portal-page__subtitle">
                 Switch between admin audit records and end-user activity to understand who changed what and when.
               </p>

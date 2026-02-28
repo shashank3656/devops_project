@@ -115,8 +115,8 @@ export default function DevOpsTeamPage() {
       <div className="portal-page">
         <header className="portal-page__header">
           <div className="portal-page__header-main">
-            <span className="portal-page__eyebrow">Team Hub</span>
-            <h1 className="portal-page__title">Manage delivery squads</h1>
+            <span className="portal-page__eyebrow">Teams</span>
+            <h1 className="portal-page__title">Team Management</h1>
             <p className="portal-page__subtitle">
               All current team-management features remain in place, now organized as clearer team surfaces with explicit member actions.
             </p>

@@ -1,27 +1,26 @@
 name: Semgrep Security Scan
 
 on:
-  # ✅ Trigger on every push to any feature branch
   push:
     branches:
       - "feature/*"
       - "feature/**"
 
-  # ✅ Trigger on PR from feature/* targeting dev branch
   pull_request:
     branches:
       - dev
     types:
-      - opened        # PR created
-      - synchronize   # New commit pushed to existing PR
-      - reopened      # PR reopened after close
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: read
-  security-events: write   # Required to upload SARIF to GitHub Security tab
-  pull-requests: write     # Required to post PR comments
+  security-events: write
+  pull-requests: write
 
 jobs:
+
   # ─────────────────────────────────────────────
   # JOB 1: Semgrep SAST — Go Backend
   # ─────────────────────────────────────────────
@@ -30,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: semgrep/semgrep
+      image: semgrep/semgrep:latest
 
     steps:
       - name: Checkout Repository
@@ -40,18 +39,16 @@ jobs:
 
       - name: Run Semgrep on Go Code
         run: |
-          semgrep ci \
+          semgrep scan \
             --config "p/golang" \
             --config "p/secrets" \
             --config "p/owasp-top-ten" \
             --config "p/jwt" \
             --config "p/sql-injection" \
-            --sarif --output semgrep-go-results.sarif \
-            --error \
+            --sarif \
+            --output semgrep-go-results.sarif \
             --severity ERROR \
-            --severity WARNING
-        env:
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+            --error
 
       - name: Upload Go SARIF to GitHub Security Tab
         if: always()
@@ -68,6 +65,7 @@ jobs:
           path: semgrep-go-results.sarif
           retention-days: 30
 
+
   # ─────────────────────────────────────────────
   # JOB 2: Semgrep SAST — ReactJS Frontend
   # ─────────────────────────────────────────────
@@ -76,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: semgrep/semgrep
+      image: semgrep/semgrep:latest
 
     steps:
       - name: Checkout Repository
@@ -86,19 +84,17 @@ jobs:
 
       - name: Run Semgrep on React Code
         run: |
-          semgrep ci \
+          semgrep scan \
             --config "p/react" \
             --config "p/javascript" \
             --config "p/typescript" \
             --config "p/secrets" \
             --config "p/xss" \
             --config "p/owasp-top-ten" \
-            --sarif --output semgrep-react-results.sarif \
-            --error \
+            --sarif \
+            --output semgrep-react-results.sarif \
             --severity ERROR \
-            --severity WARNING
-        env:
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+            --error
 
       - name: Upload React SARIF to GitHub Security Tab
         if: always()
@@ -115,15 +111,16 @@ jobs:
           path: semgrep-react-results.sarif
           retention-days: 30
 
+
   # ─────────────────────────────────────────────
-  # JOB 3: Dependency Vulnerability Scan (SCA)
+  # JOB 3: Semgrep SCA — Dependency Scan
   # ─────────────────────────────────────────────
   semgrep-sca:
     name: Semgrep SCA — Dependencies
     runs-on: ubuntu-latest
 
     container:
-      image: semgrep/semgrep
+      image: semgrep/semgrep:latest
 
     steps:
       - name: Checkout Repository
@@ -131,14 +128,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run Semgrep Supply Chain (go.mod + package.json)
+      - name: Run Semgrep Supply Chain Scan
         run: |
-          semgrep ci \
+          semgrep scan \
             --config "p/supply-chain" \
-            --sarif --output semgrep-sca-results.sarif \
+            --sarif \
+            --output semgrep-sca-results.sarif \
+            --severity ERROR \
             --error
-        env:
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
       - name: Upload SCA SARIF to GitHub Security Tab
         if: always()
@@ -155,8 +152,9 @@ jobs:
           path: semgrep-sca-results.sarif
           retention-days: 30
 
+
   # ─────────────────────────────────────────────
-  # JOB 4: Gate — Block PR if any scan failed
+  # JOB 4: Security Gate — Block PR if any job failed
   # ─────────────────────────────────────────────
   security-gate:
     name: Security Gate
@@ -165,13 +163,13 @@ jobs:
     if: always()
 
     steps:
-      - name: Check All Scan Results
+      - name: Enforce Security Gate
         run: |
           if [[ "${{ needs.semgrep-go.result }}" == "failure" || \
                 "${{ needs.semgrep-react.result }}" == "failure" || \
                 "${{ needs.semgrep-sca.result }}" == "failure" ]]; then
-            echo "❌ Security Gate FAILED — vulnerabilities found. PR merge is blocked."
+            echo "❌ Security Gate FAILED — vulnerabilities detected. PR merge blocked."
             exit 1
           else
-            echo "✅ Security Gate PASSED — no critical vulnerabilities found."
+            echo "✅ Security Gate PASSED — no blocking vulnerabilities found."
           fi

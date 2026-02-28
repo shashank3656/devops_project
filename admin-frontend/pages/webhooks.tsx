@@ -168,8 +168,8 @@ export default function WebhooksPage() {
         <div className="portal-page">
           <div className="portal-page__header">
             <div>
-              <span className="portal-page__eyebrow">Event Relay</span>
-              <h1 className="portal-page__title">Route request state changes into external systems.</h1>
+              <span className="portal-page__eyebrow">Webhooks</span>
+              <h1 className="portal-page__title">Webhook Management</h1>
               <p className="portal-page__subtitle">
                 Outbound webhooks fire when request status changes. Payloads include the event, request id, and request fields, with optional HMAC signing.
               </p>

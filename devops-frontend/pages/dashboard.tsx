@@ -344,14 +344,14 @@ export default function DevOpsDashboard() {
   return (
     <>
       <Head>
-        <title>Mission Control - InfraGate DevOps</title>
+        <title>Dashboard - InfraGate DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="devops-portal">
           <section className="devops-portal__hero">
             <div className="devops-portal__hero-copy">
-              <span className="devops-portal__eyebrow">New DevOps Portal</span>
-              <h1 className="devops-portal__headline">Mission control for infrastructure delivery</h1>
+              <span className="devops-portal__eyebrow">Dashboard</span>
+              <h1 className="devops-portal__headline">DevOps Dashboard</h1>
               <p className="devops-portal__subhead">
                 Track approvals, active changes, and release pressure from a single control surface built for platform teams.
               </p>

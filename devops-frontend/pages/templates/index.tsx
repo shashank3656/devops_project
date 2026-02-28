@@ -116,8 +116,8 @@ export default function DevOpsTemplatesList() {
         <div className="portal-page">
           <header className="portal-page__header">
             <div className="portal-page__header-main">
-              <span className="portal-page__eyebrow">Template Studio</span>
-              <h1 className="portal-page__title">Reusable request blueprints</h1>
+              <span className="portal-page__eyebrow">Templates</span>
+              <h1 className="portal-page__title">Template Management</h1>
               <p className="portal-page__subtitle">
                 Keep the existing template features, but present them as a cleaner design system for fast editing, review, and creation.
               </p>

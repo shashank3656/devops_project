@@ -107,8 +107,8 @@ export default function TemplatesList() {
         <div className="portal-page">
           <div className="portal-page__header">
             <div>
-              <span className="portal-page__eyebrow">Template Forge</span>
-              <h1 className="portal-page__title">Govern the starting points every requester relies on.</h1>
+              <span className="portal-page__eyebrow">Templates</span>
+              <h1 className="portal-page__title">Template Management</h1>
               <p className="portal-page__subtitle">
                 Shape reusable request patterns by cloud, update weak templates, and retire the ones that should not be reused.
               </p>

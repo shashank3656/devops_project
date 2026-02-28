@@ -158,8 +158,8 @@ export default function MyTeamsPage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Team Control</span>
-            <h1 className="portal-page__title">Manage the people behind your requests.</h1>
+            <span className="portal-page__eyebrow">My Teams</span>
+            <h1 className="portal-page__title">Team Management</h1>
             <p className="portal-page__subtitle">
               Add or remove teammates from the groups you lead so requests route through the right people and approvals stay current.
             </p>
