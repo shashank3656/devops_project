@@ -80,12 +80,40 @@ function getUserIdentity(): { initials: string; label: string } {
   }
 }
 
+interface UserNotificationItem {
+  id: number;
+  request_id: number | null;
+  kind: string;
+  message: string;
+  read_at: string | null;
+  created_at: string;
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min ago`;
+  if (diffHours < 24) return `${diffHours} hour(s) ago`;
+  return d.toLocaleDateString();
+}
+
+function formatNotificationKind(kind: string): string {
+  return (kind || 'notification')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { toast } = useToast();
   const pathname = router.pathname;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notifyOpen, setNotifyOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileInitials, setProfileInitials] = useState('U');
   const [profileLabel, setProfileLabel] = useState('Portal User');
@@ -94,6 +122,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [updatedRequestsCount, setUpdatedRequestsCount] = useState(0);
   const [pendingManagerApprovalCount, setPendingManagerApprovalCount] = useState(0);
   const [hasManagedTeams, setHasManagedTeams] = useState(false);
+  const [recentNotifications, setRecentNotifications] = useState<UserNotificationItem[]>([]);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -149,29 +181,43 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
   }, [router.pathname]);
 
+  const refreshUserNotifications = (showLoading = false) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token || token === 'undefined') return;
+    if (showLoading) setNotificationsLoading(true);
+    try {
+      const since = localStorage.getItem(HISTORY_LAST_SEEN_KEY);
+      const sinceParam = since || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      fetch(`${apiUrl}/api/me/notifications?limit=8&since=${encodeURIComponent(sinceParam)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!data) return;
+          if (Array.isArray(data.notifications)) setRecentNotifications(data.notifications);
+          if (typeof data.unread_count === 'number') setUnreadNotificationsCount(data.unread_count);
+          if (typeof data.updated_count === 'number') setUpdatedRequestsCount(data.updated_count);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (showLoading) setNotificationsLoading(false);
+        });
+    } catch (_) {
+      if (showLoading) setNotificationsLoading(false);
+    }
+  };
+
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token || token === 'undefined') return;
-
-    const fetchNotifications = () => {
-      try {
-        const since = localStorage.getItem(HISTORY_LAST_SEEN_KEY);
-        const sinceParam = since || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const t = localStorage.getItem('token');
-        if (!t) return;
-        fetch(`${apiUrl}/api/me/notifications?since=${encodeURIComponent(sinceParam)}`, { headers: { Authorization: `Bearer ${t}` } })
-          .then((res) => (res.ok ? res.json() : null))
-          .then((data) => {
-            if (data && typeof data.updated_count === 'number') setUpdatedRequestsCount(data.updated_count);
-          })
-          .catch(() => {});
-      } catch (_) {}
-    };
-
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, NOTIFY_POLL_MS);
+    refreshUserNotifications();
+    const interval = setInterval(() => refreshUserNotifications(), NOTIFY_POLL_MS);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (notifyOpen) refreshUserNotifications(true);
+  }, [notifyOpen]);
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -203,16 +249,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      if (notifyRef.current && !notifyRef.current.contains(e.target as Node)) {
+        setNotifyOpen(false);
+      }
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
       }
     };
 
-    if (profileOpen) {
+    if (notifyOpen || profileOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [profileOpen]);
+  }, [notifyOpen, profileOpen]);
 
   useEffect(() => {
     let gPressedAt = 0;
@@ -327,6 +376,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     { label: 'template-library', tone: 'ok', meta: 'ready' },
     { label: 'team-access', tone: hasManagedTeams ? 'ok' : 'idle', meta: hasManagedTeams ? 'lead' : 'member' },
   ];
+  const notifyBadgeCount = pendingManagerApprovalCount > 0
+    ? pendingManagerApprovalCount
+    : unreadNotificationsCount > 0
+      ? unreadNotificationsCount
+      : updatedRequestsCount;
 
   return (
     <div className="user-layout user-layout-sidebar user-shell">
@@ -483,30 +537,77 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <div className="user-topbar__actions">
               <span className="user-topbar__workspace">{profileLabel}</span>
               <span className="user-topbar__role">{hasManagedTeams ? 'Lead' : 'Requester'}</span>
-              <Link
-                href="/notifications"
-                className="user-topbar__icon-btn"
-                title={updatedRequestsCount > 0 ? `${updatedRequestsCount} request update(s)` : 'Notifications'}
-              >
-                <IconBell />
-                {updatedRequestsCount > 0 && (
-                  <span className="user-topbar__badge" aria-label={`${updatedRequestsCount} updates`}>
-                    {updatedRequestsCount > 99 ? '99+' : updatedRequestsCount}
-                  </span>
+              <div className="user-topbar__notify-wrap" ref={notifyRef}>
+                <button
+                  type="button"
+                  className="user-topbar__icon-btn"
+                  onClick={() => {
+                    setNotifyOpen((open) => !open);
+                    setProfileOpen(false);
+                  }}
+                  title={notifyBadgeCount > 0 ? `${notifyBadgeCount} notifications` : 'Notifications'}
+                  aria-expanded={notifyOpen}
+                  aria-haspopup="true"
+                >
+                  <IconBell />
+                  {notifyBadgeCount > 0 && (
+                    <span className="user-topbar__badge" aria-label={`${notifyBadgeCount} updates`}>
+                      {notifyBadgeCount > 99 ? '99+' : notifyBadgeCount}
+                    </span>
+                  )}
+                </button>
+
+                {notifyOpen && (
+                  <div className="user-topbar__notify-panel">
+                    <div className="user-topbar__notify-header">
+                      <h3 className="user-topbar__notify-title">Notifications</h3>
+                      <button type="button" className="user-topbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
+                        x
+                      </button>
+                    </div>
+                    <Link href="/notifications" className="user-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                      Open notifications
+                    </Link>
+                    <div className="user-topbar__notify-list">
+                      {hasManagedTeams && pendingManagerApprovalCount > 0 && (
+                        <Link href="/history" className="user-topbar__notify-ticket" onClick={() => setNotifyOpen(false)}>
+                          <strong>Manager approvals</strong>
+                          <span>{pendingManagerApprovalCount} request(s) are waiting for your review.</span>
+                          <small>Open request history</small>
+                        </Link>
+                      )}
+                      {notificationsLoading ? (
+                        <p className="user-topbar__notify-empty">Loading...</p>
+                      ) : recentNotifications.length === 0 && pendingManagerApprovalCount === 0 ? (
+                        <p className="user-topbar__notify-empty">No recent notifications.</p>
+                      ) : (
+                        recentNotifications.map((notification) => (
+                          <Link
+                            key={notification.id}
+                            href={notification.request_id ? `/history?id=${notification.request_id}` : '/notifications'}
+                            className="user-topbar__notify-ticket"
+                            onClick={() => setNotifyOpen(false)}
+                          >
+                            <strong>{formatNotificationKind(notification.kind)}</strong>
+                            <span>{notification.message}</span>
+                            <small>{formatTime(notification.created_at)}</small>
+                          </Link>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 )}
-              </Link>
-              {pendingManagerApprovalCount > 0 && (
-                <span className="user-topbar__approval-badge" title={`${pendingManagerApprovalCount} need your approval`}>
-                  {pendingManagerApprovalCount > 99 ? '99+' : pendingManagerApprovalCount}
-                </span>
-              )}
+              </div>
             </div>
 
             <div className="user-topbar__profile-wrap" ref={profileRef}>
               <button
                 type="button"
                 className="user-topbar__profile-btn"
-                onClick={() => setProfileOpen((o) => !o)}
+                onClick={() => {
+                  setProfileOpen((o) => !o);
+                  setNotifyOpen(false);
+                }}
                 aria-expanded={profileOpen}
                 aria-haspopup="true"
                 title="Profile"
