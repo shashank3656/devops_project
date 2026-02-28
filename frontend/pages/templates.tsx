@@ -22,26 +22,35 @@ export default function TemplatesPage() {
 
   const fetchTemplates = useCallback(() => {
     const token = localStorage.getItem('token');
-    if (!token || token === 'undefined') return;
+    if (!token || token === 'undefined') {
+      setTemplates([]);
+      setLoading(false);
+      router.replace('/login');
+      return;
+    }
     setLoading(true);
     setError('');
     fetch(`${apiUrl}/api/templates`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
+        if (res.status === 401 || res.status === 403) {
+          router.replace('/login');
+          return null;
+        }
         const data = await res.json().catch(() => ({}));
         if (res.ok && Array.isArray(data.templates)) {
           setTemplates(data.templates);
           setError('');
         } else {
           setTemplates([]);
-          setError('');
+          setError(data?.error || 'Failed to load templates');
         }
       })
       .catch(() => {
         setTemplates([]);
-        setError('');
+        setError('Failed to load templates');
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem('isAuthenticated');

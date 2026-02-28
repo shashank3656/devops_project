@@ -51,11 +51,11 @@ export default function TemplatesList() {
         setError('');
       } else {
         setTemplates([]);
-        setError('');
+        setError(data?.error || 'Failed to load templates');
       }
     } catch (_) {
       setTemplates([]);
-      setError('');
+      setError('Failed to load templates');
     } finally {
       setLoading(false);
     }
