@@ -12,6 +12,7 @@ interface Team {
   id: number;
   name: string;
   slug: string;
+  application_id: string;
   team_type: string;
   created_at: string;
 }
@@ -198,6 +199,7 @@ export default function DevOpsTeamPage() {
                   <div className="portal-stack">
                     <div>
                       <div className="portal-pill-row" style={{ marginBottom: 14 }}>
+                        <span className="portal-pill">{team.application_id || 'Pending group ID'}</span>
                         <span className="portal-pill">{team.slug}</span>
                         <span className="portal-pill">{team.team_type || 'platform'}</span>
                       </div>

@@ -8,6 +8,7 @@ interface Team {
   id: number;
   name: string;
   slug: string;
+  application_id: string;
   team_type?: string;
   default_env?: string;
   default_cloud?: string;
@@ -324,12 +325,18 @@ export default function TeamDetail() {
                         fontSize: 14,
                       }}
                     >
-                      Slug: <code>{team.slug}</code>
+                      Group ID: <code>{team.application_id || 'Pending'}</code>
+                      <span style={{ marginLeft: 12 }}>
+                        Slug: <code>{team.slug}</code>
+                      </span>
                       {(team.team_type === 'devops' || team.team_type === 'portal') && (
                         <span style={{ marginLeft: 12 }}>
                           Group: {team.team_type === 'devops' ? 'DevOps team group' : 'Portal team group'}
                         </span>
                       )}
+                    </p>
+                    <p style={{ color: 'var(--color-text-muted)', fontSize: 13, marginTop: 8 }}>
+                      Group ID is the stable Git/PR folder key for new infrastructure requests.
                     </p>
                   </div>
                   <button
