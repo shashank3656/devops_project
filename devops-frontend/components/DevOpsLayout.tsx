@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import type { ComponentType, ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { DEVOPS_SITE_NAME } from '../lib/site';
 import {
@@ -45,10 +46,10 @@ function getProfileInitials(): string {
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'My tickets',
+  '/dashboard': 'Mission Control',
   '/workload': 'Workload',
-  '/tickets': 'All tickets',
-  '/templates': 'Templates',
+  '/tickets': 'Ticket Explorer',
+  '/templates': 'Template Studio',
   '/team': 'Team',
   '/credential-audit': 'Credential Audit',
   '/profile': 'Profile',
@@ -59,7 +60,7 @@ function getPageTitle(pathname: string): string {
   for (const [path, title] of Object.entries(PAGE_TITLES)) {
     if (path !== '/dashboard' && pathname.startsWith(path)) return title;
   }
-  return 'My tickets';
+  return 'Mission Control';
 }
 
 export default function DevOpsLayout({ children }: { children: ReactNode }) {
@@ -153,8 +154,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
         e.preventDefault();
         const msg = isManager
-          ? 'Shortcuts: ? help, g then d = My tickets, g then t = All tickets, g then w = Workload'
-          : 'Shortcuts: ? help, g then d = My tickets';
+          ? 'Shortcuts: ? help, g then d = Mission Control, g then t = Ticket Explorer, g then w = Workload'
+          : 'Shortcuts: ? help, g then d = Mission Control';
         alert(msg);
         return;
       }
@@ -188,18 +189,24 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     router.replace('/login');
   };
 
-  const baseNavItems: { href: string; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
-    { href: '/dashboard', label: 'My tickets', Icon: IconTickets },
+  const baseNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
+    { href: '/dashboard', label: 'Mission Control', Icon: IconTickets },
   ];
   if (isManager) {
     baseNavItems.push({ href: '/workload', label: 'Workload', Icon: IconWorkload });
-    baseNavItems.push({ href: '/tickets', label: 'All tickets', Icon: IconTickets });
+    baseNavItems.push({ href: '/tickets', label: 'Ticket Explorer', Icon: IconTickets });
   }
-  baseNavItems.push({ href: '/templates', label: 'Templates', Icon: IconTemplates });
+  baseNavItems.push({ href: '/templates', label: 'Template Studio', Icon: IconTemplates });
   baseNavItems.push({ href: '/credential-audit', label: 'Credential Audit', Icon: IconShield });
   if (isManager) baseNavItems.push({ href: '/team', label: 'Team', Icon: IconUsers });
 
   const pageTitle = getPageTitle(pathname);
+  const roleLabel = isManager ? 'Manager' : 'Contributor';
+  const statusLabel = isManager
+    ? pendingCount > 0
+      ? `${pendingCount} approvals open`
+      : 'Approval queue clear'
+    : 'Delivery active';
 
   return (
     <div className="devops-layout devops-layout-sidebar">
@@ -217,10 +224,27 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </button>
           <Link href="/dashboard" className="devops-sidebar-new__brand">
             <img src="/logo.svg" alt="" width={36} height={36} className="devops-sidebar-new__logo" />
-            {!sidebarCollapsed && <span className="devops-sidebar-new__brand-text">{DEVOPS_SITE_NAME}</span>}
+            {!sidebarCollapsed && (
+              <span className="devops-sidebar-new__brand-copy">
+                <span className="devops-sidebar-new__eyebrow">Platform Ops</span>
+                <span className="devops-sidebar-new__brand-text">{DEVOPS_SITE_NAME}</span>
+              </span>
+            )}
           </Link>
         </div>
+        {!sidebarCollapsed && (
+          <div className="devops-sidebar-new__summary">
+            <span className="devops-sidebar-new__summary-label">{isManager ? 'Approval radar' : 'Shift mode'}</span>
+            <strong className="devops-sidebar-new__summary-value">{isManager ? pendingCount : 'Live'}</strong>
+            <p className="devops-sidebar-new__summary-copy">
+              {isManager
+                ? `${pendingCount} requests are waiting for DevOps sign-off.`
+                : 'Tickets, templates, and audit flows are ready for action.'}
+            </p>
+          </div>
+        )}
         <nav className="devops-sidebar-new__nav">
+          {!sidebarCollapsed && <span className="devops-sidebar-new__nav-title">Workspace</span>}
           {baseNavItems.map(({ href, label, Icon }) => {
             const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
             return (
@@ -259,7 +283,13 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             >
               <IconMenu />
             </button>
-            <h1 className="devops-navbar__title">{pageTitle}</h1>
+            <div className="devops-navbar__title-wrap">
+              <span className="devops-navbar__kicker">DevOps workspace</span>
+              <h1 className="devops-navbar__title">{pageTitle}</h1>
+            </div>
+            <span className={`devops-navbar__status-chip ${isManager && pendingCount > 0 ? 'devops-navbar__status-chip--alert' : ''}`}>
+              {statusLabel}
+            </span>
           </div>
           <div className="devops-navbar__right">
             <div className="devops-navbar__actions">
@@ -269,6 +299,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 </span>
               )}
               {user && <span className="devops-navbar__username">{user.username}</span>}
+              <span className="devops-navbar__role">{roleLabel}</span>
             </div>
             <button
               type="button"

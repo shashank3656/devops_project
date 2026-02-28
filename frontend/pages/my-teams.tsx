@@ -56,12 +56,12 @@ export default function MyTeamsPage() {
         if (!data) return;
         const list = data.teams || [];
         setTeams(list);
-        list.forEach((t: Team) => {
-          fetch(`${apiUrl}/api/me/teams/${t.id}/members`, { headers: { Authorization: `Bearer ${token}` } })
-            .then((r) => r.ok ? r.json() : null)
-            .then((d) => {
-              if (d && Array.isArray(d.members)) {
-                setMembersByTeam((prev) => ({ ...prev, [t.id]: d.members }));
+        list.forEach((team: Team) => {
+          fetch(`${apiUrl}/api/me/teams/${team.id}/members`, { headers: { Authorization: `Bearer ${token}` } })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((memberData) => {
+              if (memberData && Array.isArray(memberData.members)) {
+                setMembersByTeam((prev) => ({ ...prev, [team.id]: memberData.members }));
               }
             })
             .catch(() => {});
@@ -75,7 +75,7 @@ export default function MyTeamsPage() {
     const token = localStorage.getItem('token');
     if (!token) return;
     fetch(`${apiUrl}/api/me/teams/${teamId}/members`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.ok ? r.json() : null)
+      .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d && Array.isArray(d.members)) {
           setMembersByTeam((prev) => ({ ...prev, [teamId]: d.members }));
@@ -117,12 +117,33 @@ export default function MyTeamsPage() {
     }
   };
 
+  const removeMember = async (team: Team, member: Member) => {
+    if (!confirm(`Remove ${member.username || member.email} from ${team.name}?`)) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    const res = await fetch(`${apiUrl}/api/me/teams/${team.id}/members/${member.user_id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      toast('Member removed', 'success');
+      loadMembers(team.id);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      toast(data.error || 'Failed to remove', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <>
-        <Head><title>My teams — {SITE_NAME}</title></Head>
-        <div className="card" style={{ padding: 24 }}>
-          <p style={{ color: 'var(--text-secondary)' }}>Loading teams...</p>
+        <Head>
+          <title>My teams - {SITE_NAME}</title>
+        </Head>
+        <div className="portal-page">
+          <div className="portal-surface">
+            <div className="empty-state">Loading teams...</div>
+          </div>
         </div>
       </>
     );
@@ -130,100 +151,112 @@ export default function MyTeamsPage() {
 
   return (
     <>
-      <Head><title>My teams — {SITE_NAME}</title></Head>
-      <div style={{ maxWidth: 900 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>My teams</h1>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: 24 }}>
-          Manage members for teams you lead. Add users by email or username.
-        </p>
+      <Head>
+        <title>My teams - {SITE_NAME}</title>
+      </Head>
+
+      <div className="portal-page">
+        <div className="portal-page__header">
+          <div>
+            <span className="portal-page__eyebrow">Team Control</span>
+            <h1 className="portal-page__title">Manage the people behind your requests.</h1>
+            <p className="portal-page__subtitle">
+              Add or remove teammates from the groups you lead so requests route through the right people and approvals stay current.
+            </p>
+          </div>
+        </div>
+
         {teams.length === 0 ? (
-          <div className="card" style={{ padding: 24 }}>
-            <p style={{ color: 'var(--text-secondary)' }}>You don&apos;t manage any teams.</p>
+          <div className="portal-surface">
+            <div className="empty-state">You do not manage any teams yet.</div>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <div className="team-control-grid">
             {teams.map((team) => (
-              <div key={team.id} className="card" style={{ padding: 20 }}>
-                <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>{team.name}</h2>
-                <div style={{ marginBottom: 16 }}>
-                  <strong style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Members</strong>
-                  <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
-                    {(membersByTeam[team.id] || []).map((m) => (
-                      <li key={m.id} style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span>{m.username || m.email} — <span style={{ color: 'var(--text-secondary)' }}>{m.role}</span></span>
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          style={{ padding: '2px 8px', fontSize: 12 }}
-                          onClick={async () => {
-                            if (!confirm(`Remove ${m.username || m.email} from ${team.name}?`)) return;
-                            const token = localStorage.getItem('token');
-                            if (!token) return;
-                            const res = await fetch(`${apiUrl}/api/me/teams/${team.id}/members/${m.user_id}`, {
-                              method: 'DELETE',
-                              headers: { Authorization: `Bearer ${token}` },
-                            });
-                            if (res.ok) {
-                              toast('Member removed', 'success');
-                              loadMembers(team.id);
-                            } else {
-                              const d = await res.json().catch(() => ({}));
-                              toast(d.error || 'Failed to remove', 'error');
-                            }
-                          }}
-                        >
+              <section key={team.id} className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">{team.team_type || 'team'}</span>
+                    <h2 className="portal-surface__title">{team.name}</h2>
+                    <p className="portal-surface__subtitle">{team.slug}</p>
+                  </div>
+                  <span className="portal-badge portal-badge--neutral">
+                    {(membersByTeam[team.id] || []).length} members
+                  </span>
+                </div>
+
+                <div className="portal-member-list">
+                  {(membersByTeam[team.id] || []).length === 0 ? (
+                    <div className="empty-state">No members assigned yet.</div>
+                  ) : (
+                    (membersByTeam[team.id] || []).map((member) => (
+                      <div key={member.id} className="portal-member-list__item">
+                        <div>
+                          <span className="portal-member-list__name">{member.username || member.email}</span>
+                          <span className="portal-member-list__meta">{member.email} / {member.role}</span>
+                        </div>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => removeMember(team, member)}>
                           Remove
                         </button>
-                      </li>
-                    ))}
-                    {(membersByTeam[team.id] || []).length === 0 && (
-                      <li style={{ color: 'var(--text-secondary)' }}>No members yet.</li>
-                    )}
-                  </ul>
+                      </div>
+                    ))
+                  )}
                 </div>
+
                 {addingTeamId === team.id ? (
-                  <form onSubmit={(e) => handleAddMember(e, team.id)} style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
-                    <div>
-                      <label htmlFor={`add-email-${team.id}`} style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-secondary)' }}>
-                        Email or username
-                      </label>
-                      <input
-                        id={`add-email-${team.id}`}
-                        type="text"
-                        value={addEmail}
-                        onChange={(e) => setAddEmail(e.target.value)}
-                        placeholder="user@example.com or username"
-                        style={{ padding: '8px 12px', minWidth: 200, borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
-                      />
+                  <form className="team-control-form" onSubmit={(e) => handleAddMember(e, team.id)}>
+                    <div className="portal-field-grid portal-field-grid--two">
+                      <div>
+                        <label className="label" htmlFor={`add-email-${team.id}`}>Email or username</label>
+                        <input
+                          id={`add-email-${team.id}`}
+                          type="text"
+                          className="input"
+                          value={addEmail}
+                          onChange={(e) => setAddEmail(e.target.value)}
+                          placeholder="user@example.com"
+                        />
+                      </div>
+                      <div>
+                        <label className="label" htmlFor={`add-role-${team.id}`}>Role</label>
+                        <select
+                          id={`add-role-${team.id}`}
+                          className="input"
+                          value={addRole}
+                          onChange={(e) => setAddRole(e.target.value)}
+                        >
+                          {PORTAL_ROLES.map((role) => (
+                            <option key={role} value={role}>
+                              {role.replace('_', ' ')}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
-                    <div>
-                      <label htmlFor={`add-role-${team.id}`} style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-secondary)' }}>
-                        Role
-                      </label>
-                      <select
-                        id={`add-role-${team.id}`}
-                        value={addRole}
-                        onChange={(e) => setAddRole(e.target.value)}
-                        style={{ padding: '8px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
+                    <div className="portal-form-actions">
+                      <button type="submit" className="btn btn-primary" disabled={submitting}>
+                        {submitting ? 'Adding...' : 'Add member'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          setAddingTeamId(null);
+                          setAddEmail('');
+                        }}
                       >
-                        {PORTAL_ROLES.map((r) => (
-                          <option key={r} value={r}>{r.replace('_', ' ')}</option>
-                        ))}
-                      </select>
+                        Cancel
+                      </button>
                     </div>
-                    <button type="submit" className="btn btn-primary" disabled={submitting}>
-                      {submitting ? 'Adding…' : 'Add'}
-                    </button>
-                    <button type="button" className="btn btn-secondary" onClick={() => { setAddingTeamId(null); setAddEmail(''); }}>
-                      Cancel
-                    </button>
                   </form>
                 ) : (
-                  <button type="button" className="btn btn-secondary" onClick={() => setAddingTeamId(team.id)}>
-                    Add member
-                  </button>
+                  <div className="portal-form-actions">
+                    <button type="button" className="btn btn-secondary" onClick={() => setAddingTeamId(team.id)}>
+                      Add member
+                    </button>
+                  </div>
                 )}
-              </div>
+              </section>
             ))}
           </div>
         )}

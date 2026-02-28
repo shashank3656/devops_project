@@ -53,7 +53,7 @@ export default function TemplatesList() {
         setTemplates([]);
         setError('');
       }
-    } catch (err) {
+    } catch (_) {
       setTemplates([]);
       setError('');
     } finally {
@@ -61,18 +61,18 @@ export default function TemplatesList() {
     }
   };
 
-  const handleDelete = async (t: RequestTemplate) => {
-    if (!confirm(`Delete template "${t.name}"?`)) return;
-    setDeletingId(t.id);
+  const handleDelete = async (template: RequestTemplate) => {
+    if (!confirm(`Delete template "${template.name}"?`)) return;
+    setDeletingId(template.id);
     setError('');
     try {
-      const res = await fetch(`${apiUrl}/api/admin/templates/${t.id}`, {
+      const res = await fetch(`${apiUrl}/api/admin/templates/${template.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        setTemplates((prev) => prev.filter((x) => x.id !== t.id));
+        setTemplates((prev) => prev.filter((x) => x.id !== template.id));
       } else {
         setError(data.error || 'Failed to delete');
       }
@@ -83,96 +83,96 @@ export default function TemplatesList() {
     }
   };
 
+  const byCloud = templates.reduce<Record<string, RequestTemplate[]>>((acc, template) => {
+    const cloud = (template.cloud || 'other').toLowerCase();
+    if (!acc[cloud]) acc[cloud] = [];
+    acc[cloud].push(template);
+    return acc;
+  }, {});
+
+  const cloudOrder = ['aws', 'gcp', 'azure'];
+  const clouds = Array.from(
+    new Set([
+      ...cloudOrder.filter((cloud) => byCloud[cloud]?.length),
+      ...Object.keys(byCloud).filter((cloud) => !cloudOrder.includes(cloud)),
+    ]),
+  );
+
   return (
     <>
       <Head>
         <title>Templates - Admin</title>
       </Head>
       <AdminLayout>
-        <div className="container">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
-            <h1 style={{ margin: 0 }}>Request templates</h1>
+        <div className="portal-page">
+          <div className="portal-page__header">
+            <div>
+              <span className="portal-page__eyebrow">Template Forge</span>
+              <h1 className="portal-page__title">Govern the starting points every requester relies on.</h1>
+              <p className="portal-page__subtitle">
+                Shape reusable request patterns by cloud, update weak templates, and retire the ones that should not be reused.
+              </p>
+            </div>
             <Link href="/templates/new" className="btn btn-primary">
               New template
             </Link>
           </div>
+
           {error && (
-            <div className="alert alert-error" role="alert" style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-              <span>{error}</span>
-              <button type="button" className="btn btn-secondary" style={{ padding: '8px 16px' }} onClick={() => { setError(''); fetchTemplates(); }}>
-                Retry
-              </button>
+            <div className="alert alert-error" role="alert">
+              {error}
             </div>
           )}
+
           {loading ? (
-            <div className="card" style={{ padding: '48px', textAlign: 'center' }}>
-              Loading…
+            <div className="portal-surface">
+              <div className="empty-state">Loading templates...</div>
             </div>
-          ) : !error && templates.length === 0 ? (
-            <div className="card" style={{ padding: '48px', textAlign: 'center' }}>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>No templates are available currently. Create one to get started.</p>
-              <Link href="/templates/new" className="btn btn-primary">
-                Create first template
-              </Link>
+          ) : templates.length === 0 ? (
+            <div className="portal-surface">
+              <div className="empty-state">
+                No templates exist yet.
+              </div>
             </div>
-          ) : !error ? (
-            (() => {
-              const byCloud = templates.reduce<Record<string, RequestTemplate[]>>((acc, t) => {
-                const c = (t.cloud || 'other').toLowerCase();
-                if (!acc[c]) acc[c] = [];
-                acc[c].push(t);
-                return acc;
-              }, {});
-              const cloudOrder = ['aws', 'gcp', 'azure'];
-              const clouds = Array.from(new Set([...cloudOrder.filter((c) => byCloud[c]?.length), ...Object.keys(byCloud).filter((c) => !cloudOrder.includes(c))]));
-              return (
-                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                  {clouds.map((cloudKey) => (
-                    <div key={cloudKey} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <div style={{ padding: '12px 16px', background: 'var(--bg-gray-50)', fontWeight: 600, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        {cloudKey}
+          ) : (
+            clouds.map((cloud) => (
+              <section key={cloud} className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">{cloud.toUpperCase()}</span>
+                    <h2 className="portal-surface__title">{cloud.toUpperCase()} template set</h2>
+                  </div>
+                </div>
+
+                <div className="portal-template-grid">
+                  {(byCloud[cloud] || []).map((template) => (
+                    <article key={template.id} className="portal-template-card">
+                      <div className="portal-template-card__top">
+                        <div>
+                          <h3 className="portal-template-card__name">{template.name}</h3>
+                          <p className="portal-template-card__description">
+                            {template.description || 'Template for repeatable infrastructure request creation.'}
+                          </p>
+                        </div>
                       </div>
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '1px solid var(--border-color)', background: 'var(--bg-gray-50)' }}>
-                            <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: '13px' }}>Name</th>
-                            <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: '13px' }}>Env</th>
-                            <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: '13px' }}>Service</th>
-                            <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: '13px' }}>Description</th>
-                            <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, fontSize: '13px' }}>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(byCloud[cloudKey] || []).map((t) => (
-                            <tr key={t.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                              <td style={{ padding: '12px 16px' }}>{t.name}</td>
-                              <td style={{ padding: '12px 16px' }}>{t.env}</td>
-                              <td style={{ padding: '12px 16px' }}>{t.service}</td>
-                              <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', maxWidth: 240 }}>{t.description || '—'}</td>
-                              <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                                <Link href={`/templates/${t.id}/edit`} className="btn btn-secondary" style={{ marginRight: 8, padding: '6px 12px' }}>
-                                  Edit
-                                </Link>
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary"
-                                  style={{ padding: '6px 12px' }}
-                                  disabled={deletingId === t.id}
-                                  onClick={() => handleDelete(t)}
-                                >
-                                  {deletingId === t.id ? 'Deleting…' : 'Delete'}
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                      <div className="portal-template-card__meta">
+                        <span className="portal-pill">{template.env}</span>
+                        <span className="portal-pill">{template.service}</span>
+                      </div>
+                      <div className="portal-template-card__actions">
+                        <Link href={`/templates/${template.id}/edit`} className="btn btn-secondary">
+                          Edit
+                        </Link>
+                        <button type="button" className="btn btn-secondary" disabled={deletingId === template.id} onClick={() => handleDelete(template)}>
+                          {deletingId === template.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
+                    </article>
                   ))}
                 </div>
-              );
-            })()
-          ) : null}
+              </section>
+            ))
+          )}
         </div>
       </AdminLayout>
     </>

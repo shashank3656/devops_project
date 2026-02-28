@@ -134,9 +134,18 @@ export default function ActivityPage() {
         <title>Activity - InfraGate Admin</title>
       </Head>
       <AdminLayout>
-        <div className="container" style={{ maxWidth: 1000 }}>
-          <h1 className="page-title" style={{ marginBottom: 24 }}>Activity</h1>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+        <div className="portal-page portal-page--narrow">
+          <div className="portal-page__header">
+            <div>
+              <span className="portal-page__eyebrow">Audit Trail</span>
+              <h1 className="portal-page__title">Inspect operator actions and user-side motion.</h1>
+              <p className="portal-page__subtitle">
+                Switch between admin audit records and end-user activity to understand who changed what and when.
+              </p>
+            </div>
+          </div>
+
+          <div className="portal-page__actions">
             <button
               type="button"
               className={`btn ${tab === 'audit' ? 'btn-primary' : 'btn-secondary'}`}
@@ -158,73 +167,75 @@ export default function ActivityPage() {
           )}
 
           {tab === 'audit' && (
-          <div style={{ marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-            <label style={{ fontWeight: 500 }}>Action</label>
-            <select
-              value={actionFilter}
-              onChange={(e) => { setActionFilter(e.target.value); setOffset(0); }}
-              className="input"
-              style={{ minWidth: 180 }}
-            >
-              <option value="">All actions</option>
-              <option value="user_create">User created</option>
-              <option value="user_update">User updated</option>
-              <option value="user_delete">User deleted</option>
-              <option value="team_create">Team created</option>
-              <option value="team_member_add">Member added</option>
-              <option value="team_member_remove">Member removed</option>
-              <option value="team_member_role_update">Member role updated</option>
-              <option value="request_approve">Request approved</option>
-              <option value="request_reject">Request rejected</option>
-            </select>
-            <label style={{ fontWeight: 500, marginLeft: 8 }}>From</label>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => { setFromDate(e.target.value); setOffset(0); }}
-              className="input"
-              style={{ width: 140 }}
-            />
-            <label style={{ fontWeight: 500 }}>To</label>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => { setToDate(e.target.value); setOffset(0); }}
-              className="input"
-              style={{ width: 140 }}
-            />
+            <div className="portal-surface">
+              <div className="portal-page__actions" style={{ justifyContent: 'space-between' }}>
+                <div className="portal-page__actions">
+                  <label className="label">Action</label>
+                  <select
+                    value={actionFilter}
+                    onChange={(e) => { setActionFilter(e.target.value); setOffset(0); }}
+                    className="input"
+                    style={{ minWidth: 180 }}
+                  >
+                    <option value="">All actions</option>
+                    <option value="user_create">User created</option>
+                    <option value="user_update">User updated</option>
+                    <option value="user_delete">User deleted</option>
+                    <option value="team_create">Team created</option>
+                    <option value="team_member_add">Member added</option>
+                    <option value="team_member_remove">Member removed</option>
+                    <option value="team_member_role_update">Member role updated</option>
+                    <option value="request_approve">Request approved</option>
+                    <option value="request_reject">Request rejected</option>
+                  </select>
+                  <label className="label">From</label>
+                  <input
+                    type="date"
+                    value={fromDate}
+                    onChange={(e) => { setFromDate(e.target.value); setOffset(0); }}
+                    className="input"
+                    style={{ width: 140 }}
+                  />
+                  <label className="label">To</label>
+                  <input
+                    type="date"
+                    value={toDate}
+                    onChange={(e) => { setToDate(e.target.value); setOffset(0); }}
+                    className="input"
+                    style={{ width: 140 }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    const params = new URLSearchParams({ format: 'csv', limit: '10000' });
+                    if (actionFilter) params.set('action', actionFilter);
+                    if (fromDate) params.set('from', fromDate);
+                    if (toDate) params.set('to', toDate);
+                    fetch(`${apiUrl}/api/admin/audit-log?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+                      .then((res) => res.text())
+                      .then((csv) => {
+                        const blob = new Blob([csv], { type: 'text/csv' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      })
+                      .catch(() => {});
+                  }}
+                >
+                  Export CSV
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => {
-                const params = new URLSearchParams({ format: 'csv', limit: '10000' });
-                if (actionFilter) params.set('action', actionFilter);
-                if (fromDate) params.set('from', fromDate);
-                if (toDate) params.set('to', toDate);
-                fetch(`${apiUrl}/api/admin/audit-log?${params}`, { headers: { Authorization: `Bearer ${token}` } })
-                  .then((res) => res.text())
-                  .then((csv) => {
-                    const blob = new Blob([csv], { type: 'text/csv' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  })
-                  .catch(() => {});
-              }}
-            >
-              Export CSV
-            </button>
-          </div>
           )}
 
-          <div className="card">
+          <div className="portal-surface portal-surface--table">
             {loading ? (
-              <p className="loading-text">Loading…</p>
+              <div className="empty-state" style={{ padding: 24 }}>Loading...</div>
             ) : tab === 'audit' ? (
               entries.length === 0 ? (
               <div className="empty-state">No audit entries found.</div>
@@ -246,7 +257,7 @@ export default function ActivityPage() {
                         <td style={{ color: 'var(--color-text-muted)', fontSize: 13, whiteSpace: 'nowrap' }}>
                           {new Date(e.created_at).toLocaleString()}
                         </td>
-                        <td style={{ fontSize: 13 }}>{e.admin_username || (e.admin_user_id ? `User #${e.admin_user_id}` : '—')}</td>
+                        <td style={{ fontSize: 13 }}>{e.admin_username || (e.admin_user_id ? `User #${e.admin_user_id}` : '-')}</td>
                         <td>
                           <span style={{
                             padding: '4px 8px',
@@ -266,7 +277,7 @@ export default function ActivityPage() {
                           {e.resource_type} {e.resource_id && `#${e.resource_id}`}
                         </td>
                         <td style={{ fontSize: 13, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis' }} title={e.details}>
-                          {e.details || '—'}
+                          {e.details || '-'}
                         </td>
                       </tr>
                     ))}
@@ -308,7 +319,7 @@ export default function ActivityPage() {
                         </td>
                         <td style={{ fontSize: 13 }}>{e.resource_type} {e.resource_id && `#${e.resource_id}`}</td>
                         <td style={{ fontSize: 13, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis' }} title={e.details}>
-                          {e.details || '—'}
+                          {e.details || '-'}
                         </td>
                       </tr>
                     ))}

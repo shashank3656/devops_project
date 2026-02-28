@@ -630,12 +630,13 @@ export default function AdminRequests() {
         <title>PR Requests - InfraGate Admin</title>
       </Head>
       <AdminLayout>
-        <div className="container" style={{ maxWidth: 1200 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
+        <div className="portal-page">
+          <div className="portal-page__header">
             <div>
-              <h1 className="page-title" style={{ marginBottom: 8 }}>PR Requests</h1>
-              <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>
-                All infrastructure PR requests. Use filters to narrow by team, env, cloud, or priority.
+              <span className="portal-page__eyebrow">Request Control</span>
+              <h1 className="portal-page__title">Drive approvals, rejection paths, and queue hygiene.</h1>
+              <p className="portal-page__subtitle">
+                Search by team, environment, cloud, or priority, then act on individual requests or in bulk.
               </p>
             </div>
             <button

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import type { ComponentType, ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SITE_NAME } from '../lib/site';
 import { useToast } from '../context/ToastContext';
 import {
@@ -41,13 +42,13 @@ export function setStoredTheme(theme: 'light' | 'dark') {
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  '/home': 'Home',
-  '/create-infrastructure': 'New Request',
-  '/templates': 'Templates',
-  '/history': 'History',
-  '/notifications': 'Notifications',
-  '/my-teams': 'My teams',
-  '/profile': 'Profile',
+  '/home': 'Launchpad',
+  '/create-infrastructure': 'Request Studio',
+  '/templates': 'Template Library',
+  '/history': 'Request Timeline',
+  '/notifications': 'Alerts',
+  '/my-teams': 'Team Control',
+  '/profile': 'Identity Center',
 };
 
 function getPageTitle(pathname: string): string {
@@ -55,22 +56,28 @@ function getPageTitle(pathname: string): string {
   for (const [path, title] of Object.entries(PAGE_TITLES)) {
     if (path !== '/home' && pathname.startsWith(path)) return title;
   }
-  return 'Home';
+  return 'Launchpad';
 }
 
-function getProfileInitials(): string {
-  if (typeof window === 'undefined') return 'U';
+function getUserIdentity(): { initials: string; label: string } {
+  if (typeof window === 'undefined') {
+    return { initials: 'U', label: 'Portal User' };
+  }
+
   try {
     const raw = localStorage.getItem('user');
-    if (!raw) return 'U';
+    if (!raw) return { initials: 'U', label: 'Portal User' };
+
     const user = JSON.parse(raw) as { username?: string; email?: string; name?: string };
-    const name = user?.name || user?.username || user?.email || '';
-    if (!name) return 'U';
-    const parts = name.trim().split(/[\s@.]/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
-    return name.slice(0, 2).toUpperCase();
+    const label = user?.name || user?.username || user?.email || 'Portal User';
+    const parts = label.trim().split(/[\s@.]/).filter(Boolean);
+    const initials = parts.length >= 2
+      ? (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2)
+      : label.slice(0, 2).toUpperCase() || 'U';
+
+    return { initials, label };
   } catch {
-    return 'U';
+    return { initials: 'U', label: 'Portal User' };
   }
 }
 
@@ -83,6 +90,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileInitials, setProfileInitials] = useState('U');
+  const [profileLabel, setProfileLabel] = useState('Portal User');
   const [newRequestExpanded, setNewRequestExpanded] = useState(false);
   const [teamCheck, setTeamCheck] = useState<'loading' | 'ok' | 'forbidden'>('loading');
   const [updatedRequestsCount, setUpdatedRequestsCount] = useState(0);
@@ -91,7 +99,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setProfileInitials(getProfileInitials());
+    const identity = getUserIdentity();
+    setProfileInitials(identity.initials);
+    setProfileLabel(identity.label);
   }, []);
 
   useEffect(() => {
@@ -146,6 +156,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token || token === 'undefined') return;
+
     const fetchNotifications = () => {
       try {
         const since = localStorage.getItem(HISTORY_LAST_SEEN_KEY);
@@ -154,10 +165,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         if (!t) return;
         fetch(`${apiUrl}/api/me/notifications?since=${encodeURIComponent(sinceParam)}`, { headers: { Authorization: `Bearer ${t}` } })
           .then((res) => (res.ok ? res.json() : null))
-          .then((data) => { if (data && typeof data.updated_count === 'number') setUpdatedRequestsCount(data.updated_count); })
+          .then((data) => {
+            if (data && typeof data.updated_count === 'number') setUpdatedRequestsCount(data.updated_count);
+          })
           .catch(() => {});
       } catch (_) {}
     };
+
     fetchNotifications();
     const interval = setInterval(fetchNotifications, NOTIFY_POLL_MS);
     return () => clearInterval(interval);
@@ -166,18 +180,25 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token || token === 'undefined') return;
+
     const fetchPendingApproval = () => {
       const t = localStorage.getItem('token');
       if (!t) return;
       fetch(`${apiUrl}/api/me/pending-manager-approval`, { headers: { Authorization: `Bearer ${t}` } })
         .then((res) => (res.ok ? res.json() : null))
-        .then((data) => { if (data && typeof data.pending_manager_approval_count === 'number') setPendingManagerApprovalCount(data.pending_manager_approval_count); })
+        .then((data) => {
+          if (data && typeof data.pending_manager_approval_count === 'number') {
+            setPendingManagerApprovalCount(data.pending_manager_approval_count);
+          }
+        })
         .catch(() => {});
     };
+
     fetchPendingApproval();
     const interval = setInterval(fetchPendingApproval, NOTIFY_POLL_MS);
     const onRefresh = () => fetchPendingApproval();
     window.addEventListener('pending-manager-approval-refresh', onRefresh);
+
     return () => {
       clearInterval(interval);
       window.removeEventListener('pending-manager-approval-refresh', onRefresh);
@@ -186,36 +207,26 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
     };
+
     if (profileOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [profileOpen]);
 
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setStoredTheme(next);
-    setTheme(next);
-  };
-
-  const toggleSidebar = () => {
-    const next = !sidebarCollapsed;
-    setSidebarCollapsed(next);
-    try {
-      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
-    } catch (_) {}
-  };
-
   useEffect(() => {
     let gPressedAt = 0;
+
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
         e.preventDefault();
-        toast('Shortcuts: ? help, g then h = Home, g then t = History, g then n = New Request', 'success');
+        toast('Shortcuts: ? help, g then h = Launchpad, g then t = Timeline, g then n = Request Studio', 'success');
         return;
       }
       if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
@@ -238,9 +249,24 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         gPressedAt = 0;
       }
     };
+
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [toast, router]);
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setStoredTheme(next);
+    setTheme(next);
+  };
+
+  const toggleSidebar = () => {
+    const next = !sidebarCollapsed;
+    setSidebarCollapsed(next);
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+    } catch (_) {}
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated');
@@ -252,13 +278,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   const newRequestExpandedByPath = pathname.startsWith('/create-infrastructure');
   const effectiveNewRequestExpanded = newRequestExpanded || newRequestExpandedByPath;
-
-  const baseNavItems: { href: string; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
-    { href: '/home', label: 'Home', Icon: IconHome },
-    { href: '/templates', label: 'Templates', Icon: IconTemplates },
-    { href: '/history', label: 'History', Icon: IconHistory },
+  const baseNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
+    { href: '/home', label: 'Launchpad', Icon: IconHome },
+    { href: '/templates', label: 'Template Library', Icon: IconTemplates },
+    { href: '/history', label: 'Request Timeline', Icon: IconHistory },
   ];
-  if (hasManagedTeams) baseNavItems.push({ href: '/my-teams', label: 'My teams', Icon: IconUsers });
+
+  if (hasManagedTeams) {
+    baseNavItems.push({ href: '/my-teams', label: 'Team Control', Icon: IconUsers });
+  }
 
   if (teamCheck === 'loading') {
     return (
@@ -267,6 +295,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </div>
     );
   }
+
   if (teamCheck === 'forbidden') {
     return (
       <div className="user-layout-forbidden">
@@ -284,64 +313,95 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }
 
   const pageTitle = getPageTitle(pathname);
+  const workspaceLabel = hasManagedTeams ? 'Team lead workspace' : 'Builder workspace';
+  const statusLabel = pendingManagerApprovalCount > 0
+    ? `${pendingManagerApprovalCount} approvals waiting`
+    : updatedRequestsCount > 0
+      ? `${updatedRequestsCount} fresh updates`
+      : 'Delivery lane clear';
 
   return (
-    <div className="user-layout user-layout-sidebar">
-      <aside className={`user-sidebar ${sidebarCollapsed ? 'user-sidebar--collapsed' : ''} ${mobileMenuOpen ? 'user-sidebar--mobile-open' : ''}`}>
-        <div className="user-sidebar__header">
+    <div className="user-layout user-layout-sidebar user-shell">
+      <aside className={`user-sidebar-shell ${sidebarCollapsed ? 'user-sidebar-shell--collapsed' : ''} ${mobileMenuOpen ? 'user-sidebar-shell--mobile-open' : ''}`}>
+        <div className="user-sidebar-shell__header">
           <button
             type="button"
-            className="user-sidebar__hamburger"
+            className="user-sidebar-shell__hamburger"
             onClick={toggleSidebar}
             aria-label="Toggle sidebar"
           >
             <IconMenu />
           </button>
-          <Link href="/home" className="user-sidebar__brand">
-            <img src="/logo.svg" alt="" width={36} height={36} className="user-sidebar__logo" />
-            {!sidebarCollapsed && <span className="user-sidebar__brand-text">{SITE_NAME}</span>}
+          <Link href="/home" className="user-sidebar-shell__brand">
+            <img src="/logo.svg" alt="" width={36} height={36} className="user-sidebar-shell__logo" />
+            {!sidebarCollapsed && (
+              <span className="user-sidebar-shell__brand-copy">
+                <span className="user-sidebar-shell__eyebrow">Self Service</span>
+                <span className="user-sidebar-shell__brand-text">{SITE_NAME}</span>
+              </span>
+            )}
           </Link>
         </div>
-        <nav className="user-sidebar__nav">
+
+        {!sidebarCollapsed && (
+          <div className="user-sidebar-shell__summary">
+            <span className="user-sidebar-shell__summary-label">{workspaceLabel}</span>
+            <strong className="user-sidebar-shell__summary-value">
+              {pendingManagerApprovalCount > 0 ? pendingManagerApprovalCount : updatedRequestsCount > 0 ? updatedRequestsCount : 'Live'}
+            </strong>
+            <p className="user-sidebar-shell__summary-copy">
+              {pendingManagerApprovalCount > 0
+                ? 'Approvals are waiting in your queue.'
+                : hasManagedTeams
+                  ? 'Your team requests, templates, and alerts are in sync.'
+                  : 'Use templates or request studio to launch new work.'}
+            </p>
+          </div>
+        )}
+
+        <nav className="user-sidebar-shell__nav">
+          {!sidebarCollapsed && <span className="user-sidebar-shell__nav-title">Workspace</span>}
           {baseNavItems.filter((item) => item.href === '/home').map(({ href, label, Icon }) => {
             const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
             return (
               <Link
                 key={href}
                 href={href}
-                className={`user-sidebar__link ${isActive ? 'user-sidebar__link--active' : ''}`}
+                className={`user-sidebar-shell__link ${isActive ? 'user-sidebar-shell__link--active' : ''}`}
                 onClick={() => setMobileMenuOpen(false)}
               >
-                <Icon className="user-sidebar__icon" />
-                {!sidebarCollapsed && <span className="user-sidebar__label">{label}</span>}
+                <Icon className="user-sidebar-shell__icon" />
+                {!sidebarCollapsed && <span className="user-sidebar-shell__label">{label}</span>}
               </Link>
             );
           })}
+
           {!sidebarCollapsed && (
-            <div className="user-sidebar__expandable">
+            <div className="user-sidebar-shell__expandable">
               <button
                 type="button"
-                className={`user-sidebar__link user-sidebar__expandable-trigger ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar__link--active' : ''}`}
+                className={`user-sidebar-shell__link user-sidebar-shell__expandable-trigger ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar-shell__link--active' : ''}`}
                 onClick={() => setNewRequestExpanded(!effectiveNewRequestExpanded)}
               >
-                <IconPlus className="user-sidebar__icon" />
-                <span className="user-sidebar__label">New Request</span>
-                <span className="user-sidebar__chevron">
+                <IconPlus className="user-sidebar-shell__icon" />
+                <span className="user-sidebar-shell__label">Request Studio</span>
+                <span className="user-sidebar-shell__chevron">
                   {effectiveNewRequestExpanded ? <IconChevronDown /> : <IconChevronRight />}
                 </span>
               </button>
+
               {effectiveNewRequestExpanded && (
-                <div className="user-sidebar__sub">
+                <div className="user-sidebar-shell__sub">
                   <Link
                     href="/create-infrastructure/iam"
-                    className={`user-sidebar__sublink ${pathname === '/create-infrastructure/iam' || pathname.startsWith('/create-infrastructure/iam/') ? 'user-sidebar__sublink--active' : ''}`}
+                    className={`user-sidebar-shell__sublink ${pathname === '/create-infrastructure/iam' || pathname.startsWith('/create-infrastructure/iam/') ? 'user-sidebar-shell__sublink--active' : ''}`}
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     IAM
                   </Link>
                   <Link
                     href="/create-infrastructure/new"
-                    className={`user-sidebar__sublink ${pathname === '/create-infrastructure/new' || pathname.startsWith('/create-infrastructure/new') || pathname === '/select-service' || pathname === '/custom-json' || pathname === '/aws' ? 'user-sidebar__sublink--active' : ''}`}
+                    className={`user-sidebar-shell__sublink ${pathname === '/create-infrastructure/new' || pathname.startsWith('/create-infrastructure/new') || pathname === '/select-service' || pathname === '/custom-json' || pathname === '/aws' ? 'user-sidebar-shell__sublink--active' : ''}`}
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     Create Infrastructure
@@ -350,107 +410,122 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               )}
             </div>
           )}
+
           {sidebarCollapsed && (
             <Link
               href="/create-infrastructure"
-              className={`user-sidebar__link ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar__link--active' : ''}`}
+              className={`user-sidebar-shell__link ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar-shell__link--active' : ''}`}
               onClick={() => setMobileMenuOpen(false)}
-              title="New Request"
+              title="Request Studio"
             >
-              <IconPlus className="user-sidebar__icon" />
+              <IconPlus className="user-sidebar-shell__icon" />
             </Link>
           )}
+
           {baseNavItems.filter((item) => item.href !== '/home').map(({ href, label, Icon }) => {
             const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
             return (
               <Link
                 key={href}
                 href={href}
-                className={`user-sidebar__link ${isActive ? 'user-sidebar__link--active' : ''}`}
+                className={`user-sidebar-shell__link ${isActive ? 'user-sidebar-shell__link--active' : ''}`}
                 onClick={() => setMobileMenuOpen(false)}
               >
-                <Icon className="user-sidebar__icon" />
-                {!sidebarCollapsed && <span className="user-sidebar__label">{label}</span>}
+                <Icon className="user-sidebar-shell__icon" />
+                {!sidebarCollapsed && <span className="user-sidebar-shell__label">{label}</span>}
               </Link>
             );
           })}
         </nav>
-        <div className="user-sidebar__footer">
-          <button type="button" className="user-sidebar__link" onClick={handleLogout}>
-            <IconLogout className="user-sidebar__icon" />
-            {!sidebarCollapsed && <span className="user-sidebar__label">Logout</span>}
+
+        <div className="user-sidebar-shell__footer">
+          <button type="button" className="user-sidebar-shell__link" onClick={handleLogout}>
+            <IconLogout className="user-sidebar-shell__icon" />
+            {!sidebarCollapsed && <span className="user-sidebar-shell__label">Logout</span>}
           </button>
         </div>
       </aside>
 
       {mobileMenuOpen && (
-        <div className="user-sidebar-overlay" onClick={() => setMobileMenuOpen(false)} aria-hidden />
+        <div className="user-sidebar-shell-overlay" onClick={() => setMobileMenuOpen(false)} aria-hidden />
       )}
 
-      <div className="user-main-wrapper">
-        <header className="user-navbar">
-          <div className="user-navbar__left">
+      <div className="user-main-shell">
+        <header className="user-topbar">
+          <div className="user-topbar__left">
             <button
               type="button"
-              className="user-navbar__menu-btn"
+              className="user-topbar__menu-btn"
               onClick={() => setMobileMenuOpen((o) => !o)}
               aria-label="Toggle menu"
             >
               <IconMenu />
             </button>
-            <h1 className="user-navbar__title">{pageTitle}</h1>
+            <div className="user-topbar__title-wrap">
+              <span className="user-topbar__kicker">{workspaceLabel}</span>
+              <h1 className="user-topbar__title">{pageTitle}</h1>
+            </div>
+            <span className={`user-topbar__status-chip ${pendingManagerApprovalCount > 0 ? 'user-topbar__status-chip--alert' : ''}`}>
+              {statusLabel}
+            </span>
           </div>
-          <div className="user-navbar__right">
-            <div className="user-navbar__actions">
+
+          <div className="user-topbar__right">
+            <div className="user-topbar__actions">
+              <span className="user-topbar__workspace">{profileLabel}</span>
+              <span className="user-topbar__role">{hasManagedTeams ? 'Lead' : 'Requester'}</span>
               <Link
                 href="/notifications"
-                className="user-navbar__icon-btn"
+                className="user-topbar__icon-btn"
                 title={updatedRequestsCount > 0 ? `${updatedRequestsCount} request update(s)` : 'Notifications'}
               >
                 <IconBell />
                 {updatedRequestsCount > 0 && (
-                  <span className="user-navbar__badge" aria-label={`${updatedRequestsCount} updates`}>
+                  <span className="user-topbar__badge" aria-label={`${updatedRequestsCount} updates`}>
                     {updatedRequestsCount > 99 ? '99+' : updatedRequestsCount}
                   </span>
                 )}
               </Link>
               {pendingManagerApprovalCount > 0 && (
-                <span className="user-navbar__approval-badge" title={`${pendingManagerApprovalCount} need your approval`}>
+                <span className="user-topbar__approval-badge" title={`${pendingManagerApprovalCount} need your approval`}>
                   {pendingManagerApprovalCount > 99 ? '99+' : pendingManagerApprovalCount}
                 </span>
               )}
             </div>
+
             <button
               type="button"
-              className="user-navbar__theme-toggle"
+              className="user-topbar__theme-toggle"
               onClick={toggleTheme}
               title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
               aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
             >
               {theme === 'dark' ? <IconSun /> : <IconMoon />}
             </button>
-            <div className="user-navbar__profile-wrap" ref={profileRef}>
+
+            <div className="user-topbar__profile-wrap" ref={profileRef}>
               <button
                 type="button"
-                className="user-navbar__profile-btn"
+                className="user-topbar__profile-btn"
                 onClick={() => setProfileOpen((o) => !o)}
                 aria-expanded={profileOpen}
                 aria-haspopup="true"
                 title="Profile"
               >
-                <span className="user-navbar__avatar">{profileInitials}</span>
-                <span className="user-navbar__profile-label">Profile</span>
+                <span className="user-topbar__avatar">{profileInitials}</span>
+                <span className="user-topbar__profile-label">{profileLabel}</span>
               </button>
+
               {profileOpen && (
-                <div className="user-navbar__dropdown">
-                  <div className="user-navbar__dropdown-header">
-                    <span className="user-navbar__dropdown-avatar">{profileInitials}</span>
-                    <span className="user-navbar__dropdown-label">Profile</span>
+                <div className="user-topbar__dropdown">
+                  <div className="user-topbar__dropdown-header">
+                    <span className="user-topbar__dropdown-avatar">{profileInitials}</span>
+                    <span className="user-topbar__dropdown-label">{profileLabel}</span>
                   </div>
-                  <Link href="/profile" className="user-navbar__dropdown-item" onClick={() => setProfileOpen(false)}>
+                  <Link href="/profile" className="user-topbar__dropdown-item" onClick={() => setProfileOpen(false)}>
                     Profile
                   </Link>
-                  <button type="button" className="user-navbar__dropdown-item" onClick={handleLogout}>
+                  <button type="button" className="user-topbar__dropdown-item" onClick={handleLogout}>
                     <IconLogout />
                     Logout
                   </button>
@@ -459,7 +534,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
         </header>
-        <main className="user-main">{children}</main>
+
+        <main className="user-main-shell__content">{children}</main>
       </div>
     </div>
   );
