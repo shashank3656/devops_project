@@ -407,6 +407,36 @@ func MigrateDatabase() error {
 		_, _ = DB.Exec("ALTER TABLE request_templates ADD COLUMN version INTEGER DEFAULT 1")
 	}
 
+	// Migration 29: teams.application_id (12-char lowercase alphanumeric group ID used in Git/PR paths)
+	var teamAppIDCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'teams' AND column_name = 'application_id'").Scan(&teamAppIDCount)
+	if teamAppIDCount == 0 {
+		log.Println("Migrating database: adding teams.application_id...")
+		_, _ = DB.Exec("ALTER TABLE teams ADD COLUMN application_id VARCHAR(12)")
+	}
+	_, _ = DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_teams_application_id ON teams(application_id) WHERE application_id IS NOT NULL AND application_id != ''")
+	rows, err := DB.Query("SELECT id FROM teams WHERE COALESCE(application_id,'') = '' ORDER BY id")
+	if err == nil {
+		var teamIDs []int
+		for rows.Next() {
+			var teamID int
+			if scanErr := rows.Scan(&teamID); scanErr == nil {
+				teamIDs = append(teamIDs, teamID)
+			}
+		}
+		rows.Close()
+		for _, teamID := range teamIDs {
+			groupID, genErr := GenerateTeamApplicationID()
+			if genErr != nil {
+				log.Printf("warning: failed to backfill teams.application_id for team %d: %v", teamID, genErr)
+				continue
+			}
+			if _, execErr := DB.Exec("UPDATE teams SET application_id = $1 WHERE id = $2", groupID, teamID); execErr != nil {
+				log.Printf("warning: failed to persist teams.application_id for team %d: %v", teamID, execErr)
+			}
+		}
+	}
+
 	log.Println("Database schema is up to date")
 	return nil
 }
