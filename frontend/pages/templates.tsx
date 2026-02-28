@@ -141,9 +141,12 @@ export default function TemplatesPage() {
                       <span className="portal-pill">{template.service}</span>
                     </div>
                     <div className="portal-template-card__actions">
+                      <Link href={`/templates/${template.id}`} className="btn btn-secondary btn-sm">
+                        View
+                      </Link>
                       <Link
                         href={`/select-service?cloud=${encodeURIComponent(template.cloud)}&env=${encodeURIComponent(template.env)}&service=${encodeURIComponent(template.service)}&template_id=${template.id}`}
-                        className="btn btn-primary"
+                        className="btn btn-primary btn-sm"
                       >
                         Use template
                       </Link>
