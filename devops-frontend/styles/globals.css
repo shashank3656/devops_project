@@ -3521,3 +3521,68 @@ tbody tr:hover,
     linear-gradient(180deg, rgba(235, 245, 255, 0.96), rgba(220, 236, 255, 1)),
     #e8f3ff;
 }
+
+/* Compact reference typography */
+.devops-sidebar-new__brand-word,
+.devops-navbar__kicker,
+.portal-page__eyebrow,
+.portal-surface__eyebrow,
+.portal-stat-card__label,
+.portal-kv__label {
+  letter-spacing: 0.1em;
+}
+
+.devops-sidebar-new__brand-word {
+  font-size: 13px;
+}
+
+.devops-sidebar-new__nav-title,
+.devops-sidebar-new__status-title {
+  font-size: 10px;
+}
+
+.devops-sidebar-new__link,
+.devops-sidebar-new__status-item,
+.devops-navbar__username,
+.devops-navbar__profile-label,
+.devops-navbar__notify-ticket span,
+.devops-navbar__notify-ticket small,
+.devops-navbar__notify-empty,
+.btn,
+.input,
+select.input,
+textarea.input,
+th,
+td {
+  font-size: 12px;
+}
+
+.devops-navbar__title {
+  font-size: 18px;
+}
+
+.devops-navbar__status-chip,
+.devops-navbar__role,
+.devops-navbar__notify-title,
+.devops-navbar__dropdown-label {
+  font-size: 11px;
+}
+
+.portal-page__title {
+  font-size: clamp(1.3rem, 2vw, 1.7rem);
+  line-height: 1.08;
+}
+
+.portal-page__subtitle,
+.portal-surface__subtitle {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.portal-surface__title {
+  font-size: 16px;
+}
+
+.portal-stat-card__value {
+  font-size: 20px;
+}
