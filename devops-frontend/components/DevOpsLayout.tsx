@@ -50,6 +50,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/tickets': 'Tickets',
   '/templates': 'Templates',
   '/gitops-projects': 'GitOps Projects',
+  '/gitops-control': 'Project Structure',
   '/team': 'Teams',
   '/credential-audit': 'Credential Audit',
   '/profile': 'Profile',
@@ -226,6 +227,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   if (isManager) {
     baseNavItems.push({ href: '/workload', label: 'Workload', Icon: IconWorkload });
     baseNavItems.push({ href: '/tickets', label: 'Tickets', Icon: IconTickets });
+    baseNavItems.push({ href: '/gitops-control', label: 'Project Structure', Icon: IconGitOps });
   }
   baseNavItems.push({ href: '/gitops-projects', label: 'GitOps Projects', Icon: IconGitOps });
   baseNavItems.push({ href: '/templates', label: 'Templates', Icon: IconTemplates });
