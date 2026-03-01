@@ -60,6 +60,72 @@ interface ManagementResponse {
   projects: ManagedProject[];
 }
 
+function normalizeProjectAccess(value: unknown): ProjectAccess[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const access = (item || {}) as Partial<ProjectAccess>;
+    return {
+      id: Number(access.id || 0),
+      project_id: Number(access.project_id || 0),
+      user_id: Number(access.user_id || 0),
+      username: String(access.username || ''),
+      email: String(access.email || ''),
+      environment: String(access.environment || ''),
+      permission: String(access.permission || 'read'),
+      created_at: String(access.created_at || ''),
+    };
+  });
+}
+
+function normalizeManagedProjects(value: unknown): ManagedProject[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const project = (item || {}) as Partial<ManagedProject>;
+    return {
+      id: Number(project.id || 0),
+      team_id: Number(project.team_id || 0),
+      team_name: String(project.team_name || ''),
+      group_id: String(project.group_id || ''),
+      name: String(project.name || ''),
+      slug: String(project.slug || ''),
+      repo_root: String(project.repo_root || ''),
+      base_branch: String(project.base_branch || 'main'),
+      default_cloud: String(project.default_cloud || 'aws'),
+      environments: Array.isArray(project.environments) ? project.environments.map((entry) => String(entry || '')) : [],
+      components: Array.isArray(project.components) ? project.components.map((entry) => String(entry || '')) : [],
+      current_permission: typeof project.current_permission === 'string' ? project.current_permission : undefined,
+      can_write: Boolean(project.can_write),
+      can_manage: Boolean(project.can_manage),
+      access: normalizeProjectAccess(project.access),
+    };
+  });
+}
+
+function normalizeManagementResponse(payload: Partial<ManagementResponse>): ManagementResponse {
+  return {
+    status: String(payload.status || 'ok'),
+    can_create_projects: Boolean(payload.can_create_projects),
+    teams: Array.isArray(payload.teams)
+      ? payload.teams.map((item) => ({
+          id: Number(item?.id || 0),
+          name: String(item?.name || ''),
+          slug: String(item?.slug || ''),
+          application_id: String(item?.application_id || ''),
+        }))
+      : [],
+    users: Array.isArray(payload.users)
+      ? payload.users.map((item) => ({
+          id: Number(item?.id || 0),
+          username: String(item?.username || ''),
+          email: String(item?.email || ''),
+          is_manager: Boolean(item?.is_manager),
+          level: String(item?.level || ''),
+        }))
+      : [],
+    projects: normalizeManagedProjects(payload.projects),
+  };
+}
+
 function formatCount(value: number): string {
   return new Intl.NumberFormat().format(value);
 }
@@ -106,7 +172,7 @@ export default function GitOpsControlPage() {
     if (!response.ok || payload.status !== 'ok') {
       throw new Error(payload.error || 'Failed to load GitOps management');
     }
-    const next = payload as ManagementResponse;
+    const next = normalizeManagementResponse(payload);
     setData(next);
     if (!createTeamId && next.teams.length > 0) {
       setCreateTeamId(String(next.teams[0].id));
