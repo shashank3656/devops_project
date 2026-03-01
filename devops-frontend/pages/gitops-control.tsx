@@ -60,14 +60,6 @@ interface ManagementResponse {
   projects: ManagedProject[];
 }
 
-interface ExplorerNode {
-  id: string;
-  depth: number;
-  kind: 'folder' | 'file';
-  name: string;
-  path: string;
-}
-
 function normalizeProjectAccess(value: unknown): ProjectAccess[] {
   if (!Array.isArray(value)) return [];
   return value.map((item) => {
@@ -151,42 +143,6 @@ function normalizePreviewToken(value: string): string {
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-}
-
-function buildExplorerNodes(project: ManagedProject | null): ExplorerNode[] {
-  if (!project) return [];
-  const nodes: ExplorerNode[] = [];
-  const rootParts = project.repo_root.split('/').filter(Boolean);
-  rootParts.forEach((part, index) => {
-    nodes.push({
-      id: `root-${index}-${part}`,
-      depth: index,
-      kind: 'folder',
-      name: part,
-      path: rootParts.slice(0, index + 1).join('/'),
-    });
-  });
-
-  for (const environment of project.environments) {
-    const envPath = `${project.repo_root}/${environment}`;
-    nodes.push({
-      id: `env-${environment}`,
-      depth: rootParts.length,
-      kind: 'folder',
-      name: environment,
-      path: envPath,
-    });
-    for (const component of project.components) {
-      nodes.push({
-        id: `file-${environment}-${component}`,
-        depth: rootParts.length + 1,
-        kind: 'file',
-        name: `${component}.json`,
-        path: `${envPath}/${component}.json`,
-      });
-    }
-  }
-  return nodes;
 }
 
 export default function GitOpsControlPage() {
@@ -311,8 +267,6 @@ export default function GitOpsControlPage() {
     const teamKey = normalizePreviewToken(selectedCreateTeam?.slug || selectedCreateTeam?.name || 'team') || 'team';
     return `projects/${teamKey}/${projectSlugPreview}`;
   }, [projectSlugPreview, selectedCreateTeam]);
-
-  const explorerNodes = useMemo(() => buildExplorerNodes(selectedPanelProject), [selectedPanelProject]);
 
   useEffect(() => {
     if (!selectedProject) {
@@ -469,17 +423,6 @@ export default function GitOpsControlPage() {
     setAccessUserId(String(access.user_id));
     setAccessPermission(access.permission || 'read');
     setAccessEnvironments(access.environment ? [access.environment] : []);
-  };
-
-  const toggleProjectPanel = (project: ManagedProject) => {
-    setSelectedProjectId((current) => {
-      const next = current === project.id ? null : project.id;
-      if (next != null) {
-        setAccessProjectId(String(project.id));
-        setAccessEnvironments(project.environments.slice(0, 1));
-      }
-      return next;
-    });
   };
 
   const openProjectEditor = (project: ManagedProject) => {
@@ -712,245 +655,212 @@ export default function GitOpsControlPage() {
                     <p>No GitOps project structure exists yet.</p>
                   </div>
                 ) : (
-                  <div className="gitops-workspace">
-                    <div className="gitops-workspace__main">
-                      <div className="gitops-project-table-wrap">
-                        <table className="gitops-project-table">
-                          <thead>
-                            <tr>
-                              <th aria-label="Select project" />
-                              <th>Project</th>
-                              <th>Team</th>
-                              <th>Repo Root</th>
-                              <th>Environments</th>
-                              <th>JSON Files</th>
-                              <th>Access</th>
-                              <th>Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {data.projects.map((project) => {
-                              const isSelected = selectedProjectId === project.id;
-                              return (
-                                <tr key={project.id} className={isSelected ? 'gitops-project-table__row gitops-project-table__row--selected' : 'gitops-project-table__row'}>
-                                  <td>
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={() => toggleProjectPanel(project)}
-                                      aria-label={`Select ${project.name}`}
-                                    />
-                                  </td>
-                                  <td>
-                                    <div className="gitops-project-table__primary">
-                                      <strong>{project.name}</strong>
-                                      <span>{project.slug}</span>
-                                    </div>
-                                  </td>
-                                  <td>{project.team_name}</td>
-                                  <td className="gitops-project-table__mono">{project.repo_root}</td>
-                                  <td>{project.environments.join(', ')}</td>
-                                  <td>{project.components.map((component) => `${component}.json`).join(', ')}</td>
-                                  <td>{project.access.length}</td>
-                                  <td>
-                                    <div className="gitops-project-table__actions">
-                                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => openProjectEditor(project)}>
-                                        Edit
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="btn btn-secondary btn-sm"
-                                        onClick={() => {
-                                          setSelectedProjectId(project.id);
-                                          setAccessProjectId(String(project.id));
-                                          setAccessEnvironments(project.environments.slice(0, 1));
-                                        }}
-                                      >
-                                        Access
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <article className="gitops-explorer">
-                        <div className="gitops-explorer__header">
+                  <div className="gitops-flow">
+                    <div className="gitops-flow__left">
+                      <article className="gitops-flow-card">
+                        <div className="gitops-flow-card__header">
                           <div>
-                            <span className="portal-surface__eyebrow">Folder Explorer</span>
-                            <h3 className="portal-surface__title">{selectedPanelProject ? `${selectedPanelProject.name} structure` : 'Select a project'}</h3>
+                            <span className="portal-surface__eyebrow">Each Project Access</span>
+                            <h3 className="portal-surface__title">{selectedPanelProject ? selectedPanelProject.name : 'Select a project'}</h3>
                           </div>
                         </div>
                         {selectedPanelProject ? (
-                          <div className="gitops-explorer__tree">
-                            {explorerNodes.map((node) => (
-                              <div key={node.id} className={`gitops-explorer__node gitops-explorer__node--${node.kind}`} style={{ paddingLeft: `${12 + node.depth * 18}px` }}>
-                                <span className="gitops-explorer__icon">{node.kind === 'folder' ? '▸' : '•'}</span>
-                                <div className="gitops-explorer__content">
-                                  <strong>{node.name}</strong>
-                                  <span>{node.path}</span>
+                          <>
+                            <form onSubmit={handleGrantAccess} className="portal-stack">
+                              <div className="form-group">
+                                <label className="label" htmlFor="access-user">User</label>
+                                <select id="access-user" className="input" value={accessUserId} onChange={(event) => setAccessUserId(event.target.value)}>
+                                  {data.users.map((user) => (
+                                    <option key={user.id} value={user.id}>
+                                      {user.username}{user.email ? ` (${user.email})` : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="form-group">
+                                <label className="label" htmlFor="access-permission">Permission</label>
+                                <select id="access-permission" className="input" value={accessPermission} onChange={(event) => setAccessPermission(event.target.value)}>
+                                  <option value="read">read</option>
+                                  <option value="write">write</option>
+                                  <option value="admin">admin</option>
+                                </select>
+                              </div>
+                              <div className="form-group">
+                                <span className="label">Visible Environments</span>
+                                <div className="gitops-check-row">
+                                  {selectedPanelProject.environments.map((environment) => (
+                                    <label key={environment} className="gitops-check">
+                                      <input
+                                        type="checkbox"
+                                        checked={accessEnvironments.includes(environment)}
+                                        onChange={() => setAccessEnvironments((current) => toggleSelection(environment, current))}
+                                      />
+                                      <span>{environment}</span>
+                                    </label>
+                                  ))}
                                 </div>
                               </div>
-                            ))}
-                          </div>
+                              <div className="portal-form-actions">
+                                <button type="submit" className="btn btn-primary btn-sm" disabled={saving || accessEnvironments.length === 0}>
+                                  {saving ? 'Saving...' : 'Save access'}
+                                </button>
+                              </div>
+                            </form>
+
+                            {selectedPanelProject.access.length === 0 ? (
+                              <div className="portal-empty">
+                                <p>No user access assigned yet.</p>
+                              </div>
+                            ) : (
+                              <div className="gitops-access-list">
+                                {selectedPanelProject.access.map((access) => (
+                                  <div key={access.id} className="gitops-access-list__item">
+                                    <div>
+                                      <strong>{access.username}</strong>
+                                      <p>{access.email || 'No email'} · {access.environment} · {access.permission}</p>
+                                    </div>
+                                    <div className="gitops-access-actions">
+                                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleEditAccess(selectedPanelProject, access)}>
+                                        Edit
+                                      </button>
+                                      <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => void handleRemoveAccess(access.id)}>
+                                        Remove
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </>
                         ) : (
                           <div className="portal-empty">
-                            <p>Select a project checkbox to open its explorer and access panel.</p>
+                            <p>Select a project first.</p>
+                          </div>
+                        )}
+                      </article>
+
+                      <article className="gitops-flow-card">
+                        <div className="gitops-flow-card__header">
+                          <div>
+                            <span className="portal-surface__eyebrow">Project</span>
+                            <h3 className="portal-surface__title">Available projects</h3>
+                          </div>
+                        </div>
+                        <div className="gitops-flow-list">
+                          {data.projects.map((project, index) => {
+                            const isSelected = selectedProjectId === project.id;
+                            return (
+                              <button
+                                key={project.id}
+                                type="button"
+                                className={`gitops-flow-list__item ${isSelected ? 'gitops-flow-list__item--active' : ''}`}
+                                onClick={() => {
+                                  setSelectedProjectId(project.id);
+                                  setAccessProjectId(String(project.id));
+                                  setAccessEnvironments(project.environments.slice(0, 1));
+                                }}
+                              >
+                                <span>{index + 1}) {project.name}</span>
+                                <small>{project.team_name}</small>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {selectedPanelProject && (
+                          <div className="gitops-card-actions">
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => openProjectEditor(selectedPanelProject)}>
+                              Edit structure
+                            </button>
                           </div>
                         )}
                       </article>
                     </div>
 
-                    {selectedPanelProject && (
-                      <aside className="gitops-sidepanel">
-                        <div className="gitops-sidepanel__header">
-                          <div>
-                            <span className="portal-surface__eyebrow">Selected Resource</span>
-                            <h3 className="portal-surface__title">{selectedPanelProject.name}</h3>
-                            <p className="portal-surface__subtitle">{selectedPanelProject.repo_root}</p>
-                          </div>
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSelectedProjectId(null)}>
-                            Close
-                          </button>
+                    <article className="gitops-flow-card gitops-flow-card--center">
+                      <div className="gitops-flow-card__header">
+                        <div>
+                          <span className="portal-surface__eyebrow">Environments</span>
+                          <h3 className="portal-surface__title">{selectedPanelProject ? selectedPanelProject.name : 'Select a project'}</h3>
                         </div>
-
-                        <div className="portal-pill-row">
-                          <span className="portal-pill">Group ID {selectedPanelProject.group_id}</span>
-                          <span className="portal-pill">{selectedPanelProject.default_cloud || 'aws'}</span>
-                          <span className="portal-pill">{selectedPanelProject.base_branch}</span>
-                          {selectedPanelProject.current_permission && <span className="portal-pill">{selectedPanelProject.current_permission}</span>}
-                        </div>
-
-                        <div className="gitops-sidepanel__section">
-                          <div className="gitops-sidepanel__section-header">
-                            <div>
-                              <span className="portal-surface__eyebrow">Project Actions</span>
-                              <h4 className="gitops-sidepanel__title">Structure and files</h4>
+                      </div>
+                      {selectedPanelProject ? (
+                        <div className="gitops-flow-envlist">
+                          {selectedPanelProject.environments.map((environment) => (
+                            <div key={environment} className="gitops-flow-envlist__item">
+                              {environment.toUpperCase()}
                             </div>
-                          </div>
-                          <div className="gitops-card-actions">
-                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => openProjectEditor(selectedPanelProject)}>
-                              Edit structure
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => {
-                                setJsonProjectId(selectedPanelProject.id);
-                                setNewJsonComponent('');
-                              }}
-                            >
-                              Create JSON file
-                            </button>
-                          </div>
-                          <div className="portal-pill-row">
-                            {selectedPanelProject.components.map((component) => (
-                              <span key={component} className="portal-pill">{component}.json</span>
-                            ))}
-                          </div>
-                          {jsonProjectId === selectedPanelProject.id && (
-                            <div className="gitops-inline-form">
-                              <input
-                                className="input"
-                                value={newJsonComponent}
-                                onChange={(event) => setNewJsonComponent(event.target.value)}
-                                placeholder="service-mesh"
-                              />
-                              <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => void handleAddJsonFile(selectedPanelProject)}>
-                                Add JSON file
-                              </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="portal-empty">
+                          <p>Select a project to see its environments.</p>
+                        </div>
+                      )}
+                    </article>
+
+                    <div className="gitops-flow__right">
+                      {selectedPanelProject ? (
+                        selectedPanelProject.environments.map((environment) => (
+                          <article key={environment} className="gitops-flow-card">
+                            <div className="gitops-flow-card__header">
+                              <div>
+                                <span className="portal-surface__eyebrow">{environment.toUpperCase()}</span>
+                                <h3 className="portal-surface__title">JSON Files</h3>
+                              </div>
+                            </div>
+                            <div className="gitops-flow-files">
+                              {selectedPanelProject.components.map((component, index) => (
+                                <div key={`${environment}-${component}`} className="gitops-flow-files__item">
+                                  {index + 1}) {component}.json
+                                </div>
+                              ))}
+                              <div className="gitops-flow-files__item">...</div>
+                            </div>
+                            <div className="gitops-card-actions">
                               <button
                                 type="button"
                                 className="btn btn-secondary btn-sm"
                                 onClick={() => {
-                                  setJsonProjectId(null);
+                                  setJsonProjectId(selectedPanelProject.id);
                                   setNewJsonComponent('');
                                 }}
                               >
-                                Cancel
+                                Create JSON file
                               </button>
                             </div>
-                          )}
-                        </div>
-
-                        <div className="gitops-sidepanel__section">
-                          <div className="gitops-sidepanel__section-header">
-                            <div>
-                              <span className="portal-surface__eyebrow">Access</span>
-                              <h4 className="gitops-sidepanel__title">User permissions</h4>
-                            </div>
-                          </div>
-                          <form onSubmit={handleGrantAccess} className="portal-stack">
-                            <div className="form-group">
-                              <label className="label" htmlFor="access-user">User</label>
-                              <select id="access-user" className="input" value={accessUserId} onChange={(event) => setAccessUserId(event.target.value)}>
-                                {data.users.map((user) => (
-                                  <option key={user.id} value={user.id}>
-                                    {user.username}{user.email ? ` (${user.email})` : ''}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <div className="form-group">
-                              <label className="label" htmlFor="access-permission">Permission</label>
-                              <select id="access-permission" className="input" value={accessPermission} onChange={(event) => setAccessPermission(event.target.value)}>
-                                <option value="read">read</option>
-                                <option value="write">write</option>
-                                <option value="admin">admin</option>
-                              </select>
-                            </div>
-                            <div className="form-group">
-                              <span className="label">Visible Environments</span>
-                              <div className="gitops-check-row">
-                                {selectedPanelProject.environments.map((environment) => (
-                                  <label key={environment} className="gitops-check">
-                                    <input
-                                      type="checkbox"
-                                      checked={accessEnvironments.includes(environment)}
-                                      onChange={() => setAccessEnvironments((current) => toggleSelection(environment, current))}
-                                    />
-                                    <span>{environment}</span>
-                                  </label>
-                                ))}
+                            {jsonProjectId === selectedPanelProject.id && (
+                              <div className="gitops-inline-form">
+                                <input
+                                  className="input"
+                                  value={newJsonComponent}
+                                  onChange={(event) => setNewJsonComponent(event.target.value)}
+                                  placeholder="service-mesh"
+                                />
+                                <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => void handleAddJsonFile(selectedPanelProject)}>
+                                  Add
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => {
+                                    setJsonProjectId(null);
+                                    setNewJsonComponent('');
+                                  }}
+                                >
+                                  Cancel
+                                </button>
                               </div>
-                            </div>
-                            <div className="portal-form-actions">
-                              <button type="submit" className="btn btn-primary btn-sm" disabled={saving || accessEnvironments.length === 0}>
-                                {saving ? 'Saving...' : 'Save access'}
-                              </button>
-                            </div>
-                          </form>
-
-                          {selectedPanelProject.access.length === 0 ? (
-                            <div className="portal-empty">
-                              <p>No user access assigned yet.</p>
-                            </div>
-                          ) : (
-                            <div className="gitops-access-list">
-                              {selectedPanelProject.access.map((access) => (
-                                <div key={access.id} className="gitops-access-list__item">
-                                  <div>
-                                    <strong>{access.username}</strong>
-                                    <p>{access.email || 'No email'} · {access.environment} · {access.permission}</p>
-                                  </div>
-                                  <div className="gitops-access-actions">
-                                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleEditAccess(selectedPanelProject, access)}>
-                                      Edit
-                                    </button>
-                                    <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => void handleRemoveAccess(access.id)}>
-                                      Remove
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </aside>
-                    )}
+                            )}
+                          </article>
+                        ))
+                      ) : (
+                        <article className="gitops-flow-card">
+                          <div className="portal-empty">
+                            <p>Select a project to see the JSON file boxes for each environment.</p>
+                          </div>
+                        </article>
+                      )}
+                    </div>
                   </div>
                 )}
               </section>
