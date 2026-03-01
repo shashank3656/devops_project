@@ -59,6 +59,53 @@ func findVisibleGitOpsProject(userID, projectID int) (*GitOpsCatalogProject, err
 	return project, err
 }
 
+func ensureGitOpsBootstrapTeam(userID int, defaultCloud string) (*Team, error) {
+	if !CanUserBootstrapGitOpsProjects(userID) {
+		return nil, fmt.Errorf("GitOps admin access is required to create the first project")
+	}
+
+	existing, err := GetTeamByNameOrSlug("devops-platform")
+	if err == nil && existing != nil && existing.TeamType == "devops" {
+		if _, memberErr := AddTeamMember(existing.ID, userID, "lead"); memberErr != nil && !strings.Contains(strings.ToLower(memberErr.Error()), "duplicate") {
+			return nil, memberErr
+		}
+		return existing, nil
+	}
+
+	createdBy := &userID
+	team, err := CreateTeam("DevOps Platform", "devops-platform", "devops", createdBy, "dev", defaultCloud)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := AddTeamMember(team.ID, userID, "lead"); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+		return nil, err
+	}
+	return team, nil
+}
+
+func resolveGitOpsCreateTeamID(userID, requestedTeamID int, defaultCloud string) (int, error) {
+	if requestedTeamID > 0 {
+		return requestedTeamID, nil
+	}
+
+	teams, err := listCreatableGitOpsTeamsForUser(userID)
+	if err != nil {
+		return 0, err
+	}
+	if len(teams) == 1 {
+		return teams[0].ID, nil
+	}
+	if len(teams) > 1 {
+		return 0, fmt.Errorf("select a devops team")
+	}
+
+	team, err := ensureGitOpsBootstrapTeam(userID, defaultCloud)
+	if err != nil {
+		return 0, err
+	}
+	return team.ID, nil
+}
+
 func devopsGitOpsManagementHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
 		enableCORS(w)
@@ -99,7 +146,7 @@ func devopsGitOpsManagementHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":              "ok",
-		"can_create_projects": len(teams) > 0,
+		"can_create_projects": len(teams) > 0 || CanUserBootstrapGitOpsProjects(userID),
 		"teams":               teams,
 		"users":               users,
 		"projects":            projects,
@@ -135,20 +182,27 @@ func devopsGitOpsProjectCreateHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json payload", "status": "error"})
 		return
 	}
-	if body.TeamID <= 0 || strings.TrimSpace(body.Name) == "" {
+	if strings.TrimSpace(body.Name) == "" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "team_id and name are required", "status": "error"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "name is required", "status": "error"})
 		return
 	}
-	if !CanUserCreateGitOpsProjectInTeam(userID, body.TeamID) {
+	resolvedTeamID, err := resolveGitOpsCreateTeamID(userID, body.TeamID, body.DefaultCloud)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	if !CanUserCreateGitOpsProjectInTeam(userID, resolvedTeamID) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "GitOps admin access is required to create a project in this team", "status": "error"})
 		return
 	}
 
-	project, err := CreateGitOpsCatalogProject(body.TeamID, body.Name, body.Slug, body.Environments, body.Components, body.DefaultCloud, userID)
+	project, err := CreateGitOpsCatalogProject(resolvedTeamID, body.Name, body.Slug, body.Environments, body.Components, body.DefaultCloud, userID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)

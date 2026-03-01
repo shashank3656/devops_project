@@ -320,6 +320,20 @@ func listCreatableGitOpsTeamsForUser(userID int) ([]Team, error) {
 	return out, nil
 }
 
+func CanUserBootstrapGitOpsProjects(userID int) bool {
+	user, err := GetUserByID(userID)
+	if err != nil || user == nil {
+		return false
+	}
+	if user.Role == "admin" {
+		return true
+	}
+	if profile, _ := GetDevopsProfile(userID); profile != nil && profile.IsManager {
+		return true
+	}
+	return false
+}
+
 func CanUserCreateGitOpsProjectInTeam(userID, teamID int) bool {
 	user, err := GetUserByID(userID)
 	if err != nil || user == nil {

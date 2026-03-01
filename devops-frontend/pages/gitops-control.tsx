@@ -826,13 +826,20 @@ export default function GitOpsControlPage() {
                         <div className="portal-field-grid portal-field-grid--two">
                           <div className="form-group">
                             <label className="label" htmlFor="gitops-team">DevOps Team</label>
-                            <select id="gitops-team" className="input" value={createTeamId} onChange={(event) => setCreateTeamId(event.target.value)}>
-                              {data.teams.map((team) => (
-                                <option key={team.id} value={team.id}>
-                                  {team.name}
-                                </option>
-                              ))}
-                            </select>
+                            {data.teams.length > 0 ? (
+                              <select id="gitops-team" className="input" value={createTeamId} onChange={(event) => setCreateTeamId(event.target.value)}>
+                                {data.teams.map((team) => (
+                                  <option key={team.id} value={team.id}>
+                                    {team.name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <>
+                                <input id="gitops-team" className="input" value="Auto-create DevOps Platform team on first save" readOnly />
+                                <p className="form-help">No DevOps team exists yet. The first project save will bootstrap a default DevOps team automatically.</p>
+                              </>
+                            )}
                           </div>
                           <div className="form-group">
                             <label className="label" htmlFor="gitops-cloud">Default Cloud</label>
@@ -1114,13 +1121,20 @@ export default function GitOpsControlPage() {
                             <form onSubmit={handleCreateProject} className="gitops-editor-builder">
                               <div className="form-group">
                                 <label className="label" htmlFor="sidebar-gitops-team">DevOps Team</label>
-                                <select id="sidebar-gitops-team" className="input" value={createTeamId} onChange={(event) => setCreateTeamId(event.target.value)} disabled={!data.can_create_projects && !selectedPanelProject?.can_manage}>
-                                  {data.teams.map((team) => (
-                                    <option key={team.id} value={team.id}>
-                                      {team.name}
-                                    </option>
-                                  ))}
-                                </select>
+                                {data.teams.length > 0 ? (
+                                  <select id="sidebar-gitops-team" className="input" value={createTeamId} onChange={(event) => setCreateTeamId(event.target.value)} disabled={!data.can_create_projects && !selectedPanelProject?.can_manage}>
+                                    {data.teams.map((team) => (
+                                      <option key={team.id} value={team.id}>
+                                        {team.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <>
+                                    <input id="sidebar-gitops-team" className="input" value="Auto-create DevOps Platform team on first save" readOnly />
+                                    <p className="form-help">No DevOps team exists yet. Saving the first project will bootstrap one automatically.</p>
+                                  </>
+                                )}
                               </div>
                               <div className="form-group">
                                 <label className="label" htmlFor="sidebar-gitops-name">Project Name</label>
