@@ -10,21 +10,24 @@ import (
 )
 
 type GitOpsCatalogProject struct {
-	ID           int                      `json:"id"`
-	TeamID       int                      `json:"team_id"`
-	TeamName     string                   `json:"team_name"`
-	TeamSlug     string                   `json:"team_slug"`
-	GroupID      string                   `json:"group_id"`
-	Name         string                   `json:"name"`
-	Slug         string                   `json:"slug"`
-	RepoRoot     string                   `json:"repo_root"`
-	BaseBranch   string                   `json:"base_branch"`
-	DefaultCloud string                   `json:"default_cloud"`
-	Environments []string                 `json:"environments"`
-	Components   []string                 `json:"components"`
-	CreatedAt    time.Time                `json:"created_at"`
-	CreatedBy    *int                     `json:"created_by"`
-	Access       []GitOpsProjectAccessRow `json:"access,omitempty"`
+	ID                int                      `json:"id"`
+	TeamID            int                      `json:"team_id"`
+	TeamName          string                   `json:"team_name"`
+	TeamSlug          string                   `json:"team_slug"`
+	GroupID           string                   `json:"group_id"`
+	Name              string                   `json:"name"`
+	Slug              string                   `json:"slug"`
+	RepoRoot          string                   `json:"repo_root"`
+	BaseBranch        string                   `json:"base_branch"`
+	DefaultCloud      string                   `json:"default_cloud"`
+	Environments      []string                 `json:"environments"`
+	Components        []string                 `json:"components"`
+	CreatedAt         time.Time                `json:"created_at"`
+	CreatedBy         *int                     `json:"created_by"`
+	CurrentPermission string                   `json:"current_permission,omitempty"`
+	CanWrite          bool                     `json:"can_write,omitempty"`
+	CanManage         bool                     `json:"can_manage,omitempty"`
+	Access            []GitOpsProjectAccessRow `json:"access,omitempty"`
 }
 
 type GitOpsProjectAccessRow struct {
@@ -34,7 +37,30 @@ type GitOpsProjectAccessRow struct {
 	Username    string    `json:"username"`
 	Email       string    `json:"email"`
 	Environment string    `json:"environment"`
+	Permission  string    `json:"permission"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+func normalizeGitOpsPermission(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "admin":
+		return "admin"
+	case "write":
+		return "write"
+	default:
+		return "read"
+	}
+}
+
+func gitOpsPermissionRank(value string) int {
+	switch normalizeGitOpsPermission(value) {
+	case "admin":
+		return 3
+	case "write":
+		return 2
+	default:
+		return 1
+	}
 }
 
 func normalizeGitOpsProjectSlug(value string) string {
@@ -186,7 +212,7 @@ func queryAllGitOpsCatalogProjects() ([]GitOpsCatalogProject, error) {
 
 func loadGitOpsProjectAccess(projectIDs map[int]bool) (map[int][]GitOpsProjectAccessRow, error) {
 	rows, err := DB.Query(`
-		SELECT a.id, a.project_id, a.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''), a.environment, a.created_at
+		SELECT a.id, a.project_id, a.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''), a.environment, COALESCE(a.permission, 'read'), a.created_at
 		FROM gitops_project_access a
 		INNER JOIN users u ON u.id = a.user_id
 		ORDER BY a.created_at DESC
@@ -202,13 +228,14 @@ func loadGitOpsProjectAccess(projectIDs map[int]bool) (map[int][]GitOpsProjectAc
 	out := make(map[int][]GitOpsProjectAccessRow)
 	for rows.Next() {
 		var access GitOpsProjectAccessRow
-		if err := rows.Scan(&access.ID, &access.ProjectID, &access.UserID, &access.Username, &access.Email, &access.Environment, &access.CreatedAt); err != nil {
+		if err := rows.Scan(&access.ID, &access.ProjectID, &access.UserID, &access.Username, &access.Email, &access.Environment, &access.Permission, &access.CreatedAt); err != nil {
 			return nil, err
 		}
 		if len(projectIDs) > 0 && !projectIDs[access.ProjectID] {
 			continue
 		}
 		access.Environment = normalizeGitOpsComponentName(access.Environment)
+		access.Permission = normalizeGitOpsPermission(access.Permission)
 		out[access.ProjectID] = append(out[access.ProjectID], access)
 	}
 	return out, nil
@@ -241,8 +268,115 @@ func listManagerGitOpsProjects(userID int) ([]GitOpsCatalogProject, error) {
 	}
 	for index := range filtered {
 		filtered[index].Access = accessMap[filtered[index].ID]
+		filtered[index].CurrentPermission = "admin"
+		filtered[index].CanWrite = true
+		filtered[index].CanManage = true
 	}
 	return filtered, nil
+}
+
+func listManageableGitOpsProjectsForUser(userID int) ([]GitOpsCatalogProject, error) {
+	user, err := GetUserByID(userID)
+	if err != nil || user == nil {
+		return nil, err
+	}
+	if user.Role == "admin" {
+		return listAllGitOpsProjects(), nil
+	}
+	if profile, _ := GetDevopsProfile(userID); profile != nil && profile.IsManager {
+		return listManagerGitOpsProjects(userID)
+	}
+	projects, err := listVisibleGitOpsProjectsForUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]GitOpsCatalogProject, 0, len(projects))
+	for _, project := range projects {
+		if project.CanManage {
+			filtered = append(filtered, project)
+		}
+	}
+	return filtered, nil
+}
+
+func listCreatableGitOpsTeamsForUser(userID int) ([]Team, error) {
+	user, err := GetUserByID(userID)
+	if err != nil || user == nil {
+		return nil, err
+	}
+	if user.Role == "admin" {
+		teams, err := GetTeams()
+		if err != nil {
+			return nil, err
+		}
+		filtered := make([]Team, 0, len(teams))
+		for _, team := range teams {
+			if team.TeamType == "devops" {
+				filtered = append(filtered, team)
+			}
+		}
+		return filtered, nil
+	}
+	if profile, _ := GetDevopsProfile(userID); profile != nil && profile.IsManager {
+		return GetDevopsTeamsForUser(userID)
+	}
+	projects, err := listManageableGitOpsProjectsForUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[int]bool)
+	out := make([]Team, 0)
+	for _, project := range projects {
+		if seen[project.TeamID] {
+			continue
+		}
+		team, err := GetTeamByID(project.TeamID)
+		if err != nil || team == nil {
+			continue
+		}
+		seen[team.ID] = true
+		out = append(out, *team)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+	})
+	return out, nil
+}
+
+func CanUserCreateGitOpsProjectInTeam(userID, teamID int) bool {
+	user, err := GetUserByID(userID)
+	if err != nil || user == nil {
+		return false
+	}
+	if user.Role == "admin" {
+		return true
+	}
+	if profile, _ := GetDevopsProfile(userID); profile != nil && profile.IsManager {
+		return CanUserManageDevopsTeam(userID, teamID)
+	}
+	projects, err := listManageableGitOpsProjectsForUser(userID)
+	if err != nil {
+		return false
+	}
+	for _, project := range projects {
+		if project.TeamID == teamID && project.CanManage {
+			return true
+		}
+	}
+	return false
+}
+
+func CanUserManageGitOpsProject(userID, projectID int) bool {
+	projects, err := listManageableGitOpsProjectsForUser(userID)
+	if err != nil {
+		return false
+	}
+	for _, project := range projects {
+		if project.ID == projectID && project.CanManage {
+			return true
+		}
+	}
+	return false
 }
 
 func listVisibleGitOpsProjectsForUser(userID int) ([]GitOpsCatalogProject, error) {
@@ -276,12 +410,16 @@ func listVisibleGitOpsProjectsForUser(userID int) ([]GitOpsCatalogProject, error
 		projectAccess := accessMap[project.ID]
 		envAllowed := make(map[string]bool)
 		filteredAccess := make([]GitOpsProjectAccessRow, 0)
+		highestPermission := "read"
 		for _, access := range projectAccess {
 			if access.UserID != userID {
 				continue
 			}
 			envAllowed[access.Environment] = true
 			filteredAccess = append(filteredAccess, access)
+			if gitOpsPermissionRank(access.Permission) > gitOpsPermissionRank(highestPermission) {
+				highestPermission = access.Permission
+			}
 		}
 		if len(envAllowed) == 0 {
 			continue
@@ -297,6 +435,9 @@ func listVisibleGitOpsProjectsForUser(userID int) ([]GitOpsCatalogProject, error
 		}
 		project.Environments = visibleEnvironments
 		project.Access = filteredAccess
+		project.CurrentPermission = highestPermission
+		project.CanWrite = gitOpsPermissionRank(highestPermission) >= gitOpsPermissionRank("write")
+		project.CanManage = gitOpsPermissionRank(highestPermission) >= gitOpsPermissionRank("admin")
 		filtered = append(filtered, project)
 	}
 	return filtered, nil
@@ -317,6 +458,9 @@ func listAllGitOpsProjects() []GitOpsCatalogProject {
 	}
 	for index := range allProjects {
 		allProjects[index].Access = accessMap[allProjects[index].ID]
+		allProjects[index].CurrentPermission = "admin"
+		allProjects[index].CanWrite = true
+		allProjects[index].CanManage = true
 	}
 	return allProjects
 }
@@ -407,14 +551,15 @@ func CreateGitOpsCatalogProject(teamID int, name, slug string, environments, com
 	return &project, nil
 }
 
-func GrantGitOpsProjectAccess(projectID, targetUserID, createdBy int, environments []string) error {
+func GrantGitOpsProjectAccess(projectID, targetUserID, createdBy int, environments []string, permission string) error {
 	normalizedEnvironments := normalizeGitOpsEnvironmentList(environments)
+	normalizedPermission := normalizeGitOpsPermission(permission)
 	for _, environment := range normalizedEnvironments {
 		if _, err := DB.Exec(`
-			INSERT INTO gitops_project_access (project_id, user_id, environment, created_by)
-			VALUES ($1, $2, $3, $4)
-			ON CONFLICT (project_id, user_id, environment) DO NOTHING
-		`, projectID, targetUserID, environment, createdBy); err != nil {
+			INSERT INTO gitops_project_access (project_id, user_id, environment, permission, created_by)
+			VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (project_id, user_id, environment) DO UPDATE SET permission = EXCLUDED.permission
+		`, projectID, targetUserID, environment, normalizedPermission, createdBy); err != nil {
 			return err
 		}
 	}
@@ -429,11 +574,11 @@ func DeleteGitOpsProjectAccess(accessID int) error {
 func GetGitOpsProjectAccessByID(accessID int) (*GitOpsProjectAccessRow, error) {
 	var access GitOpsProjectAccessRow
 	err := DB.QueryRow(`
-		SELECT a.id, a.project_id, a.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''), a.environment, a.created_at
+		SELECT a.id, a.project_id, a.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''), a.environment, COALESCE(a.permission, 'read'), a.created_at
 		FROM gitops_project_access a
 		INNER JOIN users u ON u.id = a.user_id
 		WHERE a.id = $1
-	`, accessID).Scan(&access.ID, &access.ProjectID, &access.UserID, &access.Username, &access.Email, &access.Environment, &access.CreatedAt)
+	`, accessID).Scan(&access.ID, &access.ProjectID, &access.UserID, &access.Username, &access.Email, &access.Environment, &access.Permission, &access.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -441,5 +586,6 @@ func GetGitOpsProjectAccessByID(accessID int) (*GitOpsProjectAccessRow, error) {
 		return nil, err
 	}
 	access.Environment = normalizeGitOpsComponentName(access.Environment)
+	access.Permission = normalizeGitOpsPermission(access.Permission)
 	return &access, nil
 }

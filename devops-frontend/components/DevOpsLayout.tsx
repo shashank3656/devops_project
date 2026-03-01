@@ -95,6 +95,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileInitials, setProfileInitials] = useState('D');
+  const [gitopsControlVisible, setGitopsControlVisible] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalItem[]>([]);
   const [pendingApprovalsLoading, setPendingApprovalsLoading] = useState(false);
   const notifyRef = useRef<HTMLDivElement>(null);
@@ -116,6 +117,23 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   }, []);
 
   const isManager = user?.devops_profile?.is_manager ?? false;
+
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
+    if (!token) {
+      setGitopsControlVisible(false);
+      return;
+    }
+    if (isManager) {
+      setGitopsControlVisible(true);
+      return;
+    }
+    fetch(`${apiUrl}/api/devops/gitops/manage`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((response) => {
+        setGitopsControlVisible(response.ok);
+      })
+      .catch(() => setGitopsControlVisible(false));
+  }, [apiUrl, isManager]);
 
   const refreshPendingCount = useCallback(() => {
     if (!isManager) return;
@@ -227,8 +245,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   if (isManager) {
     baseNavItems.push({ href: '/workload', label: 'Workload', Icon: IconWorkload });
     baseNavItems.push({ href: '/tickets', label: 'Tickets', Icon: IconTickets });
-    baseNavItems.push({ href: '/gitops-control', label: 'Project Structure', Icon: IconGitOps });
   }
+  if (gitopsControlVisible) baseNavItems.push({ href: '/gitops-control', label: 'Project Structure', Icon: IconGitOps });
   baseNavItems.push({ href: '/gitops-projects', label: 'GitOps Projects', Icon: IconGitOps });
   baseNavItems.push({ href: '/templates', label: 'Templates', Icon: IconTemplates });
   baseNavItems.push({ href: '/credential-audit', label: 'Credential Audit', Icon: IconShield });

@@ -68,6 +68,9 @@ interface GitOpsProjectSummary {
   branch_pattern: string;
   default_environment: string;
   default_cloud: string;
+  current_permission: string;
+  can_write: boolean;
+  can_manage: boolean;
   request_count: number;
   pending_count: number;
   in_flight_count: number;
@@ -259,6 +262,8 @@ export default function GitOpsProjectsPage() {
     return JSON.stringify(preview.sample_manifest, null, 2);
   }, [preview]);
 
+  const permissionLabel = selectedProject?.current_permission || 'read';
+
   const handleProjectSelect = (project: GitOpsProjectSummary) => {
     const defaults = pickProjectDefaults(project);
     setSelectedProjectId(project.project_id);
@@ -282,12 +287,21 @@ export default function GitOpsProjectsPage() {
               </p>
             </div>
             <div className="portal-page__actions">
-              <Link href="/templates/new" className="btn btn-primary">
-                Launch change request
-              </Link>
+              {selectedProject?.can_write ? (
+                <Link href="/templates/new" className="btn btn-primary">
+                  Launch change request
+                </Link>
+              ) : (
+                <span className="portal-pill">Read-only access</span>
+              )}
               <Link href="/tickets" className="btn btn-secondary">
                 Review tickets
               </Link>
+              {selectedProject?.can_manage && (
+                <Link href="/gitops-control" className="btn btn-secondary">
+                  Project structure
+                </Link>
+              )}
             </div>
           </section>
 
@@ -411,6 +425,7 @@ export default function GitOpsProjectsPage() {
                           <span className="portal-pill">Group ID {project.group_id || 'Pending'}</span>
                           <span className="portal-pill">{project.default_cloud}</span>
                           <span className="portal-pill">{project.default_environment}</span>
+                          <span className="portal-pill">{project.current_permission}</span>
                         </div>
 
                         <div className="gitops-project-card__metrics">
@@ -446,6 +461,10 @@ export default function GitOpsProjectsPage() {
                           <span className="portal-surface__eyebrow">Environment Matrix</span>
                           <h2 className="portal-surface__title">{selectedProject.project_name}</h2>
                           <p className="portal-surface__subtitle">Choose the environment and component you want to review before opening a new GitOps change.</p>
+                        </div>
+                        <div className="portal-pill-row">
+                          <span className="portal-pill">Permission {permissionLabel}</span>
+                          {selectedProject.can_write ? <span className="portal-pill">Write enabled</span> : <span className="portal-pill">View only</span>}
                         </div>
                       </div>
                       <div className="gitops-env-grid">

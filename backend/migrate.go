@@ -295,6 +295,13 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_gitops_project_access_project_id ON gitops_project_access(project_id)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_gitops_project_access_user_id ON gitops_project_access(user_id)")
+	var gitopsAccessPermissionCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'gitops_project_access' AND column_name = 'permission'").Scan(&gitopsAccessPermissionCount)
+	if gitopsAccessPermissionCount == 0 {
+		log.Println("Migrating database: adding gitops_project_access.permission...")
+		_, _ = DB.Exec("ALTER TABLE gitops_project_access ADD COLUMN permission VARCHAR(20) NOT NULL DEFAULT 'read'")
+		_, _ = DB.Exec("UPDATE gitops_project_access SET permission = 'read' WHERE permission IS NULL OR permission = ''")
+	}
 
 	// Migration 16: api_keys.scopes (request:create, history:read)
 	var scopesCol int

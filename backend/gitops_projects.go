@@ -54,6 +54,9 @@ type GitOpsProjectSummary struct {
 	BranchPattern          string                     `json:"branch_pattern"`
 	DefaultEnvironment     string                     `json:"default_environment"`
 	DefaultCloud           string                     `json:"default_cloud"`
+	CurrentPermission      string                     `json:"current_permission"`
+	CanWrite               bool                       `json:"can_write"`
+	CanManage              bool                       `json:"can_manage"`
 	RequestCount           int                        `json:"request_count"`
 	PendingCount           int                        `json:"pending_count"`
 	InFlightCount          int                        `json:"in_flight_count"`
@@ -328,6 +331,9 @@ func buildGitOpsProjectSummary(project GitOpsCatalogProject, requests []PRReques
 		BranchPattern:          fmt.Sprintf("%s/<env>/<request-id>", projectKey),
 		DefaultEnvironment:     defaultEnv,
 		DefaultCloud:           defaultCloud,
+		CurrentPermission:      project.CurrentPermission,
+		CanWrite:               project.CanWrite,
+		CanManage:              project.CanManage,
 		RequestCount:           totalRequests,
 		PendingCount:           totalPending,
 		InFlightCount:          totalInFlight,
