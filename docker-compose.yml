@@ -395,6 +395,7 @@ services:
     environment:
       - NODE_ENV=development
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
+      - NEXT_IGNORE_INCORRECT_LOCKFILE=true
       - WATCHPACK_POLLING=true
     volumes:
       # Mount source code for hot reload
