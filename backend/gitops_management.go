@@ -40,7 +40,7 @@ func getGitOpsAssignableUsers() ([]GitOpsAssignableUser, error) {
 }
 
 func findManagedGitOpsProject(userID, projectID int) (*GitOpsCatalogProject, error) {
-	projects, err := listManagerGitOpsProjects(userID)
+	projects, err := listManageableGitOpsProjectsForUser(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -63,12 +63,12 @@ func devopsGitOpsManagementHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	userID, ok := requireDevopsManager(w, r)
+	userID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
 	}
 
-	teams, err := GetDevopsTeamsForUser(userID)
+	teams, err := listCreatableGitOpsTeamsForUser(userID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -82,20 +82,27 @@ func devopsGitOpsManagementHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	projects, err := listManagerGitOpsProjects(userID)
+	projects, err := listManageableGitOpsProjectsForUser(userID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
+	if len(teams) == 0 && len(projects) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "GitOps admin access required", "status": "error"})
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":   "ok",
-		"teams":    teams,
-		"users":    users,
-		"projects": projects,
+		"status":              "ok",
+		"can_create_projects": len(teams) > 0,
+		"teams":               teams,
+		"users":               users,
+		"projects":            projects,
 	})
 }
 
@@ -109,7 +116,7 @@ func devopsGitOpsProjectCreateHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	userID, ok := requireDevopsManager(w, r)
+	userID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
 	}
@@ -134,10 +141,10 @@ func devopsGitOpsProjectCreateHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "team_id and name are required", "status": "error"})
 		return
 	}
-	if !CanUserManageDevopsTeam(userID, body.TeamID) {
+	if !CanUserCreateGitOpsProjectInTeam(userID, body.TeamID) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "you can only create project structures inside your managed DevOps teams", "status": "error"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "GitOps admin access is required to create a project in this team", "status": "error"})
 		return
 	}
 
@@ -163,7 +170,7 @@ func devopsGitOpsAccessCreateHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	userID, ok := requireDevopsManager(w, r)
+	userID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
 	}
@@ -171,6 +178,7 @@ func devopsGitOpsAccessCreateHandler(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ProjectID    int      `json:"project_id"`
 		UserID       int      `json:"user_id"`
+		Permission   string   `json:"permission"`
 		Environments []string `json:"environments"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -193,14 +201,14 @@ func devopsGitOpsAccessCreateHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	if project == nil {
+	if project == nil || !CanUserManageGitOpsProject(userID, body.ProjectID) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "project not available in your manager scope", "status": "error"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "GitOps admin access is required for this project", "status": "error"})
 		return
 	}
 
-	if err := GrantGitOpsProjectAccess(project.ID, body.UserID, userID, body.Environments); err != nil {
+	if err := GrantGitOpsProjectAccess(project.ID, body.UserID, userID, body.Environments, body.Permission); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
@@ -221,7 +229,7 @@ func devopsGitOpsAccessDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	userID, ok := requireDevopsManager(w, r)
+	userID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
 	}
@@ -255,10 +263,10 @@ func devopsGitOpsAccessDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	if project == nil {
+	if project == nil || !CanUserManageGitOpsProject(userID, access.ProjectID) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "access rule is outside your manager scope", "status": "error"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "GitOps admin access is required for this project", "status": "error"})
 		return
 	}
 

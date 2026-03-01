@@ -30,6 +30,7 @@ interface ProjectAccess {
   username: string;
   email: string;
   environment: string;
+  permission: string;
   created_at: string;
 }
 
@@ -45,11 +46,15 @@ interface ManagedProject {
   default_cloud: string;
   environments: string[];
   components: string[];
+  current_permission?: string;
+  can_write?: boolean;
+  can_manage?: boolean;
   access: ProjectAccess[];
 }
 
 interface ManagementResponse {
   status: string;
+  can_create_projects: boolean;
   teams: DevOpsTeam[];
   users: AssignableUser[];
   projects: ManagedProject[];
@@ -81,6 +86,7 @@ export default function GitOpsControlPage() {
   const [createComponents, setCreateComponents] = useState('networking, eks, rds');
   const [accessProjectId, setAccessProjectId] = useState('');
   const [accessUserId, setAccessUserId] = useState('');
+  const [accessPermission, setAccessPermission] = useState('read');
   const [accessEnvironments, setAccessEnvironments] = useState<string[]>([]);
 
   const loadData = async () => {
@@ -189,6 +195,7 @@ export default function GitOpsControlPage() {
         body: JSON.stringify({
           project_id: Number(accessProjectId),
           user_id: Number(accessUserId),
+          permission: accessPermission,
           environments: accessEnvironments,
         }),
       });
@@ -305,51 +312,57 @@ export default function GitOpsControlPage() {
                       <p className="portal-surface__subtitle">This defines the folder root, environments, and component file set that the portal will expose.</p>
                     </div>
                   </div>
-                  <form onSubmit={handleCreateProject} className="portal-stack">
-                    <div className="portal-field-grid portal-field-grid--two">
-                      <div className="form-group">
-                        <label className="label" htmlFor="gitops-team">DevOps Team</label>
-                        <select id="gitops-team" className="input" value={createTeamId} onChange={(event) => setCreateTeamId(event.target.value)}>
-                          {data.teams.map((team) => (
-                            <option key={team.id} value={team.id}>
-                              {team.name}
-                            </option>
-                          ))}
-                        </select>
+                  {data.can_create_projects ? (
+                    <form onSubmit={handleCreateProject} className="portal-stack">
+                      <div className="portal-field-grid portal-field-grid--two">
+                        <div className="form-group">
+                          <label className="label" htmlFor="gitops-team">DevOps Team</label>
+                          <select id="gitops-team" className="input" value={createTeamId} onChange={(event) => setCreateTeamId(event.target.value)}>
+                            {data.teams.map((team) => (
+                              <option key={team.id} value={team.id}>
+                                {team.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label className="label" htmlFor="gitops-cloud">Default Cloud</label>
+                          <select id="gitops-cloud" className="input" value={createCloud} onChange={(event) => setCreateCloud(event.target.value)}>
+                            <option value="aws">aws</option>
+                            <option value="azure">azure</option>
+                            <option value="gcp">gcp</option>
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label className="label" htmlFor="gitops-name">Project Name</label>
+                          <input id="gitops-name" className="input" value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="payments-platform" />
+                        </div>
+                        <div className="form-group">
+                          <label className="label" htmlFor="gitops-slug">Project Slug</label>
+                          <input id="gitops-slug" className="input" value={createSlug} onChange={(event) => setCreateSlug(event.target.value)} placeholder="payments-platform" />
+                        </div>
                       </div>
-                      <div className="form-group">
-                        <label className="label" htmlFor="gitops-cloud">Default Cloud</label>
-                        <select id="gitops-cloud" className="input" value={createCloud} onChange={(event) => setCreateCloud(event.target.value)}>
-                          <option value="aws">aws</option>
-                          <option value="azure">azure</option>
-                          <option value="gcp">gcp</option>
-                        </select>
+                      <div className="portal-field-grid portal-field-grid--two">
+                        <div className="form-group">
+                          <label className="label" htmlFor="gitops-envs">Environments</label>
+                          <input id="gitops-envs" className="input" value={createEnvironments} onChange={(event) => setCreateEnvironments(event.target.value)} placeholder="dev, qa, prod" />
+                        </div>
+                        <div className="form-group">
+                          <label className="label" htmlFor="gitops-components">Components</label>
+                          <input id="gitops-components" className="input" value={createComponents} onChange={(event) => setCreateComponents(event.target.value)} placeholder="networking, eks, rds" />
+                        </div>
                       </div>
-                      <div className="form-group">
-                        <label className="label" htmlFor="gitops-name">Project Name</label>
-                        <input id="gitops-name" className="input" value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="payments-platform" />
+                      <div className="portal-form-actions">
+                        <button type="submit" className="btn btn-primary" disabled={saving}>
+                          {saving ? 'Saving...' : 'Create project structure'}
+                        </button>
                       </div>
-                      <div className="form-group">
-                        <label className="label" htmlFor="gitops-slug">Project Slug</label>
-                        <input id="gitops-slug" className="input" value={createSlug} onChange={(event) => setCreateSlug(event.target.value)} placeholder="payments-platform" />
-                      </div>
+                    </form>
+                  ) : (
+                    <div className="portal-empty" style={{ padding: 0, textAlign: 'left' }}>
+                      <p>Your GitOps admin scope can manage existing projects, but only managers can create new project structures in this portal scope.</p>
                     </div>
-                    <div className="portal-field-grid portal-field-grid--two">
-                      <div className="form-group">
-                        <label className="label" htmlFor="gitops-envs">Environments</label>
-                        <input id="gitops-envs" className="input" value={createEnvironments} onChange={(event) => setCreateEnvironments(event.target.value)} placeholder="dev, qa, prod" />
-                      </div>
-                      <div className="form-group">
-                        <label className="label" htmlFor="gitops-components">Components</label>
-                        <input id="gitops-components" className="input" value={createComponents} onChange={(event) => setCreateComponents(event.target.value)} placeholder="networking, eks, rds" />
-                      </div>
-                    </div>
-                    <div className="portal-form-actions">
-                      <button type="submit" className="btn btn-primary" disabled={saving}>
-                        {saving ? 'Saving...' : 'Create project structure'}
-                      </button>
-                    </div>
-                  </form>
+                  )}
                 </article>
 
                 <article className="portal-surface">
@@ -380,6 +393,14 @@ export default function GitOpsControlPage() {
                               {user.username}{user.email ? ` (${user.email})` : ''}
                             </option>
                           ))}
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label className="label" htmlFor="access-permission">Permission</label>
+                        <select id="access-permission" className="input" value={accessPermission} onChange={(event) => setAccessPermission(event.target.value)}>
+                          <option value="read">read</option>
+                          <option value="write">write</option>
+                          <option value="admin">admin</option>
                         </select>
                       </div>
                     </div>
@@ -437,6 +458,7 @@ export default function GitOpsControlPage() {
                           <span className="portal-pill">Group ID {project.group_id}</span>
                           <span className="portal-pill">{project.default_cloud || 'aws'}</span>
                           <span className="portal-pill">{project.base_branch}</span>
+                          {project.current_permission && <span className="portal-pill">Manager scope {project.current_permission}</span>}
                         </div>
 
                         <div className="gitops-control-card__section">
@@ -467,7 +489,7 @@ export default function GitOpsControlPage() {
                                 <div key={access.id} className="gitops-access-list__item">
                                   <div>
                                     <strong>{access.username}</strong>
-                                    <p>{access.email || 'No email'} · {access.environment}</p>
+                                    <p>{access.email || 'No email'} · {access.environment} · {access.permission}</p>
                                   </div>
                                   <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => void handleRemoveAccess(access.id)}>
                                     Remove
