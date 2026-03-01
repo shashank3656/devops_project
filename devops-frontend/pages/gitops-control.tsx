@@ -74,13 +74,38 @@ interface ActionFeedback {
   link?: string;
 }
 
-interface ExplorerNode {
+interface RepoTreeNode {
   id: string;
   depth: number;
   kind: 'folder' | 'file';
   name: string;
   path: string;
   environment?: string;
+  exists: boolean;
+}
+
+interface RepoFileDocument {
+  project_id: number;
+  project_name: string;
+  path: string;
+  name: string;
+  environment: string;
+  component: string;
+  content: string;
+  exists: boolean;
+  current_permission: string;
+  can_write: boolean;
+  can_manage: boolean;
+  warning?: string;
+}
+
+interface AccessGroup {
+  user_id: number;
+  username: string;
+  email: string;
+  permission: string;
+  environments: string[];
+  rows: ProjectAccess[];
 }
 
 function normalizeProjectAccess(value: unknown): ProjectAccess[] {
@@ -168,40 +193,6 @@ function normalizePreviewToken(value: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-function buildExplorerNodes(project: ManagedProject | null): ExplorerNode[] {
-  if (!project) return [];
-  const rootParts = project.repo_root.split('/').filter(Boolean);
-  const nodes: ExplorerNode[] = rootParts.map((part, index) => ({
-    id: `root-${index}-${part}`,
-    depth: index,
-    kind: 'folder',
-    name: part,
-    path: rootParts.slice(0, index + 1).join('/'),
-  }));
-  for (const environment of project.environments) {
-    const envPath = `${project.repo_root}/${environment}`;
-    nodes.push({
-      id: `env-${environment}`,
-      depth: rootParts.length,
-      kind: 'folder',
-      name: environment,
-      path: envPath,
-      environment,
-    });
-    for (const component of project.components) {
-      nodes.push({
-        id: `file-${environment}-${component}`,
-        depth: rootParts.length + 1,
-        kind: 'file',
-        name: `${component}.json`,
-        path: `${envPath}/${component}.json`,
-        environment,
-      });
-    }
-  }
-  return nodes;
-}
-
 function buildSyncFeedback(sync: GitOpsSyncFeedback | undefined, fallbackMessage: string): ActionFeedback {
   if (sync?.warning) {
     return {
@@ -223,6 +214,33 @@ function buildSyncFeedback(sync: GitOpsSyncFeedback | undefined, fallbackMessage
   return { tone: 'success', message: fallbackMessage };
 }
 
+function buildAccessGroups(project: ManagedProject | null): AccessGroup[] {
+  if (!project) return [];
+  const grouped = new Map<number, AccessGroup>();
+  for (const access of project.access) {
+    const existing = grouped.get(access.user_id);
+    if (existing) {
+      if (!existing.environments.includes(access.environment)) {
+        existing.environments.push(access.environment);
+      }
+      if (existing.permission !== access.permission) {
+        existing.permission = 'mixed';
+      }
+      existing.rows.push(access);
+      continue;
+    }
+    grouped.set(access.user_id, {
+      user_id: access.user_id,
+      username: access.username,
+      email: access.email,
+      permission: access.permission,
+      environments: access.environment ? [access.environment] : [],
+      rows: [access],
+    });
+  }
+  return Array.from(grouped.values()).sort((left, right) => left.username.localeCompare(right.username));
+}
+
 export default function GitOpsControlPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -231,6 +249,13 @@ export default function GitOpsControlPage() {
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
   const [saving, setSaving] = useState(false);
+  const [treeLoading, setTreeLoading] = useState(false);
+  const [treeWarning, setTreeWarning] = useState('');
+  const [treeNodes, setTreeNodes] = useState<RepoTreeNode[]>([]);
+  const [fileLoading, setFileLoading] = useState(false);
+  const [fileSaving, setFileSaving] = useState(false);
+  const [openDocument, setOpenDocument] = useState<RepoFileDocument | null>(null);
+  const [editorValue, setEditorValue] = useState('');
   const [activeRail, setActiveRail] = useState<'explorer' | 'access' | 'builder'>('explorer');
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [activeEnvironment, setActiveEnvironment] = useState('');
@@ -356,7 +381,7 @@ export default function GitOpsControlPage() {
     return `projects/${teamKey}/${projectSlugPreview}`;
   }, [projectSlugPreview, selectedCreateTeam]);
 
-  const explorerNodes = useMemo(() => buildExplorerNodes(selectedPanelProject), [selectedPanelProject]);
+  const accessGroups = useMemo(() => buildAccessGroups(selectedPanelProject), [selectedPanelProject]);
 
   useEffect(() => {
     if (!selectedProject) {
@@ -373,12 +398,111 @@ export default function GitOpsControlPage() {
   useEffect(() => {
     if (!selectedPanelProject) {
       setActiveEnvironment('');
+      setTreeNodes([]);
+      setTreeWarning('');
+      setOpenDocument(null);
+      setEditorValue('');
       return;
     }
     if (!selectedPanelProject.environments.includes(activeEnvironment)) {
       setActiveEnvironment(selectedPanelProject.environments[0] || '');
     }
   }, [activeEnvironment, selectedPanelProject]);
+
+  const loadProjectTree = async (projectId: number) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    setTreeLoading(true);
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/gitops/manage/projects/${projectId}/tree`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.status !== 'ok') {
+        throw new Error(payload?.error || 'Failed to load repository tree');
+      }
+      const nodes = Array.isArray(payload?.nodes)
+        ? payload.nodes.map((node: Partial<RepoTreeNode>) => ({
+            id: String(node.id || ''),
+            depth: Number(node.depth || 0),
+            kind: node.kind === 'file' ? 'file' : 'folder',
+            name: String(node.name || ''),
+            path: String(node.path || ''),
+            environment: typeof node.environment === 'string' ? node.environment : undefined,
+            exists: Boolean(node.exists),
+          }))
+        : [];
+      setTreeNodes(nodes);
+      setTreeWarning(String(payload?.warning || ''));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load repository tree';
+      setTreeWarning(message);
+      setTreeNodes([]);
+    } finally {
+      setTreeLoading(false);
+    }
+  };
+
+  const loadDocument = async (projectId: number, environment: string, component: string) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    setFileLoading(true);
+    setError('');
+    try {
+      const query = new URLSearchParams({
+        project_id: String(projectId),
+        environment,
+        component,
+      });
+      const response = await fetch(`${apiUrl}/api/devops/gitops/manage/project-files?${query.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.status !== 'ok' || !payload?.document) {
+        throw new Error(payload?.error || 'Failed to load file');
+      }
+      const document = payload.document as RepoFileDocument;
+      setOpenDocument(document);
+      setEditorValue(String(document.content || ''));
+      if (document.environment) {
+        setActiveEnvironment(document.environment);
+      }
+      if (document.warning) {
+        setTreeWarning(document.warning);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load file';
+      setError(message);
+    } finally {
+      setFileLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedPanelProject) return;
+    void loadProjectTree(selectedPanelProject.id);
+  }, [apiUrl, selectedPanelProject?.id]);
+
+  useEffect(() => {
+    if (!selectedPanelProject || treeLoading) return;
+    const firstFileForEnv = treeNodes.find((node) => node.kind === 'file' && node.environment === activeEnvironment);
+    if (!firstFileForEnv) {
+      setOpenDocument(null);
+      setEditorValue('');
+      return;
+    }
+    const nextComponent = firstFileForEnv.name.replace(/\.json$/i, '');
+    if (openDocument?.project_id === selectedPanelProject.id && openDocument.environment === activeEnvironment && openDocument.component === nextComponent) {
+      return;
+    }
+    void loadDocument(selectedPanelProject.id, activeEnvironment, nextComponent);
+  }, [activeEnvironment, openDocument?.component, openDocument?.environment, openDocument?.project_id, selectedPanelProject, treeLoading, treeNodes]);
+
+  useEffect(() => {
+    if (activeRail !== 'builder') return;
+    if (data?.can_create_projects || selectedPanelProject?.can_manage) return;
+    setActiveRail('explorer');
+  }, [activeRail, data?.can_create_projects, selectedPanelProject?.can_manage]);
 
   const handleCreateProject = async (event: FormEvent) => {
     event.preventDefault();
@@ -458,6 +582,8 @@ export default function GitOpsControlPage() {
       setNewJsonComponent('');
       setFeedback(buildSyncFeedback(payload?.sync as GitOpsSyncFeedback | undefined, `${componentName}.json created for ${project.name}.`));
       await loadData();
+      await loadProjectTree(project.id);
+      await loadDocument(project.id, activeEnvironment || project.environments[0] || 'dev', componentName);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create JSON file';
       setError(message);
@@ -501,16 +627,34 @@ export default function GitOpsControlPage() {
     }
   };
 
-  const handleRemoveAccess = async (accessId: number) => {
+  const handleEditAccessGroup = (project: ManagedProject, group: AccessGroup) => {
+    selectProject(project);
+    setAccessProjectId(String(project.id));
+    setAccessUserId(String(group.user_id));
+    setAccessPermission(group.permission === 'mixed' ? 'write' : group.permission || 'read');
+    setAccessEnvironments(group.environments.slice());
+    setActiveRail('access');
+  };
+
+  const handleClearAccessGroup = async (projectId: number, userId: number) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
     setSaving(true);
     setError('');
     setFeedback(null);
     try {
-      const response = await fetch(`${apiUrl}/api/devops/gitops/manage/access/${accessId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await fetch(`${apiUrl}/api/devops/gitops/manage/access`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          project_id: projectId,
+          user_id: userId,
+          permission: 'read',
+          environments: [],
+        }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload?.status !== 'ok') {
@@ -526,17 +670,46 @@ export default function GitOpsControlPage() {
     }
   };
 
-  const handleEditAccess = (project: ManagedProject, access: ProjectAccess) => {
-    selectProject(project);
-    setAccessProjectId(String(project.id));
-    setAccessUserId(String(access.user_id));
-    setAccessPermission(access.permission || 'read');
-    setAccessEnvironments(access.environment ? [access.environment] : []);
+  const handleSaveDocument = async () => {
+    if (!selectedPanelProject || !openDocument) return;
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    setFileSaving(true);
+    setError('');
+    setFeedback(null);
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/gitops/manage/project-files`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          project_id: selectedPanelProject.id,
+          environment: openDocument.environment,
+          component: openDocument.component,
+          content: editorValue,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.status !== 'ok') {
+        throw new Error(payload?.error || 'Failed to save JSON file');
+      }
+      setFeedback(buildSyncFeedback(payload?.sync as GitOpsSyncFeedback | undefined, `${openDocument.name} saved.`));
+      await loadProjectTree(selectedPanelProject.id);
+      await loadDocument(selectedPanelProject.id, openDocument.environment, openDocument.component);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save JSON file';
+      setError(message);
+    } finally {
+      setFileSaving(false);
+    }
   };
 
   const openProjectEditor = (project: ManagedProject) => {
     selectProject(project);
     loadProjectIntoForm(project);
+    setActiveRail(project.can_manage ? 'builder' : 'explorer');
   };
 
   return (
@@ -799,6 +972,7 @@ export default function GitOpsControlPage() {
                         className={`gitops-editor__rail-button ${activeRail === 'builder' ? 'gitops-editor__rail-button--active' : ''}`}
                         onClick={() => setActiveRail('builder')}
                         title="Builder"
+                        disabled={!data.can_create_projects && !selectedPanelProject?.can_manage}
                       >
                         B
                       </button>
@@ -842,20 +1016,27 @@ export default function GitOpsControlPage() {
                           {selectedPanelProject ? (
                             <>
                               <div className="gitops-editor-list">
-                                {selectedPanelProject.access.length === 0 ? (
+                                {!selectedPanelProject.can_manage ? (
+                                  <div className="gitops-editor-list__item">
+                                    <div>
+                                      <strong>{selectedPanelProject.current_permission || 'read'}</strong>
+                                      <span>{selectedPanelProject.environments.join(', ') || 'No environments assigned'}</span>
+                                    </div>
+                                  </div>
+                                ) : accessGroups.length === 0 ? (
                                   <div className="gitops-editor-list__item">No access configured</div>
                                 ) : (
-                                  selectedPanelProject.access.map((access) => (
-                                    <div key={access.id} className="gitops-editor-list__item">
+                                  accessGroups.map((group) => (
+                                    <div key={group.user_id} className="gitops-editor-list__item">
                                       <div>
-                                        <strong>{access.username}</strong>
-                                        <span>{access.permission}</span>
+                                        <strong>{group.username}</strong>
+                                        <span>{group.permission} · {group.environments.join(', ')}</span>
                                       </div>
                                       <div className="gitops-access-actions">
-                                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleEditAccess(selectedPanelProject, access)}>
+                                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleEditAccessGroup(selectedPanelProject, group)}>
                                           Edit
                                         </button>
-                                        <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => void handleRemoveAccess(access.id)}>
+                                        <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => void handleClearAccessGroup(selectedPanelProject.id, group.user_id)}>
                                           Remove
                                         </button>
                                       </div>
@@ -863,8 +1044,9 @@ export default function GitOpsControlPage() {
                                   ))
                                 )}
                               </div>
+                              {selectedPanelProject.can_manage ? (
                               <form onSubmit={handleGrantAccess} className="portal-stack">
-                              <div className="form-group">
+                                <div className="form-group">
                                   <label className="label" htmlFor="sidebar-access-user">User</label>
                                   <select id="sidebar-access-user" className="input" value={accessUserId} onChange={(event) => setAccessUserId(event.target.value)}>
                                     {data.users.map((user) => (
@@ -898,11 +1080,16 @@ export default function GitOpsControlPage() {
                                   </div>
                                 </div>
                                 <div className="portal-form-actions">
-                                  <button type="submit" className="btn btn-primary btn-sm" disabled={saving || accessEnvironments.length === 0}>
+                                  <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
                                     {saving ? 'Saving...' : 'Save access'}
                                   </button>
                                 </div>
                               </form>
+                              ) : (
+                                <div className="portal-empty">
+                                  <p>Only project admins can change access.</p>
+                                </div>
+                              )}
                             </>
                           ) : (
                             <div className="portal-empty">
@@ -917,11 +1104,11 @@ export default function GitOpsControlPage() {
                           <div className="gitops-editor-pane__header">
                             <span className="gitops-editor-pane__title">{editingProjectId ? 'EDIT PROJECT' : 'NEW PROJECT'}</span>
                           </div>
-                          {(data.can_create_projects || editingProjectId !== null) ? (
+                          {(data.can_create_projects || editingProjectId !== null || selectedPanelProject?.can_manage) ? (
                             <form onSubmit={handleCreateProject} className="gitops-editor-builder">
                               <div className="form-group">
                                 <label className="label" htmlFor="sidebar-gitops-team">DevOps Team</label>
-                                <select id="sidebar-gitops-team" className="input" value={createTeamId} onChange={(event) => setCreateTeamId(event.target.value)}>
+                                <select id="sidebar-gitops-team" className="input" value={createTeamId} onChange={(event) => setCreateTeamId(event.target.value)} disabled={!data.can_create_projects && !selectedPanelProject?.can_manage}>
                                   {data.teams.map((team) => (
                                     <option key={team.id} value={team.id}>
                                       {team.name}
@@ -931,15 +1118,15 @@ export default function GitOpsControlPage() {
                               </div>
                               <div className="form-group">
                                 <label className="label" htmlFor="sidebar-gitops-name">Project Name</label>
-                                <input id="sidebar-gitops-name" className="input" value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="payments-platform" />
+                                <input id="sidebar-gitops-name" className="input" value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="payments-platform" disabled={!selectedPanelProject?.can_manage && editingProjectId !== null} />
                               </div>
                               <div className="form-group">
                                 <label className="label" htmlFor="sidebar-gitops-slug">Project Slug</label>
-                                <input id="sidebar-gitops-slug" className="input" value={createSlug} onChange={(event) => setCreateSlug(event.target.value)} placeholder="payments-platform" />
+                                <input id="sidebar-gitops-slug" className="input" value={createSlug} onChange={(event) => setCreateSlug(event.target.value)} placeholder="payments-platform" disabled={!selectedPanelProject?.can_manage && editingProjectId !== null} />
                               </div>
                               <div className="form-group">
                                 <label className="label" htmlFor="sidebar-gitops-cloud">Default Cloud</label>
-                                <select id="sidebar-gitops-cloud" className="input" value={createCloud} onChange={(event) => setCreateCloud(event.target.value)}>
+                                <select id="sidebar-gitops-cloud" className="input" value={createCloud} onChange={(event) => setCreateCloud(event.target.value)} disabled={!selectedPanelProject?.can_manage && editingProjectId !== null}>
                                   <option value="aws">aws</option>
                                   <option value="azure">azure</option>
                                   <option value="gcp">gcp</option>
@@ -947,14 +1134,14 @@ export default function GitOpsControlPage() {
                               </div>
                               <div className="form-group">
                                 <label className="label" htmlFor="sidebar-gitops-envs">Environments</label>
-                                <input id="sidebar-gitops-envs" className="input" value={createEnvironments} onChange={(event) => setCreateEnvironments(event.target.value)} placeholder="dev, qa, prod" />
+                                <input id="sidebar-gitops-envs" className="input" value={createEnvironments} onChange={(event) => setCreateEnvironments(event.target.value)} placeholder="dev, qa, prod" disabled={!selectedPanelProject?.can_manage && editingProjectId !== null} />
                               </div>
                               <div className="form-group">
                                 <label className="label" htmlFor="sidebar-gitops-components">Components</label>
-                                <input id="sidebar-gitops-components" className="input" value={createComponents} onChange={(event) => setCreateComponents(event.target.value)} placeholder="networking, eks, rds" />
+                                <input id="sidebar-gitops-components" className="input" value={createComponents} onChange={(event) => setCreateComponents(event.target.value)} placeholder="networking, eks, rds" disabled={!selectedPanelProject?.can_manage && editingProjectId !== null} />
                               </div>
                               <div className="portal-form-actions">
-                                <button type="submit" className="btn btn-primary btn-sm" disabled={saving || !normalizedCreateName}>
+                                <button type="submit" className="btn btn-primary btn-sm" disabled={saving || !normalizedCreateName || (editingProjectId !== null && !selectedPanelProject?.can_manage)}>
                                   {saving ? 'Saving...' : editingProjectId ? 'Update project' : 'Create project'}
                                 </button>
                                 {editingProjectId && (
@@ -977,7 +1164,7 @@ export default function GitOpsControlPage() {
                       <div className="gitops-editor-pane gitops-editor-pane--full">
                         <div className="gitops-editor-pane__header">
                           <span className="gitops-editor-pane__title">EXPLORER</span>
-                          {selectedPanelProject && (
+                          {selectedPanelProject?.can_manage && (
                             <div className="gitops-card-actions">
                               <button type="button" className="btn btn-secondary btn-sm" onClick={() => openProjectEditor(selectedPanelProject)}>
                                 Edit structure
@@ -988,8 +1175,13 @@ export default function GitOpsControlPage() {
                         {selectedPanelProject ? (
                           <>
                             <div className="gitops-editor-path">{selectedPanelProject.repo_root}</div>
+                            {treeWarning && <div className="gitops-editor-hint">{treeWarning}</div>}
                             <div className="gitops-editor-tree">
-                              {explorerNodes.map((node) => (
+                              {treeLoading ? (
+                                <div className="portal-empty">
+                                  <p>Loading repository tree...</p>
+                                </div>
+                              ) : treeNodes.map((node) => (
                                 <button
                                   key={node.id}
                                   type="button"
@@ -997,10 +1189,13 @@ export default function GitOpsControlPage() {
                                   style={{ paddingLeft: `${12 + node.depth * 18}px` }}
                                   onClick={() => {
                                     if (node.environment) setActiveEnvironment(node.environment);
+                                    if (node.kind === 'file' && node.environment) {
+                                      void loadDocument(selectedPanelProject.id, node.environment, node.name.replace(/\.json$/i, ''));
+                                    }
                                   }}
                                 >
                                   <span className="gitops-editor-tree__toggle">{node.kind === 'folder' ? '▸' : '•'}</span>
-                                  <span className="gitops-editor-tree__label">{node.name}</span>
+                                  <span className="gitops-editor-tree__label">{node.name}{!node.exists ? ' (pending)' : ''}</span>
                                 </button>
                               ))}
                             </div>
@@ -1045,29 +1240,49 @@ export default function GitOpsControlPage() {
 
                             <div className="gitops-editor-code">
                               <div className="gitops-editor-code__toolbar">
-                                <span>{selectedPanelProject.repo_root}/{activeEnvironment || selectedPanelProject.environments[0]}</span>
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-sm"
-                                  onClick={() => {
-                                    setJsonProjectId(selectedPanelProject.id);
-                                    setNewJsonComponent('');
-                                  }}
-                                >
-                                  Create JSON file
-                                </button>
+                                <span>{openDocument?.path || `${selectedPanelProject.repo_root}/${activeEnvironment || selectedPanelProject.environments[0]}`}</span>
+                                <div className="gitops-card-actions">
+                                  {selectedPanelProject.can_write && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-sm"
+                                      onClick={() => {
+                                        setJsonProjectId(selectedPanelProject.id);
+                                        setNewJsonComponent('');
+                                      }}
+                                    >
+                                      Create JSON file
+                                    </button>
+                                  )}
+                                  {openDocument && selectedPanelProject.can_write && (
+                                    <button type="button" className="btn btn-primary btn-sm" disabled={fileSaving} onClick={() => void handleSaveDocument()}>
+                                      {fileSaving ? 'Saving...' : 'Save JSON'}
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                               <div className="gitops-editor-code__body">
-                                {selectedPanelProject.components.map((component, index) => (
-                                  <div key={`${activeEnvironment}-${component}`} className="gitops-editor-code__line">
-                                    <span className="gitops-editor-code__gutter">{index + 1}</span>
-                                    <span className="gitops-editor-code__content">{component}.json</span>
+                                {fileLoading ? (
+                                  <div className="portal-empty">
+                                    <p>Loading file...</p>
                                   </div>
-                                ))}
+                                ) : openDocument ? (
+                                  <textarea
+                                    className="gitops-editor-code__textarea"
+                                    value={editorValue}
+                                    onChange={(event) => setEditorValue(event.target.value)}
+                                    spellCheck={false}
+                                    readOnly={!selectedPanelProject.can_write}
+                                  />
+                                ) : (
+                                  <div className="portal-empty">
+                                    <p>Select a JSON file from the explorer.</p>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
-                            {jsonProjectId === selectedPanelProject.id && (
+                            {jsonProjectId === selectedPanelProject.id && selectedPanelProject.can_write && (
                               <div className="gitops-inline-form">
                                 <input
                                   className="input"

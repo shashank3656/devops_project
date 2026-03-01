@@ -4036,6 +4036,11 @@ td {
   cursor: pointer;
 }
 
+.gitops-editor__rail-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .gitops-editor__rail-button--active {
   color: #e2e8f0;
   background: rgba(30, 41, 59, 0.92);
@@ -4216,6 +4221,22 @@ td {
 
 .gitops-editor-code__body {
   display: grid;
+}
+
+.gitops-editor-code__textarea {
+  width: 100%;
+  min-height: 460px;
+  border: 0;
+  outline: 0;
+  resize: vertical;
+  padding: 18px 20px;
+  background: rgba(2, 6, 23, 0.88);
+  color: rgba(226, 232, 240, 0.92);
+  font: 500 13px/1.65 "IBM Plex Mono", monospace;
+}
+
+.gitops-editor-code__textarea[readonly] {
+  color: rgba(148, 163, 184, 0.9);
 }
 
 .gitops-editor-code__line {
