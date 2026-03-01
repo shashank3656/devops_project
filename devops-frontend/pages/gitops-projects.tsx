@@ -1,5 +1,4 @@
 import Head from 'next/head';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
@@ -164,6 +163,15 @@ export default function GitOpsProjectsPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
 
+  const openBuilder = () => {
+    void router.push('/gitops-control?view=builder');
+  };
+
+  const openProjectInfra = (projectId?: number) => {
+    const target = projectId ? `/gitops-control?project=${projectId}` : '/gitops-control?view=builder';
+    void router.push(target);
+  };
+
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
@@ -287,13 +295,13 @@ export default function GitOpsProjectsPage() {
               </p>
             </div>
             <div className="portal-page__actions">
-              <Link href="/gitops-control?view=builder" className="btn btn-primary">
+              <button type="button" className="btn btn-primary" onClick={openBuilder}>
                 Create folder structure
-              </Link>
+              </button>
               {selectedProject?.can_manage ? (
-                <Link href={`/gitops-control?project=${selectedProject.project_id}`} className="btn btn-secondary">
+                <button type="button" className="btn btn-secondary" onClick={() => openProjectInfra(selectedProject.project_id)}>
                   View / Edit
-                </Link>
+                </button>
               ) : (
                 <span className="portal-pill">Read-only access</span>
               )}
@@ -317,9 +325,9 @@ export default function GitOpsProjectsPage() {
               <div className="portal-empty">
                 <p>No DevOps projects are available yet. A DevOps manager must create the project structure and grant environment access first.</p>
                 <div className="portal-form-actions" style={{ justifyContent: 'center', marginTop: '1rem' }}>
-                  <Link href="/gitops-control?view=builder" className="btn btn-primary">
+                  <button type="button" className="btn btn-primary" onClick={openBuilder}>
                     Open Project-Infra
-                  </Link>
+                  </button>
                 </div>
               </div>
             </section>
