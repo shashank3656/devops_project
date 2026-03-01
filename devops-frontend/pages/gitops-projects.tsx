@@ -283,24 +283,19 @@ export default function GitOpsProjectsPage() {
               <span className="portal-page__eyebrow">GitOps Control</span>
               <h1 className="portal-page__title">GitOps Projects</h1>
               <p className="portal-page__subtitle">
-                View each project as a folder-scoped delivery stream with environment manifests, PR review boundaries, and incremental apply paths.
+                Select a project, then either create the folder structure or open the same project in Project-Infra for view and edit actions.
               </p>
             </div>
             <div className="portal-page__actions">
-              {selectedProject?.can_write ? (
-                <Link href="/templates/new" className="btn btn-primary">
-                  Launch change request
+              <Link href="/gitops-control" className="btn btn-primary">
+                Create folder structure
+              </Link>
+              {selectedProject?.can_manage ? (
+                <Link href={`/gitops-control?project=${selectedProject.project_id}`} className="btn btn-secondary">
+                  View / Edit
                 </Link>
               ) : (
                 <span className="portal-pill">Read-only access</span>
-              )}
-              <Link href="/tickets" className="btn btn-secondary">
-                Review tickets
-              </Link>
-              {selectedProject?.can_manage && (
-                <Link href="/gitops-control" className="btn btn-secondary">
-                  Project-Infra
-                </Link>
               )}
             </div>
           </section>

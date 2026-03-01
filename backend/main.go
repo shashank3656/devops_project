@@ -548,6 +548,7 @@ func main() {
 	http.HandleFunc("/api/devops/gitops/preview", devopsGitOpsPreviewHandler)
 	http.HandleFunc("/api/devops/gitops/manage", devopsGitOpsManagementHandler)
 	http.HandleFunc("/api/devops/gitops/manage/projects", devopsGitOpsProjectCreateHandler)
+	http.HandleFunc("/api/devops/gitops/manage/projects/", devopsGitOpsProjectUpdateHandler)
 	http.HandleFunc("/api/devops/gitops/manage/access", devopsGitOpsAccessCreateHandler)
 	http.HandleFunc("/api/devops/gitops/manage/access/", devopsGitOpsAccessDeleteHandler)
 	http.HandleFunc("/api/devops/templates", devopsTemplatesRouter)
