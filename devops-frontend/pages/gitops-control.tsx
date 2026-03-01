@@ -340,6 +340,12 @@ export default function GitOpsControlPage() {
         loadProjectIntoForm(matchedProject);
       }
     }
+    const requestedView = typeof router.query.view === 'string' ? router.query.view : '';
+    if (requestedView === 'builder' && (next.can_create_projects || projectQuery > 0 || next.projects.some((project) => project.can_manage))) {
+      setActiveRail('builder');
+    } else if (next.projects.length === 0 && next.can_create_projects) {
+      setActiveRail('builder');
+    }
   };
 
   useEffect(() => {
