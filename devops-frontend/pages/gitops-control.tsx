@@ -244,6 +244,8 @@ function buildAccessGroups(project: ManagedProject | null): AccessGroup[] {
 export default function GitOpsControlPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const requestedProject = typeof router.query.project === 'string' ? Number(router.query.project) : 0;
+  const requestedView = typeof router.query.view === 'string' ? router.query.view : '';
   const [data, setData] = useState<ManagementResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -302,6 +304,9 @@ export default function GitOpsControlPage() {
   };
 
   const loadData = async () => {
+    if (!router.isReady) {
+      return;
+    }
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
       router.replace('/login');
@@ -332,16 +337,14 @@ export default function GitOpsControlPage() {
     if (!accessUserId && next.users.length > 0) {
       setAccessUserId(String(next.users[0].id));
     }
-    const projectQuery = typeof router.query.project === 'string' ? Number(router.query.project) : 0;
-    if (projectQuery > 0) {
-      const matchedProject = next.projects.find((project) => project.id === projectQuery);
+    if (requestedProject > 0) {
+      const matchedProject = next.projects.find((project) => project.id === requestedProject);
       if (matchedProject) {
         selectProject(matchedProject);
         loadProjectIntoForm(matchedProject);
       }
     }
-    const requestedView = typeof router.query.view === 'string' ? router.query.view : '';
-    if (requestedView === 'builder' && (next.can_create_projects || projectQuery > 0 || next.projects.some((project) => project.can_manage))) {
+    if (requestedView === 'builder' && (next.can_create_projects || requestedProject > 0 || next.projects.some((project) => project.can_manage))) {
       setActiveRail('builder');
     } else if (next.projects.length === 0 && next.can_create_projects) {
       setActiveRail('builder');
@@ -349,10 +352,32 @@ export default function GitOpsControlPage() {
   };
 
   useEffect(() => {
+    if (!router.isReady) {
+      return;
+    }
     loadData()
       .catch((err: Error) => setError(err.message || 'Failed to load GitOps management'))
       .finally(() => setLoading(false));
-  }, [apiUrl, router]);
+  }, [apiUrl, requestedProject, requestedView, router.isReady]);
+
+  useEffect(() => {
+    if (!data || !router.isReady) {
+      return;
+    }
+    if (requestedView === 'builder' && (data.can_create_projects || selectedPanelProject?.can_manage || data.projects.length === 0)) {
+      setActiveRail('builder');
+      return;
+    }
+    if (requestedProject > 0) {
+      const matchedProject = data.projects.find((project) => project.id === requestedProject);
+      if (matchedProject) {
+        selectProject(matchedProject);
+        if (matchedProject.can_manage) {
+          loadProjectIntoForm(matchedProject);
+        }
+      }
+    }
+  }, [data, requestedProject, requestedView, router.isReady]);
 
   const selectedProject = useMemo(() => {
     if (!data || !accessProjectId) return null;
