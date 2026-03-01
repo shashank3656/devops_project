@@ -60,6 +60,20 @@ interface ManagementResponse {
   projects: ManagedProject[];
 }
 
+interface GitOpsSyncFeedback {
+  ok?: boolean;
+  pr_url?: string;
+  branch?: string;
+  files?: string[];
+  warning?: string;
+}
+
+interface ActionFeedback {
+  tone: 'success' | 'warning';
+  message: string;
+  link?: string;
+}
+
 interface ExplorerNode {
   id: string;
   depth: number;
@@ -188,12 +202,34 @@ function buildExplorerNodes(project: ManagedProject | null): ExplorerNode[] {
   return nodes;
 }
 
+function buildSyncFeedback(sync: GitOpsSyncFeedback | undefined, fallbackMessage: string): ActionFeedback {
+  if (sync?.warning) {
+    return {
+      tone: 'warning',
+      message: sync.warning,
+      link: sync.pr_url,
+    };
+  }
+  if (sync?.ok) {
+    const filesCount = Array.isArray(sync.files) ? sync.files.length : 0;
+    const suffix = filesCount > 0 ? ` ${filesCount} file${filesCount === 1 ? '' : 's'} synced.` : '';
+    const branch = sync.branch ? ` Branch: ${sync.branch}.` : '';
+    return {
+      tone: 'success',
+      message: `${fallbackMessage}${suffix}${branch}`,
+      link: sync.pr_url,
+    };
+  }
+  return { tone: 'success', message: fallbackMessage };
+}
+
 export default function GitOpsControlPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
   const [data, setData] = useState<ManagementResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
   const [saving, setSaving] = useState(false);
   const [activeRail, setActiveRail] = useState<'explorer' | 'access' | 'builder'>('explorer');
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
@@ -348,8 +384,10 @@ export default function GitOpsControlPage() {
     event.preventDefault();
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
+    const isEditing = editingProjectId !== null;
     setSaving(true);
     setError('');
+    setFeedback(null);
     try {
       const response = await fetch(
         editingProjectId ? `${apiUrl}/api/devops/gitops/manage/projects/${editingProjectId}` : `${apiUrl}/api/devops/gitops/manage/projects`,
@@ -373,7 +411,13 @@ export default function GitOpsControlPage() {
       if (!response.ok || payload?.status !== 'ok') {
         throw new Error(payload?.error || `Failed to ${editingProjectId ? 'update' : 'create'} project structure`);
       }
+      if (payload?.project?.id) {
+        setSelectedProjectId(Number(payload.project.id));
+        setAccessProjectId(String(payload.project.id));
+      }
+      setActiveRail('explorer');
       resetProjectForm();
+      setFeedback(buildSyncFeedback(payload?.sync as GitOpsSyncFeedback | undefined, isEditing ? 'Project structure updated.' : 'Project structure created.'));
       await loadData();
     } catch (err) {
       const message = err instanceof Error ? err.message : `Failed to ${editingProjectId ? 'update' : 'create'} project structure`;
@@ -393,21 +437,17 @@ export default function GitOpsControlPage() {
     if (!token) return;
     setSaving(true);
     setError('');
+    setFeedback(null);
     try {
-      const nextComponents = Array.from(new Set([...project.components, componentName]));
-      const response = await fetch(`${apiUrl}/api/devops/gitops/manage/projects/${project.id}`, {
-        method: 'PUT',
+      const response = await fetch(`${apiUrl}/api/devops/gitops/manage/project-files`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          team_id: project.team_id,
-          name: project.name,
-          slug: project.slug,
-          default_cloud: project.default_cloud,
-          environments: project.environments,
-          components: nextComponents,
+          project_id: project.id,
+          component: componentName,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -416,6 +456,7 @@ export default function GitOpsControlPage() {
       }
       setJsonProjectId(null);
       setNewJsonComponent('');
+      setFeedback(buildSyncFeedback(payload?.sync as GitOpsSyncFeedback | undefined, `${componentName}.json created for ${project.name}.`));
       await loadData();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create JSON file';
@@ -431,6 +472,7 @@ export default function GitOpsControlPage() {
     if (!token) return;
     setSaving(true);
     setError('');
+    setFeedback(null);
     try {
       const response = await fetch(`${apiUrl}/api/devops/gitops/manage/access`, {
         method: 'POST',
@@ -449,6 +491,7 @@ export default function GitOpsControlPage() {
       if (!response.ok || payload?.status !== 'ok') {
         throw new Error(payload?.error || 'Failed to grant access');
       }
+      setFeedback({ tone: 'success', message: 'Project access saved.' });
       await loadData();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to grant access';
@@ -463,6 +506,7 @@ export default function GitOpsControlPage() {
     if (!token) return;
     setSaving(true);
     setError('');
+    setFeedback(null);
     try {
       const response = await fetch(`${apiUrl}/api/devops/gitops/manage/access/${accessId}`, {
         method: 'DELETE',
@@ -472,6 +516,7 @@ export default function GitOpsControlPage() {
       if (!response.ok || payload?.status !== 'ok') {
         throw new Error(payload?.error || 'Failed to remove access');
       }
+      setFeedback({ tone: 'success', message: 'Project access removed.' });
       await loadData();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to remove access';
@@ -534,6 +579,20 @@ export default function GitOpsControlPage() {
                 <section className="portal-surface portal-surface--tight">
                   <div className="portal-empty" style={{ padding: 0, textAlign: 'left' }}>
                     <p>{error}</p>
+                  </div>
+                </section>
+              )}
+              {feedback && (
+                <section className={`portal-surface portal-surface--tight gitops-feedback gitops-feedback--${feedback.tone}`}>
+                  <div className="portal-empty" style={{ padding: 0, textAlign: 'left' }}>
+                    <p>
+                      {feedback.message}{' '}
+                      {feedback.link && (
+                        <a href={feedback.link} target="_blank" rel="noreferrer">
+                          Open PR
+                        </a>
+                      )}
+                    </p>
                   </div>
                 </section>
               )}

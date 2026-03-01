@@ -3861,6 +3861,19 @@ td {
   gap: 16px;
 }
 
+.gitops-feedback {
+  border-color: rgba(75, 211, 255, 0.35);
+}
+
+.gitops-feedback--warning {
+  border-color: rgba(255, 173, 92, 0.4);
+}
+
+.gitops-feedback a {
+  color: var(--accent-primary);
+  text-decoration: underline;
+}
+
 .gitops-builder-section {
   display: grid;
   gap: 14px;
