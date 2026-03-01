@@ -42,6 +42,7 @@ type GitOpsRecentChange struct {
 }
 
 type GitOpsProjectSummary struct {
+	ProjectID              int                        `json:"project_id"`
 	TeamID                 int                        `json:"team_id"`
 	ProjectName            string                     `json:"project_name"`
 	ProjectSlug            string                     `json:"project_slug"`
@@ -63,6 +64,7 @@ type GitOpsProjectSummary struct {
 }
 
 type GitOpsPreview struct {
+	ProjectID         int                    `json:"project_id"`
 	TeamID            int                    `json:"team_id"`
 	ProjectName       string                 `json:"project_name"`
 	GroupID           string                 `json:"group_id"`
@@ -103,18 +105,6 @@ func normalizeGitOpsComponentName(value string) string {
 	return normalized
 }
 
-func BuildGitOpsProjectRoot(teamNameOrSlug string) string {
-	return fmt.Sprintf("projects/%s", ResolveTeamPathKey(teamNameOrSlug))
-}
-
-func BuildGitOpsEnvironmentFolder(teamNameOrSlug, env string) string {
-	return fmt.Sprintf("%s/%s", BuildGitOpsProjectRoot(teamNameOrSlug), normalizeGitOpsComponentName(env))
-}
-
-func BuildGitOpsManifestPath(teamNameOrSlug, env, component string) string {
-	return fmt.Sprintf("%s/%s.json", BuildGitOpsEnvironmentFolder(teamNameOrSlug, env), normalizeGitOpsComponentName(component))
-}
-
 func gitOpsEnvironmentOrder(env string) int {
 	switch strings.ToLower(strings.TrimSpace(env)) {
 	case "dev":
@@ -132,36 +122,10 @@ func gitOpsEnvironmentOrder(env string) int {
 	}
 }
 
-func teamMatchesRequest(team Team, requestTeam string) bool {
-	reqTeam := strings.TrimSpace(strings.ToLower(requestTeam))
-	return reqTeam != "" && (reqTeam == strings.ToLower(team.Name) || reqTeam == strings.ToLower(team.Slug))
-}
-
-func getVisibleGitOpsTeams(userID int) ([]Team, error) {
-	user, err := GetUserByID(userID)
-	if err != nil || user == nil {
-		return nil, err
-	}
-	if user.Role == "admin" {
-		teams, err := GetTeams()
-		if err != nil {
-			return nil, err
-		}
-		filtered := make([]Team, 0, len(teams))
-		for _, team := range teams {
-			if team.TeamType == "devops" {
-				filtered = append(filtered, team)
-			}
-		}
-		return filtered, nil
-	}
-	return GetDevopsTeamsForUser(userID)
-}
-
-func loadGitOpsRequestsForTeam(team Team) ([]PRRequest, error) {
-	searchTerms := []string{team.Name}
-	if team.Slug != "" && !strings.EqualFold(team.Slug, team.Name) {
-		searchTerms = append(searchTerms, team.Slug)
+func loadGitOpsRequestsForProject(project GitOpsCatalogProject) ([]PRRequest, error) {
+	searchTerms := []string{project.TeamName}
+	if project.TeamSlug != "" && !strings.EqualFold(project.TeamSlug, project.TeamName) {
+		searchTerms = append(searchTerms, project.TeamSlug)
 	}
 	seen := make(map[int]PRRequest)
 	for _, term := range searchTerms {
@@ -170,7 +134,11 @@ func loadGitOpsRequestsForTeam(team Team) ([]PRRequest, error) {
 			return nil, err
 		}
 		for _, request := range requests {
-			if !teamMatchesRequest(team, request.Team) {
+			reqTeam := strings.TrimSpace(strings.ToLower(request.Team))
+			if reqTeam == "" {
+				continue
+			}
+			if reqTeam != strings.ToLower(project.TeamName) && reqTeam != strings.ToLower(project.TeamSlug) {
 				continue
 			}
 			seen[request.ID] = request
@@ -186,138 +154,114 @@ func loadGitOpsRequestsForTeam(team Team) ([]PRRequest, error) {
 	return out, nil
 }
 
-func buildGitOpsFolderTree(team Team, environments []GitOpsEnvironmentSummary) []string {
-	lines := []string{BuildGitOpsProjectRoot(team.Name) + "/"}
-	for _, env := range environments {
-		lines = append(lines, "  "+env.Name+"/")
-		if len(env.Components) == 0 {
-			lines = append(lines, "    component.json")
-			continue
-		}
-		for _, component := range env.Components {
-			lines = append(lines, "    "+component.Key+".json")
+func buildGitOpsFolderTree(project GitOpsCatalogProject) []string {
+	lines := []string{project.RepoRoot + "/"}
+	for _, env := range project.Environments {
+		lines = append(lines, "  "+env+"/")
+		for _, component := range project.Components {
+			lines = append(lines, "    "+component+".json")
 		}
 	}
 	return lines
 }
 
-func buildGitOpsPreview(team Team, env, component string) GitOpsPreview {
+func buildGitOpsPreview(project GitOpsCatalogProject, env, component string) GitOpsPreview {
 	normalizedEnv := normalizeGitOpsComponentName(env)
 	if normalizedEnv == "" || normalizedEnv == "infrastructure" {
-		normalizedEnv = "dev"
+		if len(project.Environments) > 0 {
+			normalizedEnv = project.Environments[0]
+		} else {
+			normalizedEnv = "dev"
+		}
 	}
 	normalizedComponent := normalizeGitOpsComponentName(component)
-	if normalizedComponent == "" {
-		normalizedComponent = "networking"
+	if normalizedComponent == "" || normalizedComponent == "infrastructure" {
+		if len(project.Components) > 0 {
+			normalizedComponent = project.Components[0]
+		} else {
+			normalizedComponent = "networking"
+		}
 	}
-	projectKey := ResolveTeamPathKey(team.Name)
+	projectKey := fmt.Sprintf("%s/%s", ResolveTeamPathKey(project.TeamName), project.Slug)
 	return GitOpsPreview{
-		TeamID:            team.ID,
-		ProjectName:       team.Name,
-		GroupID:           team.ApplicationID,
+		ProjectID:         project.ID,
+		TeamID:            project.TeamID,
+		ProjectName:       project.Name,
+		GroupID:           project.GroupID,
 		Environment:       normalizedEnv,
 		Component:         normalizedComponent,
-		RepoRoot:          BuildGitOpsProjectRoot(team.Name),
-		EnvironmentFolder: BuildGitOpsEnvironmentFolder(team.Name, normalizedEnv),
-		ManifestPath:      BuildGitOpsManifestPath(team.Name, normalizedEnv, normalizedComponent),
-		LiveRequestPath:   fmt.Sprintf("%s/envs/%s/request.json", projectKey, normalizedEnv),
+		RepoRoot:          project.RepoRoot,
+		EnvironmentFolder: BuildGitOpsManagedEnvironmentFolder(project.RepoRoot, normalizedEnv),
+		ManifestPath:      BuildGitOpsManagedManifestPath(project.RepoRoot, normalizedEnv, normalizedComponent),
+		LiveRequestPath:   fmt.Sprintf("%s/envs/%s/request.json", ResolveTeamPathKey(project.TeamName), normalizedEnv),
 		BranchExample:     fmt.Sprintf("%s/%s/%s", projectKey, normalizedEnv, "{request-id}"),
-		PullRequestTitle:  fmt.Sprintf("GitOps change: %s %s %s", team.Name, normalizedEnv, normalizedComponent),
-		BaseBranch:        BaseBranch,
+		PullRequestTitle:  fmt.Sprintf("GitOps change: %s %s %s", project.Name, normalizedEnv, normalizedComponent),
+		BaseBranch:        project.BaseBranch,
 		SampleManifest: map[string]interface{}{
-			"project":     team.Name,
-			"group_id":    team.ApplicationID,
-			"environment": normalizedEnv,
-			"component":   normalizedComponent,
+			"project":      project.Name,
+			"project_slug": project.Slug,
+			"group_id":     project.GroupID,
+			"environment":  normalizedEnv,
+			"component":    normalizedComponent,
 			"delivery": map[string]interface{}{
 				"mode":        "gitops",
-				"base_branch": BaseBranch,
+				"base_branch": project.BaseBranch,
 				"workflow":    []string{"branch", "pull_request", "ci_validate_plan", "merge", "cd_apply"},
 			},
 			"resource_spec": map[string]interface{}{
 				"name":            normalizedComponent,
-				"cloud":           strings.TrimSpace(team.DefaultCloud),
+				"cloud":           strings.TrimSpace(project.DefaultCloud),
 				"change_strategy": "incremental",
 			},
 		},
 	}
 }
 
-func buildGitOpsProjectSummary(team Team, requests []PRRequest) GitOpsProjectSummary {
-	envSet := map[string]bool{"dev": true, "qa": true, "prod": true}
-	if team.DefaultEnv != "" {
-		envSet[normalizeGitOpsComponentName(team.DefaultEnv)] = true
-	}
+func buildGitOpsProjectSummary(project GitOpsCatalogProject, requests []PRRequest) GitOpsProjectSummary {
+	requestsByEnv := make(map[string][]PRRequest)
 	for _, request := range requests {
-		envSet[normalizeGitOpsComponentName(request.Env)] = true
+		envKey := normalizeGitOpsComponentName(request.Env)
+		requestsByEnv[envKey] = append(requestsByEnv[envKey], request)
 	}
 
-	envNames := make([]string, 0, len(envSet))
-	for env := range envSet {
-		envNames = append(envNames, env)
-	}
-	sort.Slice(envNames, func(i, j int) bool {
-		leftOrder := gitOpsEnvironmentOrder(envNames[i])
-		rightOrder := gitOpsEnvironmentOrder(envNames[j])
-		if leftOrder == rightOrder {
-			return envNames[i] < envNames[j]
-		}
-		return leftOrder < rightOrder
-	})
-
-	environments := make([]GitOpsEnvironmentSummary, 0, len(envNames))
+	environments := make([]GitOpsEnvironmentSummary, 0, len(project.Environments))
 	totalPending := 0
 	totalInFlight := 0
-	for _, env := range envNames {
-		componentMap := make(map[string]*GitOpsComponentSummary)
-		var envRequests []PRRequest
-		for _, request := range requests {
-			if normalizeGitOpsComponentName(request.Env) != env {
-				continue
-			}
-			envRequests = append(envRequests, request)
-			componentLabel := strings.TrimSpace(request.Service)
-			if componentLabel == "" {
-				componentLabel = strings.TrimSpace(request.Cloud)
-			}
-			if componentLabel == "" {
-				componentLabel = "Infrastructure"
-			}
-			componentKey := normalizeGitOpsComponentName(componentLabel)
-			entry, ok := componentMap[componentKey]
-			if !ok {
-				entry = &GitOpsComponentSummary{
-					Name:         componentLabel,
-					Key:          componentKey,
-					ManifestPath: BuildGitOpsManifestPath(team.Name, env, componentKey),
-				}
-				componentMap[componentKey] = entry
-			}
-			entry.RequestCount++
-			if entry.LastUpdated == nil || request.UpdatedAt.After(*entry.LastUpdated) {
-				updated := request.UpdatedAt
-				entry.LastUpdated = &updated
-			}
-		}
+	totalRequests := 0
 
-		components := make([]GitOpsComponentSummary, 0, len(componentMap))
-		for _, component := range componentMap {
-			components = append(components, *component)
-		}
-		sort.Slice(components, func(i, j int) bool {
-			if components[i].RequestCount == components[j].RequestCount {
-				return components[i].Key < components[j].Key
+	for _, env := range project.Environments {
+		envRequests := requestsByEnv[env]
+		components := make([]GitOpsComponentSummary, 0, len(project.Components))
+		for _, component := range project.Components {
+			componentSummary := GitOpsComponentSummary{
+				Name:         component,
+				Key:          component,
+				ManifestPath: BuildGitOpsManagedManifestPath(project.RepoRoot, env, component),
 			}
-			return components[i].RequestCount > components[j].RequestCount
-		})
+			for _, request := range envRequests {
+				requestComponent := normalizeGitOpsComponentName(request.Service)
+				if requestComponent == "infrastructure" {
+					requestComponent = normalizeGitOpsComponentName(request.Cloud)
+				}
+				if requestComponent == component {
+					componentSummary.RequestCount++
+					if componentSummary.LastUpdated == nil || request.UpdatedAt.After(*componentSummary.LastUpdated) {
+						updated := request.UpdatedAt
+						componentSummary.LastUpdated = &updated
+					}
+				}
+			}
+			components = append(components, componentSummary)
+		}
 
 		envSummary := GitOpsEnvironmentSummary{
 			Name:       env,
-			FolderPath: BuildGitOpsEnvironmentFolder(team.Name, env),
+			FolderPath: BuildGitOpsManagedEnvironmentFolder(project.RepoRoot, env),
 			Components: components,
 		}
 		for _, request := range envRequests {
 			envSummary.RequestCount++
+			totalRequests++
 			switch request.Status {
 			case "completed":
 				envSummary.CompletedCount++
@@ -337,7 +281,14 @@ func buildGitOpsProjectSummary(team Team, requests []PRRequest) GitOpsProjectSum
 	}
 
 	recentChanges := make([]GitOpsRecentChange, 0, minInt(len(requests), 5))
+	allowedEnvironments := make(map[string]bool, len(project.Environments))
+	for _, env := range project.Environments {
+		allowedEnvironments[env] = true
+	}
 	for _, request := range requests {
+		if !allowedEnvironments[normalizeGitOpsComponentName(request.Env)] {
+			continue
+		}
 		recentChanges = append(recentChanges, GitOpsRecentChange{
 			RequestID:     request.ID,
 			ApplicationID: request.ApplicationID,
@@ -354,33 +305,35 @@ func buildGitOpsProjectSummary(team Team, requests []PRRequest) GitOpsProjectSum
 		}
 	}
 
-	defaultEnv := strings.TrimSpace(team.DefaultEnv)
-	if defaultEnv == "" {
-		defaultEnv = "dev"
+	defaultEnv := "dev"
+	if len(project.Environments) > 0 {
+		defaultEnv = project.Environments[0]
 	}
-	defaultCloud := strings.TrimSpace(team.DefaultCloud)
+	defaultCloud := strings.TrimSpace(project.DefaultCloud)
 	if defaultCloud == "" {
 		defaultCloud = "aws"
 	}
-	projectKey := ResolveTeamPathKey(team.Name)
+	projectKey := fmt.Sprintf("%s/%s", ResolveTeamPathKey(project.TeamName), project.Slug)
+
 	return GitOpsProjectSummary{
-		TeamID:                 team.ID,
-		ProjectName:            team.Name,
-		ProjectSlug:            team.Slug,
-		GroupID:                team.ApplicationID,
+		ProjectID:              project.ID,
+		TeamID:                 project.TeamID,
+		ProjectName:            project.Name,
+		ProjectSlug:            project.Slug,
+		GroupID:                project.GroupID,
 		ProjectKey:             projectKey,
-		RepoRoot:               BuildGitOpsProjectRoot(team.Name),
-		LiveRequestPathPattern: fmt.Sprintf("%s/envs/<env>/request.json", projectKey),
-		ManifestPathPattern:    fmt.Sprintf("%s/<env>/<component>.json", BuildGitOpsProjectRoot(team.Name)),
+		RepoRoot:               project.RepoRoot,
+		LiveRequestPathPattern: fmt.Sprintf("%s/envs/<env>/request.json", ResolveTeamPathKey(project.TeamName)),
+		ManifestPathPattern:    fmt.Sprintf("%s/<env>/<component>.json", project.RepoRoot),
 		BranchPattern:          fmt.Sprintf("%s/<env>/<request-id>", projectKey),
 		DefaultEnvironment:     defaultEnv,
 		DefaultCloud:           defaultCloud,
-		RequestCount:           len(requests),
+		RequestCount:           totalRequests,
 		PendingCount:           totalPending,
 		InFlightCount:          totalInFlight,
 		Environments:           environments,
 		RecentChanges:          recentChanges,
-		FolderTree:             buildGitOpsFolderTree(team, environments),
+		FolderTree:             buildGitOpsFolderTree(project),
 		DeliveryMode:           "Branch -> Pull Request -> CI validate + plan -> merge -> CD apply",
 	}
 }
@@ -406,25 +359,27 @@ func devopsGitOpsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	teams, err := getVisibleGitOpsTeams(userID)
+
+	catalogProjects, err := listVisibleGitOpsProjectsForUser(userID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	projects := make([]GitOpsProjectSummary, 0, len(teams))
+
+	projects := make([]GitOpsProjectSummary, 0, len(catalogProjects))
 	totalRequests := 0
 	totalPending := 0
-	for _, team := range teams {
-		requests, err := loadGitOpsRequestsForTeam(team)
+	for _, catalogProject := range catalogProjects {
+		requests, err := loadGitOpsRequestsForProject(catalogProject)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
-		project := buildGitOpsProjectSummary(team, requests)
+		project := buildGitOpsProjectSummary(catalogProject, requests)
 		totalRequests += project.RequestCount
 		totalPending += project.PendingCount
 		projects = append(projects, project)
@@ -432,6 +387,7 @@ func devopsGitOpsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(projects, func(i, j int) bool {
 		return strings.ToLower(projects[i].ProjectName) < strings.ToLower(projects[j].ProjectName)
 	})
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "ok",
@@ -447,10 +403,10 @@ func devopsGitOpsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		},
 		"projects": projects,
 		"workflow": []map[string]string{
-			{"step": "Branch", "detail": "Create a change branch from the project baseline."},
-			{"step": "Pull Request", "detail": "Open a PR with folder-scoped JSON changes for review."},
-			{"step": "CI Validate + Plan", "detail": "Validate schema and run plan output before approval."},
-			{"step": "Merge + Apply", "detail": "Merge to main and let CD apply only the delta."},
+			{"step": "Create Structure", "detail": "DevOps manager defines project folders, environments, and component files in the portal."},
+			{"step": "Grant Access", "detail": "Project visibility is assigned per DevOps user and per environment from the portal."},
+			{"step": "Pull Request", "detail": "Changes continue through branch and PR review before merge."},
+			{"step": "Merge + Apply", "detail": "Approved changes merge to the base branch and CD applies only the delta."},
 		},
 	})
 }
@@ -469,49 +425,42 @@ func devopsGitOpsPreviewHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	teams, err := getVisibleGitOpsTeams(userID)
+
+	projectID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("project_id")))
+	if projectID <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "project_id is required", "status": "error"})
+		return
+	}
+
+	selectedProject, _, err := GetGitOpsProjectVisibleToUser(userID, projectID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	teamID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("team_id")))
-	if teamID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "team_id is required", "status": "error"})
-		return
-	}
-	var selectedTeam *Team
-	for _, team := range teams {
-		if team.ID == teamID {
-			teamCopy := team
-			selectedTeam = &teamCopy
-			break
-		}
-	}
-	if selectedTeam == nil {
+	if selectedProject == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "team not available in this DevOps scope", "status": "error"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "project not available in this DevOps scope", "status": "error"})
 		return
 	}
+
 	env := strings.TrimSpace(r.URL.Query().Get("env"))
-	if env == "" {
-		env = selectedTeam.DefaultEnv
-	}
-	if env == "" {
-		env = "dev"
+	if env == "" && len(selectedProject.Environments) > 0 {
+		env = selectedProject.Environments[0]
 	}
 	component := strings.TrimSpace(r.URL.Query().Get("component"))
-	if component == "" {
-		component = r.URL.Query().Get("service")
+	if component == "" && len(selectedProject.Components) > 0 {
+		component = selectedProject.Components[0]
 	}
 	if component == "" {
 		component = "networking"
 	}
-	preview := buildGitOpsPreview(*selectedTeam, env, component)
+
+	preview := buildGitOpsPreview(*selectedProject, env, component)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "preview": preview})
 }

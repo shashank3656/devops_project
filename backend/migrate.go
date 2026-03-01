@@ -263,6 +263,39 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_repo_config_scope_team ON repo_config(scope, team_id)")
 
+	// Migration 15b: gitops project catalog and environment-scoped visibility
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS gitops_projects (
+			id SERIAL PRIMARY KEY,
+			team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+			name VARCHAR(200) NOT NULL,
+			slug VARCHAR(200) NOT NULL,
+			repo_root VARCHAR(500) NOT NULL,
+			base_branch VARCHAR(200) NOT NULL DEFAULT 'main',
+			default_cloud VARCHAR(100) DEFAULT '',
+			environments JSONB NOT NULL DEFAULT '[]',
+			components JSONB NOT NULL DEFAULT '[]',
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(team_id, slug)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_gitops_projects_team_id ON gitops_projects(team_id)")
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS gitops_project_access (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES gitops_projects(id) ON DELETE CASCADE,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			environment VARCHAR(100) NOT NULL,
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(project_id, user_id, environment)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_gitops_project_access_project_id ON gitops_project_access(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_gitops_project_access_user_id ON gitops_project_access(user_id)")
+
 	// Migration 16: api_keys.scopes (request:create, history:read)
 	var scopesCol int
 	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'api_keys' AND column_name = 'scopes'").Scan(&scopesCol)

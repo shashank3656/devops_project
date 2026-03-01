@@ -56,6 +56,7 @@ interface GitOpsRecentChange {
 }
 
 interface GitOpsProjectSummary {
+  project_id: number;
   team_id: number;
   project_name: string;
   project_slug: string;
@@ -77,6 +78,7 @@ interface GitOpsProjectSummary {
 }
 
 interface GitOpsPreview {
+  project_id: number;
   team_id: number;
   project_name: string;
   group_id: string;
@@ -152,7 +154,7 @@ export default function GitOpsProjectsPage() {
   const [data, setData] = useState<GitOpsProjectsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [selectedEnv, setSelectedEnv] = useState('');
   const [selectedComponent, setSelectedComponent] = useState('');
   const [preview, setPreview] = useState<GitOpsPreview | null>(null);
@@ -185,7 +187,7 @@ export default function GitOpsProjectsPage() {
         setData(payload);
         if (payload.projects.length > 0) {
           const defaults = pickProjectDefaults(payload.projects[0]);
-          setSelectedTeamId(payload.projects[0].team_id);
+          setSelectedProjectId(payload.projects[0].project_id);
           setSelectedEnv(defaults.env);
           setSelectedComponent(defaults.component);
         }
@@ -195,9 +197,9 @@ export default function GitOpsProjectsPage() {
   }, [apiUrl, router]);
 
   const selectedProject = useMemo(() => {
-    if (!data || selectedTeamId == null) return null;
-    return data.projects.find((project) => project.team_id === selectedTeamId) || null;
-  }, [data, selectedTeamId]);
+    if (!data || selectedProjectId == null) return null;
+    return data.projects.find((project) => project.project_id === selectedProjectId) || null;
+  }, [data, selectedProjectId]);
 
   const selectedEnvironment = useMemo(() => {
     if (!selectedProject) return null;
@@ -226,7 +228,7 @@ export default function GitOpsProjectsPage() {
     if (!token) return;
 
     const query = new URLSearchParams({
-      team_id: String(selectedProject.team_id),
+      project_id: String(selectedProject.project_id),
       env: selectedEnv,
       component: selectedComponent,
     });
@@ -259,7 +261,7 @@ export default function GitOpsProjectsPage() {
 
   const handleProjectSelect = (project: GitOpsProjectSummary) => {
     const defaults = pickProjectDefaults(project);
-    setSelectedTeamId(project.team_id);
+    setSelectedProjectId(project.project_id);
     setSelectedEnv(defaults.env);
     setSelectedComponent(defaults.component);
   };
@@ -304,7 +306,7 @@ export default function GitOpsProjectsPage() {
           ) : !data || data.projects.length === 0 ? (
             <section className="portal-surface">
               <div className="portal-empty">
-                <p>No DevOps projects are available yet. Start with a template-backed request to establish the first delivery path.</p>
+                <p>No DevOps projects are available yet. A DevOps manager must create the project structure and grant environment access first.</p>
               </div>
             </section>
           ) : (
@@ -387,10 +389,10 @@ export default function GitOpsProjectsPage() {
                 </div>
                 <div className="gitops-project-grid">
                   {data.projects.map((project) => {
-                    const isActive = project.team_id === selectedTeamId;
+                    const isActive = project.project_id === selectedProjectId;
                     return (
                       <button
-                        key={project.team_id}
+                        key={project.project_id}
                         type="button"
                         className={`gitops-project-card ${isActive ? 'gitops-project-card--active' : ''}`}
                         onClick={() => handleProjectSelect(project)}
