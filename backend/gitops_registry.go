@@ -242,37 +242,7 @@ func loadGitOpsProjectAccess(projectIDs map[int]bool) (map[int][]GitOpsProjectAc
 }
 
 func listManagerGitOpsProjects(userID int) ([]GitOpsCatalogProject, error) {
-	teams, err := GetDevopsTeamsForUser(userID)
-	if err != nil {
-		return nil, err
-	}
-	allowedTeams := make(map[int]bool, len(teams))
-	for _, team := range teams {
-		allowedTeams[team.ID] = true
-	}
-	allProjects, err := queryAllGitOpsCatalogProjects()
-	if err != nil {
-		return nil, err
-	}
-	filtered := make([]GitOpsCatalogProject, 0, len(allProjects))
-	projectIDs := make(map[int]bool)
-	for _, project := range allProjects {
-		if allowedTeams[project.TeamID] {
-			filtered = append(filtered, project)
-			projectIDs[project.ID] = true
-		}
-	}
-	accessMap, err := loadGitOpsProjectAccess(projectIDs)
-	if err != nil {
-		return nil, err
-	}
-	for index := range filtered {
-		filtered[index].Access = accessMap[filtered[index].ID]
-		filtered[index].CurrentPermission = "admin"
-		filtered[index].CanWrite = true
-		filtered[index].CanManage = true
-	}
-	return filtered, nil
+	return listAllGitOpsProjects(), nil
 }
 
 func listManageableGitOpsProjectsForUser(userID int) ([]GitOpsCatalogProject, error) {
@@ -299,26 +269,33 @@ func listManageableGitOpsProjectsForUser(userID int) ([]GitOpsCatalogProject, er
 	return filtered, nil
 }
 
+func listAllDevopsTeams() ([]Team, error) {
+	teams, err := GetTeams()
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]Team, 0, len(teams))
+	for _, team := range teams {
+		if team.TeamType == "devops" {
+			filtered = append(filtered, team)
+		}
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		return strings.ToLower(filtered[i].Name) < strings.ToLower(filtered[j].Name)
+	})
+	return filtered, nil
+}
+
 func listCreatableGitOpsTeamsForUser(userID int) ([]Team, error) {
 	user, err := GetUserByID(userID)
 	if err != nil || user == nil {
 		return nil, err
 	}
 	if user.Role == "admin" {
-		teams, err := GetTeams()
-		if err != nil {
-			return nil, err
-		}
-		filtered := make([]Team, 0, len(teams))
-		for _, team := range teams {
-			if team.TeamType == "devops" {
-				filtered = append(filtered, team)
-			}
-		}
-		return filtered, nil
+		return listAllDevopsTeams()
 	}
 	if profile, _ := GetDevopsProfile(userID); profile != nil && profile.IsManager {
-		return GetDevopsTeamsForUser(userID)
+		return listAllDevopsTeams()
 	}
 	projects, err := listManageableGitOpsProjectsForUser(userID)
 	if err != nil {
@@ -352,7 +329,8 @@ func CanUserCreateGitOpsProjectInTeam(userID, teamID int) bool {
 		return true
 	}
 	if profile, _ := GetDevopsProfile(userID); profile != nil && profile.IsManager {
-		return CanUserManageDevopsTeam(userID, teamID)
+		team, err := GetTeamByID(teamID)
+		return err == nil && team != nil && team.TeamType == "devops"
 	}
 	projects, err := listManageableGitOpsProjectsForUser(userID)
 	if err != nil {
@@ -402,7 +380,7 @@ func listVisibleGitOpsProjectsForUser(userID int) ([]GitOpsCatalogProject, error
 	}
 	profile, _ := GetDevopsProfile(userID)
 	if profile != nil && profile.IsManager {
-		return listManagerGitOpsProjects(userID)
+		return listAllGitOpsProjects(), nil
 	}
 
 	allProjects, err := queryAllGitOpsCatalogProjects()

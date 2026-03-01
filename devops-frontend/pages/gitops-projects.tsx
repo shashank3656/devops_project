@@ -287,7 +287,7 @@ export default function GitOpsProjectsPage() {
               </p>
             </div>
             <div className="portal-page__actions">
-              <Link href="/gitops-control" className="btn btn-primary">
+              <Link href="/gitops-control?view=builder" className="btn btn-primary">
                 Create folder structure
               </Link>
               {selectedProject?.can_manage ? (
@@ -316,6 +316,11 @@ export default function GitOpsProjectsPage() {
             <section className="portal-surface">
               <div className="portal-empty">
                 <p>No DevOps projects are available yet. A DevOps manager must create the project structure and grant environment access first.</p>
+                <div className="portal-form-actions" style={{ justifyContent: 'center', marginTop: '1rem' }}>
+                  <Link href="/gitops-control?view=builder" className="btn btn-primary">
+                    Open Project-Infra
+                  </Link>
+                </div>
               </div>
             </section>
           ) : (

@@ -95,12 +95,6 @@ func devopsGitOpsManagementHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	if len(teams) == 0 && len(projects) == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "GitOps project access required", "status": "error"})
-		return
-	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
