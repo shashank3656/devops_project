@@ -53,6 +53,11 @@ func findManagedGitOpsProject(userID, projectID int) (*GitOpsCatalogProject, err
 	return nil, nil
 }
 
+func findVisibleGitOpsProject(userID, projectID int) (*GitOpsCatalogProject, error) {
+	project, _, err := GetGitOpsProjectVisibleToUser(userID, projectID)
+	return project, err
+}
+
 func devopsGitOpsManagementHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
 		enableCORS(w)
@@ -82,7 +87,7 @@ func devopsGitOpsManagementHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	projects, err := listManageableGitOpsProjectsForUser(userID)
+	projects, err := listVisibleGitOpsProjectsForUser(userID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -92,7 +97,7 @@ func devopsGitOpsManagementHandler(w http.ResponseWriter, r *http.Request) {
 	if len(teams) == 0 && len(projects) == 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "GitOps admin access required", "status": "error"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "GitOps project access required", "status": "error"})
 		return
 	}
 
@@ -163,6 +168,10 @@ func devopsGitOpsProjectCreateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func devopsGitOpsProjectUpdateHandler(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(strings.Trim(r.URL.Path, "/"), "/tree") {
+		devopsGitOpsProjectTreeHandler(w, r)
+		return
+	}
 	if r.Method == "OPTIONS" {
 		enableCORS(w)
 		handleOptions(w, r)
@@ -288,7 +297,7 @@ func devopsGitOpsAccessCreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := GrantGitOpsProjectAccess(project.ID, body.UserID, userID, body.Environments, body.Permission); err != nil {
+	if err := SetGitOpsProjectAccess(project.ID, body.UserID, userID, body.Environments, body.Permission); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
@@ -361,13 +370,13 @@ func devopsGitOpsAccessDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok"})
 }
 
-func devopsGitOpsProjectFileCreateHandler(w http.ResponseWriter, r *http.Request) {
+func devopsGitOpsProjectTreeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
 		enableCORS(w)
 		handleOptions(w, r)
 		return
 	}
-	if r.Method != "POST" {
+	if r.Method != "GET" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -377,65 +386,240 @@ func devopsGitOpsProjectFileCreateHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var body struct {
-		ProjectID int    `json:"project_id"`
-		Component string `json:"component"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	projectPath := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/api/devops/gitops/manage/projects/"))
+	projectPath = strings.TrimSuffix(projectPath, "/tree")
+	projectPath = strings.Trim(projectPath, "/")
+	projectID, _ := strconv.Atoi(projectPath)
+	if projectID <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json payload", "status": "error"})
-		return
-	}
-	if body.ProjectID <= 0 || strings.TrimSpace(body.Component) == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "project_id and component are required", "status": "error"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "project id is required", "status": "error"})
 		return
 	}
 
-	project, err := findManagedGitOpsProject(userID, body.ProjectID)
+	project, err := findVisibleGitOpsProject(userID, projectID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	if project == nil || !CanUserManageGitOpsProject(userID, body.ProjectID) {
+	if project == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "GitOps admin access is required for this project", "status": "error"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "GitOps project access is required", "status": "error"})
 		return
 	}
 
-	component := normalizeGitOpsComponentName(body.Component)
-	nextComponents := append([]string{}, project.Components...)
-	exists := false
-	for _, current := range nextComponents {
-		if current == component {
-			exists = true
-			break
-		}
-	}
-	if !exists {
-		nextComponents = append(nextComponents, component)
-	}
-
-	updatedProject, err := UpdateGitOpsCatalogProject(project.ID, project.TeamID, project.Name, project.Slug, project.Environments, nextComponents, project.DefaultCloud)
+	nodes, warning, err := loadGitOpsRepoTree(*project)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 
-	syncResult := syncGitOpsProjectStructureToGit(*updatedProject, []string{component}, "add-json")
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":    "ok",
-		"project":   updatedProject,
-		"component": component,
-		"sync":      syncResult,
+		"status":  "ok",
+		"project": project,
+		"nodes":   nodes,
+		"warning": warning,
 	})
+}
+
+func devopsGitOpsProjectFileCreateHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "OPTIONS" {
+		enableCORS(w)
+		handleOptions(w, r)
+		return
+	}
+
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
+		return
+	}
+
+	switch r.Method {
+	case "GET":
+		projectID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("project_id")))
+		environment := strings.TrimSpace(r.URL.Query().Get("environment"))
+		component := strings.TrimSpace(r.URL.Query().Get("component"))
+		if projectID <= 0 || environment == "" || component == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "project_id, environment, and component are required", "status": "error"})
+			return
+		}
+
+		project, err := findVisibleGitOpsProject(userID, projectID)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		if project == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "GitOps project access is required", "status": "error"})
+			return
+		}
+
+		document, err := loadGitOpsRepoFile(*project, environment, component)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "document": document})
+		return
+
+	case "POST":
+		var body struct {
+			ProjectID int    `json:"project_id"`
+			Component string `json:"component"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json payload", "status": "error"})
+			return
+		}
+		if body.ProjectID <= 0 || strings.TrimSpace(body.Component) == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "project_id and component are required", "status": "error"})
+			return
+		}
+
+		project, err := findVisibleGitOpsProject(userID, body.ProjectID)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		if project == nil || !CanUserWriteGitOpsProject(userID, body.ProjectID) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "write access is required for this project", "status": "error"})
+			return
+		}
+
+		component := normalizeGitOpsComponentName(body.Component)
+		nextComponents := append([]string{}, project.Components...)
+		exists := false
+		for _, current := range nextComponents {
+			if current == component {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			nextComponents = append(nextComponents, component)
+		}
+
+		updatedProject, err := UpdateGitOpsCatalogProject(project.ID, project.TeamID, project.Name, project.Slug, project.Environments, nextComponents, project.DefaultCloud)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+
+		syncResult := syncGitOpsProjectStructureToGit(*updatedProject, []string{component}, "add-json")
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":    "ok",
+			"project":   updatedProject,
+			"component": component,
+			"sync":      syncResult,
+		})
+		return
+
+	case "PUT":
+		var body struct {
+			ProjectID   int    `json:"project_id"`
+			Environment string `json:"environment"`
+			Component   string `json:"component"`
+			Content     string `json:"content"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json payload", "status": "error"})
+			return
+		}
+		if body.ProjectID <= 0 || strings.TrimSpace(body.Environment) == "" || strings.TrimSpace(body.Component) == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "project_id, environment, and component are required", "status": "error"})
+			return
+		}
+		if !json.Valid([]byte(body.Content)) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "file content must be valid json", "status": "error"})
+			return
+		}
+
+		project, err := findVisibleGitOpsProject(userID, body.ProjectID)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		if project == nil || !CanUserWriteGitOpsProject(userID, body.ProjectID) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "write access is required for this project", "status": "error"})
+			return
+		}
+
+		environment := normalizeGitOpsComponentName(body.Environment)
+		component := normalizeGitOpsComponentName(body.Component)
+		path := BuildGitOpsManagedManifestPath(project.RepoRoot, environment, component)
+		branchName, err := buildGitOpsSyncBranch(*project, fmt.Sprintf("edit-%s-%s", environment, component))
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+
+		title := fmt.Sprintf("Project-Infra: update %s/%s/%s.json", project.Name, environment, component)
+		bodyText := fmt.Sprintf(
+			"Auto-generated Project-Infra file update from DevOps Portal\n\n**Project:** %s\n**Environment:** %s\n**File:** %s",
+			project.Name,
+			environment,
+			path,
+		)
+		prURL, err := CreateGitHubPRWithFiles(branchName, map[string][]byte{path: []byte(body.Content)}, title, bodyText)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "ok",
+			"sync": GitOpsSyncResult{
+				OK:     true,
+				PRURL:  prURL,
+				Branch: branchName,
+				Files:  []string{path},
+			},
+		})
+		return
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }

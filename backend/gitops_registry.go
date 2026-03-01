@@ -379,6 +379,19 @@ func CanUserManageGitOpsProject(userID, projectID int) bool {
 	return false
 }
 
+func CanUserWriteGitOpsProject(userID, projectID int) bool {
+	projects, err := listVisibleGitOpsProjectsForUser(userID)
+	if err != nil {
+		return false
+	}
+	for _, project := range projects {
+		if project.ID == projectID && project.CanWrite {
+			return true
+		}
+	}
+	return false
+}
+
 func listVisibleGitOpsProjectsForUser(userID int) ([]GitOpsCatalogProject, error) {
 	user, err := GetUserByID(userID)
 	if err != nil || user == nil {
@@ -635,6 +648,73 @@ func GrantGitOpsProjectAccess(projectID, targetUserID, createdBy int, environmen
 			return err
 		}
 	}
+	return nil
+}
+
+func SetGitOpsProjectAccess(projectID, targetUserID, createdBy int, environments []string, permission string) error {
+	normalizedEnvironments := make([]string, 0, len(environments))
+	if len(environments) > 0 {
+		seen := make(map[string]bool, len(environments))
+		for _, environment := range environments {
+			normalized := normalizeGitOpsComponentName(environment)
+			if normalized == "" || normalized == "infrastructure" || seen[normalized] {
+				continue
+			}
+			seen[normalized] = true
+			normalizedEnvironments = append(normalizedEnvironments, normalized)
+		}
+		sort.Slice(normalizedEnvironments, func(i, j int) bool {
+			leftOrder := gitOpsEnvironmentOrder(normalizedEnvironments[i])
+			rightOrder := gitOpsEnvironmentOrder(normalizedEnvironments[j])
+			if leftOrder == rightOrder {
+				return normalizedEnvironments[i] < normalizedEnvironments[j]
+			}
+			return leftOrder < rightOrder
+		})
+	}
+	normalizedPermission := normalizeGitOpsPermission(permission)
+
+	currentRows, err := DB.Query(`
+		SELECT id, environment
+		FROM gitops_project_access
+		WHERE project_id = $1 AND user_id = $2
+	`, projectID, targetUserID)
+	if err != nil {
+		return err
+	}
+	defer currentRows.Close()
+
+	currentByEnvironment := make(map[string]int)
+	for currentRows.Next() {
+		var accessID int
+		var environment string
+		if err := currentRows.Scan(&accessID, &environment); err != nil {
+			return err
+		}
+		currentByEnvironment[normalizeGitOpsComponentName(environment)] = accessID
+	}
+
+	nextEnvironmentSet := make(map[string]bool, len(normalizedEnvironments))
+	for _, environment := range normalizedEnvironments {
+		nextEnvironmentSet[environment] = true
+		if _, err := DB.Exec(`
+			INSERT INTO gitops_project_access (project_id, user_id, environment, permission, created_by)
+			VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (project_id, user_id, environment) DO UPDATE SET permission = EXCLUDED.permission
+		`, projectID, targetUserID, environment, normalizedPermission, createdBy); err != nil {
+			return err
+		}
+	}
+
+	for environment, accessID := range currentByEnvironment {
+		if nextEnvironmentSet[environment] {
+			continue
+		}
+		if _, err := DB.Exec(`DELETE FROM gitops_project_access WHERE id = $1`, accessID); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
