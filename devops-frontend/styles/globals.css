@@ -3856,6 +3856,44 @@ td {
   word-break: break-word;
 }
 
+.gitops-builder {
+  display: grid;
+  gap: 16px;
+}
+
+.gitops-builder-section {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  background: rgba(2, 6, 23, 0.34);
+}
+
+.gitops-builder-section--preview {
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.gitops-builder-section__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gitops-builder-section__title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  color: var(--color-text);
+}
+
+.gitops-builder-section__copy {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
 .gitops-control-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));

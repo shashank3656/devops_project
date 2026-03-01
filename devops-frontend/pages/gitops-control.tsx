@@ -137,6 +137,14 @@ function toggleSelection(value: string, current: string[]): string[] {
   return [...current, value];
 }
 
+function normalizePreviewToken(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 export default function GitOpsControlPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -195,6 +203,29 @@ export default function GitOpsControlPage() {
     if (!data || !accessProjectId) return null;
     return data.projects.find((project) => project.id === Number(accessProjectId)) || null;
   }, [accessProjectId, data]);
+
+  const selectedCreateTeam = useMemo(() => {
+    if (!data || !createTeamId) return null;
+    return data.teams.find((team) => team.id === Number(createTeamId)) || null;
+  }, [createTeamId, data]);
+
+  const normalizedCreateName = useMemo(() => createName.trim(), [createName]);
+  const projectSlugPreview = useMemo(() => {
+    const candidate = normalizePreviewToken(createSlug || createName);
+    return candidate || 'project';
+  }, [createName, createSlug]);
+  const normalizedCreateEnvironments = useMemo(
+    () => createEnvironments.split(',').map((item) => normalizePreviewToken(item)).filter(Boolean),
+    [createEnvironments],
+  );
+  const normalizedCreateComponents = useMemo(
+    () => createComponents.split(',').map((item) => normalizePreviewToken(item)).filter(Boolean),
+    [createComponents],
+  );
+  const repoRootPreview = useMemo(() => {
+    const teamKey = normalizePreviewToken(selectedCreateTeam?.slug || selectedCreateTeam?.name || 'team') || 'team';
+    return `projects/${teamKey}/${projectSlugPreview}`;
+  }, [projectSlugPreview, selectedCreateTeam]);
 
   useEffect(() => {
     if (!selectedProject) {
@@ -379,47 +410,121 @@ export default function GitOpsControlPage() {
                     </div>
                   </div>
                   {data.can_create_projects ? (
-                    <form onSubmit={handleCreateProject} className="portal-stack">
-                      <div className="portal-field-grid portal-field-grid--two">
-                        <div className="form-group">
-                          <label className="label" htmlFor="gitops-team">DevOps Team</label>
-                          <select id="gitops-team" className="input" value={createTeamId} onChange={(event) => setCreateTeamId(event.target.value)}>
-                            {data.teams.map((team) => (
-                              <option key={team.id} value={team.id}>
-                                {team.name}
-                              </option>
-                            ))}
-                          </select>
+                    <form onSubmit={handleCreateProject} className="gitops-builder">
+                      <section className="gitops-builder-section">
+                        <div className="gitops-builder-section__header">
+                          <div>
+                            <h3 className="gitops-builder-section__title">1. Project Identity</h3>
+                            <p className="gitops-builder-section__copy">Define who owns this structure and what the GitOps root should be called.</p>
+                          </div>
                         </div>
-                        <div className="form-group">
-                          <label className="label" htmlFor="gitops-cloud">Default Cloud</label>
-                          <select id="gitops-cloud" className="input" value={createCloud} onChange={(event) => setCreateCloud(event.target.value)}>
-                            <option value="aws">aws</option>
-                            <option value="azure">azure</option>
-                            <option value="gcp">gcp</option>
-                          </select>
+                        <div className="portal-field-grid portal-field-grid--two">
+                          <div className="form-group">
+                            <label className="label" htmlFor="gitops-team">DevOps Team</label>
+                            <select id="gitops-team" className="input" value={createTeamId} onChange={(event) => setCreateTeamId(event.target.value)}>
+                              {data.teams.map((team) => (
+                                <option key={team.id} value={team.id}>
+                                  {team.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="form-group">
+                            <label className="label" htmlFor="gitops-cloud">Default Cloud</label>
+                            <select id="gitops-cloud" className="input" value={createCloud} onChange={(event) => setCreateCloud(event.target.value)}>
+                              <option value="aws">aws</option>
+                              <option value="azure">azure</option>
+                              <option value="gcp">gcp</option>
+                            </select>
+                          </div>
+                          <div className="form-group">
+                            <label className="label" htmlFor="gitops-name">Project Name</label>
+                            <input id="gitops-name" className="input" value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="payments-platform" />
+                          </div>
+                          <div className="form-group">
+                            <label className="label" htmlFor="gitops-slug">Project Slug</label>
+                            <input id="gitops-slug" className="input" value={createSlug} onChange={(event) => setCreateSlug(event.target.value)} placeholder="payments-platform" />
+                          </div>
                         </div>
-                        <div className="form-group">
-                          <label className="label" htmlFor="gitops-name">Project Name</label>
-                          <input id="gitops-name" className="input" value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="payments-platform" />
+                      </section>
+
+                      <section className="gitops-builder-section">
+                        <div className="gitops-builder-section__header">
+                          <div>
+                            <h3 className="gitops-builder-section__title">2. Environment Layout</h3>
+                            <p className="gitops-builder-section__copy">List the environment folders that should exist under this project root.</p>
+                          </div>
                         </div>
-                        <div className="form-group">
-                          <label className="label" htmlFor="gitops-slug">Project Slug</label>
-                          <input id="gitops-slug" className="input" value={createSlug} onChange={(event) => setCreateSlug(event.target.value)} placeholder="payments-platform" />
+                        <div className="portal-field-grid">
+                          <div className="form-group">
+                            <label className="label" htmlFor="gitops-envs">Environments</label>
+                            <input id="gitops-envs" className="input" value={createEnvironments} onChange={(event) => setCreateEnvironments(event.target.value)} placeholder="dev, qa, prod" />
+                          </div>
                         </div>
-                      </div>
-                      <div className="portal-field-grid portal-field-grid--two">
-                        <div className="form-group">
-                          <label className="label" htmlFor="gitops-envs">Environments</label>
-                          <input id="gitops-envs" className="input" value={createEnvironments} onChange={(event) => setCreateEnvironments(event.target.value)} placeholder="dev, qa, prod" />
+                        <div className="portal-pill-row">
+                          {normalizedCreateEnvironments.map((environment) => (
+                            <span key={environment} className="portal-pill">{environment}</span>
+                          ))}
                         </div>
-                        <div className="form-group">
-                          <label className="label" htmlFor="gitops-components">Components</label>
-                          <input id="gitops-components" className="input" value={createComponents} onChange={(event) => setCreateComponents(event.target.value)} placeholder="networking, eks, rds" />
+                      </section>
+
+                      <section className="gitops-builder-section">
+                        <div className="gitops-builder-section__header">
+                          <div>
+                            <h3 className="gitops-builder-section__title">3. Component Files</h3>
+                            <p className="gitops-builder-section__copy">These component names become JSON manifest files inside each environment folder.</p>
+                          </div>
                         </div>
-                      </div>
+                        <div className="portal-field-grid">
+                          <div className="form-group">
+                            <label className="label" htmlFor="gitops-components">Components</label>
+                            <input id="gitops-components" className="input" value={createComponents} onChange={(event) => setCreateComponents(event.target.value)} placeholder="networking, eks, rds" />
+                          </div>
+                        </div>
+                        <div className="portal-pill-row">
+                          {normalizedCreateComponents.map((component) => (
+                            <span key={component} className="portal-pill">{component}.json</span>
+                          ))}
+                        </div>
+                      </section>
+
+                      <section className="gitops-builder-section gitops-builder-section--preview">
+                        <div className="gitops-builder-section__header">
+                          <div>
+                            <h3 className="gitops-builder-section__title">4. Structure Preview</h3>
+                            <p className="gitops-builder-section__copy">This is the structure that the portal will register for this new GitOps project.</p>
+                          </div>
+                        </div>
+                        <div className="portal-detail-grid">
+                          <div className="portal-detail-card">
+                            <span className="portal-surface__eyebrow">Team</span>
+                            <strong className="portal-detail-card__value">{selectedCreateTeam?.name || 'Select a team'}</strong>
+                          </div>
+                          <div className="portal-detail-card">
+                            <span className="portal-surface__eyebrow">Project</span>
+                            <strong className="portal-detail-card__value">{normalizedCreateName || 'Enter a project name'}</strong>
+                          </div>
+                          <div className="portal-detail-card">
+                            <span className="portal-surface__eyebrow">Slug</span>
+                            <strong className="portal-detail-card__value">{projectSlugPreview}</strong>
+                          </div>
+                          <div className="portal-detail-card">
+                            <span className="portal-surface__eyebrow">Repo Root</span>
+                            <strong className="portal-detail-card__value">{repoRootPreview}</strong>
+                          </div>
+                        </div>
+                        <pre className="portal-code-block">{`{
+  "team": "${selectedCreateTeam?.name || ''}",
+  "project": "${normalizedCreateName}",
+  "slug": "${projectSlugPreview}",
+  "default_cloud": "${createCloud}",
+  "environments": ${JSON.stringify(normalizedCreateEnvironments, null, 2)},
+  "components": ${JSON.stringify(normalizedCreateComponents, null, 2)}
+}`}</pre>
+                      </section>
+
                       <div className="portal-form-actions">
-                        <button type="submit" className="btn btn-primary" disabled={saving}>
+                        <button type="submit" className="btn btn-primary" disabled={saving || !normalizedCreateName}>
                           {saving ? 'Saving...' : 'Create project structure'}
                         </button>
                       </div>
