@@ -238,14 +238,14 @@ export default function GitOpsControlPage() {
   return (
     <>
       <Head>
-        <title>Project Structure - DevOps Portal</title>
+        <title>Project-Infra - DevOps Portal</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page gitops-page">
           <section className="portal-page__hero">
             <div>
               <span className="portal-page__eyebrow">Manager Control</span>
-              <h1 className="portal-page__title">Project Structure</h1>
+              <h1 className="portal-page__title">Project-Infra</h1>
               <p className="portal-page__subtitle">
                 Create GitOps project folders and files, then decide exactly which DevOps user can view each environment.
               </p>

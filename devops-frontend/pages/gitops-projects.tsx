@@ -299,7 +299,7 @@ export default function GitOpsProjectsPage() {
               </Link>
               {selectedProject?.can_manage && (
                 <Link href="/gitops-control" className="btn btn-secondary">
-                  Project structure
+                  Project-Infra
                 </Link>
               )}
             </div>
