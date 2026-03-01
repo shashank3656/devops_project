@@ -3940,6 +3940,12 @@ td {
   font-size: 13px;
 }
 
+.gitops-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .gitops-control-card__empty {
   margin: 0;
   font-size: 12px;
@@ -3972,6 +3978,19 @@ td {
   margin: 0;
   font-size: 12px;
   color: var(--color-text-muted);
+}
+
+.gitops-access-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.gitops-inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .gitops-check-row {
@@ -4009,6 +4028,10 @@ td {
   .gitops-access-list__item,
   .gitops-control-card__header {
     display: grid;
+  }
+
+  .gitops-inline-form {
+    grid-template-columns: 1fr;
   }
 
   .gitops-change-list__meta {

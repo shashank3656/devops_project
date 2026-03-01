@@ -152,16 +152,40 @@ export default function GitOpsControlPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editingProjectId, setEditingProjectId] = useState<number | null>(null);
   const [createTeamId, setCreateTeamId] = useState('');
   const [createName, setCreateName] = useState('');
   const [createSlug, setCreateSlug] = useState('');
   const [createCloud, setCreateCloud] = useState('aws');
   const [createEnvironments, setCreateEnvironments] = useState('dev, qa, prod');
   const [createComponents, setCreateComponents] = useState('networking, eks, rds');
+  const [jsonProjectId, setJsonProjectId] = useState<number | null>(null);
+  const [newJsonComponent, setNewJsonComponent] = useState('');
   const [accessProjectId, setAccessProjectId] = useState('');
   const [accessUserId, setAccessUserId] = useState('');
   const [accessPermission, setAccessPermission] = useState('read');
   const [accessEnvironments, setAccessEnvironments] = useState<string[]>([]);
+
+  const resetProjectForm = () => {
+    setEditingProjectId(null);
+    setCreateName('');
+    setCreateSlug('');
+    setCreateCloud('aws');
+    setCreateEnvironments('dev, qa, prod');
+    setCreateComponents('networking, eks, rds');
+  };
+
+  const loadProjectIntoForm = (project: ManagedProject) => {
+    setEditingProjectId(project.id);
+    setCreateTeamId(String(project.team_id));
+    setCreateName(project.name);
+    setCreateSlug(project.slug);
+    setCreateCloud(project.default_cloud || 'aws');
+    setCreateEnvironments(project.environments.join(', '));
+    setCreateComponents(project.components.join(', '));
+    setJsonProjectId(null);
+    setNewJsonComponent('');
+  };
 
   const loadData = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -190,6 +214,13 @@ export default function GitOpsControlPage() {
     }
     if (!accessUserId && next.users.length > 0) {
       setAccessUserId(String(next.users[0].id));
+    }
+    const projectQuery = typeof router.query.project === 'string' ? Number(router.query.project) : 0;
+    if (projectQuery > 0) {
+      const matchedProject = next.projects.find((project) => project.id === projectQuery);
+      if (matchedProject) {
+        loadProjectIntoForm(matchedProject);
+      }
     }
   };
 
@@ -246,30 +277,74 @@ export default function GitOpsControlPage() {
     setSaving(true);
     setError('');
     try {
-      const response = await fetch(`${apiUrl}/api/devops/gitops/manage/projects`, {
-        method: 'POST',
+      const response = await fetch(
+        editingProjectId ? `${apiUrl}/api/devops/gitops/manage/projects/${editingProjectId}` : `${apiUrl}/api/devops/gitops/manage/projects`,
+        {
+          method: editingProjectId ? 'PUT' : 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            team_id: Number(createTeamId),
+            name: createName,
+            slug: createSlug,
+            default_cloud: createCloud,
+            environments: createEnvironments.split(',').map((item) => item.trim()).filter(Boolean),
+            components: createComponents.split(',').map((item) => item.trim()).filter(Boolean),
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.status !== 'ok') {
+        throw new Error(payload?.error || `Failed to ${editingProjectId ? 'update' : 'create'} project structure`);
+      }
+      resetProjectForm();
+      await loadData();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : `Failed to ${editingProjectId ? 'update' : 'create'} project structure`;
+      setError(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddJsonFile = async (project: ManagedProject) => {
+    const componentName = normalizePreviewToken(newJsonComponent);
+    if (!componentName) {
+      setError('Enter a JSON file name before creating it.');
+      return;
+    }
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    setSaving(true);
+    setError('');
+    try {
+      const nextComponents = Array.from(new Set([...project.components, componentName]));
+      const response = await fetch(`${apiUrl}/api/devops/gitops/manage/projects/${project.id}`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          team_id: Number(createTeamId),
-          name: createName,
-          slug: createSlug,
-          default_cloud: createCloud,
-          environments: createEnvironments.split(',').map((item) => item.trim()).filter(Boolean),
-          components: createComponents.split(',').map((item) => item.trim()).filter(Boolean),
+          team_id: project.team_id,
+          name: project.name,
+          slug: project.slug,
+          default_cloud: project.default_cloud,
+          environments: project.environments,
+          components: nextComponents,
         }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload?.status !== 'ok') {
-        throw new Error(payload?.error || 'Failed to create project structure');
+        throw new Error(payload?.error || 'Failed to create JSON file');
       }
-      setCreateName('');
-      setCreateSlug('');
+      setJsonProjectId(null);
+      setNewJsonComponent('');
       await loadData();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create project structure';
+      const message = err instanceof Error ? err.message : 'Failed to create JSON file';
       setError(message);
     } finally {
       setSaving(false);
@@ -330,6 +405,13 @@ export default function GitOpsControlPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleEditAccess = (project: ManagedProject, access: ProjectAccess) => {
+    setAccessProjectId(String(project.id));
+    setAccessUserId(String(access.user_id));
+    setAccessPermission(access.permission || 'read');
+    setAccessEnvironments(access.environment ? [access.environment] : []);
   };
 
   return (
@@ -404,12 +486,17 @@ export default function GitOpsControlPage() {
                 <article className="portal-surface">
                   <div className="portal-surface__header">
                     <div>
-                      <span className="portal-surface__eyebrow">Create Structure</span>
-                      <h2 className="portal-surface__title">New GitOps project</h2>
-                      <p className="portal-surface__subtitle">This defines the folder root, environments, and component file set that the portal will expose.</p>
+                      <span className="portal-surface__eyebrow">{editingProjectId ? 'Edit Structure' : 'Create Structure'}</span>
+                      <h2 className="portal-surface__title">{editingProjectId ? 'Edit GitOps project' : 'New GitOps project'}</h2>
+                      <p className="portal-surface__subtitle">This defines the folder root, environments, and component JSON file set that the portal will expose.</p>
                     </div>
+                    {editingProjectId && (
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={resetProjectForm}>
+                        Cancel edit
+                      </button>
+                    )}
                   </div>
-                  {data.can_create_projects ? (
+                  {data.can_create_projects || editingProjectId !== null ? (
                     <form onSubmit={handleCreateProject} className="gitops-builder">
                       <section className="gitops-builder-section">
                         <div className="gitops-builder-section__header">
@@ -525,7 +612,7 @@ export default function GitOpsControlPage() {
 
                       <div className="portal-form-actions">
                         <button type="submit" className="btn btn-primary" disabled={saving || !normalizedCreateName}>
-                          {saving ? 'Saving...' : 'Create project structure'}
+                          {saving ? 'Saving...' : editingProjectId ? 'Update project structure' : 'Create project structure'}
                         </button>
                       </div>
                     </form>
@@ -594,7 +681,7 @@ export default function GitOpsControlPage() {
 
                     <div className="portal-form-actions">
                       <button type="submit" className="btn btn-primary" disabled={saving || accessEnvironments.length === 0}>
-                        {saving ? 'Saving...' : 'Grant access'}
+                        {saving ? 'Saving...' : 'Save access'}
                       </button>
                     </div>
                   </form>
@@ -632,6 +719,22 @@ export default function GitOpsControlPage() {
                           {project.current_permission && <span className="portal-pill">Manager scope {project.current_permission}</span>}
                         </div>
 
+                        <div className="gitops-card-actions">
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => loadProjectIntoForm(project)}>
+                            Edit structure
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                              setJsonProjectId(project.id);
+                              setNewJsonComponent('');
+                            }}
+                          >
+                            Create JSON file
+                          </button>
+                        </div>
+
                         <div className="gitops-control-card__section">
                           <strong>Environments</strong>
                           <div className="portal-pill-row">
@@ -645,9 +748,32 @@ export default function GitOpsControlPage() {
                           <strong>Components</strong>
                           <div className="portal-pill-row">
                             {project.components.map((component) => (
-                              <span key={component} className="portal-pill">{component}</span>
+                              <span key={component} className="portal-pill">{component}.json</span>
                             ))}
                           </div>
+                          {jsonProjectId === project.id && (
+                            <div className="gitops-inline-form">
+                              <input
+                                className="input"
+                                value={newJsonComponent}
+                                onChange={(event) => setNewJsonComponent(event.target.value)}
+                                placeholder="service-mesh"
+                              />
+                              <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => void handleAddJsonFile(project)}>
+                                Add JSON file
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => {
+                                  setJsonProjectId(null);
+                                  setNewJsonComponent('');
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         <div className="gitops-control-card__section">
@@ -662,9 +788,14 @@ export default function GitOpsControlPage() {
                                     <strong>{access.username}</strong>
                                     <p>{access.email || 'No email'} · {access.environment} · {access.permission}</p>
                                   </div>
-                                  <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => void handleRemoveAccess(access.id)}>
-                                    Remove
-                                  </button>
+                                  <div className="gitops-access-actions">
+                                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleEditAccess(project, access)}>
+                                      Edit
+                                    </button>
+                                    <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => void handleRemoveAccess(access.id)}>
+                                      Remove
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>

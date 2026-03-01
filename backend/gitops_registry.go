@@ -551,6 +551,78 @@ func CreateGitOpsCatalogProject(teamID int, name, slug string, environments, com
 	return &project, nil
 }
 
+func UpdateGitOpsCatalogProject(projectID, teamID int, name, slug string, environments, components []string, defaultCloud string) (*GitOpsCatalogProject, error) {
+	team, err := GetTeamByID(teamID)
+	if err != nil {
+		return nil, err
+	}
+	if team == nil || team.TeamType != "devops" {
+		return nil, fmt.Errorf("invalid devops team")
+	}
+
+	projectSlug := normalizeGitOpsProjectSlug(slug)
+	if strings.TrimSpace(slug) == "" {
+		projectSlug = normalizeGitOpsProjectSlug(name)
+	}
+	normalizedEnvironments := normalizeGitOpsEnvironmentList(environments)
+	normalizedComponents := normalizeGitOpsComponentList(components)
+	repoRoot := BuildGitOpsManagedProjectRoot(team.Name, projectSlug)
+
+	var project GitOpsCatalogProject
+	var environmentsRaw []byte
+	var componentsRaw []byte
+	var createdByValue sql.NullInt64
+	err = DB.QueryRow(`
+		UPDATE gitops_projects
+		SET team_id = $2,
+		    name = $3,
+		    slug = $4,
+		    repo_root = $5,
+		    default_cloud = NULLIF(TRIM($6), ''),
+		    environments = $7::jsonb,
+		    components = $8::jsonb
+		WHERE id = $1
+		RETURNING id, team_id, name, slug, repo_root, base_branch, COALESCE(default_cloud, ''), environments, components, created_at, created_by
+	`,
+		projectID,
+		teamID,
+		strings.TrimSpace(name),
+		projectSlug,
+		repoRoot,
+		defaultCloud,
+		marshalStringSliceJSON(normalizedEnvironments),
+		marshalStringSliceJSON(normalizedComponents),
+	).Scan(
+		&project.ID,
+		&project.TeamID,
+		&project.Name,
+		&project.Slug,
+		&project.RepoRoot,
+		&project.BaseBranch,
+		&project.DefaultCloud,
+		&environmentsRaw,
+		&componentsRaw,
+		&project.CreatedAt,
+		&createdByValue,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("project not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+	project.Environments = normalizeGitOpsEnvironmentList(unmarshalStringSliceJSON(environmentsRaw))
+	project.Components = normalizeGitOpsComponentList(unmarshalStringSliceJSON(componentsRaw))
+	project.TeamName = team.Name
+	project.TeamSlug = team.Slug
+	project.GroupID = team.ApplicationID
+	if createdByValue.Valid && createdByValue.Int64 > 0 {
+		value := int(createdByValue.Int64)
+		project.CreatedBy = &value
+	}
+	return &project, nil
+}
+
 func GrantGitOpsProjectAccess(projectID, targetUserID, createdBy int, environments []string, permission string) error {
 	normalizedEnvironments := normalizeGitOpsEnvironmentList(environments)
 	normalizedPermission := normalizeGitOpsPermission(permission)
