@@ -544,6 +544,8 @@ func main() {
 	http.HandleFunc("/api/devops/pending-approvals", devopsPendingApprovalsHandler)
 	http.HandleFunc("/api/devops/requests", devopsRequestsListHandler)
 	http.HandleFunc("/api/devops/requests/", devopsRequestActionHandler)
+	http.HandleFunc("/api/devops/gitops/projects", devopsGitOpsProjectsHandler)
+	http.HandleFunc("/api/devops/gitops/preview", devopsGitOpsPreviewHandler)
 	http.HandleFunc("/api/devops/templates", devopsTemplatesRouter)
 	http.HandleFunc("/api/devops/templates/", devopsTemplatesRouter)
 	http.HandleFunc("/api/devops/credential-audit", devopsCredentialAuditHandler)

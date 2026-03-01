@@ -104,6 +104,19 @@ export function IconTemplates({ className = '' }: { className?: string }) {
   );
 }
 
+export function IconGitOps({ className = '' }: { className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <circle cx="6" cy="6" r="2.5" />
+      <circle cx="18" cy="6" r="2.5" />
+      <circle cx="12" cy="18" r="2.5" />
+      <path d="M8.2 7.1l2.8 8.1" />
+      <path d="M15.8 7.1l-2.8 8.1" />
+      <path d="M8.5 6h7" />
+    </svg>
+  );
+}
+
 export function IconMenu({ className = '' }: { className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>

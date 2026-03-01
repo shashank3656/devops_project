@@ -9,6 +9,7 @@ import {
   IconTickets,
   IconWorkload,
   IconTemplates,
+  IconGitOps,
   IconUsers,
   IconMenu,
   IconShield,
@@ -48,6 +49,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/workload': 'Workload',
   '/tickets': 'Tickets',
   '/templates': 'Templates',
+  '/gitops-projects': 'GitOps Projects',
   '/team': 'Teams',
   '/credential-audit': 'Credential Audit',
   '/profile': 'Profile',
@@ -225,6 +227,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     baseNavItems.push({ href: '/workload', label: 'Workload', Icon: IconWorkload });
     baseNavItems.push({ href: '/tickets', label: 'Tickets', Icon: IconTickets });
   }
+  baseNavItems.push({ href: '/gitops-projects', label: 'GitOps Projects', Icon: IconGitOps });
   baseNavItems.push({ href: '/templates', label: 'Templates', Icon: IconTemplates });
   baseNavItems.push({ href: '/credential-audit', label: 'Credential Audit', Icon: IconShield });
   if (isManager) baseNavItems.push({ href: '/team', label: 'Teams', Icon: IconUsers });
