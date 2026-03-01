@@ -310,6 +310,11 @@ export default function DevOpsDashboard() {
 
   const quickActions = [
     {
+      href: '/gitops-projects',
+      label: 'GitOps projects',
+      description: 'Inspect project folders, environment manifests, and PR delivery flow.',
+    },
+    {
       href: '/templates/new',
       label: 'Launch template',
       description: 'Start a new golden-path infrastructure request.',
@@ -329,11 +334,6 @@ export default function DevOpsDashboard() {
       href: '/credential-audit',
       label: 'Credential audit',
       description: 'Check secrets hygiene and ownership before the next release.',
-    },
-    {
-      href: '/profile',
-      label: 'Profile setup',
-      description: 'Keep role, level, and ownership details current.',
     },
   ];
 
