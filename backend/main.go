@@ -572,6 +572,7 @@ func main() {
 	http.HandleFunc("/api/admin/webhooks", adminWebhooksHandler)
 	http.HandleFunc("/api/admin/webhooks/", adminWebhookDetailHandler)
 	http.HandleFunc("/api/admin/projects", adminProjectsHandler)
+	http.HandleFunc("/api/admin/projects/", adminProjectDetailHandler)
 	http.HandleFunc("/api/admin/templates", adminTemplatesRouter)
 	http.HandleFunc("/api/admin/templates/", adminTemplatesRouter)
 	http.HandleFunc("/api/devops/me", devopsMeHandler)

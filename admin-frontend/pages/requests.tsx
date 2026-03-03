@@ -137,6 +137,16 @@ export default function AdminRequests() {
 
   const filtersRef = useRef<{ team: string; projectId: string; env: string; cloud: string; search: string; status: string; priority: string; sortBy: string; sortOrder: string; atRiskOnly: boolean }>({ team: '', projectId: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false });
 
+  useEffect(() => {
+    if (!router.isReady) return;
+    const rawProjectID = router.query.project_id;
+    const nextProjectID = Array.isArray(rawProjectID) ? rawProjectID[0] : rawProjectID;
+    if (typeof nextProjectID === 'string') {
+      setProjectId(nextProjectID);
+      setOffset(0);
+    }
+  }, [router.isReady, router.query.project_id]);
+
   const fetchRequests = (overrides?: { team?: string; projectId?: string; env?: string; cloud?: string; search?: string; status?: string; priority?: string; sortBy?: string; sortOrder?: string; atRiskOnly?: boolean; offset?: number }) => {
     const t = overrides?.team !== undefined ? overrides.team : filtersRef.current.team;
     const pid = overrides?.projectId !== undefined ? overrides.projectId : filtersRef.current.projectId;
@@ -1124,6 +1134,20 @@ export default function AdminRequests() {
                     Close
                   </button>
                 </div>
+                {detailRequest.project_id && detailRequest.project_name && (
+                  <p style={{ marginBottom: 8, fontSize: 14 }}>
+                    <strong>Project:</strong> {detailRequest.project_name}
+                    {detailRequest.project_code ? ` (${detailRequest.project_code})` : ''}
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ marginLeft: 10 }}
+                      onClick={() => router.push(`/projects/${detailRequest.project_id}`)}
+                    >
+                      Open project
+                    </button>
+                  </p>
+                )}
                 <p style={{ marginBottom: 8, fontSize: 14 }}>
                   <strong>Team:</strong> {detailRequest.team} · <strong>Env:</strong> {detailRequest.env} · <strong>Cloud:</strong> {detailRequest.cloud} · <strong>Service:</strong> {detailRequest.service}
                 </p>

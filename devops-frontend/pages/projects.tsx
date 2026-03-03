@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 
@@ -49,6 +50,10 @@ interface ProjectOption {
   code: string;
   description: string;
   status: ProjectStatus;
+  onboarding_stage?: string;
+  ready_for_requests?: boolean;
+  service_count?: number;
+  team_count?: number;
   owner_team_id?: number | null;
   owner_team?: string;
   environments: string[];
@@ -566,6 +571,7 @@ export default function DevOpsProjectsPage() {
                     <th>Approval rules</th>
                     <th>Team access</th>
                     <th>Status</th>
+                    <th>Stage</th>
                     <th>Action</th>
                   </tr>
                 </thead>
@@ -583,10 +589,16 @@ export default function DevOpsProjectsPage() {
                       <td>{project.approval_rules?.map((rule) => `${rule.environment}:${rule.require_manager_approval ? 'mgr' : 'no-mgr'}/${rule.require_devops_approval ? 'devops' : 'admin'}`).join(', ') || 'Default'}</td>
                       <td>{project.team_access.map((access) => `${access.team_name || access.team_slug} (${access.environments.join('/')})`).join(', ')}</td>
                       <td>{project.status}</td>
+                      <td>{project.onboarding_stage || 'configured'}</td>
                       <td>
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit(project)}>
-                          Edit
-                        </button>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <Link href={`/projects/${project.id}`} className="btn btn-secondary btn-sm">
+                            View
+                          </Link>
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit(project)}>
+                            Edit
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

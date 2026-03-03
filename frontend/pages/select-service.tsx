@@ -95,7 +95,7 @@ export default function SelectService() {
       if (data.cloud && VALID_CLOUDS.includes(data.cloud.toLowerCase())) setCloud(data.cloud.toLowerCase());
       if (data.env) setEnv(data.env);
       if (data.service) setService(data.service);
-      if ((!projectId || projectId === '') && Array.isArray(data.projects) && data.projects.length === 1 && data.projects[0]?.id) {
+      if (projectId === '' && Array.isArray(data.projects) && data.projects.length === 1 && data.projects[0]?.id) {
         setProjectId(data.projects[0].id);
       }
       if (data.config) {
