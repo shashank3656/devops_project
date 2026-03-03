@@ -805,12 +805,22 @@ func InsertUserNotification(userID int, requestID *int, kind, message string) er
 
 // ListUserNotifications returns notifications for a user, newest first
 func ListUserNotifications(userID int, limit, offset int, unreadOnly bool) ([]UserNotification, error) {
+	return ListUserNotificationsFiltered(userID, limit, offset, unreadOnly, "")
+}
+
+// ListUserNotificationsFiltered returns notifications for a user, optionally filtered by kind.
+func ListUserNotificationsFiltered(userID int, limit, offset int, unreadOnly bool, kind string) ([]UserNotification, error) {
 	if DB == nil {
 		return nil, nil
 	}
 	q := "SELECT id, user_id, request_id, kind, message, read_at, created_at FROM user_notifications WHERE user_id = $1"
 	args := []interface{}{userID}
 	argPos := 2
+	if strings.TrimSpace(kind) != "" {
+		q += fmt.Sprintf(" AND kind = $%d", argPos)
+		args = append(args, strings.TrimSpace(kind))
+		argPos++
+	}
 	if unreadOnly {
 		q += fmt.Sprintf(" AND read_at IS NULL")
 	}
@@ -847,6 +857,54 @@ func ListUserNotifications(userID int, limit, offset int, unreadOnly bool) ([]Us
 		}
 		out = append(out, n)
 	}
+	return out, nil
+}
+
+// CountUserNotifications returns the count of notifications for a user, optionally filtered by kind and unread state.
+func CountUserNotifications(userID int, unreadOnly bool, kind string) (int, error) {
+	if DB == nil {
+		return 0, nil
+	}
+	q := "SELECT COUNT(*) FROM user_notifications WHERE user_id = $1"
+	args := []interface{}{userID}
+	argPos := 2
+	if strings.TrimSpace(kind) != "" {
+		q += fmt.Sprintf(" AND kind = $%d", argPos)
+		args = append(args, strings.TrimSpace(kind))
+		argPos++
+	}
+	if unreadOnly {
+		q += " AND read_at IS NULL"
+	}
+	var count int
+	if err := DB.QueryRow(q, args...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// CountUserNotificationsByKind returns counts per kind and overall totals for a user.
+func CountUserNotificationsByKind(userID int) (map[string]int, error) {
+	if DB == nil {
+		return map[string]int{}, nil
+	}
+	rows, err := DB.Query(`SELECT kind, COUNT(*) FROM user_notifications WHERE user_id = $1 GROUP BY kind`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	total := 0
+	for rows.Next() {
+		var kind string
+		var count int
+		if err := rows.Scan(&kind, &count); err != nil {
+			return nil, err
+		}
+		out[kind] = count
+		total += count
+	}
+	out["all"] = total
 	return out, nil
 }
 
