@@ -15,14 +15,25 @@ interface RequestTemplate {
   env: string;
   service: string;
   config: string;
+  status?: TemplateStatus;
   teams?: TeamSummary[];
+  projects?: ProjectSummary[];
   visible_to_all?: boolean;
 }
+
+type TemplateStatus = 'draft' | 'pending_approval' | 'published' | 'archived';
 
 interface TeamSummary {
   id: number;
   name: string;
   team_type?: string;
+}
+
+interface ProjectSummary {
+  id: number;
+  name: string;
+  code: string;
+  status?: string;
 }
 
 export default function EditTemplate() {
@@ -34,8 +45,11 @@ export default function EditTemplate() {
   const [env, setEnv] = useState('prod');
   const [service, setService] = useState('');
   const [config, setConfig] = useState('{}');
+  const [status, setStatus] = useState<TemplateStatus>('draft');
   const [portalTeams, setPortalTeams] = useState<TeamSummary[]>([]);
   const [selectedTeamIds, setSelectedTeamIds] = useState<number[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(true);
@@ -46,18 +60,27 @@ export default function EditTemplate() {
     const token = localStorage.getItem('admin_token');
     if (!token) return;
     try {
-      const res = await fetch(`${apiUrl}/api/admin/teams`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401 || res.status === 403) {
+      const [teamsRes, projectsRes] = await Promise.all([
+        fetch(`${apiUrl}/api/admin/teams`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${apiUrl}/api/admin/projects`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+      if ([teamsRes.status, projectsRes.status].some((status) => status === 401 || status === 403)) {
         router.replace('/login');
         return;
       }
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(data.teams)) {
+      const teamsData = await teamsRes.json().catch(() => ({}));
+      const projectsData = await projectsRes.json().catch(() => ({}));
+      if (teamsRes.ok && Array.isArray(teamsData.teams)) {
         setPortalTeams(
-          data.teams.filter((team: TeamSummary) => (team.team_type || 'portal') === 'portal'),
+          teamsData.teams.filter((team: TeamSummary) => (team.team_type || 'portal') === 'portal'),
         );
+      }
+      if (projectsRes.ok && Array.isArray(projectsData.projects)) {
+        setProjects(projectsData.projects);
       }
     } catch {
       // Leave the form usable even if the team list fails to load.
@@ -86,7 +109,9 @@ export default function EditTemplate() {
         setEnv(t.env || 'prod');
         setService(t.service || '');
         setConfig(t.config || '{}');
+        setStatus((t.status as TemplateStatus) || 'draft');
         setSelectedTeamIds(Array.isArray(t.teams) ? t.teams.map((team) => team.id) : []);
+        setSelectedProjectIds(Array.isArray(t.projects) ? t.projects.map((project) => project.id) : []);
         setError('');
       } else {
         setError(data.error || 'Template not found');
@@ -111,6 +136,12 @@ export default function EditTemplate() {
   const toggleTeam = (teamID: number) => {
     setSelectedTeamIds((current) =>
       current.includes(teamID) ? current.filter((id) => id !== teamID) : [...current, teamID],
+    );
+  };
+
+  const toggleProject = (projectID: number) => {
+    setSelectedProjectIds((current) =>
+      current.includes(projectID) ? current.filter((id) => id !== projectID) : [...current, projectID],
     );
   };
 
@@ -144,7 +175,9 @@ export default function EditTemplate() {
           env: env.trim(),
           service: service.trim(),
           config: configStr,
+          status,
           team_ids: selectedTeamIds,
+          project_ids: selectedProjectIds,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -239,6 +272,18 @@ export default function EditTemplate() {
                 </div>
               </div>
               <div className="form-group">
+                <label className="label" htmlFor="tpl-status">Governance status</label>
+                <select id="tpl-status" className="input" value={status} onChange={(e) => setStatus(e.target.value as TemplateStatus)}>
+                  <option value="draft">Draft</option>
+                  <option value="pending_approval">Pending approval</option>
+                  <option value="published">Published</option>
+                  <option value="archived">Archived</option>
+                </select>
+                <span className="label-optional" style={{ display: 'block', marginTop: 8 }}>
+                  Only published templates are visible to end users. Use pending approval when the template is ready for review but should not be launched yet.
+                </span>
+              </div>
+              <div className="form-group">
                 <label className="label" htmlFor="tpl-config">Config (JSON)</label>
                 <textarea
                   id="tpl-config"
@@ -276,6 +321,35 @@ export default function EditTemplate() {
                   {selectedTeamIds.length === 0
                     ? 'Visible to all portal teams.'
                     : `Assigned to ${selectedTeamIds.length} portal team${selectedTeamIds.length === 1 ? '' : 's'}.`}
+                </span>
+              </div>
+              <div className="form-group">
+                <label className="label" htmlFor="tpl-project-scope">Project scope</label>
+                <span className="label-optional" style={{ display: 'block', marginBottom: 10 }}>
+                  Restrict this template to specific onboarded projects. Leave unchecked to keep it available across all assigned projects.
+                </span>
+                {projects.length === 0 ? (
+                  <div className="empty-state" style={{ padding: 16, textAlign: 'left' }}>
+                    No projects exist yet. This template remains project-agnostic.
+                  </div>
+                ) : (
+                  <div id="tpl-project-scope" className="admin-team-check-row">
+                    {projects.map((project) => (
+                      <label key={project.id} className="admin-team-check">
+                        <input
+                          type="checkbox"
+                          checked={selectedProjectIds.includes(project.id)}
+                          onChange={() => toggleProject(project.id)}
+                        />
+                        <span>{project.name} ({project.code})</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <span className="label-optional" style={{ display: 'block', marginTop: 8 }}>
+                  {selectedProjectIds.length === 0
+                    ? 'Visible across all assigned projects.'
+                    : `Restricted to ${selectedProjectIds.length} project${selectedProjectIds.length === 1 ? '' : 's'}.`}
                 </span>
               </div>
               <button type="submit" className="btn btn-primary" disabled={loading} style={{ padding: '10px 24px' }}>

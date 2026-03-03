@@ -69,6 +69,9 @@ function formatDateOnly(value?: string | null): string {
 
 interface TicketRow {
   id: number;
+  project_id?: number | null;
+  project_name?: string;
+  project_code?: string;
   team: string;
   env: string;
   cloud: string;
@@ -105,6 +108,17 @@ interface CostRiskPreview {
   signals: CostRiskSignal[];
 }
 
+interface ApprovalContext {
+  rule_source: string;
+  rule_environment: string;
+  requires_manager_approval: boolean;
+  requires_devops_approval: boolean;
+  manager_path_available: boolean;
+  current_stage: string;
+  next_stage?: string;
+  summary: string;
+}
+
 interface TicketDetail extends TicketRow {
   client_name?: string;
   application_id?: string;
@@ -118,6 +132,7 @@ interface TicketDetail extends TicketRow {
   blocked_by?: number[];
   blocked_by_with_status?: BlockedByItem[];
   cost_risk_preview?: CostRiskPreview | null;
+  approval_context?: ApprovalContext | null;
 }
 
 interface RequestComment {
@@ -137,6 +152,12 @@ interface RequestTimelineEvent {
   details: string;
   body?: string;
   created_at: string;
+}
+
+interface ProjectSummary {
+  id: number;
+  name: string;
+  code: string;
 }
 
 function getPreviewRiskClass(level?: string): string {
@@ -169,6 +190,7 @@ export default function DevOpsTickets() {
   const [loading, setLoading] = useState(true);
   const [idFilter, setIdFilter] = useState('');
   const [team, setTeam] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [cloud, setCloud] = useState('');
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
@@ -179,6 +201,7 @@ export default function DevOpsTickets() {
   const [offset, setOffset] = useState(0);
   const [filterExpanded, setFilterExpanded] = useState(true);
   const [recentIds, setRecentIds] = useState<number[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [detailRequest, setDetailRequest] = useState<TicketDetail | null>(null);
   const [detailComments, setDetailComments] = useState<RequestComment[]>([]);
@@ -195,7 +218,7 @@ export default function DevOpsTickets() {
 
   const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
 
-  const hasActiveFilters = Boolean(idFilter || team || cloud || status || search || requester || atRisk);
+  const hasActiveFilters = Boolean(idFilter || team || projectId || cloud || status || search || requester || atRisk);
   const canActOnDetail = detailRequest?.status === 'pending_devops_approval';
 
   const fetchTickets = () => {
@@ -204,6 +227,7 @@ export default function DevOpsTickets() {
     const params = new URLSearchParams();
     if (idFilter.trim()) params.set('id', idFilter.trim());
     if (team) params.set('team', team);
+    if (projectId) params.set('project_id', projectId);
     if (cloud) params.set('cloud', cloud);
     if (status) params.set('status', status);
     if (search) params.set('q', search);
@@ -224,6 +248,14 @@ export default function DevOpsTickets() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+  };
+
+  const fetchProjects = () => {
+    if (!token) return;
+    fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setProjects(Array.isArray(data?.projects) ? data.projects : []))
+      .catch(() => setProjects([]));
   };
 
   const loadDetail = async (id: number, syncUrl = true) => {
@@ -358,7 +390,11 @@ export default function DevOpsTickets() {
       return;
     }
     fetchTickets();
-  }, [token, router, apiUrl, idFilter, team, cloud, status, search, requester, sortBy, sortOrder, atRisk, offset]);
+  }, [token, router, apiUrl, idFilter, team, projectId, cloud, status, search, requester, sortBy, sortOrder, atRisk, offset]);
+
+  useEffect(() => {
+    fetchProjects();
+  }, [apiUrl, token]);
 
   useEffect(() => {
     setRecentIds(getRecentRequestIds());
@@ -398,6 +434,7 @@ export default function DevOpsTickets() {
   const clearFilters = () => {
     setIdFilter('');
     setTeam('');
+    setProjectId('');
     setCloud('');
     setStatus('');
     setSearch('');
@@ -448,7 +485,7 @@ export default function DevOpsTickets() {
             >
               <span className="devops-tickets-filter-toggle__icon">{filterExpanded ? '▼' : '▶'}</span>
               <span>Filters</span>
-              {hasActiveFilters && <span className="devops-tickets-filter-badge">{[idFilter, team, cloud, status, search, requester, atRisk].filter(Boolean).length}</span>}
+              {hasActiveFilters && <span className="devops-tickets-filter-badge">{[idFilter, team, projectId, cloud, status, search, requester, atRisk].filter(Boolean).length}</span>}
             </button>
             {filterExpanded && (
               <div className="devops-tickets-filter-grid">
@@ -471,6 +508,15 @@ export default function DevOpsTickets() {
                     onChange={(e) => setTeam(e.target.value)}
                     className="input devops-tickets-filter-input"
                   />
+                </div>
+                <div className="devops-tickets-filter-group">
+                  <label className="devops-tickets-filter-label">Project</label>
+                  <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="input devops-tickets-filter-input">
+                    <option value="">All projects</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="devops-tickets-filter-group">
                   <label className="devops-tickets-filter-label">Cloud</label>
@@ -566,6 +612,7 @@ export default function DevOpsTickets() {
                       <thead>
                         <tr>
                           <th>ID</th>
+                          <th>Project</th>
                           <th>Team</th>
                           <th>Env</th>
                           <th>Cloud</th>
@@ -587,6 +634,16 @@ export default function DevOpsTickets() {
                             style={{ cursor: 'pointer' }}
                           >
                             <td><code className="devops-ticket-id">#{req.id}</code></td>
+                            <td>
+                              {req.project_name ? (
+                                <>
+                                  <strong>{req.project_name}</strong>
+                                  {req.project_code ? <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{req.project_code}</div> : null}
+                                </>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)' }}>Not set</span>
+                              )}
+                            </td>
                             <td>{req.team}</td>
                             <td><span className="devops-ticket-env">{req.env}</span></td>
                             <td><span className={`devops-ticket-cloud devops-ticket-cloud--${(req.cloud || '').toLowerCase()}`}>{req.cloud}</span></td>
@@ -680,6 +737,11 @@ export default function DevOpsTickets() {
                           </span>
                         </div>
                         <div className="devops-approval-workspace__meta-grid">
+                          <div className="devops-approval-workspace__meta-item">
+                            <span className="devops-approval-workspace__meta-label">Project</span>
+                            <strong>{detailRequest.project_name || 'Not set'}</strong>
+                            {detailRequest.project_code ? <small>{detailRequest.project_code}</small> : null}
+                          </div>
                           <div className="devops-approval-workspace__meta-item">
                             <span className="devops-approval-workspace__meta-label">Team</span>
                             <strong>{detailRequest.team}</strong>
@@ -809,6 +871,45 @@ export default function DevOpsTickets() {
                                   </p>
                                 </article>
                               )}
+                            </div>
+                          </div>
+                        )}
+                        {detailRequest.approval_context && (
+                          <div className="portal-preview-panel">
+                            <div className="portal-surface__header">
+                              <div>
+                                <span className="portal-surface__eyebrow">Approval Flow</span>
+                                <h3 className="portal-surface__title">Project rule explanation</h3>
+                              </div>
+                              <span className={getPreviewRiskClass(detailRequest.approval_context.requires_devops_approval ? 'medium' : 'low')}>
+                                {detailRequest.approval_context.current_stage}
+                              </span>
+                            </div>
+                            <div className="portal-preview-grid">
+                              <div className="portal-preview-card">
+                                <span className="portal-preview-eyebrow">Current stage</span>
+                                <strong className="portal-preview-value">{detailRequest.approval_context.current_stage}</strong>
+                                <p className="portal-preview-copy">
+                                  {detailRequest.approval_context.next_stage
+                                    ? `Next stage: ${detailRequest.approval_context.next_stage}`
+                                    : 'No further approval stage is pending.'}
+                                </p>
+                              </div>
+                              <div className="portal-preview-card">
+                                <span className="portal-preview-eyebrow">Rule source</span>
+                                <strong className="portal-preview-value">
+                                  {detailRequest.approval_context.rule_source === 'project_rule' ? 'Project rule' : 'Default flow'}
+                                </strong>
+                                <p className="portal-preview-copy">{detailRequest.approval_context.summary}</p>
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              <span className={getPreviewSignalClass(detailRequest.approval_context.requires_manager_approval ? 'medium' : 'low')}>
+                                {detailRequest.approval_context.requires_manager_approval ? 'Manager gate enabled' : 'No manager gate'}
+                              </span>
+                              <span className={getPreviewSignalClass(detailRequest.approval_context.requires_devops_approval ? 'medium' : 'low')}>
+                                {detailRequest.approval_context.requires_devops_approval ? 'DevOps gate enabled' : 'No DevOps gate'}
+                              </span>
                             </div>
                           </div>
                         )}

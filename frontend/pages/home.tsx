@@ -11,6 +11,21 @@ interface Stats {
   by_status: Record<string, number>;
 }
 
+interface ProjectPortfolioItem {
+  id: number;
+  name: string;
+  code: string;
+  status: string;
+  onboarding_stage?: string;
+  ready_for_requests?: boolean;
+  service_count?: number;
+  team_count?: number;
+  request_count?: number;
+  pending_request_count?: number;
+  environments: string[];
+  clouds: string[];
+}
+
 interface CloudLogEntry {
   id: number;
   message: string;
@@ -98,6 +113,8 @@ export default function Home() {
   const [logsLoading, setLogsLoading] = useState(true);
   const [onboardingProgress, setOnboardingProgress] = useState<OnboardingProgress | null>(null);
   const [onboardingLoading, setOnboardingLoading] = useState(true);
+  const [projects, setProjects] = useState<ProjectPortfolioItem[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem('isAuthenticated');
@@ -111,6 +128,7 @@ export default function Home() {
     fetchOnboardingProgress();
     fetchStats();
     fetchLogs();
+    fetchProjects();
   }, [router]);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -151,6 +169,26 @@ export default function Home() {
       setStats(null);
     } finally {
       setStatsLoading(false);
+    }
+  };
+
+  const fetchProjects = async () => {
+    setProjectsLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token && token !== 'undefined') headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`${apiUrl}/api/me/projects`, { headers });
+      if (!res.ok) {
+        setProjects([]);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      setProjects(Array.isArray(data.projects) ? data.projects : []);
+    } catch (_) {
+      setProjects([]);
+    } finally {
+      setProjectsLoading(false);
     }
   };
 
@@ -389,6 +427,50 @@ export default function Home() {
             ))}
           </section>
         )}
+
+        <section className="portal-surface">
+          <div className="portal-surface__header">
+            <div>
+              <span className="portal-surface__eyebrow">Project Workspace</span>
+              <h2 className="portal-surface__title">Projects you can request against</h2>
+              <p className="portal-surface__subtitle">Each project controls which environments, clouds, and services your teams are allowed to use.</p>
+            </div>
+            <Link href="/my-projects" className="btn btn-secondary btn-sm">
+              Open My Projects
+            </Link>
+          </div>
+          {projectsLoading ? (
+            <div className="empty-state">Loading assigned projects...</div>
+          ) : projects.length === 0 ? (
+            <div className="empty-state">No projects are assigned to your teams yet.</div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+              {projects.slice(0, 4).map((project) => (
+                <article key={project.id} className="request-choice-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                    <div>
+                      <strong>{project.name}</strong>
+                      <p style={{ marginTop: 6, color: 'var(--text-muted)', fontSize: 13 }}>{project.code}</p>
+                    </div>
+                    <span className="portal-pill">{project.onboarding_stage || 'configured'}</span>
+                  </div>
+                  <p style={{ marginTop: 12, color: 'var(--text-secondary)', fontSize: 14 }}>
+                    {project.ready_for_requests ? 'Ready for requests' : 'Setup still in progress'} · {project.service_count ?? 0} services · {project.pending_request_count ?? 0} pending
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                    {project.environments.slice(0, 3).map((environment) => (
+                      <span key={`${project.id}-${environment}`} className="portal-pill">{environment}</span>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+                    <Link href={`/my-projects/${project.id}`} className="btn btn-secondary btn-sm">View details</Link>
+                    <Link href={`/select-service?project_id=${project.id}`} className="btn btn-primary btn-sm">Request service</Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
 
         <section className="portal-grid">
           <article className="portal-surface onboarding-surface">

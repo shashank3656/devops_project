@@ -116,7 +116,9 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				Env         string `json:"env"`
 				Service     string `json:"service"`
 				Config      string `json:"config"`
+				Status      string `json:"status"`
 				TeamIDs     []int  `json:"team_ids"`
+				ProjectIDs  []int  `json:"project_ids"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
@@ -139,13 +141,26 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
-			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, adminIDPtr)
+			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, body.Status, adminIDPtr)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 			if err := SetRequestTemplateTeams(t.ID, teamIDs); err != nil {
+				_ = DeleteRequestTemplate(t.ID)
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+			projectIDs, err := ValidateTemplateProjectIDs(body.ProjectIDs)
+			if err != nil {
+				_ = DeleteRequestTemplate(t.ID)
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+			if err := SetRequestTemplateProjects(t.ID, projectIDs); err != nil {
 				_ = DeleteRequestTemplate(t.ID)
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
@@ -187,7 +202,9 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			Env         string `json:"env"`
 			Service     string `json:"service"`
 			Config      string `json:"config"`
+			Status      string `json:"status"`
 			TeamIDs     *[]int `json:"team_ids"`
+			ProjectIDs  *[]int `json:"project_ids"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -211,7 +228,11 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		if config == "" {
 			config = t.Config
 		}
-		if err := UpdateRequestTemplate(id, name, strings.TrimSpace(body.Description), cloud, env, service, config); err != nil {
+		status := body.Status
+		if strings.TrimSpace(status) == "" {
+			status = t.Status
+		}
+		if err := UpdateRequestTemplate(id, name, strings.TrimSpace(body.Description), cloud, env, service, config, status, adminIDPtr); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
@@ -224,6 +245,19 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if err := SetRequestTemplateTeams(id, teamIDs); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+		}
+		if body.ProjectIDs != nil {
+			projectIDs, err := ValidateTemplateProjectIDs(*body.ProjectIDs)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+			if err := SetRequestTemplateProjects(id, projectIDs); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
