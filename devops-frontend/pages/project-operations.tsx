@@ -51,6 +51,26 @@ interface ProjectAnalytics {
   top_risk_projects: ProjectAnalyticsProjectItem[];
 }
 
+function normalizeProjectAnalytics(value: Partial<ProjectAnalytics> | null | undefined): ProjectAnalytics | null {
+  if (!value || !value.summary) {
+    return null;
+  }
+  return {
+    summary: value.summary,
+    environment_request_distribution: Array.isArray(value.environment_request_distribution) ? value.environment_request_distribution : [],
+    cloud_request_distribution: Array.isArray(value.cloud_request_distribution) ? value.cloud_request_distribution : [],
+    service_request_distribution: Array.isArray(value.service_request_distribution) ? value.service_request_distribution : [],
+    risk_distribution: Array.isArray(value.risk_distribution) ? value.risk_distribution : [],
+    lead_time: value.lead_time || {
+      average_hours: 0,
+      completed_requests: 0,
+    },
+    top_projects_by_requests: Array.isArray(value.top_projects_by_requests) ? value.top_projects_by_requests : [],
+    approval_bottlenecks: Array.isArray(value.approval_bottlenecks) ? value.approval_bottlenecks : [],
+    top_risk_projects: Array.isArray(value.top_risk_projects) ? value.top_risk_projects : [],
+  };
+}
+
 export default function DevOpsProjectOperationsPage() {
   const apiUrl = useApiUrl();
   const [analytics, setAnalytics] = useState<ProjectAnalytics | null>(null);
@@ -121,7 +141,8 @@ export default function DevOpsProjectOperationsPage() {
         return data;
       })
       .then((data) => {
-        if (data?.analytics) setAnalytics(data.analytics);
+        const nextAnalytics = normalizeProjectAnalytics(data?.analytics);
+        if (nextAnalytics) setAnalytics(nextAnalytics);
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
@@ -153,10 +174,15 @@ export default function DevOpsProjectOperationsPage() {
           </div>
           <div className="portal-page__actions">
             <Link href="/projects" className="btn btn-secondary">Projects</Link>
+            <Link href="/change-calendar" className="btn btn-secondary">Change calendar</Link>
+            <Link href="/service-heatmap" className="btn btn-secondary">Service heatmap</Link>
+            <Link href="/incidents" className="btn btn-secondary">Incidents</Link>
+            <Link href="/runbooks" className="btn btn-secondary">Runbooks</Link>
             <Link href="/tickets" className="btn btn-secondary">Tickets</Link>
             <button type="button" className="btn btn-secondary" onClick={() => void exportProjects()} disabled={exporting}>
               {exporting ? 'Exporting…' : 'Export CSV'}
             </button>
+            <Link href="/approval-sla" className="btn btn-secondary">Approval SLA</Link>
             <Link href="/approval-center" className="btn btn-primary">Approval center</Link>
           </div>
         </div>

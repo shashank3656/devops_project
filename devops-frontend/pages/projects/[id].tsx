@@ -210,6 +210,9 @@ export default function DevOpsProjectDetailPage() {
           </div>
           <div className="portal-page__actions">
             <Link href="/projects" className="btn btn-secondary">Back to Projects</Link>
+            <Link href="/runbooks" className="btn btn-secondary">Runbooks</Link>
+            <Link href="/access-overrides" className="btn btn-secondary">Access Overrides</Link>
+            <Link href="/promotions" className="btn btn-secondary">Promotion Center</Link>
           </div>
         </div>
 
