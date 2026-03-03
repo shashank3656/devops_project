@@ -237,6 +237,12 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	team := strings.TrimSpace(r.URL.Query().Get("team"))
 	cloud := strings.TrimSpace(r.URL.Query().Get("cloud"))
+	projectID := 0
+	if projectStr := strings.TrimSpace(r.URL.Query().Get("project_id")); projectStr != "" {
+		if n, err := strconv.Atoi(projectStr); err == nil && n > 0 {
+			projectID = n
+		}
+	}
 	statusFilter := strings.TrimSpace(r.URL.Query().Get("status"))
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
 	prID := 0
@@ -276,14 +282,14 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 			offset = n
 		}
 	}
-	requests, err := GetPRRequests(team, "", cloud, 0, statusFilter, "", search, prID, 0, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly, "", "")
+	requests, err := GetPRRequests(team, "", cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly, "", "")
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	totalCount, _ := GetTotalCount(team, "", cloud, 0, statusFilter, "", search, prID, 0, createdByIn, atRiskOnly, "", "")
+	totalCount, _ := GetTotalCount(team, "", cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, atRiskOnly, "", "")
 	userIDs := make([]int, 0)
 	for _, req := range requests {
 		if req.CreatedBy != nil && *req.CreatedBy > 0 {
@@ -297,6 +303,7 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 			"id": req.ID, "team": req.Team, "env": req.Env, "cloud": req.Cloud, "service": req.Service,
 			"client_name": req.ClientName, "application_id": req.ApplicationID, "priority": req.Priority,
 			"due_date": req.DueDate, "pr_url": req.PRURL, "branch": req.Branch, "status": req.Status,
+			"project_id": req.ProjectID, "project_name": req.ProjectName, "project_code": req.ProjectCode,
 			"created_by": req.CreatedBy, "assigned_to": req.AssignedTo, "created_at": req.CreatedAt, "updated_at": req.UpdatedAt,
 		}
 		obj["due_status"] = dueStatus(req.DueDate)

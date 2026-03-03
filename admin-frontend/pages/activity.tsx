@@ -11,6 +11,9 @@ interface AuditEntry {
   resource_type: string;
   resource_id: string;
   details: string;
+  project_id?: number | null;
+  project_name?: string;
+  project_code?: string;
   created_at: string;
 }
 
@@ -22,7 +25,16 @@ interface UserActivityEntry {
   resource_type: string;
   resource_id: string;
   details: string;
+  project_id?: number | null;
+  project_name?: string;
+  project_code?: string;
   created_at: string;
+}
+
+interface ProjectSummary {
+  id: number;
+  name: string;
+  code: string;
 }
 
 export default function ActivityPage() {
@@ -33,6 +45,8 @@ export default function ActivityPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionFilter, setActionFilter] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [offset, setOffset] = useState(0);
@@ -51,6 +65,7 @@ export default function ActivityPage() {
     if (tab === 'audit') {
       const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
       if (actionFilter) params.set('action', actionFilter);
+      if (projectId) params.set('project_id', projectId);
       if (fromDate) params.set('from', fromDate);
       if (toDate) params.set('to', toDate);
       fetch(`${apiUrl}/api/admin/audit-log?${params}`, { headers: { Authorization: `Bearer ${token}` } })
@@ -77,6 +92,7 @@ export default function ActivityPage() {
         .finally(() => setLoading(false));
     } else {
       const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      if (projectId) params.set('project_id', projectId);
       fetch(`${apiUrl}/api/admin/user-activity?${params}`, { headers: { Authorization: `Bearer ${token}` } })
         .then((res) => {
           if (res.status === 401 || res.status === 403) router.replace('/login');
@@ -97,7 +113,15 @@ export default function ActivityPage() {
         })
         .finally(() => setLoading(false));
     }
-  }, [token, router, offset, actionFilter, fromDate, toDate, tab]);
+  }, [token, router, offset, actionFilter, projectId, fromDate, toDate, tab]);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${apiUrl}/api/admin/projects`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setProjects(Array.isArray(data?.projects) ? data.projects : []))
+      .catch(() => setProjects([]));
+  }, [apiUrl, token]);
 
   const userActionLabel = (a: string) => {
     const labels: Record<string, string> = {
@@ -121,6 +145,8 @@ export default function ActivityPage() {
       team_member_add: 'Member added to team',
       team_member_remove: 'Member removed from team',
       team_member_role_update: 'Member role updated',
+      project_create: 'Project created',
+      project_update: 'Project updated',
       request_approve: 'Request approved',
       request_reject: 'Request rejected',
       request_plan_output: 'Terraform output updated',
@@ -185,8 +211,22 @@ export default function ActivityPage() {
                     <option value="team_member_add">Member added</option>
                     <option value="team_member_remove">Member removed</option>
                     <option value="team_member_role_update">Member role updated</option>
+                    <option value="project_create">Project created</option>
+                    <option value="project_update">Project updated</option>
                     <option value="request_approve">Request approved</option>
                     <option value="request_reject">Request rejected</option>
+                  </select>
+                  <label className="label">Project</label>
+                  <select
+                    value={projectId}
+                    onChange={(e) => { setProjectId(e.target.value); setOffset(0); }}
+                    className="input"
+                    style={{ minWidth: 200 }}
+                  >
+                    <option value="">All projects</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+                    ))}
                   </select>
                   <label className="label">From</label>
                   <input
@@ -211,6 +251,7 @@ export default function ActivityPage() {
                   onClick={() => {
                     const params = new URLSearchParams({ format: 'csv', limit: '10000' });
                     if (actionFilter) params.set('action', actionFilter);
+                    if (projectId) params.set('project_id', projectId);
                     if (fromDate) params.set('from', fromDate);
                     if (toDate) params.set('to', toDate);
                     fetch(`${apiUrl}/api/admin/audit-log?${params}`, { headers: { Authorization: `Bearer ${token}` } })
@@ -233,6 +274,25 @@ export default function ActivityPage() {
             </div>
           )}
 
+          {tab === 'user' && (
+            <div className="portal-surface">
+              <div className="portal-page__actions">
+                <label className="label">Project</label>
+                <select
+                  value={projectId}
+                  onChange={(e) => { setProjectId(e.target.value); setOffset(0); }}
+                  className="input"
+                  style={{ minWidth: 200 }}
+                >
+                  <option value="">All projects</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
           <div className="portal-surface portal-surface--table">
             {loading ? (
               <div className="empty-state" style={{ padding: 24 }}>Loading...</div>
@@ -248,6 +308,7 @@ export default function ActivityPage() {
                       <th>Admin</th>
                       <th>Action</th>
                       <th>Resource</th>
+                      <th>Project</th>
                       <th>Details</th>
                     </tr>
                   </thead>
@@ -276,6 +337,14 @@ export default function ActivityPage() {
                         <td style={{ fontSize: 13 }}>
                           {e.resource_type} {e.resource_id && `#${e.resource_id}`}
                         </td>
+                        <td style={{ fontSize: 13 }}>
+                          {e.project_name ? (
+                            <>
+                              <strong>{e.project_name}</strong>
+                              {e.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{e.project_code}</div> : null}
+                            </>
+                          ) : '-'}
+                        </td>
                         <td style={{ fontSize: 13, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis' }} title={e.details}>
                           {e.details || '-'}
                         </td>
@@ -295,6 +364,7 @@ export default function ActivityPage() {
                       <th>User</th>
                       <th>Action</th>
                       <th>Resource</th>
+                      <th>Project</th>
                       <th>Details</th>
                     </tr>
                   </thead>
@@ -318,6 +388,14 @@ export default function ActivityPage() {
                           </span>
                         </td>
                         <td style={{ fontSize: 13 }}>{e.resource_type} {e.resource_id && `#${e.resource_id}`}</td>
+                        <td style={{ fontSize: 13 }}>
+                          {e.project_name ? (
+                            <>
+                              <strong>{e.project_name}</strong>
+                              {e.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{e.project_code}</div> : null}
+                            </>
+                          ) : '-'}
+                        </td>
                         <td style={{ fontSize: 13, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis' }} title={e.details}>
                           {e.details || '-'}
                         </td>

@@ -408,10 +408,15 @@ func createProjectCatalog(input ProjectCatalogInput, createdBy *int) (*ProjectCa
 		return nil, err
 	}
 	invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
-	return getProjectCatalogByID(projectID)
+	project, err := getProjectCatalogByID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	AppendAuditLog(createdBy, "project_create", "project", strconv.Itoa(projectID), fmt.Sprintf("%s (%s)", input.Name, input.Code))
+	return project, nil
 }
 
-func updateProjectCatalog(projectID int, input ProjectCatalogInput) (*ProjectCatalog, error) {
+func updateProjectCatalog(projectID int, input ProjectCatalogInput, updatedBy *int) (*ProjectCatalog, error) {
 	input, err := sanitizeProjectInput(input)
 	if err != nil {
 		return nil, err
@@ -445,7 +450,12 @@ func updateProjectCatalog(projectID int, input ProjectCatalogInput) (*ProjectCat
 		return nil, err
 	}
 	invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
-	return getProjectCatalogByID(projectID)
+	project, err := getProjectCatalogByID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	AppendAuditLog(updatedBy, "project_update", "project", strconv.Itoa(projectID), fmt.Sprintf("%s (%s)", input.Name, input.Code))
+	return project, nil
 }
 
 func syncProjectCatalogTx(ctx context.Context, tx *sql.Tx, projectID int, input ProjectCatalogInput) error {
@@ -1249,7 +1259,8 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "PUT" {
-		if _, ok := requireDevopsManager(w, r); !ok {
+		userID, ok := requireDevopsManager(w, r)
+		if !ok {
 			return
 		}
 		var input ProjectCatalogInput
@@ -1259,7 +1270,7 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
-		project, err := updateProjectCatalog(projectID, input)
+		project, err := updateProjectCatalog(projectID, input, &userID)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)

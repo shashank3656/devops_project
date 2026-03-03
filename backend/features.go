@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -275,7 +276,7 @@ func GetTeamComparison(from, to string) ([]map[string]interface{}, error) {
 }
 
 // GetUserActivity returns user activity entries (admin only)
-func GetUserActivity(limit, offset int, userIDFilter int) ([]map[string]interface{}, error) {
+func GetUserActivity(limit, offset int, userIDFilter int, projectIDFilter int) ([]map[string]interface{}, error) {
 	if DB == nil {
 		return nil, nil
 	}
@@ -283,15 +284,26 @@ func GetUserActivity(limit, offset int, userIDFilter int) ([]map[string]interfac
 		limit = 50
 	}
 	query := `
-		SELECT ua.id, ua.user_id, u.username, ua.action, ua.resource_type, COALESCE(ua.resource_id,''), COALESCE(ua.details,''), ua.created_at
+		SELECT ua.id, ua.user_id, u.username, ua.action, ua.resource_type, COALESCE(ua.resource_id,''), COALESCE(ua.details,''), ua.created_at,
+		       request_project.id, COALESCE(request_project.name,''), COALESCE(request_project.code,'')
 		FROM user_activity ua
 		LEFT JOIN users u ON u.id = ua.user_id
+		LEFT JOIN pr_requests request_ref
+		  ON ua.resource_type = 'pr_request'
+		 AND ua.resource_id ~ '^[0-9]+$'
+		 AND request_ref.id = ua.resource_id::int
+		LEFT JOIN projects request_project ON request_project.id = request_ref.project_id
 		WHERE 1=1`
 	args := []interface{}{}
 	argPos := 1
 	if userIDFilter > 0 {
 		query += fmt.Sprintf(" AND ua.user_id = $%d", argPos)
 		args = append(args, userIDFilter)
+		argPos++
+	}
+	if projectIDFilter > 0 {
+		query += fmt.Sprintf(" AND request_project.id = $%d", argPos)
+		args = append(args, projectIDFilter)
 		argPos++
 	}
 	query += " ORDER BY ua.created_at DESC"
@@ -307,16 +319,23 @@ func GetUserActivity(limit, offset int, userIDFilter int) ([]map[string]interfac
 	for rows.Next() {
 		var id int
 		var uid *int
+		var projectID sql.NullInt64
 		var username, action, resourceType, resourceID, details string
+		var projectName, projectCode string
 		var createdAt time.Time
-		if err := rows.Scan(&id, &uid, &username, &action, &resourceType, &resourceID, &details, &createdAt); err != nil {
+		if err := rows.Scan(&id, &uid, &username, &action, &resourceType, &resourceID, &details, &createdAt, &projectID, &projectName, &projectCode); err != nil {
 			return nil, err
 		}
-		out = append(out, map[string]interface{}{
+		entry := map[string]interface{}{
 			"id": id, "user_id": uid, "username": username, "action": action,
 			"resource_type": resourceType, "resource_id": resourceID, "details": details,
-			"created_at": createdAt.Format(time.RFC3339),
-		})
+			"created_at":   createdAt.Format(time.RFC3339),
+			"project_name": projectName, "project_code": projectCode,
+		}
+		if projectID.Valid {
+			entry["project_id"] = int(projectID.Int64)
+		}
+		out = append(out, entry)
 	}
 	return out, nil
 }
@@ -358,7 +377,13 @@ func adminUserActivityHandler(w http.ResponseWriter, r *http.Request) {
 			userID = n
 		}
 	}
-	entries, err := GetUserActivity(limit, offset, userID)
+	projectID := 0
+	if p := strings.TrimSpace(r.URL.Query().Get("project_id")); p != "" {
+		if n, err := strconv.Atoi(p); err == nil && n > 0 {
+			projectID = n
+		}
+	}
+	entries, err := GetUserActivity(limit, offset, userID, projectID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return

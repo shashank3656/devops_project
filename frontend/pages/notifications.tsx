@@ -8,6 +8,9 @@ import { useToast } from '../context/ToastContext';
 interface Notification {
   id: number;
   request_id: number | null;
+  project_id?: number | null;
+  project_name?: string;
+  project_code?: string;
   kind: string;
   message: string;
   read_at: string | null;
@@ -306,6 +309,12 @@ export default function NotificationsPage() {
                               <span className={`notification-kind-pill notification-kind-pill--${tone}`}>
                                 {formatNotificationKind(notification.kind)}
                               </span>
+                              {notification.project_name && (
+                                <span className="notification-kind-pill notification-kind-pill--info">
+                                  {notification.project_name}
+                                  {notification.project_code ? ` (${notification.project_code})` : ''}
+                                </span>
+                              )}
                               {!notification.read_at && <span className="notification-unread-pill">Unread</span>}
                               <span className="notification-row__time">
                                 {new Date(notification.created_at).toLocaleString()}
@@ -314,6 +323,11 @@ export default function NotificationsPage() {
                             <p className="notification-row__message">{notification.message}</p>
                           </div>
                           <div className="notification-row__actions">
+                            {notification.project_id && (
+                              <Link href={`/my-projects/${notification.project_id}`} className="btn btn-secondary btn-sm">
+                                View project
+                              </Link>
+                            )}
                             {notification.request_id && (
                               <Link href={`/history?id=${notification.request_id}`} className="btn btn-secondary btn-sm">
                                 View request

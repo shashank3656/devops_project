@@ -65,6 +65,9 @@ function getPageTitle(pathname: string): string {
 
 interface PendingApprovalItem {
   id: number;
+  project_id?: number | null;
+  project_name?: string;
+  project_code?: string;
   team?: string;
   cloud?: string;
   service?: string;
@@ -397,6 +400,12 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                               onClick={() => setNotifyOpen(false)}
                             >
                               <strong>Ticket #{request.id}</strong>
+                              {request.project_name ? (
+                                <span>
+                                  {request.project_name}
+                                  {request.project_code ? ` (${request.project_code})` : ''}
+                                </span>
+                              ) : null}
                               <span>{request.team || 'Team'} / {request.cloud || 'Cloud'} / {request.service || 'Service'}</span>
                               <small>{formatTime(request.created_at)}</small>
                             </Link>
