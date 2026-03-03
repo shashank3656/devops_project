@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
+const DEVOPS_USER_KEY = 'devops_user';
 
 const CLOUD_OPTIONS = [
   { value: 'aws', label: 'AWS' },
@@ -108,6 +110,7 @@ function normalizeCode(value: string): string {
 
 export default function DevOpsProjectsPage() {
   const apiUrl = useApiUrl();
+  const router = useRouter();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [portalTeams, setPortalTeams] = useState<TeamOption[]>([]);
   const [ownerTeams, setOwnerTeams] = useState<TeamOption[]>([]);
@@ -118,17 +121,27 @@ export default function DevOpsProjectsPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  const clearSessionAndRedirect = () => {
+    localStorage.removeItem(DEVOPS_TOKEN_KEY);
+    localStorage.removeItem(DEVOPS_USER_KEY);
+    router.replace('/login');
+  };
+
   const fetchData = () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
       setLoading(false);
-      setError('Login required');
+      clearSessionAndRedirect();
       return;
     }
     setLoading(true);
     setError('');
     fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
+        if (res.status === 401 || res.status === 403) {
+          clearSessionAndRedirect();
+          return null;
+        }
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(data?.error || 'Failed to load projects');
@@ -136,6 +149,7 @@ export default function DevOpsProjectsPage() {
         setProjects(Array.isArray(data.projects) ? data.projects : []);
         setPortalTeams(Array.isArray(data.portal_teams) ? data.portal_teams : []);
         setOwnerTeams(Array.isArray(data.owner_teams) ? data.owner_teams : Array.isArray(data.portal_teams) ? data.portal_teams : []);
+        return data;
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
@@ -143,7 +157,7 @@ export default function DevOpsProjectsPage() {
 
   useEffect(() => {
     fetchData();
-  }, [apiUrl]);
+  }, [apiUrl, router]);
 
   const servicesByCloud = useMemo(() => {
     const grouped: Record<string, string[]> = {};
@@ -281,7 +295,7 @@ export default function DevOpsProjectsPage() {
     event.preventDefault();
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
-      setError('Login required');
+      clearSessionAndRedirect();
       return;
     }
     setSaving(true);
@@ -306,6 +320,10 @@ export default function DevOpsProjectsPage() {
           body: JSON.stringify(payload),
         },
       );
+      if (response.status === 401 || response.status === 403) {
+        clearSessionAndRedirect();
+        return;
+      }
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to save project');

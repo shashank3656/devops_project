@@ -121,18 +121,30 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
 
   const isManager = user?.devops_profile?.is_manager ?? false;
 
+  const clearSessionAndRedirect = useCallback(() => {
+    localStorage.removeItem(DEVOPS_TOKEN_KEY);
+    localStorage.removeItem(DEVOPS_USER_KEY);
+    router.replace('/login');
+  }, [router]);
+
   const refreshPendingCount = useCallback(() => {
     if (!isManager) return;
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
     fetch(`${apiUrl}/api/devops/notifications`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => {
+        if (r.status === 401 || r.status === 403) {
+          clearSessionAndRedirect();
+          return null;
+        }
+        return r.ok ? r.json() : null;
+      })
       .then((data) => {
         if (data?.status === 'ok' && typeof data.pending_approval_count === 'number')
           setPendingCount(data.pending_approval_count);
       })
       .catch(() => {});
-  }, [isManager, apiUrl]);
+  }, [isManager, apiUrl, clearSessionAndRedirect]);
 
   useEffect(() => {
     refreshPendingCount();
@@ -151,13 +163,19 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     if (!token) return;
     setPendingApprovalsLoading(true);
     fetch(`${apiUrl}/api/devops/pending-approvals`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => {
+        if (r.status === 401 || r.status === 403) {
+          clearSessionAndRedirect();
+          return null;
+        }
+        return r.ok ? r.json() : null;
+      })
       .then((data) => {
         setPendingApprovals(Array.isArray(data?.requests) ? data.requests : []);
       })
       .catch(() => setPendingApprovals([]))
       .finally(() => setPendingApprovalsLoading(false));
-  }, [apiUrl, isManager]);
+  }, [apiUrl, isManager, clearSessionAndRedirect]);
 
   useEffect(() => {
     if (notifyOpen) refreshPendingApprovals();
