@@ -46,6 +46,7 @@ function getProfileInitials(): string {
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
+  '/approval-center': 'Approval Center',
   '/workload': 'Workload',
   '/tickets': 'Tickets',
   '/templates': 'Templates',
@@ -227,6 +228,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     { href: '/dashboard', label: 'Dashboard', Icon: IconTickets },
   ];
   if (isManager) {
+    baseNavItems.push({ href: '/approval-center', label: 'Approval Center', Icon: IconShield });
     baseNavItems.push({ href: '/workload', label: 'Workload', Icon: IconWorkload });
     baseNavItems.push({ href: '/tickets', label: 'Tickets', Icon: IconTickets });
     baseNavItems.push({ href: '/projects', label: 'Projects', Icon: IconProjects });

@@ -236,6 +236,20 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_notifications_user_id ON user_notifications(user_id)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_notifications_read_at ON user_notifications(read_at)")
+	var projectIDColCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'user_notifications' AND column_name = 'project_id'").Scan(&projectIDColCount)
+	if projectIDColCount == 0 {
+		_, _ = DB.Exec("ALTER TABLE user_notifications ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL")
+	}
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_notifications_project_id ON user_notifications(project_id)")
+	_, _ = DB.Exec(`
+		UPDATE user_notifications n
+		SET project_id = r.project_id
+		FROM pr_requests r
+		WHERE n.request_id = r.id
+		  AND n.project_id IS NULL
+		  AND r.project_id IS NOT NULL
+	`)
 
 	// Migration 14: teams.default_env, teams.default_cloud (per-team defaults for request creation)
 	for _, col := range []string{"default_env", "default_cloud"} {

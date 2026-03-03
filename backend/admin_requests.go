@@ -735,6 +735,7 @@ func adminRequestDetailHandler(w http.ResponseWriter, r *http.Request, id int) {
 		"terraform_plan_output": req.TerraformPlanOutput,
 		"jira_ticket_id":        req.JiraTicketID,
 		"cost_risk_preview":     BuildCostRiskPreview(req),
+		"approval_context":      BuildRequestApprovalContext(req),
 	}
 	dependsOn, _ := GetRequestDependencies(id)
 	blockedBy, _ := GetRequestsThatDependOn(id)

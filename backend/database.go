@@ -818,14 +818,14 @@ type UserNotification struct {
 	CreatedAt   time.Time  `json:"created_at"`
 }
 
-// InsertUserNotification creates an in-app notification for a user
-func InsertUserNotification(userID int, requestID *int, kind, message string) error {
+// InsertUserNotification creates an in-app notification for a user.
+func InsertUserNotification(userID int, requestID *int, projectID *int, kind, message string) error {
 	if DB == nil {
 		return nil
 	}
 	_, err := execContext(
-		"INSERT INTO user_notifications (user_id, request_id, kind, message) VALUES ($1, $2, $3, $4)",
-		userID, requestID, kind, message,
+		"INSERT INTO user_notifications (user_id, request_id, project_id, kind, message) VALUES ($1, $2, $3, $4, $5)",
+		userID, requestID, projectID, kind, message,
 	)
 	if err == nil {
 		invalidateCacheNamespaces(cacheNamespaceNotify)
@@ -845,11 +845,11 @@ func ListUserNotificationsFiltered(userID int, limit, offset int, unreadOnly boo
 	}
 	q := `
 		SELECT n.id, n.user_id, n.request_id,
-		       r.project_id, COALESCE(p.name,''), COALESCE(p.code,''),
+		       COALESCE(n.project_id, r.project_id), COALESCE(p.name,''), COALESCE(p.code,''),
 		       n.kind, n.message, n.read_at, n.created_at
 		FROM user_notifications n
 		LEFT JOIN pr_requests r ON r.id = n.request_id
-		LEFT JOIN projects p ON p.id = r.project_id
+		LEFT JOIN projects p ON p.id = COALESCE(n.project_id, r.project_id)
 		WHERE n.user_id = $1
 	`
 	args := []interface{}{userID}
@@ -2656,6 +2656,9 @@ func GetAuditLogs(limit, offset int, actionFilter, fromDate, toDate string, proj
 type CredentialAuditEntry struct {
 	ID                 int       `json:"id"`
 	RequestID          *int      `json:"request_id"`
+	ProjectID          *int      `json:"project_id,omitempty"`
+	ProjectName        string    `json:"project_name,omitempty"`
+	ProjectCode        string    `json:"project_code,omitempty"`
 	Cloud              string    `json:"cloud"`
 	CredentialType     string    `json:"credential_type"`
 	Team               string    `json:"team"`
@@ -2681,15 +2684,17 @@ func InsertCredentialAuditLog(requestID int, cloud, credentialType, team, env st
 }
 
 // GetCredentialAuditLogs returns credential audit entries with optional filters
-func GetCredentialAuditLogs(limit, offset int, cloudFilter, fromDate, toDate string) ([]CredentialAuditEntry, error) {
+func GetCredentialAuditLogs(limit, offset int, cloudFilter, fromDate, toDate string, projectIDFilter int) ([]CredentialAuditEntry, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	query := `
-		SELECT c.id, c.request_id, c.cloud, c.credential_type, COALESCE(c.team,''), COALESCE(c.env,''),
+		SELECT c.id, c.request_id, r.project_id, COALESCE(p.name, ''), COALESCE(p.code, ''), c.cloud, c.credential_type, COALESCE(c.team,''), COALESCE(c.env,''),
 		       c.created_by_user_id, c.approved_by_user_id, c.created_at,
 		       u1.username AS created_by_username, u2.username AS approved_by_username
 		FROM credential_audit_log c
+		LEFT JOIN pr_requests r ON r.id = c.request_id
+		LEFT JOIN projects p ON p.id = r.project_id
 		LEFT JOIN users u1 ON u1.id = c.created_by_user_id
 		LEFT JOIN users u2 ON u2.id = c.approved_by_user_id
 		WHERE 1=1
@@ -2711,27 +2716,38 @@ func GetCredentialAuditLogs(limit, offset int, cloudFilter, fromDate, toDate str
 		args = append(args, toDate)
 		argPos++
 	}
+	if projectIDFilter > 0 {
+		query += fmt.Sprintf(" AND r.project_id = $%d", argPos)
+		args = append(args, projectIDFilter)
+		argPos++
+	}
 	query += " ORDER BY c.created_at DESC"
 	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argPos, argPos+1)
 	args = append(args, limit, offset)
-	rows, err := DB.Query(query, args...)
+	rows, cancel, err := queryRowsWithTimeout(query, args...)
 	if err != nil {
 		return nil, err
 	}
+	defer cancel()
 	defer rows.Close()
 	var out []CredentialAuditEntry
 	for rows.Next() {
 		var e CredentialAuditEntry
 		var reqID sql.NullInt64
+		var projectID sql.NullInt64
 		var createdBy, approvedBy sql.NullInt64
 		var createdByUser, approvedByUser sql.NullString
-		if err := rows.Scan(&e.ID, &reqID, &e.Cloud, &e.CredentialType, &e.Team, &e.Env,
+		if err := rows.Scan(&e.ID, &reqID, &projectID, &e.ProjectName, &e.ProjectCode, &e.Cloud, &e.CredentialType, &e.Team, &e.Env,
 			&createdBy, &approvedBy, &e.CreatedAt, &createdByUser, &approvedByUser); err != nil {
 			return nil, err
 		}
 		if reqID.Valid {
 			id := int(reqID.Int64)
 			e.RequestID = &id
+		}
+		if projectID.Valid {
+			id := int(projectID.Int64)
+			e.ProjectID = &id
 		}
 		if createdBy.Valid {
 			id := int(createdBy.Int64)
