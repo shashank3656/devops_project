@@ -33,7 +33,7 @@ interface User {
 
 export default function EditUser() {
   const router = useRouter();
-  const { id } = router.query;
+  const { id, created, team_assign_failed } = router.query;
   const [user, setUser] = useState<User | null>(null);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -47,8 +47,12 @@ export default function EditUser() {
   const [managerId, setManagerId] = useState<string>('');
   const [isPortalManager, setIsPortalManager] = useState(false);
   const [usersList, setUsersList] = useState<{ id: number; username: string }[]>([]);
+  const [allTeams, setAllTeams] = useState<Team[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState('');
+  const [teamRole, setTeamRole] = useState('developer');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [membershipSaving, setMembershipSaving] = useState(false);
   const [error, setError] = useState('');
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -63,6 +67,7 @@ export default function EditUser() {
       fetchUser(parseInt(id, 10));
     }
     fetchUsersList();
+    fetchTeamsList();
   }, [token, id, router]);
 
   const fetchUsersList = async () => {
@@ -70,6 +75,16 @@ export default function EditUser() {
       const res = await fetch(`${apiUrl}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json().catch(() => ({}));
       if (data.users) setUsersList(data.users.map((u: { id: number; username: string }) => ({ id: u.id, username: u.username })));
+    } catch (_) {}
+  };
+
+  const fetchTeamsList = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/teams`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json().catch(() => ({}));
+      if (Array.isArray(data.teams)) {
+        setAllTeams(data.teams);
+      }
     } catch (_) {}
   };
 
@@ -152,6 +167,84 @@ export default function EditUser() {
     }
   };
 
+  const availableTeams = allTeams.filter((team) => {
+    if ((team.team_type || 'portal') !== userType.replace('_user', '')) {
+      return false;
+    }
+    return !user?.teams?.some((entry) => entry.id === team.id);
+  });
+
+  useEffect(() => {
+    if (userType === 'devops_user') {
+      if (!['member', 'lead'].includes(teamRole)) {
+        setTeamRole('member');
+      }
+    } else if (!['developer', 'senior_developer', 'lead', 'manager'].includes(teamRole)) {
+      setTeamRole('developer');
+    }
+  }, [teamRole, userType]);
+
+  useEffect(() => {
+    if (!selectedTeamId && availableTeams.length > 0) {
+      setSelectedTeamId(String(availableTeams[0].id));
+    }
+    if (selectedTeamId && !availableTeams.some((team) => team.id === Number(selectedTeamId))) {
+      setSelectedTeamId(availableTeams[0] ? String(availableTeams[0].id) : '');
+    }
+  }, [availableTeams, selectedTeamId]);
+
+  const handleAddTeamMembership = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !selectedTeamId) return;
+    setMembershipSaving(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/teams/${selectedTeamId}/members`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          user_id: user.id,
+          role: teamRole,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Failed to add team membership');
+        return;
+      }
+      await fetchUser(user.id);
+    } catch (_) {
+      setError('Failed to add team membership');
+    } finally {
+      setMembershipSaving(false);
+    }
+  };
+
+  const handleRemoveTeamMembership = async (teamId: number) => {
+    if (!user || !confirm('Remove this user from the selected team?')) return;
+    setMembershipSaving(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/teams/${teamId}/members/${user.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Failed to remove team membership');
+        return;
+      }
+      await fetchUser(user.id);
+    } catch (_) {
+      setError('Failed to remove team membership');
+    } finally {
+      setMembershipSaving(false);
+    }
+  };
+
   if (!id || Array.isArray(id)) return null;
 
   return (
@@ -164,6 +257,12 @@ export default function EditUser() {
           <Link href="/users" className="back-link">
             ← Back to Users
           </Link>
+          {created === '1' && (
+            <div className="alert" role="alert" style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', marginBottom: 16 }}>
+              User created successfully.
+              {team_assign_failed ? ` Some team assignments still need review.` : ''}
+            </div>
+          )}
           {loading ? (
             <p className="loading-text">Loading…</p>
           ) : error && !user ? (
@@ -176,22 +275,87 @@ export default function EditUser() {
                 <div className="card" style={{ maxWidth: 480, marginBottom: 24 }}>
                   <h3 className="card-title" style={{ fontSize: 18 }}>Teams</h3>
                   <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 12 }}>
-                    This user is a member of the following teams. Manage membership from each team&apos;s page.
+                    Review this user&apos;s current team memberships here. You can also remove them directly from this screen.
                   </p>
                   <ul style={{ margin: 0, paddingLeft: 20 }}>
                     {user.teams.map((t) => (
-                      <li key={t.id}>
+                      <li key={t.id} style={{ marginBottom: 10 }}>
                         <Link href={`/teams/${t.id}`}>{t.name}</Link>
                         {t.team_type && (
                           <span style={{ marginLeft: 8, fontSize: 13, color: 'var(--color-text-muted)' }}>
                             ({t.team_type})
                           </span>
                         )}
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ padding: '6px 12px', fontSize: 12, marginLeft: 12 }}
+                          disabled={membershipSaving}
+                          onClick={() => void handleRemoveTeamMembership(t.id)}
+                        >
+                          Remove
+                        </button>
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
+              <div className="card" style={{ maxWidth: 480, marginBottom: 24 }}>
+                <h3 className="card-title" style={{ fontSize: 18 }}>Add to team</h3>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 12 }}>
+                  Assign this user to {userType === 'devops_user' ? 'DevOps' : 'portal'} teams without leaving the user screen.
+                </p>
+                {availableTeams.length === 0 ? (
+                  <div className="empty-state" style={{ padding: 16, textAlign: 'left' }}>
+                    No additional {userType === 'devops_user' ? 'DevOps' : 'portal'} teams are available.
+                  </div>
+                ) : (
+                  <form onSubmit={handleAddTeamMembership}>
+                    <div className="form-group">
+                      <label className="label" htmlFor="user-team-add">Team</label>
+                      <select
+                        id="user-team-add"
+                        className="input"
+                        value={selectedTeamId}
+                        onChange={(e) => setSelectedTeamId(e.target.value)}
+                      >
+                        {availableTeams.map((team) => (
+                          <option key={team.id} value={team.id}>
+                            {team.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="label" htmlFor="user-team-role">Membership role</label>
+                      <select
+                        id="user-team-role"
+                        className="input"
+                        value={teamRole}
+                        onChange={(e) => setTeamRole(e.target.value)}
+                        style={{ maxWidth: 220 }}
+                      >
+                        {userType === 'devops_user' ? (
+                          <>
+                            <option value="member">member</option>
+                            <option value="lead">lead</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="developer">developer</option>
+                            <option value="senior_developer">senior developer</option>
+                            <option value="lead">lead</option>
+                            <option value="manager">manager</option>
+                          </>
+                        )}
+                      </select>
+                    </div>
+                    <button type="submit" className="btn btn-primary" disabled={membershipSaving || !selectedTeamId}>
+                      {membershipSaving ? 'Saving…' : 'Add to team'}
+                    </button>
+                  </form>
+                )}
+              </div>
             <div className="card" style={{ maxWidth: 480 }}>
               <h2 className="card-title">Edit user profile</h2>
               <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 24 }}>
