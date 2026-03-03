@@ -42,6 +42,50 @@ interface ProjectDashboardItem {
   pending_request_count?: number;
 }
 
+interface ProjectAnalyticsDistributionItem {
+  key: string;
+  label: string;
+  count: number;
+}
+
+interface ProjectAnalyticsProjectItem {
+  id: number;
+  name: string;
+  code: string;
+  status: string;
+  stage: string;
+  requests: number;
+  pending: number;
+  completed: number;
+  services: number;
+  teams: number;
+}
+
+interface ProjectAnalytics {
+  summary: {
+    project_count: number;
+    ready_count: number;
+    needs_setup_count: number;
+    archived_count: number;
+    total_request_count: number;
+    pending_request_count: number;
+    completed_request_count: number;
+    active_user_count: number;
+    mapped_team_count: number;
+  };
+  environment_request_distribution: ProjectAnalyticsDistributionItem[];
+  cloud_request_distribution: ProjectAnalyticsDistributionItem[];
+  service_request_distribution: ProjectAnalyticsDistributionItem[];
+  risk_distribution: ProjectAnalyticsDistributionItem[];
+  lead_time: {
+    average_hours: number;
+    completed_requests: number;
+  };
+  top_projects_by_requests: ProjectAnalyticsProjectItem[];
+  approval_bottlenecks: ProjectAnalyticsProjectItem[];
+  top_risk_projects: ProjectAnalyticsProjectItem[];
+}
+
 interface DevOpsTeam {
   id: number;
   name: string;
@@ -150,6 +194,7 @@ export default function DevOpsDashboard() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [teams, setTeams] = useState<DevOpsTeam[]>([]);
   const [projects, setProjects] = useState<ProjectDashboardItem[]>([]);
+  const [projectAnalytics, setProjectAnalytics] = useState<ProjectAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -165,23 +210,35 @@ export default function DevOpsDashboard() {
       fetch(`${apiUrl}/api/devops/tickets`, { headers: { Authorization: `Bearer ${token}` } }),
       fetch(`${apiUrl}/api/devops/my-teams`, { headers: { Authorization: `Bearer ${token}` } }),
       fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`${apiUrl}/api/devops/project-analytics`, { headers: { Authorization: `Bearer ${token}` } }),
     ])
-      .then(([ticketsRes, teamsRes, projectsRes]) => {
-        if (ticketsRes.status === 401 || ticketsRes.status === 403) {
+      .then(([ticketsRes, teamsRes, projectsRes, analyticsRes]) => {
+        if (
+          ticketsRes.status === 401 ||
+          ticketsRes.status === 403 ||
+          teamsRes.status === 401 ||
+          teamsRes.status === 403 ||
+          projectsRes.status === 401 ||
+          projectsRes.status === 403 ||
+          analyticsRes.status === 401 ||
+          analyticsRes.status === 403
+        ) {
           router.replace('/login');
-          return Promise.resolve([{}, {}, {}] as [{ tickets?: Ticket[]; error?: string }, { teams?: DevOpsTeam[] }, { projects?: ProjectDashboardItem[] }]);
+          return Promise.resolve([{}, {}, {}, {}] as [{ tickets?: Ticket[]; error?: string }, { teams?: DevOpsTeam[] }, { projects?: ProjectDashboardItem[] }, { analytics?: ProjectAnalytics }]);
         }
         return Promise.all([
           ticketsRes.json().catch(() => ({})),
           teamsRes.json().catch(() => ({})),
           projectsRes.ok ? projectsRes.json().catch(() => ({})) : Promise.resolve({}),
+          analyticsRes.ok ? analyticsRes.json().catch(() => ({})) : Promise.resolve({}),
         ]);
       })
-      .then(([ticketsData, teamsData, projectsData]) => {
+      .then(([ticketsData, teamsData, projectsData, analyticsData]) => {
         if (ticketsData?.tickets) setTickets(ticketsData.tickets);
         else if (ticketsData?.error) setError(ticketsData.error);
         if (teamsData?.teams) setTeams(teamsData.teams);
         if (projectsData?.projects) setProjects(projectsData.projects);
+        if (analyticsData?.analytics) setProjectAnalytics(analyticsData.analytics);
       })
       .catch(() => setError('Failed to load tickets'))
       .finally(() => setLoading(false));
@@ -314,6 +371,10 @@ export default function DevOpsDashboard() {
       .sort((left, right) => (right.pending_request_count || 0) - (left.pending_request_count || 0) || (right.request_count || 0) - (left.request_count || 0))
       .slice(0, 4);
   }, [projects]);
+  const serviceDemand = projectAnalytics?.service_request_distribution.slice(0, 5) || [];
+  const cloudDemand = projectAnalytics?.cloud_request_distribution.slice(0, 4) || [];
+  const projectBottlenecks = projectAnalytics?.approval_bottlenecks.slice(0, 5) || [];
+  const riskMix = projectAnalytics?.risk_distribution || [];
 
   const teamPulse = useMemo(() => {
     const zeroState = (): TeamSummary => ({
@@ -389,6 +450,14 @@ export default function DevOpsDashboard() {
                 <span className="devops-portal__chip">{loading ? 'Syncing ticket feed' : 'Live queue online'}</span>
                 <span className="devops-portal__chip">{formatCompactCount(openCount)} open threads</span>
                 <span className="devops-portal__chip">{formatCompactCount(Math.max(activeTeamCount, teams.length))} teams in view</span>
+              </div>
+              <div className="portal-page__actions" style={{ marginTop: 18 }}>
+                <Link href="/project-operations" className="btn btn-secondary">
+                  Project operations
+                </Link>
+                <Link href="/approval-center" className="btn btn-primary">
+                  Approval center
+                </Link>
               </div>
             </div>
 
@@ -505,6 +574,97 @@ export default function DevOpsDashboard() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </section>
+          )}
+
+          {projectAnalytics && (
+            <section className="devops-panel" style={{ marginBottom: 24 }}>
+              <div className="devops-panel__header">
+                <div>
+                  <span className="devops-panel__eyebrow">Operations</span>
+                  <h2 className="devops-panel__title">Project operations dashboard</h2>
+                </div>
+                <Link href="/projects" className="btn btn-secondary btn-sm">
+                  Manage projects
+                </Link>
+              </div>
+
+              <div className="devops-kpi-grid" style={{ marginBottom: 20 }}>
+                <article className="devops-kpi-card devops-kpi-card--primary">
+                  <span className="devops-kpi-card__label">Mapped users</span>
+                  <strong className="devops-kpi-card__value">{formatCompactCount(projectAnalytics.summary.active_user_count)}</strong>
+                  <p className="devops-kpi-card__detail">Users currently covered by project access mappings.</p>
+                </article>
+                <article className="devops-kpi-card devops-kpi-card--teal">
+                  <span className="devops-kpi-card__label">Mapped teams</span>
+                  <strong className="devops-kpi-card__value">{formatCompactCount(projectAnalytics.summary.mapped_team_count)}</strong>
+                  <p className="devops-kpi-card__detail">Teams currently attached to project catalogs.</p>
+                </article>
+                <article className="devops-kpi-card devops-kpi-card--amber">
+                  <span className="devops-kpi-card__label">Lead time</span>
+                  <strong className="devops-kpi-card__value">{projectAnalytics.lead_time.average_hours ? `${projectAnalytics.lead_time.average_hours.toFixed(1)}h` : 'n/a'}</strong>
+                  <p className="devops-kpi-card__detail">Average completion time across {formatCompactCount(projectAnalytics.lead_time.completed_requests)} completed project requests.</p>
+                </article>
+                <article className="devops-kpi-card devops-kpi-card--rose">
+                  <span className="devops-kpi-card__label">Service demand</span>
+                  <strong className="devops-kpi-card__value">{formatCompactCount(serviceDemand[0]?.count || 0)}</strong>
+                  <p className="devops-kpi-card__detail">{serviceDemand[0]?.label || 'No service demand yet'}</p>
+                </article>
+              </div>
+
+              <div className="devops-team-grid">
+                <div className="devops-team-card">
+                  <div className="devops-team-card__top">
+                    <div>
+                      <strong className="devops-team-card__name">Approval bottlenecks</strong>
+                      <p className="devops-team-card__copy">Projects with the most pending work right now.</p>
+                    </div>
+                  </div>
+                  <div className="devops-team-card__stats" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                    {projectBottlenecks.length === 0 ? (
+                      <span>No bottlenecks yet.</span>
+                    ) : (
+                      projectBottlenecks.map((project) => (
+                        <span key={`bottleneck-${project.id}`}>{project.name}: {project.pending} pending / {project.requests} total</span>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div className="devops-team-card">
+                  <div className="devops-team-card__top">
+                    <div>
+                      <strong className="devops-team-card__name">Cloud demand</strong>
+                      <p className="devops-team-card__copy">Where project traffic is concentrated.</p>
+                    </div>
+                  </div>
+                  <div className="devops-team-card__stats" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                    {cloudDemand.length === 0 ? (
+                      <span>No request traffic yet.</span>
+                    ) : (
+                      cloudDemand.map((item) => (
+                        <span key={`cloud-demand-${item.key}`}>{item.label}: {item.count}</span>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div className="devops-team-card">
+                  <div className="devops-team-card__top">
+                    <div>
+                      <strong className="devops-team-card__name">Risk mix</strong>
+                      <p className="devops-team-card__copy">Project risk posture across the catalog.</p>
+                    </div>
+                  </div>
+                  <div className="devops-team-card__stats" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                    {riskMix.length === 0 ? (
+                      <span>No risk signals yet.</span>
+                    ) : (
+                      riskMix.map((item) => (
+                        <span key={`risk-mix-${item.key}`}>{item.label}: {item.count}</span>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
             </section>
           )}

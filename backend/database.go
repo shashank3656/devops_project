@@ -164,19 +164,47 @@ func buildDatabaseDSN() (dsn string, redacted string, err error) {
 		return databaseURL, "DATABASE_URL", nil
 	}
 
-	dbHost := getEnvOrDefault("DB_HOST", defaultDBHost)
-	dbPort := getEnvOrDefault("DB_PORT", defaultDBPort)
+	dbHost := getEnvTrimmed("DB_HOST")
+	if dbHost == "" {
+		dbHost = getEnvTrimmed("POSTGRES_HOST")
+	}
+	if dbHost == "" {
+		dbHost = defaultDBHost
+	}
+
+	dbPort := getEnvTrimmed("DB_PORT")
+	if dbPort == "" {
+		dbPort = getEnvTrimmed("POSTGRES_PORT")
+	}
+	if dbPort == "" {
+		dbPort = defaultDBPort
+	}
+
 	dbUser := getEnvTrimmed("DB_USER")
+	if dbUser == "" {
+		dbUser = getEnvTrimmed("POSTGRES_USER")
+	}
+
 	dbPassword := os.Getenv("DB_PASSWORD")
-	dbName := getEnvOrDefault("DB_NAME", defaultDBName)
+	if strings.TrimSpace(dbPassword) == "" {
+		dbPassword = os.Getenv("POSTGRES_PASSWORD")
+	}
+
+	dbName := getEnvTrimmed("DB_NAME")
+	if dbName == "" {
+		dbName = getEnvTrimmed("POSTGRES_DB")
+	}
+	if dbName == "" {
+		dbName = defaultDBName
+	}
 	dbSSLMode := getEnvOrDefault("DB_SSLMODE", defaultDBSSLMode)
 	connectTimeout := getEnvIntOrDefault("DB_CONNECT_TIMEOUT_SECONDS", defaultDBPingTimeoutSeconds)
 
 	if dbUser == "" {
-		return "", "", fmt.Errorf("DB_USER is required when DATABASE_URL is not set")
+		return "", "", fmt.Errorf("DB_USER or POSTGRES_USER is required when DATABASE_URL is not set")
 	}
-	if dbPassword == "" {
-		return "", "", fmt.Errorf("DB_PASSWORD is required when DATABASE_URL is not set")
+	if strings.TrimSpace(dbPassword) == "" {
+		return "", "", fmt.Errorf("DB_PASSWORD or POSTGRES_PASSWORD is required when DATABASE_URL is not set")
 	}
 
 	dsn = fmt.Sprintf(
@@ -391,8 +419,12 @@ type RequestTemplate struct {
 	Env          string           `json:"env"`
 	Service      string           `json:"service"`
 	Config       string           `json:"config"`
+	Status       string           `json:"status"`
 	CreatedBy    *int             `json:"created_by"`
+	PublishedBy  *int             `json:"published_by,omitempty"`
 	CreatedAt    time.Time        `json:"created_at"`
+	UpdatedAt    time.Time        `json:"updated_at"`
+	PublishedAt  *time.Time       `json:"published_at,omitempty"`
 	Teams        []Team           `json:"teams,omitempty"`
 	Projects     []ProjectSummary `json:"projects,omitempty"`
 	VisibleToAll bool             `json:"visible_to_all"`
@@ -3382,7 +3414,7 @@ func ListRequestTemplates() ([]RequestTemplate, error) {
 	if DB == nil {
 		return nil, nil
 	}
-	rows, err := DB.Query(`SELECT id, COALESCE(name,''), COALESCE(description,''), cloud, env, COALESCE(service,''), COALESCE(config,'{}'), created_by, created_at FROM request_templates ORDER BY name`)
+	rows, err := DB.Query(`SELECT id, COALESCE(name,''), COALESCE(description,''), cloud, env, COALESCE(service,''), COALESCE(config,'{}'), COALESCE(status,'published'), created_by, published_by, created_at, COALESCE(updated_at, created_at), published_at FROM request_templates ORDER BY name`)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
 			return []RequestTemplate{}, nil
@@ -3394,12 +3426,22 @@ func ListRequestTemplates() ([]RequestTemplate, error) {
 	for rows.Next() {
 		var t RequestTemplate
 		var createdBy sql.NullInt64
-		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Cloud, &t.Env, &t.Service, &t.Config, &createdBy, &t.CreatedAt); err != nil {
+		var publishedBy sql.NullInt64
+		var publishedAt sql.NullTime
+		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.Cloud, &t.Env, &t.Service, &t.Config, &t.Status, &createdBy, &publishedBy, &t.CreatedAt, &t.UpdatedAt, &publishedAt); err != nil {
 			return nil, err
 		}
 		if createdBy.Valid && createdBy.Int64 > 0 {
 			id := int(createdBy.Int64)
 			t.CreatedBy = &id
+		}
+		if publishedBy.Valid && publishedBy.Int64 > 0 {
+			id := int(publishedBy.Int64)
+			t.PublishedBy = &id
+		}
+		if publishedAt.Valid {
+			publishedAtValue := publishedAt.Time
+			t.PublishedAt = &publishedAtValue
 		}
 		t.VisibleToAll = true
 		out = append(out, t)
@@ -3428,6 +3470,9 @@ func ListRequestTemplatesForUser(userID int) ([]RequestTemplate, error) {
 	}
 	filtered := make([]RequestTemplate, 0, len(templates))
 	for _, template := range templates {
+		if normalizeTemplateGovernanceStatus(template.Status) != "published" {
+			continue
+		}
 		teamAllowed := len(template.Teams) == 0 || templateAccessibleToPortalTeams(template.Teams, allowedTeams)
 		projectAllowed := len(template.Projects) == 0 || templateAccessibleToProjects(template.Projects, allowedProjects)
 		if teamAllowed && projectAllowed {
@@ -3437,22 +3482,42 @@ func ListRequestTemplatesForUser(userID int) ([]RequestTemplate, error) {
 	return filtered, nil
 }
 
+func normalizeTemplateGovernanceStatus(status string) string {
+	normalized := strings.TrimSpace(strings.ToLower(status))
+	switch normalized {
+	case "draft", "pending_approval", "published", "archived":
+		return normalized
+	default:
+		return "draft"
+	}
+}
+
 func GetRequestTemplateByID(id int) (*RequestTemplate, error) {
 	if DB == nil {
 		return nil, nil
 	}
 	var t RequestTemplate
 	var createdBy sql.NullInt64
+	var publishedBy sql.NullInt64
+	var publishedAt sql.NullTime
 	err := DB.QueryRow(
-		`SELECT id, COALESCE(name,''), COALESCE(description,''), cloud, env, COALESCE(service,''), COALESCE(config,'{}'), created_by, created_at FROM request_templates WHERE id = $1`,
+		`SELECT id, COALESCE(name,''), COALESCE(description,''), cloud, env, COALESCE(service,''), COALESCE(config,'{}'), COALESCE(status,'published'), created_by, published_by, created_at, COALESCE(updated_at, created_at), published_at FROM request_templates WHERE id = $1`,
 		id,
-	).Scan(&t.ID, &t.Name, &t.Description, &t.Cloud, &t.Env, &t.Service, &t.Config, &createdBy, &t.CreatedAt)
+	).Scan(&t.ID, &t.Name, &t.Description, &t.Cloud, &t.Env, &t.Service, &t.Config, &t.Status, &createdBy, &publishedBy, &t.CreatedAt, &t.UpdatedAt, &publishedAt)
 	if err != nil {
 		return nil, err
 	}
 	if createdBy.Valid && createdBy.Int64 > 0 {
 		id := int(createdBy.Int64)
 		t.CreatedBy = &id
+	}
+	if publishedBy.Valid && publishedBy.Int64 > 0 {
+		id := int(publishedBy.Int64)
+		t.PublishedBy = &id
+	}
+	if publishedAt.Valid {
+		publishedAtValue := publishedAt.Time
+		t.PublishedAt = &publishedAtValue
 	}
 	t.VisibleToAll = true
 	if err := hydrateRequestTemplateWithScope(&t); err != nil {
@@ -3476,23 +3541,31 @@ func GetRequestTemplateForUser(id, userID int) (*RequestTemplate, error) {
 	}
 	teamAllowed := len(template.Teams) == 0 || templateAccessibleToPortalTeams(template.Teams, allowedTeams)
 	projectAllowed := len(template.Projects) == 0 || templateAccessibleToProjects(template.Projects, allowedProjects)
-	if teamAllowed && projectAllowed {
+	if teamAllowed && projectAllowed && normalizeTemplateGovernanceStatus(template.Status) == "published" {
 		return template, nil
 	}
 	return nil, sql.ErrNoRows
 }
 
-func CreateRequestTemplate(name, description, cloud, env, service, config string, createdBy *int) (*RequestTemplate, error) {
+func CreateRequestTemplate(name, description, cloud, env, service, config, status string, createdBy *int) (*RequestTemplate, error) {
 	if DB == nil {
 		return nil, fmt.Errorf("database not available")
 	}
 	var t RequestTemplate
 	var createdByValue sql.NullInt64
+	var publishedByValue sql.NullInt64
+	var publishedAt sql.NullTime
+	status = normalizeTemplateGovernanceStatus(status)
+	var publishedBy *int
+	if status == "published" {
+		publishedBy = createdBy
+	}
 	err := queryRowContext(
-		`INSERT INTO request_templates (name, description, cloud, env, service, config, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7)
-		 RETURNING id, name, description, cloud, env, service, config, created_by, created_at`,
-		name, description, cloud, env, service, config, createdBy,
-	).Scan(&t.ID, &t.Name, &t.Description, &t.Cloud, &t.Env, &t.Service, &t.Config, &createdByValue, &t.CreatedAt)
+		`INSERT INTO request_templates (name, description, cloud, env, service, config, status, created_by, published_by, published_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $7 = 'published' THEN CURRENT_TIMESTAMP ELSE NULL END)
+		 RETURNING id, name, description, cloud, env, service, config, status, created_by, published_by, created_at, COALESCE(updated_at, created_at), published_at`,
+		name, description, cloud, env, service, config, status, createdBy, publishedBy,
+	).Scan(&t.ID, &t.Name, &t.Description, &t.Cloud, &t.Env, &t.Service, &t.Config, &t.Status, &createdByValue, &publishedByValue, &t.CreatedAt, &t.UpdatedAt, &publishedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -3500,17 +3573,43 @@ func CreateRequestTemplate(name, description, cloud, env, service, config string
 		id := int(createdByValue.Int64)
 		t.CreatedBy = &id
 	}
+	if publishedByValue.Valid && publishedByValue.Int64 > 0 {
+		id := int(publishedByValue.Int64)
+		t.PublishedBy = &id
+	}
+	if publishedAt.Valid {
+		publishedAtValue := publishedAt.Time
+		t.PublishedAt = &publishedAtValue
+	}
 	invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam)
 	return &t, nil
 }
 
-func UpdateRequestTemplate(id int, name, description, cloud, env, service, config string) error {
+func UpdateRequestTemplate(id int, name, description, cloud, env, service, config, status string, actedBy *int) error {
 	if DB == nil {
 		return fmt.Errorf("database not available")
 	}
+	status = normalizeTemplateGovernanceStatus(status)
 	_, err := execContext(
-		`UPDATE request_templates SET name = $1, description = $2, cloud = $3, env = $4, service = $5, config = $6 WHERE id = $7`,
-		name, description, cloud, env, service, config, id,
+		`UPDATE request_templates
+		 SET name = $1,
+		     description = $2,
+		     cloud = $3,
+		     env = $4,
+		     service = $5,
+		     config = $6,
+		     status = $7,
+		     updated_at = CURRENT_TIMESTAMP,
+		     published_by = CASE
+		       WHEN $7 = 'published' AND published_at IS NULL THEN $8
+		       ELSE published_by
+		     END,
+		     published_at = CASE
+		       WHEN $7 = 'published' AND published_at IS NULL THEN CURRENT_TIMESTAMP
+		       ELSE published_at
+		     END
+		 WHERE id = $9`,
+		name, description, cloud, env, service, config, status, actedBy, id,
 	)
 	if err == nil {
 		invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam)

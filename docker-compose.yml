@@ -274,15 +274,15 @@ services:
     image: postgres:15-alpine
     container_name: infra-postgres
     environment:
-      - POSTGRES_USER=${DB_USER:-postgres}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
-      - POSTGRES_DB=${DB_NAME:-infra_portal}
+      - POSTGRES_USER=${POSTGRES_USER:-infra_app}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change-me}
+      - POSTGRES_DB=${POSTGRES_DB:-infra_portal}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-infra_app}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -327,11 +327,6 @@ services:
       - GITHUB_REPO=${GITHUB_REPO}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - BASE_BRANCH=${BASE_BRANCH}
-      - DB_HOST=${DB_HOST:-postgres}
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-postgres}
-      - DB_NAME=${DB_NAME:-infra_portal}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/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}
       - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
@@ -385,11 +380,6 @@ services:
       - GITHUB_REPO=${GITHUB_REPO}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - BASE_BRANCH=${BASE_BRANCH}
-      - DB_HOST=${DB_HOST:-postgres}
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-postgres}
-      - DB_NAME=${DB_NAME:-infra_portal}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
       - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL}
       - FRONTEND_URL=${FRONTEND_URL:-http://20.219.96.249:3000}

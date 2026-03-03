@@ -39,6 +39,51 @@ interface ProjectDashboardItem {
   pending_request_count?: number;
 }
 
+interface ProjectAnalyticsDistributionItem {
+  key: string;
+  label: string;
+  count: number;
+}
+
+interface ProjectAnalyticsProjectItem {
+  id: number;
+  name: string;
+  code: string;
+  status: string;
+  stage: string;
+  requests: number;
+  pending: number;
+  completed: number;
+  services: number;
+  teams: number;
+}
+
+interface ProjectAnalytics {
+  summary: {
+    project_count: number;
+    ready_count: number;
+    needs_setup_count: number;
+    archived_count: number;
+    total_request_count: number;
+    pending_request_count: number;
+    completed_request_count: number;
+    active_user_count: number;
+    mapped_team_count: number;
+  };
+  stage_distribution: ProjectAnalyticsDistributionItem[];
+  environment_request_distribution: ProjectAnalyticsDistributionItem[];
+  cloud_request_distribution: ProjectAnalyticsDistributionItem[];
+  service_request_distribution: ProjectAnalyticsDistributionItem[];
+  risk_distribution: ProjectAnalyticsDistributionItem[];
+  lead_time: {
+    average_hours: number;
+    completed_requests: number;
+  };
+  top_projects_by_requests: ProjectAnalyticsProjectItem[];
+  approval_bottlenecks: ProjectAnalyticsProjectItem[];
+  top_risk_projects: ProjectAnalyticsProjectItem[];
+}
+
 interface PRRequest {
   id: number;
   team: string;
@@ -73,6 +118,7 @@ export default function AdminDashboard() {
   const [quickStats, setQuickStats] = useState<DashboardStats | null>(null);
   const [recent, setRecent] = useState<PRRequest[]>([]);
   const [projects, setProjects] = useState<ProjectDashboardItem[]>([]);
+  const [projectAnalytics, setProjectAnalytics] = useState<ProjectAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'custom'>('week');
@@ -101,20 +147,30 @@ export default function AdminDashboard() {
     }
     const dashboardUrl = params.toString() ? `${apiUrl}/api/admin/dashboard-stats?${params}` : `${apiUrl}/api/admin/dashboard-stats`;
     try {
-      const [dashboardRes, requestsRes] = await Promise.all([
+      const [dashboardRes, requestsRes, projectAnalyticsRes] = await Promise.all([
         fetch(dashboardUrl, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${apiUrl}/api/admin/requests?limit=10`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/admin/project-analytics`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
-      if (dashboardRes.status === 401 || dashboardRes.status === 403 || requestsRes.status === 401 || requestsRes.status === 403) {
+      if (
+        dashboardRes.status === 401 ||
+        dashboardRes.status === 403 ||
+        requestsRes.status === 401 ||
+        requestsRes.status === 403 ||
+        projectAnalyticsRes.status === 401 ||
+        projectAnalyticsRes.status === 403
+      ) {
         router.replace('/login');
         return;
       }
-      const [dashboardData, requestsData] = await Promise.all([
+      const [dashboardData, requestsData, projectAnalyticsData] = await Promise.all([
         dashboardRes.json().catch(() => ({})),
         requestsRes.json().catch(() => ({})),
+        projectAnalyticsRes.json().catch(() => ({})),
       ]);
       if (dashboardData.total_users !== undefined) setQuickStats(dashboardData);
       if (requestsData.requests) setRecent(requestsData.requests);
+      if (projectAnalyticsData?.analytics) setProjectAnalytics(projectAnalyticsData.analytics);
       fetch(`${apiUrl}/api/admin/projects`, { headers: { Authorization: `Bearer ${token}` } })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
@@ -152,6 +208,9 @@ export default function AdminDashboard() {
   const topProjects = [...projects]
     .sort((left, right) => (right.request_count || 0) - (left.request_count || 0))
     .slice(0, 5);
+  const topProjectServices = projectAnalytics?.service_request_distribution.slice(0, 5) || [];
+  const topProjectClouds = projectAnalytics?.cloud_request_distribution.slice(0, 4) || [];
+  const topProjectRisks = projectAnalytics?.risk_distribution || [];
 
   return (
     <>
@@ -169,6 +228,9 @@ export default function AdminDashboard() {
               </p>
             </div>
             <div className="portal-page__actions">
+              <Link href="/project-governance" className="btn btn-secondary">
+                Project governance
+              </Link>
               <Link href="/team-ownership" className="btn btn-secondary">
                 Team ownership
               </Link>
@@ -320,6 +382,80 @@ export default function AdminDashboard() {
                       </table>
                     </div>
                   )}
+                </section>
+              )}
+
+              {projectAnalytics && (
+                <section className="portal-grid">
+                  <article className="portal-surface">
+                    <div className="portal-surface__header">
+                      <div>
+                        <span className="portal-surface__eyebrow">Governance</span>
+                        <h2 className="portal-surface__title">Project Analytics</h2>
+                        <p className="portal-surface__subtitle">Readiness, mapped user coverage, and cross-project request behavior.</p>
+                      </div>
+                    </div>
+                    <div className="portal-stat-grid" style={{ marginTop: 0 }}>
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Mapped users</span>
+                        <span className="portal-stat-card__value">{projectAnalytics.summary.active_user_count}</span>
+                        <p className="portal-stat-card__copy">Users currently covered by project-team mappings.</p>
+                      </article>
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Mapped teams</span>
+                        <span className="portal-stat-card__value">{projectAnalytics.summary.mapped_team_count}</span>
+                        <p className="portal-stat-card__copy">Teams actively attached to project catalogs.</p>
+                      </article>
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Lead time</span>
+                        <span className="portal-stat-card__value">{projectAnalytics.lead_time.average_hours ? `${projectAnalytics.lead_time.average_hours.toFixed(1)}h` : 'n/a'}</span>
+                        <p className="portal-stat-card__copy">Average completion lead time across {projectAnalytics.lead_time.completed_requests} completed project requests.</p>
+                      </article>
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Archived</span>
+                        <span className="portal-stat-card__value">{projectAnalytics.summary.archived_count}</span>
+                        <p className="portal-stat-card__copy">Projects currently removed from active request traffic.</p>
+                      </article>
+                    </div>
+                  </article>
+
+                  <article className="portal-surface">
+                    <div className="portal-surface__header">
+                      <div>
+                        <span className="portal-surface__eyebrow">Demand</span>
+                        <h2 className="portal-surface__title">Top service demand</h2>
+                        <p className="portal-surface__subtitle">Most frequently requested cloud-service combinations across projects.</p>
+                      </div>
+                    </div>
+                    <div className="portal-selection-bar" style={{ marginBottom: 16 }}>
+                      <span className="portal-selection-bar__count">Cloud demand: {topProjectClouds.map((item) => `${item.label} ${item.count}`).join(' · ') || 'No request traffic yet'}</span>
+                    </div>
+                    <div className="portal-selection-bar" style={{ marginBottom: 16 }}>
+                      <span className="portal-selection-bar__count">Risk mix: {topProjectRisks.map((item) => `${item.label} ${item.count}`).join(' · ') || 'No risk signals yet'}</span>
+                    </div>
+                    {topProjectServices.length === 0 ? (
+                      <div className="empty-state">No project request traffic available yet.</div>
+                    ) : (
+                      <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Service</th>
+                              <th>Requests</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {topProjectServices.map((item) => (
+                              <tr key={`svc-${item.key}`}>
+                                <td>{item.label}</td>
+                                <td>{item.count}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </article>
                 </section>
               )}
 

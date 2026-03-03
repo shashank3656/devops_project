@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -78,6 +80,62 @@ type ProjectCatalog struct {
 	TeamAccess            []ProjectTeamAccess      `json:"team_access"`
 	ApprovalRules         []ProjectApprovalRule    `json:"approval_rules"`
 	CostRiskSummary       *ProjectCostRiskSummary  `json:"cost_risk_summary,omitempty"`
+}
+
+type ProjectBulkCreateResult struct {
+	Index   int             `json:"index"`
+	Project *ProjectCatalog `json:"project,omitempty"`
+	Error   string          `json:"error,omitempty"`
+}
+
+type ProjectAnalyticsDistributionItem struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+type ProjectAnalyticsLeadTime struct {
+	AverageHours      float64 `json:"average_hours"`
+	CompletedRequests int     `json:"completed_requests"`
+}
+
+type ProjectAnalyticsProjectItem struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	Code      string `json:"code"`
+	Status    string `json:"status"`
+	Stage     string `json:"stage"`
+	Requests  int    `json:"requests"`
+	Pending   int    `json:"pending"`
+	Completed int    `json:"completed"`
+	Services  int    `json:"services"`
+	Teams     int    `json:"teams"`
+}
+
+type ProjectAnalyticsSummary struct {
+	ProjectCount          int `json:"project_count"`
+	ReadyCount            int `json:"ready_count"`
+	NeedsSetupCount       int `json:"needs_setup_count"`
+	ArchivedCount         int `json:"archived_count"`
+	TotalRequestCount     int `json:"total_request_count"`
+	PendingRequestCount   int `json:"pending_request_count"`
+	CompletedRequestCount int `json:"completed_request_count"`
+	ActiveUserCount       int `json:"active_user_count"`
+	MappedTeamCount       int `json:"mapped_team_count"`
+}
+
+type ProjectAnalytics struct {
+	Summary                        ProjectAnalyticsSummary            `json:"summary"`
+	StageDistribution              []ProjectAnalyticsDistributionItem `json:"stage_distribution"`
+	StatusDistribution             []ProjectAnalyticsDistributionItem `json:"status_distribution"`
+	EnvironmentRequestDistribution []ProjectAnalyticsDistributionItem `json:"environment_request_distribution"`
+	CloudRequestDistribution       []ProjectAnalyticsDistributionItem `json:"cloud_request_distribution"`
+	ServiceRequestDistribution     []ProjectAnalyticsDistributionItem `json:"service_request_distribution"`
+	LeadTime                       ProjectAnalyticsLeadTime           `json:"lead_time"`
+	RiskDistribution               []ProjectAnalyticsDistributionItem `json:"risk_distribution"`
+	TopProjectsByRequests          []ProjectAnalyticsProjectItem      `json:"top_projects_by_requests"`
+	ApprovalBottlenecks            []ProjectAnalyticsProjectItem      `json:"approval_bottlenecks"`
+	TopRiskProjects                []ProjectAnalyticsProjectItem      `json:"top_risk_projects"`
 }
 
 type ProjectCatalogInput struct {
@@ -777,6 +835,408 @@ func syncProjectCatalogTx(ctx context.Context, tx *sql.Tx, projectID int, input 
 	return nil
 }
 
+func mergeUniqueStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		normalized := strings.TrimSpace(strings.ToLower(value))
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func buildProjectCatalogCSV(projects []ProjectCatalog) ([]byte, error) {
+	var buffer bytes.Buffer
+	writer := csv.NewWriter(&buffer)
+	if err := writer.Write([]string{
+		"project_id", "name", "code", "status", "onboarding_stage", "ready_for_requests",
+		"owner_team", "environments", "clouds", "services", "team_access", "request_count",
+		"pending_request_count", "completed_request_count",
+	}); err != nil {
+		return nil, err
+	}
+	for _, project := range projects {
+		serviceNames := make([]string, 0, len(project.Services))
+		for _, service := range project.Services {
+			serviceNames = append(serviceNames, fmt.Sprintf("%s:%s", service.Cloud, service.Service))
+		}
+		teamAccess := make([]string, 0, len(project.TeamAccess))
+		for _, access := range project.TeamAccess {
+			label := access.TeamName
+			if label == "" {
+				label = access.TeamSlug
+			}
+			teamAccess = append(teamAccess, fmt.Sprintf("%s[%s]", label, strings.Join(access.Environments, "/")))
+		}
+		if err := writer.Write([]string{
+			strconv.Itoa(project.ID),
+			project.Name,
+			project.Code,
+			project.Status,
+			project.OnboardingStage,
+			strconv.FormatBool(project.ReadyForRequests),
+			project.OwnerTeam,
+			strings.Join(project.Environments, ", "),
+			strings.Join(project.Clouds, ", "),
+			strings.Join(serviceNames, ", "),
+			strings.Join(teamAccess, ", "),
+			strconv.Itoa(project.RequestCount),
+			strconv.Itoa(project.PendingRequestCount),
+			strconv.Itoa(project.CompletedRequestCount),
+		}); err != nil {
+			return nil, err
+		}
+	}
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return nil, err
+	}
+	return buffer.Bytes(), nil
+}
+
+func buildDistributionItems(values map[string]int) []ProjectAnalyticsDistributionItem {
+	items := make([]ProjectAnalyticsDistributionItem, 0, len(values))
+	for key, count := range values {
+		if count <= 0 {
+			continue
+		}
+		label := key
+		if label == "" {
+			label = "unassigned"
+		}
+		items = append(items, ProjectAnalyticsDistributionItem{
+			Key:   key,
+			Label: strings.ReplaceAll(label, "_", " "),
+			Count: count,
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Count == items[j].Count {
+			return items[i].Label < items[j].Label
+		}
+		return items[i].Count > items[j].Count
+	})
+	return items
+}
+
+func buildProjectAnalytics(projects []ProjectCatalog) (*ProjectAnalytics, error) {
+	analytics := &ProjectAnalytics{
+		Summary: ProjectAnalyticsSummary{
+			ProjectCount: len(projects),
+		},
+	}
+	if len(projects) == 0 {
+		return analytics, nil
+	}
+
+	stageCounts := make(map[string]int)
+	statusCounts := make(map[string]int)
+	riskCounts := make(map[string]int)
+	teamIDs := make(map[int]struct{})
+	userIDs := make(map[int]struct{})
+
+	topProjects := make([]ProjectAnalyticsProjectItem, 0, len(projects))
+	bottlenecks := make([]ProjectAnalyticsProjectItem, 0, len(projects))
+	topRiskProjects := make([]ProjectAnalyticsProjectItem, 0, len(projects))
+	projectIDs := make([]int, 0, len(projects))
+	for _, project := range projects {
+		projectIDs = append(projectIDs, project.ID)
+		stage := strings.TrimSpace(project.OnboardingStage)
+		if stage == "" {
+			stage = "configured"
+		}
+		stageCounts[stage]++
+		status := strings.TrimSpace(project.Status)
+		if status == "" {
+			status = "active"
+		}
+		statusCounts[status]++
+		if project.ReadyForRequests {
+			analytics.Summary.ReadyCount++
+		}
+		if !project.ReadyForRequests && status == "active" {
+			analytics.Summary.NeedsSetupCount++
+		}
+		if status == "archived" {
+			analytics.Summary.ArchivedCount++
+		}
+		analytics.Summary.TotalRequestCount += project.RequestCount
+		analytics.Summary.PendingRequestCount += project.PendingRequestCount
+		analytics.Summary.CompletedRequestCount += project.CompletedRequestCount
+
+		item := ProjectAnalyticsProjectItem{
+			ID:        project.ID,
+			Name:      project.Name,
+			Code:      project.Code,
+			Status:    status,
+			Stage:     stage,
+			Requests:  project.RequestCount,
+			Pending:   project.PendingRequestCount,
+			Completed: project.CompletedRequestCount,
+			Services:  project.ServiceCount,
+			Teams:     project.TeamCount,
+		}
+		topProjects = append(topProjects, item)
+		bottlenecks = append(bottlenecks, item)
+		if project.CostRiskSummary != nil {
+			riskLevel := strings.TrimSpace(strings.ToLower(project.CostRiskSummary.OverallRisk))
+			if riskLevel == "" {
+				riskLevel = "low"
+			}
+			riskCounts[riskLevel]++
+			riskItem := item
+			topRiskProjects = append(topRiskProjects, riskItem)
+		}
+
+		for _, access := range project.TeamAccess {
+			teamIDs[access.TeamID] = struct{}{}
+			members, err := GetTeamMembers(access.TeamID)
+			if err != nil {
+				return nil, err
+			}
+			for _, member := range members {
+				userIDs[member.UserID] = struct{}{}
+			}
+		}
+	}
+	analytics.Summary.MappedTeamCount = len(teamIDs)
+	analytics.Summary.ActiveUserCount = len(userIDs)
+
+	sort.Slice(topProjects, func(i, j int) bool {
+		if topProjects[i].Requests == topProjects[j].Requests {
+			return topProjects[i].Name < topProjects[j].Name
+		}
+		return topProjects[i].Requests > topProjects[j].Requests
+	})
+	if len(topProjects) > 6 {
+		topProjects = topProjects[:6]
+	}
+	sort.Slice(bottlenecks, func(i, j int) bool {
+		if bottlenecks[i].Pending == bottlenecks[j].Pending {
+			return bottlenecks[i].Requests > bottlenecks[j].Requests
+		}
+		return bottlenecks[i].Pending > bottlenecks[j].Pending
+	})
+	if len(bottlenecks) > 6 {
+		bottlenecks = bottlenecks[:6]
+	}
+	sort.Slice(topRiskProjects, func(i, j int) bool {
+		leftRisk := ""
+		rightRisk := ""
+		for _, project := range projects {
+			if project.ID == topRiskProjects[i].ID && project.CostRiskSummary != nil {
+				leftRisk = project.CostRiskSummary.OverallRisk
+			}
+			if project.ID == topRiskProjects[j].ID && project.CostRiskSummary != nil {
+				rightRisk = project.CostRiskSummary.OverallRisk
+			}
+		}
+		riskRank := func(value string) int {
+			switch strings.TrimSpace(strings.ToLower(value)) {
+			case "high":
+				return 3
+			case "medium":
+				return 2
+			default:
+				return 1
+			}
+		}
+		if riskRank(leftRisk) == riskRank(rightRisk) {
+			return topRiskProjects[i].Pending > topRiskProjects[j].Pending
+		}
+		return riskRank(leftRisk) > riskRank(rightRisk)
+	})
+	if len(topRiskProjects) > 6 {
+		topRiskProjects = topRiskProjects[:6]
+	}
+	analytics.TopProjectsByRequests = topProjects
+	analytics.ApprovalBottlenecks = bottlenecks
+	analytics.TopRiskProjects = topRiskProjects
+	analytics.StageDistribution = buildDistributionItems(stageCounts)
+	analytics.StatusDistribution = buildDistributionItems(statusCounts)
+	analytics.RiskDistribution = buildDistributionItems(riskCounts)
+
+	placeholders := make([]string, len(projectIDs))
+	queryArgs := make([]interface{}, 0, len(projectIDs))
+	for index, id := range projectIDs {
+		placeholders[index] = fmt.Sprintf("$%d", index+1)
+		queryArgs = append(queryArgs, id)
+	}
+	inClause := strings.Join(placeholders, ",")
+	rows, cancel, err := queryRowsWithTimeout(
+		fmt.Sprintf(`
+			SELECT COALESCE(env,''), COALESCE(cloud,''), COALESCE(service,''), COALESCE(status,''), created_at, updated_at
+			FROM pr_requests
+			WHERE project_id IN (%s)
+		`, inClause),
+		queryArgs...,
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return analytics, nil
+		}
+		return nil, err
+	}
+	defer cancel()
+	defer rows.Close()
+
+	envCounts := make(map[string]int)
+	cloudCounts := make(map[string]int)
+	serviceCounts := make(map[string]int)
+	var completedLeadHours float64
+	var completedCount int
+	for rows.Next() {
+		var env string
+		var cloud string
+		var service string
+		var status string
+		var createdAt time.Time
+		var updatedAt time.Time
+		if err := rows.Scan(&env, &cloud, &service, &status, &createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		envCounts[env]++
+		cloudCounts[cloud]++
+		serviceCounts[fmt.Sprintf("%s:%s", cloud, service)]++
+		if status == "completed" && !createdAt.IsZero() && !updatedAt.IsZero() && updatedAt.After(createdAt) {
+			completedLeadHours += updatedAt.Sub(createdAt).Hours()
+			completedCount++
+		}
+	}
+	analytics.EnvironmentRequestDistribution = buildDistributionItems(envCounts)
+	analytics.CloudRequestDistribution = buildDistributionItems(cloudCounts)
+	analytics.ServiceRequestDistribution = buildDistributionItems(serviceCounts)
+	if completedCount > 0 {
+		analytics.LeadTime = ProjectAnalyticsLeadTime{
+			AverageHours:      completedLeadHours / float64(completedCount),
+			CompletedRequests: completedCount,
+		}
+	}
+	return analytics, nil
+}
+
+func filterProjectsByStatus(projects []ProjectCatalog, statuses ...string) []ProjectCatalog {
+	if len(statuses) == 0 {
+		return projects
+	}
+	allowed := make(map[string]struct{}, len(statuses))
+	for _, status := range statuses {
+		allowed[strings.TrimSpace(strings.ToLower(status))] = struct{}{}
+	}
+	filtered := make([]ProjectCatalog, 0, len(projects))
+	for _, project := range projects {
+		if _, ok := allowed[strings.TrimSpace(strings.ToLower(project.Status))]; ok {
+			filtered = append(filtered, project)
+		}
+	}
+	return filtered
+}
+
+func applyBulkProjectTeamAccess(projectIDs []int, teamIDs []int, environments []string, action string, updatedBy *int) ([]ProjectCatalog, error) {
+	if DB == nil {
+		return nil, fmt.Errorf("database not available")
+	}
+	projectIDs = normalizeTeamIDs(projectIDs)
+	teamIDs = normalizeTeamIDs(teamIDs)
+	environments = mergeUniqueStrings(environments)
+	if len(projectIDs) == 0 {
+		return nil, fmt.Errorf("at least one project is required")
+	}
+	if len(teamIDs) == 0 {
+		return nil, fmt.Errorf("at least one portal team is required")
+	}
+	action = strings.TrimSpace(strings.ToLower(action))
+	if action != "grant" && action != "replace" && action != "revoke" {
+		return nil, fmt.Errorf("unsupported bulk access action")
+	}
+	if action != "revoke" && len(environments) == 0 {
+		return nil, fmt.Errorf("at least one environment is required")
+	}
+	for _, teamID := range teamIDs {
+		team, err := GetTeamByID(teamID)
+		if err != nil {
+			return nil, err
+		}
+		if team == nil {
+			return nil, fmt.Errorf("team %d not found", teamID)
+		}
+		if strings.TrimSpace(strings.ToLower(team.TeamType)) != "" && strings.TrimSpace(strings.ToLower(team.TeamType)) != "portal" {
+			return nil, fmt.Errorf("team %s is not a portal team", team.Name)
+		}
+	}
+
+	updatedProjects := make([]ProjectCatalog, 0, len(projectIDs))
+	for _, projectID := range projectIDs {
+		project, err := getProjectCatalogByID(projectID)
+		if err != nil {
+			return nil, err
+		}
+		if project == nil {
+			return nil, fmt.Errorf("project %d not found", projectID)
+		}
+		input := ProjectCatalogInput{
+			Name:          project.Name,
+			Code:          project.Code,
+			Description:   project.Description,
+			Status:        project.Status,
+			OwnerTeamID:   project.OwnerTeamID,
+			Environments:  append([]string(nil), project.Environments...),
+			Clouds:        append([]string(nil), project.Clouds...),
+			Services:      append([]ProjectServiceOption(nil), project.Services...),
+			ApprovalRules: append([]ProjectApprovalRule(nil), project.ApprovalRules...),
+			TeamAccess:    make([]ProjectTeamAccess, 0, len(project.TeamAccess)),
+		}
+		accessByTeam := make(map[int]ProjectTeamAccess, len(project.TeamAccess))
+		for _, access := range project.TeamAccess {
+			accessByTeam[access.TeamID] = ProjectTeamAccess{
+				TeamID:       access.TeamID,
+				Environments: append([]string(nil), access.Environments...),
+			}
+		}
+		for _, teamID := range teamIDs {
+			current, exists := accessByTeam[teamID]
+			switch action {
+			case "grant":
+				if exists {
+					current.Environments = mergeUniqueStrings(append(current.Environments, environments...))
+					accessByTeam[teamID] = current
+				} else {
+					accessByTeam[teamID] = ProjectTeamAccess{TeamID: teamID, Environments: append([]string(nil), environments...)}
+				}
+			case "replace":
+				accessByTeam[teamID] = ProjectTeamAccess{TeamID: teamID, Environments: append([]string(nil), environments...)}
+			case "revoke":
+				delete(accessByTeam, teamID)
+			}
+		}
+		for _, access := range accessByTeam {
+			if len(access.Environments) == 0 {
+				continue
+			}
+			input.TeamAccess = append(input.TeamAccess, access)
+		}
+		sort.Slice(input.TeamAccess, func(i, j int) bool { return input.TeamAccess[i].TeamID < input.TeamAccess[j].TeamID })
+		updatedProject, err := updateProjectCatalog(projectID, input, updatedBy)
+		if err != nil {
+			return nil, err
+		}
+		updatedProjects = append(updatedProjects, *updatedProject)
+	}
+	AppendAuditLog(updatedBy, "project_bulk_team_access", "project", strconv.Itoa(len(updatedProjects)), fmt.Sprintf("%s %d project(s)", action, len(updatedProjects)))
+	return updatedProjects, nil
+}
+
 func getProjectCatalogByID(projectID int) (*ProjectCatalog, error) {
 	projects, err := getProjectCatalogsByFilter("WHERE p.id = $1", projectID)
 	if err != nil {
@@ -1271,8 +1731,52 @@ func adminProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("format")), "csv") {
+		content, err := buildProjectCatalogCSV(projects)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", `attachment; filename="projects-governance.csv"`)
+		_, _ = w.Write(content)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "projects": projects})
+}
+
+func adminProjectAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	projects, err := listProjectCatalogs()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	analytics, err := buildProjectAnalytics(projects)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "analytics": analytics})
 }
 
 func adminProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
@@ -1470,6 +1974,128 @@ func meProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"error": "project not found", "status": "error"})
 }
 
+func devopsProjectOptionsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := requireDevopsManager(w, r); !ok {
+		return
+	}
+	portalTeams, err := getPortalTeams()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	ownerTeams, err := GetTeams()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":       "ok",
+		"portal_teams": portalTeams,
+		"owner_teams":  ownerTeams,
+	})
+}
+
+func devopsProjectAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := requireDevopsManager(w, r); !ok {
+		return
+	}
+	projects, err := listProjectCatalogs()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	analytics, err := buildProjectAnalytics(projects)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "analytics": analytics})
+}
+
+func devopsProjectsBulkHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	managerID, ok := requireDevopsManager(w, r)
+	if !ok {
+		return
+	}
+	var payload struct {
+		Projects []ProjectCatalogInput `json:"projects"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	if len(payload.Projects) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "at least one project is required", "status": "error"})
+		return
+	}
+	results := make([]ProjectBulkCreateResult, 0, len(payload.Projects))
+	createdCount := 0
+	for index, input := range payload.Projects {
+		project, err := createProjectCatalog(input, &managerID)
+		result := ProjectBulkCreateResult{Index: index}
+		if err != nil {
+			result.Error = err.Error()
+		} else {
+			result.Project = project
+			createdCount++
+		}
+		results = append(results, result)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	statusCode := http.StatusOK
+	if createdCount == 0 {
+		statusCode = http.StatusBadRequest
+	}
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":        "ok",
+		"created_count": createdCount,
+		"error_count":   len(payload.Projects) - createdCount,
+		"results":       results,
+	})
+}
+
 func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
@@ -1493,6 +2119,19 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("format")), "csv") {
+			content, err := buildProjectCatalogCSV(projects)
+			if err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+			w.Header().Set("Content-Type", "text/csv")
+			w.Header().Set("Content-Disposition", `attachment; filename="devops-projects.csv"`)
+			_, _ = w.Write(content)
 			return
 		}
 		portalTeams, err := getPortalTeams()
@@ -1544,6 +2183,43 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
+func devopsProjectBulkTeamAccessHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID, ok := requireDevopsManager(w, r)
+	if !ok {
+		return
+	}
+	var payload struct {
+		ProjectIDs   []int    `json:"project_ids"`
+		TeamIDs      []int    `json:"team_ids"`
+		Environments []string `json:"environments"`
+		Action       string   `json:"action"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		return
+	}
+	projects, err := applyBulkProjectTeamAccess(payload.ProjectIDs, payload.TeamIDs, payload.Environments, payload.Action, &userID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "projects": projects})
 }
 
 func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {

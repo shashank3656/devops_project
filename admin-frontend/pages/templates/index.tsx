@@ -12,6 +12,7 @@ interface RequestTemplate {
   env: string;
   service: string;
   config: string;
+  status?: string;
   created_at: string;
   created_by: number | null;
   teams?: TeamSummary[];
@@ -172,6 +173,7 @@ export default function TemplatesList() {
                       <div className="portal-template-card__meta">
                         <span className="portal-pill">{template.env}</span>
                         <span className="portal-pill">{template.service}</span>
+                        <span className="portal-pill">{(template.status || 'draft').replace('_', ' ')}</span>
                         <span className="portal-pill">
                           {template.visible_to_all || !template.teams?.length
                             ? 'All portal teams'

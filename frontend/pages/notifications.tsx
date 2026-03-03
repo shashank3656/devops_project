@@ -361,8 +361,13 @@ export default function NotificationsPage() {
                               </Link>
                             )}
                             {notification.request_id && (
-                              <Link href={`/history?id=${notification.request_id}`} className="btn btn-secondary btn-sm">
+                              <Link href={`/history?id=${notification.request_id}${notification.project_id ? `&project_id=${notification.project_id}` : ''}`} className="btn btn-secondary btn-sm">
                                 View request
+                              </Link>
+                            )}
+                            {notification.project_id && (
+                              <Link href={`/history?project_id=${notification.project_id}`} className="btn btn-secondary btn-sm">
+                                Project history
                               </Link>
                             )}
                             {!notification.read_at && (

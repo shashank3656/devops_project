@@ -250,6 +250,11 @@ export default function AdminNotificationsPage() {
                               View project
                             </Link>
                           ) : null}
+                          {item.project_id ? (
+                            <Link href={`/project-governance?project_id=${item.project_id}`} className="btn btn-secondary btn-sm">
+                              Governance
+                            </Link>
+                          ) : null}
                           <Link href={`/activity${item.project_id ? `?project_id=${item.project_id}` : ''}`} className="btn btn-secondary btn-sm">
                             Open activity
                           </Link>
