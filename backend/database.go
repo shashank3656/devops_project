@@ -806,13 +806,16 @@ func GetGitHubLogs(limit int) ([]GitHubLogEntry, error) {
 
 // UserNotification is a single in-app notification row
 type UserNotification struct {
-	ID        int        `json:"id"`
-	UserID    int        `json:"user_id"`
-	RequestID *int       `json:"request_id"`
-	Kind      string     `json:"kind"`
-	Message   string     `json:"message"`
-	ReadAt    *time.Time `json:"read_at"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID          int        `json:"id"`
+	UserID      int        `json:"user_id"`
+	RequestID   *int       `json:"request_id"`
+	ProjectID   *int       `json:"project_id,omitempty"`
+	ProjectName string     `json:"project_name,omitempty"`
+	ProjectCode string     `json:"project_code,omitempty"`
+	Kind        string     `json:"kind"`
+	Message     string     `json:"message"`
+	ReadAt      *time.Time `json:"read_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // InsertUserNotification creates an in-app notification for a user
@@ -840,18 +843,26 @@ func ListUserNotificationsFiltered(userID int, limit, offset int, unreadOnly boo
 	if DB == nil {
 		return nil, nil
 	}
-	q := "SELECT id, user_id, request_id, kind, message, read_at, created_at FROM user_notifications WHERE user_id = $1"
+	q := `
+		SELECT n.id, n.user_id, n.request_id,
+		       r.project_id, COALESCE(p.name,''), COALESCE(p.code,''),
+		       n.kind, n.message, n.read_at, n.created_at
+		FROM user_notifications n
+		LEFT JOIN pr_requests r ON r.id = n.request_id
+		LEFT JOIN projects p ON p.id = r.project_id
+		WHERE n.user_id = $1
+	`
 	args := []interface{}{userID}
 	argPos := 2
 	if strings.TrimSpace(kind) != "" {
-		q += fmt.Sprintf(" AND kind = $%d", argPos)
+		q += fmt.Sprintf(" AND n.kind = $%d", argPos)
 		args = append(args, strings.TrimSpace(kind))
 		argPos++
 	}
 	if unreadOnly {
-		q += fmt.Sprintf(" AND read_at IS NULL")
+		q += " AND n.read_at IS NULL"
 	}
-	q += " ORDER BY created_at DESC"
+	q += " ORDER BY n.created_at DESC"
 	if limit > 0 {
 		q += fmt.Sprintf(" LIMIT $%d", argPos)
 		args = append(args, limit)
@@ -870,14 +881,18 @@ func ListUserNotificationsFiltered(userID int, limit, offset int, unreadOnly boo
 	var out []UserNotification
 	for rows.Next() {
 		var n UserNotification
-		var reqID sql.NullInt64
+		var reqID, projectID sql.NullInt64
 		var readAt sql.NullTime
-		if err := rows.Scan(&n.ID, &n.UserID, &reqID, &n.Kind, &n.Message, &readAt, &n.CreatedAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.UserID, &reqID, &projectID, &n.ProjectName, &n.ProjectCode, &n.Kind, &n.Message, &readAt, &n.CreatedAt); err != nil {
 			return nil, err
 		}
 		if reqID.Valid {
 			v := int(reqID.Int64)
 			n.RequestID = &v
+		}
+		if projectID.Valid {
+			v := int(projectID.Int64)
+			n.ProjectID = &v
 		}
 		if readAt.Valid {
 			n.ReadAt = &readAt.Time
@@ -2542,6 +2557,9 @@ type AuditLogEntry struct {
 	ResourceType  string    `json:"resource_type"`
 	ResourceID    string    `json:"resource_id"`
 	Details       string    `json:"details"`
+	ProjectID     *int      `json:"project_id,omitempty"`
+	ProjectName   string    `json:"project_name,omitempty"`
+	ProjectCode   string    `json:"project_code,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
@@ -2557,15 +2575,27 @@ func AppendAuditLog(adminUserID *int, action, resourceType, resourceID, details 
 }
 
 // GetAuditLogs returns recent audit log entries with optional filters (action, date range from/to YYYY-MM-DD)
-func GetAuditLogs(limit, offset int, actionFilter, fromDate, toDate string) ([]AuditLogEntry, error) {
+func GetAuditLogs(limit, offset int, actionFilter, fromDate, toDate string, projectIDFilter int) ([]AuditLogEntry, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	query := `
 		SELECT a.id, a.admin_user_id, a.action, a.resource_type, COALESCE(a.resource_id,''), COALESCE(a.details,''), a.created_at,
-		       u.username
+		       u.username,
+		       COALESCE(direct_project.id, request_project.id),
+		       COALESCE(direct_project.name, request_project.name, ''),
+		       COALESCE(direct_project.code, request_project.code, '')
 		FROM admin_audit_log a
 		LEFT JOIN users u ON u.id = a.admin_user_id
+		LEFT JOIN pr_requests request_ref
+		  ON a.resource_type = 'pr_request'
+		 AND a.resource_id ~ '^[0-9]+$'
+		 AND request_ref.id = a.resource_id::int
+		LEFT JOIN projects request_project ON request_project.id = request_ref.project_id
+		LEFT JOIN projects direct_project
+		  ON a.resource_type = 'project'
+		 AND a.resource_id ~ '^[0-9]+$'
+		 AND direct_project.id = a.resource_id::int
 		WHERE 1=1
 	`
 	args := []interface{}{}
@@ -2585,6 +2615,11 @@ func GetAuditLogs(limit, offset int, actionFilter, fromDate, toDate string) ([]A
 		args = append(args, toDate)
 		argPos++
 	}
+	if projectIDFilter > 0 {
+		query += fmt.Sprintf(" AND COALESCE(direct_project.id, request_project.id) = $%d", argPos)
+		args = append(args, projectIDFilter)
+		argPos++
+	}
 	query += " ORDER BY a.created_at DESC"
 	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argPos, argPos+1)
 	args = append(args, limit, offset)
@@ -2596,14 +2631,18 @@ func GetAuditLogs(limit, offset int, actionFilter, fromDate, toDate string) ([]A
 	var out []AuditLogEntry
 	for rows.Next() {
 		var e AuditLogEntry
-		var adminID sql.NullInt64
+		var adminID, projectID sql.NullInt64
 		var username sql.NullString
-		if err := rows.Scan(&e.ID, &adminID, &e.Action, &e.ResourceType, &e.ResourceID, &e.Details, &e.CreatedAt, &username); err != nil {
+		if err := rows.Scan(&e.ID, &adminID, &e.Action, &e.ResourceType, &e.ResourceID, &e.Details, &e.CreatedAt, &username, &projectID, &e.ProjectName, &e.ProjectCode); err != nil {
 			return nil, err
 		}
 		if adminID.Valid {
 			id := int(adminID.Int64)
 			e.AdminUserID = &id
+		}
+		if projectID.Valid {
+			id := int(projectID.Int64)
+			e.ProjectID = &id
 		}
 		if username.Valid {
 			e.AdminUsername = username.String

@@ -164,7 +164,13 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 	actionFilter := r.URL.Query().Get("action")
 	fromDate := strings.TrimSpace(r.URL.Query().Get("from"))
 	toDate := strings.TrimSpace(r.URL.Query().Get("to"))
-	entries, err := GetAuditLogs(limit, offset, actionFilter, fromDate, toDate)
+	projectID := 0
+	if rawProjectID := strings.TrimSpace(r.URL.Query().Get("project_id")); rawProjectID != "" {
+		if parsed, err := strconv.Atoi(rawProjectID); err == nil && parsed > 0 {
+			projectID = parsed
+		}
+	}
+	entries, err := GetAuditLogs(limit, offset, actionFilter, fromDate, toDate, projectID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -182,8 +188,8 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return strings.Join(ss, ",")
 		}
-		w.Write([]byte(csvLine("id", "created_at", "admin_username", "action", "resource_type", "resource_id", "details") + "\n"))
-		all, _ := GetAuditLogs(10000, 0, actionFilter, fromDate, toDate)
+		w.Write([]byte(csvLine("id", "created_at", "admin_username", "action", "resource_type", "resource_id", "project_name", "project_code", "details") + "\n"))
+		all, _ := GetAuditLogs(10000, 0, actionFilter, fromDate, toDate, projectID)
 		for _, e := range all {
 			w.Write([]byte(csvLine(
 				strconv.Itoa(e.ID),
@@ -192,6 +198,8 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 				e.Action,
 				e.ResourceType,
 				e.ResourceID,
+				e.ProjectName,
+				e.ProjectCode,
 				e.Details,
 			) + "\n"))
 		}
