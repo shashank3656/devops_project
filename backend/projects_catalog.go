@@ -584,7 +584,7 @@ func getPortalTeams() ([]Team, error) {
 }
 
 func createProjectCatalog(input ProjectCatalogInput, createdBy *int) (*ProjectCatalog, error) {
-	input, err := sanitizeProjectInput(input)
+	input, err = sanitizeProjectInput(input)
 	if err != nil {
 		return nil, err
 	}
