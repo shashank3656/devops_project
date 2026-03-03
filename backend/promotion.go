@@ -72,6 +72,7 @@ func handleRequestPromote(w http.ResponseWriter, r *http.Request, id int, req *P
 		createdBy = &userID
 	}
 	newReq := &PRRequest{
+		ProjectID:     req.ProjectID,
 		Team:          req.Team,
 		Env:           nextEnvironment,
 		Cloud:         req.Cloud,

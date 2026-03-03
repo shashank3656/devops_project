@@ -106,7 +106,11 @@ func devopsMeHandler(w http.ResponseWriter, r *http.Request) {
 		resp["teams"] = []interface{}{}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"user": resp, "status": "ok"})
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"user":   resp,
+		"token":  generateToken(userID),
+		"status": "ok",
+	})
 }
 
 // devopsTicketsHandler GET /api/devops/tickets - my assigned tickets (assigned_to = me)
@@ -237,6 +241,12 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	team := strings.TrimSpace(r.URL.Query().Get("team"))
 	cloud := strings.TrimSpace(r.URL.Query().Get("cloud"))
+	projectID := 0
+	if projectStr := strings.TrimSpace(r.URL.Query().Get("project_id")); projectStr != "" {
+		if n, err := strconv.Atoi(projectStr); err == nil && n > 0 {
+			projectID = n
+		}
+	}
 	statusFilter := strings.TrimSpace(r.URL.Query().Get("status"))
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
 	prID := 0
@@ -276,14 +286,14 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 			offset = n
 		}
 	}
-	requests, err := GetPRRequests(team, "", cloud, statusFilter, "", search, prID, 0, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly, "", "")
+	requests, err := GetPRRequests(team, "", cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly, "", "")
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	totalCount, _ := GetTotalCount(team, "", cloud, statusFilter, "", search, prID, 0, createdByIn, atRiskOnly, "", "")
+	totalCount, _ := GetTotalCount(team, "", cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, atRiskOnly, "", "")
 	userIDs := make([]int, 0)
 	for _, req := range requests {
 		if req.CreatedBy != nil && *req.CreatedBy > 0 {
@@ -297,6 +307,7 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 			"id": req.ID, "team": req.Team, "env": req.Env, "cloud": req.Cloud, "service": req.Service,
 			"client_name": req.ClientName, "application_id": req.ApplicationID, "priority": req.Priority,
 			"due_date": req.DueDate, "pr_url": req.PRURL, "branch": req.Branch, "status": req.Status,
+			"project_id": req.ProjectID, "project_name": req.ProjectName, "project_code": req.ProjectCode,
 			"created_by": req.CreatedBy, "assigned_to": req.AssignedTo, "created_at": req.CreatedAt, "updated_at": req.UpdatedAt,
 		}
 		obj["due_status"] = dueStatus(req.DueDate)
@@ -343,7 +354,7 @@ func devopsDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// devopsNotificationsHandler GET /api/devops/notifications - manager only; count of requests pending DevOps approval (for badge)
+// devopsNotificationsHandler GET /api/devops/notifications - manager inbox summary and project-aware notification items.
 func devopsNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
 		handleOptions(w, r)
@@ -359,12 +370,24 @@ func devopsNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"pending_approval_count": 0, "status": "ok"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"pending_approval_count": 0, "items": []interface{}{}, "total_count": 0, "counts_by_kind": map[string]int{"all": 0, "pending_approval": 0, "project_event": 0}, "status": "ok"})
 		return
 	}
-	count, _ := GetPendingDevopsApprovalCount()
+	limit, offset, projectID, kind := parseOpsNotificationFilters(
+		r.URL.Query().Get("limit"),
+		r.URL.Query().Get("offset"),
+		r.URL.Query().Get("project_id"),
+		r.URL.Query().Get("kind"),
+	)
+	payload, err := buildDevopsNotifications(limit, offset, projectID, kind)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch notifications", "status": "error"})
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"pending_approval_count": count, "status": "ok"})
+	json.NewEncoder(w).Encode(payload)
 }
 
 // devopsPendingApprovalsHandler GET /api/devops/pending-approvals - manager only; list of requests pending_devops_approval
@@ -381,7 +404,7 @@ func devopsPendingApprovalsHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	requests, err := GetPRRequests("", "", "", "pending_devops_approval", "", "", 0, 0, nil, 100, 0, "", "", false, "", "")
+	requests, err := GetPRRequests("", "", "", 0, "pending_devops_approval", "", "", 0, 0, nil, 100, 0, "", "", false, "", "")
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -561,6 +584,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				Env         string `json:"env"`
 				Service     string `json:"service"`
 				Config      string `json:"config"`
+				Status      string `json:"status"`
 				TeamIDs     []int  `json:"team_ids"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -584,7 +608,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
-			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, userIDPtr)
+			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, body.Status, userIDPtr)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
@@ -632,6 +656,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			Env         string `json:"env"`
 			Service     string `json:"service"`
 			Config      string `json:"config"`
+			Status      string `json:"status"`
 			TeamIDs     *[]int `json:"team_ids"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -656,7 +681,11 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		if config == "" {
 			config = t.Config
 		}
-		if err := UpdateRequestTemplate(id, name, strings.TrimSpace(body.Description), cloud, env, service, config); err != nil {
+		status := body.Status
+		if strings.TrimSpace(status) == "" {
+			status = t.Status
+		}
+		if err := UpdateRequestTemplate(id, name, strings.TrimSpace(body.Description), cloud, env, service, config, status, userIDPtr); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
@@ -819,6 +848,7 @@ func devopsRequestDetailHandler(w http.ResponseWriter, id int) {
 		"terraform_plan_output": req.TerraformPlanOutput,
 		"jira_ticket_id":        req.JiraTicketID,
 		"cost_risk_preview":     BuildCostRiskPreview(req),
+		"approval_context":      BuildRequestApprovalContext(req),
 	}
 	dependsOn, _ := GetRequestDependencies(id)
 	blockedBy, _ := GetRequestsThatDependOn(id)
@@ -1083,24 +1113,25 @@ func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
 	cloudFilter := strings.TrimSpace(q.Get("cloud"))
 	fromDate := strings.TrimSpace(q.Get("from"))
 	toDate := strings.TrimSpace(q.Get("to"))
+	projectIDFilter, _ := strconv.Atoi(strings.TrimSpace(q.Get("project_id")))
 	if q.Get("format") == "csv" {
-		allEntries, _ := GetCredentialAuditLogs(10000, 0, cloudFilter, fromDate, toDate)
+		allEntries, _ := GetCredentialAuditLogs(10000, 0, cloudFilter, fromDate, toDate, projectIDFilter)
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", "attachment; filename=credential-audit.csv")
-		w.Write([]byte("id,request_id,cloud,credential_type,team,env,created_by,approved_by,created_at\n"))
+		w.Write([]byte("id,request_id,project_name,project_code,cloud,credential_type,team,env,created_by,approved_by,created_at\n"))
 		for _, e := range allEntries {
 			reqID := ""
 			if e.RequestID != nil {
 				reqID = strconv.Itoa(*e.RequestID)
 			}
-			line := fmt.Sprintf("%d,%s,%s,%s,%s,%s,%s,%s,%s\n",
-				e.ID, reqID, e.Cloud, e.CredentialType, e.Team, e.Env,
+			line := fmt.Sprintf("%d,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
+				e.ID, reqID, e.ProjectName, e.ProjectCode, e.Cloud, e.CredentialType, e.Team, e.Env,
 				e.CreatedByUsername, e.ApprovedByUsername, e.CreatedAt.Format("2006-01-02 15:04:05"))
 			w.Write([]byte(line))
 		}
 		return
 	}
-	entries, err := GetCredentialAuditLogs(limit, offset, cloudFilter, fromDate, toDate)
+	entries, err := GetCredentialAuditLogs(limit, offset, cloudFilter, fromDate, toDate, projectIDFilter)
 	if err != nil {
 		log.Printf("credential audit: %v", err)
 		w.Header().Set("Content-Type", "application/json")

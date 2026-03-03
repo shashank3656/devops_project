@@ -13,12 +13,19 @@ interface RequestTemplate {
   env: string;
   service: string;
   teams?: TeamSummary[];
+  projects?: ProjectSummary[];
   visible_to_all?: boolean;
 }
 
 interface TeamSummary {
   id: number;
   name: string;
+}
+
+interface ProjectSummary {
+  id: number;
+  name: string;
+  code: string;
 }
 
 export default function TemplatesPage() {
@@ -149,13 +156,16 @@ export default function TemplatesPage() {
                       <span className="portal-pill">
                         {template.visible_to_all || !template.teams?.length ? 'All teams' : 'Team scoped'}
                       </span>
+                      <span className="portal-pill">
+                        {template.projects?.length ? `${template.projects.length} project${template.projects.length === 1 ? '' : 's'}` : 'All projects'}
+                      </span>
                     </div>
                     <div className="portal-template-card__actions">
                       <Link href={`/templates/${template.id}`} className="btn btn-secondary btn-sm">
                         View
                       </Link>
                       <Link
-                        href={`/select-service?cloud=${encodeURIComponent(template.cloud)}&env=${encodeURIComponent(template.env)}&service=${encodeURIComponent(template.service)}&template_id=${template.id}`}
+                        href={`/select-service?cloud=${encodeURIComponent(template.cloud)}&env=${encodeURIComponent(template.env)}&service=${encodeURIComponent(template.service)}&template_id=${template.id}${template.projects?.length === 1 ? `&project_id=${template.projects[0].id}` : ''}`}
                         className="btn btn-primary btn-sm"
                       >
                         Use template

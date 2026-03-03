@@ -36,6 +36,12 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	team := r.URL.Query().Get("team")
 	env := r.URL.Query().Get("env")
 	cloud := r.URL.Query().Get("cloud")
+	projectID := 0
+	if rawProjectID := strings.TrimSpace(r.URL.Query().Get("project_id")); rawProjectID != "" {
+		if parsed, err := strconv.Atoi(rawProjectID); err == nil && parsed > 0 {
+			projectID = parsed
+		}
+	}
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
 	prIDStr := r.URL.Query().Get("id") // PR number filter
 	userID := r.URL.Query().Get("user_id")
@@ -98,7 +104,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// Fetch PR requests (status, date range, application_id for user history)
-	requests, err := GetPRRequestsForHistory(team, env, cloud, statusFilter, search, prID, applicationID, fromDate, toDate, userIDInt, createdByIn, limit, offset)
+	requests, err := GetPRRequestsForHistory(team, env, cloud, projectID, statusFilter, search, prID, applicationID, fromDate, toDate, userIDInt, createdByIn, limit, offset)
 	if err != nil {
 		log.Printf("Error fetching PR requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -129,12 +135,12 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get total count for pagination
-	totalCount, _ := GetTotalCountForHistory(team, env, cloud, statusFilter, search, prID, applicationID, fromDate, toDate, userIDInt, createdByIn)
+	totalCount, _ := GetTotalCountForHistory(team, env, cloud, projectID, statusFilter, search, prID, applicationID, fromDate, toDate, userIDInt, createdByIn)
 
 	if r.URL.Query().Get("format") == "csv" {
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", "attachment; filename=history.csv")
-		all, _ := GetPRRequestsForHistory(team, env, cloud, statusFilter, search, prID, applicationID, fromDate, toDate, userIDInt, createdByIn, 10000, 0)
+		all, _ := GetPRRequestsForHistory(team, env, cloud, projectID, statusFilter, search, prID, applicationID, fromDate, toDate, userIDInt, createdByIn, 10000, 0)
 		csvLine := func(ss ...string) string {
 			for i, s := range ss {
 				if strings.Contains(s, ",") || strings.Contains(s, "\"") || strings.Contains(s, "\n") {
@@ -143,10 +149,10 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return strings.Join(ss, ",")
 		}
-		w.Write([]byte(csvLine("id", "team", "env", "cloud", "service", "status", "created_at", "updated_at") + "\n"))
+		w.Write([]byte(csvLine("id", "project", "team", "env", "cloud", "service", "status", "created_at", "updated_at") + "\n"))
 		for _, rq := range all {
 			w.Write([]byte(csvLine(
-				strconv.Itoa(rq.ID), rq.Team, rq.Env, rq.Cloud, rq.Service, rq.Status,
+				strconv.Itoa(rq.ID), rq.ProjectName, rq.Team, rq.Env, rq.Cloud, rq.Service, rq.Status,
 				rq.CreatedAt.Format(time.RFC3339), rq.UpdatedAt.Format(time.RFC3339),
 			) + "\n"))
 		}
@@ -155,12 +161,12 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{
-		"status":       "success",
-		"requests":     requests,
-		"count":        len(requests),
-		"total_count":  totalCount,
-		"limit":        limit,
-		"offset":       offset,
+		"status":      "success",
+		"requests":    requests,
+		"count":       len(requests),
+		"total_count": totalCount,
+		"limit":       limit,
+		"offset":      offset,
 	}
 
 	json.NewEncoder(w).Encode(response)

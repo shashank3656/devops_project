@@ -144,10 +144,12 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	requestPayload := struct {
 		*PRRequest
-		CostRiskPreview *CostRiskPreview `json:"cost_risk_preview,omitempty"`
+		CostRiskPreview *CostRiskPreview        `json:"cost_risk_preview,omitempty"`
+		ApprovalContext *RequestApprovalContext `json:"approval_context,omitempty"`
 	}{
 		PRRequest:       req,
 		CostRiskPreview: preview,
+		ApprovalContext: BuildRequestApprovalContext(req),
 	}
 
 	w.Header().Set("Content-Type", "application/json")

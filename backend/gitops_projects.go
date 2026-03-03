@@ -132,7 +132,7 @@ func loadGitOpsRequestsForProject(project GitOpsCatalogProject) ([]PRRequest, er
 	}
 	seen := make(map[int]PRRequest)
 	for _, term := range searchTerms {
-		requests, err := GetPRRequests(term, "", "", "", "", "", 0, 0, nil, 250, 0, "updated_at", "desc", false, "", "")
+		requests, err := GetPRRequests(term, "", "", 0, "", "", "", 0, 0, nil, 250, 0, "updated_at", "desc", false, "", "")
 		if err != nil {
 			return nil, err
 		}

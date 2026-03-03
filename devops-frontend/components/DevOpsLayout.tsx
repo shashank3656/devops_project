@@ -9,6 +9,7 @@ import {
   IconTickets,
   IconWorkload,
   IconTemplates,
+  IconProjects,
   IconUsers,
   IconMenu,
   IconShield,
@@ -45,9 +46,13 @@ function getProfileInitials(): string {
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
+  '/notifications': 'Notifications',
+  '/approval-center': 'Approval Center',
+  '/project-operations': 'Project Operations',
   '/workload': 'Workload',
   '/tickets': 'Tickets',
   '/templates': 'Templates',
+  '/projects': 'Projects',
   '/team': 'Teams',
   '/credential-audit': 'Credential Audit',
   '/profile': 'Profile',
@@ -63,6 +68,9 @@ function getPageTitle(pathname: string): string {
 
 interface PendingApprovalItem {
   id: number;
+  project_id?: number | null;
+  project_name?: string;
+  project_code?: string;
   team?: string;
   cloud?: string;
   service?: string;
@@ -97,6 +105,16 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
+  const clearSessionAndRedirect = useCallback(() => {
+    localStorage.removeItem(DEVOPS_TOKEN_KEY);
+    localStorage.removeItem(DEVOPS_USER_KEY);
+    if (typeof window !== 'undefined') {
+      window.location.assign('/login');
+      return;
+    }
+    router.replace('/login');
+  }, [router]);
+
   useEffect(() => {
     setProfileInitials(getProfileInitials());
   }, []);
@@ -112,6 +130,71 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     } catch (_) {}
   }, []);
 
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      clearSessionAndRedirect();
+      return;
+    }
+    fetch(`${apiUrl}/api/devops/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (response) => {
+        if (response.status === 401 || response.status === 403) {
+          clearSessionAndRedirect();
+          return null;
+        }
+        if (!response.ok) {
+          return null;
+        }
+        return response.json().catch(() => null);
+      })
+      .then((data) => {
+        if (data?.user) {
+          setUser(data.user);
+          localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(data.user));
+          if (typeof data.token === 'string' && data.token.trim()) {
+            localStorage.setItem(DEVOPS_TOKEN_KEY, data.token.trim());
+          }
+        }
+      })
+      .catch(() => {});
+  }, [apiUrl, clearSessionAndRedirect]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    const refreshSession = () => {
+      const currentToken = localStorage.getItem(DEVOPS_TOKEN_KEY);
+      if (!currentToken) return;
+      fetch(`${apiUrl}/api/devops/me`, {
+        headers: { Authorization: `Bearer ${currentToken}` },
+      })
+        .then(async (response) => {
+          if (response.status === 401 || response.status === 403) {
+            clearSessionAndRedirect();
+            return null;
+          }
+          if (!response.ok) {
+            return null;
+          }
+          return response.json().catch(() => null);
+        })
+        .then((data) => {
+          if (data?.user) {
+            setUser(data.user);
+            localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(data.user));
+            if (typeof data.token === 'string' && data.token.trim()) {
+              localStorage.setItem(DEVOPS_TOKEN_KEY, data.token.trim());
+            }
+          }
+        })
+        .catch(() => {});
+    };
+    const interval = window.setInterval(refreshSession, 20 * 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, [apiUrl, clearSessionAndRedirect]);
+
   const isManager = user?.devops_profile?.is_manager ?? false;
 
   const refreshPendingCount = useCallback(() => {
@@ -119,13 +202,19 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
     fetch(`${apiUrl}/api/devops/notifications`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => {
+        if (r.status === 401 || r.status === 403) {
+          clearSessionAndRedirect();
+          return null;
+        }
+        return r.ok ? r.json() : null;
+      })
       .then((data) => {
         if (data?.status === 'ok' && typeof data.pending_approval_count === 'number')
           setPendingCount(data.pending_approval_count);
       })
       .catch(() => {});
-  }, [isManager, apiUrl]);
+  }, [isManager, apiUrl, clearSessionAndRedirect]);
 
   useEffect(() => {
     refreshPendingCount();
@@ -144,13 +233,19 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     if (!token) return;
     setPendingApprovalsLoading(true);
     fetch(`${apiUrl}/api/devops/pending-approvals`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => {
+        if (r.status === 401 || r.status === 403) {
+          clearSessionAndRedirect();
+          return null;
+        }
+        return r.ok ? r.json() : null;
+      })
       .then((data) => {
         setPendingApprovals(Array.isArray(data?.requests) ? data.requests : []);
       })
       .catch(() => setPendingApprovals([]))
       .finally(() => setPendingApprovalsLoading(false));
-  }, [apiUrl, isManager]);
+  }, [apiUrl, isManager, clearSessionAndRedirect]);
 
   useEffect(() => {
     if (notifyOpen) refreshPendingApprovals();
@@ -222,8 +317,12 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     { href: '/dashboard', label: 'Dashboard', Icon: IconTickets },
   ];
   if (isManager) {
+    baseNavItems.push({ href: '/notifications', label: 'Notifications', Icon: IconBell });
+    baseNavItems.push({ href: '/approval-center', label: 'Approval Center', Icon: IconShield });
+    baseNavItems.push({ href: '/project-operations', label: 'Project Operations', Icon: IconWorkload });
     baseNavItems.push({ href: '/workload', label: 'Workload', Icon: IconWorkload });
     baseNavItems.push({ href: '/tickets', label: 'Tickets', Icon: IconTickets });
+    baseNavItems.push({ href: '/projects', label: 'Projects', Icon: IconProjects });
   }
   baseNavItems.push({ href: '/templates', label: 'Templates', Icon: IconTemplates });
   baseNavItems.push({ href: '/credential-audit', label: 'Credential Audit', Icon: IconShield });
@@ -380,6 +479,9 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                       <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
                         Open tickets
                       </Link>
+                      <Link href="/notifications" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                        Open notifications center
+                      </Link>
                       <div className="devops-navbar__notify-list">
                         {pendingApprovalsLoading ? (
                           <p className="devops-navbar__notify-empty">Loading...</p>
@@ -394,6 +496,12 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                               onClick={() => setNotifyOpen(false)}
                             >
                               <strong>Ticket #{request.id}</strong>
+                              {request.project_name ? (
+                                <span>
+                                  {request.project_name}
+                                  {request.project_code ? ` (${request.project_code})` : ''}
+                                </span>
+                              ) : null}
                               <span>{request.team || 'Team'} / {request.cloud || 'Cloud'} / {request.service || 'Service'}</span>
                               <small>{formatTime(request.created_at)}</small>
                             </Link>

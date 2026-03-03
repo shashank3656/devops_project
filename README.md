@@ -81,6 +81,7 @@ Environment variables are stored in `config/.env`. See `config/.env.example` for
 Database notes:
 - Set real `DB_USER`, `DB_PASSWORD`, and `DB_NAME` values in `config/.env`
 - Re-run `./scripts/sync-env.sh` after changing DB credentials so `docker-compose` picks them up
+- `./scripts/sync-env.sh` now also mirrors `DB_USER` / `DB_PASSWORD` / `DB_NAME` into `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` for the postgres container, so backend and database stay aligned from one config source
 - PostgreSQL is now bound to `127.0.0.1:5432` in compose to avoid public exposure by default
 - Redis is enabled by default in compose for cache and queue workloads; set `REDIS_*` vars in `config/.env` if you use an external Redis instance
 - Backend query/runtime guardrails are configurable with `DB_QUERY_TIMEOUT_SECONDS`, `DB_SLOW_QUERY_MS`, and `REQUEST_LOG_SLOW_MS`
