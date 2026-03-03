@@ -48,6 +48,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/notifications': 'Notifications',
   '/approval-center': 'Approval Center',
+  '/project-operations': 'Project Operations',
   '/workload': 'Workload',
   '/tickets': 'Tickets',
   '/templates': 'Templates',
@@ -104,6 +105,16 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
+  const clearSessionAndRedirect = useCallback(() => {
+    localStorage.removeItem(DEVOPS_TOKEN_KEY);
+    localStorage.removeItem(DEVOPS_USER_KEY);
+    if (typeof window !== 'undefined') {
+      window.location.assign('/login');
+      return;
+    }
+    router.replace('/login');
+  }, [router]);
+
   useEffect(() => {
     setProfileInitials(getProfileInitials());
   }, []);
@@ -119,13 +130,72 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     } catch (_) {}
   }, []);
 
-  const isManager = user?.devops_profile?.is_manager ?? false;
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      clearSessionAndRedirect();
+      return;
+    }
+    fetch(`${apiUrl}/api/devops/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (response) => {
+        if (response.status === 401 || response.status === 403) {
+          clearSessionAndRedirect();
+          return null;
+        }
+        if (!response.ok) {
+          return null;
+        }
+        return response.json().catch(() => null);
+      })
+      .then((data) => {
+        if (data?.user) {
+          setUser(data.user);
+          localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(data.user));
+          if (typeof data.token === 'string' && data.token.trim()) {
+            localStorage.setItem(DEVOPS_TOKEN_KEY, data.token.trim());
+          }
+        }
+      })
+      .catch(() => {});
+  }, [apiUrl, clearSessionAndRedirect]);
 
-  const clearSessionAndRedirect = useCallback(() => {
-    localStorage.removeItem(DEVOPS_TOKEN_KEY);
-    localStorage.removeItem(DEVOPS_USER_KEY);
-    router.replace('/login');
-  }, [router]);
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    const refreshSession = () => {
+      const currentToken = localStorage.getItem(DEVOPS_TOKEN_KEY);
+      if (!currentToken) return;
+      fetch(`${apiUrl}/api/devops/me`, {
+        headers: { Authorization: `Bearer ${currentToken}` },
+      })
+        .then(async (response) => {
+          if (response.status === 401 || response.status === 403) {
+            clearSessionAndRedirect();
+            return null;
+          }
+          if (!response.ok) {
+            return null;
+          }
+          return response.json().catch(() => null);
+        })
+        .then((data) => {
+          if (data?.user) {
+            setUser(data.user);
+            localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(data.user));
+            if (typeof data.token === 'string' && data.token.trim()) {
+              localStorage.setItem(DEVOPS_TOKEN_KEY, data.token.trim());
+            }
+          }
+        })
+        .catch(() => {});
+    };
+    const interval = window.setInterval(refreshSession, 20 * 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, [apiUrl, clearSessionAndRedirect]);
+
+  const isManager = user?.devops_profile?.is_manager ?? false;
 
   const refreshPendingCount = useCallback(() => {
     if (!isManager) return;
@@ -249,6 +319,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   if (isManager) {
     baseNavItems.push({ href: '/notifications', label: 'Notifications', Icon: IconBell });
     baseNavItems.push({ href: '/approval-center', label: 'Approval Center', Icon: IconShield });
+    baseNavItems.push({ href: '/project-operations', label: 'Project Operations', Icon: IconWorkload });
     baseNavItems.push({ href: '/workload', label: 'Workload', Icon: IconWorkload });
     baseNavItems.push({ href: '/tickets', label: 'Tickets', Icon: IconTickets });
     baseNavItems.push({ href: '/projects', label: 'Projects', Icon: IconProjects });

@@ -37,6 +37,7 @@ function stageTone(stage?: string): { background: string; color: string } {
 export default function AdminProjectsPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -82,6 +83,39 @@ export default function AdminProjectsPage() {
     needsSetup: projects.filter((project) => !project.ready_for_requests && project.status === 'active').length,
   }), [projects]);
 
+  const exportProjects = async () => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+    setExporting(true);
+    try {
+      const response = await fetch(`${apiUrl}/api/admin/projects?format=csv`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401 || response.status === 403) {
+        router.replace('/login');
+        return;
+      }
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || 'Failed to export projects');
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'admin-projects.csv';
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export projects');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <>
       <Head>
@@ -96,6 +130,11 @@ export default function AdminProjectsPage() {
               <p className="portal-page__subtitle">
                 Review every DevOps-managed project catalog, its lifecycle stage, and how ready it is for user request traffic.
               </p>
+            </div>
+            <div className="portal-page__actions">
+              <button type="button" className="btn btn-secondary" onClick={() => void exportProjects()} disabled={exporting}>
+                {exporting ? 'Exporting...' : 'Export CSV'}
+              </button>
             </div>
           </div>
 

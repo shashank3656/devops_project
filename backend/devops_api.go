@@ -106,7 +106,11 @@ func devopsMeHandler(w http.ResponseWriter, r *http.Request) {
 		resp["teams"] = []interface{}{}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"user": resp, "status": "ok"})
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"user":   resp,
+		"token":  generateToken(userID),
+		"status": "ok",
+	})
 }
 
 // devopsTicketsHandler GET /api/devops/tickets - my assigned tickets (assigned_to = me)
@@ -580,6 +584,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				Env         string `json:"env"`
 				Service     string `json:"service"`
 				Config      string `json:"config"`
+				Status      string `json:"status"`
 				TeamIDs     []int  `json:"team_ids"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -603,7 +608,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
-			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, userIDPtr)
+			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, body.Status, userIDPtr)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
@@ -651,6 +656,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			Env         string `json:"env"`
 			Service     string `json:"service"`
 			Config      string `json:"config"`
+			Status      string `json:"status"`
 			TeamIDs     *[]int `json:"team_ids"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -675,7 +681,11 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		if config == "" {
 			config = t.Config
 		}
-		if err := UpdateRequestTemplate(id, name, strings.TrimSpace(body.Description), cloud, env, service, config); err != nil {
+		status := body.Status
+		if strings.TrimSpace(status) == "" {
+			status = t.Status
+		}
+		if err := UpdateRequestTemplate(id, name, strings.TrimSpace(body.Description), cloud, env, service, config, status, userIDPtr); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 			return

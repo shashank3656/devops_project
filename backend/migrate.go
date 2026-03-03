@@ -626,6 +626,37 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_template_projects_template_id ON request_template_projects(template_id)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_template_projects_project_id ON request_template_projects(project_id)")
 
+	// Migration 34: template governance workflow
+	var templateStatusCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'request_templates' AND column_name = 'status'").Scan(&templateStatusCount)
+	if templateStatusCount == 0 {
+		log.Println("Migrating database: adding request_templates.status...")
+		_, _ = DB.Exec("ALTER TABLE request_templates ADD COLUMN status VARCHAR(40) NOT NULL DEFAULT 'draft'")
+		_, _ = DB.Exec("UPDATE request_templates SET status = 'published' WHERE created_at IS NOT NULL")
+	}
+	var templateUpdatedAtCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'request_templates' AND column_name = 'updated_at'").Scan(&templateUpdatedAtCount)
+	if templateUpdatedAtCount == 0 {
+		log.Println("Migrating database: adding request_templates.updated_at...")
+		_, _ = DB.Exec("ALTER TABLE request_templates ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+		_, _ = DB.Exec("UPDATE request_templates SET updated_at = created_at WHERE updated_at IS NULL")
+	}
+	var templatePublishedAtCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'request_templates' AND column_name = 'published_at'").Scan(&templatePublishedAtCount)
+	if templatePublishedAtCount == 0 {
+		log.Println("Migrating database: adding request_templates.published_at...")
+		_, _ = DB.Exec("ALTER TABLE request_templates ADD COLUMN published_at TIMESTAMP")
+		_, _ = DB.Exec("UPDATE request_templates SET published_at = created_at WHERE status = 'published' AND published_at IS NULL")
+	}
+	var templatePublishedByCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'request_templates' AND column_name = 'published_by'").Scan(&templatePublishedByCount)
+	if templatePublishedByCount == 0 {
+		log.Println("Migrating database: adding request_templates.published_by...")
+		_, _ = DB.Exec("ALTER TABLE request_templates ADD COLUMN published_by INTEGER REFERENCES users(id) ON DELETE SET NULL")
+		_, _ = DB.Exec("UPDATE request_templates SET published_by = created_by WHERE status = 'published' AND published_by IS NULL")
+	}
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_templates_status ON request_templates(status)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }

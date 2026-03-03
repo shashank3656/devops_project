@@ -68,33 +68,63 @@ export default function DevOpsNotificationsPage() {
   const clearSessionAndRedirect = () => {
     localStorage.removeItem(DEVOPS_TOKEN_KEY);
     localStorage.removeItem(DEVOPS_USER_KEY);
-    window.location.href = '/login';
+    window.location.assign('/login');
+  };
+
+  const validateDevOpsSession = async (): Promise<string | null> => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      clearSessionAndRedirect();
+      return null;
+    }
+    const response = await fetch(`${apiUrl}/api/devops/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.status === 401 || response.status === 403) {
+      clearSessionAndRedirect();
+      return null;
+    }
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.user) {
+      throw new Error(data?.error || 'Failed to validate DevOps session');
+    }
+    localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(data.user));
+    const nextToken = typeof data.token === 'string' && data.token.trim() ? data.token.trim() : token;
+    localStorage.setItem(DEVOPS_TOKEN_KEY, nextToken);
+    return nextToken;
   };
 
   useEffect(() => {
-    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    const rawUser = localStorage.getItem('devops_user');
-    if (!token || !rawUser) {
-      window.location.href = '/login';
-      return;
-    }
-    try {
-      const user = JSON.parse(rawUser) as { devops_profile?: { is_manager?: boolean } };
-      if (!user.devops_profile?.is_manager) {
-        window.location.href = '/dashboard';
-        return;
-      }
-    } catch {
-      window.location.href = '/login';
-      return;
-    }
-    void fetchProjects(token);
+    void validateDevOpsSession()
+      .then((token) => {
+        if (!token) return;
+        const rawUser = localStorage.getItem(DEVOPS_USER_KEY);
+        if (!rawUser) {
+          clearSessionAndRedirect();
+          return;
+        }
+        try {
+          const user = JSON.parse(rawUser) as { devops_profile?: { is_manager?: boolean } };
+          if (!user.devops_profile?.is_manager) {
+            window.location.href = '/dashboard';
+            return;
+          }
+        } catch {
+          clearSessionAndRedirect();
+          return;
+        }
+        void fetchProjects(token);
+      })
+      .catch(() => clearSessionAndRedirect());
   }, [apiUrl]);
 
   useEffect(() => {
-    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token) return;
-    void fetchNotifications(token);
+    void validateDevOpsSession()
+      .then((token) => {
+        if (!token) return;
+        void fetchNotifications(token);
+      })
+      .catch(() => clearSessionAndRedirect());
   }, [apiUrl, kind, page, projectId]);
 
   const fetchProjects = async (token: string) => {
@@ -272,7 +302,12 @@ export default function DevOpsNotificationsPage() {
                             View project
                           </Link>
                         ) : null}
-                        <Link href="/approval-center" className="btn btn-secondary btn-sm">
+                        {item.project_id ? (
+                          <Link href={`/project-operations?project_id=${item.project_id}`} className="btn btn-secondary btn-sm">
+                            Operations
+                          </Link>
+                        ) : null}
+                        <Link href={`/approval-center${item.project_id ? `?project_id=${item.project_id}` : ''}`} className="btn btn-secondary btn-sm">
                           Open approval center
                         </Link>
                       </div>

@@ -55,6 +55,9 @@ export default function DevOpsLogin() {
         return;
       }
       localStorage.setItem(DEVOPS_TOKEN_KEY, loginData.token);
+      if (typeof meData.token === 'string' && meData.token.trim()) {
+        localStorage.setItem(DEVOPS_TOKEN_KEY, meData.token.trim());
+      }
       localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(meData.user || {}));
       router.push('/dashboard');
     } catch (err) {

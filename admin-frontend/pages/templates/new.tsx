@@ -20,6 +20,8 @@ interface ProjectSummary {
   status?: string;
 }
 
+type TemplateStatus = 'draft' | 'pending_approval' | 'published' | 'archived';
+
 export default function NewTemplate() {
   const router = useRouter();
   const [name, setName] = useState('');
@@ -28,6 +30,7 @@ export default function NewTemplate() {
   const [env, setEnv] = useState('prod');
   const [service, setService] = useState('');
   const [config, setConfig] = useState('{}');
+  const [status, setStatus] = useState<TemplateStatus>('draft');
   const [portalTeams, setPortalTeams] = useState<TeamSummary[]>([]);
   const [selectedTeamIds, setSelectedTeamIds] = useState<number[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -111,6 +114,7 @@ export default function NewTemplate() {
           env: env.trim(),
           service: service.trim(),
           config: configStr,
+          status,
           team_ids: selectedTeamIds,
           project_ids: selectedProjectIds,
         }),
@@ -198,6 +202,18 @@ export default function NewTemplate() {
                     placeholder="e.g. EKS, BigQuery"
                   />
                 </div>
+              </div>
+              <div className="form-group">
+                <label className="label" htmlFor="tpl-status">Governance status</label>
+                <select id="tpl-status" className="input" value={status} onChange={(e) => setStatus(e.target.value as TemplateStatus)}>
+                  <option value="draft">Draft</option>
+                  <option value="pending_approval">Pending approval</option>
+                  <option value="published">Published</option>
+                  <option value="archived">Archived</option>
+                </select>
+                <span className="label-optional" style={{ display: 'block', marginTop: 8 }}>
+                  Only published templates are visible in the user portal. Use draft or pending approval until the template is ready for launch.
+                </span>
               </div>
               <div className="form-group">
                 <label className="label" htmlFor="tpl-config">Config (JSON)</label>

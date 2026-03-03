@@ -15,10 +15,13 @@ interface RequestTemplate {
   env: string;
   service: string;
   config: string;
+  status?: TemplateStatus;
   teams?: TeamSummary[];
   projects?: ProjectSummary[];
   visible_to_all?: boolean;
 }
+
+type TemplateStatus = 'draft' | 'pending_approval' | 'published' | 'archived';
 
 interface TeamSummary {
   id: number;
@@ -42,6 +45,7 @@ export default function EditTemplate() {
   const [env, setEnv] = useState('prod');
   const [service, setService] = useState('');
   const [config, setConfig] = useState('{}');
+  const [status, setStatus] = useState<TemplateStatus>('draft');
   const [portalTeams, setPortalTeams] = useState<TeamSummary[]>([]);
   const [selectedTeamIds, setSelectedTeamIds] = useState<number[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -105,6 +109,7 @@ export default function EditTemplate() {
         setEnv(t.env || 'prod');
         setService(t.service || '');
         setConfig(t.config || '{}');
+        setStatus((t.status as TemplateStatus) || 'draft');
         setSelectedTeamIds(Array.isArray(t.teams) ? t.teams.map((team) => team.id) : []);
         setSelectedProjectIds(Array.isArray(t.projects) ? t.projects.map((project) => project.id) : []);
         setError('');
@@ -170,6 +175,7 @@ export default function EditTemplate() {
           env: env.trim(),
           service: service.trim(),
           config: configStr,
+          status,
           team_ids: selectedTeamIds,
           project_ids: selectedProjectIds,
         }),
@@ -264,6 +270,18 @@ export default function EditTemplate() {
                     required
                   />
                 </div>
+              </div>
+              <div className="form-group">
+                <label className="label" htmlFor="tpl-status">Governance status</label>
+                <select id="tpl-status" className="input" value={status} onChange={(e) => setStatus(e.target.value as TemplateStatus)}>
+                  <option value="draft">Draft</option>
+                  <option value="pending_approval">Pending approval</option>
+                  <option value="published">Published</option>
+                  <option value="archived">Archived</option>
+                </select>
+                <span className="label-optional" style={{ display: 'block', marginTop: 8 }}>
+                  Only published templates are visible to end users. Use pending approval when the template is ready for review but should not be launched yet.
+                </span>
               </div>
               <div className="form-group">
                 <label className="label" htmlFor="tpl-config">Config (JSON)</label>

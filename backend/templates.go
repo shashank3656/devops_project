@@ -116,6 +116,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				Env         string `json:"env"`
 				Service     string `json:"service"`
 				Config      string `json:"config"`
+				Status      string `json:"status"`
 				TeamIDs     []int  `json:"team_ids"`
 				ProjectIDs  []int  `json:"project_ids"`
 			}
@@ -140,7 +141,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
-			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, adminIDPtr)
+			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, body.Status, adminIDPtr)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
@@ -201,6 +202,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			Env         string `json:"env"`
 			Service     string `json:"service"`
 			Config      string `json:"config"`
+			Status      string `json:"status"`
 			TeamIDs     *[]int `json:"team_ids"`
 			ProjectIDs  *[]int `json:"project_ids"`
 		}
@@ -226,7 +228,11 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		if config == "" {
 			config = t.Config
 		}
-		if err := UpdateRequestTemplate(id, name, strings.TrimSpace(body.Description), cloud, env, service, config); err != nil {
+		status := body.Status
+		if strings.TrimSpace(status) == "" {
+			status = t.Status
+		}
+		if err := UpdateRequestTemplate(id, name, strings.TrimSpace(body.Description), cloud, env, service, config, status, adminIDPtr); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
