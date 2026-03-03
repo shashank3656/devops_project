@@ -194,6 +194,9 @@ var DB *sql.DB
 
 type PRRequest struct {
 	ID                  int        `json:"id"`
+	ProjectID           *int       `json:"project_id,omitempty"`
+	ProjectName         string     `json:"project_name,omitempty"`
+	ProjectCode         string     `json:"project_code,omitempty"`
 	Team                string     `json:"team"`
 	Env                 string     `json:"env"`
 	Cloud               string     `json:"cloud"`
@@ -381,17 +384,18 @@ type APIKeyRecord struct {
 
 // RequestTemplate is an admin-defined preset (e.g. "AWS prod EKS")
 type RequestTemplate struct {
-	ID           int       `json:"id"`
-	Name         string    `json:"name"`
-	Description  string    `json:"description"`
-	Cloud        string    `json:"cloud"`
-	Env          string    `json:"env"`
-	Service      string    `json:"service"`
-	Config       string    `json:"config"`
-	CreatedBy    *int      `json:"created_by"`
-	CreatedAt    time.Time `json:"created_at"`
-	Teams        []Team    `json:"teams,omitempty"`
-	VisibleToAll bool      `json:"visible_to_all"`
+	ID           int              `json:"id"`
+	Name         string           `json:"name"`
+	Description  string           `json:"description"`
+	Cloud        string           `json:"cloud"`
+	Env          string           `json:"env"`
+	Service      string           `json:"service"`
+	Config       string           `json:"config"`
+	CreatedBy    *int             `json:"created_by"`
+	CreatedAt    time.Time        `json:"created_at"`
+	Teams        []Team           `json:"teams,omitempty"`
+	Projects     []ProjectSummary `json:"projects,omitempty"`
+	VisibleToAll bool             `json:"visible_to_all"`
 }
 
 // UserSavedConfig is a user's saved/favorite configuration
@@ -646,13 +650,13 @@ func createTables() error {
 // SavePRRequest saves a PR request to the database (pr_url may be "" for pending_approval or draft)
 func SavePRRequest(req *PRRequest) error {
 	query := `
-		INSERT INTO pr_requests (team, env, cloud, service, client_name, application_id, priority, due_date, pr_url, branch, file_path, status, config, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		INSERT INTO pr_requests (project_id, team, env, cloud, service, client_name, application_id, priority, due_date, pr_url, branch, file_path, status, config, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id, created_at, updated_at
 	`
 	err := queryRowContext(
 		query,
-		req.Team, req.Env, req.Cloud, req.Service, req.ClientName,
+		req.ProjectID, req.Team, req.Env, req.Cloud, req.Service, req.ClientName,
 		req.ApplicationID, req.Priority, req.DueDate, req.PRURL, req.Branch, req.FilePath, req.Status,
 		req.Config, req.CreatedBy,
 	).Scan(&req.ID, &req.CreatedAt, &req.UpdatedAt)
@@ -1267,7 +1271,7 @@ func GetUsernamesByUserIDs(userIDs []int) (map[int]string, error) {
 }
 
 // GetPRRequestsForHistory is like GetPRRequests but adds fromDate, toDate, applicationID for user history.
-func GetPRRequestsForHistory(team, env, cloud, statusFilter, search string, prID int, applicationID, fromDate, toDate string, userIDInt int, createdByIn []int, limit, offset int) ([]PRRequest, error) {
+func GetPRRequestsForHistory(team, env, cloud string, projectID int, statusFilter, search string, prID int, applicationID, fromDate, toDate string, userIDInt int, createdByIn []int, limit, offset int) ([]PRRequest, error) {
 	s := search
 	if applicationID != "" {
 		if s != "" {
@@ -1276,11 +1280,11 @@ func GetPRRequestsForHistory(team, env, cloud, statusFilter, search string, prID
 			s = applicationID
 		}
 	}
-	return GetPRRequests(team, env, cloud, statusFilter, "", s, prID, userIDInt, createdByIn, limit, offset, "created_at", "desc", false, fromDate, toDate)
+	return GetPRRequests(team, env, cloud, projectID, statusFilter, "", s, prID, userIDInt, createdByIn, limit, offset, "created_at", "desc", false, fromDate, toDate)
 }
 
 // GetTotalCountForHistory is like GetTotalCount but for history filters.
-func GetTotalCountForHistory(team, env, cloud, statusFilter, search string, prID int, applicationID, fromDate, toDate string, userIDInt int, createdByIn []int) (int, error) {
+func GetTotalCountForHistory(team, env, cloud string, projectID int, statusFilter, search string, prID int, applicationID, fromDate, toDate string, userIDInt int, createdByIn []int) (int, error) {
 	s := search
 	if applicationID != "" {
 		if s != "" {
@@ -1289,14 +1293,18 @@ func GetTotalCountForHistory(team, env, cloud, statusFilter, search string, prID
 			s = applicationID
 		}
 	}
-	return GetTotalCount(team, env, cloud, statusFilter, "", s, prID, userIDInt, createdByIn, false, fromDate, toDate)
+	return GetTotalCount(team, env, cloud, projectID, statusFilter, "", s, prID, userIDInt, createdByIn, false, fromDate, toDate)
 }
 
 // GetPRRequests retrieves PR requests with optional filters. fromDate, toDate: YYYY-MM-DD for created_at range.
-func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, limit, offset int, sortBy, sortOrder string, atRiskOnly bool, fromDate, toDate string) ([]PRRequest, error) {
+func GetPRRequests(team, env, cloud string, projectID int, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, limit, offset int, sortBy, sortOrder string, atRiskOnly bool, fromDate, toDate string) ([]PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at
-		FROM pr_requests
+		SELECT r.id, r.team, r.env, r.cloud, r.service, COALESCE(r.client_name,'') AS client_name, COALESCE(r.application_id,'') AS application_id,
+		       COALESCE(r.priority,'medium') AS priority, r.due_date, r.pr_url, r.branch, r.file_path, r.status,
+		       COALESCE(r.reject_reason,'') AS reject_reason, r.config, r.created_by, r.assigned_to, r.created_at, r.updated_at,
+		       r.project_id, COALESCE(p.name,''), COALESCE(p.code,'')
+		FROM pr_requests r
+		LEFT JOIN projects p ON p.id = r.project_id
 		WHERE 1=1
 	`
 	args := []interface{}{}
@@ -1304,48 +1312,54 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 
 	if search != "" {
 		searchVal := "%" + search + "%"
-		query += fmt.Sprintf(` AND (team ILIKE $%d OR env ILIKE $%d OR cloud ILIKE $%d OR service ILIKE $%d OR COALESCE(client_name,'') ILIKE $%d OR COALESCE(application_id,'') ILIKE $%d OR branch ILIKE $%d OR COALESCE(config,'')::text ILIKE $%d)`,
-			argPos, argPos, argPos, argPos, argPos, argPos, argPos, argPos)
+		query += fmt.Sprintf(` AND (r.team ILIKE $%d OR r.env ILIKE $%d OR r.cloud ILIKE $%d OR r.service ILIKE $%d OR COALESCE(r.client_name,'') ILIKE $%d OR COALESCE(r.application_id,'') ILIKE $%d OR r.branch ILIKE $%d OR COALESCE(r.config,'')::text ILIKE $%d OR COALESCE(p.name,'') ILIKE $%d OR COALESCE(p.code,'') ILIKE $%d)`,
+			argPos, argPos, argPos, argPos, argPos, argPos, argPos, argPos, argPos, argPos)
 		args = append(args, searchVal)
 		argPos++
 	}
 
 	if prID > 0 {
-		query += fmt.Sprintf(" AND id = $%d", argPos)
+		query += fmt.Sprintf(" AND r.id = $%d", argPos)
 		args = append(args, prID)
 		argPos++
 	}
 
 	if team != "" {
-		query += fmt.Sprintf(" AND team ILIKE $%d", argPos)
+		query += fmt.Sprintf(" AND r.team ILIKE $%d", argPos)
 		args = append(args, "%"+team+"%")
 		argPos++
 	}
 
 	if env != "" {
-		query += fmt.Sprintf(" AND env ILIKE $%d", argPos)
+		query += fmt.Sprintf(" AND r.env ILIKE $%d", argPos)
 		args = append(args, "%"+env+"%")
 		argPos++
 	}
 
 	if cloud != "" {
-		query += fmt.Sprintf(" AND cloud ILIKE $%d", argPos)
+		query += fmt.Sprintf(" AND r.cloud ILIKE $%d", argPos)
 		args = append(args, "%"+cloud+"%")
+		argPos++
+	}
+
+	if projectID > 0 {
+		query += fmt.Sprintf(" AND r.project_id = $%d", argPos)
+		args = append(args, projectID)
 		argPos++
 	}
 
 	if statusFilter != "" {
 		if statusFilter == "pending_any" {
-			query += " AND status IN ('pending_approval', 'pending_devops_approval', 'pending_user_manager_approval')"
+			query += " AND r.status IN ('pending_approval', 'pending_devops_approval', 'pending_user_manager_approval')"
 		} else {
-			query += fmt.Sprintf(" AND status = $%d", argPos)
+			query += fmt.Sprintf(" AND r.status = $%d", argPos)
 			args = append(args, statusFilter)
 			argPos++
 		}
 	}
 
 	if priorityFilter != "" {
-		query += fmt.Sprintf(" AND COALESCE(priority,'medium') = $%d", argPos)
+		query += fmt.Sprintf(" AND COALESCE(r.priority,'medium') = $%d", argPos)
 		args = append(args, priorityFilter)
 		argPos++
 	}
@@ -1357,33 +1371,35 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 			args = append(args, createdByIn[i])
 			argPos++
 		}
-		query += " AND created_by IN (" + strings.Join(placeholders, ",") + ")"
+		query += " AND r.created_by IN (" + strings.Join(placeholders, ",") + ")"
 	} else if userIDInt > 0 {
-		query += fmt.Sprintf(" AND created_by = $%d", argPos)
+		query += fmt.Sprintf(" AND r.created_by = $%d", argPos)
 		args = append(args, userIDInt)
 		argPos++
 	}
 	if atRiskOnly {
-		query += " AND due_date IS NOT NULL AND (due_date < NOW() OR due_date < NOW() + INTERVAL '24 hours')"
+		query += " AND r.due_date IS NOT NULL AND (r.due_date < NOW() OR r.due_date < NOW() + INTERVAL '24 hours')"
 	}
 	if fromDate != "" {
-		query += fmt.Sprintf(" AND created_at >= $%d::date", argPos)
+		query += fmt.Sprintf(" AND r.created_at >= $%d::date", argPos)
 		args = append(args, fromDate)
 		argPos++
 	}
 	if toDate != "" {
-		query += fmt.Sprintf(" AND created_at < ($%d::date + interval '1 day')", argPos)
+		query += fmt.Sprintf(" AND r.created_at < ($%d::date + interval '1 day')", argPos)
 		args = append(args, toDate)
 		argPos++
 	}
 	orderCol := "created_at"
 	switch sortBy {
 	case "updated_at":
-		orderCol = "updated_at"
+		orderCol = "r.updated_at"
 	case "priority":
-		orderCol = "COALESCE(priority,'medium')"
+		orderCol = "COALESCE(r.priority,'medium')"
 	case "due_date":
-		orderCol = "due_date"
+		orderCol = "r.due_date"
+	default:
+		orderCol = "r.created_at"
 	}
 	orderDir := "DESC"
 	if strings.ToLower(sortOrder) == "asc" {
@@ -1416,12 +1432,12 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 	var requests []PRRequest
 	for rows.Next() {
 		var req PRRequest
-		var createdBy, assignedTo sql.NullInt64
+		var createdBy, assignedTo, projectID sql.NullInt64
 		var dueDate sql.NullTime
 		err := rows.Scan(
 			&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
 			&req.ApplicationID, &req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
-			&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt,
+			&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt, &projectID, &req.ProjectName, &req.ProjectCode,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan PR request: %w", err)
@@ -1438,6 +1454,10 @@ func GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search string
 		} else {
 			req.AssignedTo = nil
 		}
+		if projectID.Valid && projectID.Int64 > 0 {
+			val := int(projectID.Int64)
+			req.ProjectID = &val
+		}
 		if dueDate.Valid {
 			req.DueDate = &dueDate.Time
 		}
@@ -1453,16 +1473,21 @@ func GetPRRequestByApplicationID(appID string) *PRRequest {
 		return nil
 	}
 	query := `
-		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at, COALESCE(terraform_plan_output,'') AS terraform_plan_output
-		FROM pr_requests WHERE application_id = $1 ORDER BY created_at DESC LIMIT 1
+		SELECT r.id, r.team, r.env, r.cloud, r.service, COALESCE(r.client_name,'') AS client_name, COALESCE(r.application_id,'') AS application_id,
+		       COALESCE(r.priority,'medium') AS priority, r.due_date, r.pr_url, r.branch, r.file_path, r.status,
+		       COALESCE(r.reject_reason,'') AS reject_reason, r.config, r.created_by, r.assigned_to, r.created_at, r.updated_at,
+		       COALESCE(r.terraform_plan_output,'') AS terraform_plan_output, r.project_id, COALESCE(p.name,''), COALESCE(p.code,'')
+		FROM pr_requests r
+		LEFT JOIN projects p ON p.id = r.project_id
+		WHERE r.application_id = $1 ORDER BY r.created_at DESC LIMIT 1
 	`
 	var r PRRequest
-	var createdBy, assignedTo sql.NullInt64
+	var createdBy, assignedTo, projectID sql.NullInt64
 	var dueDate sql.NullTime
 	err := DB.QueryRow(query, appID).Scan(
 		&r.ID, &r.Team, &r.Env, &r.Cloud, &r.Service, &r.ClientName,
 		&r.ApplicationID, &r.Priority, &dueDate, &r.PRURL, &r.Branch, &r.FilePath, &r.Status,
-		&r.RejectReason, &r.Config, &createdBy, &assignedTo, &r.CreatedAt, &r.UpdatedAt, &r.TerraformPlanOutput,
+		&r.RejectReason, &r.Config, &createdBy, &assignedTo, &r.CreatedAt, &r.UpdatedAt, &r.TerraformPlanOutput, &projectID, &r.ProjectName, &r.ProjectCode,
 	)
 	if err != nil || r.ID == 0 {
 		return nil
@@ -1475,6 +1500,10 @@ func GetPRRequestByApplicationID(appID string) *PRRequest {
 		val := int(assignedTo.Int64)
 		r.AssignedTo = &val
 	}
+	if projectID.Valid && projectID.Int64 > 0 {
+		val := int(projectID.Int64)
+		r.ProjectID = &val
+	}
 	if dueDate.Valid {
 		r.DueDate = &dueDate.Time
 	}
@@ -1484,16 +1513,22 @@ func GetPRRequestByApplicationID(appID string) *PRRequest {
 // GetPRRequestByID retrieves a single PR request by ID
 func GetPRRequestByID(id int) (*PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at, COALESCE(terraform_plan_output,'') AS terraform_plan_output, COALESCE(jira_ticket_id,'') AS jira_ticket_id
-		FROM pr_requests WHERE id = $1
+		SELECT r.id, r.team, r.env, r.cloud, r.service, COALESCE(r.client_name,'') AS client_name, COALESCE(r.application_id,'') AS application_id,
+		       COALESCE(r.priority,'medium') AS priority, r.due_date, r.pr_url, r.branch, r.file_path, r.status,
+		       COALESCE(r.reject_reason,'') AS reject_reason, r.config, r.created_by, r.assigned_to, r.created_at, r.updated_at,
+		       COALESCE(r.terraform_plan_output,'') AS terraform_plan_output, COALESCE(r.jira_ticket_id,'') AS jira_ticket_id,
+		       r.project_id, COALESCE(p.name,''), COALESCE(p.code,'')
+		FROM pr_requests r
+		LEFT JOIN projects p ON p.id = r.project_id
+		WHERE r.id = $1
 	`
 	var req PRRequest
-	var createdBy, assignedTo sql.NullInt64
+	var createdBy, assignedTo, projectID sql.NullInt64
 	var dueDate sql.NullTime
 	err := DB.QueryRow(query, id).Scan(
 		&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
 		&req.ApplicationID, &req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
-		&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt, &req.TerraformPlanOutput, &req.JiraTicketID,
+		&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt, &req.TerraformPlanOutput, &req.JiraTicketID, &projectID, &req.ProjectName, &req.ProjectCode,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1509,6 +1544,10 @@ func GetPRRequestByID(id int) (*PRRequest, error) {
 		val := int(assignedTo.Int64)
 		req.AssignedTo = &val
 	}
+	if projectID.Valid && projectID.Int64 > 0 {
+		val := int(projectID.Int64)
+		req.ProjectID = &val
+	}
 	if dueDate.Valid {
 		req.DueDate = &dueDate.Time
 	}
@@ -1518,9 +1557,14 @@ func GetPRRequestByID(id int) (*PRRequest, error) {
 // GetPRRequestsByAssignedTo returns PR requests assigned to the given user (for DevOps "my tickets")
 func GetPRRequestsByAssignedTo(assigneeID int, limit, offset int) ([]PRRequest, error) {
 	query := `
-		SELECT id, team, env, cloud, service, COALESCE(client_name,'') AS client_name, COALESCE(application_id,'') AS application_id, COALESCE(priority,'medium') AS priority, due_date, pr_url, branch, file_path, status, COALESCE(reject_reason,'') AS reject_reason, config, created_by, assigned_to, created_at, updated_at
-		FROM pr_requests WHERE assigned_to = $1
-		ORDER BY updated_at DESC
+		SELECT r.id, r.team, r.env, r.cloud, r.service, COALESCE(r.client_name,'') AS client_name, COALESCE(r.application_id,'') AS application_id,
+		       COALESCE(r.priority,'medium') AS priority, r.due_date, r.pr_url, r.branch, r.file_path, r.status,
+		       COALESCE(r.reject_reason,'') AS reject_reason, r.config, r.created_by, r.assigned_to, r.created_at, r.updated_at,
+		       r.project_id, COALESCE(p.name,''), COALESCE(p.code,'')
+		FROM pr_requests r
+		LEFT JOIN projects p ON p.id = r.project_id
+		WHERE r.assigned_to = $1
+		ORDER BY r.updated_at DESC
 	`
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", limit)
@@ -1536,12 +1580,12 @@ func GetPRRequestsByAssignedTo(assigneeID int, limit, offset int) ([]PRRequest, 
 	var requests []PRRequest
 	for rows.Next() {
 		var req PRRequest
-		var createdBy, assignedTo sql.NullInt64
+		var createdBy, assignedTo, projectID sql.NullInt64
 		var dueDate sql.NullTime
 		if err := rows.Scan(
 			&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
 			&req.ApplicationID, &req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
-			&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt,
+			&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt, &projectID, &req.ProjectName, &req.ProjectCode,
 		); err != nil {
 			return nil, err
 		}
@@ -1552,6 +1596,10 @@ func GetPRRequestsByAssignedTo(assigneeID int, limit, offset int) ([]PRRequest, 
 		if assignedTo.Valid && assignedTo.Int64 > 0 {
 			v := int(assignedTo.Int64)
 			req.AssignedTo = &v
+		}
+		if projectID.Valid && projectID.Int64 > 0 {
+			v := int(projectID.Int64)
+			req.ProjectID = &v
 		}
 		if dueDate.Valid {
 			req.DueDate = &dueDate.Time
@@ -1581,6 +1629,7 @@ func GetWorkloadAllInProgress() ([]WorkloadItem, error) {
 func getWorkloadInProgress(includeUnassigned bool) ([]WorkloadItem, error) {
 	query := `
 		SELECT p.id, p.team, p.env, p.cloud, p.service, COALESCE(p.client_name,'') AS client_name, COALESCE(p.application_id,'') AS application_id, COALESCE(p.priority,'medium') AS priority, p.due_date, p.pr_url, p.branch, p.file_path, p.status, COALESCE(p.reject_reason,'') AS reject_reason, p.config, p.created_by, p.assigned_to, p.created_at, p.updated_at, COALESCE(u.username, '—') AS assignee_username
+		       , p.project_id
 		FROM pr_requests p
 		LEFT JOIN users u ON u.id = p.assigned_to
 		WHERE p.status = 'in_progress'
@@ -1588,7 +1637,7 @@ func getWorkloadInProgress(includeUnassigned bool) ([]WorkloadItem, error) {
 	`
 	if !includeUnassigned {
 		query = `
-		SELECT p.id, p.team, p.env, p.cloud, p.service, COALESCE(p.client_name,'') AS client_name, COALESCE(p.application_id,'') AS application_id, COALESCE(p.priority,'medium') AS priority, p.due_date, p.pr_url, p.branch, p.file_path, p.status, COALESCE(p.reject_reason,'') AS reject_reason, p.config, p.created_by, p.assigned_to, p.created_at, p.updated_at, u.username AS assignee_username
+		SELECT p.id, p.team, p.env, p.cloud, p.service, COALESCE(p.client_name,'') AS client_name, COALESCE(p.application_id,'') AS application_id, COALESCE(p.priority,'medium') AS priority, p.due_date, p.pr_url, p.branch, p.file_path, p.status, COALESCE(p.reject_reason,'') AS reject_reason, p.config, p.created_by, p.assigned_to, p.created_at, p.updated_at, u.username AS assignee_username, p.project_id
 		FROM pr_requests p
 		INNER JOIN users u ON u.id = p.assigned_to
 		WHERE p.assigned_to IS NOT NULL
@@ -1603,14 +1652,14 @@ func getWorkloadInProgress(includeUnassigned bool) ([]WorkloadItem, error) {
 	var out []WorkloadItem
 	for rows.Next() {
 		var req PRRequest
-		var createdBy, assignedTo sql.NullInt64
+		var createdBy, assignedTo, projectID sql.NullInt64
 		var dueDate sql.NullTime
 		var assigneeUsername string
 		if err := rows.Scan(
 			&req.ID, &req.Team, &req.Env, &req.Cloud, &req.Service, &req.ClientName,
 			&req.ApplicationID, &req.Priority, &dueDate, &req.PRURL, &req.Branch, &req.FilePath, &req.Status,
 			&req.RejectReason, &req.Config, &createdBy, &assignedTo, &req.CreatedAt, &req.UpdatedAt,
-			&assigneeUsername,
+			&assigneeUsername, &projectID,
 		); err != nil {
 			return nil, err
 		}
@@ -1621,6 +1670,10 @@ func getWorkloadInProgress(includeUnassigned bool) ([]WorkloadItem, error) {
 		if assignedTo.Valid && assignedTo.Int64 > 0 {
 			v := int(assignedTo.Int64)
 			req.AssignedTo = &v
+		}
+		if projectID.Valid && projectID.Int64 > 0 {
+			v := int(projectID.Int64)
+			req.ProjectID = &v
 		}
 		if assigneeUsername == "" {
 			assigneeUsername = "—"
@@ -2320,50 +2373,55 @@ func GetStats(userIDInt int) (*Stats, error) {
 }
 
 // GetTotalCount returns total count of PR requests (for pagination). Same filters as GetPRRequests. fromDate, toDate optional.
-func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, atRiskOnly bool, fromDate, toDate string) (int, error) {
-	query := "SELECT COUNT(*) FROM pr_requests WHERE 1=1"
+func GetTotalCount(team, env, cloud string, projectID int, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, atRiskOnly bool, fromDate, toDate string) (int, error) {
+	query := "SELECT COUNT(*) FROM pr_requests r LEFT JOIN projects p ON p.id = r.project_id WHERE 1=1"
 	args := []interface{}{}
 	argPos := 1
 
 	if search != "" {
 		searchVal := "%" + search + "%"
-		query += fmt.Sprintf(` AND (team ILIKE $%d OR env ILIKE $%d OR cloud ILIKE $%d OR service ILIKE $%d OR COALESCE(client_name,'') ILIKE $%d OR COALESCE(application_id,'') ILIKE $%d OR branch ILIKE $%d OR COALESCE(config,'')::text ILIKE $%d)`,
-			argPos, argPos, argPos, argPos, argPos, argPos, argPos, argPos)
+		query += fmt.Sprintf(` AND (r.team ILIKE $%d OR r.env ILIKE $%d OR r.cloud ILIKE $%d OR r.service ILIKE $%d OR COALESCE(r.client_name,'') ILIKE $%d OR COALESCE(r.application_id,'') ILIKE $%d OR r.branch ILIKE $%d OR COALESCE(r.config,'')::text ILIKE $%d OR COALESCE(p.name,'') ILIKE $%d OR COALESCE(p.code,'') ILIKE $%d)`,
+			argPos, argPos, argPos, argPos, argPos, argPos, argPos, argPos, argPos, argPos)
 		args = append(args, searchVal)
 		argPos++
 	}
 
 	if prID > 0 {
-		query += fmt.Sprintf(" AND id = $%d", argPos)
+		query += fmt.Sprintf(" AND r.id = $%d", argPos)
 		args = append(args, prID)
 		argPos++
 	}
 	if team != "" {
-		query += fmt.Sprintf(" AND team ILIKE $%d", argPos)
+		query += fmt.Sprintf(" AND r.team ILIKE $%d", argPos)
 		args = append(args, "%"+team+"%")
 		argPos++
 	}
 	if env != "" {
-		query += fmt.Sprintf(" AND env ILIKE $%d", argPos)
+		query += fmt.Sprintf(" AND r.env ILIKE $%d", argPos)
 		args = append(args, "%"+env+"%")
 		argPos++
 	}
 	if cloud != "" {
-		query += fmt.Sprintf(" AND cloud ILIKE $%d", argPos)
+		query += fmt.Sprintf(" AND r.cloud ILIKE $%d", argPos)
 		args = append(args, "%"+cloud+"%")
+		argPos++
+	}
+	if projectID > 0 {
+		query += fmt.Sprintf(" AND r.project_id = $%d", argPos)
+		args = append(args, projectID)
 		argPos++
 	}
 	if statusFilter != "" {
 		if statusFilter == "pending_any" {
-			query += " AND status IN ('pending_approval', 'pending_devops_approval', 'pending_user_manager_approval')"
+			query += " AND r.status IN ('pending_approval', 'pending_devops_approval', 'pending_user_manager_approval')"
 		} else {
-			query += fmt.Sprintf(" AND status = $%d", argPos)
+			query += fmt.Sprintf(" AND r.status = $%d", argPos)
 			args = append(args, statusFilter)
 			argPos++
 		}
 	}
 	if priorityFilter != "" {
-		query += fmt.Sprintf(" AND COALESCE(priority,'medium') = $%d", argPos)
+		query += fmt.Sprintf(" AND COALESCE(r.priority,'medium') = $%d", argPos)
 		args = append(args, priorityFilter)
 		argPos++
 	}
@@ -2374,22 +2432,22 @@ func GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search string
 			args = append(args, createdByIn[i])
 			argPos++
 		}
-		query += " AND created_by IN (" + strings.Join(placeholders, ",") + ")"
+		query += " AND r.created_by IN (" + strings.Join(placeholders, ",") + ")"
 	} else if userIDInt > 0 {
-		query += fmt.Sprintf(" AND created_by = $%d", argPos)
+		query += fmt.Sprintf(" AND r.created_by = $%d", argPos)
 		args = append(args, userIDInt)
 		argPos++
 	}
 	if atRiskOnly {
-		query += " AND due_date IS NOT NULL AND (due_date < NOW() OR due_date < NOW() + INTERVAL '24 hours')"
+		query += " AND r.due_date IS NOT NULL AND (r.due_date < NOW() OR r.due_date < NOW() + INTERVAL '24 hours')"
 	}
 	if fromDate != "" {
-		query += fmt.Sprintf(" AND created_at >= $%d::date", argPos)
+		query += fmt.Sprintf(" AND r.created_at >= $%d::date", argPos)
 		args = append(args, fromDate)
 		argPos++
 	}
 	if toDate != "" {
-		query += fmt.Sprintf(" AND created_at < ($%d::date + interval '1 day')", argPos)
+		query += fmt.Sprintf(" AND r.created_at < ($%d::date + interval '1 day')", argPos)
 		args = append(args, toDate)
 		argPos++
 	}
@@ -3291,7 +3349,7 @@ func ListRequestTemplates() ([]RequestTemplate, error) {
 		t.VisibleToAll = true
 		out = append(out, t)
 	}
-	if err := hydrateRequestTemplatesWithTeams(out); err != nil {
+	if err := hydrateRequestTemplatesWithScope(out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -3309,9 +3367,15 @@ func ListRequestTemplatesForUser(userID int) ([]RequestTemplate, error) {
 	if err != nil {
 		return nil, err
 	}
+	allowedProjects, err := getVisibleProjectIDSetForUser(userID)
+	if err != nil {
+		return nil, err
+	}
 	filtered := make([]RequestTemplate, 0, len(templates))
 	for _, template := range templates {
-		if template.VisibleToAll || templateAccessibleToPortalTeams(template.Teams, allowedTeams) {
+		teamAllowed := len(template.Teams) == 0 || templateAccessibleToPortalTeams(template.Teams, allowedTeams)
+		projectAllowed := len(template.Projects) == 0 || templateAccessibleToProjects(template.Projects, allowedProjects)
+		if teamAllowed && projectAllowed {
 			filtered = append(filtered, template)
 		}
 	}
@@ -3336,7 +3400,7 @@ func GetRequestTemplateByID(id int) (*RequestTemplate, error) {
 		t.CreatedBy = &id
 	}
 	t.VisibleToAll = true
-	if err := hydrateRequestTemplateWithTeams(&t); err != nil {
+	if err := hydrateRequestTemplateWithScope(&t); err != nil {
 		return nil, err
 	}
 	return &t, nil
@@ -3347,14 +3411,17 @@ func GetRequestTemplateForUser(id, userID int) (*RequestTemplate, error) {
 	if err != nil || template == nil {
 		return template, err
 	}
-	if template.VisibleToAll {
-		return template, nil
-	}
 	allowedTeams, err := getPortalTeamIDSetForUser(userID)
 	if err != nil {
 		return nil, err
 	}
-	if templateAccessibleToPortalTeams(template.Teams, allowedTeams) {
+	allowedProjects, err := getVisibleProjectIDSetForUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	teamAllowed := len(template.Teams) == 0 || templateAccessibleToPortalTeams(template.Teams, allowedTeams)
+	projectAllowed := len(template.Projects) == 0 || templateAccessibleToProjects(template.Projects, allowedProjects)
+	if teamAllowed && projectAllowed {
 		return template, nil
 	}
 	return nil, sql.ErrNoRows
@@ -3477,6 +3544,86 @@ func SetRequestTemplateTeams(templateID int, teamIDs []int) error {
 	return nil
 }
 
+func ValidateTemplateProjectIDs(projectIDs []int) ([]int, error) {
+	normalized := normalizeTeamIDs(projectIDs)
+	for _, projectID := range normalized {
+		project, err := getProjectCatalogByID(projectID)
+		if err != nil {
+			return nil, err
+		}
+		if project == nil {
+			return nil, fmt.Errorf("project %d not found", projectID)
+		}
+	}
+	return normalized, nil
+}
+
+func SetRequestTemplateProjects(templateID int, projectIDs []int) error {
+	if DB == nil {
+		return fmt.Errorf("database not available")
+	}
+	normalized, err := ValidateTemplateProjectIDs(projectIDs)
+	if err != nil {
+		return err
+	}
+	tx, err := DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM request_template_projects WHERE template_id = $1`, templateID); err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return nil
+		}
+		return err
+	}
+	for _, projectID := range normalized {
+		if _, err := tx.Exec(
+			`INSERT INTO request_template_projects (template_id, project_id) VALUES ($1, $2) ON CONFLICT (template_id, project_id) DO NOTHING`,
+			templateID,
+			projectID,
+		); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam)
+	return nil
+}
+
+func GetRequestTemplateProjects(templateID int) ([]ProjectSummary, error) {
+	if DB == nil {
+		return []ProjectSummary{}, nil
+	}
+	rows, err := DB.Query(
+		`SELECT p.id, COALESCE(p.name,''), COALESCE(p.code,''), COALESCE(p.status,'active')
+		 FROM request_template_projects rtp
+		 INNER JOIN projects p ON p.id = rtp.project_id
+		 WHERE rtp.template_id = $1
+		 ORDER BY p.name`,
+		templateID,
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return []ProjectSummary{}, nil
+		}
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]ProjectSummary, 0)
+	for rows.Next() {
+		var project ProjectSummary
+		if err := rows.Scan(&project.ID, &project.Name, &project.Code, &project.Status); err != nil {
+			return nil, err
+		}
+		out = append(out, project)
+	}
+	return out, nil
+}
+
 func GetRequestTemplateTeams(templateID int) ([]Team, error) {
 	if DB == nil {
 		return []Team{}, nil
@@ -3507,7 +3654,7 @@ func GetRequestTemplateTeams(templateID int) ([]Team, error) {
 	return out, nil
 }
 
-func hydrateRequestTemplateWithTeams(template *RequestTemplate) error {
+func hydrateRequestTemplateWithScope(template *RequestTemplate) error {
 	if template == nil {
 		return nil
 	}
@@ -3515,14 +3662,19 @@ func hydrateRequestTemplateWithTeams(template *RequestTemplate) error {
 	if err != nil {
 		return err
 	}
+	projects, err := GetRequestTemplateProjects(template.ID)
+	if err != nil {
+		return err
+	}
 	template.Teams = teams
-	template.VisibleToAll = len(teams) == 0
+	template.Projects = projects
+	template.VisibleToAll = len(teams) == 0 && len(projects) == 0
 	return nil
 }
 
-func hydrateRequestTemplatesWithTeams(templates []RequestTemplate) error {
+func hydrateRequestTemplatesWithScope(templates []RequestTemplate) error {
 	for i := range templates {
-		if err := hydrateRequestTemplateWithTeams(&templates[i]); err != nil {
+		if err := hydrateRequestTemplateWithScope(&templates[i]); err != nil {
 			return err
 		}
 	}
@@ -3547,6 +3699,15 @@ func getPortalTeamIDSetForUser(userID int) (map[int]bool, error) {
 func templateAccessibleToPortalTeams(templateTeams []Team, allowedTeams map[int]bool) bool {
 	for _, team := range templateTeams {
 		if allowedTeams[team.ID] {
+			return true
+		}
+	}
+	return false
+}
+
+func templateAccessibleToProjects(templateProjects []ProjectSummary, allowedProjects map[int]bool) bool {
+	for _, project := range templateProjects {
+		if allowedProjects[project.ID] {
 			return true
 		}
 	}

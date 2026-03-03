@@ -15,12 +15,19 @@ interface RequestTemplate {
   created_at: string;
   created_by: number | null;
   teams?: TeamSummary[];
+  projects?: ProjectSummary[];
   visible_to_all?: boolean;
 }
 
 interface TeamSummary {
   id: number;
   name: string;
+}
+
+interface ProjectSummary {
+  id: number;
+  name: string;
+  code: string;
 }
 
 export default function TemplatesList() {
@@ -169,6 +176,11 @@ export default function TemplatesList() {
                           {template.visible_to_all || !template.teams?.length
                             ? 'All portal teams'
                             : `${template.teams.length} portal team${template.teams.length === 1 ? '' : 's'}`}
+                        </span>
+                        <span className="portal-pill">
+                          {template.projects?.length
+                            ? `${template.projects.length} project${template.projects.length === 1 ? '' : 's'}`
+                            : 'All projects'}
                         </span>
                       </div>
                       <div className="portal-template-card__actions">

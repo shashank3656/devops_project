@@ -28,6 +28,9 @@ interface CostRiskPreview {
 
 interface PRRequest {
   id: number;
+  project_id?: number | null;
+  project_name?: string;
+  project_code?: string;
   team: string;
   env: string;
   cloud: string;
@@ -49,6 +52,12 @@ interface PRRequest {
   blocked_by?: number[];
   blocked_by_with_status?: BlockedByItem[];
   cost_risk_preview?: CostRiskPreview | null;
+}
+
+interface ProjectSummary {
+  id: number;
+  name: string;
+  code: string;
 }
 
 interface RequestComment {
@@ -89,6 +98,7 @@ export default function AdminRequests() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [team, setTeam] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [env, setEnv] = useState('');
   const [cloud, setCloud] = useState('');
   const [search, setSearch] = useState('');
@@ -118,16 +128,18 @@ export default function AdminRequests() {
   const [jiraEdit, setJiraEdit] = useState('');
   const [jiraSaving, setJiraSaving] = useState(false);
   const [bulkStatusValue, setBulkStatusValue] = useState('');
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [timeline, setTimeline] = useState<{ id: number; kind: string; action: string; username: string; details: string; body?: string; created_at: string }[]>([]);
   const limit = 20;
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
 
-  const filtersRef = useRef<{ team: string; env: string; cloud: string; search: string; status: string; priority: string; sortBy: string; sortOrder: string; atRiskOnly: boolean }>({ team: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false });
+  const filtersRef = useRef<{ team: string; projectId: string; env: string; cloud: string; search: string; status: string; priority: string; sortBy: string; sortOrder: string; atRiskOnly: boolean }>({ team: '', projectId: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false });
 
-  const fetchRequests = (overrides?: { team?: string; env?: string; cloud?: string; search?: string; status?: string; priority?: string; sortBy?: string; sortOrder?: string; atRiskOnly?: boolean; offset?: number }) => {
+  const fetchRequests = (overrides?: { team?: string; projectId?: string; env?: string; cloud?: string; search?: string; status?: string; priority?: string; sortBy?: string; sortOrder?: string; atRiskOnly?: boolean; offset?: number }) => {
     const t = overrides?.team !== undefined ? overrides.team : filtersRef.current.team;
+    const pid = overrides?.projectId !== undefined ? overrides.projectId : filtersRef.current.projectId;
     const e = overrides?.env !== undefined ? overrides.env : filtersRef.current.env;
     const c = overrides?.cloud !== undefined ? overrides.cloud : filtersRef.current.cloud;
     const q = overrides?.search !== undefined ? overrides.search : filtersRef.current.search;
@@ -141,6 +153,7 @@ export default function AdminRequests() {
     setError('');
     const params = new URLSearchParams();
     if (t) params.set('team', t);
+    if (pid) params.set('project_id', pid);
     if (e) params.set('env', e);
     if (c) params.set('cloud', c);
     if (q) params.set('q', q);
@@ -181,6 +194,11 @@ export default function AdminRequests() {
 
   useEffect(() => {
     setRecentIds(getRecentRequestIds());
+    if (!token) return;
+    fetch(`${apiUrl}/api/admin/projects`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setProjects(Array.isArray(data?.projects) ? data.projects : []))
+      .catch(() => setProjects([]));
   }, []);
   useEffect(() => {
         if (detailRequest) {
@@ -240,6 +258,7 @@ export default function AdminRequests() {
     e.preventDefault();
     const form = e.currentTarget as HTMLFormElement;
     const teamVal = (form.elements.namedItem('filter-team') as HTMLInputElement | null)?.value?.trim() ?? '';
+    const projectVal = (form.elements.namedItem('filter-project') as HTMLSelectElement | null)?.value ?? '';
     const envVal = (form.elements.namedItem('filter-env') as HTMLInputElement | null)?.value?.trim() ?? '';
     const cloudVal = (form.elements.namedItem('filter-cloud') as HTMLInputElement | null)?.value?.trim() ?? '';
     const searchVal = (form.elements.namedItem('filter-search') as HTMLInputElement | null)?.value?.trim() ?? '';
@@ -248,8 +267,9 @@ export default function AdminRequests() {
     const sortByVal = (form.elements.namedItem('filter-sort-by') as HTMLSelectElement | null)?.value ?? 'created_at';
     const sortOrderVal = (form.elements.namedItem('filter-sort-order') as HTMLSelectElement | null)?.value ?? 'desc';
     const atRiskVal = (form.elements.namedItem('filter-at-risk') as HTMLInputElement | null)?.checked ?? false;
-    filtersRef.current = { team: teamVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal, sortBy: sortByVal, sortOrder: sortOrderVal, atRiskOnly: atRiskVal };
+    filtersRef.current = { team: teamVal, projectId: projectVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal, sortBy: sortByVal, sortOrder: sortOrderVal, atRiskOnly: atRiskVal };
     setTeam(teamVal);
+    setProjectId(projectVal);
     setEnv(envVal);
     setCloud(cloudVal);
     setSearch(searchVal);
@@ -262,12 +282,13 @@ export default function AdminRequests() {
     const qs = new URLSearchParams();
     if (searchVal) qs.set('q', searchVal);
     router.replace(searchVal ? `/requests?${qs}` : '/requests', undefined, { shallow: true });
-    fetchRequests({ team: teamVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal, offset: 0 });
+    fetchRequests({ team: teamVal, projectId: projectVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal, offset: 0 });
   };
 
   const handleClearFilters = () => {
-    filtersRef.current = { team: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false };
+    filtersRef.current = { team: '', projectId: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false };
     setTeam('');
+    setProjectId('');
     setEnv('');
     setCloud('');
     setSearch('');
@@ -278,7 +299,7 @@ export default function AdminRequests() {
     setAtRiskOnly(false);
     setOffset(0);
     router.replace('/requests', undefined, { shallow: true });
-    fetchRequests({ team: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false, offset: 0 });
+    fetchRequests({ team: '', projectId: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false, offset: 0 });
   };
 
   const statusLabel = (s: string) =>
@@ -738,6 +759,19 @@ export default function AdminRequests() {
               value={team}
               onChange={(e) => setTeam(e.target.value)}
             />
+            <select
+              id="filter-project"
+              name="filter-project"
+              className="input"
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              style={{ minWidth: 220 }}
+            >
+              <option value="">All projects</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+              ))}
+            </select>
             <input
               id="filter-env"
               name="filter-env"
@@ -899,6 +933,7 @@ export default function AdminRequests() {
                       <tr>
                         <th style={{ width: 44 }} title="Select">☐</th>
                         <th>ID</th>
+                        <th>Project</th>
                         <th>Team</th>
                         <th>Env</th>
                         <th>Cloud</th>
@@ -921,6 +956,14 @@ export default function AdminRequests() {
                             />
                           </td>
                           <td>{req.id}</td>
+                          <td>
+                            {req.project_name ? (
+                              <>
+                                <strong>{req.project_name}</strong>
+                                {req.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{req.project_code}</div> : null}
+                              </>
+                            ) : '—'}
+                          </td>
                           <td>{req.team}</td>
                           <td>{req.env}</td>
                           <td>{req.cloud}</td>
