@@ -1471,6 +1471,11 @@ func meProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
 	if r.Method == "GET" {
 		userID, ok := requireDevopsUser(w, r)
 		if !ok {
@@ -1542,6 +1547,11 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/devops/projects/")
 	pathParts := strings.Split(strings.Trim(strings.TrimSpace(path), "/"), "/")
 	if len(pathParts) == 0 || pathParts[0] == "" {
