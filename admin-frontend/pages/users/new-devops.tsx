@@ -1,8 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import AdminLayout from '../../components/AdminLayout';
+
+interface Team {
+  id: number;
+  name: string;
+  team_type?: string;
+}
 
 export default function NewDevopsUser() {
   const router = useRouter();
@@ -14,10 +20,38 @@ export default function NewDevopsUser() {
   const [position, setPosition] = useState('');
   const [onboardDate, setOnboardDate] = useState('');
   const [level, setLevel] = useState<'L1' | 'L2' | 'L3' | 'L4'>('L1');
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [teamRole, setTeamRole] = useState<'member' | 'lead'>('member');
+  const [selectedTeamIds, setSelectedTeamIds] = useState<number[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+  const devopsTeams = teams.filter((team) => (team.team_type || 'portal') === 'devops');
+
+  useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+    fetch(`${apiUrl}/api/admin/teams`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        if (Array.isArray(data.teams)) {
+          setTeams(data.teams);
+        }
+      })
+      .catch(() => {});
+  }, [apiUrl, router]);
+
+  const toggleTeam = (teamId: number) => {
+    setSelectedTeamIds((current) =>
+      current.includes(teamId) ? current.filter((value) => value !== teamId) : [...current, teamId],
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,6 +78,32 @@ export default function NewDevopsUser() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.user) {
+        const createdUserId = Number(data.user.id || 0);
+        if (createdUserId > 0 && selectedTeamIds.length > 0) {
+          const token = localStorage.getItem('admin_token');
+          const failedTeams: string[] = [];
+          for (const teamId of selectedTeamIds) {
+            const team = devopsTeams.find((entry) => entry.id === teamId);
+            const membershipRes = await fetch(`${apiUrl}/api/admin/teams/${teamId}/members`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                user_id: createdUserId,
+                role: teamRole,
+              }),
+            });
+            if (!membershipRes.ok && team) {
+              failedTeams.push(team.name);
+            }
+          }
+          if (failedTeams.length > 0) {
+            router.push(`/users/${createdUserId}/edit?created=1&team_assign_failed=${failedTeams.length}`);
+            return;
+          }
+        }
         router.push('/users');
         return;
       }
@@ -193,6 +253,44 @@ export default function NewDevopsUser() {
                 <span className="label-optional" style={{ display: 'block', marginTop: 4 }}>
                   Used for ticket assignment: Critical→L4, High→L3, Medium→L2, Low→L1.
                 </span>
+              </div>
+              <div className="form-group">
+                <label className="label" htmlFor="devops-team-role">
+                  Team onboarding
+                </label>
+                <span className="label-optional" style={{ display: 'block', marginBottom: 10 }}>
+                  Optionally add this operator to DevOps teams during creation so they are visible in workload and assignment flows immediately.
+                </span>
+                {devopsTeams.length === 0 ? (
+                  <div className="empty-state" style={{ padding: 16, textAlign: 'left' }}>
+                    No DevOps teams exist yet. <Link href="/teams/new">Create a DevOps team first</Link>.
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      id="devops-team-role"
+                      className="input"
+                      value={teamRole}
+                      onChange={(e) => setTeamRole(e.target.value as 'member' | 'lead')}
+                      style={{ maxWidth: 220, marginBottom: 12 }}
+                    >
+                      <option value="member">member</option>
+                      <option value="lead">lead</option>
+                    </select>
+                    <div className="admin-team-check-row">
+                      {devopsTeams.map((team) => (
+                        <label key={team.id} className="admin-team-check">
+                          <input
+                            type="checkbox"
+                            checked={selectedTeamIds.includes(team.id)}
+                            onChange={() => toggleTeam(team.id)}
+                          />
+                          <span>{team.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
               <button
                 type="submit"

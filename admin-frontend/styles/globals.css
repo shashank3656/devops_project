@@ -3427,3 +3427,23 @@ td {
 .portal-stat-card__value {
   font-size: 20px;
 }
+
+.admin-team-check-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-team-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(34, 197, 94, 0.18);
+  background: rgba(6, 18, 32, 0.72);
+  color: var(--color-text);
+}
+
+.admin-team-check input {
+  margin: 0;
+}
