@@ -3341,6 +3341,82 @@ kbd {
   line-height: 1.7;
 }
 
+.onboarding-inline-list {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 20px;
+}
+
+.onboarding-inline-list__item {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.onboarding-inline-list__item strong,
+.onboarding-inline-list__item span {
+  display: block;
+}
+
+.onboarding-inline-list__item strong {
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+
+.onboarding-inline-list__item span {
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.onboarding-surface {
+  min-height: 100%;
+}
+
+.onboarding-step-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.onboarding-step {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.onboarding-step__index {
+  color: var(--color-primary);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+}
+
+.onboarding-step strong,
+.onboarding-timeline__item strong {
+  color: var(--text-primary);
+}
+
+.onboarding-step p,
+.onboarding-timeline__item p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.7;
+}
+
+.onboarding-timeline {
+  display: grid;
+  gap: 12px;
+}
+
+.onboarding-timeline__item {
+  padding: 16px 18px;
+  border-left: 2px solid rgba(45, 212, 191, 0.32);
+  background: rgba(15, 23, 42, 0.42);
+}
+
 .launchpad-hero__pulse {
   position: relative;
   padding: 22px;
@@ -3568,7 +3644,8 @@ kbd {
   .launchpad-hero__content,
   .request-studio-grid,
   .launchpad-action-grid,
-  .launchpad-tips {
+  .launchpad-tips,
+  .onboarding-step-grid {
     grid-template-columns: 1fr;
   }
 
