@@ -376,7 +376,11 @@ export default function DevOpsProjectsPage() {
                     </option>
                   ))}
                 </select>
-                <small style={{ color: 'var(--text-muted)' }}>All teams are available here for project ownership.</small>
+                <small style={{ color: 'var(--text-muted)' }}>
+                  {ownerTeams.length > 0
+                    ? `Showing ${ownerTeams.length} team${ownerTeams.length === 1 ? '' : 's'} from the admin team catalog for project ownership.`
+                    : 'No teams were returned from the backend team catalog yet.'}
+                </small>
               </div>
               <div className="form-group">
                 <label className="label">Status</label>
