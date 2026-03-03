@@ -319,6 +319,12 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	cloud := r.URL.Query().Get("cloud")
 	statusFilter := r.URL.Query().Get("status")
 	priorityFilter := r.URL.Query().Get("priority")
+	projectID := 0
+	if rawProjectID := strings.TrimSpace(r.URL.Query().Get("project_id")); rawProjectID != "" {
+		if parsed, err := strconv.Atoi(rawProjectID); err == nil && parsed > 0 {
+			projectID = parsed
+		}
+	}
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
 	prIDStr := r.URL.Query().Get("id")
 	prID := 0
@@ -350,7 +356,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// userID 0 = all requests
-	requests, err := GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil, limit, offset, sortBy, sortOrder, atRiskOnly, "", "")
+	requests, err := GetPRRequests(team, env, cloud, projectID, statusFilter, priorityFilter, search, prID, 0, nil, limit, offset, sortBy, sortOrder, atRiskOnly, "", "")
 	if err != nil {
 		log.Printf("Admin requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -358,7 +364,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch requests", "status": "error"})
 		return
 	}
-	totalCount, _ := GetTotalCount(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil, atRiskOnly, "", "")
+	totalCount, _ := GetTotalCount(team, env, cloud, projectID, statusFilter, priorityFilter, search, prID, 0, nil, atRiskOnly, "", "")
 
 	// Enrich with due_status and created_by_username for UI
 	userIDs := make([]int, 0)
@@ -384,6 +390,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 			"client_name": req.ClientName, "application_id": req.ApplicationID, "priority": req.Priority,
 			"due_date": req.DueDate, "due_status": ds, "pr_url": req.PRURL, "branch": req.Branch, "status": req.Status,
 			"created_by": req.CreatedBy, "assigned_to": req.AssignedTo, "created_at": req.CreatedAt, "updated_at": req.UpdatedAt,
+			"project_id": req.ProjectID, "project_name": req.ProjectName, "project_code": req.ProjectCode,
 		}
 		if req.CreatedBy != nil && usernames != nil {
 			obj["created_by_username"] = usernames[*req.CreatedBy]
@@ -396,7 +403,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", "attachment; filename=requests.csv")
 		// Export all matching (use higher limit for CSV)
-		all, _ := GetPRRequests(team, env, cloud, statusFilter, priorityFilter, search, prID, 0, nil, 10000, 0, sortBy, sortOrder, atRiskOnly, "", "")
+		all, _ := GetPRRequests(team, env, cloud, projectID, statusFilter, priorityFilter, search, prID, 0, nil, 10000, 0, sortBy, sortOrder, atRiskOnly, "", "")
 		csvLine := func(ss ...string) string {
 			for i, s := range ss {
 				if strings.Contains(s, ",") || strings.Contains(s, "\"") || strings.Contains(s, "\n") {
@@ -405,14 +412,14 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return strings.Join(ss, ",")
 		}
-		w.Write([]byte(csvLine("id", "team", "env", "cloud", "service", "priority", "status", "pr_url", "created_at", "updated_at") + "\n"))
+		w.Write([]byte(csvLine("id", "project", "team", "env", "cloud", "service", "priority", "status", "pr_url", "created_at", "updated_at") + "\n"))
 		for _, rq := range all {
 			prURL := rq.PRURL
 			if prURL == "" {
 				prURL = ""
 			}
 			w.Write([]byte(csvLine(
-				strconv.Itoa(rq.ID), rq.Team, rq.Env, rq.Cloud, rq.Service,
+				strconv.Itoa(rq.ID), rq.ProjectName, rq.Team, rq.Env, rq.Cloud, rq.Service,
 				rq.Priority, rq.Status, prURL,
 				rq.CreatedAt.Format("2006-01-02 15:04:05"),
 				rq.UpdatedAt.Format("2006-01-02 15:04:05"),

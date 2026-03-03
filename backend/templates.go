@@ -117,6 +117,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				Service     string `json:"service"`
 				Config      string `json:"config"`
 				TeamIDs     []int  `json:"team_ids"`
+				ProjectIDs  []int  `json:"project_ids"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
@@ -146,6 +147,19 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if err := SetRequestTemplateTeams(t.ID, teamIDs); err != nil {
+				_ = DeleteRequestTemplate(t.ID)
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+			projectIDs, err := ValidateTemplateProjectIDs(body.ProjectIDs)
+			if err != nil {
+				_ = DeleteRequestTemplate(t.ID)
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+			if err := SetRequestTemplateProjects(t.ID, projectIDs); err != nil {
 				_ = DeleteRequestTemplate(t.ID)
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
@@ -188,6 +202,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			Service     string `json:"service"`
 			Config      string `json:"config"`
 			TeamIDs     *[]int `json:"team_ids"`
+			ProjectIDs  *[]int `json:"project_ids"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -224,6 +239,19 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if err := SetRequestTemplateTeams(id, teamIDs); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+		}
+		if body.ProjectIDs != nil {
+			projectIDs, err := ValidateTemplateProjectIDs(*body.ProjectIDs)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+			if err := SetRequestTemplateProjects(id, projectIDs); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 				return

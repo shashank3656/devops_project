@@ -196,6 +196,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(errorResponse)
 		return
 	}
+	projectID := parseProjectIDFromPayload(payload)
 	clientName, _ := payload["client_name"].(string)
 	payload["client_name"] = clientName
 
@@ -243,8 +244,23 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	if userID > 0 {
 		userIDPtr = &userID
 	}
+	if projectID > 0 {
+		if _, err := validateProjectRequestForUser(userID, projectID, team, env, cloud, service); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+	}
 
 	prRequest := &PRRequest{
+		ProjectID: func() *int {
+			if projectID > 0 {
+				id := projectID
+				return &id
+			}
+			return nil
+		}(),
 		Team:          team,
 		Env:           env,
 		Cloud:         cloud,
@@ -342,6 +358,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	env, _ := payload["env"].(string)
 	cloud, _ := payload["cloud"].(string)
 	service, _ := payload["service"].(string)
+	projectID := parseProjectIDFromPayload(payload)
 	clientName, _ := payload["client_name"].(string)
 	payload["client_name"] = clientName
 	priority, _ := payload["priority"].(string)
@@ -387,18 +404,34 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if userID > 0 {
 		userIDPtr = &userID
 	}
+	if projectID > 0 {
+		validation, err := validateProjectRequestForUser(userID, projectID, team, env, cloud, service)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		if clientName == "" {
+			clientName = validation.Project.Name
+			payload["client_name"] = clientName
+		}
+	}
 	status := "pending_devops_approval"
 	if !draft && userID > 0 {
-		if GetGroupManagerForUser(userID) != 0 {
-			status = "pending_user_manager_approval"
-		} else if creator, _ := GetUserByID(userID); creator != nil && creator.ManagerID != nil {
-			status = "pending_user_manager_approval"
-		}
+		status = determineApprovalStatusForRequest(intPointerIfPositive(projectID), userID, team, env)
 	}
 	if draft {
 		status = "draft"
 	}
 	prRequest := &PRRequest{
+		ProjectID: func() *int {
+			if projectID > 0 {
+				id := projectID
+				return &id
+			}
+			return nil
+		}(),
 		Team:          team,
 		Env:           env,
 		Cloud:         cloud,
@@ -498,6 +531,8 @@ func main() {
 	http.HandleFunc("/api/auth/reset-password", resetPasswordHandler)
 	http.HandleFunc("/api/me", meHandler)
 	http.HandleFunc("/api/me/onboarding-progress", onboardingProgressHandler)
+	http.HandleFunc("/api/me/projects", meProjectsHandler)
+	http.HandleFunc("/api/me/projects/", meProjectDetailHandler)
 	http.HandleFunc("/api/me/teams", meTeamsHandler)
 	http.HandleFunc("/api/me/teams/", meTeamMembersRouter)
 	http.HandleFunc("/api/me/managed-teams", meManagedTeamsHandler)
@@ -536,6 +571,7 @@ func main() {
 	http.HandleFunc("/api/admin/user-activity", adminUserActivityHandler)
 	http.HandleFunc("/api/admin/webhooks", adminWebhooksHandler)
 	http.HandleFunc("/api/admin/webhooks/", adminWebhookDetailHandler)
+	http.HandleFunc("/api/admin/projects", adminProjectsHandler)
 	http.HandleFunc("/api/admin/templates", adminTemplatesRouter)
 	http.HandleFunc("/api/admin/templates/", adminTemplatesRouter)
 	http.HandleFunc("/api/devops/me", devopsMeHandler)
@@ -549,6 +585,8 @@ func main() {
 	http.HandleFunc("/api/devops/pending-approvals", devopsPendingApprovalsHandler)
 	http.HandleFunc("/api/devops/requests", devopsRequestsListHandler)
 	http.HandleFunc("/api/devops/requests/", devopsRequestActionHandler)
+	http.HandleFunc("/api/devops/projects", devopsProjectsHandler)
+	http.HandleFunc("/api/devops/projects/", devopsProjectDetailHandler)
 	http.HandleFunc("/api/devops/gitops/projects", devopsGitOpsProjectsHandler)
 	http.HandleFunc("/api/devops/gitops/preview", devopsGitOpsPreviewHandler)
 	http.HandleFunc("/api/devops/gitops/manage", devopsGitOpsManagementHandler)

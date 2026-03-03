@@ -507,6 +507,111 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_request_status_summary_team_status ON mv_request_status_summary(team, status)`)
 
+	// Migration 32: project catalog for project-first onboarding and request governance
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS projects (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(200) NOT NULL,
+			code VARCHAR(120) NOT NULL UNIQUE,
+			description TEXT DEFAULT '',
+			status VARCHAR(30) NOT NULL DEFAULT 'active',
+			owner_team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_projects_owner_team_id ON projects(owner_team_id)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_environments (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			environment VARCHAR(80) NOT NULL,
+			UNIQUE(project_id, environment)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_environments_project_id ON project_environments(project_id)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_clouds (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			cloud VARCHAR(80) NOT NULL,
+			UNIQUE(project_id, cloud)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_clouds_project_id ON project_clouds(project_id)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_services (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			cloud VARCHAR(80) NOT NULL,
+			service VARCHAR(120) NOT NULL,
+			UNIQUE(project_id, cloud, service)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_services_project_id ON project_services(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_services_project_cloud ON project_services(project_id, cloud)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_team_access (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+			UNIQUE(project_id, team_id)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_team_access_project_id ON project_team_access(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_team_access_team_id ON project_team_access(team_id)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_team_environment_access (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+			environment VARCHAR(80) NOT NULL,
+			UNIQUE(project_id, team_id, environment)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_team_environment_access_project_team ON project_team_environment_access(project_id, team_id)")
+
+	var prProjectIDCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'pr_requests' AND column_name = 'project_id'").Scan(&prProjectIDCount)
+	if prProjectIDCount == 0 {
+		log.Println("Migrating database: adding pr_requests.project_id...")
+		_, _ = DB.Exec("ALTER TABLE pr_requests ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL")
+	}
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_requests_project_id ON pr_requests(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_requests_project_team_status_created_at ON pr_requests(project_id, team, status, created_at DESC)")
+
+	// Migration 33: project approval rules and project-scoped template visibility
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_approval_rules (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			environment VARCHAR(80) NOT NULL,
+			require_manager_approval BOOLEAN NOT NULL DEFAULT FALSE,
+			require_devops_approval BOOLEAN NOT NULL DEFAULT TRUE,
+			UNIQUE(project_id, environment)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_approval_rules_project_id ON project_approval_rules(project_id)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS request_template_projects (
+			id SERIAL PRIMARY KEY,
+			template_id INTEGER NOT NULL REFERENCES request_templates(id) ON DELETE CASCADE,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(template_id, project_id)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_template_projects_template_id ON request_template_projects(template_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_template_projects_project_id ON request_template_projects(project_id)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }
