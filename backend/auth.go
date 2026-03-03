@@ -993,7 +993,7 @@ func meNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 			IDs      []int  `json:"ids"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		if body.MarkRead == "all" || body.MarkRead == "true" {
+		if body.MarkRead == "all" || body.MarkRead == "true" || len(body.IDs) > 0 {
 			_ = MarkUserNotificationsRead(userID, body.IDs)
 		}
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok"})
@@ -1005,16 +1005,28 @@ func meNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
-	unreadOnly := r.URL.Query().Get("unread_only") == "1" || r.URL.Query().Get("unread_only") == "true"
-	list, _ := ListUserNotifications(userID, limit, 0, unreadOnly)
-	unreadCount := 0
-	for _, n := range list {
-		if n.ReadAt == nil {
-			unreadCount++
+	offset := 0
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if n, err := strconv.Atoi(o); err == nil && n >= 0 {
+			offset = n
 		}
 	}
+	unreadOnly := r.URL.Query().Get("unread_only") == "1" || r.URL.Query().Get("unread_only") == "true"
+	kind := strings.TrimSpace(r.URL.Query().Get("kind"))
+	list, _ := ListUserNotificationsFiltered(userID, limit, offset, unreadOnly, kind)
+	unreadCount, _ := CountUserNotifications(userID, true, "")
+	totalCount, _ := CountUserNotifications(userID, unreadOnly, kind)
+	countsByKind, _ := CountUserNotificationsByKind(userID)
 	sinceStr := r.URL.Query().Get("since")
-	resp := map[string]interface{}{"notifications": list, "unread_count": unreadCount, "status": "ok"}
+	resp := map[string]interface{}{
+		"notifications":  list,
+		"unread_count":   unreadCount,
+		"total_count":    totalCount,
+		"counts_by_kind": countsByKind,
+		"offset":         offset,
+		"limit":          limit,
+		"status":         "ok",
+	}
 	if sinceStr != "" {
 		if t, err := time.Parse(time.RFC3339, sinceStr); err == nil {
 			count, _ := GetUserRequestsUpdatedSince(userID, t)
