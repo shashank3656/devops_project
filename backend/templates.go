@@ -18,7 +18,8 @@ func templatesListHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if _, ok := checkAuth(w, r); !ok {
+	userID, ok := checkAuth(w, r)
+	if !ok {
 		return
 	}
 	if DB == nil {
@@ -26,7 +27,7 @@ func templatesListHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"templates": []interface{}{}, "status": "ok"})
 		return
 	}
-	list, err := ListRequestTemplates()
+	list, err := ListRequestTemplatesForUser(userID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -48,7 +49,8 @@ func templatesDetailHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if _, ok := checkAuth(w, r); !ok {
+	userID, ok := checkAuth(w, r)
+	if !ok {
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/templates/")
@@ -59,7 +61,7 @@ func templatesDetailHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid template id", "status": "error"})
 		return
 	}
-	t, err := GetRequestTemplateByID(id)
+	t, err := GetRequestTemplateForUser(id, userID)
 	if err != nil || t == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
@@ -114,6 +116,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				Env         string `json:"env"`
 				Service     string `json:"service"`
 				Config      string `json:"config"`
+				TeamIDs     []int  `json:"team_ids"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
@@ -130,12 +133,25 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			if config == "" {
 				config = "{}"
 			}
+			teamIDs, err := ValidatePortalTemplateTeamIDs(body.TeamIDs)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
 			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, adminIDPtr)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
+			if err := SetRequestTemplateTeams(t.ID, teamIDs); err != nil {
+				_ = DeleteRequestTemplate(t.ID)
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+			t, _ = GetRequestTemplateByID(t.ID)
 			AppendAuditLog(adminIDPtr, "template_create", "request_template", strconv.Itoa(t.ID), name)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
@@ -171,6 +187,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			Env         string `json:"env"`
 			Service     string `json:"service"`
 			Config      string `json:"config"`
+			TeamIDs     *[]int `json:"team_ids"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -198,6 +215,19 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
+		}
+		if body.TeamIDs != nil {
+			teamIDs, err := ValidatePortalTemplateTeamIDs(*body.TeamIDs)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
+			if err := SetRequestTemplateTeams(id, teamIDs); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				return
+			}
 		}
 		AppendAuditLog(adminIDPtr, "template_update", "request_template", strconv.Itoa(id), name)
 		updated, _ := GetRequestTemplateByID(id)

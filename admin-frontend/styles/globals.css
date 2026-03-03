@@ -2686,6 +2686,82 @@ tbody tr:hover {
   gap: 8px;
   margin-bottom: 16px;
 }
+
+.access-review-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) 220px 220px;
+  gap: 12px;
+}
+
+.access-review-toolbar__search,
+.access-review-toolbar__select {
+  width: 100%;
+}
+
+.access-review-table td {
+  vertical-align: top;
+}
+
+.access-review-user {
+  display: grid;
+  gap: 6px;
+}
+
+.access-review-user strong {
+  color: var(--color-text);
+}
+
+.access-review-user span {
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.access-review-type {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.access-review-memberships {
+  display: grid;
+  gap: 10px;
+}
+
+.access-review-membership {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.access-review-membership__meta {
+  display: grid;
+  gap: 4px;
+}
+
+.access-review-membership__meta strong {
+  color: var(--color-text);
+}
+
+.access-review-membership__meta span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 960px) {
+  .access-review-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .access-review-membership {
+    flex-direction: column;
+  }
+}
 .portal-detail-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -3582,6 +3658,154 @@ td {
   }
 
   .admin-onboarding-timeline__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.team-ownership-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.9fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.team-ownership-table-wrap {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.team-ownership-table tbody tr {
+  cursor: pointer;
+}
+
+.team-ownership-table__row--active td {
+  background: rgba(13, 56, 96, 0.34);
+}
+
+.team-ownership-cell {
+  display: grid;
+  gap: 4px;
+}
+
+.team-ownership-cell strong {
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.team-ownership-cell span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.team-ownership-detail {
+  position: sticky;
+  top: 24px;
+}
+
+.team-ownership-detail__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.team-ownership-detail__stat {
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(27, 77, 124, 0.5);
+  background: rgba(6, 18, 32, 0.76);
+}
+
+.team-ownership-detail__stat span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+}
+
+.team-ownership-detail__stat strong {
+  color: var(--color-text);
+  font-size: 20px;
+}
+
+.team-ownership-detail__section {
+  padding-top: 18px;
+  margin-top: 18px;
+  border-top: 1px solid rgba(27, 77, 124, 0.4);
+}
+
+.team-ownership-detail__section:first-of-type {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.team-ownership-detail__section h3 {
+  margin: 0 0 12px;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.team-ownership-detail__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.team-ownership-member-list {
+  display: grid;
+  gap: 10px;
+}
+
+.team-ownership-member-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(27, 77, 124, 0.45);
+  background: rgba(6, 18, 32, 0.72);
+}
+
+.team-ownership-member-list__item strong {
+  display: block;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.team-ownership-member-list__item span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.team-ownership-empty-copy {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 1120px) {
+  .team-ownership-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .team-ownership-detail {
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .team-ownership-detail__stats {
+    grid-template-columns: 1fr;
+  }
+
+  .team-ownership-detail__section-header,
+  .team-ownership-member-list__item {
     flex-direction: column;
     align-items: flex-start;
   }

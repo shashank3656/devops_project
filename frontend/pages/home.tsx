@@ -257,6 +257,10 @@ export default function Home() {
                   <p>Bring an existing payload when you already know the exact request contract.</p>
                 </Link>
                 <Link href="/history" className="launchpad-action-card">
+                  <strong>Reuse a previous request</strong>
+                  <p>Open Request History to clone or resubmit an earlier request instead of starting from scratch.</p>
+                </Link>
+                <Link href="/history" className="launchpad-action-card">
                   <strong>Track current requests</strong>
                   <p>Review approvals, PR links, comments, and provisioning progress in one place.</p>
                 </Link>
@@ -279,6 +283,10 @@ export default function Home() {
                 <div className="launchpad-tip">
                   <strong>Watch the request journey</strong>
                   <p>Use Request History after submit to follow comments, approvals, and PR activity.</p>
+                </div>
+                <div className="launchpad-tip">
+                  <strong>Reuse before rebuilding</strong>
+                  <p>History already supports clone and resubmit, which is faster for repeat requests.</p>
                 </div>
               </div>
             </aside>

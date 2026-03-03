@@ -15,6 +15,14 @@ interface RequestTemplate {
   env: string;
   service: string;
   config: string;
+  teams?: TeamSummary[];
+  visible_to_all?: boolean;
+}
+
+interface TeamSummary {
+  id: number;
+  name: string;
+  team_type?: string;
 }
 
 export default function EditTemplate() {
@@ -26,11 +34,35 @@ export default function EditTemplate() {
   const [env, setEnv] = useState('prod');
   const [service, setService] = useState('');
   const [config, setConfig] = useState('{}');
+  const [portalTeams, setPortalTeams] = useState<TeamSummary[]>([]);
+  const [selectedTeamIds, setSelectedTeamIds] = useState<number[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(true);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+
+  const fetchTeams = useCallback(async () => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) return;
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/teams`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401 || res.status === 403) {
+        router.replace('/login');
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.teams)) {
+        setPortalTeams(
+          data.teams.filter((team: TeamSummary) => (team.team_type || 'portal') === 'portal'),
+        );
+      }
+    } catch {
+      // Leave the form usable even if the team list fails to load.
+    }
+  }, [apiUrl, router]);
 
   const fetchTemplate = useCallback(async () => {
     const token = localStorage.getItem('admin_token');
@@ -54,6 +86,7 @@ export default function EditTemplate() {
         setEnv(t.env || 'prod');
         setService(t.service || '');
         setConfig(t.config || '{}');
+        setSelectedTeamIds(Array.isArray(t.teams) ? t.teams.map((team) => team.id) : []);
         setError('');
       } else {
         setError(data.error || 'Template not found');
@@ -71,8 +104,15 @@ export default function EditTemplate() {
       router.replace('/login');
       return;
     }
+    void fetchTeams();
     if (typeof id === 'string' && id) fetchTemplate();
-  }, [id, router, fetchTemplate]);
+  }, [id, router, fetchTemplate, fetchTeams]);
+
+  const toggleTeam = (teamID: number) => {
+    setSelectedTeamIds((current) =>
+      current.includes(teamID) ? current.filter((id) => id !== teamID) : [...current, teamID],
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,6 +144,7 @@ export default function EditTemplate() {
           env: env.trim(),
           service: service.trim(),
           config: configStr,
+          team_ids: selectedTeamIds,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -139,7 +180,7 @@ export default function EditTemplate() {
           <Link href="/templates" className="back-link">
             ← Back to Templates
           </Link>
-          <div className="card" style={{ maxWidth: 560 }}>
+          <div className="card" style={{ maxWidth: 720 }}>
             <h2 className="card-title">Edit template</h2>
             {error && (
               <div className="alert alert-error" role="alert" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
@@ -207,6 +248,35 @@ export default function EditTemplate() {
                   rows={6}
                   style={{ fontFamily: 'monospace', fontSize: '13px' }}
                 />
+              </div>
+              <div className="form-group">
+                <label className="label" htmlFor="tpl-scope">Template visibility</label>
+                <span className="label-optional" style={{ display: 'block', marginBottom: 10 }}>
+                  Assign the template to specific portal teams. Leave everything unchecked to keep it visible to all portal teams.
+                </span>
+                {portalTeams.length === 0 ? (
+                  <div className="empty-state" style={{ padding: 16, textAlign: 'left' }}>
+                    No portal teams exist yet. <Link href="/teams/new">Create a team first</Link>.
+                  </div>
+                ) : (
+                  <div id="tpl-scope" className="admin-team-check-row">
+                    {portalTeams.map((team) => (
+                      <label key={team.id} className="admin-team-check">
+                        <input
+                          type="checkbox"
+                          checked={selectedTeamIds.includes(team.id)}
+                          onChange={() => toggleTeam(team.id)}
+                        />
+                        <span>{team.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <span className="label-optional" style={{ display: 'block', marginTop: 8 }}>
+                  {selectedTeamIds.length === 0
+                    ? 'Visible to all portal teams.'
+                    : `Assigned to ${selectedTeamIds.length} portal team${selectedTeamIds.length === 1 ? '' : 's'}.`}
+                </span>
               </div>
               <button type="submit" className="btn btn-primary" disabled={loading} style={{ padding: '10px 24px' }}>
                 {loading ? 'Saving…' : 'Save changes'}
