@@ -381,15 +381,17 @@ type APIKeyRecord struct {
 
 // RequestTemplate is an admin-defined preset (e.g. "AWS prod EKS")
 type RequestTemplate struct {
-	ID          int       `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Cloud       string    `json:"cloud"`
-	Env         string    `json:"env"`
-	Service     string    `json:"service"`
-	Config      string    `json:"config"`
-	CreatedBy   *int      `json:"created_by"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID           int       `json:"id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	Cloud        string    `json:"cloud"`
+	Env          string    `json:"env"`
+	Service      string    `json:"service"`
+	Config       string    `json:"config"`
+	CreatedBy    *int      `json:"created_by"`
+	CreatedAt    time.Time `json:"created_at"`
+	Teams        []Team    `json:"teams,omitempty"`
+	VisibleToAll bool      `json:"visible_to_all"`
 }
 
 // UserSavedConfig is a user's saved/favorite configuration
@@ -648,7 +650,7 @@ func SavePRRequest(req *PRRequest) error {
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id, created_at, updated_at
 	`
-	err := DB.QueryRow(
+	err := queryRowContext(
 		query,
 		req.Team, req.Env, req.Cloud, req.Service, req.ClientName,
 		req.ApplicationID, req.Priority, req.DueDate, req.PRURL, req.Branch, req.FilePath, req.Status,
@@ -659,42 +661,60 @@ func SavePRRequest(req *PRRequest) error {
 		return fmt.Errorf("failed to save PR request: %w", err)
 	}
 	_ = SaveRequestConfigHistory(req.ID, req.Config, "initial")
+	invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
+	refreshRequestSummaryViewAsync()
 	return nil
 }
 
 // UpdatePRRequestStatus sets status and updated_at for a request
 func UpdatePRRequestStatus(id int, status string) error {
-	_, err := DB.Exec(
+	_, err := execContext(
 		"UPDATE pr_requests SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
 		status, id,
 	)
+	if err == nil {
+		invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
+		refreshRequestSummaryViewAsync()
+	}
 	return err
 }
 
 // UpdatePRRequestReject sets status to rejected and optional reject_reason
 func UpdatePRRequestReject(id int, reason string) error {
-	_, err := DB.Exec(
+	_, err := execContext(
 		"UPDATE pr_requests SET status = 'rejected', reject_reason = COALESCE(NULLIF(TRIM($1),''), reject_reason), updated_at = CURRENT_TIMESTAMP WHERE id = $2",
 		reason, id,
 	)
+	if err == nil {
+		invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
+		refreshRequestSummaryViewAsync()
+	}
 	return err
 }
 
 // UpdatePRRequestWithPR sets pr_url and status to in_progress after PR is created
 func UpdatePRRequestWithPR(id int, prURL string) error {
-	_, err := DB.Exec(
+	_, err := execContext(
 		"UPDATE pr_requests SET pr_url = $1, status = 'in_progress', updated_at = CURRENT_TIMESTAMP WHERE id = $2",
 		prURL, id,
 	)
+	if err == nil {
+		invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
+		refreshRequestSummaryViewAsync()
+	}
 	return err
 }
 
 // UpdatePRRequestAssignedTo sets assigned_to for a request (used after PR creation)
 func UpdatePRRequestAssignedTo(requestID, userID int) error {
-	_, err := DB.Exec(
+	_, err := execContext(
 		"UPDATE pr_requests SET assigned_to = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
 		userID, requestID,
 	)
+	if err == nil {
+		invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
+		refreshRequestSummaryViewAsync()
+	}
 	return err
 }
 
@@ -796,21 +816,34 @@ func InsertUserNotification(userID int, requestID *int, kind, message string) er
 	if DB == nil {
 		return nil
 	}
-	_, err := DB.Exec(
+	_, err := execContext(
 		"INSERT INTO user_notifications (user_id, request_id, kind, message) VALUES ($1, $2, $3, $4)",
 		userID, requestID, kind, message,
 	)
+	if err == nil {
+		invalidateCacheNamespaces(cacheNamespaceNotify)
+	}
 	return err
 }
 
 // ListUserNotifications returns notifications for a user, newest first
 func ListUserNotifications(userID int, limit, offset int, unreadOnly bool) ([]UserNotification, error) {
+	return ListUserNotificationsFiltered(userID, limit, offset, unreadOnly, "")
+}
+
+// ListUserNotificationsFiltered returns notifications for a user, optionally filtered by kind.
+func ListUserNotificationsFiltered(userID int, limit, offset int, unreadOnly bool, kind string) ([]UserNotification, error) {
 	if DB == nil {
 		return nil, nil
 	}
 	q := "SELECT id, user_id, request_id, kind, message, read_at, created_at FROM user_notifications WHERE user_id = $1"
 	args := []interface{}{userID}
 	argPos := 2
+	if strings.TrimSpace(kind) != "" {
+		q += fmt.Sprintf(" AND kind = $%d", argPos)
+		args = append(args, strings.TrimSpace(kind))
+		argPos++
+	}
 	if unreadOnly {
 		q += fmt.Sprintf(" AND read_at IS NULL")
 	}
@@ -848,6 +881,59 @@ func ListUserNotifications(userID int, limit, offset int, unreadOnly bool) ([]Us
 		out = append(out, n)
 	}
 	return out, nil
+}
+
+// CountUserNotifications returns the count of notifications for a user, optionally filtered by kind and unread state.
+func CountUserNotifications(userID int, unreadOnly bool, kind string) (int, error) {
+	if DB == nil {
+		return 0, nil
+	}
+	return cacheJSON[int](cacheNamespaceNotify, 30*time.Second, []string{strconv.Itoa(userID), strconv.FormatBool(unreadOnly), strings.TrimSpace(kind)}, func() (int, error) {
+		q := "SELECT COUNT(*) FROM user_notifications WHERE user_id = $1"
+		args := []interface{}{userID}
+		argPos := 2
+		if strings.TrimSpace(kind) != "" {
+			q += fmt.Sprintf(" AND kind = $%d", argPos)
+			args = append(args, strings.TrimSpace(kind))
+			argPos++
+		}
+		if unreadOnly {
+			q += " AND read_at IS NULL"
+		}
+		var count int
+		if err := queryRowContext(q, args...).Scan(&count); err != nil {
+			return 0, err
+		}
+		return count, nil
+	})
+}
+
+// CountUserNotificationsByKind returns counts per kind and overall totals for a user.
+func CountUserNotificationsByKind(userID int) (map[string]int, error) {
+	if DB == nil {
+		return map[string]int{}, nil
+	}
+	return cacheJSON[map[string]int](cacheNamespaceNotify, 30*time.Second, []string{strconv.Itoa(userID), "by_kind"}, func() (map[string]int, error) {
+		rows, cancel, err := queryRowsWithTimeout(`SELECT kind, COUNT(*) FROM user_notifications WHERE user_id = $1 GROUP BY kind`, userID)
+		if err != nil {
+			return nil, err
+		}
+		defer cancel()
+		defer rows.Close()
+		out := map[string]int{}
+		total := 0
+		for rows.Next() {
+			var kind string
+			var count int
+			if err := rows.Scan(&kind, &count); err != nil {
+				return nil, err
+			}
+			out[kind] = count
+			total += count
+		}
+		out["all"] = total
+		return out, nil
+	})
 }
 
 // UserNotificationPreferences holds email on/off per notification type
@@ -1028,7 +1114,10 @@ func MarkUserNotificationsRead(userID int, ids []int) error {
 		return nil
 	}
 	if len(ids) == 0 {
-		_, err := DB.Exec("UPDATE user_notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND read_at IS NULL", userID)
+		_, err := execContext("UPDATE user_notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND read_at IS NULL", userID)
+		if err == nil {
+			invalidateCacheNamespaces(cacheNamespaceNotify)
+		}
 		return err
 	}
 	placeholders := make([]string, len(ids))
@@ -1037,7 +1126,10 @@ func MarkUserNotificationsRead(userID int, ids []int) error {
 		args = append(args, ids[i])
 		placeholders[i] = fmt.Sprintf("$%d", len(args))
 	}
-	_, err := DB.Exec("UPDATE user_notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND id IN ("+strings.Join(placeholders, ",")+")", args...)
+	_, err := execContext("UPDATE user_notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND id IN ("+strings.Join(placeholders, ",")+")", args...)
+	if err == nil {
+		invalidateCacheNamespaces(cacheNamespaceNotify)
+	}
 	return err
 }
 
@@ -2578,11 +2670,11 @@ func GetDashboardStats() (DashboardStats, error) {
 	if DB == nil {
 		return s, nil
 	}
-	_ = DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&s.TotalUsers)
-	_ = DB.QueryRow("SELECT COUNT(*) FROM teams").Scan(&s.TotalTeams)
-	_ = DB.QueryRow("SELECT COUNT(*) FROM users WHERE COALESCE(verified, false) = false").Scan(&s.UnverifiedUsers)
-	_ = DB.QueryRow("SELECT COUNT(*) FROM pr_requests WHERE created_at >= NOW() - INTERVAL '7 days'").Scan(&s.RequestsThisWeek)
-	_ = DB.QueryRow("SELECT COUNT(*) FROM pr_requests WHERE status IN ('pending_approval', 'pending_devops_approval', 'pending_user_manager_approval')").Scan(&s.PendingApproval)
+	_ = queryRowContext("SELECT COUNT(*) FROM users").Scan(&s.TotalUsers)
+	_ = queryRowContext("SELECT COUNT(*) FROM teams").Scan(&s.TotalTeams)
+	_ = queryRowContext("SELECT COUNT(*) FROM users WHERE COALESCE(verified, false) = false").Scan(&s.UnverifiedUsers)
+	_ = queryRowContext("SELECT COUNT(*) FROM pr_requests WHERE created_at >= NOW() - INTERVAL '7 days'").Scan(&s.RequestsThisWeek)
+	_ = queryRowContext("SELECT COUNT(*) FROM pr_requests WHERE status IN ('pending_approval', 'pending_devops_approval', 'pending_user_manager_approval')").Scan(&s.PendingApproval)
 	return s, nil
 }
 
@@ -2607,13 +2699,13 @@ func GetRequestsByStatusInDateRange(from, to time.Time) (DateRangeStats, error) 
 	toStr := to.Format("2006-01-02")
 
 	// Total in range (date inclusive)
-	_ = DB.QueryRow(
+	_ = queryRowContext(
 		`SELECT COUNT(*) FROM pr_requests WHERE created_at::date >= $1::date AND created_at::date <= $2::date`,
 		fromStr, toStr,
 	).Scan(&s.Total)
 
 	// Per status
-	rows, err := DB.Query(
+	rows, cancel, err := queryRowsWithTimeout(
 		`SELECT status, COUNT(*) FROM pr_requests 
 		 WHERE created_at::date >= $1::date AND created_at::date <= $2::date 
 		 GROUP BY status`,
@@ -2622,6 +2714,7 @@ func GetRequestsByStatusInDateRange(from, to time.Time) (DateRangeStats, error) 
 	if err != nil {
 		return s, err
 	}
+	defer cancel()
 	defer rows.Close()
 	for rows.Next() {
 		var status string
@@ -2679,7 +2772,7 @@ func CreateTeam(name, slug, teamType string, createdBy *int, defaultEnv, default
 		return nil, fmt.Errorf("failed to generate team application id: %w", err)
 	}
 	var t Team
-	err = DB.QueryRow(
+	err = queryRowContext(
 		`INSERT INTO teams (name, slug, application_id, team_type, created_by, default_env, default_cloud) VALUES ($1, $2, $3, $4, $5, NULLIF(TRIM($6),''), NULLIF(TRIM($7),''))
 		 RETURNING id, name, slug, COALESCE(application_id,''), COALESCE(team_type,'portal'), COALESCE(default_env,''), COALESCE(default_cloud,''), created_at, created_by`,
 		name, slug, groupID, teamType, createdBy, defaultEnv, defaultCloud,
@@ -2687,15 +2780,19 @@ func CreateTeam(name, slug, teamType string, createdBy *int, defaultEnv, default
 	if err != nil {
 		return nil, err
 	}
+	invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
 	return &t, nil
 }
 
 // UpdateTeamDefaults updates default_env and default_cloud for a team
 func UpdateTeamDefaults(teamID int, defaultEnv, defaultCloud string) error {
-	_, err := DB.Exec(
+	_, err := execContext(
 		`UPDATE teams SET default_env = NULLIF(TRIM($1),''), default_cloud = NULLIF(TRIM($2),'') WHERE id = $3`,
 		defaultEnv, defaultCloud, teamID,
 	)
+	if err == nil {
+		invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
+	}
 	return err
 }
 
@@ -2844,7 +2941,7 @@ func AddTeamMember(teamID, userID int, role string) (*TeamMember, error) {
 		role = "member"
 	}
 	var m TeamMember
-	err := DB.QueryRow(
+	err := queryRowContext(
 		`INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)
 		 RETURNING id, team_id, user_id, role, created_at`,
 		teamID, userID, role,
@@ -2852,12 +2949,16 @@ func AddTeamMember(teamID, userID int, role string) (*TeamMember, error) {
 	if err != nil {
 		return nil, err
 	}
+	invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
 	return &m, nil
 }
 
 // RemoveTeamMember removes a user from a team
 func RemoveTeamMember(teamID, userID int) error {
-	_, err := DB.Exec(`DELETE FROM team_members WHERE team_id = $1 AND user_id = $2`, teamID, userID)
+	_, err := execContext(`DELETE FROM team_members WHERE team_id = $1 AND user_id = $2`, teamID, userID)
+	if err == nil {
+		invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
+	}
 	return err
 }
 
@@ -2887,7 +2988,7 @@ func UpdateTeamMemberRole(teamID, userID int, role string) error {
 			role = "developer"
 		}
 	}
-	result, err := DB.Exec(`UPDATE team_members SET role = $1 WHERE team_id = $2 AND user_id = $3`, role, teamID, userID)
+	result, err := execContext(`UPDATE team_members SET role = $1 WHERE team_id = $2 AND user_id = $3`, role, teamID, userID)
 	if err != nil {
 		return err
 	}
@@ -2895,12 +2996,16 @@ func UpdateTeamMemberRole(teamID, userID int, role string) error {
 	if rows == 0 {
 		return fmt.Errorf("team member not found")
 	}
+	invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
 	return nil
 }
 
 // DeleteTeam deletes a team and cascades to team_members (ON DELETE CASCADE)
 func DeleteTeam(teamID int) error {
-	_, err := DB.Exec(`DELETE FROM teams WHERE id = $1`, teamID)
+	_, err := execContext(`DELETE FROM teams WHERE id = $1`, teamID)
+	if err == nil {
+		invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
+	}
 	return err
 }
 
@@ -3183,9 +3288,34 @@ func ListRequestTemplates() ([]RequestTemplate, error) {
 			id := int(createdBy.Int64)
 			t.CreatedBy = &id
 		}
+		t.VisibleToAll = true
 		out = append(out, t)
 	}
+	if err := hydrateRequestTemplatesWithTeams(out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+func ListRequestTemplatesForUser(userID int) ([]RequestTemplate, error) {
+	templates, err := ListRequestTemplates()
+	if err != nil {
+		return nil, err
+	}
+	if len(templates) == 0 {
+		return templates, nil
+	}
+	allowedTeams, err := getPortalTeamIDSetForUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]RequestTemplate, 0, len(templates))
+	for _, template := range templates {
+		if template.VisibleToAll || templateAccessibleToPortalTeams(template.Teams, allowedTeams) {
+			filtered = append(filtered, template)
+		}
+	}
+	return filtered, nil
 }
 
 func GetRequestTemplateByID(id int) (*RequestTemplate, error) {
@@ -3205,7 +3335,29 @@ func GetRequestTemplateByID(id int) (*RequestTemplate, error) {
 		id := int(createdBy.Int64)
 		t.CreatedBy = &id
 	}
+	t.VisibleToAll = true
+	if err := hydrateRequestTemplateWithTeams(&t); err != nil {
+		return nil, err
+	}
 	return &t, nil
+}
+
+func GetRequestTemplateForUser(id, userID int) (*RequestTemplate, error) {
+	template, err := GetRequestTemplateByID(id)
+	if err != nil || template == nil {
+		return template, err
+	}
+	if template.VisibleToAll {
+		return template, nil
+	}
+	allowedTeams, err := getPortalTeamIDSetForUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	if templateAccessibleToPortalTeams(template.Teams, allowedTeams) {
+		return template, nil
+	}
+	return nil, sql.ErrNoRows
 }
 
 func CreateRequestTemplate(name, description, cloud, env, service, config string, createdBy *int) (*RequestTemplate, error) {
@@ -3214,7 +3366,7 @@ func CreateRequestTemplate(name, description, cloud, env, service, config string
 	}
 	var t RequestTemplate
 	var createdByValue sql.NullInt64
-	err := DB.QueryRow(
+	err := queryRowContext(
 		`INSERT INTO request_templates (name, description, cloud, env, service, config, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING id, name, description, cloud, env, service, config, created_by, created_at`,
 		name, description, cloud, env, service, config, createdBy,
@@ -3226,6 +3378,7 @@ func CreateRequestTemplate(name, description, cloud, env, service, config string
 		id := int(createdByValue.Int64)
 		t.CreatedBy = &id
 	}
+	invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam)
 	return &t, nil
 }
 
@@ -3233,10 +3386,13 @@ func UpdateRequestTemplate(id int, name, description, cloud, env, service, confi
 	if DB == nil {
 		return fmt.Errorf("database not available")
 	}
-	_, err := DB.Exec(
+	_, err := execContext(
 		`UPDATE request_templates SET name = $1, description = $2, cloud = $3, env = $4, service = $5, config = $6 WHERE id = $7`,
 		name, description, cloud, env, service, config, id,
 	)
+	if err == nil {
+		invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam)
+	}
 	return err
 }
 
@@ -3244,8 +3400,157 @@ func DeleteRequestTemplate(id int) error {
 	if DB == nil {
 		return fmt.Errorf("database not available")
 	}
-	_, err := DB.Exec("DELETE FROM request_templates WHERE id = $1", id)
+	_, err := execContext("DELETE FROM request_templates WHERE id = $1", id)
+	if err == nil {
+		invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam)
+	}
 	return err
+}
+
+func normalizeTeamIDs(teamIDs []int) []int {
+	if len(teamIDs) == 0 {
+		return nil
+	}
+	seen := make(map[int]bool, len(teamIDs))
+	out := make([]int, 0, len(teamIDs))
+	for _, teamID := range teamIDs {
+		if teamID <= 0 || seen[teamID] {
+			continue
+		}
+		seen[teamID] = true
+		out = append(out, teamID)
+	}
+	sort.Ints(out)
+	return out
+}
+
+func ValidatePortalTemplateTeamIDs(teamIDs []int) ([]int, error) {
+	normalized := normalizeTeamIDs(teamIDs)
+	for _, teamID := range normalized {
+		team, err := GetTeamByID(teamID)
+		if err != nil {
+			return nil, err
+		}
+		if team == nil {
+			return nil, fmt.Errorf("team %d not found", teamID)
+		}
+		if strings.TrimSpace(strings.ToLower(team.TeamType)) != "" && strings.TrimSpace(strings.ToLower(team.TeamType)) != "portal" {
+			return nil, fmt.Errorf("team %s is not a portal team", team.Name)
+		}
+	}
+	return normalized, nil
+}
+
+func SetRequestTemplateTeams(templateID int, teamIDs []int) error {
+	if DB == nil {
+		return fmt.Errorf("database not available")
+	}
+	normalized, err := ValidatePortalTemplateTeamIDs(teamIDs)
+	if err != nil {
+		return err
+	}
+	tx, err := DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM request_template_teams WHERE template_id = $1`, templateID); err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return nil
+		}
+		return err
+	}
+	for _, teamID := range normalized {
+		if _, err := tx.Exec(
+			`INSERT INTO request_template_teams (template_id, team_id) VALUES ($1, $2) ON CONFLICT (template_id, team_id) DO NOTHING`,
+			templateID,
+			teamID,
+		); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam)
+	return nil
+}
+
+func GetRequestTemplateTeams(templateID int) ([]Team, error) {
+	if DB == nil {
+		return []Team{}, nil
+	}
+	rows, err := DB.Query(
+		`SELECT t.id, t.name, t.slug, COALESCE(t.application_id,''), COALESCE(t.team_type,'portal'), COALESCE(t.default_env,''), COALESCE(t.default_cloud,''), t.created_at, t.created_by
+		 FROM request_template_teams rtt
+		 INNER JOIN teams t ON t.id = rtt.team_id
+		 WHERE rtt.template_id = $1 AND COALESCE(t.team_type,'portal') = 'portal'
+		 ORDER BY t.name`,
+		templateID,
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return []Team{}, nil
+		}
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Team, 0)
+	for rows.Next() {
+		var team Team
+		if err := rows.Scan(&team.ID, &team.Name, &team.Slug, &team.ApplicationID, &team.TeamType, &team.DefaultEnv, &team.DefaultCloud, &team.CreatedAt, &team.CreatedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, team)
+	}
+	return out, nil
+}
+
+func hydrateRequestTemplateWithTeams(template *RequestTemplate) error {
+	if template == nil {
+		return nil
+	}
+	teams, err := GetRequestTemplateTeams(template.ID)
+	if err != nil {
+		return err
+	}
+	template.Teams = teams
+	template.VisibleToAll = len(teams) == 0
+	return nil
+}
+
+func hydrateRequestTemplatesWithTeams(templates []RequestTemplate) error {
+	for i := range templates {
+		if err := hydrateRequestTemplateWithTeams(&templates[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func getPortalTeamIDSetForUser(userID int) (map[int]bool, error) {
+	teams, err := GetTeamsForUserWithDetails(userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int]bool, len(teams))
+	for _, team := range teams {
+		if strings.TrimSpace(strings.ToLower(team.TeamType)) == "devops" {
+			continue
+		}
+		out[team.ID] = true
+	}
+	return out, nil
+}
+
+func templateAccessibleToPortalTeams(templateTeams []Team, allowedTeams map[int]bool) bool {
+	for _, team := range templateTeams {
+		if allowedTeams[team.ID] {
+			return true
+		}
+	}
+	return false
 }
 
 // --- User saved configs (favorites) ---

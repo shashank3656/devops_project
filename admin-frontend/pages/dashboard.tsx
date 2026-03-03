@@ -140,6 +140,9 @@ export default function AdminDashboard() {
               </p>
             </div>
             <div className="portal-page__actions">
+              <Link href="/team-ownership" className="btn btn-secondary">
+                Team ownership
+              </Link>
               <Link href="/requests" className="btn btn-primary">
                 Open requests
               </Link>

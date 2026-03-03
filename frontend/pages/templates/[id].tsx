@@ -13,6 +13,13 @@ interface RequestTemplate {
   env: string;
   service: string;
   config: string;
+  teams?: TeamSummary[];
+  visible_to_all?: boolean;
+}
+
+interface TeamSummary {
+  id: number;
+  name: string;
 }
 
 function formatTemplateConfig(config: string): string {
@@ -163,19 +170,46 @@ export default function TemplateDetailPage() {
                   <span className="portal-kv__label">Service</span>
                   <strong className="portal-detail-card__value">{template.service}</strong>
                 </article>
+                <article className="portal-detail-card">
+                  <span className="portal-kv__label">Availability</span>
+                  <strong className="portal-detail-card__value">
+                    {template.visible_to_all || !template.teams?.length ? 'All portal teams' : `${template.teams.length} team${template.teams.length === 1 ? '' : 's'} assigned`}
+                  </strong>
+                </article>
               </div>
             </section>
 
-            <section className="portal-surface">
-              <div className="portal-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Config</span>
-                  <h2 className="portal-surface__title">Default request payload</h2>
-                  <p className="portal-surface__subtitle">{configSummary}</p>
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Availability</span>
+                    <h2 className="portal-surface__title">Team scope</h2>
+                    <p className="portal-surface__subtitle">
+                      This template is visible based on your portal team membership.
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <pre className="portal-code-block">{formattedConfig}</pre>
-            </section>
+                <div className="portal-pill-row">
+                  {template.visible_to_all || !template.teams?.length ? (
+                    <span className="portal-pill">All portal teams</span>
+                  ) : (
+                    template.teams.map((team) => (
+                      <span key={team.id} className="portal-pill">{team.name}</span>
+                    ))
+                  )}
+                </div>
+              </section>
+
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Config</span>
+                    <h2 className="portal-surface__title">Default request payload</h2>
+                    <p className="portal-surface__subtitle">{configSummary}</p>
+                  </div>
+                </div>
+                <pre className="portal-code-block">{formattedConfig}</pre>
+              </section>
           </>
         ) : (
           <section className="portal-surface">

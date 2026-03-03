@@ -14,6 +14,13 @@ interface RequestTemplate {
   config: string;
   created_at: string;
   created_by: number | null;
+  teams?: TeamSummary[];
+  visible_to_all?: boolean;
+}
+
+interface TeamSummary {
+  id: number;
+  name: string;
 }
 
 export default function TemplatesList() {
@@ -158,6 +165,11 @@ export default function TemplatesList() {
                       <div className="portal-template-card__meta">
                         <span className="portal-pill">{template.env}</span>
                         <span className="portal-pill">{template.service}</span>
+                        <span className="portal-pill">
+                          {template.visible_to_all || !template.teams?.length
+                            ? 'All portal teams'
+                            : `${template.teams.length} portal team${template.teams.length === 1 ? '' : 's'}`}
+                        </span>
                       </div>
                       <div className="portal-template-card__actions">
                         <Link href={`/templates/${template.id}`} className="btn btn-secondary btn-sm">

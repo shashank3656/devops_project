@@ -81,39 +81,51 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 		if fromDate.After(toDate) {
 			fromDate, toDate = toDate, fromDate
 		}
-		dateStats, err := GetRequestsByStatusInDateRange(fromDate, toDate)
-		if err == nil {
-			resp["date_filter"] = map[string]interface{}{
-				"from":      dateStats.From,
-				"to":        dateStats.To,
-				"total":     dateStats.Total,
-				"by_status": dateStats.ByStatus,
+	}
+	filterKey := []string{
+		r.URL.Query().Get("period"),
+		r.URL.Query().Get("from"),
+		r.URL.Query().Get("to"),
+	}
+	resp, _ = cacheJSON[map[string]interface{}](cacheNamespaceAdmin, 90*time.Second, filterKey, func() (map[string]interface{}, error) {
+		cachedResp := map[string]interface{}{
+			"total_users":        stats.TotalUsers,
+			"total_teams":        stats.TotalTeams,
+			"unverified_users":   stats.UnverifiedUsers,
+			"requests_this_week": stats.RequestsThisWeek,
+			"pending_approval":   stats.PendingApproval,
+			"at_risk_count":      atRisk,
+			"status":             "ok",
+		}
+		if !fromDate.IsZero() || !toDate.IsZero() {
+			dateStats, err := GetRequestsByStatusInDateRange(fromDate, toDate)
+			if err == nil {
+				cachedResp["date_filter"] = map[string]interface{}{
+					"from":      dateStats.From,
+					"to":        dateStats.To,
+					"total":     dateStats.Total,
+					"by_status": dateStats.ByStatus,
+				}
 			}
 		}
-	}
-
-	// SLA metrics
-	fromStr, toStr := "", ""
-	if !fromDate.IsZero() {
-		fromStr = fromDate.Format("2006-01-02")
-	}
-	if !toDate.IsZero() {
-		toStr = toDate.Format("2006-01-02") + " 23:59:59"
-	}
-	if avgHours, cnt, err := GetSLAMetrics("", fromStr, toStr); err == nil && cnt > 0 {
-		resp["sla"] = map[string]interface{}{"avg_hours": avgHours, "completed_count": cnt}
-	}
-
-	// Team comparison
-	if teamComp, err := GetTeamComparison(fromStr, toStr); err == nil {
-		resp["team_comparison"] = teamComp
-	}
-
-	// Trend (last 14 days)
-	if trend, err := GetRequestsTrend(14, ""); err == nil {
-		resp["trend"] = trend
-	}
-
+		fromParam, toParam := "", ""
+		if !fromDate.IsZero() {
+			fromParam = fromDate.Format("2006-01-02")
+		}
+		if !toDate.IsZero() {
+			toParam = toDate.Format("2006-01-02") + " 23:59:59"
+		}
+		if avgHours, cnt, err := GetSLAMetrics("", fromParam, toParam); err == nil && cnt > 0 {
+			cachedResp["sla"] = map[string]interface{}{"avg_hours": avgHours, "completed_count": cnt}
+		}
+		if teamComp, err := GetTeamComparison(fromParam, toParam); err == nil {
+			cachedResp["team_comparison"] = teamComp
+		}
+		if trend, err := GetRequestsTrend(14, ""); err == nil {
+			cachedResp["trend"] = trend
+		}
+		return cachedResp, nil
+	})
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
