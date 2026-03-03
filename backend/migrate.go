@@ -263,6 +263,46 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_repo_config_scope_team ON repo_config(scope, team_id)")
 
+	// Migration 15b: gitops project catalog and environment-scoped visibility
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS gitops_projects (
+			id SERIAL PRIMARY KEY,
+			team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+			name VARCHAR(200) NOT NULL,
+			slug VARCHAR(200) NOT NULL,
+			repo_root VARCHAR(500) NOT NULL,
+			base_branch VARCHAR(200) NOT NULL DEFAULT 'main',
+			default_cloud VARCHAR(100) DEFAULT '',
+			environments JSONB NOT NULL DEFAULT '[]',
+			components JSONB NOT NULL DEFAULT '[]',
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(team_id, slug)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_gitops_projects_team_id ON gitops_projects(team_id)")
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS gitops_project_access (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES gitops_projects(id) ON DELETE CASCADE,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			environment VARCHAR(100) NOT NULL,
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(project_id, user_id, environment)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_gitops_project_access_project_id ON gitops_project_access(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_gitops_project_access_user_id ON gitops_project_access(user_id)")
+	var gitopsAccessPermissionCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'gitops_project_access' AND column_name = 'permission'").Scan(&gitopsAccessPermissionCount)
+	if gitopsAccessPermissionCount == 0 {
+		log.Println("Migrating database: adding gitops_project_access.permission...")
+		_, _ = DB.Exec("ALTER TABLE gitops_project_access ADD COLUMN permission VARCHAR(20) NOT NULL DEFAULT 'read'")
+		_, _ = DB.Exec("UPDATE gitops_project_access SET permission = 'read' WHERE permission IS NULL OR permission = ''")
+	}
+
 	// Migration 16: api_keys.scopes (request:create, history:read)
 	var scopesCol int
 	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'api_keys' AND column_name = 'scopes'").Scan(&scopesCol)
@@ -436,6 +476,36 @@ func MigrateDatabase() error {
 			}
 		}
 	}
+
+	// Migration 30: request_template_teams (optional portal-team scoping for templates)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS request_template_teams (
+			id SERIAL PRIMARY KEY,
+			template_id INTEGER NOT NULL REFERENCES request_templates(id) ON DELETE CASCADE,
+			team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(template_id, team_id)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_template_teams_template_id ON request_template_teams(template_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_template_teams_team_id ON request_template_teams(team_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_requests_team_status_created_at ON pr_requests(team, status, created_at DESC)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_requests_created_by_created_at ON pr_requests(created_by, created_at DESC)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_requests_team_env_cloud_status ON pr_requests(team, env, cloud, status)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_team_members_team_role ON team_members(team_id, role)")
+
+	// Migration 31: lightweight materialized summary for request status reporting
+	_, _ = DB.Exec(`
+		CREATE MATERIALIZED VIEW IF NOT EXISTS mv_request_status_summary AS
+		SELECT
+			COALESCE(team, '') AS team,
+			COALESCE(status, '') AS status,
+			COUNT(*) AS request_count,
+			MAX(updated_at) AS last_updated_at
+		FROM pr_requests
+		GROUP BY COALESCE(team, ''), COALESCE(status, '')
+	`)
+	_, _ = DB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_request_status_summary_team_status ON mv_request_status_summary(team, status)`)
 
 	log.Println("Database schema is up to date")
 	return nil

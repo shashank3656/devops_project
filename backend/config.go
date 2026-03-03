@@ -1,6 +1,10 @@
 package main
 
-import "os"
+import (
+	"os"
+	"strconv"
+	"time"
+)
 
 var (
 	// GitHubOwner can be your GitHub username (personal account) or organization name
@@ -22,8 +26,22 @@ var (
 	// FrontendURL - base URL for user frontend (for password reset links). Default: http://localhost:3000
 	FrontendURL = getEnv("FRONTEND_URL", "http://localhost:3000")
 
+	// DevOpsFrontendURL - base URL for DevOps frontend (for DevOps password reset links). Default: http://localhost:3002
+	DevOpsFrontendURL = getEnv("DEVOPS_FRONTEND_URL", "http://localhost:3002")
+
 	// WebhookApproveURL - optional URL to POST when request is approved
 	WebhookApproveURL = getEnv("WEBHOOK_APPROVE_URL", "")
+
+	// Redis / runtime reliability
+	RedisAddr               = getEnv("REDIS_ADDR", "")
+	RedisPassword           = getEnv("REDIS_PASSWORD", "")
+	RedisDB                 = getEnvInt("REDIS_DB", 0)
+	RedisCacheTTL           = getEnvDurationSeconds("REDIS_CACHE_TTL_SECONDS", 90*time.Second)
+	RedisQueueName          = getEnv("REDIS_QUEUE_NAME", "infra:jobs")
+	RedisJobPollTimeout     = getEnvDurationSeconds("REDIS_JOB_POLL_TIMEOUT_SECONDS", 5*time.Second)
+	DBQueryTimeout          = getEnvDurationSeconds("DB_QUERY_TIMEOUT_SECONDS", 5*time.Second)
+	SlowQueryThreshold      = getEnvDurationMilliseconds("DB_SLOW_QUERY_MS", 750*time.Millisecond)
+	RequestLogSlowThreshold = getEnvDurationMilliseconds("REQUEST_LOG_SLOW_MS", 500*time.Millisecond)
 )
 
 func getEnv(key, defaultValue string) string {
@@ -31,4 +49,40 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+	return parsed
+}
+
+func getEnvDurationSeconds(key string, defaultValue time.Duration) time.Duration {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+	return time.Duration(parsed) * time.Second
+}
+
+func getEnvDurationMilliseconds(key string, defaultValue time.Duration) time.Duration {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+	return time.Duration(parsed) * time.Millisecond
 }

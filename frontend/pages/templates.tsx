@@ -12,6 +12,13 @@ interface RequestTemplate {
   cloud: string;
   env: string;
   service: string;
+  teams?: TeamSummary[];
+  visible_to_all?: boolean;
+}
+
+interface TeamSummary {
+  id: number;
+  name: string;
 }
 
 export default function TemplatesPage() {
@@ -112,7 +119,7 @@ export default function TemplatesPage() {
         ) : templates.length === 0 ? (
           <div className="portal-surface">
             <div className="empty-state">
-              No templates are available currently.
+              No templates are assigned to your teams currently.
             </div>
           </div>
         ) : (
@@ -139,6 +146,9 @@ export default function TemplatesPage() {
                     <div className="portal-template-card__meta">
                       <span className="portal-pill">{template.env}</span>
                       <span className="portal-pill">{template.service}</span>
+                      <span className="portal-pill">
+                        {template.visible_to_all || !template.teams?.length ? 'All teams' : 'Team scoped'}
+                      </span>
                     </div>
                     <div className="portal-template-card__actions">
                       <Link href={`/templates/${template.id}`} className="btn btn-secondary btn-sm">

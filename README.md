@@ -17,7 +17,7 @@ Cloud-agnostic self-service infrastructure platform for managing infrastructure 
    ```bash
    docker-compose up -d
    ```
-   This starts postgres, backend, user frontend (port 3000), and admin frontend (port 3001). See [Docker Compose commands](docs/DOCKER_COMPOSE_CMDS.md) for more.
+   This starts postgres, redis, backend, user frontend (port 3000), and admin frontend (port 3001). See [Docker Compose commands](docs/DOCKER_COMPOSE_CMDS.md) for more.
 
 3. **Access Application:**
    - **User frontend:** http://localhost:3000 (login, requests, history)
@@ -64,6 +64,9 @@ All documentation is available in the [`docs/`](./docs/) directory:
 - ✅ Admin console: teams & groups management (create, delete, add/remove members)
 - ✅ Admin secret for API/script access (`X-Admin-Secret` header)
 - ✅ Audit logging for admin actions
+- ✅ Redis-backed cache for admin/onboarding/ownership reads
+- ✅ Background job queue for email and outbound webhook delivery
+- ✅ Request/DB observability with slow-query and slow-request logging
 
 See [Feature Guide](./docs/FEATURE_GUIDE.md) for: secure admin secret rollout, email enablement (SMTP), delete teams, and additional feature suggestions.
 
@@ -79,6 +82,8 @@ Database notes:
 - Set real `DB_USER`, `DB_PASSWORD`, and `DB_NAME` values in `config/.env`
 - Re-run `./scripts/sync-env.sh` after changing DB credentials so `docker-compose` picks them up
 - PostgreSQL is now bound to `127.0.0.1:5432` in compose to avoid public exposure by default
+- Redis is enabled by default in compose for cache and queue workloads; set `REDIS_*` vars in `config/.env` if you use an external Redis instance
+- Backend query/runtime guardrails are configurable with `DB_QUERY_TIMEOUT_SECONDS`, `DB_SLOW_QUERY_MS`, and `REQUEST_LOG_SLOW_MS`
 
 **Important for EC2 Deployment:**
 - Update `NEXT_PUBLIC_API_URL` in `config/.env` to your EC2 IP/domain
