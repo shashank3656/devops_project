@@ -105,8 +105,11 @@ func sendNotificationEmailIfConfigured(userID int, kind, subject, body string) {
 		log.Printf("[Email] Skipping notification - user %d has no email", userID)
 		return
 	}
-	log.Printf("[Email] Sending %s notification to userID=%d email=%s subject=%q", kind, userID, user.Email, subject)
-	if err := SendEmail(user.Email, subject, body); err != nil {
-		log.Printf("[Email] Failed to send to %s: %v", user.Email, err)
-	}
+	log.Printf("[Email] Queueing %s notification to userID=%d email=%s subject=%q", kind, userID, user.Email, subject)
+	enqueueJob("notification_email", NotificationEmailJob{
+		UserID:  userID,
+		Kind:    kind,
+		Subject: subject,
+		Body:    body,
+	})
 }

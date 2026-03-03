@@ -74,7 +74,7 @@ func teamOwnershipIsOwner(teamType, role string) bool {
 }
 
 func loadTeamOwnershipMembers() (map[int][]TeamOwnershipMember, error) {
-	rows, err := DB.Query(`
+	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT m.team_id, m.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''), COALESCE(u.user_type, 'portal_user'), COALESCE(m.role, '')
 		FROM team_members m
 		INNER JOIN users u ON u.id = m.user_id
@@ -86,6 +86,7 @@ func loadTeamOwnershipMembers() (map[int][]TeamOwnershipMember, error) {
 		}
 		return nil, err
 	}
+	defer cancel()
 	defer rows.Close()
 
 	grouped := make(map[int][]TeamOwnershipMember)
@@ -101,7 +102,7 @@ func loadTeamOwnershipMembers() (map[int][]TeamOwnershipMember, error) {
 }
 
 func loadTeamOwnershipRequestAggregates() (map[string]teamOwnershipRequestAggregate, error) {
-	rows, err := DB.Query(`
+	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT COALESCE(team, ''), COALESCE(env, ''), COALESCE(cloud, ''), COALESCE(status, ''), COUNT(*), MAX(updated_at)
 		FROM pr_requests
 		GROUP BY team, env, cloud, status
@@ -112,6 +113,7 @@ func loadTeamOwnershipRequestAggregates() (map[string]teamOwnershipRequestAggreg
 		}
 		return nil, err
 	}
+	defer cancel()
 	defer rows.Close()
 
 	grouped := make(map[string]teamOwnershipRequestAggregate)
@@ -164,164 +166,166 @@ func loadTeamOwnershipRequestAggregates() (map[string]teamOwnershipRequestAggreg
 }
 
 func buildTeamOwnershipSummary() (TeamOwnershipResponse, error) {
-	resp := TeamOwnershipResponse{
-		Status: "ok",
-		Summary: map[string]int{
-			"total_teams":          0,
-			"portal_teams":         0,
-			"devops_teams":         0,
-			"total_members":        0,
-			"assigned_templates":   0,
-			"global_templates":     0,
-			"teams_without_owner":  0,
-			"teams_needing_action": 0,
-		},
-		Teams: []TeamOwnershipSummary{},
-	}
-	if DB == nil {
-		return resp, nil
-	}
-
-	teams, err := GetTeams()
-	if err != nil {
-		return resp, err
-	}
-	membersByTeam, err := loadTeamOwnershipMembers()
-	if err != nil {
-		return resp, err
-	}
-	requestAggregates, err := loadTeamOwnershipRequestAggregates()
-	if err != nil {
-		return resp, err
-	}
-	templates, err := ListRequestTemplates()
-	if err != nil {
-		return resp, err
-	}
-
-	assignedTemplateNames := make(map[int][]string)
-	globalTemplateCount := 0
-	for _, template := range templates {
-		if template.VisibleToAll || len(template.Teams) == 0 {
-			globalTemplateCount++
-			continue
+	return cacheJSON[TeamOwnershipResponse](cacheNamespaceTeam, 120*time.Second, []string{"summary"}, func() (TeamOwnershipResponse, error) {
+		resp := TeamOwnershipResponse{
+			Status: "ok",
+			Summary: map[string]int{
+				"total_teams":          0,
+				"portal_teams":         0,
+				"devops_teams":         0,
+				"total_members":        0,
+				"assigned_templates":   0,
+				"global_templates":     0,
+				"teams_without_owner":  0,
+				"teams_needing_action": 0,
+			},
+			Teams: []TeamOwnershipSummary{},
 		}
-		for _, team := range template.Teams {
-			assignedTemplateNames[team.ID] = append(assignedTemplateNames[team.ID], template.Name)
-		}
-	}
-	resp.Summary["global_templates"] = globalTemplateCount
-
-	filteredTeams := make([]Team, 0, len(teams))
-	for _, team := range teams {
-		filteredTeams = append(filteredTeams, team)
-	}
-	sort.Slice(filteredTeams, func(i, j int) bool {
-		if strings.ToLower(filteredTeams[i].TeamType) == strings.ToLower(filteredTeams[j].TeamType) {
-			return strings.ToLower(filteredTeams[i].Name) < strings.ToLower(filteredTeams[j].Name)
-		}
-		return strings.ToLower(filteredTeams[i].TeamType) < strings.ToLower(filteredTeams[j].TeamType)
-	})
-
-	for _, team := range filteredTeams {
-		resp.Summary["total_teams"]++
-		if strings.ToLower(team.TeamType) == "devops" {
-			resp.Summary["devops_teams"]++
-		} else {
-			resp.Summary["portal_teams"]++
+		if DB == nil {
+			return resp, nil
 		}
 
-		summary := TeamOwnershipSummary{
-			ID:                   team.ID,
-			Name:                 team.Name,
-			Slug:                 team.Slug,
-			ApplicationID:        team.ApplicationID,
-			TeamType:             team.TeamType,
-			DefaultEnv:           team.DefaultEnv,
-			DefaultCloud:         team.DefaultCloud,
-			GlobalTemplateCount:  0,
-			VisibleTemplateCount: 0,
-			Environments:         []string{},
-			Clouds:               []string{},
-			OwnerNames:           []string{},
-			TemplateNames:        []string{},
-			Members:              membersByTeam[team.ID],
+		teams, err := GetTeams()
+		if err != nil {
+			return resp, err
+		}
+		membersByTeam, err := loadTeamOwnershipMembers()
+		if err != nil {
+			return resp, err
+		}
+		requestAggregates, err := loadTeamOwnershipRequestAggregates()
+		if err != nil {
+			return resp, err
+		}
+		templates, err := ListRequestTemplates()
+		if err != nil {
+			return resp, err
 		}
 
-		for _, member := range summary.Members {
-			summary.MemberCount++
-			resp.Summary["total_members"]++
-			switch strings.ToLower(strings.TrimSpace(member.UserType)) {
-			case "devops_user":
-				summary.DevOpsUserCount++
-			default:
-				summary.PortalUserCount++
-			}
-			if teamOwnershipIsOwner(team.TeamType, member.Role) {
-				summary.OwnerCount++
-				summary.OwnerNames = append(summary.OwnerNames, member.Username)
-			}
-		}
-
-		summary.TemplateNames = append(summary.TemplateNames, assignedTemplateNames[team.ID]...)
-		sort.Strings(summary.TemplateNames)
-		summary.AssignedTemplateCount = len(summary.TemplateNames)
-		resp.Summary["assigned_templates"] += summary.AssignedTemplateCount
-		if strings.ToLower(team.TeamType) == "portal" {
-			summary.GlobalTemplateCount = globalTemplateCount
-		}
-		summary.VisibleTemplateCount = summary.AssignedTemplateCount + summary.GlobalTemplateCount
-
-		requestKeys := []string{strings.ToLower(strings.TrimSpace(team.Name))}
-		if slugKey := strings.ToLower(strings.TrimSpace(team.Slug)); slugKey != "" && slugKey != requestKeys[0] {
-			requestKeys = append(requestKeys, slugKey)
-		}
-		seenEnvironments := make(map[string]bool)
-		seenClouds := make(map[string]bool)
-		for _, requestKey := range requestKeys {
-			aggregate, ok := requestAggregates[requestKey]
-			if !ok {
+		assignedTemplateNames := make(map[int][]string)
+		globalTemplateCount := 0
+		for _, template := range templates {
+			if template.VisibleToAll || len(template.Teams) == 0 {
+				globalTemplateCount++
 				continue
 			}
-			summary.RequestCount += aggregate.RequestCount
-			summary.PendingCount += aggregate.PendingCount
-			summary.CompletedCount += aggregate.CompletedCount
-			summary.RejectedCount += aggregate.RejectedCount
-			summary.InProgressCount += aggregate.InProgressCount
-			summary.DraftCount += aggregate.DraftCount
-			if summary.LastRequestAt == "" || (!aggregate.LastRequestAt.IsZero() && aggregate.LastRequestAt.Format(time.RFC3339) > summary.LastRequestAt) {
-				if !aggregate.LastRequestAt.IsZero() {
-					summary.LastRequestAt = aggregate.LastRequestAt.Format(time.RFC3339)
-				}
-			}
-			for env := range aggregate.Environments {
-				if !seenEnvironments[env] {
-					seenEnvironments[env] = true
-					summary.Environments = append(summary.Environments, env)
-				}
-			}
-			for cloud := range aggregate.Clouds {
-				if !seenClouds[cloud] {
-					seenClouds[cloud] = true
-					summary.Clouds = append(summary.Clouds, cloud)
-				}
+			for _, team := range template.Teams {
+				assignedTemplateNames[team.ID] = append(assignedTemplateNames[team.ID], template.Name)
 			}
 		}
-		sort.Strings(summary.Environments)
-		sort.Strings(summary.Clouds)
+		resp.Summary["global_templates"] = globalTemplateCount
 
-		summary.NeedsAttention = summary.OwnerCount == 0 || summary.MemberCount == 0 || (strings.ToLower(team.TeamType) == "portal" && summary.VisibleTemplateCount == 0)
-		if summary.OwnerCount == 0 {
-			resp.Summary["teams_without_owner"]++
+		filteredTeams := make([]Team, 0, len(teams))
+		for _, team := range teams {
+			filteredTeams = append(filteredTeams, team)
 		}
-		if summary.NeedsAttention {
-			resp.Summary["teams_needing_action"]++
+		sort.Slice(filteredTeams, func(i, j int) bool {
+			if strings.ToLower(filteredTeams[i].TeamType) == strings.ToLower(filteredTeams[j].TeamType) {
+				return strings.ToLower(filteredTeams[i].Name) < strings.ToLower(filteredTeams[j].Name)
+			}
+			return strings.ToLower(filteredTeams[i].TeamType) < strings.ToLower(filteredTeams[j].TeamType)
+		})
+
+		for _, team := range filteredTeams {
+			resp.Summary["total_teams"]++
+			if strings.ToLower(team.TeamType) == "devops" {
+				resp.Summary["devops_teams"]++
+			} else {
+				resp.Summary["portal_teams"]++
+			}
+
+			summary := TeamOwnershipSummary{
+				ID:                   team.ID,
+				Name:                 team.Name,
+				Slug:                 team.Slug,
+				ApplicationID:        team.ApplicationID,
+				TeamType:             team.TeamType,
+				DefaultEnv:           team.DefaultEnv,
+				DefaultCloud:         team.DefaultCloud,
+				GlobalTemplateCount:  0,
+				VisibleTemplateCount: 0,
+				Environments:         []string{},
+				Clouds:               []string{},
+				OwnerNames:           []string{},
+				TemplateNames:        []string{},
+				Members:              membersByTeam[team.ID],
+			}
+
+			for _, member := range summary.Members {
+				summary.MemberCount++
+				resp.Summary["total_members"]++
+				switch strings.ToLower(strings.TrimSpace(member.UserType)) {
+				case "devops_user":
+					summary.DevOpsUserCount++
+				default:
+					summary.PortalUserCount++
+				}
+				if teamOwnershipIsOwner(team.TeamType, member.Role) {
+					summary.OwnerCount++
+					summary.OwnerNames = append(summary.OwnerNames, member.Username)
+				}
+			}
+
+			summary.TemplateNames = append(summary.TemplateNames, assignedTemplateNames[team.ID]...)
+			sort.Strings(summary.TemplateNames)
+			summary.AssignedTemplateCount = len(summary.TemplateNames)
+			resp.Summary["assigned_templates"] += summary.AssignedTemplateCount
+			if strings.ToLower(team.TeamType) == "portal" {
+				summary.GlobalTemplateCount = globalTemplateCount
+			}
+			summary.VisibleTemplateCount = summary.AssignedTemplateCount + summary.GlobalTemplateCount
+
+			requestKeys := []string{strings.ToLower(strings.TrimSpace(team.Name))}
+			if slugKey := strings.ToLower(strings.TrimSpace(team.Slug)); slugKey != "" && slugKey != requestKeys[0] {
+				requestKeys = append(requestKeys, slugKey)
+			}
+			seenEnvironments := make(map[string]bool)
+			seenClouds := make(map[string]bool)
+			for _, requestKey := range requestKeys {
+				aggregate, ok := requestAggregates[requestKey]
+				if !ok {
+					continue
+				}
+				summary.RequestCount += aggregate.RequestCount
+				summary.PendingCount += aggregate.PendingCount
+				summary.CompletedCount += aggregate.CompletedCount
+				summary.RejectedCount += aggregate.RejectedCount
+				summary.InProgressCount += aggregate.InProgressCount
+				summary.DraftCount += aggregate.DraftCount
+				if summary.LastRequestAt == "" || (!aggregate.LastRequestAt.IsZero() && aggregate.LastRequestAt.Format(time.RFC3339) > summary.LastRequestAt) {
+					if !aggregate.LastRequestAt.IsZero() {
+						summary.LastRequestAt = aggregate.LastRequestAt.Format(time.RFC3339)
+					}
+				}
+				for env := range aggregate.Environments {
+					if !seenEnvironments[env] {
+						seenEnvironments[env] = true
+						summary.Environments = append(summary.Environments, env)
+					}
+				}
+				for cloud := range aggregate.Clouds {
+					if !seenClouds[cloud] {
+						seenClouds[cloud] = true
+						summary.Clouds = append(summary.Clouds, cloud)
+					}
+				}
+			}
+			sort.Strings(summary.Environments)
+			sort.Strings(summary.Clouds)
+
+			summary.NeedsAttention = summary.OwnerCount == 0 || summary.MemberCount == 0 || (strings.ToLower(team.TeamType) == "portal" && summary.VisibleTemplateCount == 0)
+			if summary.OwnerCount == 0 {
+				resp.Summary["teams_without_owner"]++
+			}
+			if summary.NeedsAttention {
+				resp.Summary["teams_needing_action"]++
+			}
+
+			resp.Teams = append(resp.Teams, summary)
 		}
 
-		resp.Teams = append(resp.Teams, summary)
-	}
-
-	return resp, nil
+		return resp, nil
+	})
 }
 
 func adminTeamOwnershipHandler(w http.ResponseWriter, r *http.Request) {
