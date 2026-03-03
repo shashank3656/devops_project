@@ -5,6 +5,7 @@ import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
+const DEVOPS_USER_KEY = 'devops_user';
 const PAGE_SIZE = 20;
 
 interface ProjectOption {
@@ -64,6 +65,12 @@ export default function DevOpsNotificationsPage() {
   const [error, setError] = useState('');
   const [page, setPage] = useState(0);
 
+  const clearSessionAndRedirect = () => {
+    localStorage.removeItem(DEVOPS_TOKEN_KEY);
+    localStorage.removeItem(DEVOPS_USER_KEY);
+    window.location.href = '/login';
+  };
+
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     const rawUser = localStorage.getItem('devops_user');
@@ -95,6 +102,10 @@ export default function DevOpsNotificationsPage() {
       const res = await fetch(`${apiUrl}/api/devops/projects`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401 || res.status === 403) {
+        clearSessionAndRedirect();
+        return;
+      }
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setProjects(Array.isArray(data.projects) ? data.projects : []);
@@ -118,7 +129,7 @@ export default function DevOpsNotificationsPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401 || res.status === 403) {
-        window.location.href = '/login';
+        clearSessionAndRedirect();
         return;
       }
       const data = await res.json().catch(() => ({}));
