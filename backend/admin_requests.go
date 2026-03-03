@@ -479,7 +479,7 @@ func adminStatsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "stats": stats})
 }
 
-// adminNotificationsHandler GET /api/admin/notifications - count of new (pending_approval) requests for badge
+// adminNotificationsHandler GET /api/admin/notifications - admin inbox summary and project-aware notification items.
 func adminNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
@@ -495,12 +495,24 @@ func adminNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"new_requests": 0, "status": "ok"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"new_requests": 0, "items": []interface{}{}, "total_count": 0, "counts_by_kind": map[string]int{"all": 0, "pending_request": 0, "project_event": 0}, "status": "ok"})
 		return
 	}
-	count, _ := GetPendingApprovalCount()
+	limit, offset, projectID, kind := parseOpsNotificationFilters(
+		r.URL.Query().Get("limit"),
+		r.URL.Query().Get("offset"),
+		r.URL.Query().Get("project_id"),
+		r.URL.Query().Get("kind"),
+	)
+	payload, err := buildAdminNotifications(limit, offset, projectID, kind)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch notifications", "status": "error"})
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"new_requests": count, "status": "ok"})
+	json.NewEncoder(w).Encode(payload)
 }
 
 // adminBulkApproveHandler POST /api/admin/requests/bulk-approve with body {"ids": [1,2,3]}

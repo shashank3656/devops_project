@@ -350,7 +350,7 @@ func devopsDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// devopsNotificationsHandler GET /api/devops/notifications - manager only; count of requests pending DevOps approval (for badge)
+// devopsNotificationsHandler GET /api/devops/notifications - manager inbox summary and project-aware notification items.
 func devopsNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
 		handleOptions(w, r)
@@ -366,12 +366,24 @@ func devopsNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"pending_approval_count": 0, "status": "ok"})
+		json.NewEncoder(w).Encode(map[string]interface{}{"pending_approval_count": 0, "items": []interface{}{}, "total_count": 0, "counts_by_kind": map[string]int{"all": 0, "pending_approval": 0, "project_event": 0}, "status": "ok"})
 		return
 	}
-	count, _ := GetPendingDevopsApprovalCount()
+	limit, offset, projectID, kind := parseOpsNotificationFilters(
+		r.URL.Query().Get("limit"),
+		r.URL.Query().Get("offset"),
+		r.URL.Query().Get("project_id"),
+		r.URL.Query().Get("kind"),
+	)
+	payload, err := buildDevopsNotifications(limit, offset, projectID, kind)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch notifications", "status": "error"})
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"pending_approval_count": count, "status": "ok"})
+	json.NewEncoder(w).Encode(payload)
 }
 
 // devopsPendingApprovalsHandler GET /api/devops/pending-approvals - manager only; list of requests pending_devops_approval

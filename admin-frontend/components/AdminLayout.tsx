@@ -28,6 +28,7 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
+  '/notifications': 'Notifications',
   '/approval-center': 'Approval Center',
   '/requests': 'Requests',
   '/sla': 'SLA Dashboard',
@@ -76,6 +77,7 @@ interface PendingRequest {
 
 const NAV_ITEMS: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
   { href: '/dashboard', label: 'Dashboard', Icon: IconDashboard },
+  { href: '/notifications', label: 'Notifications', Icon: IconBell },
   { href: '/approval-center', label: 'Approval Center', Icon: IconShield },
   { href: '/requests', label: 'Requests', Icon: IconRequests },
   { href: '/sla', label: 'SLA Dashboard', Icon: IconTrendingUp },
@@ -412,6 +414,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   </div>
                   <Link href="/requests" className="admin-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
                     Open requests
+                  </Link>
+                  <Link href="/notifications" className="admin-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                    Open notifications center
                   </Link>
                   <div className="admin-topbar__notify-list">
                     {ticketsLoading ? (
