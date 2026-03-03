@@ -131,9 +131,11 @@ export default function DevOpsProjectOperationsPage() {
   const topServices = useMemo(() => (analytics?.service_request_distribution || []).slice(0, 6), [analytics]);
   const topClouds = useMemo(() => (analytics?.cloud_request_distribution || []).slice(0, 4), [analytics]);
   const riskMix = useMemo(() => analytics?.risk_distribution || [], [analytics]);
+  const environmentPressure = analytics?.environment_request_distribution || [];
   const approvalBottlenecks = analytics?.approval_bottlenecks || [];
   const topRiskProjects = analytics?.top_risk_projects || [];
   const topProjectsByRequests = analytics?.top_projects_by_requests || [];
+  const leadTimeAverage = analytics?.lead_time?.average_hours || 0;
 
   return (
     <DevOpsLayout>
@@ -182,7 +184,7 @@ export default function DevOpsProjectOperationsPage() {
               </article>
               <article className="portal-stat-card">
                 <span className="portal-stat-card__label">Lead time</span>
-                <span className="portal-stat-card__value">{analytics.lead_time.average_hours.toFixed(1)}h</span>
+                <span className="portal-stat-card__value">{leadTimeAverage.toFixed(1)}h</span>
                 <p className="portal-stat-card__copy">Average completion time for delivered project requests.</p>
               </article>
             </section>
@@ -261,7 +263,7 @@ export default function DevOpsProjectOperationsPage() {
                   <div>
                     <strong>Environment pressure</strong>
                     <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                      {analytics.environment_request_distribution.map((item) => (
+                      {environmentPressure.map((item) => (
                         <span key={`env-${item.key}`} className="portal-pill">{item.label}: {item.count}</span>
                       ))}
                     </div>
