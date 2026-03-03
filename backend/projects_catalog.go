@@ -38,28 +38,29 @@ type ProjectTeamAccess struct {
 }
 
 type ProjectCatalog struct {
-	ID                    int                    `json:"id"`
-	Name                  string                 `json:"name"`
-	Code                  string                 `json:"code"`
-	Description           string                 `json:"description"`
-	Status                string                 `json:"status"`
-	OnboardingStage       string                 `json:"onboarding_stage"`
-	ReadyForRequests      bool                   `json:"ready_for_requests"`
-	ServiceCount          int                    `json:"service_count"`
-	TeamCount             int                    `json:"team_count"`
-	RequestCount          int                    `json:"request_count"`
-	PendingRequestCount   int                    `json:"pending_request_count"`
-	CompletedRequestCount int                    `json:"completed_request_count"`
-	OwnerTeamID           *int                   `json:"owner_team_id,omitempty"`
-	OwnerTeam             string                 `json:"owner_team,omitempty"`
-	CreatedBy             *int                   `json:"created_by,omitempty"`
-	CreatedAt             time.Time              `json:"created_at"`
-	UpdatedAt             time.Time              `json:"updated_at"`
-	Environments          []string               `json:"environments"`
-	Clouds                []string               `json:"clouds"`
-	Services              []ProjectServiceOption `json:"services"`
-	TeamAccess            []ProjectTeamAccess    `json:"team_access"`
-	ApprovalRules         []ProjectApprovalRule  `json:"approval_rules"`
+	ID                    int                     `json:"id"`
+	Name                  string                  `json:"name"`
+	Code                  string                  `json:"code"`
+	Description           string                  `json:"description"`
+	Status                string                  `json:"status"`
+	OnboardingStage       string                  `json:"onboarding_stage"`
+	ReadyForRequests      bool                    `json:"ready_for_requests"`
+	ServiceCount          int                     `json:"service_count"`
+	TeamCount             int                     `json:"team_count"`
+	RequestCount          int                     `json:"request_count"`
+	PendingRequestCount   int                     `json:"pending_request_count"`
+	CompletedRequestCount int                     `json:"completed_request_count"`
+	OwnerTeamID           *int                    `json:"owner_team_id,omitempty"`
+	OwnerTeam             string                  `json:"owner_team,omitempty"`
+	CreatedBy             *int                    `json:"created_by,omitempty"`
+	CreatedAt             time.Time               `json:"created_at"`
+	UpdatedAt             time.Time               `json:"updated_at"`
+	Environments          []string                `json:"environments"`
+	Clouds                []string                `json:"clouds"`
+	Services              []ProjectServiceOption  `json:"services"`
+	TeamAccess            []ProjectTeamAccess     `json:"team_access"`
+	ApprovalRules         []ProjectApprovalRule   `json:"approval_rules"`
+	CostRiskSummary       *ProjectCostRiskSummary `json:"cost_risk_summary,omitempty"`
 }
 
 type ProjectCatalogInput struct {
@@ -78,6 +79,143 @@ type ProjectCatalogInput struct {
 type ProjectRequestValidation struct {
 	Project ProjectCatalog
 	Team    Team
+}
+
+func projectAccessMap(project *ProjectCatalog) (map[int][]string, error) {
+	result := make(map[int][]string)
+	if project == nil {
+		return result, nil
+	}
+	for _, access := range project.TeamAccess {
+		members, err := GetTeamMembers(access.TeamID)
+		if err != nil {
+			return nil, err
+		}
+		for _, member := range members {
+			current := result[member.UserID]
+			seen := make(map[string]struct{}, len(current))
+			for _, env := range current {
+				seen[env] = struct{}{}
+			}
+			for _, env := range access.Environments {
+				if _, ok := seen[env]; ok {
+					continue
+				}
+				current = append(current, env)
+				seen[env] = struct{}{}
+			}
+			sort.Strings(current)
+			result[member.UserID] = current
+		}
+	}
+	return result, nil
+}
+
+func intPointerEqual(left, right *int) bool {
+	if left == nil && right == nil {
+		return true
+	}
+	if left == nil || right == nil {
+		return false
+	}
+	return *left == *right
+}
+
+func stringSlicesEqual(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func serviceSlicesEqual(left, right []ProjectServiceOption) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func approvalRuleSlicesEqual(left, right []ProjectApprovalRule) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func projectCatalogDefinitionChanged(previous, current *ProjectCatalog) bool {
+	if previous == nil || current == nil {
+		return false
+	}
+	if previous.Name != current.Name || previous.Code != current.Code || previous.Description != current.Description || previous.Status != current.Status {
+		return true
+	}
+	if !intPointerEqual(previous.OwnerTeamID, current.OwnerTeamID) {
+		return true
+	}
+	if !stringSlicesEqual(previous.Environments, current.Environments) || !stringSlicesEqual(previous.Clouds, current.Clouds) {
+		return true
+	}
+	if !serviceSlicesEqual(previous.Services, current.Services) {
+		return true
+	}
+	if !approvalRuleSlicesEqual(previous.ApprovalRules, current.ApprovalRules) {
+		return true
+	}
+	return false
+}
+
+func notifyProjectAudienceChanges(previous, current *ProjectCatalog) {
+	if current == nil {
+		return
+	}
+	currentAccess, err := projectAccessMap(current)
+	if err != nil {
+		return
+	}
+	if previous == nil {
+		for userID, environments := range currentAccess {
+			NotifyProjectAssigned(userID, current, environments)
+		}
+		return
+	}
+
+	previousAccess, err := projectAccessMap(previous)
+	if err != nil {
+		return
+	}
+
+	for userID, environments := range currentAccess {
+		if previousEnvironments, ok := previousAccess[userID]; !ok {
+			NotifyProjectAssigned(userID, current, environments)
+		} else if !stringSlicesEqual(previousEnvironments, environments) {
+			NotifyProjectAccessUpdated(userID, current, environments)
+		}
+	}
+	for userID, environments := range previousAccess {
+		if _, ok := currentAccess[userID]; !ok {
+			NotifyProjectAccessRemoved(userID, previous, environments)
+		}
+	}
+	if projectCatalogDefinitionChanged(previous, current) {
+		for userID := range currentAccess {
+			NotifyProjectCatalogUpdated(userID, current)
+		}
+	}
 }
 
 func deriveProjectOnboarding(project *ProjectCatalog) {
@@ -390,10 +528,15 @@ func createProjectCatalog(input ProjectCatalogInput, createdBy *int) (*ProjectCa
 		return nil, err
 	}
 	AppendAuditLog(createdBy, "project_create", "project", strconv.Itoa(projectID), fmt.Sprintf("%s (%s)", input.Name, input.Code))
+	notifyProjectAudienceChanges(nil, project)
 	return project, nil
 }
 
 func updateProjectCatalog(projectID int, input ProjectCatalogInput, updatedBy *int) (*ProjectCatalog, error) {
+	previousProject, err := getProjectCatalogByID(projectID)
+	if err != nil {
+		return nil, err
+	}
 	input, err := sanitizeProjectInput(input)
 	if err != nil {
 		return nil, err
@@ -432,6 +575,7 @@ func updateProjectCatalog(projectID int, input ProjectCatalogInput, updatedBy *i
 		return nil, err
 	}
 	AppendAuditLog(updatedBy, "project_update", "project", strconv.Itoa(projectID), fmt.Sprintf("%s (%s)", input.Name, input.Code))
+	notifyProjectAudienceChanges(previousProject, project)
 	return project, nil
 }
 
@@ -654,6 +798,52 @@ func getProjectCatalogsByFilter(whereClause string, args ...interface{}) ([]Proj
 		}
 	}
 
+	projectRequests := make(map[int][]PRRequest, len(projectIDs))
+	requestPreviewRows, cancel, err := queryRowsWithTimeout(
+		fmt.Sprintf(`
+			SELECT id, project_id, COALESCE(team,''), COALESCE(env,''), COALESCE(cloud,''), COALESCE(service,''),
+			       COALESCE(priority,''), due_date, COALESCE(status,''), COALESCE(config,''), COALESCE(terraform_plan_output,'')
+			FROM pr_requests
+			WHERE project_id IN (%s)
+			ORDER BY created_at DESC
+		`, inClause),
+		queryArgs...,
+	)
+	if err != nil {
+		if !strings.Contains(err.Error(), "does not exist") {
+			return nil, err
+		}
+	} else {
+		defer cancel()
+		defer requestPreviewRows.Close()
+		for requestPreviewRows.Next() {
+			var req PRRequest
+			var projectID int
+			var dueDate sql.NullTime
+			if err := requestPreviewRows.Scan(
+				&req.ID,
+				&projectID,
+				&req.Team,
+				&req.Env,
+				&req.Cloud,
+				&req.Service,
+				&req.Priority,
+				&dueDate,
+				&req.Status,
+				&req.Config,
+				&req.TerraformPlanOutput,
+			); err != nil {
+				return nil, err
+			}
+			req.ProjectID = intPointerIfPositive(projectID)
+			if dueDate.Valid {
+				dueDateValue := dueDate.Time
+				req.DueDate = &dueDateValue
+			}
+			projectRequests[projectID] = append(projectRequests[projectID], req)
+		}
+	}
+
 	if err := loadSimpleRows(
 		fmt.Sprintf(`
 			SELECT project_id, environment,
@@ -746,6 +936,7 @@ func getProjectCatalogsByFilter(whereClause string, args ...interface{}) ([]Proj
 	for _, id := range projectIDs {
 		project := projectsByID[id]
 		deriveProjectOnboarding(project)
+		project.CostRiskSummary = BuildProjectCostRiskSummary(project, projectRequests[id])
 		out = append(out, *project)
 	}
 	return out, nil

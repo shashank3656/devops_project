@@ -826,6 +826,7 @@ func devopsRequestDetailHandler(w http.ResponseWriter, id int) {
 		"terraform_plan_output": req.TerraformPlanOutput,
 		"jira_ticket_id":        req.JiraTicketID,
 		"cost_risk_preview":     BuildCostRiskPreview(req),
+		"approval_context":      BuildRequestApprovalContext(req),
 	}
 	dependsOn, _ := GetRequestDependencies(id)
 	blockedBy, _ := GetRequestsThatDependOn(id)
@@ -1090,24 +1091,25 @@ func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
 	cloudFilter := strings.TrimSpace(q.Get("cloud"))
 	fromDate := strings.TrimSpace(q.Get("from"))
 	toDate := strings.TrimSpace(q.Get("to"))
+	projectIDFilter, _ := strconv.Atoi(strings.TrimSpace(q.Get("project_id")))
 	if q.Get("format") == "csv" {
-		allEntries, _ := GetCredentialAuditLogs(10000, 0, cloudFilter, fromDate, toDate)
+		allEntries, _ := GetCredentialAuditLogs(10000, 0, cloudFilter, fromDate, toDate, projectIDFilter)
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", "attachment; filename=credential-audit.csv")
-		w.Write([]byte("id,request_id,cloud,credential_type,team,env,created_by,approved_by,created_at\n"))
+		w.Write([]byte("id,request_id,project_name,project_code,cloud,credential_type,team,env,created_by,approved_by,created_at\n"))
 		for _, e := range allEntries {
 			reqID := ""
 			if e.RequestID != nil {
 				reqID = strconv.Itoa(*e.RequestID)
 			}
-			line := fmt.Sprintf("%d,%s,%s,%s,%s,%s,%s,%s,%s\n",
-				e.ID, reqID, e.Cloud, e.CredentialType, e.Team, e.Env,
+			line := fmt.Sprintf("%d,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
+				e.ID, reqID, e.ProjectName, e.ProjectCode, e.Cloud, e.CredentialType, e.Team, e.Env,
 				e.CreatedByUsername, e.ApprovedByUsername, e.CreatedAt.Format("2006-01-02 15:04:05"))
 			w.Write([]byte(line))
 		}
 		return
 	}
-	entries, err := GetCredentialAuditLogs(limit, offset, cloudFilter, fromDate, toDate)
+	entries, err := GetCredentialAuditLogs(limit, offset, cloudFilter, fromDate, toDate, projectIDFilter)
 	if err != nil {
 		log.Printf("credential audit: %v", err)
 		w.Header().Set("Content-Type", "application/json")

@@ -26,6 +26,17 @@ interface CostRiskPreview {
   signals: CostRiskSignal[];
 }
 
+interface ApprovalContext {
+  rule_source: string;
+  rule_environment: string;
+  requires_manager_approval: boolean;
+  requires_devops_approval: boolean;
+  manager_path_available: boolean;
+  current_stage: string;
+  next_stage?: string;
+  summary: string;
+}
+
 interface PRRequest {
   id: number;
   project_id?: number | null;
@@ -52,6 +63,7 @@ interface PRRequest {
   blocked_by?: number[];
   blocked_by_with_status?: BlockedByItem[];
   cost_risk_preview?: CostRiskPreview | null;
+  approval_context?: ApprovalContext | null;
 }
 
 interface ProjectSummary {
@@ -1315,6 +1327,45 @@ export default function AdminRequests() {
                           </p>
                         </article>
                       )}
+                    </div>
+                  </div>
+                )}
+                {detailRequest.approval_context && (
+                  <div className="portal-preview-panel" style={{ marginBottom: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap' }}>
+                      <div>
+                        <div className="portal-preview-eyebrow">Approval Flow</div>
+                        <strong className="portal-preview-value" style={{ fontSize: 18 }}>Rule explanation</strong>
+                      </div>
+                      <span className={getPreviewRiskClass(detailRequest.approval_context.requires_devops_approval ? 'medium' : 'low')}>
+                        {detailRequest.approval_context.current_stage}
+                      </span>
+                    </div>
+                    <div className="portal-preview-grid">
+                      <div className="portal-preview-card">
+                        <span className="portal-preview-eyebrow">Current stage</span>
+                        <strong className="portal-preview-value">{detailRequest.approval_context.current_stage}</strong>
+                        <p className="portal-preview-copy">
+                          {detailRequest.approval_context.next_stage
+                            ? `Next stage: ${detailRequest.approval_context.next_stage}`
+                            : 'No further approval stage is pending.'}
+                        </p>
+                      </div>
+                      <div className="portal-preview-card">
+                        <span className="portal-preview-eyebrow">Rule source</span>
+                        <strong className="portal-preview-value">
+                          {detailRequest.approval_context.rule_source === 'project_rule' ? 'Project rule' : 'Default flow'}
+                        </strong>
+                        <p className="portal-preview-copy">{detailRequest.approval_context.summary}</p>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <span className={getPreviewSignalClass(detailRequest.approval_context.requires_manager_approval ? 'medium' : 'low')}>
+                        {detailRequest.approval_context.requires_manager_approval ? 'Manager gate enabled' : 'No manager gate'}
+                      </span>
+                      <span className={getPreviewSignalClass(detailRequest.approval_context.requires_devops_approval ? 'medium' : 'low')}>
+                        {detailRequest.approval_context.requires_devops_approval ? 'DevOps gate enabled' : 'No DevOps gate'}
+                      </span>
                     </div>
                   </div>
                 )}

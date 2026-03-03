@@ -17,7 +17,17 @@ interface Notification {
   created_at: string;
 }
 
-type NotificationKind = 'all' | 'approved' | 'rejected' | 'pr_created' | 'assigned' | 'sla_breach';
+type NotificationKind =
+  | 'all'
+  | 'approved'
+  | 'rejected'
+  | 'pr_created'
+  | 'assigned'
+  | 'sla_breach'
+  | 'project_assigned'
+  | 'project_access_updated'
+  | 'project_access_removed'
+  | 'project_catalog_updated';
 
 const PAGE_SIZE = 20;
 
@@ -28,6 +38,10 @@ const KIND_LABELS: Record<string, string> = {
   pr_created: 'PR Created',
   assigned: 'Assigned',
   sla_breach: 'SLA Breach',
+  project_assigned: 'Project Assigned',
+  project_access_updated: 'Project Access Updated',
+  project_access_removed: 'Project Access Removed',
+  project_catalog_updated: 'Project Catalog Updated',
 };
 
 function formatNotificationKind(kind: string): string {
@@ -46,6 +60,14 @@ function getNotificationTone(kind: string): string {
       return 'info';
     case 'sla_breach':
       return 'warning';
+    case 'project_assigned':
+      return 'success';
+    case 'project_access_updated':
+      return 'info';
+    case 'project_access_removed':
+      return 'danger';
+    case 'project_catalog_updated':
+      return 'primary';
     default:
       return 'neutral';
   }
@@ -179,7 +201,7 @@ export default function NotificationsPage() {
             <span className="portal-page__eyebrow">Notifications Center</span>
             <h1 className="portal-page__title">Notification Inbox</h1>
             <p className="portal-page__subtitle">
-              Track approvals, rejections, PR creation, assignments, and delivery alerts in one place.
+              Track approvals, project updates, PR creation, assignments, and delivery alerts in one place.
             </p>
           </div>
         </div>
@@ -204,6 +226,16 @@ export default function NotificationsPage() {
             <span className="portal-stat-card__label">Assigned / Alerts</span>
             <span className="portal-stat-card__value">{(countsByKind.assigned || 0) + (countsByKind.sla_breach || 0)}</span>
             <p className="portal-stat-card__copy">Assignments and escalation-worthy updates.</p>
+          </article>
+          <article className="portal-stat-card">
+            <span className="portal-stat-card__label">Project Updates</span>
+            <span className="portal-stat-card__value">
+              {(countsByKind.project_assigned || 0) +
+                (countsByKind.project_access_updated || 0) +
+                (countsByKind.project_access_removed || 0) +
+                (countsByKind.project_catalog_updated || 0)}
+            </span>
+            <p className="portal-stat-card__copy">Project access grants, removals, and catalog changes.</p>
           </article>
         </section>
 

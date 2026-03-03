@@ -14,6 +14,26 @@ interface ProjectApprovalRule {
   require_devops_approval: boolean;
 }
 
+interface CostRiskSignal {
+  severity: 'low' | 'medium' | 'high';
+  category: string;
+  title: string;
+  detail: string;
+}
+
+interface ProjectCostRiskSummary {
+  overall_risk: 'low' | 'medium' | 'high';
+  estimated_band: string;
+  estimated_monthly: string;
+  estimate_basis: string;
+  summary: string;
+  request_count: number;
+  pending_review_count: number;
+  high_risk_count: number;
+  medium_risk_count: number;
+  signals: CostRiskSignal[];
+}
+
 interface ProjectTeamAccess {
   team_id: number;
   team_name: string;
@@ -32,6 +52,7 @@ interface ProjectOption {
   service_count?: number;
   team_count?: number;
   owner_team?: string;
+  cost_risk_summary?: ProjectCostRiskSummary | null;
   environments: string[];
   clouds: string[];
   services: ProjectServiceOption[];
@@ -51,6 +72,28 @@ function stageTone(stage?: string): { background: string; color: string } {
       return { background: 'var(--bg-gray-100)', color: 'var(--text-secondary)' };
     default:
       return { background: 'var(--info-bg)', color: 'var(--info-color)' };
+  }
+}
+
+function getPreviewRiskClass(level?: string): string {
+  switch (level) {
+    case 'high':
+      return 'portal-preview-risk portal-preview-risk--high';
+    case 'medium':
+      return 'portal-preview-risk portal-preview-risk--medium';
+    default:
+      return 'portal-preview-risk portal-preview-risk--low';
+  }
+}
+
+function getPreviewSignalClass(severity?: string): string {
+  switch (severity) {
+    case 'high':
+      return 'portal-preview-signal portal-preview-signal--high';
+    case 'medium':
+      return 'portal-preview-signal portal-preview-signal--medium';
+    default:
+      return 'portal-preview-signal portal-preview-signal--low';
   }
 }
 
@@ -182,6 +225,51 @@ export default function ProjectDetailsPage() {
                 </article>
               </div>
             </section>
+
+            {project.cost_risk_summary ? (
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Cost and Risk</span>
+                    <h2 className="portal-surface__title">Project Summary</h2>
+                    <p className="portal-surface__subtitle">A project-level view of estimated workload footprint and the risk signals seen across current requests.</p>
+                  </div>
+                  <span className={getPreviewRiskClass(project.cost_risk_summary.overall_risk)}>
+                    {project.cost_risk_summary.overall_risk} risk
+                  </span>
+                </div>
+                <div className="portal-preview-grid" style={{ marginTop: 0 }}>
+                  <article className="portal-detail-card">
+                    <span className="portal-preview-eyebrow">Estimated monthly</span>
+                    <strong className="portal-preview-value">{project.cost_risk_summary.estimated_monthly}</strong>
+                    <p className="portal-preview-copy">
+                      {project.cost_risk_summary.estimated_band} footprint. {project.cost_risk_summary.estimate_basis}
+                    </p>
+                  </article>
+                  <article className="portal-detail-card">
+                    <span className="portal-preview-eyebrow">Signals tracked</span>
+                    <strong className="portal-preview-value">{project.cost_risk_summary.signals.length}</strong>
+                    <p className="portal-preview-copy">{project.cost_risk_summary.summary}</p>
+                  </article>
+                  <article className="portal-detail-card">
+                    <span className="portal-preview-eyebrow">Pending review</span>
+                    <strong className="portal-preview-value">{project.cost_risk_summary.pending_review_count}</strong>
+                    <p className="portal-preview-copy">High risk: {project.cost_risk_summary.high_risk_count} · Medium risk: {project.cost_risk_summary.medium_risk_count}</p>
+                  </article>
+                </div>
+                <div className="portal-preview-signals" style={{ marginTop: 16 }}>
+                  {project.cost_risk_summary.signals.map((signal) => (
+                    <article key={`${signal.category}-${signal.title}`} className={getPreviewSignalClass(signal.severity)}>
+                      <div className="portal-preview-signal__top">
+                        <strong className="portal-preview-signal__title">{signal.title}</strong>
+                        <span>{signal.severity}</span>
+                      </div>
+                      <p className="portal-preview-signal__detail">{signal.detail}</p>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
             <section className="portal-surface">
               <div className="portal-surface__header">
