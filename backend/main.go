@@ -495,6 +495,7 @@ func main() {
 	http.HandleFunc("/api/auth/forgot-password", forgotPasswordHandler)
 	http.HandleFunc("/api/auth/reset-password", resetPasswordHandler)
 	http.HandleFunc("/api/me", meHandler)
+	http.HandleFunc("/api/me/onboarding-progress", onboardingProgressHandler)
 	http.HandleFunc("/api/me/teams", meTeamsHandler)
 	http.HandleFunc("/api/me/teams/", meTeamMembersRouter)
 	http.HandleFunc("/api/me/managed-teams", meManagedTeamsHandler)

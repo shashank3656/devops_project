@@ -29,6 +29,52 @@ interface GitHubLogEntry {
   created_at: string;
 }
 
+interface OnboardingMilestone {
+  key: string;
+  title: string;
+  detail: string;
+  state: 'completed' | 'current' | 'upcoming' | 'attention';
+  timestamp?: string;
+}
+
+interface OnboardingRequestSummary {
+  id: number;
+  team: string;
+  env: string;
+  cloud: string;
+  service: string;
+  status: string;
+  pr_url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface OnboardingProgress {
+  user_id: number;
+  username: string;
+  email: string;
+  user_type: string;
+  role: string;
+  verified: boolean;
+  created_at: string;
+  manager_username?: string;
+  teams: Team[];
+  requests_by_status: Record<string, number>;
+  requests_total: number;
+  submitted_requests: number;
+  latest_request?: OnboardingRequestSummary | null;
+  milestones: OnboardingMilestone[];
+  next_action: string;
+  completion_percent: number;
+}
+
+interface Team {
+  id: number;
+  name: string;
+  slug: string;
+  team_type?: string;
+}
+
 const CLOUD_COLORS: Record<string, string> = {
   AWS: 'portal-badge portal-badge--warning',
   GCP: 'portal-badge portal-badge--neutral',
@@ -50,6 +96,8 @@ export default function Home() {
   const [cloudLogs, setCloudLogs] = useState<Record<string, CloudLogEntry[]>>({});
   const [githubLogs, setGithubLogs] = useState<GitHubLogEntry[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
+  const [onboardingProgress, setOnboardingProgress] = useState<OnboardingProgress | null>(null);
+  const [onboardingLoading, setOnboardingLoading] = useState(true);
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem('isAuthenticated');
@@ -60,12 +108,33 @@ export default function Home() {
     try {
       if (!localStorage.getItem(ONBOARDING_KEY)) setShowOnboarding(true);
     } catch (_) {}
+    fetchOnboardingProgress();
     fetchStats();
     fetchLogs();
   }, [router]);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const totalRequests = stats?.total_requests ?? 0;
+
+  const fetchOnboardingProgress = async () => {
+    setOnboardingLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token && token !== 'undefined') headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`${apiUrl}/api/me/onboarding-progress`, { headers });
+      if (!res.ok) {
+        setOnboardingProgress(null);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      setOnboardingProgress(data.progress || null);
+    } catch (_) {
+      setOnboardingProgress(null);
+    } finally {
+      setOnboardingLoading(false);
+    }
+  };
 
   const fetchStats = async () => {
     setStatsLoading(true);
@@ -214,6 +283,86 @@ export default function Home() {
               </div>
             </aside>
           </div>
+        </section>
+
+        <section className="portal-surface onboarding-progress-surface">
+          <div className="portal-surface__header">
+            <div>
+              <span className="portal-surface__eyebrow">Onboarding Progress Tracker</span>
+              <h2 className="portal-surface__title">See exactly where your onboarding stands</h2>
+              <p className="portal-surface__subtitle">
+                Follow account setup, team assignment, submission, review, and delivery without guessing which step is next.
+              </p>
+            </div>
+            {onboardingProgress && (
+              <div className="onboarding-progress-summary">
+                <strong>{onboardingProgress.completion_percent}%</strong>
+                <span>completion</span>
+              </div>
+            )}
+          </div>
+          {onboardingLoading ? (
+            <div className="empty-state">Loading onboarding progress…</div>
+          ) : onboardingProgress ? (
+            <>
+              <div className="onboarding-progress-grid">
+                <article className="onboarding-progress-card">
+                  <span className="onboarding-progress-card__label">Current step</span>
+                  <strong>{onboardingProgress.next_action}</strong>
+                  <p>
+                    {onboardingProgress.verified
+                      ? 'Account access is active.'
+                      : 'Verification is still pending and may block request work.'}
+                  </p>
+                </article>
+                <article className="onboarding-progress-card">
+                  <span className="onboarding-progress-card__label">Teams assigned</span>
+                  <strong>{onboardingProgress.teams.length}</strong>
+                  <p>
+                    {onboardingProgress.teams.length > 0
+                      ? onboardingProgress.teams.map((team) => team.name).slice(0, 3).join(', ')
+                      : 'No team assignment yet'}
+                  </p>
+                </article>
+                <article className="onboarding-progress-card">
+                  <span className="onboarding-progress-card__label">Requests submitted</span>
+                  <strong>{onboardingProgress.submitted_requests}</strong>
+                  <p>
+                    {onboardingProgress.latest_request
+                      ? `Latest: ${onboardingProgress.latest_request.cloud} ${onboardingProgress.latest_request.service} (${onboardingProgress.latest_request.status.replace(/_/g, ' ')})`
+                      : 'No submitted requests yet'}
+                  </p>
+                </article>
+              </div>
+
+              <div className="onboarding-timeline-tracker">
+                {onboardingProgress.milestones.map((milestone) => (
+                  <article
+                    key={milestone.key}
+                    className={`onboarding-timeline-tracker__step onboarding-timeline-tracker__step--${milestone.state}`}
+                  >
+                    <div className="onboarding-timeline-tracker__marker" />
+                    <div>
+                      <div className="onboarding-timeline-tracker__topline">
+                        <strong>{milestone.title}</strong>
+                        <span className={`onboarding-state-badge onboarding-state-badge--${milestone.state}`}>
+                          {milestone.state}
+                        </span>
+                      </div>
+                      <p>{milestone.detail}</p>
+                      {milestone.timestamp && (
+                        <span className="onboarding-timeline-tracker__time">
+                          {formatDateTime(milestone.timestamp)}
+                        </span>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">Onboarding progress is not available right now.</div>
+          )}
         </section>
 
         {!statsLoading && stats && (

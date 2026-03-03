@@ -154,15 +154,15 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 		adminIDPtr = &adminID
 	}
 	var req struct {
-		Username     string `json:"username"`
-		Email        string `json:"email"`
-		Password     string `json:"password"`
-		Role         string `json:"role"`         // viewer | contributor; default viewer
-		UserType     string `json:"user_type"`    // portal_user | devops_user
-		IsManager    bool   `json:"is_manager"`   // for devops_user
-		Position     string `json:"position"`    // for devops_user
-		OnboardDate  string `json:"onboard_date"` // YYYY-MM-DD for devops_user
-		DevopsLevel  string `json:"level"`        // L1..L4 for devops_user
+		Username    string `json:"username"`
+		Email       string `json:"email"`
+		Password    string `json:"password"`
+		Role        string `json:"role"`         // viewer | contributor; default viewer
+		UserType    string `json:"user_type"`    // portal_user | devops_user
+		IsManager   bool   `json:"is_manager"`   // for devops_user
+		Position    string `json:"position"`     // for devops_user
+		OnboardDate string `json:"onboard_date"` // YYYY-MM-DD for devops_user
+		DevopsLevel string `json:"level"`        // L1..L4 for devops_user
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -277,12 +277,23 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	id, err := strconv.Atoi(path)
+	parts := strings.Split(path, "/")
+	id, err := strconv.Atoi(parts[0])
 	if err != nil || id <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid user id", "status": "error"})
 		return
+	}
+	if len(parts) > 1 {
+		switch parts[1] {
+		case "onboarding-progress":
+			adminUserOnboardingProgressHandler(w, r, id)
+			return
+		default:
+			http.NotFound(w, r)
+			return
+		}
 	}
 	user, err := GetUserByID(id)
 	if err != nil || user == nil {
@@ -322,7 +333,7 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 			Role            string `json:"role"`
 			Verified        *bool  `json:"verified"`
 			UserType        string `json:"user_type"`
-			ManagerID       *int   `json:"manager_id"`       // portal user's manager (for two-step approval)
+			ManagerID       *int   `json:"manager_id"`        // portal user's manager (for two-step approval)
 			IsPortalManager *bool  `json:"is_portal_manager"` // portal user as group manager (same as DevOps manager checkbox)
 			IsManager       *bool  `json:"is_manager"`
 			Position        string `json:"position"`
@@ -669,9 +680,9 @@ func adminTeamMembersAddHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		UserID   int     `json:"user_id"`
-		UserIDs  []int   `json:"user_ids"`
-		Role     string  `json:"role"`
+		UserID  int    `json:"user_id"`
+		UserIDs []int  `json:"user_ids"`
+		Role    string `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.Header().Set("Content-Type", "application/json")

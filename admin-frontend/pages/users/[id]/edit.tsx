@@ -31,6 +31,45 @@ interface User {
   teams?: Team[];
 }
 
+interface OnboardingMilestone {
+  key: string;
+  title: string;
+  detail: string;
+  state: 'completed' | 'current' | 'upcoming' | 'attention';
+  timestamp?: string;
+}
+
+interface OnboardingRequestSummary {
+  id: number;
+  team: string;
+  env: string;
+  cloud: string;
+  service: string;
+  status: string;
+  pr_url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface OnboardingProgress {
+  user_id: number;
+  username: string;
+  email: string;
+  user_type: string;
+  role: string;
+  verified: boolean;
+  created_at: string;
+  manager_username?: string;
+  teams: Team[];
+  requests_by_status: Record<string, number>;
+  requests_total: number;
+  submitted_requests: number;
+  latest_request?: OnboardingRequestSummary | null;
+  milestones: OnboardingMilestone[];
+  next_action: string;
+  completion_percent: number;
+}
+
 export default function EditUser() {
   const router = useRouter();
   const { id, created, team_assign_failed } = router.query;
@@ -53,6 +92,8 @@ export default function EditUser() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [membershipSaving, setMembershipSaving] = useState(false);
+  const [onboardingProgress, setOnboardingProgress] = useState<OnboardingProgress | null>(null);
+  const [onboardingLoading, setOnboardingLoading] = useState(false);
   const [error, setError] = useState('');
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -65,10 +106,30 @@ export default function EditUser() {
     }
     if (id && typeof id === 'string') {
       fetchUser(parseInt(id, 10));
+      fetchOnboardingProgress(parseInt(id, 10));
     }
     fetchUsersList();
     fetchTeamsList();
   }, [token, id, router]);
+
+  const fetchOnboardingProgress = async (userId: number) => {
+    setOnboardingLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/users/${userId}/onboarding-progress`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setOnboardingProgress(data.progress || null);
+      } else {
+        setOnboardingProgress(null);
+      }
+    } catch (_) {
+      setOnboardingProgress(null);
+    } finally {
+      setOnboardingLoading(false);
+    }
+  };
 
   const fetchUsersList = async () => {
     try {
@@ -216,6 +277,7 @@ export default function EditUser() {
         return;
       }
       await fetchUser(user.id);
+      await fetchOnboardingProgress(user.id);
     } catch (_) {
       setError('Failed to add team membership');
     } finally {
@@ -238,6 +300,7 @@ export default function EditUser() {
         return;
       }
       await fetchUser(user.id);
+      await fetchOnboardingProgress(user.id);
     } catch (_) {
       setError('Failed to remove team membership');
     } finally {
@@ -271,6 +334,63 @@ export default function EditUser() {
             </div>
           ) : user ? (
             <>
+              <div className="card onboarding-admin-card" style={{ maxWidth: 960, marginBottom: 24 }}>
+                <h3 className="card-title" style={{ fontSize: 18 }}>Onboarding Progress Tracker</h3>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 16 }}>
+                  Review where this user is blocked and what needs to happen next.
+                </p>
+                {onboardingLoading ? (
+                  <div className="empty-state" style={{ padding: 16, textAlign: 'left' }}>Loading onboarding progress…</div>
+                ) : onboardingProgress ? (
+                  <>
+                    <div className="admin-onboarding-summary-grid">
+                      <article className="admin-onboarding-summary-card">
+                        <span>Completion</span>
+                        <strong>{onboardingProgress.completion_percent}%</strong>
+                        <p>{onboardingProgress.next_action}</p>
+                      </article>
+                      <article className="admin-onboarding-summary-card">
+                        <span>Teams</span>
+                        <strong>{onboardingProgress.teams.length}</strong>
+                        <p>{onboardingProgress.teams.length > 0 ? onboardingProgress.teams.map((team) => team.name).slice(0, 3).join(', ') : 'No team assignment yet'}</p>
+                      </article>
+                      <article className="admin-onboarding-summary-card">
+                        <span>Submitted requests</span>
+                        <strong>{onboardingProgress.submitted_requests}</strong>
+                        <p>{onboardingProgress.latest_request ? `Latest status: ${onboardingProgress.latest_request.status.replace(/_/g, ' ')}` : 'No request submitted yet'}</p>
+                      </article>
+                    </div>
+                    <div className="admin-onboarding-timeline">
+                      {onboardingProgress.milestones.map((milestone) => (
+                        <article
+                          key={milestone.key}
+                          className={`admin-onboarding-timeline__step admin-onboarding-timeline__step--${milestone.state}`}
+                        >
+                          <div className="admin-onboarding-timeline__dot" />
+                          <div>
+                            <div className="admin-onboarding-timeline__header">
+                              <strong>{milestone.title}</strong>
+                              <span className={`admin-onboarding-state admin-onboarding-state--${milestone.state}`}>
+                                {milestone.state}
+                              </span>
+                            </div>
+                            <p>{milestone.detail}</p>
+                            {milestone.timestamp && (
+                              <span className="admin-onboarding-timeline__time">
+                                {new Date(milestone.timestamp).toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="empty-state" style={{ padding: 16, textAlign: 'left' }}>
+                    Onboarding progress is not available for this user right now.
+                  </div>
+                )}
+              </div>
               {user.teams && user.teams.length > 0 && (
                 <div className="card" style={{ maxWidth: 480, marginBottom: 24 }}>
                   <h3 className="card-title" style={{ fontSize: 18 }}>Teams</h3>
