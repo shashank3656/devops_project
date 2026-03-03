@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -6,6 +6,12 @@ import AdminLayout from '../../components/AdminLayout';
 
 const CLOUDS = ['aws', 'azure', 'gcp'];
 const ENVS = ['dev', 'staging', 'prod', 'qa'];
+
+interface TeamSummary {
+  id: number;
+  name: string;
+  team_type?: string;
+}
 
 export default function NewTemplate() {
   const router = useRouter();
@@ -15,10 +21,43 @@ export default function NewTemplate() {
   const [env, setEnv] = useState('prod');
   const [service, setService] = useState('');
   const [config, setConfig] = useState('{}');
+  const [portalTeams, setPortalTeams] = useState<TeamSummary[]>([]);
+  const [selectedTeamIds, setSelectedTeamIds] = useState<number[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+
+  useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+    fetch(`${apiUrl}/api/admin/teams`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        if (res.status === 401 || res.status === 403) {
+          router.replace('/login');
+          return null;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(data.teams)) {
+          setPortalTeams(
+            data.teams.filter((team: TeamSummary) => (team.team_type || 'portal') === 'portal'),
+          );
+        }
+        return null;
+      })
+      .catch(() => {});
+  }, [apiUrl, router]);
+
+  const toggleTeam = (teamID: number) => {
+    setSelectedTeamIds((current) =>
+      current.includes(teamID) ? current.filter((id) => id !== teamID) : [...current, teamID],
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,6 +88,7 @@ export default function NewTemplate() {
           env: env.trim(),
           service: service.trim(),
           config: configStr,
+          team_ids: selectedTeamIds,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -74,7 +114,7 @@ export default function NewTemplate() {
           <Link href="/templates" className="back-link">
             ← Back to Templates
           </Link>
-          <div className="card" style={{ maxWidth: 560 }}>
+          <div className="card" style={{ maxWidth: 720 }}>
             <h2 className="card-title">Create request template</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '14px' }}>
               Pre-filled cloud, env, service and config for users to start from (e.g. &quot;AWS prod EKS&quot;, &quot;GCP dev BigQuery&quot;).
@@ -146,6 +186,35 @@ export default function NewTemplate() {
                   style={{ fontFamily: 'monospace', fontSize: '13px' }}
                   placeholder='{"team": "platform", "priority": "medium"}'
                 />
+              </div>
+              <div className="form-group">
+                <label className="label" htmlFor="tpl-scope">Template visibility</label>
+                <span className="label-optional" style={{ display: 'block', marginBottom: 10 }}>
+                  Assign the template to specific portal teams. Leave everything unchecked to make it visible to all portal teams.
+                </span>
+                {portalTeams.length === 0 ? (
+                  <div className="empty-state" style={{ padding: 16, textAlign: 'left' }}>
+                    No portal teams exist yet. <Link href="/teams/new">Create a team first</Link>.
+                  </div>
+                ) : (
+                  <div id="tpl-scope" className="admin-team-check-row">
+                    {portalTeams.map((team) => (
+                      <label key={team.id} className="admin-team-check">
+                        <input
+                          type="checkbox"
+                          checked={selectedTeamIds.includes(team.id)}
+                          onChange={() => toggleTeam(team.id)}
+                        />
+                        <span>{team.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <span className="label-optional" style={{ display: 'block', marginTop: 8 }}>
+                  {selectedTeamIds.length === 0
+                    ? 'Visible to all portal teams.'
+                    : `Assigned to ${selectedTeamIds.length} portal team${selectedTeamIds.length === 1 ? '' : 's'}.`}
+                </span>
               </div>
               <button type="submit" className="btn btn-primary" disabled={loading} style={{ padding: '10px 24px' }}>
                 {loading ? 'Creating…' : 'Create template'}

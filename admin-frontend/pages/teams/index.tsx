@@ -106,9 +106,14 @@ export default function TeamsList() {
                 Create new teams, inspect membership entry points, and remove unused groups from the platform.
               </p>
             </div>
-            <Link href="/teams/new" className="btn btn-primary">
-              Create team
-            </Link>
+            <div className="portal-page__actions">
+              <Link href="/team-ownership" className="btn btn-secondary">
+                Ownership dashboard
+              </Link>
+              <Link href="/teams/new" className="btn btn-primary">
+                Create team
+              </Link>
+            </div>
           </div>
 
           <div className="portal-surface portal-surface--table">

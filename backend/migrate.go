@@ -477,6 +477,19 @@ func MigrateDatabase() error {
 		}
 	}
 
+	// Migration 30: request_template_teams (optional portal-team scoping for templates)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS request_template_teams (
+			id SERIAL PRIMARY KEY,
+			template_id INTEGER NOT NULL REFERENCES request_templates(id) ON DELETE CASCADE,
+			team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(template_id, team_id)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_template_teams_template_id ON request_template_teams(template_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_template_teams_team_id ON request_template_teams(team_id)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }

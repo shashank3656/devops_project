@@ -381,15 +381,17 @@ type APIKeyRecord struct {
 
 // RequestTemplate is an admin-defined preset (e.g. "AWS prod EKS")
 type RequestTemplate struct {
-	ID          int       `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Cloud       string    `json:"cloud"`
-	Env         string    `json:"env"`
-	Service     string    `json:"service"`
-	Config      string    `json:"config"`
-	CreatedBy   *int      `json:"created_by"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID           int       `json:"id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	Cloud        string    `json:"cloud"`
+	Env          string    `json:"env"`
+	Service      string    `json:"service"`
+	Config       string    `json:"config"`
+	CreatedBy    *int      `json:"created_by"`
+	CreatedAt    time.Time `json:"created_at"`
+	Teams        []Team    `json:"teams,omitempty"`
+	VisibleToAll bool      `json:"visible_to_all"`
 }
 
 // UserSavedConfig is a user's saved/favorite configuration
@@ -3241,9 +3243,34 @@ func ListRequestTemplates() ([]RequestTemplate, error) {
 			id := int(createdBy.Int64)
 			t.CreatedBy = &id
 		}
+		t.VisibleToAll = true
 		out = append(out, t)
 	}
+	if err := hydrateRequestTemplatesWithTeams(out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+func ListRequestTemplatesForUser(userID int) ([]RequestTemplate, error) {
+	templates, err := ListRequestTemplates()
+	if err != nil {
+		return nil, err
+	}
+	if len(templates) == 0 {
+		return templates, nil
+	}
+	allowedTeams, err := getPortalTeamIDSetForUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]RequestTemplate, 0, len(templates))
+	for _, template := range templates {
+		if template.VisibleToAll || templateAccessibleToPortalTeams(template.Teams, allowedTeams) {
+			filtered = append(filtered, template)
+		}
+	}
+	return filtered, nil
 }
 
 func GetRequestTemplateByID(id int) (*RequestTemplate, error) {
@@ -3263,7 +3290,29 @@ func GetRequestTemplateByID(id int) (*RequestTemplate, error) {
 		id := int(createdBy.Int64)
 		t.CreatedBy = &id
 	}
+	t.VisibleToAll = true
+	if err := hydrateRequestTemplateWithTeams(&t); err != nil {
+		return nil, err
+	}
 	return &t, nil
+}
+
+func GetRequestTemplateForUser(id, userID int) (*RequestTemplate, error) {
+	template, err := GetRequestTemplateByID(id)
+	if err != nil || template == nil {
+		return template, err
+	}
+	if template.VisibleToAll {
+		return template, nil
+	}
+	allowedTeams, err := getPortalTeamIDSetForUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	if templateAccessibleToPortalTeams(template.Teams, allowedTeams) {
+		return template, nil
+	}
+	return nil, sql.ErrNoRows
 }
 
 func CreateRequestTemplate(name, description, cloud, env, service, config string, createdBy *int) (*RequestTemplate, error) {
@@ -3304,6 +3353,148 @@ func DeleteRequestTemplate(id int) error {
 	}
 	_, err := DB.Exec("DELETE FROM request_templates WHERE id = $1", id)
 	return err
+}
+
+func normalizeTeamIDs(teamIDs []int) []int {
+	if len(teamIDs) == 0 {
+		return nil
+	}
+	seen := make(map[int]bool, len(teamIDs))
+	out := make([]int, 0, len(teamIDs))
+	for _, teamID := range teamIDs {
+		if teamID <= 0 || seen[teamID] {
+			continue
+		}
+		seen[teamID] = true
+		out = append(out, teamID)
+	}
+	sort.Ints(out)
+	return out
+}
+
+func ValidatePortalTemplateTeamIDs(teamIDs []int) ([]int, error) {
+	normalized := normalizeTeamIDs(teamIDs)
+	for _, teamID := range normalized {
+		team, err := GetTeamByID(teamID)
+		if err != nil {
+			return nil, err
+		}
+		if team == nil {
+			return nil, fmt.Errorf("team %d not found", teamID)
+		}
+		if strings.TrimSpace(strings.ToLower(team.TeamType)) != "" && strings.TrimSpace(strings.ToLower(team.TeamType)) != "portal" {
+			return nil, fmt.Errorf("team %s is not a portal team", team.Name)
+		}
+	}
+	return normalized, nil
+}
+
+func SetRequestTemplateTeams(templateID int, teamIDs []int) error {
+	if DB == nil {
+		return fmt.Errorf("database not available")
+	}
+	normalized, err := ValidatePortalTemplateTeamIDs(teamIDs)
+	if err != nil {
+		return err
+	}
+	tx, err := DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM request_template_teams WHERE template_id = $1`, templateID); err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return nil
+		}
+		return err
+	}
+	for _, teamID := range normalized {
+		if _, err := tx.Exec(
+			`INSERT INTO request_template_teams (template_id, team_id) VALUES ($1, $2) ON CONFLICT (template_id, team_id) DO NOTHING`,
+			templateID,
+			teamID,
+		); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func GetRequestTemplateTeams(templateID int) ([]Team, error) {
+	if DB == nil {
+		return []Team{}, nil
+	}
+	rows, err := DB.Query(
+		`SELECT t.id, t.name, t.slug, COALESCE(t.application_id,''), COALESCE(t.team_type,'portal'), COALESCE(t.default_env,''), COALESCE(t.default_cloud,''), t.created_at, t.created_by
+		 FROM request_template_teams rtt
+		 INNER JOIN teams t ON t.id = rtt.team_id
+		 WHERE rtt.template_id = $1 AND COALESCE(t.team_type,'portal') = 'portal'
+		 ORDER BY t.name`,
+		templateID,
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return []Team{}, nil
+		}
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Team, 0)
+	for rows.Next() {
+		var team Team
+		if err := rows.Scan(&team.ID, &team.Name, &team.Slug, &team.ApplicationID, &team.TeamType, &team.DefaultEnv, &team.DefaultCloud, &team.CreatedAt, &team.CreatedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, team)
+	}
+	return out, nil
+}
+
+func hydrateRequestTemplateWithTeams(template *RequestTemplate) error {
+	if template == nil {
+		return nil
+	}
+	teams, err := GetRequestTemplateTeams(template.ID)
+	if err != nil {
+		return err
+	}
+	template.Teams = teams
+	template.VisibleToAll = len(teams) == 0
+	return nil
+}
+
+func hydrateRequestTemplatesWithTeams(templates []RequestTemplate) error {
+	for i := range templates {
+		if err := hydrateRequestTemplateWithTeams(&templates[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func getPortalTeamIDSetForUser(userID int) (map[int]bool, error) {
+	teams, err := GetTeamsForUserWithDetails(userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int]bool, len(teams))
+	for _, team := range teams {
+		if strings.TrimSpace(strings.ToLower(team.TeamType)) == "devops" {
+			continue
+		}
+		out[team.ID] = true
+	}
+	return out, nil
+}
+
+func templateAccessibleToPortalTeams(templateTeams []Team, allowedTeams map[int]bool) bool {
+	for _, team := range templateTeams {
+		if allowedTeams[team.ID] {
+			return true
+		}
+	}
+	return false
 }
 
 // --- User saved configs (favorites) ---
