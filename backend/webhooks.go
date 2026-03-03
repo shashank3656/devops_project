@@ -71,11 +71,6 @@ func FireOutboundWebhooks(event string, payload map[string]interface{}) {
 		payload = make(map[string]interface{})
 	}
 	payload["event"] = event
-	body, err := json.Marshal(payload)
-	if err != nil {
-		log.Printf("[Webhook] marshal payload: %v", err)
-		return
-	}
 	webhooks, err := GetEnabledOutboundWebhooksForEvent(event)
 	if err != nil || len(webhooks) == 0 {
 		return
