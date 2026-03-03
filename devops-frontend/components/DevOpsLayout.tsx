@@ -46,6 +46,7 @@ function getProfileInitials(): string {
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
+  '/notifications': 'Notifications',
   '/approval-center': 'Approval Center',
   '/workload': 'Workload',
   '/tickets': 'Tickets',
@@ -228,6 +229,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     { href: '/dashboard', label: 'Dashboard', Icon: IconTickets },
   ];
   if (isManager) {
+    baseNavItems.push({ href: '/notifications', label: 'Notifications', Icon: IconBell });
     baseNavItems.push({ href: '/approval-center', label: 'Approval Center', Icon: IconShield });
     baseNavItems.push({ href: '/workload', label: 'Workload', Icon: IconWorkload });
     baseNavItems.push({ href: '/tickets', label: 'Tickets', Icon: IconTickets });
@@ -387,6 +389,9 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                       </div>
                       <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
                         Open tickets
+                      </Link>
+                      <Link href="/notifications" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                        Open notifications center
                       </Link>
                       <div className="devops-navbar__notify-list">
                         {pendingApprovalsLoading ? (
