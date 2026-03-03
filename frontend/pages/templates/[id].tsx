@@ -14,12 +14,19 @@ interface RequestTemplate {
   service: string;
   config: string;
   teams?: TeamSummary[];
+  projects?: ProjectSummary[];
   visible_to_all?: boolean;
 }
 
 interface TeamSummary {
   id: number;
   name: string;
+}
+
+interface ProjectSummary {
+  id: number;
+  name: string;
+  code: string;
 }
 
 function formatTemplateConfig(config: string): string {
@@ -121,7 +128,7 @@ export default function TemplateDetailPage() {
             </Link>
             {template && (
               <Link
-                href={`/select-service?cloud=${encodeURIComponent(template.cloud)}&env=${encodeURIComponent(template.env)}&service=${encodeURIComponent(template.service)}&template_id=${template.id}`}
+                href={`/select-service?cloud=${encodeURIComponent(template.cloud)}&env=${encodeURIComponent(template.env)}&service=${encodeURIComponent(template.service)}&template_id=${template.id}${template.projects?.length === 1 ? `&project_id=${template.projects[0].id}` : ''}`}
                 className="btn btn-primary"
               >
                 Use template
@@ -176,6 +183,12 @@ export default function TemplateDetailPage() {
                     {template.visible_to_all || !template.teams?.length ? 'All portal teams' : `${template.teams.length} team${template.teams.length === 1 ? '' : 's'} assigned`}
                   </strong>
                 </article>
+                <article className="portal-detail-card">
+                  <span className="portal-kv__label">Projects</span>
+                  <strong className="portal-detail-card__value">
+                    {template.projects?.length ? `${template.projects.length} scoped project${template.projects.length === 1 ? '' : 's'}` : 'All assigned projects'}
+                  </strong>
+                </article>
               </div>
             </section>
 
@@ -196,6 +209,27 @@ export default function TemplateDetailPage() {
                     template.teams.map((team) => (
                       <span key={team.id} className="portal-pill">{team.name}</span>
                     ))
+                  )}
+                </div>
+              </section>
+
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Projects</span>
+                    <h2 className="portal-surface__title">Project scope</h2>
+                    <p className="portal-surface__subtitle">
+                      Some templates are limited to specific onboarded projects and their allowed service catalogs.
+                    </p>
+                  </div>
+                </div>
+                <div className="portal-pill-row">
+                  {template.projects?.length ? (
+                    template.projects.map((project) => (
+                      <span key={project.id} className="portal-pill">{project.name} ({project.code})</span>
+                    ))
+                  ) : (
+                    <span className="portal-pill">All assigned projects</span>
                   )}
                 </div>
               </section>

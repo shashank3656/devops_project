@@ -13,7 +13,22 @@ export default function CustomJSON() {
     name: string;
     slug: string;
   }
+  interface ProjectTeamAccess {
+    team_id: number;
+    team_name: string;
+    team_slug: string;
+    environments: string[];
+  }
+  interface ProjectOption {
+    id: number;
+    name: string;
+    code: string;
+    environments: string[];
+    team_access: ProjectTeamAccess[];
+  }
   const [teams, setTeams] = useState<TeamOption[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [projectId, setProjectId] = useState<number | ''>('');
   const [team, setTeam] = useState('');
   const [clientName, setClientName] = useState('');
   const [env, setEnv] = useState('');
@@ -39,6 +54,7 @@ export default function CustomJSON() {
     if (template) {
       try {
         const data = JSON.parse(template);
+        if (data.project_id) setProjectId(Number(data.project_id));
         if (data.team) setTeam(data.team);
         if (data.env) setEnv(data.env);
         if (data.client_name) setClientName(data.client_name);
@@ -54,10 +70,12 @@ export default function CustomJSON() {
       Promise.all([
         fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.ok ? res.json() : null),
         fetch(`${apiUrl}/api/me/teams`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.ok ? res.json() : null),
-      ]).then(([meData, teamsData]) => {
+        fetch(`${apiUrl}/api/me/projects`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.ok ? res.json() : null),
+      ]).then(([meData, teamsData, projectsData]) => {
         const u = meData?.user;
         setCanCreatePR(!!(u?.verified && (u?.role === 'contributor' || u?.role === 'admin')));
         setTeams(teamsData?.teams || []);
+        setProjects(Array.isArray(projectsData?.projects) ? projectsData.projects : []);
       }).catch(() => setCanCreatePR(false));
     } else {
       setCanCreatePR(false);
@@ -78,6 +96,11 @@ export default function CustomJSON() {
       return false;
     }
   };
+
+  const selectedProject = projects.find((project) => project.id === projectId) || null;
+  const availableTeams = selectedProject
+    ? teams.filter((option) => selectedProject.team_access.some((access) => access.team_id === option.id))
+    : teams;
 
   const handleJsonChange = (value: string) => {
     setJson(value);
@@ -101,8 +124,8 @@ export default function CustomJSON() {
   };
 
   const submitRequest = async (asDraft: boolean) => {
-    if (!team || !env) {
-      setError('Please fill in Team Name and Environment');
+    if (!projectId || !team || !env) {
+      setError('Please fill in Project, Team Name and Environment');
       return;
     }
 
@@ -126,6 +149,7 @@ export default function CustomJSON() {
       }
 
       const payload = {
+        project_id: projectId,
         team,
         env,
         client_name: clientName || undefined,
@@ -257,6 +281,25 @@ export default function CustomJSON() {
             <form onSubmit={handleSubmit}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '24px' }}>
                 <div className="form-group">
+                  <label className="label">Project *</label>
+                  <select
+                    className="select"
+                    value={projectId}
+                    onChange={(e) => {
+                      const nextProjectId = Number(e.target.value);
+                      setProjectId(Number.isNaN(nextProjectId) ? '' : nextProjectId);
+                      setTeam('');
+                    }}
+                    required
+                  >
+                    <option value="">{projects.length === 0 ? 'No projects assigned' : 'Select project'}</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
                   <label className="label">Team *</label>
                   <select
                     className="select"
@@ -264,8 +307,8 @@ export default function CustomJSON() {
                     onChange={(e) => setTeam(e.target.value)}
                     required
                   >
-                    <option value="">{teams.length === 0 ? 'No teams assigned' : 'Select team'}</option>
-                    {teams.map((t) => (
+                    <option value="">{availableTeams.length === 0 ? 'No team access for this project' : 'Select team'}</option>
+                    {availableTeams.map((t) => (
                       <option key={t.id} value={t.slug}>{t.name}</option>
                     ))}
                   </select>

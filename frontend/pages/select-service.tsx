@@ -14,12 +14,37 @@ interface TeamOption {
   default_cloud?: string;
 }
 
+interface ProjectServiceOption {
+  cloud: string;
+  service: string;
+}
+
+interface ProjectTeamAccess {
+  team_id: number;
+  team_name: string;
+  team_slug: string;
+  environments: string[];
+}
+
+interface ProjectOption {
+  id: number;
+  name: string;
+  code: string;
+  description: string;
+  environments: string[];
+  clouds: string[];
+  services: ProjectServiceOption[];
+  team_access: ProjectTeamAccess[];
+}
+
 const VALID_CLOUDS = ['aws', 'gcp', 'azure'];
 
 export default function SelectService() {
   const router = useRouter();
   const { toast } = useToast();
   const [teams, setTeams] = useState<TeamOption[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [projectId, setProjectId] = useState<number | ''>('');
   const [team, setTeam] = useState('');
   const [clientName, setClientName] = useState('');
   const [env, setEnv] = useState('');
@@ -39,16 +64,21 @@ export default function SelectService() {
   // Pre-select cloud, env, service from URL; load template or saved config when present
   useEffect(() => {
     if (!router.isReady) return;
+    const qProjectId = router.query.project_id;
     const qCloud = router.query.cloud;
     const qEnv = router.query.env;
     const qService = router.query.service;
     const cloudParam = typeof qCloud === 'string' ? qCloud.toLowerCase() : '';
     const envParam = typeof qEnv === 'string' ? qEnv.trim() : '';
     const serviceParam = typeof qService === 'string' ? qService.trim() : '';
+    if (typeof qProjectId === 'string') {
+      const parsed = Number(qProjectId);
+      if (!Number.isNaN(parsed) && parsed > 0) setProjectId(parsed);
+    }
     if (VALID_CLOUDS.includes(cloudParam)) setCloud((c) => c || cloudParam);
     if (envParam) setEnv((e) => e || envParam);
     if (serviceParam) setService((s) => s || serviceParam);
-  }, [router.isReady, router.query.cloud, router.query.env, router.query.service]);
+  }, [router.isReady, router.query.project_id, router.query.cloud, router.query.env, router.query.service]);
 
   // Fetch template or saved config and prefill form
   useEffect(() => {
@@ -61,13 +91,18 @@ export default function SelectService() {
     const sid = typeof savedId === 'string' ? savedId : undefined;
     if (!tid && !sid) return;
 
-    const applyConfig = (data: { cloud?: string; env?: string; service?: string; config?: string }) => {
+    const applyConfig = (data: { cloud?: string; env?: string; service?: string; config?: string; projects?: Array<{ id: number }> }) => {
       if (data.cloud && VALID_CLOUDS.includes(data.cloud.toLowerCase())) setCloud(data.cloud.toLowerCase());
       if (data.env) setEnv(data.env);
       if (data.service) setService(data.service);
+      if (projectId === '' && Array.isArray(data.projects) && data.projects.length === 1 && data.projects[0]?.id) {
+        setProjectId(data.projects[0].id);
+      }
       if (data.config) {
         try {
           const parsed = JSON.parse(data.config) as Record<string, unknown>;
+          const parsedProjectID = typeof parsed.project_id === 'number' ? parsed.project_id : Number(parsed.project_id);
+          if (!Number.isNaN(parsedProjectID) && parsedProjectID > 0) setProjectId(parsedProjectID);
           if (typeof parsed.team === 'string') setTeam(parsed.team);
           if (typeof parsed.client_name === 'string') setClientName(parsed.client_name);
           if (['low', 'medium', 'high', 'critical'].includes(parsed.priority as string)) setPriority(parsed.priority as 'low' | 'medium' | 'high' | 'critical');
@@ -75,7 +110,7 @@ export default function SelectService() {
           if (typeof parsed.initial_comment === 'string') setInitialComment(parsed.initial_comment);
           const rest: Record<string, any> = {};
           for (const [k, v] of Object.entries(parsed)) {
-            if (!['team', 'client_name', 'priority', 'due_date', 'initial_comment', 'comment', 'cloud', 'env', 'service'].includes(k)) {
+            if (!['project_id', 'team', 'client_name', 'priority', 'due_date', 'initial_comment', 'comment', 'cloud', 'env', 'service'].includes(k)) {
               rest[k] = v;
             }
           }
@@ -108,18 +143,39 @@ export default function SelectService() {
       Promise.all([
         fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.ok ? res.json() : null),
         fetch(`${apiUrl}/api/me/teams`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.ok ? res.json() : null),
-      ]).then(([meData, teamsData]) => {
+        fetch(`${apiUrl}/api/me/projects`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.ok ? res.json() : null),
+      ]).then(([meData, teamsData, projectsData]) => {
         const u = meData?.user;
         setCanCreatePR(!!(u?.verified && (u?.role === 'contributor' || u?.role === 'admin')));
         setTeams(teamsData?.teams || []);
+        setProjects(Array.isArray(projectsData?.projects) ? projectsData.projects : []);
       }).catch(() => setCanCreatePR(false));
     } else {
       setCanCreatePR(false);
     }
   }, [router, apiUrl]);
 
+  const selectedProject = projects.find((project) => project.id === projectId) || null;
+
+  const availableTeams = selectedProject
+    ? teams.filter((option) => selectedProject.team_access.some((access) => access.team_id === option.id))
+    : teams;
+
+  const availableEnvironments = (() => {
+    if (!selectedProject) return environments.map((item) => item.value);
+    const access = selectedProject.team_access.find((entry) => entry.team_slug === team);
+    return access?.environments?.length ? access.environments : selectedProject.environments;
+  })();
+
+  const availableCloudOptions = selectedProject
+    ? clouds.filter((option) => selectedProject.clouds.includes(option.value))
+    : clouds;
+
   // Get available services based on selected cloud
   const getAvailableServices = () => {
+    if (selectedProject) {
+      return selectedProject.services.filter((entry) => entry.cloud === cloud).map((entry) => entry.service);
+    }
     if (cloud === 'aws') return awsServiceList;
     if (cloud === 'gcp') return gcpServiceList;
     if (cloud === 'azure') return []; // Add Azure services later
@@ -138,6 +194,21 @@ export default function SelectService() {
   };
 
   // Initialize form values when service changes
+  useEffect(() => {
+    if (!selectedProject) return;
+    const teamAllowed = availableTeams.some((entry) => entry.slug === team);
+    if (team && !teamAllowed) {
+      setTeam('');
+    }
+    if (env && !availableEnvironments.includes(env)) {
+      setEnv('');
+    }
+    if (cloud && !selectedProject.clouds.includes(cloud)) {
+      setCloud('');
+      setService('');
+    }
+  }, [selectedProject, availableTeams, availableEnvironments, team, env, cloud]);
+
   useEffect(() => {
     const config = getServiceConfig();
     if (config) {
@@ -228,7 +299,7 @@ export default function SelectService() {
   };
 
   const submitRequest = async (asDraft: boolean) => {
-    if (!team || !env || !cloud || !service) {
+    if (!projectId || !team || !env || !cloud || !service) {
       setError('Please fill in all required fields');
       return;
     }
@@ -245,6 +316,7 @@ export default function SelectService() {
 
     try {
       const payload = {
+        project_id: projectId,
         team,
         env,
         cloud,
@@ -329,10 +401,10 @@ export default function SelectService() {
               color: 'var(--text-primary)',
               fontWeight: '700'
             }}>
-              Select Cloud & Service
+              Select Project, Cloud & Service
             </h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '15px' }}>
-              Choose your cloud provider and service, then configure the infrastructure
+              Start with an assigned project, then continue into the clouds and services allowed for that project
             </p>
             {(cloud || service) && (
               <div style={{ marginBottom: '20px' }}>
@@ -367,6 +439,33 @@ export default function SelectService() {
             <form onSubmit={handleSubmit}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '24px' }}>
                 <div className="form-group">
+                  <label className="label">Project *</label>
+                  <select
+                    className="select"
+                    value={projectId}
+                    onChange={(e) => {
+                      const nextProjectId = Number(e.target.value);
+                      setProjectId(Number.isNaN(nextProjectId) ? '' : nextProjectId);
+                      setTeam('');
+                      setEnv('');
+                      setCloud('');
+                      setService('');
+                    }}
+                    required
+                  >
+                    <option value="">{projects.length === 0 ? 'No projects assigned' : 'Select project'}</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+                    ))}
+                  </select>
+                  {selectedProject && (
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                      {selectedProject.description || `${selectedProject.environments.join(', ')} environments enabled`}
+                    </p>
+                  )}
+                </div>
+
+                <div className="form-group">
                   <label className="label">Team *</label>
                   <select
                     className="select"
@@ -374,20 +473,23 @@ export default function SelectService() {
                     onChange={(e) => {
                       const slug = e.target.value;
                       setTeam(slug);
-                      const selected = teams.find((t) => t.slug === slug);
+                      const selected = availableTeams.find((t) => t.slug === slug);
                       if (selected) {
-                        if (selected.default_env) setEnv(selected.default_env);
-                        if (selected.default_cloud) setCloud(selected.default_cloud);
+                        if (selected.default_env && availableEnvironments.includes(selected.default_env)) setEnv(selected.default_env);
+                        if (selected.default_cloud && (!selectedProject || selectedProject.clouds.includes(selected.default_cloud))) setCloud(selected.default_cloud);
                       }
                     }}
                     required
                   >
-                    <option value="">{teams.length === 0 ? 'No teams assigned' : 'Select team'}</option>
-                    {teams.map((t) => (
+                    <option value="">{availableTeams.length === 0 ? 'No team access for this project' : 'Select team'}</option>
+                    {availableTeams.map((t) => (
                       <option key={t.id} value={t.slug}>{t.name}</option>
                     ))}
                   </select>
-                  {teams.length === 0 && (
+                  {selectedProject && availableTeams.length === 0 && (
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>No assigned team has access to this project.</p>
+                  )}
+                  {!selectedProject && teams.length === 0 && (
                     <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Contact your admin to be added to a team.</p>
                   )}
                 </div>
@@ -412,11 +514,13 @@ export default function SelectService() {
                     required
                   >
                     <option value="">Select Environment</option>
-                    {environments.map(envOption => (
-                      <option key={envOption.value} value={envOption.value}>
-                        {envOption.label}
-                      </option>
-                    ))}
+                    {environments
+                      .filter((envOption) => availableEnvironments.includes(envOption.value))
+                      .map(envOption => (
+                        <option key={envOption.value} value={envOption.value}>
+                          {envOption.label}
+                        </option>
+                      ))}
                   </select>
                 </div>
 
@@ -458,7 +562,7 @@ export default function SelectService() {
                     required
                   >
                     <option value="">Select Cloud</option>
-                    {clouds.map(cloudOption => (
+                    {availableCloudOptions.map(cloudOption => (
                       <option key={cloudOption.value} value={cloudOption.value}>
                         {cloudOption.label}
                       </option>
@@ -473,7 +577,7 @@ export default function SelectService() {
                     value={service}
                     onChange={(e) => setService(e.target.value)}
                     required
-                    disabled={!cloud || availableServices.length === 0}
+                    disabled={!projectId || !cloud || availableServices.length === 0}
                   >
                     <option value="">Select Service</option>
                     {availableServices.map(svc => {

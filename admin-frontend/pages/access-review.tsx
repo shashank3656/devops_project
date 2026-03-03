@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import AdminLayout from '../components/AdminLayout';
 
 interface DevopsProfile {
@@ -16,6 +17,22 @@ interface AccessMembership {
   application_id: string;
   team_type: string;
   role: string;
+  project_scopes: ProjectScope[];
+}
+
+interface ProjectScope {
+  project_id: number;
+  project_name: string;
+  project_code: string;
+  project_status: string;
+  environments: string[];
+}
+
+interface ProjectOption {
+  id: number;
+  name: string;
+  code: string;
+  status?: string;
 }
 
 interface AccessReviewUser {
@@ -33,6 +50,7 @@ interface AccessReviewUser {
 interface Summary {
   total_users: number;
   total_memberships: number;
+  total_project_scopes: number;
   users_without_teams: number;
   portal_managers: number;
   devops_managers: number;
@@ -41,14 +59,26 @@ interface Summary {
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 export default function AccessReviewPage() {
+  const router = useRouter();
   const [users, setUsers] = useState<AccessReviewUser[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [userTypeFilter, setUserTypeFilter] = useState<'all' | 'portal_user' | 'devops_user'>('all');
   const [scopeFilter, setScopeFilter] = useState<'all' | 'with_teams' | 'without_teams'>('all');
+  const [projectFilter, setProjectFilter] = useState('all');
   const [removingKey, setRemovingKey] = useState('');
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    const rawProjectID = router.query.project_id;
+    const projectID = Array.isArray(rawProjectID) ? rawProjectID[0] : rawProjectID;
+    if (projectID) {
+      setProjectFilter(projectID);
+    }
+  }, [router.isReady, router.query.project_id]);
 
   useEffect(() => {
     const token = localStorage.getItem('admin_token');
@@ -73,6 +103,7 @@ export default function AccessReviewPage() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setUsers(Array.isArray(data.users) ? data.users : []);
+        setProjects(Array.isArray(data.projects) ? data.projects : []);
         setSummary(data.summary || null);
       } else {
         setError(data.error || 'Failed to load access review');
@@ -90,8 +121,19 @@ export default function AccessReviewPage() {
       if (userTypeFilter !== 'all' && user.user_type !== userTypeFilter) return false;
       if (scopeFilter === 'with_teams' && user.memberships.length === 0) return false;
       if (scopeFilter === 'without_teams' && user.memberships.length > 0) return false;
+      if (projectFilter !== 'all') {
+        const hasProjectAccess = user.memberships.some((membership) =>
+          membership.project_scopes.some((scope) => String(scope.project_id) === projectFilter),
+        );
+        if (!hasProjectAccess) return false;
+      }
       if (!q) return true;
-      const membershipText = user.memberships.map((membership) => `${membership.team_name} ${membership.role} ${membership.team_type}`).join(' ').toLowerCase();
+      const membershipText = user.memberships.map((membership) => {
+        const projectText = membership.project_scopes
+          .map((scope) => `${scope.project_name} ${scope.project_code} ${scope.project_status} ${scope.environments.join(' ')}`)
+          .join(' ');
+        return `${membership.team_name} ${membership.role} ${membership.team_type} ${projectText}`;
+      }).join(' ').toLowerCase();
       return (
         user.username.toLowerCase().includes(q) ||
         user.email.toLowerCase().includes(q) ||
@@ -99,7 +141,7 @@ export default function AccessReviewPage() {
         membershipText.includes(q)
       );
     });
-  }, [users, search, scopeFilter, userTypeFilter]);
+  }, [users, search, scopeFilter, projectFilter, userTypeFilter]);
 
   const handleRevoke = async (userId: number, membership: AccessMembership) => {
     const confirmed = window.confirm(`Remove ${membership.team_name} access from this user?`);
@@ -107,6 +149,7 @@ export default function AccessReviewPage() {
     const requestKey = `${membership.team_id}:${userId}`;
     const existingUser = users.find((user) => user.id === userId);
     const hadSingleMembership = (existingUser?.memberships.length || 0) === 1;
+    const removedProjectScopes = membership.project_scopes.length;
     setRemovingKey(requestKey);
     setError('');
     try {
@@ -131,6 +174,7 @@ export default function AccessReviewPage() {
           ? {
               ...current,
               total_memberships: Math.max(0, current.total_memberships - 1),
+              total_project_scopes: Math.max(0, current.total_project_scopes - removedProjectScopes),
               users_without_teams: current.users_without_teams + (hadSingleMembership ? 1 : 0),
             }
           : current,
@@ -173,6 +217,10 @@ export default function AccessReviewPage() {
               <strong className="portal-stat-card__value">{summary?.users_without_teams ?? 0}</strong>
             </article>
             <article className="portal-stat-card">
+              <span className="portal-stat-card__label">Project scopes</span>
+              <strong className="portal-stat-card__value">{summary?.total_project_scopes ?? 0}</strong>
+            </article>
+            <article className="portal-stat-card">
               <span className="portal-stat-card__label">Managers</span>
               <strong className="portal-stat-card__value">{(summary?.portal_managers ?? 0) + (summary?.devops_managers ?? 0)}</strong>
             </article>
@@ -195,6 +243,14 @@ export default function AccessReviewPage() {
                 <option value="all">All access states</option>
                 <option value="with_teams">With team access</option>
                 <option value="without_teams">Without team access</option>
+              </select>
+              <select className="input access-review-toolbar__select" value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}>
+                <option value="all">All projects</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={String(project.id)}>
+                    {project.name} ({project.code})
+                  </option>
+                ))}
               </select>
             </div>
           </section>
@@ -258,6 +314,19 @@ export default function AccessReviewPage() {
                                         {membership.team_type} / {membership.role}
                                         {membership.application_id ? ` / ${membership.application_id}` : ''}
                                       </span>
+                                      {membership.project_scopes.length > 0 ? (
+                                        <div className="access-review-project-scopes">
+                                          {membership.project_scopes.map((scope) => (
+                                            <span key={`${membership.team_id}-${scope.project_id}`} className="portal-pill">
+                                              {scope.project_name} ({scope.project_code}) / {scope.environments.join(', ')}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <div className="access-review-project-scopes">
+                                          <span className="portal-pill">No project scope</span>
+                                        </div>
+                                      )}
                                     </div>
                                     <button
                                       type="button"

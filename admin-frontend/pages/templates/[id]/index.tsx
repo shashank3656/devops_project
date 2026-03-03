@@ -14,14 +14,24 @@ interface RequestTemplate {
   env: string;
   service: string;
   config: string;
+  status?: string;
   created_at?: string;
+  updated_at?: string;
+  published_at?: string;
   teams?: TeamSummary[];
+  projects?: ProjectSummary[];
   visible_to_all?: boolean;
 }
 
 interface TeamSummary {
   id: number;
   name: string;
+}
+
+interface ProjectSummary {
+  id: number;
+  name: string;
+  code: string;
 }
 
 function formatTemplateConfig(config: string): string {
@@ -172,11 +182,25 @@ export default function ViewTemplate() {
                     <strong className="portal-detail-card__value">{template.service}</strong>
                   </article>
                   <article className="portal-detail-card">
+                    <span className="portal-kv__label">Governance</span>
+                    <strong className="portal-detail-card__value">{(template.status || 'draft').replace('_', ' ')}</strong>
+                  </article>
+                  <article className="portal-detail-card">
                     <span className="portal-kv__label">Visibility</span>
                     <strong className="portal-detail-card__value">
                       {template.visible_to_all || !template.teams?.length ? 'All portal teams' : `${template.teams.length} assigned team${template.teams.length === 1 ? '' : 's'}`}
                     </strong>
                   </article>
+                  <article className="portal-detail-card">
+                    <span className="portal-kv__label">Projects</span>
+                    <strong className="portal-detail-card__value">
+                      {template.projects?.length ? `${template.projects.length} scoped project${template.projects.length === 1 ? '' : 's'}` : 'All projects'}
+                    </strong>
+                  </article>
+                </div>
+                <div className="portal-pill-row" style={{ marginTop: 16 }}>
+                  {template.published_at ? <span className="portal-pill">Published {new Date(template.published_at).toLocaleDateString()}</span> : <span className="portal-pill">Not published yet</span>}
+                  {template.updated_at ? <span className="portal-pill">Updated {new Date(template.updated_at).toLocaleDateString()}</span> : null}
                 </div>
               </section>
 
@@ -197,6 +221,27 @@ export default function ViewTemplate() {
                     template.teams.map((team) => (
                       <span key={team.id} className="portal-pill">{team.name}</span>
                     ))
+                  )}
+                </div>
+              </section>
+
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Project scope</span>
+                    <h2 className="portal-surface__title">Project assignment</h2>
+                    <p className="portal-surface__subtitle">
+                      Restrict template usage to project-specific service catalogs when needed.
+                    </p>
+                  </div>
+                </div>
+                <div className="portal-pill-row">
+                  {template.projects?.length ? (
+                    template.projects.map((project) => (
+                      <span key={project.id} className="portal-pill">{project.name} ({project.code})</span>
+                    ))
+                  ) : (
+                    <span className="portal-pill">All projects</span>
                   )}
                 </div>
               </section>

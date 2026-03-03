@@ -14,6 +14,7 @@ interface FilterPreset {
   name: string;
   filterType: string;
   filterValue: string;
+  projectId: string;
   statusFilter: string;
   fromDate: string;
   toDate: string;
@@ -37,8 +38,22 @@ interface CostRiskPreview {
   signals: CostRiskSignal[];
 }
 
+interface ApprovalContext {
+  rule_source: string;
+  rule_environment: string;
+  requires_manager_approval: boolean;
+  requires_devops_approval: boolean;
+  manager_path_available: boolean;
+  current_stage: string;
+  next_stage?: string;
+  summary: string;
+}
+
 interface PRRequest {
   id: number;
+  project_id?: number | null;
+  project_name?: string;
+  project_code?: string;
   team: string;
   env: string;
   cloud: string;
@@ -58,6 +73,13 @@ interface PRRequest {
   created_by_username?: string;
   config?: string;
   cost_risk_preview?: CostRiskPreview | null;
+  approval_context?: ApprovalContext | null;
+}
+
+interface ProjectSummary {
+  id: number;
+  name: string;
+  code: string;
 }
 
 interface RequestComment {
@@ -101,6 +123,7 @@ export default function History() {
   const [error, setError] = useState('');
   const [filterType, setFilterType] = useState<'team' | 'pr_number' | 'env' | 'cloud' | 'search' | 'application_id'>('team');
   const [filterValue, setFilterValue] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -132,6 +155,7 @@ export default function History() {
   const [selectedRowIndex, setSelectedRowIndex] = useState(0);
   const [presets, setPresets] = useState<FilterPreset[]>([]);
   const [presetName, setPresetName] = useState('');
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
 
   const formatTimelineAction = (action: string) => {
     const map: Record<string, string> = {
@@ -156,6 +180,16 @@ export default function History() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
+    if (!router.isReady) return;
+    const rawProjectID = router.query.project_id;
+    const nextProjectID = Array.isArray(rawProjectID) ? rawProjectID[0] : rawProjectID;
+    if (typeof nextProjectID === 'string') {
+      setProjectId(nextProjectID);
+      setPage(0);
+    }
+  }, [router.isReady, router.query.project_id]);
+
+  useEffect(() => {
     setRecentIds(getRecentRequestIds());
     try {
       const raw = localStorage.getItem(HISTORY_FILTER_PRESETS_KEY);
@@ -165,6 +199,7 @@ export default function History() {
         const l = JSON.parse(last) as FilterPreset;
         setFilterType((l.filterType as any) || 'team');
         setFilterValue(l.filterValue || '');
+        setProjectId(l.projectId || '');
         setStatusFilter(l.statusFilter || '');
         setFromDate(l.fromDate || '');
         setToDate(l.toDate || '');
@@ -183,7 +218,7 @@ export default function History() {
       return;
     }
     fetchHistory();
-  }, [filterType, filterValue, page, viewMode, statusFilter, fromDate, toDate]);
+  }, [filterType, filterValue, projectId, page, viewMode, statusFilter, fromDate, toDate]);
 
   useEffect(() => {
     setSelectedRowIndex(0);
@@ -195,6 +230,7 @@ export default function History() {
         name: '',
         filterType,
         filterValue,
+        projectId,
         statusFilter,
         fromDate,
         toDate,
@@ -202,11 +238,11 @@ export default function History() {
       };
       localStorage.setItem(HISTORY_LAST_FILTERS_KEY, JSON.stringify(p));
     } catch (_) {}
-  }, [filterType, filterValue, statusFilter, fromDate, toDate, viewMode]);
+  }, [filterType, filterValue, projectId, statusFilter, fromDate, toDate, viewMode]);
 
   const savePreset = () => {
     const name = presetName.trim() || `Preset ${presets.length + 1}`;
-    const p: FilterPreset = { name, filterType, filterValue, statusFilter, fromDate, toDate, viewMode };
+    const p: FilterPreset = { name, filterType, filterValue, projectId, statusFilter, fromDate, toDate, viewMode };
     const next = presets.filter((x) => x.name !== name).concat([p]);
     setPresets(next);
     setPresetName('');
@@ -219,6 +255,7 @@ export default function History() {
   const loadPreset = (p: FilterPreset) => {
     setFilterType(p.filterType as any);
     setFilterValue(p.filterValue);
+    setProjectId(p.projectId || '');
     setStatusFilter(p.statusFilter);
     setFromDate(p.fromDate);
     setToDate(p.toDate);
@@ -250,6 +287,10 @@ export default function History() {
         }
       })
       .catch(() => {});
+    fetch(`${apiUrl}/api/me/projects`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setProjects(Array.isArray(data?.projects) ? data.projects : []))
+      .catch(() => setProjects([]));
   }, [apiUrl]);
 
   const fetchHistory = async () => {
@@ -275,6 +316,7 @@ export default function History() {
           params.append(filterType, filterValue.trim());
         }
       }
+      if (projectId) params.append('project_id', projectId);
       if (statusFilter) params.append('status', statusFilter);
       if (fromDate) params.append('from', fromDate);
       if (toDate) params.append('to', toDate);
@@ -627,6 +669,7 @@ export default function History() {
       else if (filterType === 'application_id') params.append('application_id', filterValue.trim());
       else params.append(filterType, filterValue.trim());
     }
+    if (projectId) params.append('project_id', projectId);
     if (statusFilter) params.append('status', statusFilter);
     if (fromDate) params.append('from', fromDate);
     if (toDate) params.append('to', toDate);
@@ -651,6 +694,7 @@ export default function History() {
     try {
       const rawConfig = rawConfigByRequestId.current[req.id] ?? req.config ?? '';
       sessionStorage.setItem(TEMPLATE_KEY, JSON.stringify({
+        project_id: req.project_id,
         team: req.team,
         env: req.env,
         cloud: req.cloud,
@@ -836,6 +880,15 @@ export default function History() {
               />
             </div>
             <div className="history-filter-field">
+              <label className="history-filter-label">Project</label>
+              <select value={projectId} onChange={(e) => { setProjectId(e.target.value); setPage(0); }} className="history-filter-select" style={{ minWidth: 220 }}>
+                <option value="">All assigned projects</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+                ))}
+              </select>
+            </div>
+            <div className="history-filter-field">
               <label className="history-filter-label">Status</label>
               <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} className="history-filter-select" style={{ minWidth: 140 }}>
                 <option value="">All</option>
@@ -895,7 +948,7 @@ export default function History() {
                 </button>
               </div>
               <button
-                onClick={() => { setFilterValue(''); fetchHistory(); }}
+                onClick={() => { setFilterValue(''); setProjectId(''); setPage(0); }}
                 className="btn btn-secondary"
               >
                 Clear
@@ -958,7 +1011,7 @@ export default function History() {
                 )}
                 {filterValue ? (
                   <button
-                    onClick={() => { setFilterValue(''); fetchHistory(); }}
+                    onClick={() => { setFilterValue(''); setProjectId(''); setPage(0); }}
                     className="btn btn-secondary"
                     style={{ marginTop: '1rem' }}
                   >
@@ -989,6 +1042,7 @@ export default function History() {
                   <thead>
                     <tr>
                       <th>Ticket #</th>
+                      <th>Project</th>
                       <th>Team</th>
                       {viewMode === 'team' && <th>Raised by</th>}
                       <th>Environment</th>
@@ -1009,6 +1063,14 @@ export default function History() {
                       >
                         <td style={{ padding: '16px', fontWeight: '600', color: 'var(--primary-color)' }}>
                           #{req.id}
+                        </td>
+                        <td style={{ padding: '16px' }}>
+                          {req.project_name ? (
+                            <>
+                              <strong>{req.project_name}</strong>
+                              {req.project_code ? <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{req.project_code}</div> : null}
+                            </>
+                          ) : '—'}
                         </td>
                         <td style={{ padding: '16px' }}>{req.team}</td>
                         {viewMode === 'team' && (
@@ -1220,6 +1282,20 @@ export default function History() {
                         Close
                       </button>
                     </div>
+                    {detailRequest.project_id && detailRequest.project_name && (
+                      <div style={{ marginBottom: '12px' }}>
+                        <strong>Project:</strong> {detailRequest.project_name}
+                        {detailRequest.project_code ? ` (${detailRequest.project_code})` : ''}
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{ marginLeft: 10 }}
+                          onClick={() => router.push(`/my-projects/${detailRequest.project_id}`)}
+                        >
+                          Open project
+                        </button>
+                      </div>
+                    )}
                     <div style={{ marginBottom: '12px' }}>
                       <strong>Team:</strong> {detailRequest.team} &nbsp;|&nbsp; <strong>Env:</strong> {detailRequest.env} &nbsp;|&nbsp; <strong>Cloud:</strong> {detailRequest.cloud} &nbsp;|&nbsp; <strong>Service:</strong> {detailRequest.service}
                       {detailRequest.application_id && (
@@ -1322,6 +1398,45 @@ export default function History() {
                               </p>
                             </article>
                           )}
+                        </div>
+                      </div>
+                    )}
+                    {detailRequest.approval_context && (
+                      <div className="portal-preview-panel" style={{ marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+                          <div>
+                            <div className="portal-preview-eyebrow">Approval Flow</div>
+                            <strong className="portal-preview-value" style={{ fontSize: 18 }}>Project rule explanation</strong>
+                          </div>
+                          <span className={getPreviewRiskClass(detailRequest.approval_context.requires_devops_approval ? 'medium' : 'low')}>
+                            {detailRequest.approval_context.current_stage}
+                          </span>
+                        </div>
+                        <div className="portal-preview-grid">
+                          <div className="portal-preview-card">
+                            <span className="portal-preview-eyebrow">Current stage</span>
+                            <strong className="portal-preview-value">{detailRequest.approval_context.current_stage}</strong>
+                            <p className="portal-preview-copy">
+                              {detailRequest.approval_context.next_stage
+                                ? `Next stage: ${detailRequest.approval_context.next_stage}`
+                                : 'No further approval stage is pending.'}
+                            </p>
+                          </div>
+                          <div className="portal-preview-card">
+                            <span className="portal-preview-eyebrow">Rule source</span>
+                            <strong className="portal-preview-value">
+                              {detailRequest.approval_context.rule_source === 'project_rule' ? 'Project rule' : 'Default flow'}
+                            </strong>
+                            <p className="portal-preview-copy">{detailRequest.approval_context.summary}</p>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <span className={getPreviewSignalClass(detailRequest.approval_context.requires_manager_approval ? 'medium' : 'low')}>
+                            {detailRequest.approval_context.requires_manager_approval ? 'Manager gate enabled' : 'No manager gate'}
+                          </span>
+                          <span className={getPreviewSignalClass(detailRequest.approval_context.requires_devops_approval ? 'medium' : 'low')}>
+                            {detailRequest.approval_context.requires_devops_approval ? 'DevOps gate enabled' : 'No DevOps gate'}
+                          </span>
                         </div>
                       </div>
                     )}

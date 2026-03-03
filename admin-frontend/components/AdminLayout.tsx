@@ -12,6 +12,7 @@ import {
   IconUser,
   IconActivity,
   IconTemplates,
+  IconProjects,
   IconWebhook,
   IconShield,
   IconLayers,
@@ -27,10 +28,14 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
+  '/notifications': 'Notifications',
+  '/approval-center': 'Approval Center',
+  '/project-governance': 'Project Governance',
   '/requests': 'Requests',
   '/sla': 'SLA Dashboard',
   '/teams': 'Teams',
   '/users': 'Users',
+  '/projects': 'Projects',
   '/team-ownership': 'Team Ownership',
   '/activity': 'Activity',
   '/templates': 'Templates',
@@ -73,11 +78,15 @@ interface PendingRequest {
 
 const NAV_ITEMS: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
   { href: '/dashboard', label: 'Dashboard', Icon: IconDashboard },
+  { href: '/notifications', label: 'Notifications', Icon: IconBell },
+  { href: '/approval-center', label: 'Approval Center', Icon: IconShield },
+  { href: '/project-governance', label: 'Project Governance', Icon: IconTrendingUp },
   { href: '/requests', label: 'Requests', Icon: IconRequests },
   { href: '/sla', label: 'SLA Dashboard', Icon: IconTrendingUp },
   { href: '/teams', label: 'Teams', Icon: IconTeams },
   { href: '/team-ownership', label: 'Team Ownership', Icon: IconLayers },
   { href: '/users', label: 'Users', Icon: IconUsers },
+  { href: '/projects', label: 'Projects', Icon: IconProjects },
   { href: '/access-review', label: 'Access Review', Icon: IconShield },
   { href: '/activity', label: 'Activity', Icon: IconActivity },
   { href: '/templates', label: 'Templates', Icon: IconTemplates },
@@ -407,6 +416,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   </div>
                   <Link href="/requests" className="admin-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
                     Open requests
+                  </Link>
+                  <Link href="/notifications" className="admin-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                    Open notifications center
                   </Link>
                   <div className="admin-topbar__notify-list">
                     {ticketsLoading ? (

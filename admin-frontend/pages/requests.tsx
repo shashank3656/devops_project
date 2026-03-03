@@ -26,8 +26,22 @@ interface CostRiskPreview {
   signals: CostRiskSignal[];
 }
 
+interface ApprovalContext {
+  rule_source: string;
+  rule_environment: string;
+  requires_manager_approval: boolean;
+  requires_devops_approval: boolean;
+  manager_path_available: boolean;
+  current_stage: string;
+  next_stage?: string;
+  summary: string;
+}
+
 interface PRRequest {
   id: number;
+  project_id?: number | null;
+  project_name?: string;
+  project_code?: string;
   team: string;
   env: string;
   cloud: string;
@@ -49,6 +63,13 @@ interface PRRequest {
   blocked_by?: number[];
   blocked_by_with_status?: BlockedByItem[];
   cost_risk_preview?: CostRiskPreview | null;
+  approval_context?: ApprovalContext | null;
+}
+
+interface ProjectSummary {
+  id: number;
+  name: string;
+  code: string;
 }
 
 interface RequestComment {
@@ -89,6 +110,7 @@ export default function AdminRequests() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [team, setTeam] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [env, setEnv] = useState('');
   const [cloud, setCloud] = useState('');
   const [search, setSearch] = useState('');
@@ -118,16 +140,28 @@ export default function AdminRequests() {
   const [jiraEdit, setJiraEdit] = useState('');
   const [jiraSaving, setJiraSaving] = useState(false);
   const [bulkStatusValue, setBulkStatusValue] = useState('');
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [timeline, setTimeline] = useState<{ id: number; kind: string; action: string; username: string; details: string; body?: string; created_at: string }[]>([]);
   const limit = 20;
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
 
-  const filtersRef = useRef<{ team: string; env: string; cloud: string; search: string; status: string; priority: string; sortBy: string; sortOrder: string; atRiskOnly: boolean }>({ team: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false });
+  const filtersRef = useRef<{ team: string; projectId: string; env: string; cloud: string; search: string; status: string; priority: string; sortBy: string; sortOrder: string; atRiskOnly: boolean }>({ team: '', projectId: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false });
 
-  const fetchRequests = (overrides?: { team?: string; env?: string; cloud?: string; search?: string; status?: string; priority?: string; sortBy?: string; sortOrder?: string; atRiskOnly?: boolean; offset?: number }) => {
+  useEffect(() => {
+    if (!router.isReady) return;
+    const rawProjectID = router.query.project_id;
+    const nextProjectID = Array.isArray(rawProjectID) ? rawProjectID[0] : rawProjectID;
+    if (typeof nextProjectID === 'string') {
+      setProjectId(nextProjectID);
+      setOffset(0);
+    }
+  }, [router.isReady, router.query.project_id]);
+
+  const fetchRequests = (overrides?: { team?: string; projectId?: string; env?: string; cloud?: string; search?: string; status?: string; priority?: string; sortBy?: string; sortOrder?: string; atRiskOnly?: boolean; offset?: number }) => {
     const t = overrides?.team !== undefined ? overrides.team : filtersRef.current.team;
+    const pid = overrides?.projectId !== undefined ? overrides.projectId : filtersRef.current.projectId;
     const e = overrides?.env !== undefined ? overrides.env : filtersRef.current.env;
     const c = overrides?.cloud !== undefined ? overrides.cloud : filtersRef.current.cloud;
     const q = overrides?.search !== undefined ? overrides.search : filtersRef.current.search;
@@ -141,6 +175,7 @@ export default function AdminRequests() {
     setError('');
     const params = new URLSearchParams();
     if (t) params.set('team', t);
+    if (pid) params.set('project_id', pid);
     if (e) params.set('env', e);
     if (c) params.set('cloud', c);
     if (q) params.set('q', q);
@@ -181,6 +216,11 @@ export default function AdminRequests() {
 
   useEffect(() => {
     setRecentIds(getRecentRequestIds());
+    if (!token) return;
+    fetch(`${apiUrl}/api/admin/projects`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setProjects(Array.isArray(data?.projects) ? data.projects : []))
+      .catch(() => setProjects([]));
   }, []);
   useEffect(() => {
         if (detailRequest) {
@@ -240,6 +280,7 @@ export default function AdminRequests() {
     e.preventDefault();
     const form = e.currentTarget as HTMLFormElement;
     const teamVal = (form.elements.namedItem('filter-team') as HTMLInputElement | null)?.value?.trim() ?? '';
+    const projectVal = (form.elements.namedItem('filter-project') as HTMLSelectElement | null)?.value ?? '';
     const envVal = (form.elements.namedItem('filter-env') as HTMLInputElement | null)?.value?.trim() ?? '';
     const cloudVal = (form.elements.namedItem('filter-cloud') as HTMLInputElement | null)?.value?.trim() ?? '';
     const searchVal = (form.elements.namedItem('filter-search') as HTMLInputElement | null)?.value?.trim() ?? '';
@@ -248,8 +289,9 @@ export default function AdminRequests() {
     const sortByVal = (form.elements.namedItem('filter-sort-by') as HTMLSelectElement | null)?.value ?? 'created_at';
     const sortOrderVal = (form.elements.namedItem('filter-sort-order') as HTMLSelectElement | null)?.value ?? 'desc';
     const atRiskVal = (form.elements.namedItem('filter-at-risk') as HTMLInputElement | null)?.checked ?? false;
-    filtersRef.current = { team: teamVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal, sortBy: sortByVal, sortOrder: sortOrderVal, atRiskOnly: atRiskVal };
+    filtersRef.current = { team: teamVal, projectId: projectVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal, sortBy: sortByVal, sortOrder: sortOrderVal, atRiskOnly: atRiskVal };
     setTeam(teamVal);
+    setProjectId(projectVal);
     setEnv(envVal);
     setCloud(cloudVal);
     setSearch(searchVal);
@@ -262,12 +304,13 @@ export default function AdminRequests() {
     const qs = new URLSearchParams();
     if (searchVal) qs.set('q', searchVal);
     router.replace(searchVal ? `/requests?${qs}` : '/requests', undefined, { shallow: true });
-    fetchRequests({ team: teamVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal, offset: 0 });
+    fetchRequests({ team: teamVal, projectId: projectVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal, offset: 0 });
   };
 
   const handleClearFilters = () => {
-    filtersRef.current = { team: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false };
+    filtersRef.current = { team: '', projectId: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false };
     setTeam('');
+    setProjectId('');
     setEnv('');
     setCloud('');
     setSearch('');
@@ -278,7 +321,7 @@ export default function AdminRequests() {
     setAtRiskOnly(false);
     setOffset(0);
     router.replace('/requests', undefined, { shallow: true });
-    fetchRequests({ team: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false, offset: 0 });
+    fetchRequests({ team: '', projectId: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false, offset: 0 });
   };
 
   const statusLabel = (s: string) =>
@@ -738,6 +781,19 @@ export default function AdminRequests() {
               value={team}
               onChange={(e) => setTeam(e.target.value)}
             />
+            <select
+              id="filter-project"
+              name="filter-project"
+              className="input"
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              style={{ minWidth: 220 }}
+            >
+              <option value="">All projects</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+              ))}
+            </select>
             <input
               id="filter-env"
               name="filter-env"
@@ -899,6 +955,7 @@ export default function AdminRequests() {
                       <tr>
                         <th style={{ width: 44 }} title="Select">☐</th>
                         <th>ID</th>
+                        <th>Project</th>
                         <th>Team</th>
                         <th>Env</th>
                         <th>Cloud</th>
@@ -921,6 +978,14 @@ export default function AdminRequests() {
                             />
                           </td>
                           <td>{req.id}</td>
+                          <td>
+                            {req.project_name ? (
+                              <>
+                                <strong>{req.project_name}</strong>
+                                {req.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{req.project_code}</div> : null}
+                              </>
+                            ) : '—'}
+                          </td>
                           <td>{req.team}</td>
                           <td>{req.env}</td>
                           <td>{req.cloud}</td>
@@ -1081,6 +1146,20 @@ export default function AdminRequests() {
                     Close
                   </button>
                 </div>
+                {detailRequest.project_id && detailRequest.project_name && (
+                  <p style={{ marginBottom: 8, fontSize: 14 }}>
+                    <strong>Project:</strong> {detailRequest.project_name}
+                    {detailRequest.project_code ? ` (${detailRequest.project_code})` : ''}
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ marginLeft: 10 }}
+                      onClick={() => router.push(`/projects/${detailRequest.project_id}`)}
+                    >
+                      Open project
+                    </button>
+                  </p>
+                )}
                 <p style={{ marginBottom: 8, fontSize: 14 }}>
                   <strong>Team:</strong> {detailRequest.team} · <strong>Env:</strong> {detailRequest.env} · <strong>Cloud:</strong> {detailRequest.cloud} · <strong>Service:</strong> {detailRequest.service}
                 </p>
@@ -1248,6 +1327,45 @@ export default function AdminRequests() {
                           </p>
                         </article>
                       )}
+                    </div>
+                  </div>
+                )}
+                {detailRequest.approval_context && (
+                  <div className="portal-preview-panel" style={{ marginBottom: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap' }}>
+                      <div>
+                        <div className="portal-preview-eyebrow">Approval Flow</div>
+                        <strong className="portal-preview-value" style={{ fontSize: 18 }}>Rule explanation</strong>
+                      </div>
+                      <span className={getPreviewRiskClass(detailRequest.approval_context.requires_devops_approval ? 'medium' : 'low')}>
+                        {detailRequest.approval_context.current_stage}
+                      </span>
+                    </div>
+                    <div className="portal-preview-grid">
+                      <div className="portal-preview-card">
+                        <span className="portal-preview-eyebrow">Current stage</span>
+                        <strong className="portal-preview-value">{detailRequest.approval_context.current_stage}</strong>
+                        <p className="portal-preview-copy">
+                          {detailRequest.approval_context.next_stage
+                            ? `Next stage: ${detailRequest.approval_context.next_stage}`
+                            : 'No further approval stage is pending.'}
+                        </p>
+                      </div>
+                      <div className="portal-preview-card">
+                        <span className="portal-preview-eyebrow">Rule source</span>
+                        <strong className="portal-preview-value">
+                          {detailRequest.approval_context.rule_source === 'project_rule' ? 'Project rule' : 'Default flow'}
+                        </strong>
+                        <p className="portal-preview-copy">{detailRequest.approval_context.summary}</p>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <span className={getPreviewSignalClass(detailRequest.approval_context.requires_manager_approval ? 'medium' : 'low')}>
+                        {detailRequest.approval_context.requires_manager_approval ? 'Manager gate enabled' : 'No manager gate'}
+                      </span>
+                      <span className={getPreviewSignalClass(detailRequest.approval_context.requires_devops_approval ? 'medium' : 'low')}>
+                        {detailRequest.approval_context.requires_devops_approval ? 'DevOps gate enabled' : 'No DevOps gate'}
+                      </span>
                     </div>
                   </div>
                 )}

@@ -9,6 +9,7 @@ import {
   IconHome,
   IconPlus,
   IconTemplates,
+  IconProjects,
   IconHistory,
   IconUsers,
   IconChevronRight,
@@ -44,6 +45,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/home': 'Dashboard',
   '/create-infrastructure': 'Create Infrastructure',
   '/templates': 'Templates',
+  '/my-projects': 'My Projects',
   '/history': 'Request History',
   '/notifications': 'Notifications',
   '/my-teams': 'My Teams',
@@ -319,6 +321,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const effectiveNewRequestExpanded = newRequestExpanded || newRequestExpandedByPath;
   const baseNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
     { href: '/home', label: 'Dashboard', Icon: IconHome },
+    { href: '/my-projects', label: 'My Projects', Icon: IconProjects },
     { href: '/templates', label: 'Templates', Icon: IconTemplates },
     { href: '/history', label: 'Request History', Icon: IconHistory },
   ];
