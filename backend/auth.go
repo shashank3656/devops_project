@@ -65,8 +65,8 @@ type LoginRequest struct {
 }
 
 type AuthResponse struct {
-	Token    string    `json:"token"`
-	User     User      `json:"user"`
+	Token     string    `json:"token"`
+	User      User      `json:"user"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
@@ -201,7 +201,7 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 	// TODO: send OTP via email in production; for now return in response for testing
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message":        "Account created. Verify with OTP sent to your email.",
+		"message":         "Account created. Verify with OTP sent to your email.",
 		"status":          "ok",
 		"otp_for_testing": otp,
 		"email":           req.Email,
@@ -311,10 +311,10 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		sendNotificationEmailIfConfigured(user.ID, "2fa", subj, body)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"requires_otp":       true,
-			"pending_2fa_token":  pendingToken,
-			"message":            "Enter the 6-digit code sent to your email",
-			"otp_for_testing":    otp,
+			"requires_otp":      true,
+			"pending_2fa_token": pendingToken,
+			"message":           "Enter the 6-digit code sent to your email",
+			"otp_for_testing":   otp,
 		})
 		return
 	}
@@ -514,7 +514,7 @@ func meTeamsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"teams": teams,
+		"teams":  teams,
 		"status": "ok",
 	})
 }
@@ -599,10 +599,10 @@ func meAPIKeysHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"api_key":  rec,
-		"key":      rawKey,
-		"message":  "Save this key; it will not be shown again.",
-		"status":   "ok",
+		"api_key": rec,
+		"key":     rawKey,
+		"message": "Save this key; it will not be shown again.",
+		"status":  "ok",
 	})
 }
 
@@ -1575,7 +1575,8 @@ func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Email string `json:"email"`
+		Email  string `json:"email"`
+		Portal string `json:"portal"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -1623,7 +1624,11 @@ func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	resetURL := strings.TrimSuffix(FrontendURL, "/") + "/reset-password?token=" + token
+	resetBaseURL := FrontendURL
+	if strings.EqualFold(strings.TrimSpace(body.Portal), "devops") {
+		resetBaseURL = DevOpsFrontendURL
+	}
+	resetURL := strings.TrimSuffix(resetBaseURL, "/") + "/reset-password?token=" + token
 	log.Printf("[Auth] Forgot-password: user=%s resetURL=%s", user.Email, resetURL)
 	subject, bodyText, _ := EmailTemplatePasswordReset(resetURL)
 	if err := SendEmail(user.Email, subject, bodyText); err != nil {
@@ -1652,9 +1657,9 @@ func resetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Token            string `json:"token"`
-		NewPassword      string `json:"new_password"`
-		ConfirmPassword  string `json:"confirm_password"`
+		Token           string `json:"token"`
+		NewPassword     string `json:"new_password"`
+		ConfirmPassword string `json:"confirm_password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.Header().Set("Content-Type", "application/json")

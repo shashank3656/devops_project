@@ -22,6 +22,9 @@ var (
 	// FrontendURL - base URL for user frontend (for password reset links). Default: http://localhost:3000
 	FrontendURL = getEnv("FRONTEND_URL", "http://localhost:3000")
 
+	// DevOpsFrontendURL - base URL for DevOps frontend (for DevOps password reset links). Default: http://localhost:3002
+	DevOpsFrontendURL = getEnv("DEVOPS_FRONTEND_URL", "http://localhost:3002")
+
 	// WebhookApproveURL - optional URL to POST when request is approved
 	WebhookApproveURL = getEnv("WEBHOOK_APPROVE_URL", "")
 )
