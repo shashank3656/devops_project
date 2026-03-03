@@ -38,25 +38,28 @@ type ProjectTeamAccess struct {
 }
 
 type ProjectCatalog struct {
-	ID               int                    `json:"id"`
-	Name             string                 `json:"name"`
-	Code             string                 `json:"code"`
-	Description      string                 `json:"description"`
-	Status           string                 `json:"status"`
-	OnboardingStage  string                 `json:"onboarding_stage"`
-	ReadyForRequests bool                   `json:"ready_for_requests"`
-	ServiceCount     int                    `json:"service_count"`
-	TeamCount        int                    `json:"team_count"`
-	OwnerTeamID      *int                   `json:"owner_team_id,omitempty"`
-	OwnerTeam        string                 `json:"owner_team,omitempty"`
-	CreatedBy        *int                   `json:"created_by,omitempty"`
-	CreatedAt        time.Time              `json:"created_at"`
-	UpdatedAt        time.Time              `json:"updated_at"`
-	Environments     []string               `json:"environments"`
-	Clouds           []string               `json:"clouds"`
-	Services         []ProjectServiceOption `json:"services"`
-	TeamAccess       []ProjectTeamAccess    `json:"team_access"`
-	ApprovalRules    []ProjectApprovalRule  `json:"approval_rules"`
+	ID                    int                    `json:"id"`
+	Name                  string                 `json:"name"`
+	Code                  string                 `json:"code"`
+	Description           string                 `json:"description"`
+	Status                string                 `json:"status"`
+	OnboardingStage       string                 `json:"onboarding_stage"`
+	ReadyForRequests      bool                   `json:"ready_for_requests"`
+	ServiceCount          int                    `json:"service_count"`
+	TeamCount             int                    `json:"team_count"`
+	RequestCount          int                    `json:"request_count"`
+	PendingRequestCount   int                    `json:"pending_request_count"`
+	CompletedRequestCount int                    `json:"completed_request_count"`
+	OwnerTeamID           *int                   `json:"owner_team_id,omitempty"`
+	OwnerTeam             string                 `json:"owner_team,omitempty"`
+	CreatedBy             *int                   `json:"created_by,omitempty"`
+	CreatedAt             time.Time              `json:"created_at"`
+	UpdatedAt             time.Time              `json:"updated_at"`
+	Environments          []string               `json:"environments"`
+	Clouds                []string               `json:"clouds"`
+	Services              []ProjectServiceOption `json:"services"`
+	TeamAccess            []ProjectTeamAccess    `json:"team_access"`
+	ApprovalRules         []ProjectApprovalRule  `json:"approval_rules"`
 }
 
 type ProjectCatalogInput struct {
@@ -352,6 +355,29 @@ func getPortalTeams() ([]Team, error) {
 	return out, nil
 }
 
+func getOwnerTeams() ([]Team, error) {
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT id, name, slug, COALESCE(application_id,''), COALESCE(team_type,'portal'), COALESCE(default_env,''), COALESCE(default_cloud,''), created_at, created_by
+		FROM teams
+		ORDER BY name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	defer rows.Close()
+
+	var out []Team
+	for rows.Next() {
+		var team Team
+		if err := rows.Scan(&team.ID, &team.Name, &team.Slug, &team.ApplicationID, &team.TeamType, &team.DefaultEnv, &team.DefaultCloud, &team.CreatedAt, &team.CreatedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, team)
+	}
+	return out, nil
+}
+
 func createProjectCatalog(input ProjectCatalogInput, createdBy *int) (*ProjectCatalog, error) {
 	input, err := sanitizeProjectInput(input)
 	if err != nil {
@@ -604,6 +630,41 @@ func getProjectCatalogsByFilter(whereClause string, args ...interface{}) ([]Proj
 		},
 	); err != nil && !strings.Contains(err.Error(), "does not exist") {
 		return nil, err
+	}
+
+	requestRows, cancel, err := queryRowsWithTimeout(
+		fmt.Sprintf(`
+			SELECT project_id,
+			       COUNT(*) AS total_count,
+			       COUNT(*) FILTER (WHERE status IN ('pending_approval', 'pending_devops_approval', 'pending_user_manager_approval')) AS pending_count,
+			       COUNT(*) FILTER (WHERE status = 'completed') AS completed_count
+			FROM pr_requests
+			WHERE project_id IN (%s)
+			GROUP BY project_id
+		`, inClause),
+		queryArgs...,
+	)
+	if err != nil {
+		if !strings.Contains(err.Error(), "does not exist") {
+			return nil, err
+		}
+	} else {
+		defer cancel()
+		defer requestRows.Close()
+		for requestRows.Next() {
+			var projectID int
+			var totalCount int
+			var pendingCount int
+			var completedCount int
+			if err := requestRows.Scan(&projectID, &totalCount, &pendingCount, &completedCount); err != nil {
+				return nil, err
+			}
+			if project := projectsByID[projectID]; project != nil {
+				project.RequestCount = totalCount
+				project.PendingRequestCount = pendingCount
+				project.CompletedRequestCount = completedCount
+			}
+		}
 	}
 
 	if err := loadSimpleRows(
@@ -1115,8 +1176,20 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
+		ownerTeams, err := getOwnerTeams()
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "projects": projects, "portal_teams": portalTeams})
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":       "ok",
+			"projects":     projects,
+			"portal_teams": portalTeams,
+			"owner_teams":  ownerTeams,
+		})
 		return
 	}
 	if r.Method == "POST" {
