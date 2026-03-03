@@ -310,30 +310,30 @@ export default function DevOpsDashboard() {
 
   const quickActions = [
     {
-      href: '/gitops-projects',
-      label: 'GitOps projects',
-      description: 'Inspect project folders, environment manifests, and PR delivery flow.',
+      href: '/tickets',
+      label: 'Open tickets',
+      description: 'Move straight into assigned requests, comments, and approval context.',
     },
     {
-      href: '/templates/new',
-      label: 'Launch template',
-      description: 'Start a new golden-path infrastructure request.',
+      href: '/templates',
+      label: 'Template library',
+      description: 'Browse reusable delivery flows and approved infrastructure starting points.',
     },
     pendingApprovalCount > 0
       ? {
-          href: '/workload',
+          href: '/tickets',
           label: 'Review backlog',
           description: `${formatCompactCount(pendingApprovalCount)} approvals need attention.`,
         }
       : {
-          href: '/templates',
-          label: 'Template library',
-          description: 'Browse reusable delivery flows and scaffolds.',
+          href: '/workload',
+          label: 'Check workload',
+          description: 'Balance active delivery, team ownership, and queue pressure.',
         },
     {
-      href: '/credential-audit',
-      label: 'Credential audit',
-      description: 'Check secrets hygiene and ownership before the next release.',
+      href: '/team',
+      label: 'Team directory',
+      description: 'Review operators, assignments, and current team coverage.',
     },
   ];
 
