@@ -18,6 +18,20 @@ interface ProjectApprovalRule {
   require_devops_approval: boolean;
 }
 
+interface ProjectReadinessCheck {
+  key: string;
+  label: string;
+  complete: boolean;
+  detail: string;
+}
+
+interface ProjectLifecycleAction {
+  action: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+}
+
 interface CostRiskSignal {
   severity: 'low' | 'medium' | 'high';
   category: string;
@@ -56,6 +70,9 @@ interface ProjectOption {
   service_count?: number;
   team_count?: number;
   owner_team?: string;
+  next_action?: string;
+  readiness_checks?: ProjectReadinessCheck[];
+  lifecycle_actions?: ProjectLifecycleAction[];
   cost_risk_summary?: ProjectCostRiskSummary | null;
   environments: string[];
   clouds: string[];
@@ -107,6 +124,8 @@ export default function DevOpsProjectDetailPage() {
   const [project, setProject] = useState<ProjectOption | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [lifecycleAction, setLifecycleAction] = useState('');
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -143,6 +162,38 @@ export default function DevOpsProjectDetailPage() {
 
   const stageStyle = stageTone(project?.onboarding_stage);
 
+  const handleLifecycleAction = async (action: ProjectLifecycleAction) => {
+    if (!project || !action.enabled || lifecycleAction) return;
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+    const confirmed = window.confirm(`${action.label} this project?`);
+    if (!confirmed) return;
+    setLifecycleAction(action.action);
+    setActionError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/devops/projects/${project.id}/lifecycle`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: action.action }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || `Failed to ${action.action} project`);
+      }
+      setProject(data.project || null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to update project lifecycle');
+    } finally {
+      setLifecycleAction('');
+    }
+  };
+
   return (
     <DevOpsLayout>
       <Head>
@@ -170,6 +221,13 @@ export default function DevOpsProjectDetailPage() {
           <div className="portal-surface"><div className="empty-state">Project not found.</div></div>
         ) : (
           <>
+            {actionError ? (
+              <section className="portal-surface">
+                <div className="alert alert-error" role="alert">
+                  {actionError}
+                </div>
+              </section>
+            ) : null}
             <section className="portal-stat-grid">
               <article className="portal-stat-card">
                 <span className="portal-stat-card__label">Lifecycle</span>
@@ -224,6 +282,40 @@ export default function DevOpsProjectDetailPage() {
                   <span className="portal-surface__eyebrow">Project code</span>
                   <div className="portal-detail-card__value">{project.code}</div>
                 </article>
+              </div>
+            </section>
+
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Readiness Workflow</span>
+                  <h2 className="portal-surface__title">Lifecycle and Checklist</h2>
+                  <p className="portal-surface__subtitle">{project.next_action || 'Use lifecycle actions to control whether this catalog can accept new requests.'}</p>
+                </div>
+                <div className="portal-page__actions">
+                  {(project.lifecycle_actions || []).map((action) => (
+                    <button
+                      key={action.action}
+                      type="button"
+                      className={action.action === 'archive' ? 'btn btn-secondary' : 'btn btn-primary'}
+                      disabled={!action.enabled || lifecycleAction === action.action}
+                      onClick={() => void handleLifecycleAction(action)}
+                    >
+                      {lifecycleAction === action.action ? `${action.label}...` : action.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="portal-preview-signals" style={{ marginTop: 0 }}>
+                {(project.readiness_checks || []).map((check) => (
+                  <article key={`${project.id}-${check.key}`} className={check.complete ? 'portal-preview-signal portal-preview-signal--low' : 'portal-preview-signal portal-preview-signal--medium'}>
+                    <div className="portal-preview-signal__top">
+                      <strong className="portal-preview-signal__title">{check.label}</strong>
+                      <span>{check.complete ? 'complete' : 'pending'}</span>
+                    </div>
+                    <p className="portal-preview-signal__detail">{check.detail}</p>
+                  </article>
+                ))}
               </div>
             </section>
 
