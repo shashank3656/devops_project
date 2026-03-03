@@ -20,10 +20,11 @@ const SERVICE_OPTIONS: Record<string, string[]> = {
 
 type ProjectStatus = 'active' | 'inactive' | 'archived';
 
-interface PortalTeam {
+interface TeamOption {
   id: number;
   name: string;
   slug: string;
+  team_type?: string;
 }
 
 interface ProjectServiceOption {
@@ -108,7 +109,8 @@ function normalizeCode(value: string): string {
 export default function DevOpsProjectsPage() {
   const apiUrl = useApiUrl();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
-  const [portalTeams, setPortalTeams] = useState<PortalTeam[]>([]);
+  const [portalTeams, setPortalTeams] = useState<TeamOption[]>([]);
+  const [ownerTeams, setOwnerTeams] = useState<TeamOption[]>([]);
   const [form, setForm] = useState<ProjectFormState>(createEmptyForm());
   const [editingId, setEditingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -133,6 +135,7 @@ export default function DevOpsProjectsPage() {
         }
         setProjects(Array.isArray(data.projects) ? data.projects : []);
         setPortalTeams(Array.isArray(data.portal_teams) ? data.portal_teams : []);
+        setOwnerTeams(Array.isArray(data.owner_teams) ? data.owner_teams : Array.isArray(data.portal_teams) ? data.portal_teams : []);
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
@@ -318,7 +321,7 @@ export default function DevOpsProjectsPage() {
     }
   };
 
-  const selectedOwnerTeamName = portalTeams.find((team) => String(team.id) === form.owner_team_id)?.name || 'Not set';
+  const selectedOwnerTeamName = ownerTeams.find((team) => String(team.id) === form.owner_team_id)?.name || 'Not set';
 
   return (
     <DevOpsLayout>
@@ -366,10 +369,14 @@ export default function DevOpsProjectsPage() {
                 <label className="label">Owner team</label>
                 <select className="select" value={form.owner_team_id} onChange={(e) => updateForm({ owner_team_id: e.target.value })}>
                   <option value="">Select owner team</option>
-                  {portalTeams.map((team) => (
-                    <option key={team.id} value={team.id}>{team.name}</option>
+                  {ownerTeams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                      {team.team_type ? ` (${team.team_type})` : ''}
+                    </option>
                   ))}
                 </select>
+                <small style={{ color: 'var(--text-muted)' }}>All teams are available here for project ownership.</small>
               </div>
               <div className="form-group">
                 <label className="label">Status</label>

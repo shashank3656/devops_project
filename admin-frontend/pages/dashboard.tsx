@@ -26,6 +26,19 @@ interface DashboardStats {
   trend?: Array<{ date: string; count: number }>;
 }
 
+interface ProjectDashboardItem {
+  id: number;
+  name: string;
+  code: string;
+  status: string;
+  onboarding_stage?: string;
+  ready_for_requests?: boolean;
+  service_count?: number;
+  team_count?: number;
+  request_count?: number;
+  pending_request_count?: number;
+}
+
 interface PRRequest {
   id: number;
   team: string;
@@ -59,6 +72,7 @@ export default function AdminDashboard() {
   const router = useRouter();
   const [quickStats, setQuickStats] = useState<DashboardStats | null>(null);
   const [recent, setRecent] = useState<PRRequest[]>([]);
+  const [projects, setProjects] = useState<ProjectDashboardItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'custom'>('week');
@@ -101,6 +115,12 @@ export default function AdminDashboard() {
       ]);
       if (dashboardData.total_users !== undefined) setQuickStats(dashboardData);
       if (requestsData.requests) setRecent(requestsData.requests);
+      fetch(`${apiUrl}/api/admin/projects`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (Array.isArray(data?.projects)) setProjects(data.projects);
+        })
+        .catch(() => {});
     } catch (_) {
       setError('Failed to load dashboard');
     } finally {
@@ -123,6 +143,15 @@ export default function AdminDashboard() {
     : [];
 
   const hasStatusData = statusSegments.length > 0;
+  const projectSummary = {
+    total: projects.length,
+    ready: projects.filter((project) => project.ready_for_requests).length,
+    active: projects.filter((project) => project.status === 'active').length,
+    needsSetup: projects.filter((project) => !project.ready_for_requests && project.status === 'active').length,
+  };
+  const topProjects = [...projects]
+    .sort((left, right) => (right.request_count || 0) - (left.request_count || 0))
+    .slice(0, 5);
 
   return (
     <>
@@ -215,6 +244,82 @@ export default function AdminDashboard() {
                     <span className="portal-stat-card__value">{quickStats.requests_this_week}</span>
                     <p className="portal-stat-card__copy">New workload entering the queue.</p>
                   </article>
+                </section>
+              )}
+
+              {projects.length > 0 && (
+                <section className="portal-surface">
+                  <div className="portal-surface__header">
+                    <div>
+                      <span className="portal-surface__eyebrow">Projects</span>
+                      <h2 className="portal-surface__title">Project Governance Snapshot</h2>
+                      <p className="portal-surface__subtitle">Track which projects are request-ready and which still need service or team mapping.</p>
+                    </div>
+                    <Link href="/projects" className="btn btn-secondary btn-sm">
+                      Open projects
+                    </Link>
+                  </div>
+
+                  <div className="portal-stat-grid" style={{ marginBottom: 20 }}>
+                    <article className="portal-stat-card">
+                      <span className="portal-stat-card__label">Projects</span>
+                      <span className="portal-stat-card__value">{projectSummary.total}</span>
+                      <p className="portal-stat-card__copy">Total project catalogs under governance.</p>
+                    </article>
+                    <article className="portal-stat-card">
+                      <span className="portal-stat-card__label">Ready</span>
+                      <span className="portal-stat-card__value">{projectSummary.ready}</span>
+                      <p className="portal-stat-card__copy">Projects ready for live user requests.</p>
+                    </article>
+                    <article className="portal-stat-card">
+                      <span className="portal-stat-card__label">Needs setup</span>
+                      <span className="portal-stat-card__value">{projectSummary.needsSetup}</span>
+                      <p className="portal-stat-card__copy">Active projects still missing final onboarding setup.</p>
+                    </article>
+                    <article className="portal-stat-card">
+                      <span className="portal-stat-card__label">Active</span>
+                      <span className="portal-stat-card__value">{projectSummary.active}</span>
+                      <p className="portal-stat-card__copy">Projects available to the platform right now.</p>
+                    </article>
+                  </div>
+
+                  {topProjects.length > 0 && (
+                    <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Project</th>
+                            <th>Stage</th>
+                            <th>Requests</th>
+                            <th>Pending</th>
+                            <th>Teams</th>
+                            <th>Services</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {topProjects.map((project) => (
+                            <tr key={project.id}>
+                              <td>
+                                <strong>{project.name}</strong>
+                                <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{project.code}</div>
+                              </td>
+                              <td>{project.onboarding_stage || 'configured'}</td>
+                              <td>{project.request_count || 0}</td>
+                              <td>{project.pending_request_count || 0}</td>
+                              <td>{project.team_count || 0}</td>
+                              <td>{project.service_count || 0}</td>
+                              <td>
+                                <Link href={`/projects/${project.id}`} className="btn btn-secondary btn-sm">
+                                  View
+                                </Link>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </section>
               )}
 

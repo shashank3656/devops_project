@@ -29,6 +29,19 @@ interface DashboardStats {
   in_progress: number;
 }
 
+interface ProjectDashboardItem {
+  id: number;
+  name: string;
+  code: string;
+  status: string;
+  onboarding_stage?: string;
+  ready_for_requests?: boolean;
+  service_count?: number;
+  team_count?: number;
+  request_count?: number;
+  pending_request_count?: number;
+}
+
 interface DevOpsTeam {
   id: number;
   name: string;
@@ -136,6 +149,7 @@ export default function DevOpsDashboard() {
   const apiUrl = useApiUrl();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [teams, setTeams] = useState<DevOpsTeam[]>([]);
+  const [projects, setProjects] = useState<ProjectDashboardItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -150,18 +164,24 @@ export default function DevOpsDashboard() {
     Promise.all([
       fetch(`${apiUrl}/api/devops/tickets`, { headers: { Authorization: `Bearer ${token}` } }),
       fetch(`${apiUrl}/api/devops/my-teams`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } }),
     ])
-      .then(([ticketsRes, teamsRes]) => {
+      .then(([ticketsRes, teamsRes, projectsRes]) => {
         if (ticketsRes.status === 401 || ticketsRes.status === 403) {
           router.replace('/login');
-          return Promise.resolve([{}, {}] as [{ tickets?: Ticket[]; error?: string }, { teams?: DevOpsTeam[] }]);
+          return Promise.resolve([{}, {}, {}] as [{ tickets?: Ticket[]; error?: string }, { teams?: DevOpsTeam[] }, { projects?: ProjectDashboardItem[] }]);
         }
-        return Promise.all([ticketsRes.json(), teamsRes.json()]);
+        return Promise.all([
+          ticketsRes.json().catch(() => ({})),
+          teamsRes.json().catch(() => ({})),
+          projectsRes.ok ? projectsRes.json().catch(() => ({})) : Promise.resolve({}),
+        ]);
       })
-      .then(([ticketsData, teamsData]) => {
+      .then(([ticketsData, teamsData, projectsData]) => {
         if (ticketsData?.tickets) setTickets(ticketsData.tickets);
         else if (ticketsData?.error) setError(ticketsData.error);
         if (teamsData?.teams) setTeams(teamsData.teams);
+        if (projectsData?.projects) setProjects(projectsData.projects);
       })
       .catch(() => setError('Failed to load tickets'))
       .finally(() => setLoading(false));
@@ -284,6 +304,16 @@ export default function DevOpsDashboard() {
   }, [sortedTickets]);
 
   const recentActivity = useMemo(() => sortedTickets.slice(0, 6), [sortedTickets]);
+  const projectSummary = useMemo(() => ({
+    total: projects.length,
+    ready: projects.filter((project) => project.ready_for_requests).length,
+    setup: projects.filter((project) => !project.ready_for_requests && project.status === 'active').length,
+  }), [projects]);
+  const topProjects = useMemo(() => {
+    return [...projects]
+      .sort((left, right) => (right.pending_request_count || 0) - (left.pending_request_count || 0) || (right.request_count || 0) - (left.request_count || 0))
+      .slice(0, 4);
+  }, [projects]);
 
   const teamPulse = useMemo(() => {
     const zeroState = (): TeamSummary => ({
@@ -416,6 +446,68 @@ export default function DevOpsDashboard() {
               <p className="devops-kpi-card__detail">Open critical and high-priority changes requiring focus.</p>
             </article>
           </section>
+
+          {projects.length > 0 && (
+            <section className="devops-panel" style={{ marginBottom: 24 }}>
+              <div className="devops-panel__header">
+                <div>
+                  <span className="devops-panel__eyebrow">Project Catalog</span>
+                  <h2 className="devops-panel__title">Project onboarding pulse</h2>
+                </div>
+                <Link href="/projects" className="btn btn-secondary btn-sm">
+                  Open projects
+                </Link>
+              </div>
+              <div className="devops-kpi-grid" style={{ marginBottom: 20 }}>
+                <article className="devops-kpi-card devops-kpi-card--primary">
+                  <span className="devops-kpi-card__label">Projects</span>
+                  <strong className="devops-kpi-card__value">{formatCompactCount(projectSummary.total)}</strong>
+                  <p className="devops-kpi-card__detail">Catalogs managed by DevOps.</p>
+                </article>
+                <article className="devops-kpi-card devops-kpi-card--teal">
+                  <span className="devops-kpi-card__label">Ready</span>
+                  <strong className="devops-kpi-card__value">{formatCompactCount(projectSummary.ready)}</strong>
+                  <p className="devops-kpi-card__detail">Projects available to requesters now.</p>
+                </article>
+                <article className="devops-kpi-card devops-kpi-card--amber">
+                  <span className="devops-kpi-card__label">Needs setup</span>
+                  <strong className="devops-kpi-card__value">{formatCompactCount(projectSummary.setup)}</strong>
+                  <p className="devops-kpi-card__detail">Projects still missing final onboarding coverage.</p>
+                </article>
+                <article className="devops-kpi-card devops-kpi-card--rose">
+                  <span className="devops-kpi-card__label">Pending by project</span>
+                  <strong className="devops-kpi-card__value">{formatCompactCount(topProjects.reduce((sum, project) => sum + (project.pending_request_count || 0), 0))}</strong>
+                  <p className="devops-kpi-card__detail">Pending requests across the busiest projects.</p>
+                </article>
+              </div>
+
+              <div className="devops-team-grid">
+                {topProjects.map((project) => (
+                  <div key={project.id} className="devops-team-card">
+                    <div className="devops-team-card__top">
+                      <div>
+                        <strong className="devops-team-card__name">{project.name}</strong>
+                        <p className="devops-team-card__copy">{project.code} · {project.onboarding_stage || 'configured'}</p>
+                      </div>
+                      <span className={`devops-team-card__tone devops-team-card__tone--${project.ready_for_requests ? 'stable' : 'active'}`}>
+                        {project.ready_for_requests ? 'Ready' : 'Setup'}
+                      </span>
+                    </div>
+                    <div className="devops-team-card__stats">
+                      <span>Requests {project.request_count || 0}</span>
+                      <span>Pending {project.pending_request_count || 0}</span>
+                      <span>Services {project.service_count || 0}</span>
+                    </div>
+                    <div style={{ marginTop: 12 }}>
+                      <Link href={`/projects/${project.id}`} className="btn btn-secondary btn-sm">
+                        View project
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           <section className="devops-portal__grid devops-portal__grid--asymmetric">
             <article className="devops-panel">
