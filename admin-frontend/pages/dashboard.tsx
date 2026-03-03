@@ -208,8 +208,8 @@ export default function AdminDashboard() {
   const topProjects = [...projects]
     .sort((left, right) => (right.request_count || 0) - (left.request_count || 0))
     .slice(0, 5);
-  const topProjectServices = projectAnalytics?.service_request_distribution.slice(0, 5) || [];
-  const topProjectClouds = projectAnalytics?.cloud_request_distribution.slice(0, 4) || [];
+  const topProjectServices = (projectAnalytics?.service_request_distribution || []).slice(0, 5);
+  const topProjectClouds = (projectAnalytics?.cloud_request_distribution || []).slice(0, 4);
   const topProjectRisks = projectAnalytics?.risk_distribution || [];
 
   return (

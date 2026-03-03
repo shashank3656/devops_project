@@ -131,6 +131,9 @@ export default function DevOpsProjectOperationsPage() {
   const topServices = useMemo(() => (analytics?.service_request_distribution || []).slice(0, 6), [analytics]);
   const topClouds = useMemo(() => (analytics?.cloud_request_distribution || []).slice(0, 4), [analytics]);
   const riskMix = useMemo(() => analytics?.risk_distribution || [], [analytics]);
+  const approvalBottlenecks = analytics?.approval_bottlenecks || [];
+  const topRiskProjects = analytics?.top_risk_projects || [];
+  const topProjectsByRequests = analytics?.top_projects_by_requests || [];
 
   return (
     <DevOpsLayout>
@@ -209,7 +212,7 @@ export default function DevOpsProjectOperationsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {analytics.approval_bottlenecks.map((project) => (
+                      {approvalBottlenecks.map((project) => (
                         <tr key={`bottleneck-${project.id}`}>
                           <td>
                             <strong>{project.name}</strong>
@@ -288,7 +291,7 @@ export default function DevOpsProjectOperationsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(analytics.top_risk_projects.length > 0 ? analytics.top_risk_projects : analytics.top_projects_by_requests).map((project) => (
+                    {(topRiskProjects.length > 0 ? topRiskProjects : topProjectsByRequests).map((project) => (
                       <tr key={`attention-${project.id}`}>
                         <td>
                           <strong>{project.name}</strong>
