@@ -355,29 +355,6 @@ func getPortalTeams() ([]Team, error) {
 	return out, nil
 }
 
-func getOwnerTeams() ([]Team, error) {
-	rows, cancel, err := queryRowsWithTimeout(`
-		SELECT id, name, slug, COALESCE(application_id,''), COALESCE(team_type,'portal'), COALESCE(default_env,''), COALESCE(default_cloud,''), created_at, created_by
-		FROM teams
-		ORDER BY name
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer cancel()
-	defer rows.Close()
-
-	var out []Team
-	for rows.Next() {
-		var team Team
-		if err := rows.Scan(&team.ID, &team.Name, &team.Slug, &team.ApplicationID, &team.TeamType, &team.DefaultEnv, &team.DefaultCloud, &team.CreatedAt, &team.CreatedBy); err != nil {
-			return nil, err
-		}
-		out = append(out, team)
-	}
-	return out, nil
-}
-
 func createProjectCatalog(input ProjectCatalogInput, createdBy *int) (*ProjectCatalog, error) {
 	input, err := sanitizeProjectInput(input)
 	if err != nil {
@@ -1186,7 +1163,7 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
-		ownerTeams, err := getOwnerTeams()
+		ownerTeams, err := GetTeams()
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
