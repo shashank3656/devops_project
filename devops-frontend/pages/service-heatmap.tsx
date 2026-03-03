@@ -1,0 +1,180 @@
+import Head from 'next/head';
+import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
+import DevOpsLayout from '../components/DevOpsLayout';
+import { useApiUrl } from '../context/ApiUrlContext';
+
+const DEVOPS_TOKEN_KEY = 'devops_token';
+const DEVOPS_USER_KEY = 'devops_user';
+
+interface ServiceHeatmapRow {
+  project_id: number;
+  project_name: string;
+  project_code: string;
+  status: string;
+  request_count: number;
+  pending_count: number;
+  service_counts: Record<string, number>;
+}
+
+interface ServiceHeatmap {
+  columns: string[];
+  rows: ServiceHeatmapRow[];
+  cloud_totals: Record<string, number>;
+  service_totals: Record<string, number>;
+}
+
+function normalizeHeatmap(value: Partial<ServiceHeatmap> | null | undefined): ServiceHeatmap | null {
+  if (!value) return null;
+  return {
+    columns: Array.isArray(value.columns) ? value.columns.filter((item): item is string => typeof item === 'string') : [],
+    rows: Array.isArray(value.rows)
+      ? value.rows.map((row) => ({
+          project_id: typeof row?.project_id === 'number' ? row.project_id : 0,
+          project_name: typeof row?.project_name === 'string' ? row.project_name : 'Unknown project',
+          project_code: typeof row?.project_code === 'string' ? row.project_code : 'n/a',
+          status: typeof row?.status === 'string' ? row.status : 'unknown',
+          request_count: typeof row?.request_count === 'number' ? row.request_count : 0,
+          pending_count: typeof row?.pending_count === 'number' ? row.pending_count : 0,
+          service_counts: row?.service_counts && typeof row.service_counts === 'object' ? row.service_counts : {},
+        }))
+      : [],
+    cloud_totals: value.cloud_totals && typeof value.cloud_totals === 'object' ? value.cloud_totals : {},
+    service_totals: value.service_totals && typeof value.service_totals === 'object' ? value.service_totals : {},
+  };
+}
+
+function intensityClass(value: number): string {
+  if (value >= 6) return 'portal-pill';
+  if (value >= 3) return 'btn btn-secondary btn-sm';
+  return 'btn btn-secondary btn-sm';
+}
+
+export default function DevOpsServiceHeatmapPage() {
+  const apiUrl = useApiUrl();
+  const [heatmap, setHeatmap] = useState<ServiceHeatmap | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const clearSessionAndRedirect = () => {
+    localStorage.removeItem(DEVOPS_TOKEN_KEY);
+    localStorage.removeItem(DEVOPS_USER_KEY);
+    window.location.assign('/login');
+  };
+
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      clearSessionAndRedirect();
+      return;
+    }
+    fetch(`${apiUrl}/api/devops/service-heatmap`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        if (res.status === 401 || res.status === 403) {
+          clearSessionAndRedirect();
+          return null;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data?.error || 'Failed to load service heatmap');
+        }
+        return data;
+      })
+      .then((data) => {
+        const nextHeatmap = normalizeHeatmap(data?.heatmap);
+        if (nextHeatmap) setHeatmap(nextHeatmap);
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [apiUrl]);
+
+  const topServiceColumns = useMemo(() => (heatmap?.columns || []).slice(0, 10), [heatmap]);
+
+  return (
+    <DevOpsLayout>
+      <Head>
+        <title>Service Heatmap - DevOps Portal</title>
+      </Head>
+      <div className="portal-page">
+        <div className="portal-page__header">
+          <div>
+            <span className="portal-page__eyebrow">Usage</span>
+            <h1 className="portal-page__title">Service Usage Heatmap</h1>
+            <p className="portal-page__subtitle">See which projects are driving the highest service demand across clouds and request volume.</p>
+          </div>
+          <div className="portal-page__actions">
+            <Link href="/project-operations" className="btn btn-secondary">Project operations</Link>
+            <Link href="/projects" className="btn btn-primary">Projects</Link>
+          </div>
+        </div>
+
+        {loading ? <div className="portal-surface"><div className="empty-state">Loading service heatmap...</div></div> : null}
+        {error ? <div className="alert alert-error">{error}</div> : null}
+
+        {!loading && !error && heatmap ? (
+          <>
+            <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Cloud demand</span>
+                  <h2 className="portal-surface__title">Cloud totals</h2>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {Object.entries(heatmap.cloud_totals).map(([cloud, total]) => (
+                  <span key={cloud} className="portal-pill">{cloud}: {total}</span>
+                ))}
+              </div>
+            </section>
+
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Heatmap</span>
+                  <h2 className="portal-surface__title">Project x service usage</h2>
+                </div>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="templates-table">
+                  <thead>
+                    <tr>
+                      <th>Project</th>
+                      <th>Status</th>
+                      <th>Requests</th>
+                      <th>Pending</th>
+                      {topServiceColumns.map((column) => (
+                        <th key={column}>{column}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {heatmap.rows.map((row) => (
+                      <tr key={`heatmap-${row.project_id}`}>
+                        <td>
+                          <strong>{row.project_name}</strong>
+                          <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{row.project_code}</div>
+                        </td>
+                        <td>{row.status}</td>
+                        <td>{row.request_count}</td>
+                        <td>{row.pending_count}</td>
+                        {topServiceColumns.map((column) => (
+                          <td key={`${row.project_id}-${column}`}>
+                            <span className={intensityClass(row.service_counts?.[column] || 0)}>
+                              {row.service_counts?.[column] || 0}
+                            </span>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </>
+        ) : null}
+      </div>
+    </DevOpsLayout>
+  );
+}

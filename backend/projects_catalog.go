@@ -935,6 +935,15 @@ func buildProjectAnalytics(projects []ProjectCatalog) (*ProjectAnalytics, error)
 		Summary: ProjectAnalyticsSummary{
 			ProjectCount: len(projects),
 		},
+		StageDistribution:              []ProjectAnalyticsDistributionItem{},
+		StatusDistribution:             []ProjectAnalyticsDistributionItem{},
+		EnvironmentRequestDistribution: []ProjectAnalyticsDistributionItem{},
+		CloudRequestDistribution:       []ProjectAnalyticsDistributionItem{},
+		ServiceRequestDistribution:     []ProjectAnalyticsDistributionItem{},
+		RiskDistribution:               []ProjectAnalyticsDistributionItem{},
+		TopProjectsByRequests:          []ProjectAnalyticsProjectItem{},
+		ApprovalBottlenecks:            []ProjectAnalyticsProjectItem{},
+		TopRiskProjects:                []ProjectAnalyticsProjectItem{},
 	}
 	if len(projects) == 0 {
 		return analytics, nil
@@ -1550,9 +1559,6 @@ func getVisibleProjectsForUser(userID int) ([]ProjectCatalog, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(userTeams) == 0 {
-		return []ProjectCatalog{}, nil
-	}
 	var teamIDs []int
 	teamSet := map[int]struct{}{}
 	for _, team := range userTeams {
@@ -1562,51 +1568,60 @@ func getVisibleProjectsForUser(userID int) ([]ProjectCatalog, error) {
 		teamIDs = append(teamIDs, team.ID)
 		teamSet[team.ID] = struct{}{}
 	}
-	if len(teamIDs) == 0 {
-		return []ProjectCatalog{}, nil
-	}
-	placeholders := make([]string, len(teamIDs))
-	args := make([]interface{}, 0, len(teamIDs))
-	for index, teamID := range teamIDs {
-		placeholders[index] = fmt.Sprintf("$%d", index+1)
-		args = append(args, teamID)
-	}
-	rows, cancel, err := queryRowsWithTimeout(
-		fmt.Sprintf(`
-			SELECT DISTINCT p.id, '', ''
-			FROM projects p
-			INNER JOIN project_team_access a ON a.project_id = p.id
-			WHERE COALESCE(p.status, 'active') = 'active'
-			  AND a.team_id IN (%s)
-			ORDER BY p.id
-		`, strings.Join(placeholders, ",")),
-		args...,
-	)
-	if err != nil {
-		if strings.Contains(err.Error(), "does not exist") {
-			return []ProjectCatalog{}, nil
+	projectIDSet := map[int]struct{}{}
+	if len(teamIDs) > 0 {
+		placeholders := make([]string, len(teamIDs))
+		args := make([]interface{}, 0, len(teamIDs))
+		for index, teamID := range teamIDs {
+			placeholders[index] = fmt.Sprintf("$%d", index+1)
+			args = append(args, teamID)
 		}
+		rows, cancel, err := queryRowsWithTimeout(
+			fmt.Sprintf(`
+				SELECT DISTINCT p.id, '', ''
+				FROM projects p
+				INNER JOIN project_team_access a ON a.project_id = p.id
+				WHERE COALESCE(p.status, 'active') = 'active'
+				  AND a.team_id IN (%s)
+				ORDER BY p.id
+			`, strings.Join(placeholders, ",")),
+			args...,
+		)
+		if err != nil {
+			if !strings.Contains(err.Error(), "does not exist") {
+				return nil, err
+			}
+		} else {
+			defer cancel()
+			defer rows.Close()
+			for rows.Next() {
+				var projectID int
+				var noop1 string
+				var noop2 string
+				if err := rows.Scan(&projectID, &noop1, &noop2); err != nil {
+					return nil, err
+				}
+				projectIDSet[projectID] = struct{}{}
+			}
+		}
+	}
+	overrides, err := activeProjectAccessOverridesForUser(userID)
+	if err != nil {
 		return nil, err
 	}
-	defer cancel()
-	defer rows.Close()
-
-	var projectIDs []int
-	for rows.Next() {
-		var projectID int
-		var noop1 string
-		var noop2 string
-		if err := rows.Scan(&projectID, &noop1, &noop2); err != nil {
-			return nil, err
-		}
-		projectIDs = append(projectIDs, projectID)
+	for _, override := range overrides {
+		projectIDSet[override.ProjectID] = struct{}{}
 	}
-	if len(projectIDs) == 0 {
+	if len(projectIDSet) == 0 {
 		return []ProjectCatalog{}, nil
 	}
-
-	placeholders = make([]string, len(projectIDs))
-	args = make([]interface{}, 0, len(projectIDs))
+	projectIDs := make([]int, 0, len(projectIDSet))
+	for projectID := range projectIDSet {
+		projectIDs = append(projectIDs, projectID)
+	}
+	sort.Ints(projectIDs)
+	placeholders := make([]string, len(projectIDs))
+	args := make([]interface{}, 0, len(projectIDs))
 	for index, projectID := range projectIDs {
 		placeholders[index] = fmt.Sprintf("$%d", index+1)
 		args = append(args, projectID)
@@ -1858,11 +1873,21 @@ func validateProjectRequestForUser(userID, projectID int, teamNameOrSlug, enviro
 		}
 		break
 	}
+	overrideAllowed, err := userHasActiveProjectOverride(userID, projectID, environment)
+	if err != nil {
+		return nil, err
+	}
 	if !accessAllowed {
-		return nil, fmt.Errorf("selected team does not have access to this project")
+		if !overrideAllowed {
+			return nil, fmt.Errorf("selected team does not have access to this project")
+		}
+		accessAllowed = true
 	}
 	if !envAllowed {
-		return nil, fmt.Errorf("selected environment is not enabled for this project/team combination")
+		if !overrideAllowed {
+			return nil, fmt.Errorf("selected environment is not enabled for this project/team combination")
+		}
+		envAllowed = true
 	}
 
 	cloudAllowed := false

@@ -657,6 +657,80 @@ func MigrateDatabase() error {
 	}
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_templates_status ON request_templates(status)")
 
+	// Migration 35: DevOps control center features (runbooks, incidents, access overrides, retryable delivery failures)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_runbooks (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			service VARCHAR(120) DEFAULT '',
+			title VARCHAR(200) NOT NULL,
+			content TEXT NOT NULL DEFAULT '',
+			link_url TEXT DEFAULT '',
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_runbooks_project_id ON project_runbooks(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_runbooks_project_service ON project_runbooks(project_id, service)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS request_incidents (
+			id SERIAL PRIMARY KEY,
+			request_id INTEGER NOT NULL UNIQUE REFERENCES pr_requests(id) ON DELETE CASCADE,
+			project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+			severity VARCHAR(20) NOT NULL DEFAULT 'medium',
+			status VARCHAR(30) NOT NULL DEFAULT 'open',
+			escalation_level VARCHAR(30) NOT NULL DEFAULT 'monitoring',
+			owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			summary TEXT NOT NULL DEFAULT '',
+			notes TEXT NOT NULL DEFAULT '',
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_incidents_project_id ON request_incidents(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_incidents_status ON request_incidents(status)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_incidents_severity ON request_incidents(severity)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_access_overrides (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			environments TEXT NOT NULL DEFAULT '',
+			permission VARCHAR(20) NOT NULL DEFAULT 'write',
+			reason TEXT NOT NULL DEFAULT '',
+			expires_at TIMESTAMP NOT NULL,
+			revoked_at TIMESTAMP,
+			revoked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_access_overrides_project_id ON project_access_overrides(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_access_overrides_user_id ON project_access_overrides(user_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_access_overrides_expires_at ON project_access_overrides(expires_at)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS ops_delivery_failures (
+			id SERIAL PRIMARY KEY,
+			job_type VARCHAR(40) NOT NULL,
+			target TEXT NOT NULL DEFAULT '',
+			payload TEXT NOT NULL DEFAULT '',
+			error_message TEXT NOT NULL DEFAULT '',
+			status VARCHAR(20) NOT NULL DEFAULT 'open',
+			retry_count INTEGER NOT NULL DEFAULT 0,
+			last_retry_at TIMESTAMP,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_ops_delivery_failures_status ON ops_delivery_failures(status)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_ops_delivery_failures_job_type ON ops_delivery_failures(job_type)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }
