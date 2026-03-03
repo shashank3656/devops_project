@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -22,6 +23,19 @@ type CostRiskPreview struct {
 	RiskLevel        string           `json:"risk_level"`
 	Summary          string           `json:"summary"`
 	Signals          []CostRiskSignal `json:"signals"`
+}
+
+type ProjectCostRiskSummary struct {
+	OverallRisk        string           `json:"overall_risk"`
+	EstimatedBand      string           `json:"estimated_band"`
+	EstimatedMonthly   string           `json:"estimated_monthly"`
+	EstimateBasis      string           `json:"estimate_basis"`
+	Summary            string           `json:"summary"`
+	RequestCount       int              `json:"request_count"`
+	PendingReviewCount int              `json:"pending_review_count"`
+	HighRiskCount      int              `json:"high_risk_count"`
+	MediumRiskCount    int              `json:"medium_risk_count"`
+	Signals            []CostRiskSignal `json:"signals"`
 }
 
 type previewFlags struct {
@@ -140,6 +154,140 @@ func BuildCostRiskPreview(req *PRRequest) *CostRiskPreview {
 		RiskLevel:        riskLevel,
 		Summary:          summary,
 		Signals:          signals,
+	}
+}
+
+func BuildProjectCostRiskSummary(project *ProjectCatalog, requests []PRRequest) *ProjectCostRiskSummary {
+	if project == nil {
+		return nil
+	}
+
+	previews := make([]*CostRiskPreview, 0, len(requests))
+	pendingReviewCount := 0
+	highRiskCount := 0
+	mediumRiskCount := 0
+	highestBandRank := 0
+
+	for index := range requests {
+		req := requests[index]
+		preview := BuildCostRiskPreview(&req)
+		if preview == nil {
+			continue
+		}
+		previews = append(previews, preview)
+		if isPendingReviewStatus(req.Status) {
+			pendingReviewCount++
+		}
+		switch preview.RiskLevel {
+		case "high":
+			highRiskCount++
+		case "medium":
+			mediumRiskCount++
+		}
+		if rank := costBandRank(preview.EstimatedBand); rank > highestBandRank {
+			highestBandRank = rank
+		}
+	}
+
+	estimateBasis := fmt.Sprintf("Based on %d tracked request%s in this project.", len(requests), map[bool]string{true: "", false: "s"}[len(requests) == 1])
+	if len(previews) == 0 {
+		previews = buildCatalogDerivedProjectPreviews(project)
+		estimateBasis = "No request history yet. Summary is inferred from the configured project service catalog."
+		for _, preview := range previews {
+			if rank := costBandRank(preview.EstimatedBand); rank > highestBandRank {
+				highestBandRank = rank
+			}
+		}
+	}
+	if len(previews) == 0 {
+		return nil
+	}
+
+	overallRisk := "low"
+	signalCounts := make(map[string]int, len(previews)*2)
+	signalMeta := make(map[string]CostRiskSignal, len(previews)*2)
+	for _, preview := range previews {
+		if riskLevelRank(preview.RiskLevel) > riskLevelRank(overallRisk) {
+			overallRisk = preview.RiskLevel
+		}
+		for _, signal := range preview.Signals {
+			key := signal.Category + "::" + signal.Title
+			signalCounts[key]++
+			existing, ok := signalMeta[key]
+			if !ok || signalSeverityRank(signal.Severity) > signalSeverityRank(existing.Severity) {
+				signalMeta[key] = signal
+			}
+		}
+	}
+
+	type signalCount struct {
+		key   string
+		count int
+	}
+	orderedSignals := make([]signalCount, 0, len(signalCounts))
+	for key, count := range signalCounts {
+		orderedSignals = append(orderedSignals, signalCount{key: key, count: count})
+	}
+	sort.Slice(orderedSignals, func(i, j int) bool {
+		if orderedSignals[i].count == orderedSignals[j].count {
+			left := signalMeta[orderedSignals[i].key]
+			right := signalMeta[orderedSignals[j].key]
+			if signalSeverityRank(left.Severity) == signalSeverityRank(right.Severity) {
+				return left.Title < right.Title
+			}
+			return signalSeverityRank(left.Severity) > signalSeverityRank(right.Severity)
+		}
+		return orderedSignals[i].count > orderedSignals[j].count
+	})
+
+	signals := make([]CostRiskSignal, 0, 4)
+	for _, entry := range orderedSignals {
+		if len(signals) >= 4 {
+			break
+		}
+		signal := signalMeta[entry.key]
+		signal.Detail = fmt.Sprintf("Observed in %d project request%s or derived service checks.", entry.count, map[bool]string{true: "", false: "s"}[entry.count == 1])
+		signals = append(signals, signal)
+	}
+	if len(signals) == 0 {
+		signals = append(signals, CostRiskSignal{
+			Severity: "low",
+			Category: "baseline",
+			Title:    "No major risk signals",
+			Detail:   "Current project scope does not trigger major heuristic warnings, but ownership and rollout review should still happen.",
+		})
+	}
+
+	estimatedBand, estimatedMonthly := costBandFromRank(highestBandRank)
+	if estimatedBand == "" {
+		estimatedBand = "Low"
+		estimatedMonthly = "$25-$100/mo"
+	}
+
+	summary := fmt.Sprintf(
+		"%d tracked request%s, %d pending review, %d high-risk workload%s. Highest observed cost band is %s.",
+		len(requests),
+		map[bool]string{true: "", false: "s"}[len(requests) == 1],
+		pendingReviewCount,
+		highRiskCount,
+		map[bool]string{true: "", false: "s"}[highRiskCount == 1],
+		estimatedBand,
+	)
+	if len(requests) == 0 {
+		summary = fmt.Sprintf("No request history yet. Current risk is inferred from the configured service catalog, with %s as the highest estimated workload band.", estimatedBand)
+	}
+
+	return &ProjectCostRiskSummary{
+		OverallRisk:        overallRisk,
+		EstimatedBand:      estimatedBand,
+		EstimatedMonthly:   estimatedMonthly,
+		EstimateBasis:      estimateBasis,
+		Summary:            summary,
+		RequestCount:       len(requests),
+		PendingReviewCount: pendingReviewCount,
+		HighRiskCount:      highRiskCount,
+		MediumRiskCount:    mediumRiskCount,
+		Signals:            signals,
 	}
 }
 
@@ -387,6 +535,97 @@ func deriveRiskLevel(signals []CostRiskSignal) string {
 		return "medium"
 	default:
 		return "low"
+	}
+}
+
+func buildCatalogDerivedProjectPreviews(project *ProjectCatalog) []*CostRiskPreview {
+	if project == nil || len(project.Services) == 0 {
+		return nil
+	}
+	representativeEnv := "dev"
+	for _, environment := range project.Environments {
+		switch environment {
+		case "prod", "production":
+			representativeEnv = environment
+			goto build
+		case "uat", "qa", "stage", "staging":
+			representativeEnv = environment
+		}
+	}
+build:
+	previews := make([]*CostRiskPreview, 0, len(project.Services))
+	for _, service := range project.Services {
+		req := PRRequest{
+			Env:      representativeEnv,
+			Cloud:    service.Cloud,
+			Service:  service.Service,
+			Priority: "medium",
+		}
+		if preview := BuildCostRiskPreview(&req); preview != nil {
+			previews = append(previews, preview)
+		}
+	}
+	return previews
+}
+
+func signalSeverityRank(severity string) int {
+	switch severity {
+	case "high":
+		return 3
+	case "medium":
+		return 2
+	default:
+		return 1
+	}
+}
+
+func riskLevelRank(level string) int {
+	switch level {
+	case "high":
+		return 3
+	case "medium":
+		return 2
+	default:
+		return 1
+	}
+}
+
+func costBandRank(band string) int {
+	switch strings.ToLower(strings.TrimSpace(band)) {
+	case "high":
+		return 4
+	case "elevated":
+		return 3
+	case "moderate":
+		return 2
+	case "low":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func costBandFromRank(rank int) (band string, monthly string) {
+	switch rank {
+	case 4:
+		return "High", "$1.5k+/mo"
+	case 3:
+		return "Elevated", "$400-$1.5k/mo"
+	case 2:
+		return "Moderate", "$100-$400/mo"
+	case 1:
+		return "Low", "$25-$100/mo"
+	default:
+		return "", ""
+	}
+}
+
+func isPendingReviewStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "pending_approval", "pending_devops_approval", "pending_user_manager_approval":
+		return true
+	default:
+		return false
 	}
 }
 

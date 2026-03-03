@@ -236,6 +236,20 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_notifications_user_id ON user_notifications(user_id)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_notifications_read_at ON user_notifications(read_at)")
+	var projectIDColCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'user_notifications' AND column_name = 'project_id'").Scan(&projectIDColCount)
+	if projectIDColCount == 0 {
+		_, _ = DB.Exec("ALTER TABLE user_notifications ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL")
+	}
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_user_notifications_project_id ON user_notifications(project_id)")
+	_, _ = DB.Exec(`
+		UPDATE user_notifications n
+		SET project_id = r.project_id
+		FROM pr_requests r
+		WHERE n.request_id = r.id
+		  AND n.project_id IS NULL
+		  AND r.project_id IS NOT NULL
+	`)
 
 	// Migration 14: teams.default_env, teams.default_cloud (per-team defaults for request creation)
 	for _, col := range []string{"default_env", "default_cloud"} {
@@ -506,6 +520,142 @@ func MigrateDatabase() error {
 		GROUP BY COALESCE(team, ''), COALESCE(status, '')
 	`)
 	_, _ = DB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_request_status_summary_team_status ON mv_request_status_summary(team, status)`)
+
+	// Migration 32: project catalog for project-first onboarding and request governance
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS projects (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(200) NOT NULL,
+			code VARCHAR(120) NOT NULL UNIQUE,
+			description TEXT DEFAULT '',
+			status VARCHAR(30) NOT NULL DEFAULT 'active',
+			owner_team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_projects_owner_team_id ON projects(owner_team_id)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_environments (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			environment VARCHAR(80) NOT NULL,
+			UNIQUE(project_id, environment)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_environments_project_id ON project_environments(project_id)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_clouds (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			cloud VARCHAR(80) NOT NULL,
+			UNIQUE(project_id, cloud)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_clouds_project_id ON project_clouds(project_id)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_services (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			cloud VARCHAR(80) NOT NULL,
+			service VARCHAR(120) NOT NULL,
+			UNIQUE(project_id, cloud, service)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_services_project_id ON project_services(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_services_project_cloud ON project_services(project_id, cloud)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_team_access (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+			UNIQUE(project_id, team_id)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_team_access_project_id ON project_team_access(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_team_access_team_id ON project_team_access(team_id)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_team_environment_access (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+			environment VARCHAR(80) NOT NULL,
+			UNIQUE(project_id, team_id, environment)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_team_environment_access_project_team ON project_team_environment_access(project_id, team_id)")
+
+	var prProjectIDCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'pr_requests' AND column_name = 'project_id'").Scan(&prProjectIDCount)
+	if prProjectIDCount == 0 {
+		log.Println("Migrating database: adding pr_requests.project_id...")
+		_, _ = DB.Exec("ALTER TABLE pr_requests ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL")
+	}
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_requests_project_id ON pr_requests(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_requests_project_team_status_created_at ON pr_requests(project_id, team, status, created_at DESC)")
+
+	// Migration 33: project approval rules and project-scoped template visibility
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_approval_rules (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			environment VARCHAR(80) NOT NULL,
+			require_manager_approval BOOLEAN NOT NULL DEFAULT FALSE,
+			require_devops_approval BOOLEAN NOT NULL DEFAULT TRUE,
+			UNIQUE(project_id, environment)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_approval_rules_project_id ON project_approval_rules(project_id)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS request_template_projects (
+			id SERIAL PRIMARY KEY,
+			template_id INTEGER NOT NULL REFERENCES request_templates(id) ON DELETE CASCADE,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(template_id, project_id)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_template_projects_template_id ON request_template_projects(template_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_template_projects_project_id ON request_template_projects(project_id)")
+
+	// Migration 34: template governance workflow
+	var templateStatusCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'request_templates' AND column_name = 'status'").Scan(&templateStatusCount)
+	if templateStatusCount == 0 {
+		log.Println("Migrating database: adding request_templates.status...")
+		_, _ = DB.Exec("ALTER TABLE request_templates ADD COLUMN status VARCHAR(40) NOT NULL DEFAULT 'draft'")
+		_, _ = DB.Exec("UPDATE request_templates SET status = 'published' WHERE created_at IS NOT NULL")
+	}
+	var templateUpdatedAtCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'request_templates' AND column_name = 'updated_at'").Scan(&templateUpdatedAtCount)
+	if templateUpdatedAtCount == 0 {
+		log.Println("Migrating database: adding request_templates.updated_at...")
+		_, _ = DB.Exec("ALTER TABLE request_templates ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+		_, _ = DB.Exec("UPDATE request_templates SET updated_at = created_at WHERE updated_at IS NULL")
+	}
+	var templatePublishedAtCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'request_templates' AND column_name = 'published_at'").Scan(&templatePublishedAtCount)
+	if templatePublishedAtCount == 0 {
+		log.Println("Migrating database: adding request_templates.published_at...")
+		_, _ = DB.Exec("ALTER TABLE request_templates ADD COLUMN published_at TIMESTAMP")
+		_, _ = DB.Exec("UPDATE request_templates SET published_at = created_at WHERE status = 'published' AND published_at IS NULL")
+	}
+	var templatePublishedByCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'request_templates' AND column_name = 'published_by'").Scan(&templatePublishedByCount)
+	if templatePublishedByCount == 0 {
+		log.Println("Migrating database: adding request_templates.published_by...")
+		_, _ = DB.Exec("ALTER TABLE request_templates ADD COLUMN published_by INTEGER REFERENCES users(id) ON DELETE SET NULL")
+		_, _ = DB.Exec("UPDATE request_templates SET published_by = created_by WHERE status = 'published' AND published_by IS NULL")
+	}
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_templates_status ON request_templates(status)")
 
 	log.Println("Database schema is up to date")
 	return nil

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -148,6 +149,7 @@ func handleRequestClone(w http.ResponseWriter, r *http.Request, id int, req *PRR
 		createdBy = &userID
 	}
 	newReq := &PRRequest{
+		ProjectID:     req.ProjectID,
 		Team:          req.Team,
 		Env:           req.Env,
 		Cloud:         req.Cloud,
@@ -199,6 +201,7 @@ func handleRequestResubmit(w http.ResponseWriter, r *http.Request, id int, req *
 	}
 	filePath, branchName := BuildRequestGitArtifacts(req.Team, req.Env, appID)
 	newReq := &PRRequest{
+		ProjectID:     req.ProjectID,
 		Team:          req.Team,
 		Env:           req.Env,
 		Cloud:         req.Cloud,
@@ -246,28 +249,7 @@ func handleRequestSubmit(w http.ResponseWriter, r *http.Request, id int, req *PR
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator can submit this draft", "status": "error"})
 		return
 	}
-	// Two-step approval: if creator has a group manager (portal team manager) or creator's manager_id, first status is pending_user_manager_approval; else pending_devops_approval
-	initialStatus := "pending_devops_approval"
-	if req.CreatedBy != nil {
-		creatorID := *req.CreatedBy
-		// Prefer manager from the request's team (same team the request is filed under)
-		groupManagerID := GetGroupManagerForUserInTeam(creatorID, req.Team)
-		if groupManagerID == 0 {
-			groupManagerID = GetGroupManagerForUser(creatorID)
-		}
-		if groupManagerID != 0 {
-			initialStatus = "pending_user_manager_approval"
-			log.Printf("[submit] request id=%d creator=%d team=%q -> pending_user_manager_approval (group_manager=%d)", id, creatorID, req.Team, groupManagerID)
-		} else {
-			creator, _ := GetUserByID(creatorID)
-			if creator != nil && creator.ManagerID != nil && *creator.ManagerID > 0 {
-				initialStatus = "pending_user_manager_approval"
-				log.Printf("[submit] request id=%d creator=%d team=%q -> pending_user_manager_approval (creator.manager_id=%d)", id, creatorID, req.Team, *creator.ManagerID)
-			} else {
-				log.Printf("[submit] request id=%d creator=%d team=%q -> pending_devops_approval (no group manager in team and no creator.manager_id; ensure portal team has a member with role=manager)", id, creatorID, req.Team)
-			}
-		}
-	}
+	initialStatus := determineApprovalStatusForRequest(req.ProjectID, userID, req.Team, req.Env)
 	if err := UpdatePRRequestStatus(id, initialStatus); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -319,13 +301,14 @@ func handleRequestApproveByManager(w http.ResponseWriter, r *http.Request, id in
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator's group manager or assigned manager can approve this step", "status": "error"})
 		return
 	}
-	if err := UpdatePRRequestStatus(id, "pending_devops_approval"); err != nil {
+	nextStatus := determinePostManagerApprovalStatus(req.ProjectID, req.Env)
+	if err := UpdatePRRequestStatus(id, nextStatus); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	AppendUserActivity(req.CreatedBy, "request_approved_by_manager", "pr_request", strconv.Itoa(id), "Pending DevOps approval")
+	AppendUserActivity(req.CreatedBy, "request_approved_by_manager", "pr_request", strconv.Itoa(id), strings.ReplaceAll(nextStatus, "_", " "))
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Approved; request is now pending DevOps approval"})
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": fmt.Sprintf("Approved; request is now %s", strings.ReplaceAll(nextStatus, "_", " "))})
 }
 
 func handleRequestUpdateDraft(w http.ResponseWriter, r *http.Request, id int, req *PRRequest, userID int) {

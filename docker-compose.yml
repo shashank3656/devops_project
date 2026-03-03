@@ -274,15 +274,15 @@ services:
     image: postgres:15-alpine
     container_name: infra-postgres
     environment:
-      - POSTGRES_USER=${DB_USER:-postgres}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
-      - POSTGRES_DB=${DB_NAME:-infra_portal}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-infra_portal}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-infra_app}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -323,19 +323,14 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD:-avhbdsfwpllsgogm}
       - SMTP_FROM=${SMTP_FROM:-devops3656@gmail.com}
       - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
-      - GITHUB_OWNER=${GITHUB_OWNER}
-      - GITHUB_REPO=${GITHUB_REPO}
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - BASE_BRANCH=${BASE_BRANCH}
-      - DB_HOST=${DB_HOST:-postgres}
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-postgres}
-      - DB_NAME=${DB_NAME:-infra_portal}
+      - GITHUB_OWNER=${GITHUB_OWNER:-shashank3656}
+      - GITHUB_REPO=${GITHUB_REPO:-Application_Onboarding}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-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}
+      - BASE_BRANCH=${BASE_BRANCH:-main}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/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}
       - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
-      - DEVOPS_FRONTEND_URL=${DEVOPS_FRONTEND_URL:-http://localhost:3002}
+      - FRONTEND_URL=${FRONTEND_URL:-http://20.219.96.249:3000}
+      - DEVOPS_FRONTEND_URL=${DEVOPS_FRONTEND_URL:-http://20.219.96.249:3002}
       - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_DB=${REDIS_DB:-0}
@@ -381,16 +376,11 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD:-avhbdsfwpllsgogm}
       - SMTP_FROM=${SMTP_FROM:-devops3656@gmail.com}
       - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
-      - GITHUB_OWNER=${GITHUB_OWNER}
-      - GITHUB_REPO=${GITHUB_REPO}
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - BASE_BRANCH=${BASE_BRANCH}
-      - DB_HOST=${DB_HOST:-postgres}
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-postgres}
-      - DB_NAME=${DB_NAME:-infra_portal}
-      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - GITHUB_OWNER=${GITHUB_OWNER:-shashank3656}
+      - GITHUB_REPO=${GITHUB_REPO:-Application_Onboarding}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-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}
+      - BASE_BRANCH=${BASE_BRANCH:-main}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/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}
       - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL}
       - FRONTEND_URL=${FRONTEND_URL:-http://20.219.96.249:3000}
       - DEVOPS_FRONTEND_URL=${DEVOPS_FRONTEND_URL:-http://20.219.96.249:3002}
@@ -491,7 +481,7 @@ services:
       context: ./admin-frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
     container_name: infra-admin-frontend
     ports:
       - "3001:3001"
@@ -511,7 +501,7 @@ services:
       context: ./admin-frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
     container_name: infra-admin-frontend
     ports:
       - "3001:3001"
@@ -533,7 +523,7 @@ services:
       context: ./devops-frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
     container_name: infra-devops-frontend
     ports:
       - "3002:3002"
@@ -541,12 +531,12 @@ services:
       - config/.env
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://20.219.96.249:8080}
     depends_on:
       - backend
       - postgres
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3002"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://20.219.96.249:3002"]
       interval: 30s
       timeout: 10s
       retries: 3

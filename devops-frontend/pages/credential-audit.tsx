@@ -10,6 +10,9 @@ const DEVOPS_TOKEN_KEY = 'devops_token';
 interface CredentialAuditEntry {
   id: number;
   request_id?: number;
+  project_id?: number;
+  project_name?: string;
+  project_code?: string;
   cloud: string;
   credential_type: string;
   team: string;
@@ -19,6 +22,12 @@ interface CredentialAuditEntry {
   approved_by_user_id?: number;
   approved_by_username?: string;
   created_at: string;
+}
+
+interface ProjectSummary {
+  id: number;
+  name: string;
+  code: string;
 }
 
 const CLOUD_BADGES: Record<string, { bg: string; color: string }> = {
@@ -31,9 +40,11 @@ export default function CredentialAuditPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
   const [entries, setEntries] = useState<CredentialAuditEntry[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [cloudFilter, setCloudFilter] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
@@ -47,6 +58,7 @@ export default function CredentialAuditPage() {
     const params = new URLSearchParams();
     params.set('limit', '100');
     if (cloudFilter) params.set('cloud', cloudFilter);
+    if (projectId) params.set('project_id', projectId);
     if (fromDate) params.set('from', fromDate);
     if (toDate) params.set('to', toDate);
     fetch(`${apiUrl}/api/devops/credential-audit?${params}`, {
@@ -65,7 +77,18 @@ export default function CredentialAuditPage() {
       })
       .catch(() => setError('Failed to load credential audit'))
       .finally(() => setLoading(false));
-  }, [router, apiUrl, cloudFilter, fromDate, toDate]);
+  }, [router, apiUrl, cloudFilter, projectId, fromDate, toDate]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    fetch(`${apiUrl}/api/devops/projects`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setProjects(Array.isArray(data?.projects) ? data.projects : []))
+      .catch(() => setProjects([]));
+  }, [apiUrl]);
 
   useEffect(() => {
     fetchEntries();
@@ -77,6 +100,7 @@ export default function CredentialAuditPage() {
     const params = new URLSearchParams();
     params.set('format', 'csv');
     if (cloudFilter) params.set('cloud', cloudFilter);
+    if (projectId) params.set('project_id', projectId);
     if (fromDate) params.set('from', fromDate);
     if (toDate) params.set('to', toDate);
     fetch(`${apiUrl}/api/devops/credential-audit?${params}`, { headers: { Authorization: `Bearer ${token}` } })
@@ -122,6 +146,13 @@ export default function CredentialAuditPage() {
               <p className="portal-stat-card__copy">Cloud-specific audit slicing without changing backend behavior.</p>
             </article>
             <article className="portal-stat-card">
+              <span className="portal-stat-card__label">Project filter</span>
+              <strong className="portal-stat-card__value">
+                {projectId ? (projects.find((project) => String(project.id) === projectId)?.code || 'Scoped') : 'All'}
+              </strong>
+              <p className="portal-stat-card__copy">Project-scoped credential review for governance and evidence tracking.</p>
+            </article>
+            <article className="portal-stat-card">
               <span className="portal-stat-card__label">Date range</span>
               <strong className="portal-stat-card__value">{fromDate || toDate ? 'Filtered' : 'Open'}</strong>
               <p className="portal-stat-card__copy">Time-bound review mode for access-key and service-account creation.</p>
@@ -153,6 +184,17 @@ export default function CredentialAuditPage() {
                     <option value="AWS">AWS</option>
                     <option value="GCP">GCP</option>
                     <option value="Azure">Azure</option>
+                  </select>
+                </div>
+                <div className="portal-toolbar__item">
+                  <label className="credential-audit-label">Project</label>
+                  <select value={projectId} onChange={(event) => setProjectId(event.target.value)} className="input">
+                    <option value="">All projects</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}{project.code ? ` (${project.code})` : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="portal-toolbar__item">
@@ -197,6 +239,7 @@ export default function CredentialAuditPage() {
                     <tr>
                       <th>Date</th>
                       <th>Cloud</th>
+                      <th>Project</th>
                       <th>Credential type</th>
                       <th>Team</th>
                       <th>Env</th>
@@ -218,6 +261,16 @@ export default function CredentialAuditPage() {
                               {entry.cloud}
                             </span>
                           </td>
+                          <td>
+                            {entry.project_name ? (
+                              <div>
+                                <strong>{entry.project_name}</strong>
+                                {entry.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{entry.project_code}</div> : null}
+                              </div>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
                           <td>{entry.credential_type}</td>
                           <td>{entry.team || '-'}</td>
                           <td>{entry.env || '-'}</td>
@@ -225,7 +278,11 @@ export default function CredentialAuditPage() {
                           <td>{entry.approved_by_username || '-'}</td>
                           <td>
                             {entry.request_id ? (
-                              <Link href="/tickets" className="credential-audit-link" title="View in Tickets">
+                              <Link
+                                href={`/tickets?id=${entry.request_id}${entry.project_id ? `&project_id=${entry.project_id}` : ''}`}
+                                className="credential-audit-link"
+                                title="View in Tickets"
+                              >
                                 #{entry.request_id}
                               </Link>
                             ) : (
