@@ -371,9 +371,9 @@ export default function DevOpsDashboard() {
       .sort((left, right) => (right.pending_request_count || 0) - (left.pending_request_count || 0) || (right.request_count || 0) - (left.request_count || 0))
       .slice(0, 4);
   }, [projects]);
-  const serviceDemand = projectAnalytics?.service_request_distribution.slice(0, 5) || [];
-  const cloudDemand = projectAnalytics?.cloud_request_distribution.slice(0, 4) || [];
-  const projectBottlenecks = projectAnalytics?.approval_bottlenecks.slice(0, 5) || [];
+  const serviceDemand = (projectAnalytics?.service_request_distribution || []).slice(0, 5);
+  const cloudDemand = (projectAnalytics?.cloud_request_distribution || []).slice(0, 4);
+  const projectBottlenecks = (projectAnalytics?.approval_bottlenecks || []).slice(0, 5);
   const riskMix = projectAnalytics?.risk_distribution || [];
 
   const teamPulse = useMemo(() => {

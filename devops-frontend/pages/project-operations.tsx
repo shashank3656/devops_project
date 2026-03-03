@@ -128,8 +128,8 @@ export default function DevOpsProjectOperationsPage() {
   }, [apiUrl]);
 
   const summary = analytics?.summary;
-  const topServices = useMemo(() => analytics?.service_request_distribution.slice(0, 6) || [], [analytics]);
-  const topClouds = useMemo(() => analytics?.cloud_request_distribution.slice(0, 4) || [], [analytics]);
+  const topServices = useMemo(() => (analytics?.service_request_distribution || []).slice(0, 6), [analytics]);
+  const topClouds = useMemo(() => (analytics?.cloud_request_distribution || []).slice(0, 4), [analytics]);
   const riskMix = useMemo(() => analytics?.risk_distribution || [], [analytics]);
 
   return (
