@@ -37,20 +37,22 @@ ENV NODE_ENV=production
 RUN apk --no-cache add wget
 
 # Copy package files
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/next.config.js ./
+COPY --from=builder --chown=node:node /app/package.json ./
+COPY --from=builder --chown=node:node /app/next.config.js ./
 
 # Copy production dependencies
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 
 # Copy built application
-COPY --from=builder /app/.next ./.next
+COPY --from=builder --chown=node:node /app/.next ./.next
 
 # Set environment variable for runtime (though it's already baked into the build)
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Copy static assets (e.g. logo)
-COPY --from=builder /app/public ./public
+COPY --from=builder --chown=node:node /app/public ./public
+
+USER node
 
 # Expose port
 EXPOSE 3000

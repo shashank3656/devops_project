@@ -15,6 +15,13 @@ interface RequestTemplate {
   service: string;
   config: string;
   created_at?: string;
+  teams?: TeamSummary[];
+  visible_to_all?: boolean;
+}
+
+interface TeamSummary {
+  id: number;
+  name: string;
 }
 
 function formatTemplateConfig(config: string): string {
@@ -164,6 +171,33 @@ export default function ViewTemplate() {
                     <span className="portal-kv__label">Service</span>
                     <strong className="portal-detail-card__value">{template.service}</strong>
                   </article>
+                  <article className="portal-detail-card">
+                    <span className="portal-kv__label">Visibility</span>
+                    <strong className="portal-detail-card__value">
+                      {template.visible_to_all || !template.teams?.length ? 'All portal teams' : `${template.teams.length} assigned team${template.teams.length === 1 ? '' : 's'}`}
+                    </strong>
+                  </article>
+                </div>
+              </section>
+
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Visibility</span>
+                    <h2 className="portal-surface__title">Team assignment</h2>
+                    <p className="portal-surface__subtitle">
+                      Control which portal teams can launch this template by default.
+                    </p>
+                  </div>
+                </div>
+                <div className="portal-pill-row">
+                  {template.visible_to_all || !template.teams?.length ? (
+                    <span className="portal-pill">All portal teams</span>
+                  ) : (
+                    template.teams.map((team) => (
+                      <span key={team.id} className="portal-pill">{team.name}</span>
+                    ))
+                  )}
                 </div>
               </section>
 

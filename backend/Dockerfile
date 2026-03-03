@@ -19,11 +19,14 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o backend .
 FROM alpine:latest
 
 RUN apk --no-cache add ca-certificates wget postgresql-client
+RUN addgroup -S app && adduser -S -G app app
 
 WORKDIR /app
 
 # Copy the binary from builder
-COPY --from=builder /app/backend .
+COPY --from=builder --chown=app:app /app/backend .
+
+USER app
 
 EXPOSE 8080
 
