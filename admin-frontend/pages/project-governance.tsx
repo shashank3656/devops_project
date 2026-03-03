@@ -124,6 +124,9 @@ export default function AdminProjectGovernancePage() {
   const topServices = useMemo(() => (analytics?.service_request_distribution || []).slice(0, 6), [analytics]);
   const topClouds = useMemo(() => (analytics?.cloud_request_distribution || []).slice(0, 4), [analytics]);
   const riskMix = useMemo(() => analytics?.risk_distribution || [], [analytics]);
+  const topRiskProjects = analytics?.top_risk_projects || [];
+  const approvalBottlenecks = analytics?.approval_bottlenecks || [];
+  const topProjectsByRequests = analytics?.top_projects_by_requests || [];
 
   return (
     <>
@@ -210,7 +213,7 @@ export default function AdminProjectGovernancePage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {(analytics.top_risk_projects.length > 0 ? analytics.top_risk_projects : analytics.approval_bottlenecks).slice(0, 6).map((project) => (
+                          {(topRiskProjects.length > 0 ? topRiskProjects : approvalBottlenecks).slice(0, 6).map((project) => (
                             <tr key={`risk-${project.id}`}>
                               <td>
                                 <strong>{project.name}</strong>
@@ -286,7 +289,7 @@ export default function AdminProjectGovernancePage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {analytics.top_projects_by_requests.map((project) => (
+                      {topProjectsByRequests.map((project) => (
                         <tr key={`top-project-${project.id}`}>
                           <td>
                             <strong>{project.name}</strong>
