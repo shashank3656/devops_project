@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useApiUrl } from '../context/ApiUrlContext';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -126,6 +127,11 @@ export default function DevOpsLogin() {
                 {loading ? 'Signing in…' : 'Sign in'}
               </button>
             </form>
+            <p className="login-page__hint" style={{ marginTop: 16 }}>
+              <Link href="/forgot-password" style={{ color: 'var(--color-primary)', textDecoration: 'none' }}>
+                Forgot password?
+              </Link>
+            </p>
             <p className="login-page__hint">
               Users are created from the Admin portal.
             </p>
