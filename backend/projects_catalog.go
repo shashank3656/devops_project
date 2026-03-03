@@ -38,21 +38,25 @@ type ProjectTeamAccess struct {
 }
 
 type ProjectCatalog struct {
-	ID            int                    `json:"id"`
-	Name          string                 `json:"name"`
-	Code          string                 `json:"code"`
-	Description   string                 `json:"description"`
-	Status        string                 `json:"status"`
-	OwnerTeamID   *int                   `json:"owner_team_id,omitempty"`
-	OwnerTeam     string                 `json:"owner_team,omitempty"`
-	CreatedBy     *int                   `json:"created_by,omitempty"`
-	CreatedAt     time.Time              `json:"created_at"`
-	UpdatedAt     time.Time              `json:"updated_at"`
-	Environments  []string               `json:"environments"`
-	Clouds        []string               `json:"clouds"`
-	Services      []ProjectServiceOption `json:"services"`
-	TeamAccess    []ProjectTeamAccess    `json:"team_access"`
-	ApprovalRules []ProjectApprovalRule  `json:"approval_rules"`
+	ID               int                    `json:"id"`
+	Name             string                 `json:"name"`
+	Code             string                 `json:"code"`
+	Description      string                 `json:"description"`
+	Status           string                 `json:"status"`
+	OnboardingStage  string                 `json:"onboarding_stage"`
+	ReadyForRequests bool                   `json:"ready_for_requests"`
+	ServiceCount     int                    `json:"service_count"`
+	TeamCount        int                    `json:"team_count"`
+	OwnerTeamID      *int                   `json:"owner_team_id,omitempty"`
+	OwnerTeam        string                 `json:"owner_team,omitempty"`
+	CreatedBy        *int                   `json:"created_by,omitempty"`
+	CreatedAt        time.Time              `json:"created_at"`
+	UpdatedAt        time.Time              `json:"updated_at"`
+	Environments     []string               `json:"environments"`
+	Clouds           []string               `json:"clouds"`
+	Services         []ProjectServiceOption `json:"services"`
+	TeamAccess       []ProjectTeamAccess    `json:"team_access"`
+	ApprovalRules    []ProjectApprovalRule  `json:"approval_rules"`
 }
 
 type ProjectCatalogInput struct {
@@ -71,6 +75,38 @@ type ProjectCatalogInput struct {
 type ProjectRequestValidation struct {
 	Project ProjectCatalog
 	Team    Team
+}
+
+func deriveProjectOnboarding(project *ProjectCatalog) {
+	if project == nil {
+		return
+	}
+	project.ServiceCount = len(project.Services)
+	project.TeamCount = len(project.TeamAccess)
+
+	switch strings.ToLower(strings.TrimSpace(project.Status)) {
+	case "archived":
+		project.OnboardingStage = "archived"
+		project.ReadyForRequests = false
+		return
+	case "inactive":
+		project.OnboardingStage = "inactive"
+		project.ReadyForRequests = false
+		return
+	}
+
+	if len(project.Environments) == 0 || len(project.Clouds) == 0 || len(project.Services) == 0 {
+		project.OnboardingStage = "created"
+		project.ReadyForRequests = false
+		return
+	}
+	if len(project.TeamAccess) == 0 {
+		project.OnboardingStage = "configured"
+		project.ReadyForRequests = false
+		return
+	}
+	project.OnboardingStage = "ready"
+	project.ReadyForRequests = true
 }
 
 func normalizeProjectCode(value string) string {
@@ -660,7 +696,9 @@ func getProjectCatalogsByFilter(whereClause string, args ...interface{}) ([]Proj
 
 	var out []ProjectCatalog
 	for _, id := range projectIDs {
-		out = append(out, *projectsByID[id])
+		project := projectsByID[id]
+		deriveProjectOnboarding(project)
+		out = append(out, *project)
 	}
 	return out, nil
 }
@@ -853,6 +891,42 @@ func adminProjectsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "projects": projects})
+}
+
+func adminProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/admin/projects/")
+	projectID, err := strconv.Atoi(strings.TrimSpace(path))
+	if err != nil || projectID <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+	project, err := getProjectCatalogByID(projectID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		return
+	}
+	if project == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "project not found", "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "project": project})
 }
 
 func validateProjectRequestForUser(userID, projectID int, teamNameOrSlug, environment, cloud, service string) (*ProjectRequestValidation, error) {

@@ -20,6 +20,10 @@ interface ProjectOption {
   code: string;
   description: string;
   status: string;
+  onboarding_stage?: string;
+  ready_for_requests?: boolean;
+  service_count?: number;
+  team_count?: number;
   owner_team?: string;
   environments: string[];
   clouds: string[];
@@ -103,10 +107,20 @@ export default function MyProjects() {
                       </p>
                     </div>
                     <div className="portal-page__actions">
+                      <Link href={`/my-projects/${project.id}`} className="btn btn-secondary">
+                        View details
+                      </Link>
                       <Link href={`/select-service?project_id=${project.id}`} className="btn btn-primary">
                         Request service
                       </Link>
                     </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>
+                    <span className="portal-pill">{project.status}</span>
+                    <span className="portal-pill">{project.onboarding_stage || 'configured'}</span>
+                    <span className="portal-pill">{project.ready_for_requests ? 'ready for requests' : 'setup in progress'}</span>
+                    <span className="portal-pill">{project.service_count ?? project.services.length} services</span>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>

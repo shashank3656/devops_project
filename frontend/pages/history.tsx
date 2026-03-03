@@ -168,6 +168,16 @@ export default function History() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
+    if (!router.isReady) return;
+    const rawProjectID = router.query.project_id;
+    const nextProjectID = Array.isArray(rawProjectID) ? rawProjectID[0] : rawProjectID;
+    if (typeof nextProjectID === 'string') {
+      setProjectId(nextProjectID);
+      setPage(0);
+    }
+  }, [router.isReady, router.query.project_id]);
+
+  useEffect(() => {
     setRecentIds(getRecentRequestIds());
     try {
       const raw = localStorage.getItem(HISTORY_FILTER_PRESETS_KEY);
@@ -1260,6 +1270,20 @@ export default function History() {
                         Close
                       </button>
                     </div>
+                    {detailRequest.project_id && detailRequest.project_name && (
+                      <div style={{ marginBottom: '12px' }}>
+                        <strong>Project:</strong> {detailRequest.project_name}
+                        {detailRequest.project_code ? ` (${detailRequest.project_code})` : ''}
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{ marginLeft: 10 }}
+                          onClick={() => router.push(`/my-projects/${detailRequest.project_id}`)}
+                        >
+                          Open project
+                        </button>
+                      </div>
+                    )}
                     <div style={{ marginBottom: '12px' }}>
                       <strong>Team:</strong> {detailRequest.team} &nbsp;|&nbsp; <strong>Env:</strong> {detailRequest.env} &nbsp;|&nbsp; <strong>Cloud:</strong> {detailRequest.cloud} &nbsp;|&nbsp; <strong>Service:</strong> {detailRequest.service}
                       {detailRequest.application_id && (
