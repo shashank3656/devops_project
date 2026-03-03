@@ -3447,3 +3447,142 @@ td {
 .admin-team-check input {
   margin: 0;
 }
+
+.onboarding-admin-card {
+  border-color: rgba(34, 211, 238, 0.18);
+}
+
+.admin-onboarding-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.admin-onboarding-summary-card {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(27, 77, 124, 0.65);
+  background: rgba(4, 14, 28, 0.84);
+}
+
+.admin-onboarding-summary-card span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+}
+
+.admin-onboarding-summary-card strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 18px;
+  color: var(--color-text);
+}
+
+.admin-onboarding-summary-card p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.admin-onboarding-timeline {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-onboarding-timeline__step {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(27, 77, 124, 0.55);
+  background: rgba(6, 18, 32, 0.78);
+}
+
+.admin-onboarding-timeline__dot {
+  width: 12px;
+  height: 12px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: rgba(71, 85, 105, 0.9);
+  box-shadow: 0 0 0 4px rgba(9, 18, 32, 0.9);
+}
+
+.admin-onboarding-timeline__step--completed .admin-onboarding-timeline__dot {
+  background: var(--color-success);
+}
+
+.admin-onboarding-timeline__step--current .admin-onboarding-timeline__dot {
+  background: var(--color-primary);
+}
+
+.admin-onboarding-timeline__step--attention .admin-onboarding-timeline__dot {
+  background: var(--color-danger);
+}
+
+.admin-onboarding-timeline__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.admin-onboarding-timeline__header strong {
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.admin-onboarding-timeline__step p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.admin-onboarding-timeline__time {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--color-text-faint);
+  font-size: 11px;
+}
+
+.admin-onboarding-state {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 130, 246, 0.24);
+  color: var(--color-text-muted);
+  text-transform: capitalize;
+  font-size: 11px;
+}
+
+.admin-onboarding-state--completed {
+  color: var(--color-success);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.admin-onboarding-state--current {
+  color: var(--color-primary);
+  border-color: rgba(34, 211, 238, 0.35);
+}
+
+.admin-onboarding-state--attention {
+  color: var(--color-danger);
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+@media (max-width: 900px) {
+  .admin-onboarding-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-onboarding-timeline__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
