@@ -945,6 +945,12 @@ export default function DevOpsTickets() {
                               Open PR
                             </a>
                           ) : null}
+                          <a href={`/incidents`} className="btn btn-secondary btn-sm">
+                            Incident panel
+                          </a>
+                          <a href={`/runbooks`} className="btn btn-secondary btn-sm">
+                            Runbooks
+                          </a>
                         </div>
 
                         <div className="devops-approval-workspace__decision-copy">

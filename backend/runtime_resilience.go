@@ -467,10 +467,12 @@ func processInlineJob(jobType string, payload any) {
 		}
 		user, err := GetUserByID(job.UserID)
 		if err != nil || user == nil || user.Email == "" {
+			recordOpsDeliveryFailure("notification_email", "", job, fmt.Errorf("email recipient not available"))
 			return
 		}
 		if err := SendEmail(user.Email, job.Subject, job.Body); err != nil {
 			log.Printf("[Jobs] email failed: %v", err)
+			recordOpsDeliveryFailure("notification_email", user.Email, job, err)
 		}
 	case "webhook":
 		job, ok := payload.(WebhookJob)
@@ -479,6 +481,7 @@ func processInlineJob(jobType string, payload any) {
 		}
 		if err := executeWebhookJob(job); err != nil {
 			log.Printf("[Jobs] webhook failed: %v", err)
+			recordOpsDeliveryFailure("webhook", job.URL, job, err)
 		}
 	}
 }
