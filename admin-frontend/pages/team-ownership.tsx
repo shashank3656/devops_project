@@ -57,6 +57,17 @@ interface TeamOwnershipData {
   teams: TeamOwnershipTeam[];
 }
 
+function normalizeTeam(team: TeamOwnershipTeam): TeamOwnershipTeam {
+  return {
+    ...team,
+    environments: Array.isArray(team.environments) ? team.environments : [],
+    clouds: Array.isArray(team.clouds) ? team.clouds : [],
+    owner_names: Array.isArray(team.owner_names) ? team.owner_names : [],
+    template_names: Array.isArray(team.template_names) ? team.template_names : [],
+    members: Array.isArray(team.members) ? team.members : [],
+  };
+}
+
 function formatTimestamp(value?: string): string {
   if (!value) return 'No request activity';
   const date = new Date(value);
@@ -105,7 +116,10 @@ export default function TeamOwnershipPage() {
         if (!response.ok || payload.status !== 'ok') {
           throw new Error(payload.error || 'Failed to load team ownership');
         }
-        const nextData = payload as TeamOwnershipData;
+        const nextData = {
+          ...(payload as TeamOwnershipData),
+          teams: Array.isArray(payload.teams) ? payload.teams.map((team) => normalizeTeam(team as TeamOwnershipTeam)) : [],
+        } as TeamOwnershipData;
         setData(nextData);
         setSelectedTeamId((current) => current ?? nextData.teams[0]?.id ?? null);
       } catch (err) {
