@@ -15,6 +15,13 @@ interface ProjectApprovalRule {
   require_devops_approval: boolean;
 }
 
+interface ProjectReadinessCheck {
+  key: string;
+  label: string;
+  complete: boolean;
+  detail: string;
+}
+
 interface CostRiskSignal {
   severity: 'low' | 'medium' | 'high';
   category: string;
@@ -53,6 +60,8 @@ interface ProjectOption {
   service_count?: number;
   team_count?: number;
   owner_team?: string;
+  next_action?: string;
+  readiness_checks?: ProjectReadinessCheck[];
   cost_risk_summary?: ProjectCostRiskSummary | null;
   environments: string[];
   clouds: string[];
@@ -157,6 +166,7 @@ export default function AdminProjectDetailPage() {
             </div>
             <div className="portal-page__actions">
               <Link href="/projects" className="btn btn-secondary">Back to Projects</Link>
+              {project ? <Link href={`/access-review?project_id=${project.id}`} className="btn btn-primary">Review Project Access</Link> : null}
             </div>
           </div>
 
@@ -222,6 +232,27 @@ export default function AdminProjectDetailPage() {
                     <span className="portal-surface__eyebrow">Project code</span>
                     <div className="portal-detail-card__value">{project.code}</div>
                   </article>
+                </div>
+              </section>
+
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Readiness Workflow</span>
+                    <h2 className="portal-surface__title">Lifecycle and Checklist</h2>
+                    <p className="portal-surface__subtitle">{project.next_action || 'This checklist shows whether the project is ready for governed request traffic.'}</p>
+                  </div>
+                </div>
+                <div className="portal-preview-signals" style={{ marginTop: 0 }}>
+                  {(project.readiness_checks || []).map((check) => (
+                    <article key={`${project.id}-${check.key}`} className={check.complete ? 'portal-preview-signal portal-preview-signal--low' : 'portal-preview-signal portal-preview-signal--medium'}>
+                      <div className="portal-preview-signal__top">
+                        <strong className="portal-preview-signal__title">{check.label}</strong>
+                        <span>{check.complete ? 'complete' : 'pending'}</span>
+                      </div>
+                      <p className="portal-preview-signal__detail">{check.detail}</p>
+                    </article>
+                  ))}
                 </div>
               </section>
 

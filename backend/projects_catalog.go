@@ -30,6 +30,20 @@ type ProjectApprovalRule struct {
 	RequireDevopsApproval  bool   `json:"require_devops_approval"`
 }
 
+type ProjectReadinessCheck struct {
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Complete bool   `json:"complete"`
+	Detail   string `json:"detail"`
+}
+
+type ProjectLifecycleAction struct {
+	Action      string `json:"action"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+	Enabled     bool   `json:"enabled"`
+}
+
 type ProjectTeamAccess struct {
 	TeamID       int      `json:"team_id"`
 	TeamName     string   `json:"team_name,omitempty"`
@@ -38,29 +52,32 @@ type ProjectTeamAccess struct {
 }
 
 type ProjectCatalog struct {
-	ID                    int                     `json:"id"`
-	Name                  string                  `json:"name"`
-	Code                  string                  `json:"code"`
-	Description           string                  `json:"description"`
-	Status                string                  `json:"status"`
-	OnboardingStage       string                  `json:"onboarding_stage"`
-	ReadyForRequests      bool                    `json:"ready_for_requests"`
-	ServiceCount          int                     `json:"service_count"`
-	TeamCount             int                     `json:"team_count"`
-	RequestCount          int                     `json:"request_count"`
-	PendingRequestCount   int                     `json:"pending_request_count"`
-	CompletedRequestCount int                     `json:"completed_request_count"`
-	OwnerTeamID           *int                    `json:"owner_team_id,omitempty"`
-	OwnerTeam             string                  `json:"owner_team,omitempty"`
-	CreatedBy             *int                    `json:"created_by,omitempty"`
-	CreatedAt             time.Time               `json:"created_at"`
-	UpdatedAt             time.Time               `json:"updated_at"`
-	Environments          []string                `json:"environments"`
-	Clouds                []string                `json:"clouds"`
-	Services              []ProjectServiceOption  `json:"services"`
-	TeamAccess            []ProjectTeamAccess     `json:"team_access"`
-	ApprovalRules         []ProjectApprovalRule   `json:"approval_rules"`
-	CostRiskSummary       *ProjectCostRiskSummary `json:"cost_risk_summary,omitempty"`
+	ID                    int                      `json:"id"`
+	Name                  string                   `json:"name"`
+	Code                  string                   `json:"code"`
+	Description           string                   `json:"description"`
+	Status                string                   `json:"status"`
+	OnboardingStage       string                   `json:"onboarding_stage"`
+	ReadyForRequests      bool                     `json:"ready_for_requests"`
+	ServiceCount          int                      `json:"service_count"`
+	TeamCount             int                      `json:"team_count"`
+	RequestCount          int                      `json:"request_count"`
+	PendingRequestCount   int                      `json:"pending_request_count"`
+	CompletedRequestCount int                      `json:"completed_request_count"`
+	NextAction            string                   `json:"next_action"`
+	ReadinessChecks       []ProjectReadinessCheck  `json:"readiness_checks"`
+	LifecycleActions      []ProjectLifecycleAction `json:"lifecycle_actions"`
+	OwnerTeamID           *int                     `json:"owner_team_id,omitempty"`
+	OwnerTeam             string                   `json:"owner_team,omitempty"`
+	CreatedBy             *int                     `json:"created_by,omitempty"`
+	CreatedAt             time.Time                `json:"created_at"`
+	UpdatedAt             time.Time                `json:"updated_at"`
+	Environments          []string                 `json:"environments"`
+	Clouds                []string                 `json:"clouds"`
+	Services              []ProjectServiceOption   `json:"services"`
+	TeamAccess            []ProjectTeamAccess      `json:"team_access"`
+	ApprovalRules         []ProjectApprovalRule    `json:"approval_rules"`
+	CostRiskSummary       *ProjectCostRiskSummary  `json:"cost_risk_summary,omitempty"`
 }
 
 type ProjectCatalogInput struct {
@@ -224,30 +241,103 @@ func deriveProjectOnboarding(project *ProjectCatalog) {
 	}
 	project.ServiceCount = len(project.Services)
 	project.TeamCount = len(project.TeamAccess)
+	project.ReadinessChecks = []ProjectReadinessCheck{
+		{
+			Key:      "environments",
+			Label:    "Environment layout",
+			Complete: len(project.Environments) > 0,
+			Detail:   "Define at least one environment such as dev, uat, or prod.",
+		},
+		{
+			Key:      "clouds",
+			Label:    "Cloud coverage",
+			Complete: len(project.Clouds) > 0,
+			Detail:   "Choose which clouds this project can request against.",
+		},
+		{
+			Key:      "services",
+			Label:    "Service catalog",
+			Complete: len(project.Services) > 0,
+			Detail:   "Map the cloud-service combinations users are allowed to request.",
+		},
+		{
+			Key:      "team_access",
+			Label:    "Team access",
+			Complete: len(project.TeamAccess) > 0,
+			Detail:   "Grant at least one portal team access before requests can start.",
+		},
+		{
+			Key:      "owner_team",
+			Label:    "Owner team",
+			Complete: project.OwnerTeamID != nil && *project.OwnerTeamID > 0,
+			Detail:   "Assign an owner team so governance and escalation stay clear.",
+		},
+	}
 
 	switch strings.ToLower(strings.TrimSpace(project.Status)) {
 	case "archived":
 		project.OnboardingStage = "archived"
 		project.ReadyForRequests = false
+		project.NextAction = "Archived projects are read-only. Reactivate only if the catalog should accept requests again."
+		project.LifecycleActions = []ProjectLifecycleAction{
+			{Action: "activate", Label: "Reactivate", Description: "Return this archived project to active request status.", Enabled: true},
+			{Action: "deactivate", Label: "Mark inactive", Description: "Keep the project unavailable without reopening requests.", Enabled: false},
+			{Action: "archive", Label: "Archive", Description: "Archive is already applied.", Enabled: false},
+		}
 		return
 	case "inactive":
 		project.OnboardingStage = "inactive"
 		project.ReadyForRequests = false
+		project.NextAction = "Reactivate after the team, service, and approval mappings are ready for request traffic."
+		project.LifecycleActions = []ProjectLifecycleAction{
+			{Action: "activate", Label: "Activate", Description: "Open the project for new requests once setup is complete.", Enabled: true},
+			{Action: "deactivate", Label: "Mark inactive", Description: "Inactive is already applied.", Enabled: false},
+			{Action: "archive", Label: "Archive", Description: "Archive this project if it should remain visible only for history.", Enabled: true},
+		}
 		return
 	}
 
 	if len(project.Environments) == 0 || len(project.Clouds) == 0 || len(project.Services) == 0 {
 		project.OnboardingStage = "created"
 		project.ReadyForRequests = false
+		project.NextAction = "Complete the environment, cloud, and service catalog before opening this project to requesters."
+		project.LifecycleActions = []ProjectLifecycleAction{
+			{Action: "activate", Label: "Activate", Description: "Active is already applied.", Enabled: false},
+			{Action: "deactivate", Label: "Mark inactive", Description: "Pause new requests while the project catalog is being configured.", Enabled: true},
+			{Action: "archive", Label: "Archive", Description: "Archive this project if setup should stop permanently.", Enabled: true},
+		}
+		return
+	}
+	if project.OwnerTeamID == nil || *project.OwnerTeamID <= 0 {
+		project.OnboardingStage = "configured"
+		project.ReadyForRequests = false
+		project.NextAction = "Assign an owner team before opening this project so approvals and support have a clear accountable team."
+		project.LifecycleActions = []ProjectLifecycleAction{
+			{Action: "activate", Label: "Activate", Description: "Active is already applied.", Enabled: false},
+			{Action: "deactivate", Label: "Mark inactive", Description: "Pause new requests while ownership is being assigned.", Enabled: true},
+			{Action: "archive", Label: "Archive", Description: "Archive this project if onboarding should stop.", Enabled: true},
+		}
 		return
 	}
 	if len(project.TeamAccess) == 0 {
 		project.OnboardingStage = "configured"
 		project.ReadyForRequests = false
+		project.NextAction = "Map at least one portal team so users can see this project and request services."
+		project.LifecycleActions = []ProjectLifecycleAction{
+			{Action: "activate", Label: "Activate", Description: "Active is already applied.", Enabled: false},
+			{Action: "deactivate", Label: "Mark inactive", Description: "Pause new requests until team mappings are finished.", Enabled: true},
+			{Action: "archive", Label: "Archive", Description: "Archive this project if it should not proceed.", Enabled: true},
+		}
 		return
 	}
 	project.OnboardingStage = "ready"
 	project.ReadyForRequests = true
+	project.NextAction = "Project is ready for requests. Use inactive or archive when you need to stop new traffic."
+	project.LifecycleActions = []ProjectLifecycleAction{
+		{Action: "activate", Label: "Activate", Description: "Active is already applied.", Enabled: false},
+		{Action: "deactivate", Label: "Mark inactive", Description: "Temporarily stop new requests while preserving visibility.", Enabled: true},
+		{Action: "archive", Label: "Archive", Description: "Retire the project from new requests and keep history only.", Enabled: true},
+	}
 }
 
 func normalizeProjectCode(value string) string {
@@ -577,6 +667,58 @@ func updateProjectCatalog(projectID int, input ProjectCatalogInput, updatedBy *i
 	AppendAuditLog(updatedBy, "project_update", "project", strconv.Itoa(projectID), fmt.Sprintf("%s (%s)", input.Name, input.Code))
 	notifyProjectAudienceChanges(previousProject, project)
 	return project, nil
+}
+
+func performProjectLifecycleAction(projectID int, action string, updatedBy *int) (*ProjectCatalog, error) {
+	project, err := getProjectCatalogByID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	if project == nil {
+		return nil, fmt.Errorf("project not found")
+	}
+
+	action = strings.TrimSpace(strings.ToLower(action))
+	nextStatus := project.Status
+	switch action {
+	case "activate":
+		nextStatus = "active"
+	case "deactivate":
+		nextStatus = "inactive"
+	case "archive":
+		nextStatus = "archived"
+	default:
+		return nil, fmt.Errorf("unsupported lifecycle action")
+	}
+
+	if nextStatus == project.Status {
+		return project, nil
+	}
+
+	input := ProjectCatalogInput{
+		Name:          project.Name,
+		Code:          project.Code,
+		Description:   project.Description,
+		Status:        nextStatus,
+		OwnerTeamID:   project.OwnerTeamID,
+		Environments:  append([]string(nil), project.Environments...),
+		Clouds:        append([]string(nil), project.Clouds...),
+		Services:      append([]ProjectServiceOption(nil), project.Services...),
+		TeamAccess:    make([]ProjectTeamAccess, len(project.TeamAccess)),
+		ApprovalRules: append([]ProjectApprovalRule(nil), project.ApprovalRules...),
+	}
+	for index, access := range project.TeamAccess {
+		input.TeamAccess[index] = ProjectTeamAccess{
+			TeamID:       access.TeamID,
+			Environments: append([]string(nil), access.Environments...),
+		}
+	}
+	updatedProject, err := updateProjectCatalog(projectID, input, updatedBy)
+	if err != nil {
+		return nil, err
+	}
+	AppendAuditLog(updatedBy, "project_lifecycle", "project", strconv.Itoa(projectID), fmt.Sprintf("%s -> %s", project.Status, nextStatus))
+	return updatedProject, nil
 }
 
 func syncProjectCatalogTx(ctx context.Context, tx *sql.Tx, projectID int, input ProjectCatalogInput) error {
@@ -1400,9 +1542,43 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 
 func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/devops/projects/")
-	projectID, err := strconv.Atoi(strings.TrimSpace(path))
+	pathParts := strings.Split(strings.Trim(strings.TrimSpace(path), "/"), "/")
+	if len(pathParts) == 0 || pathParts[0] == "" {
+		http.NotFound(w, r)
+		return
+	}
+	projectID, err := strconv.Atoi(strings.TrimSpace(pathParts[0]))
 	if err != nil || projectID <= 0 {
 		http.NotFound(w, r)
+		return
+	}
+	if len(pathParts) > 1 && pathParts[1] == "lifecycle" {
+		if r.Method != "POST" {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		userID, ok := requireDevopsManager(w, r)
+		if !ok {
+			return
+		}
+		var payload struct {
+			Action string `json:"action"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			return
+		}
+		project, err := performProjectLifecycleAction(projectID, payload.Action, &userID)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "project": project})
 		return
 	}
 	if r.Method == "GET" {
