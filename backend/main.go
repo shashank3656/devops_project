@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -472,6 +473,7 @@ func main() {
 		// Ensure default admin exists (credentials from env or admin/admin123)
 		EnsureDefaultAdmin()
 	}
+	InitRuntimeResilience()
 
 	// Log email configuration status
 	if os.Getenv("SMTP_HOST") != "" {
@@ -612,7 +614,7 @@ func main() {
 	log.Println("  GET  /swagger.json    - OpenAPI spec")
 	log.Println("  GET  /api-docs       - Swagger UI")
 
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	if err := http.ListenAndServe(":8080", withObservability(http.DefaultServeMux)); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }
@@ -623,28 +625,57 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 		"status": "ok",
 		"time":   time.Now().Format(time.RFC3339),
 	}
+	dependencies := map[string]healthDependency{}
 	// Database
 	if DB != nil {
-		if err := DB.Ping(); err == nil {
+		ctx, cancel := dbTimeoutContext()
+		err := DB.PingContext(ctx)
+		cancel()
+		if err == nil {
 			status["database"] = "connected"
+			dependencies["database"] = healthDependency{Status: "connected"}
 			if n, err := GetPendingApprovalCount(); err == nil {
 				status["pending_approval_count"] = n
 			}
 		} else {
 			status["database"] = "disconnected"
+			dependencies["database"] = healthDependency{Status: "disconnected", Error: err.Error()}
+			status["status"] = "degraded"
 		}
 	} else {
 		status["database"] = "not_initialized"
+		dependencies["database"] = healthDependency{Status: "not_initialized"}
+		status["status"] = "degraded"
+	}
+	if redisClient != nil && redisClient.enabled {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		err := redisClient.Ping(ctx)
+		cancel()
+		if err == nil {
+			status["cache"] = "connected"
+			dependencies["cache"] = healthDependency{Status: "connected"}
+		} else {
+			status["cache"] = "disconnected"
+			dependencies["cache"] = healthDependency{Status: "disconnected", Error: err.Error()}
+			status["status"] = "degraded"
+		}
+	} else {
+		status["cache"] = "disabled"
+		dependencies["cache"] = healthDependency{Status: "disabled"}
 	}
 	// GitHub (optional)
 	if ok, err := CheckGitHubConnectivity(); err != nil {
 		status["github"] = "error"
 		status["github_error"] = err.Error()
+		dependencies["github"] = healthDependency{Status: "error", Error: err.Error()}
 	} else if !ok {
 		status["github"] = "disabled"
+		dependencies["github"] = healthDependency{Status: "disabled"}
 	} else {
 		status["github"] = "ok"
+		dependencies["github"] = healthDependency{Status: "ok"}
 	}
+	status["dependencies"] = dependencies
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)
 }
@@ -658,12 +689,28 @@ func readyHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"status": "not_ready", "reason": "database not initialized"})
 		return
 	}
-	if err := DB.Ping(); err != nil {
+	ctx, cancel := dbTimeoutContext()
+	err := DB.PingContext(ctx)
+	cancel()
+	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "not_ready", "reason": "database ping failed"})
 		return
 	}
+	cacheStatus := "disabled"
+	if redisClient != nil && redisClient.enabled {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		err := redisClient.Ping(ctx)
+		cancel()
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": "not_ready", "reason": "cache ping failed"})
+			return
+		}
+		cacheStatus = "ready"
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
+	json.NewEncoder(w).Encode(map[string]string{"status": "ready", "cache": cacheStatus})
 }

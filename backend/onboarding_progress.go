@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -107,80 +108,83 @@ func adminUserOnboardingProgressHandler(w http.ResponseWriter, r *http.Request, 
 }
 
 func BuildOnboardingProgressForUser(userID int) (*OnboardingProgress, error) {
-	user, err := GetUserByID(userID)
-	if err != nil {
-		return nil, err
-	}
-	if user == nil {
-		return nil, sql.ErrNoRows
-	}
-
-	teams, err := GetTeamsForUserWithDetails(userID)
-	if err != nil {
-		return nil, err
-	}
-
-	managerUsername := ""
-	if user.ManagerID != nil && *user.ManagerID > 0 {
-		if mgr, err := GetUserByID(*user.ManagerID); err == nil && mgr != nil {
-			managerUsername = mgr.Username
+	return cacheJSON[*OnboardingProgress](cacheNamespaceOnboard, 90*time.Second, []string{strconv.Itoa(userID)}, func() (*OnboardingProgress, error) {
+		user, err := GetUserByID(userID)
+		if err != nil {
+			return nil, err
 		}
-	} else if user.UserType == "portal_user" {
-		if groupManagerID := GetGroupManagerForUser(userID); groupManagerID > 0 {
-			if mgr, err := GetUserByID(groupManagerID); err == nil && mgr != nil {
+		if user == nil {
+			return nil, sql.ErrNoRows
+		}
+
+		teams, err := GetTeamsForUserWithDetails(userID)
+		if err != nil {
+			return nil, err
+		}
+
+		managerUsername := ""
+		if user.ManagerID != nil && *user.ManagerID > 0 {
+			if mgr, err := GetUserByID(*user.ManagerID); err == nil && mgr != nil {
 				managerUsername = mgr.Username
 			}
+		} else if user.UserType == "portal_user" {
+			if groupManagerID := GetGroupManagerForUser(userID); groupManagerID > 0 {
+				if mgr, err := GetUserByID(groupManagerID); err == nil && mgr != nil {
+					managerUsername = mgr.Username
+				}
+			}
 		}
-	}
 
-	requestsByStatus, err := getRequestStatusCountsForUser(userID)
-	if err != nil {
-		return nil, err
-	}
-	latestRequest, err := getLatestRequestForUser(userID)
-	if err != nil {
-		return nil, err
-	}
-
-	progress := &OnboardingProgress{
-		UserID:           user.ID,
-		Username:         user.Username,
-		Email:            user.Email,
-		UserType:         user.UserType,
-		Role:             user.Role,
-		Verified:         user.Verified,
-		CreatedAt:        user.CreatedAt,
-		ManagerUsername:  managerUsername,
-		Teams:            teams,
-		RequestsByStatus: requestsByStatus,
-	}
-	progress.RequestsTotal = sumStatusCounts(requestsByStatus)
-	progress.SubmittedRequests = progress.RequestsTotal - requestsByStatus["draft"]
-	if latestRequest != nil {
-		progress.LatestRequest = &OnboardingRequestSummary{
-			ID:        latestRequest.ID,
-			Team:      latestRequest.Team,
-			Env:       latestRequest.Env,
-			Cloud:     latestRequest.Cloud,
-			Service:   latestRequest.Service,
-			Status:    latestRequest.Status,
-			PRURL:     latestRequest.PRURL,
-			CreatedAt: latestRequest.CreatedAt,
-			UpdatedAt: latestRequest.UpdatedAt,
+		requestsByStatus, err := getRequestStatusCountsForUser(userID)
+		if err != nil {
+			return nil, err
 		}
-	}
+		latestRequest, err := getLatestRequestForUser(userID)
+		if err != nil {
+			return nil, err
+		}
 
-	progress.Milestones = buildOnboardingMilestones(user, teams, requestsByStatus, latestRequest, managerUsername)
-	progress.CompletionPercent = computeOnboardingCompletion(progress.Milestones)
-	progress.NextAction = deriveOnboardingNextAction(user, teams, requestsByStatus, latestRequest)
-	return progress, nil
+		progress := &OnboardingProgress{
+			UserID:           user.ID,
+			Username:         user.Username,
+			Email:            user.Email,
+			UserType:         user.UserType,
+			Role:             user.Role,
+			Verified:         user.Verified,
+			CreatedAt:        user.CreatedAt,
+			ManagerUsername:  managerUsername,
+			Teams:            teams,
+			RequestsByStatus: requestsByStatus,
+		}
+		progress.RequestsTotal = sumStatusCounts(requestsByStatus)
+		progress.SubmittedRequests = progress.RequestsTotal - requestsByStatus["draft"]
+		if latestRequest != nil {
+			progress.LatestRequest = &OnboardingRequestSummary{
+				ID:        latestRequest.ID,
+				Team:      latestRequest.Team,
+				Env:       latestRequest.Env,
+				Cloud:     latestRequest.Cloud,
+				Service:   latestRequest.Service,
+				Status:    latestRequest.Status,
+				PRURL:     latestRequest.PRURL,
+				CreatedAt: latestRequest.CreatedAt,
+				UpdatedAt: latestRequest.UpdatedAt,
+			}
+		}
+
+		progress.Milestones = buildOnboardingMilestones(user, teams, requestsByStatus, latestRequest, managerUsername)
+		progress.CompletionPercent = computeOnboardingCompletion(progress.Milestones)
+		progress.NextAction = deriveOnboardingNextAction(user, teams, requestsByStatus, latestRequest)
+		return progress, nil
+	})
 }
 
 func getRequestStatusCountsForUser(userID int) (map[string]int, error) {
-	rows, err := DB.Query(`SELECT status, COUNT(*) FROM pr_requests WHERE created_by = $1 GROUP BY status`, userID)
+	rows, cancel, err := queryRowsWithTimeout(`SELECT status, COUNT(*) FROM pr_requests WHERE created_by = $1 GROUP BY status`, userID)
 	if err != nil {
 		return nil, err
 	}
+	defer cancel()
 	defer rows.Close()
 
 	out := map[string]int{
@@ -204,7 +208,7 @@ func getRequestStatusCountsForUser(userID int) (map[string]int, error) {
 }
 
 func getLatestRequestForUser(userID int) (*PRRequest, error) {
-	row := DB.QueryRow(`
+	row := queryRowContext(`
 		SELECT id, team, env, cloud, service, COALESCE(client_name,''), COALESCE(application_id,''), COALESCE(priority,'medium'),
 		       due_date, COALESCE(pr_url,''), COALESCE(branch,''), COALESCE(file_path,''), status, COALESCE(reject_reason,''),
 		       COALESCE(config,''), created_by, assigned_to, created_at, updated_at

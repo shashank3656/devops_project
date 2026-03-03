@@ -209,9 +209,9 @@ func GetSLAMetrics(team, from, to string) (avgHours float64, count int, err erro
 	}
 	var avg *float64
 	if len(args) > 0 {
-		err = DB.QueryRow(query, args...).Scan(&avg, &count)
+		err = queryRowContext(query, args...).Scan(&avg, &count)
 	} else {
-		err = DB.QueryRow(query).Scan(&avg, &count)
+		err = queryRowContext(query).Scan(&avg, &count)
 	}
 	if err != nil {
 		return 0, 0, err
@@ -245,10 +245,11 @@ func GetTeamComparison(from, to string) ([]map[string]interface{}, error) {
 		args = append(args, to)
 	}
 	query += " GROUP BY team ORDER BY total DESC"
-	rows, err := DB.Query(query, args...)
+	rows, cancel, err := queryRowsWithTimeout(query, args...)
 	if err != nil {
 		return nil, err
 	}
+	defer cancel()
 	defer rows.Close()
 	var out []map[string]interface{}
 	for rows.Next() {
@@ -296,10 +297,11 @@ func GetUserActivity(limit, offset int, userIDFilter int) ([]map[string]interfac
 	query += " ORDER BY ua.created_at DESC"
 	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argPos, argPos+1)
 	args = append(args, limit, offset)
-	rows, err := DB.Query(query, args...)
+	rows, cancel, err := queryRowsWithTimeout(query, args...)
 	if err != nil {
 		return nil, err
 	}
+	defer cancel()
 	defer rows.Close()
 	var out []map[string]interface{}
 	for rows.Next() {
@@ -382,10 +384,11 @@ func GetRequestsTrend(days int, team string) ([]map[string]interface{}, error) {
 		args = append(args, "%"+team+"%")
 	}
 	query += " GROUP BY DATE(created_at) ORDER BY day"
-	rows, err := DB.Query(query, args...)
+	rows, cancel, err := queryRowsWithTimeout(query, args...)
 	if err != nil {
 		return nil, err
 	}
+	defer cancel()
 	defer rows.Close()
 	var out []map[string]interface{}
 	for rows.Next() {

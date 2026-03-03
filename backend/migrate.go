@@ -489,6 +489,23 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_template_teams_template_id ON request_template_teams(template_id)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_template_teams_team_id ON request_template_teams(team_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_requests_team_status_created_at ON pr_requests(team, status, created_at DESC)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_requests_created_by_created_at ON pr_requests(created_by, created_at DESC)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_requests_team_env_cloud_status ON pr_requests(team, env, cloud, status)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_team_members_team_role ON team_members(team_id, role)")
+
+	// Migration 31: lightweight materialized summary for request status reporting
+	_, _ = DB.Exec(`
+		CREATE MATERIALIZED VIEW IF NOT EXISTS mv_request_status_summary AS
+		SELECT
+			COALESCE(team, '') AS team,
+			COALESCE(status, '') AS status,
+			COUNT(*) AS request_count,
+			MAX(updated_at) AS last_updated_at
+		FROM pr_requests
+		GROUP BY COALESCE(team, ''), COALESCE(status, '')
+	`)
+	_, _ = DB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_request_status_summary_team_status ON mv_request_status_summary(team, status)`)
 
 	log.Println("Database schema is up to date")
 	return nil
