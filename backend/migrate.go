@@ -742,11 +742,13 @@ func MigrateDatabase() error {
 			environment VARCHAR(40) NOT NULL DEFAULT '',
 			namespace VARCHAR(160) NOT NULL DEFAULT '',
 			auth_mode VARCHAR(40) NOT NULL DEFAULT 'service_account',
+			auth_credential TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(project_id, cluster_name, environment)
 		)
 	`)
+	_, _ = DB.Exec("ALTER TABLE project_k8s_connections ADD COLUMN IF NOT EXISTS auth_credential TEXT NOT NULL DEFAULT ''")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_k8s_connections_project_id ON project_k8s_connections(project_id)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_k8s_connections_cluster_name ON project_k8s_connections(cluster_name)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_k8s_connections_environment ON project_k8s_connections(environment)")
