@@ -592,6 +592,8 @@ func main() {
 	http.HandleFunc("/api/devops/change-calendar", devopsChangeCalendarHandler)
 	http.HandleFunc("/api/devops/approval-sla", devopsApprovalSLAHandler)
 	http.HandleFunc("/api/devops/service-heatmap", devopsServiceHeatmapHandler)
+	http.HandleFunc("/api/devops/k8s-connections", devopsK8sConnectionsHandler)
+	http.HandleFunc("/api/devops/k8s-overview", devopsK8sOverviewHandler)
 	http.HandleFunc("/api/devops/runbooks", devopsRunbooksHandler)
 	http.HandleFunc("/api/devops/runbooks/", devopsRunbookDetailHandler)
 	http.HandleFunc("/api/devops/incidents", devopsIncidentsHandler)
