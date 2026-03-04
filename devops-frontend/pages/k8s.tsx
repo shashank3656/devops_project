@@ -235,9 +235,15 @@ function normalizeOverviewData(value: Partial<K8sOverviewData> | null | undefine
     selected_cluster: typeof value.selected_cluster === 'string' ? value.selected_cluster : '',
     selected_namespace: typeof value.selected_namespace === 'string' ? value.selected_namespace : '',
     selected_environment: typeof value.selected_environment === 'string' ? value.selected_environment : '',
-    clusters: Array.isArray(value.clusters) ? value.clusters.filter((item): item is string => typeof item === 'string') : [],
-    namespaces: Array.isArray(value.namespaces) ? value.namespaces.filter((item): item is string => typeof item === 'string') : [],
-    environments: Array.isArray(value.environments) ? value.environments.filter((item): item is string => typeof item === 'string') : [],
+    clusters: Array.isArray(value.clusters)
+      ? value.clusters.filter((item: unknown): item is string => typeof item === 'string')
+      : [],
+    namespaces: Array.isArray(value.namespaces)
+      ? value.namespaces.filter((item: unknown): item is string => typeof item === 'string')
+      : [],
+    environments: Array.isArray(value.environments)
+      ? value.environments.filter((item: unknown): item is string => typeof item === 'string')
+      : [],
     summary: {
       namespace_count: typeof value.summary?.namespace_count === 'number' ? value.summary.namespace_count : 0,
       deployment_count: typeof value.summary?.deployment_count === 'number' ? value.summary.deployment_count : 0,
@@ -264,7 +270,9 @@ function normalizeOnboardingData(value: Partial<K8sOnboardingData> | null | unde
   return {
     projects: normalizeProjects(value?.projects),
     connections: normalizeConnections(value?.connections),
-    auth_modes: Array.isArray(value?.auth_modes) ? value.auth_modes.filter((item): item is string => typeof item === 'string') : [],
+    auth_modes: Array.isArray(value?.auth_modes)
+      ? value.auth_modes.filter((item: unknown): item is string => typeof item === 'string')
+      : [],
   };
 }
 
