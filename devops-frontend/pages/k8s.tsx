@@ -40,6 +40,7 @@ interface K8sConnection {
   environment: string;
   namespace: string;
   auth_mode: string;
+  has_auth_credential: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -221,9 +222,44 @@ function normalizeConnections(value: unknown): K8sConnection[] {
     environment: typeof item?.environment === 'string' ? item.environment : '',
     namespace: typeof item?.namespace === 'string' ? item.namespace : '',
     auth_mode: typeof item?.auth_mode === 'string' ? item.auth_mode : '',
+    has_auth_credential: item?.has_auth_credential === true,
     created_at: typeof item?.created_at === 'string' ? item.created_at : '',
     updated_at: typeof item?.updated_at === 'string' ? item.updated_at : '',
   }));
+}
+
+function authModeRequiresCredential(mode: string): boolean {
+  return mode !== 'in_cluster';
+}
+
+function authModeCredentialLabel(mode: string): string {
+  switch (mode) {
+    case 'kubeconfig':
+      return 'Kubeconfig content';
+    case 'service_account':
+      return 'Service account token';
+    case 'token':
+      return 'Bearer token';
+    case 'oidc':
+      return 'OIDC token';
+    default:
+      return 'Auth credential';
+  }
+}
+
+function authModeCredentialPlaceholder(mode: string): string {
+  switch (mode) {
+    case 'kubeconfig':
+      return 'Paste kubeconfig content here';
+    case 'service_account':
+      return 'Paste service account token';
+    case 'token':
+      return 'Paste cluster access token';
+    case 'oidc':
+      return 'Paste OIDC token';
+    default:
+      return 'Paste authentication credential';
+  }
 }
 
 function normalizeOverviewData(value: Partial<K8sOverviewData> | null | undefined): K8sOverviewData | null {
@@ -302,6 +338,7 @@ export default function DevOpsK8sPage() {
     cluster_endpoint: '',
     environment: '',
     auth_mode: 'service_account',
+    auth_credential: '',
   });
 
   const selectedProject = useMemo(
@@ -336,9 +373,10 @@ export default function DevOpsK8sPage() {
         ...current,
         project_id: String(nextData.projects[0].id),
         cloud: current.cloud || nextData.projects[0].clouds[0] || '',
-        environment: current.environment || nextData.projects[0].environments[0] || '',
-        auth_mode: current.auth_mode || nextData.auth_modes[0] || 'service_account',
-      }));
+          environment: current.environment || nextData.projects[0].environments[0] || '',
+          auth_mode: current.auth_mode || nextData.auth_modes[0] || 'service_account',
+          auth_credential: current.auth_credential || '',
+        }));
     }
   };
 
@@ -467,6 +505,7 @@ export default function DevOpsK8sPage() {
           cluster_endpoint: form.cluster_endpoint,
           environment: form.environment,
           auth_mode: form.auth_mode,
+          auth_credential: form.auth_credential,
         }),
       });
       if (response.status === 401 || response.status === 403) {
@@ -681,6 +720,34 @@ export default function DevOpsK8sPage() {
                       ))}
                     </select>
                   </label>
+                  {authModeRequiresCredential(form.auth_mode) ? (
+                    <label className="label portal-form-grid__span-2">
+                      {authModeCredentialLabel(form.auth_mode)}
+                      {form.auth_mode === 'kubeconfig' ? (
+                        <textarea
+                          className="input"
+                          value={form.auth_credential}
+                          onChange={(event) => setForm((current) => ({ ...current, auth_credential: event.target.value }))}
+                          placeholder={authModeCredentialPlaceholder(form.auth_mode)}
+                          rows={6}
+                          required
+                        />
+                      ) : (
+                        <input
+                          className="input"
+                          type="password"
+                          value={form.auth_credential}
+                          onChange={(event) => setForm((current) => ({ ...current, auth_credential: event.target.value }))}
+                          placeholder={authModeCredentialPlaceholder(form.auth_mode)}
+                          required
+                        />
+                      )}
+                    </label>
+                  ) : (
+                    <div className="portal-note">
+                      In-cluster mode does not require a manually pasted credential. The backend is expected to run with cluster-native access.
+                    </div>
+                  )}
                 </div>
                 <div className="portal-form-actions" style={{ marginTop: 18 }}>
                   <button type="submit" className="btn btn-primary" disabled={saving}>
@@ -708,6 +775,7 @@ export default function DevOpsK8sPage() {
                       <th>Environment</th>
                       <th>Namespace</th>
                       <th>Auth mode</th>
+                      <th>Credential</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -720,11 +788,12 @@ export default function DevOpsK8sPage() {
                         <td>{item.environment}</td>
                         <td>{item.namespace}</td>
                         <td>{item.auth_mode}</td>
+                        <td>{item.has_auth_credential ? 'Configured' : 'Missing'}</td>
                       </tr>
                     ))}
                     {onboarding.connections.length === 0 ? (
                       <tr>
-                        <td colSpan={7}>No K8s onboarding records yet.</td>
+                        <td colSpan={8}>No K8s onboarding records yet.</td>
                       </tr>
                     ) : null}
                   </tbody>
@@ -744,20 +813,20 @@ export default function DevOpsK8sPage() {
                   </p>
                 </div>
               </div>
-              <div className="portal-form-grid">
-                <label className="label">
-                  Project name
-                  <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+              <div className="k8s-filter-toolbar">
+                <div className="k8s-filter-toolbar__group">
+                  <span className="k8s-filter-toolbar__label">project</span>
+                  <select className="k8s-filter-toolbar__select" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
                     {overview?.projects.map((project) => (
                       <option key={project.id} value={project.id}>
                         {project.name} ({project.code})
                       </option>
                     ))}
                   </select>
-                </label>
-                <label className="label">
-                  Cluster name
-                  <select className="input" value={clusterName} onChange={(event) => setClusterName(event.target.value)}>
+                </div>
+                <div className="k8s-filter-toolbar__group">
+                  <span className="k8s-filter-toolbar__label">cluster</span>
+                  <select className="k8s-filter-toolbar__select" value={clusterName} onChange={(event) => setClusterName(event.target.value)}>
                     <option value="">All clusters</option>
                     {overview?.clusters.map((item) => (
                       <option key={item} value={item}>
@@ -765,10 +834,10 @@ export default function DevOpsK8sPage() {
                       </option>
                     ))}
                   </select>
-                </label>
-                <label className="label">
-                  Namespace
-                  <select className="input" value={namespace} onChange={(event) => setNamespace(event.target.value)}>
+                </div>
+                <div className="k8s-filter-toolbar__group">
+                  <span className="k8s-filter-toolbar__label">namespace</span>
+                  <select className="k8s-filter-toolbar__select" value={namespace} onChange={(event) => setNamespace(event.target.value)}>
                     <option value="">All namespaces</option>
                     {overview?.namespaces.map((item) => (
                       <option key={item} value={item}>
@@ -776,10 +845,10 @@ export default function DevOpsK8sPage() {
                       </option>
                     ))}
                   </select>
-                </label>
-                <label className="label">
-                  Env
-                  <select className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)}>
+                </div>
+                <div className="k8s-filter-toolbar__group">
+                  <span className="k8s-filter-toolbar__label">env</span>
+                  <select className="k8s-filter-toolbar__select" value={environment} onChange={(event) => setEnvironment(event.target.value)}>
                     <option value="">All environments</option>
                     {overview?.environments.map((item) => (
                       <option key={item} value={item}>
@@ -787,10 +856,8 @@ export default function DevOpsK8sPage() {
                       </option>
                     ))}
                   </select>
-                </label>
-              </div>
-              <div className="portal-form-actions" style={{ marginTop: 18 }}>
-                <button type="button" className="btn btn-primary" onClick={handleApplyFilters} disabled={loading}>
+                </div>
+                <button type="button" className="k8s-filter-toolbar__action" onClick={handleApplyFilters} disabled={loading}>
                   {loading ? 'Loading...' : 'Apply filters'}
                 </button>
               </div>

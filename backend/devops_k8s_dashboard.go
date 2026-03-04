@@ -19,18 +19,19 @@ type k8sProjectOption struct {
 }
 
 type k8sConnectionRecord struct {
-	ID              int       `json:"id"`
-	ProjectID       int       `json:"project_id"`
-	ProjectName     string    `json:"project_name"`
-	ProjectCode     string    `json:"project_code"`
-	Cloud           string    `json:"cloud"`
-	ClusterName     string    `json:"cluster_name"`
-	ClusterEndpoint string    `json:"cluster_endpoint"`
-	Environment     string    `json:"environment"`
-	Namespace       string    `json:"namespace"`
-	AuthMode        string    `json:"auth_mode"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                int       `json:"id"`
+	ProjectID         int       `json:"project_id"`
+	ProjectName       string    `json:"project_name"`
+	ProjectCode       string    `json:"project_code"`
+	Cloud             string    `json:"cloud"`
+	ClusterName       string    `json:"cluster_name"`
+	ClusterEndpoint   string    `json:"cluster_endpoint"`
+	Environment       string    `json:"environment"`
+	Namespace         string    `json:"namespace"`
+	AuthMode          string    `json:"auth_mode"`
+	HasAuthCredential bool      `json:"has_auth_credential"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type k8sOnboardingInput struct {
@@ -40,6 +41,7 @@ type k8sOnboardingInput struct {
 	ClusterEndpoint string `json:"cluster_endpoint"`
 	Environment     string `json:"environment"`
 	AuthMode        string `json:"auth_mode"`
+	AuthCredential  string `json:"auth_credential"`
 }
 
 type k8sSummary struct {
@@ -259,6 +261,7 @@ func listK8sConnections() ([]k8sConnectionRecord, error) {
 			COALESCE(c.environment, ''),
 			COALESCE(c.namespace, ''),
 			COALESCE(c.auth_mode, ''),
+			CASE WHEN COALESCE(c.auth_credential, '') <> '' THEN TRUE ELSE FALSE END,
 			c.created_at,
 			c.updated_at
 		FROM project_k8s_connections c
@@ -285,6 +288,7 @@ func listK8sConnections() ([]k8sConnectionRecord, error) {
 			&item.Environment,
 			&item.Namespace,
 			&item.AuthMode,
+			&item.HasAuthCredential,
 			&item.CreatedAt,
 			&item.UpdatedAt,
 		); err != nil {
@@ -301,6 +305,7 @@ func sanitizeK8sOnboardingInput(input k8sOnboardingInput) (k8sOnboardingInput, *
 	input.ClusterEndpoint = strings.TrimSpace(input.ClusterEndpoint)
 	input.Environment = strings.ToLower(strings.TrimSpace(input.Environment))
 	input.AuthMode = strings.ToLower(strings.TrimSpace(input.AuthMode))
+	input.AuthCredential = strings.TrimSpace(input.AuthCredential)
 
 	if input.ProjectID <= 0 {
 		return input, nil, fmt.Errorf("project is required")
@@ -337,6 +342,9 @@ func sanitizeK8sOnboardingInput(input k8sOnboardingInput) (k8sOnboardingInput, *
 	}
 	if !validAuth {
 		return input, nil, fmt.Errorf("invalid auth mode")
+	}
+	if input.AuthMode != "in_cluster" && input.AuthCredential == "" {
+		return input, nil, fmt.Errorf("authentication credential is required for %s mode", input.AuthMode)
 	}
 
 	allowedEnv := false
@@ -375,16 +383,17 @@ func createOrUpdateK8sConnection(input k8sOnboardingInput, updatedBy *int) (*k8s
 
 	_, err = DB.ExecContext(ctx, `
 		INSERT INTO project_k8s_connections
-			(project_id, cloud, cluster_name, cluster_endpoint, environment, namespace, auth_mode)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+			(project_id, cloud, cluster_name, cluster_endpoint, environment, namespace, auth_mode, auth_credential)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (project_id, cluster_name, environment)
 		DO UPDATE SET
 			cloud = EXCLUDED.cloud,
 			cluster_endpoint = EXCLUDED.cluster_endpoint,
 			namespace = EXCLUDED.namespace,
 			auth_mode = EXCLUDED.auth_mode,
+			auth_credential = EXCLUDED.auth_credential,
 			updated_at = CURRENT_TIMESTAMP
-	`, input.ProjectID, input.Cloud, input.ClusterName, input.ClusterEndpoint, input.Environment, namespace, input.AuthMode)
+	`, input.ProjectID, input.Cloud, input.ClusterName, input.ClusterEndpoint, input.Environment, namespace, input.AuthMode, input.AuthCredential)
 	if err != nil {
 		return nil, err
 	}
