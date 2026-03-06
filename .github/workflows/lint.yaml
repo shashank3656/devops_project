@@ -1,65 +1,92 @@
-name: Lint Code
+name: Lint & Static Checks
 
 on:
   push:
     branches:
-      - "feature/*"
-      - "dev"
-
+      - main
+      - dev
+      - "feature/**"
   pull_request:
     branches:
       - main
       - dev
 
+concurrency:
+  group: lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-
-  react-lint:
-    name: React Lint
+  frontend-lint:
+    name: Frontend Lint (Biome) - ${{ matrix.app }}
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: frontend
-
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - frontend
+          - admin-frontend
+          - devops-frontend
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "20"
 
-      - name: Install Dependencies
-        run: |
-          npm install
-          npm install eslint@8 eslint-plugin-react --save-dev
-
-      - name: Run ESLint
-        run: npx eslint . --ext .js,.jsx,.ts,.tsx
-
+      - name: Run Biome checks for ${{ matrix.app }}
+        run: npx -y @biomejs/biome check ${{ matrix.app }}
 
   go-lint:
-    name: Go Lint
+    name: Go Lint (golangci-lint)
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: backend
-
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version-file: backend/go.mod
 
-      - name: Install golangci-lint
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
-          | sh -s -- -b $(go env GOPATH)/bin v1.59.1
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.59.1
+          working-directory: backend
+          args: --timeout=5m
 
-      - name: Run Go Lint
-        run: golangci-lint run ./...
+  workflow-lint:
+    name: Workflow Lint (actionlint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run actionlint
+        uses: rhysd/actionlint@v1
+
+  dockerfile-lint:
+    name: Dockerfile Lint (Hadolint)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dockerfile:
+          - backend/Dockerfile
+          - backend/Dockerfile.dev
+          - frontend/Dockerfile
+          - admin-frontend/Dockerfile
+          - devops-frontend/Dockerfile
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Lint ${{ matrix.dockerfile }}
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ${{ matrix.dockerfile }}
