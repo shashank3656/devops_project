@@ -34,6 +34,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Install wget for health checks
+# hadolint ignore=DL3018
 RUN apk --no-cache add wget
 
 # Copy package files

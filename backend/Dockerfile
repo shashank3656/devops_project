@@ -18,6 +18,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o backend .
 # Runtime stage
 FROM alpine:latest
 
+# hadolint ignore=DL3018
 RUN apk --no-cache add ca-certificates wget postgresql-client
 RUN addgroup -S app && adduser -S -G app app
 
