@@ -4,6 +4,7 @@ FROM golang:1.22-alpine
 WORKDIR /app
 
 # Install git (needed for go mod download)
+# hadolint ignore=DL3018
 RUN apk add --no-cache git ca-certificates
 
 # Copy go.mod first for better caching
