@@ -325,7 +325,7 @@ jobs:
         if: env.SLACK_WEBHOOK != ''
         uses: slackapi/slack-github-action@v1.26.0
         with:
-          webhook: ${{ env.SLACK_WEBHOOK }}
+          webhook-url: ${{ env.SLACK_WEBHOOK }}
           webhook-type: incoming-webhook
           payload: |
             {
