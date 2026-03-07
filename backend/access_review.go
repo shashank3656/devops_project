@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -263,14 +264,18 @@ func adminAccessReviewHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"}); err != nil {
+			log.Printf("access review response encode failed: %v", err)
+		}
 		return
 	}
 	users, err := listAccessReviewUsers()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"}); err != nil {
+			log.Printf("access review response encode failed: %v", err)
+		}
 		return
 	}
 
@@ -304,12 +309,14 @@ func adminAccessReviewHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"}); err != nil {
+			log.Printf("access review response encode failed: %v", err)
+		}
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":   "ok",
 		"users":    users,
 		"projects": projects,
@@ -321,5 +328,7 @@ func adminAccessReviewHandler(w http.ResponseWriter, r *http.Request) {
 			"portal_managers":      portalManagers,
 			"devops_managers":      devopsManagers,
 		},
-	})
+	}); err != nil {
+		log.Printf("access review response encode failed: %v", err)
+	}
 }

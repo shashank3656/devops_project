@@ -148,7 +148,6 @@ export default function NewDevopsUser() {
                   onChange={(e) => setUsername(e.target.value)}
                   required
                   placeholder="e.g. jane"
-                  autoFocus
                 />
               </div>
               <div className="form-group">

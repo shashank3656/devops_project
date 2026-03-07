@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -33,7 +34,7 @@ func swaggerHandler(w http.ResponseWriter, r *http.Request) {
 						"content": map[string]interface{}{
 							"application/json": map[string]interface{}{
 								"schema": map[string]interface{}{
-									"type": "object",
+									"type":     "object",
 									"required": []string{"team", "env", "cloud", "service"},
 									"properties": map[string]interface{}{
 										"team":    map[string]interface{}{"type": "string"},
@@ -71,31 +72,31 @@ func swaggerHandler(w http.ResponseWriter, r *http.Request) {
 					"parameters": []map[string]interface{}{
 						{
 							"name":        "team",
-							"in":           "query",
-							"description":  "Filter by team",
-							"required":     false,
-							"schema":       map[string]interface{}{"type": "string"},
+							"in":          "query",
+							"description": "Filter by team",
+							"required":    false,
+							"schema":      map[string]interface{}{"type": "string"},
 						},
 						{
 							"name":        "env",
-							"in":           "query",
-							"description":  "Filter by environment",
-							"required":     false,
-							"schema":       map[string]interface{}{"type": "string"},
+							"in":          "query",
+							"description": "Filter by environment",
+							"required":    false,
+							"schema":      map[string]interface{}{"type": "string"},
 						},
 						{
 							"name":        "limit",
-							"in":           "query",
-							"description":  "Number of results to return",
-							"required":     false,
-							"schema":       map[string]interface{}{"type": "integer", "default": 50},
+							"in":          "query",
+							"description": "Number of results to return",
+							"required":    false,
+							"schema":      map[string]interface{}{"type": "integer", "default": 50},
 						},
 						{
 							"name":        "offset",
-							"in":           "query",
-							"description":  "Number of results to skip",
-							"required":     false,
-							"schema":       map[string]interface{}{"type": "integer", "default": 0},
+							"in":          "query",
+							"description": "Number of results to skip",
+							"required":    false,
+							"schema":      map[string]interface{}{"type": "integer", "default": 0},
 						},
 					},
 					"responses": map[string]interface{}{
@@ -114,7 +115,7 @@ func swaggerHandler(w http.ResponseWriter, r *http.Request) {
 						"content": map[string]interface{}{
 							"application/json": map[string]interface{}{
 								"schema": map[string]interface{}{
-									"type": "object",
+									"type":     "object",
 									"required": []string{"username", "email", "password"},
 									"properties": map[string]interface{}{
 										"username": map[string]interface{}{"type": "string"},
@@ -141,7 +142,7 @@ func swaggerHandler(w http.ResponseWriter, r *http.Request) {
 						"content": map[string]interface{}{
 							"application/json": map[string]interface{}{
 								"schema": map[string]interface{}{
-									"type": "object",
+									"type":     "object",
 									"required": []string{"username", "password"},
 									"properties": map[string]interface{}{
 										"username": map[string]interface{}{"type": "string"},
@@ -161,7 +162,9 @@ func swaggerHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	json.NewEncoder(w).Encode(swaggerSpec)
+	if err := json.NewEncoder(w).Encode(swaggerSpec); err != nil {
+		log.Printf("swagger spec response encode failed: %v", err)
+	}
 }
 
 func swaggerUIHandler(w http.ResponseWriter, r *http.Request) {
@@ -204,5 +207,7 @@ func swaggerUIHandler(w http.ResponseWriter, r *http.Request) {
 </body>
 </html>`
 
-	w.Write([]byte(html))
+	if _, err := w.Write([]byte(html)); err != nil {
+		log.Printf("swagger ui response write failed: %v", err)
+	}
 }

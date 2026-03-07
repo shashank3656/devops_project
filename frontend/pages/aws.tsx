@@ -18,7 +18,7 @@ export default function AWSPage() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
-    if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
+    if (token && token !== 'undefined') headers.Authorization = `Bearer ${token}`;
 
     const res = await fetch(`${apiUrl}/api/request`, {
       method: 'POST',
@@ -56,7 +56,7 @@ export default function AWSPage() {
       </select>
 
       <br /><br />
-      <button onClick={submit}>Create PR</button>
+      <button type="button" onClick={submit}>Create PR</button>
     </div>
   );
 }

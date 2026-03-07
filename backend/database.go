@@ -903,7 +903,6 @@ func ListUserNotificationsFiltered(userID int, limit, offset int, unreadOnly boo
 	if offset > 0 {
 		q += fmt.Sprintf(" OFFSET $%d", argPos)
 		args = append(args, offset)
-		argPos++
 	}
 	rows, err := DB.Query(q, args...)
 	if err != nil {
@@ -942,11 +941,9 @@ func CountUserNotifications(userID int, unreadOnly bool, kind string) (int, erro
 	return cacheJSON[int](cacheNamespaceNotify, 30*time.Second, []string{strconv.Itoa(userID), strconv.FormatBool(unreadOnly), strings.TrimSpace(kind)}, func() (int, error) {
 		q := "SELECT COUNT(*) FROM user_notifications WHERE user_id = $1"
 		args := []interface{}{userID}
-		argPos := 2
 		if strings.TrimSpace(kind) != "" {
-			q += fmt.Sprintf(" AND kind = $%d", argPos)
+			q += " AND kind = $2"
 			args = append(args, strings.TrimSpace(kind))
-			argPos++
 		}
 		if unreadOnly {
 			q += " AND read_at IS NULL"
@@ -1435,9 +1432,8 @@ func GetPRRequests(team, env, cloud string, projectID int, statusFilter, priorit
 	if toDate != "" {
 		query += fmt.Sprintf(" AND r.created_at < ($%d::date + interval '1 day')", argPos)
 		args = append(args, toDate)
-		argPos++
 	}
-	orderCol := "created_at"
+	var orderCol string
 	switch sortBy {
 	case "updated_at":
 		orderCol = "r.updated_at"
@@ -1467,7 +1463,6 @@ func GetPRRequests(team, env, cloud string, projectID int, statusFilter, priorit
 	if offset > 0 {
 		query += fmt.Sprintf(" OFFSET $%d", argPos)
 		args = append(args, offset)
-		argPos++
 	}
 
 	rows, err := DB.Query(query, args...)
@@ -2317,7 +2312,9 @@ func DeleteUser(userID int) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 	// Remove comments by this user (request_comments has no ON DELETE)
 	if _, err := tx.Exec("DELETE FROM request_comments WHERE user_id = $1", userID); err != nil {
 		return err
@@ -2496,7 +2493,6 @@ func GetTotalCount(team, env, cloud string, projectID int, statusFilter, priorit
 	if toDate != "" {
 		query += fmt.Sprintf(" AND r.created_at < ($%d::date + interval '1 day')", argPos)
 		args = append(args, toDate)
-		argPos++
 	}
 
 	var count int
@@ -3674,7 +3670,9 @@ func SetRequestTemplateTeams(templateID int, teamIDs []int) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	if _, err := tx.Exec(`DELETE FROM request_template_teams WHERE template_id = $1`, templateID); err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
@@ -3724,7 +3722,9 @@ func SetRequestTemplateProjects(templateID int, projectIDs []int) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	if _, err := tx.Exec(`DELETE FROM request_template_projects WHERE template_id = $1`, templateID); err != nil {
 		if strings.Contains(err.Error(), "does not exist") {

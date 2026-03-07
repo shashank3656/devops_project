@@ -56,7 +56,9 @@ function normalizeOverrides(value: unknown): OverrideItem[] {
     project_code: typeof override?.project_code === 'string' ? override.project_code : 'n/a',
     user_id: typeof override?.user_id === 'number' ? override.user_id : 0,
     username: typeof override?.username === 'string' ? override.username : 'unknown',
-    environments: Array.isArray(override?.environments) ? override.environments.filter((item): item is string => typeof item === 'string') : [],
+    environments: Array.isArray(override?.environments)
+      ? override.environments.filter((item: unknown): item is string => typeof item === 'string')
+      : [],
     permission: typeof override?.permission === 'string' ? override.permission : 'read',
     reason: typeof override?.reason === 'string' ? override.reason : '',
     expires_at: typeof override?.expires_at === 'string' ? override.expires_at : '',

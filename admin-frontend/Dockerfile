@@ -15,6 +15,7 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
+# hadolint ignore=DL3018
 RUN apk --no-cache add wget
 COPY --from=builder --chown=node:node /app/package.json ./
 COPY --from=builder --chown=node:node /app/next.config.js ./

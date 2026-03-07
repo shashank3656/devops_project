@@ -14,8 +14,7 @@ export default function App({ Component, pageProps }: AppProps) {
   }, []);
   return (
     <ApiUrlProvider>
-      <>
-        <Head>
+      <Head>
         <link rel="icon" type="image/svg+xml" href="/logo.svg" />
         <link rel="manifest" href="/manifest.json" />
         <title>{DEVOPS_SITE_NAME}</title>
@@ -24,7 +23,6 @@ export default function App({ Component, pageProps }: AppProps) {
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
       </Head>
       <Component {...pageProps} />
-      </>
     </ApiUrlProvider>
   );
 }

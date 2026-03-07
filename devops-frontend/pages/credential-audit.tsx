@@ -178,8 +178,13 @@ export default function CredentialAuditPage() {
             <div className="portal-toolbar">
               <div className="portal-toolbar__group">
                 <div className="portal-toolbar__item">
-                  <label className="credential-audit-label">Cloud</label>
-                  <select value={cloudFilter} onChange={(event) => setCloudFilter(event.target.value)} className="input">
+                  <label className="credential-audit-label" htmlFor="credential-audit-cloud-filter">Cloud</label>
+                  <select
+                    id="credential-audit-cloud-filter"
+                    value={cloudFilter}
+                    onChange={(event) => setCloudFilter(event.target.value)}
+                    className="input"
+                  >
                     <option value="">All</option>
                     <option value="AWS">AWS</option>
                     <option value="GCP">GCP</option>
@@ -187,8 +192,13 @@ export default function CredentialAuditPage() {
                   </select>
                 </div>
                 <div className="portal-toolbar__item">
-                  <label className="credential-audit-label">Project</label>
-                  <select value={projectId} onChange={(event) => setProjectId(event.target.value)} className="input">
+                  <label className="credential-audit-label" htmlFor="credential-audit-project-filter">Project</label>
+                  <select
+                    id="credential-audit-project-filter"
+                    value={projectId}
+                    onChange={(event) => setProjectId(event.target.value)}
+                    className="input"
+                  >
                     <option value="">All projects</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>
@@ -198,12 +208,24 @@ export default function CredentialAuditPage() {
                   </select>
                 </div>
                 <div className="portal-toolbar__item">
-                  <label className="credential-audit-label">From date</label>
-                  <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="input" />
+                  <label className="credential-audit-label" htmlFor="credential-audit-from-date">From date</label>
+                  <input
+                    id="credential-audit-from-date"
+                    type="date"
+                    value={fromDate}
+                    onChange={(event) => setFromDate(event.target.value)}
+                    className="input"
+                  />
                 </div>
                 <div className="portal-toolbar__item">
-                  <label className="credential-audit-label">To date</label>
-                  <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="input" />
+                  <label className="credential-audit-label" htmlFor="credential-audit-to-date">To date</label>
+                  <input
+                    id="credential-audit-to-date"
+                    type="date"
+                    value={toDate}
+                    onChange={(event) => setToDate(event.target.value)}
+                    className="input"
+                  />
                 </div>
               </div>
               <div className="portal-page__actions">

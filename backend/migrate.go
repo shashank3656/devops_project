@@ -731,6 +731,28 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_ops_delivery_failures_status ON ops_delivery_failures(status)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_ops_delivery_failures_job_type ON ops_delivery_failures(job_type)")
 
+	// Migration 36: project_k8s_connections (project-wise Kubernetes onboarding registry)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_k8s_connections (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			cloud VARCHAR(40) NOT NULL DEFAULT '',
+			cluster_name VARCHAR(160) NOT NULL,
+			cluster_endpoint TEXT NOT NULL DEFAULT '',
+			environment VARCHAR(40) NOT NULL DEFAULT '',
+			namespace VARCHAR(160) NOT NULL DEFAULT '',
+			auth_mode VARCHAR(40) NOT NULL DEFAULT 'service_account',
+			auth_credential TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(project_id, cluster_name, environment)
+		)
+	`)
+	_, _ = DB.Exec("ALTER TABLE project_k8s_connections ADD COLUMN IF NOT EXISTS auth_credential TEXT NOT NULL DEFAULT ''")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_k8s_connections_project_id ON project_k8s_connections(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_k8s_connections_cluster_name ON project_k8s_connections(cluster_name)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_k8s_connections_environment ON project_k8s_connections(environment)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }

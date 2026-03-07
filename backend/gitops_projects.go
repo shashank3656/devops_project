@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -370,7 +369,7 @@ func devopsGitOpsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 
@@ -382,7 +381,7 @@ func devopsGitOpsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		project := buildGitOpsProjectSummary(catalogProject, requests)
@@ -395,7 +394,7 @@ func devopsGitOpsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeJSON(w, map[string]interface{}{
 		"status": "ok",
 		"repo": map[string]interface{}{
 			"owner":       GitHubOwner,
@@ -436,7 +435,7 @@ func devopsGitOpsPreviewHandler(w http.ResponseWriter, r *http.Request) {
 	if projectID <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "project_id is required", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "project_id is required", "status": "error"})
 		return
 	}
 
@@ -444,13 +443,13 @@ func devopsGitOpsPreviewHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	if selectedProject == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "project not available in this DevOps scope", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "project not available in this DevOps scope", "status": "error"})
 		return
 	}
 
@@ -468,5 +467,5 @@ func devopsGitOpsPreviewHandler(w http.ResponseWriter, r *http.Request) {
 
 	preview := buildGitOpsPreview(*selectedProject, env, component)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "preview": preview})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "preview": preview})
 }
