@@ -4,13 +4,47 @@ import (
 	"bytes"
 	"crypto/tls"
 	"fmt"
+	"html"
 	"log"
+	"net/mail"
 	"net/smtp"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 )
+
+func sanitizeEmailHeaderValue(value, field string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", fmt.Errorf("%s is required", field)
+	}
+	if strings.ContainsAny(trimmed, "\r\n") {
+		return "", fmt.Errorf("%s contains invalid characters", field)
+	}
+	return trimmed, nil
+}
+
+func sanitizeEmailAddress(value, field string) (string, error) {
+	headerValue, err := sanitizeEmailHeaderValue(value, field)
+	if err != nil {
+		return "", err
+	}
+	parsed, err := mail.ParseAddress(headerValue)
+	if err != nil {
+		return "", fmt.Errorf("invalid %s", field)
+	}
+	if strings.ContainsAny(parsed.Address, "\r\n") {
+		return "", fmt.Errorf("invalid %s", field)
+	}
+	return parsed.Address, nil
+}
+
+func sanitizeEmailBody(value string) string {
+	normalized := strings.ReplaceAll(value, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	return normalized
+}
 
 // SendEmail sends an email via SMTP if configured. No-op if SMTP_HOST is empty.
 // Logs each step for debugging.
@@ -34,6 +68,20 @@ func SendEmail(to, subject, body string) error {
 	if from == "" {
 		from = "noreply@localhost"
 	}
+	to, err = sanitizeEmailAddress(to, "to")
+	if err != nil {
+		return err
+	}
+	from, err = sanitizeEmailAddress(from, "from")
+	if err != nil {
+		return err
+	}
+	subject, err = sanitizeEmailHeaderValue(subject, "subject")
+	if err != nil {
+		return err
+	}
+	body = sanitizeEmailBody(body)
+
 	useTLS := strings.ToLower(os.Getenv("SMTP_USE_TLS")) != "false"
 
 	log.Printf("[Email] Sending to=%s subject=%q host=%s port=%d useTLS=%v", to, subject, host, port, useTLS)
@@ -133,15 +181,15 @@ func buildMIMEMessage(from, to, subject, textBody, htmlBody, boundary string) []
 
 // WrapEmailHTML wraps plain text in a simple HTML email template
 func WrapEmailHTML(subject, body string) string {
-	escaped := strings.ReplaceAll(body, "<", "&lt;")
-	escaped = strings.ReplaceAll(escaped, ">", "&gt;")
+	escaped := html.EscapeString(body)
 	escaped = strings.ReplaceAll(escaped, "\n", "<br>\n")
+	subjectEscaped := html.EscapeString(subject)
 	return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>` + subject + `</title>
+  <title>` + subjectEscaped + `</title>
 </head>
 <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.6;color:#334155;background:#f8fafc;">
   <div style="max-width:600px;margin:24px auto;padding:24px;background:#fff;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.05);">

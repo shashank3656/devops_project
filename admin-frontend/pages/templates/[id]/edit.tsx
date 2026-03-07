@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -36,9 +36,20 @@ interface ProjectSummary {
   status?: string;
 }
 
+function parsePositiveIntParam(value: unknown): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
 export default function EditTemplate() {
   const router = useRouter();
   const { id } = router.query;
+  const routeTemplateId = useMemo(() => parsePositiveIntParam(id), [id]);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [cloud, setCloud] = useState('aws');
@@ -50,6 +61,7 @@ export default function EditTemplate() {
   const [selectedTeamIds, setSelectedTeamIds] = useState<number[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
+  const [templateID, setTemplateID] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(true);
@@ -89,11 +101,11 @@ export default function EditTemplate() {
 
   const fetchTemplate = useCallback(async () => {
     const token = localStorage.getItem('admin_token');
-    if (!token || typeof id !== 'string' || !id) return;
+    if (!token || !routeTemplateId) return;
     setFetchLoading(true);
     setError('');
     try {
-      const res = await fetch(`${apiUrl}/api/admin/templates/${id}`, {
+      const res = await fetch(`${apiUrl}/api/admin/templates`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401 || res.status === 403) {
@@ -101,8 +113,10 @@ export default function EditTemplate() {
         return;
       }
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.template) {
-        const t = data.template as RequestTemplate;
+      const templates = Array.isArray(data?.templates) ? data.templates : [];
+      const t = templates.find((item: { id?: unknown }) => Number(item?.id) === routeTemplateId) as RequestTemplate | undefined;
+      if (res.ok && t) {
+        setTemplateID(t.id);
         setName(t.name);
         setDescription(t.description || '');
         setCloud(t.cloud || 'aws');
@@ -114,14 +128,16 @@ export default function EditTemplate() {
         setSelectedProjectIds(Array.isArray(t.projects) ? t.projects.map((project) => project.id) : []);
         setError('');
       } else {
+        setTemplateID(null);
         setError(data.error || 'Template not found');
       }
     } catch {
+      setTemplateID(null);
       setError('Failed to load template. Check your connection.');
     } finally {
       setFetchLoading(false);
     }
-  }, [id, router, apiUrl]);
+  }, [routeTemplateId, router, apiUrl]);
 
   useEffect(() => {
     const token = localStorage.getItem('admin_token');
@@ -130,8 +146,14 @@ export default function EditTemplate() {
       return;
     }
     void fetchTeams();
-    if (typeof id === 'string' && id) fetchTemplate();
-  }, [id, router, fetchTemplate, fetchTeams]);
+    if (routeTemplateId) {
+      void fetchTemplate();
+    } else {
+      setFetchLoading(false);
+      setTemplateID(null);
+      setError('Template not found');
+    }
+  }, [routeTemplateId, router, fetchTemplate, fetchTeams]);
 
   const toggleTeam = (teamID: number) => {
     setSelectedTeamIds((current) =>
@@ -147,7 +169,7 @@ export default function EditTemplate() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (typeof id !== 'string') return;
+    if (!templateID) return;
     setError('');
     if (!name.trim() || !cloud.trim() || !env.trim() || !service.trim()) {
       setError('Name, cloud, env, and service are required.');
@@ -162,7 +184,7 @@ export default function EditTemplate() {
     }
     setLoading(true);
     try {
-      const res = await fetch(`${apiUrl}/api/admin/templates/${id}`, {
+      const res = await fetch(`${apiUrl}/api/admin/templates/${templateID}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

@@ -34,6 +34,16 @@ interface ProjectSummary {
   code: string;
 }
 
+function parsePositiveIntParam(value: unknown): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
 function formatTemplateConfig(config: string): string {
   const normalized = config?.trim();
   if (!normalized) return '{}';
@@ -70,17 +80,18 @@ export default function ViewTemplate() {
   const [template, setTemplate] = useState<RequestTemplate | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const templateId = useMemo(() => parsePositiveIntParam(id), [id]);
 
   const formattedConfig = useMemo(() => formatTemplateConfig(template?.config || '{}'), [template?.config]);
   const configSummary = useMemo(() => getConfigSummary(template?.config || '{}'), [template?.config]);
 
   const fetchTemplate = useCallback(async () => {
     const token = localStorage.getItem(ADMIN_TOKEN_KEY);
-    if (!token || typeof id !== 'string' || !id) return;
+    if (!token || !templateId) return;
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${apiUrl}/api/admin/templates/${id}`, {
+      const res = await fetch(`${apiUrl}/api/admin/templates`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401 || res.status === 403) {
@@ -88,8 +99,10 @@ export default function ViewTemplate() {
         return;
       }
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.template) {
-        setTemplate(data.template as RequestTemplate);
+      const templates = Array.isArray(data?.templates) ? data.templates : [];
+      const matchedTemplate = templates.find((item: { id?: unknown }) => Number(item?.id) === templateId) as RequestTemplate | undefined;
+      if (res.ok && matchedTemplate) {
+        setTemplate(matchedTemplate);
         return;
       }
       setTemplate(null);
@@ -100,7 +113,7 @@ export default function ViewTemplate() {
     } finally {
       setLoading(false);
     }
-  }, [id, router, apiUrl]);
+  }, [templateId, router, apiUrl]);
 
   useEffect(() => {
     const token = localStorage.getItem(ADMIN_TOKEN_KEY);
@@ -108,8 +121,14 @@ export default function ViewTemplate() {
       router.replace('/login');
       return;
     }
-    if (typeof id === 'string' && id) void fetchTemplate();
-  }, [id, router, fetchTemplate]);
+    if (templateId) {
+      void fetchTemplate();
+    } else {
+      setLoading(false);
+      setTemplate(null);
+      setError('Template not found');
+    }
+  }, [templateId, router, fetchTemplate]);
 
   return (
     <>
