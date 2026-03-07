@@ -142,10 +142,17 @@ export default function CustomJSON() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
     try {
-      let jsonPayload;
+      let jsonPayload: Record<string, unknown> = {};
       try {
-        jsonPayload = JSON.parse(json);
-      } catch {
+        const parsed: unknown = JSON.parse(json);
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          throw new Error('JSON must be an object');
+        }
+        jsonPayload = parsed as Record<string, unknown>;
+      } catch (parseErr) {
+        if (parseErr instanceof Error && parseErr.message === 'JSON must be an object') {
+          throw parseErr;
+        }
         throw new Error('Invalid JSON format');
       }
 
@@ -176,7 +183,7 @@ export default function CustomJSON() {
         let errMsg = text || `Server returned ${response.status}`;
         try {
           const d = JSON.parse(text);
-          if (d && d.error) errMsg = d.error;
+          if (d?.error) errMsg = d.error;
         } catch (_) {}
         throw new Error(errMsg);
       }

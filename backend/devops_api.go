@@ -1118,7 +1118,9 @@ func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
 		allEntries, _ := GetCredentialAuditLogs(10000, 0, cloudFilter, fromDate, toDate, projectIDFilter)
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", "attachment; filename=credential-audit.csv")
-		w.Write([]byte("id,request_id,project_name,project_code,cloud,credential_type,team,env,created_by,approved_by,created_at\n"))
+		if _, err := w.Write([]byte("id,request_id,project_name,project_code,cloud,credential_type,team,env,created_by,approved_by,created_at\n")); err != nil {
+			return
+		}
 		for _, e := range allEntries {
 			reqID := ""
 			if e.RequestID != nil {
@@ -1127,7 +1129,9 @@ func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
 			line := fmt.Sprintf("%d,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
 				e.ID, reqID, e.ProjectName, e.ProjectCode, e.Cloud, e.CredentialType, e.Team, e.Env,
 				e.CreatedByUsername, e.ApprovedByUsername, e.CreatedAt.Format("2006-01-02 15:04:05"))
-			w.Write([]byte(line))
+			if _, err := w.Write([]byte(line)); err != nil {
+				return
+			}
 		}
 		return
 	}

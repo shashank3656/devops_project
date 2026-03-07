@@ -59,18 +59,24 @@ jobs:
             --json \
             --output semgrep.json || true
 
-          echo "## 🔐 Semgrep SAST Results" >> $GITHUB_STEP_SUMMARY
-          COUNT=$(jq '.results | length' semgrep.json)
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**High/Critical Findings: $COUNT**" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          summary_file="$GITHUB_STEP_SUMMARY"
+          count="$(jq '.results | length' semgrep.json)"
 
-          if [ "$COUNT" -gt 0 ]; then
-            echo "| Severity | Rule | File | Line |" >> $GITHUB_STEP_SUMMARY
-            echo "|----------|------|------|------|" >> $GITHUB_STEP_SUMMARY
-            jq -r '.results[] | "| \(.extra.severity) | \(.check_id) | \(.path) | \(.start.line) |"' semgrep.json >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## 🔐 Semgrep SAST Results"
+            echo
+            echo "**High/Critical Findings: ${count}**"
+            echo
+          } >> "$summary_file"
+
+          if [ "$count" -gt 0 ]; then
+            {
+              echo "| Severity | Rule | File | Line |"
+              echo "|----------|------|------|------|"
+              jq -r '.results[] | "| \(.extra.severity) | \(.check_id) | \(.path) | \(.start.line) |"' semgrep.json
+            } >> "$summary_file"
           else
-            echo "✅ No high/critical issues found." >> $GITHUB_STEP_SUMMARY
+            echo "✅ No high/critical issues found." >> "$summary_file"
           fi
 
       - name: Upload SAST SARIF to GitHub

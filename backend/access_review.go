@@ -316,7 +316,7 @@ func adminAccessReviewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":   "ok",
 		"users":    users,
 		"projects": projects,
@@ -328,5 +328,7 @@ func adminAccessReviewHandler(w http.ResponseWriter, r *http.Request) {
 			"portal_managers":      portalManagers,
 			"devops_managers":      devopsManagers,
 		},
-	})
+	}); err != nil {
+		log.Printf("access review response encode failed: %v", err)
+	}
 }

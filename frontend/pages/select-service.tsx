@@ -340,7 +340,7 @@ export default function SelectService() {
         let errMsg = text || `Server returned ${response.status}`;
         try {
           const d = JSON.parse(text);
-          if (d && d.error) errMsg = d.error;
+          if (d?.error) errMsg = d.error;
         } catch (_) {}
         throw new Error(errMsg);
       }
@@ -408,10 +408,9 @@ export default function SelectService() {
             </p>
             {(cloud || service) && (
               <div style={{ marginBottom: '20px' }}>
-                <a
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
+                <button
+                  type="button"
+                  onClick={() => {
                     const params = new URLSearchParams();
                     if (cloud) params.set('cloud', cloud);
                     if (service) params.set('service', service);
@@ -423,10 +422,10 @@ export default function SelectService() {
                       })
                       .catch(() => {});
                   }}
-                  style={{ color: 'var(--primary-color)', fontSize: '14px' }}
+                  style={{ color: 'var(--primary-color)', fontSize: '14px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
                 >
                   Estimate cost (opens cloud pricing calculator)
-                </a>
+                </button>
               </div>
             )}
 

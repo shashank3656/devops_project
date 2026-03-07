@@ -237,7 +237,6 @@ export default function UsersList() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-modal-title"
-            tabIndex={0}
           >
             <div className="modal">
               <h3 id="delete-modal-title" className="modal-title">Delete user?</h3>
