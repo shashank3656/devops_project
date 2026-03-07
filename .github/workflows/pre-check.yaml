@@ -60,7 +60,7 @@ jobs:
         working-directory: ./frontend
         run: |
           set +e
-          npx prettier --check "src/**/*.{js,jsx,ts,tsx}" 2>&1 | tee prettier-output.txt
+          npx prettier --check "**/*.{js,jsx,ts,tsx}" 2>&1 | tee prettier-output.txt
           EXIT_CODE=${PIPESTATUS[0]}
           echo "prettier_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
           exit 0
@@ -140,6 +140,7 @@ jobs:
         if: steps.set-status.outputs.status == 'failure'
         run: |
           echo "Lint checks failed."
+          echo "${{ steps.set-status.outputs.details }}"
           exit 1
 
   # ─────────────────────────────────────────────
@@ -322,10 +323,10 @@ jobs:
           fi
 
       - name: Send Slack Notification
-        # ✅ FIX: webhook-url must be passed directly under `with:`, NOT via env
-        uses: slackapi/slack-github-action@v1.26.0
+        # ✅ FIX: webhook must be passed directly under `with:`, NOT via env
+        uses: slackapi/slack-github-action@v2.0.0
         with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}   # ← correct key
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}   # ← correct key
           webhook-type: incoming-webhook
           payload: |
             {
