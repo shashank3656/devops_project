@@ -44,6 +44,24 @@ jobs:
             npm install --no-audit --no-fund
           fi
 
+      - name: Install Admin Frontend Dependencies
+        working-directory: ./admin-frontend
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Install DevOps Frontend Dependencies
+        working-directory: ./devops-frontend
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
+
       - name: Run ESLint (React)
         id: eslint
         working-directory: ./frontend
@@ -53,6 +71,28 @@ jobs:
           EXIT_CODE=${PIPESTATUS[0]}
           npm run lint -- --format json --output-file eslint-report.json >/dev/null 2>&1 || true
           echo "eslint_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Run ESLint (Admin Frontend)
+        id: eslint-admin
+        working-directory: ./admin-frontend
+        run: |
+          set +e
+          npm run lint -- --format stylish 2>&1 | tee eslint-admin-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          npm run lint -- --format json --output-file eslint-admin-report.json >/dev/null 2>&1 || true
+          echo "eslint_admin_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Run ESLint (DevOps Frontend)
+        id: eslint-devops
+        working-directory: ./devops-frontend
+        run: |
+          set +e
+          npm run lint -- --format stylish 2>&1 | tee eslint-devops-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          npm run lint -- --format json --output-file eslint-devops-report.json >/dev/null 2>&1 || true
+          echo "eslint_devops_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
           exit 0
 
       - name: Run Prettier Check
@@ -105,18 +145,22 @@ jobs:
         id: set-status
         run: |
           ESLINT=${{ steps.eslint.outputs.eslint_exit }}
+          ESLINT_ADMIN=${{ steps.eslint-admin.outputs.eslint_admin_exit }}
+          ESLINT_DEVOPS=${{ steps.eslint-devops.outputs.eslint_devops_exit }}
           PRETTIER=${{ steps.prettier.outputs.prettier_exit }}
           TS=${{ steps.typescript.outputs.ts_exit }}
           GOVET=${{ steps.govet.outputs.govet_exit }}
           GOLANGCI=${{ steps.golangci.outcome }}
 
-          if [ "$ESLINT" = "0" ] && [ "$PRETTIER" = "0" ] && [ "$TS" = "0" ] && [ "$GOVET" = "0" ] && [ "$GOLANGCI" = "success" ]; then
+          if [ "$ESLINT" = "0" ] && [ "$ESLINT_ADMIN" = "0" ] && [ "$ESLINT_DEVOPS" = "0" ] && [ "$PRETTIER" = "0" ] && [ "$TS" = "0" ] && [ "$GOVET" = "0" ] && [ "$GOLANGCI" = "success" ]; then
             echo "status=success" >> $GITHUB_OUTPUT
             echo "details=All lint checks passed ✅" >> $GITHUB_OUTPUT
           else
             echo "status=failure" >> $GITHUB_OUTPUT
             DETAILS=""
             [ "$ESLINT" != "0" ] && DETAILS="$DETAILS ESLint failed."
+            [ "$ESLINT_ADMIN" != "0" ] && DETAILS="$DETAILS Admin ESLint failed."
+            [ "$ESLINT_DEVOPS" != "0" ] && DETAILS="$DETAILS DevOps ESLint failed."
             [ "$PRETTIER" != "0" ] && DETAILS="$DETAILS Prettier failed."
             [ "$TS" != "0" ] && DETAILS="$DETAILS TypeScript errors found."
             [ "$GOVET" != "0" ] && DETAILS="$DETAILS go vet failed."
@@ -132,6 +176,10 @@ jobs:
           path: |
             frontend/eslint-report.json
             frontend/eslint-output.txt
+            admin-frontend/eslint-admin-report.json
+            admin-frontend/eslint-admin-output.txt
+            devops-frontend/eslint-devops-report.json
+            devops-frontend/eslint-devops-output.txt
             frontend/prettier-output.txt
             frontend/typescript-output.txt
             backend/govet-output.txt
