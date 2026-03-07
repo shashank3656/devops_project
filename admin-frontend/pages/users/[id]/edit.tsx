@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -70,9 +70,20 @@ interface OnboardingProgress {
   completion_percent: number;
 }
 
+function parsePositiveIntParam(value: unknown): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
 export default function EditUser() {
   const router = useRouter();
   const { id, created, team_assign_failed } = router.query;
+  const routeUserId = useMemo(() => parsePositiveIntParam(id), [id]);
   const [user, setUser] = useState<User | null>(null);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -104,13 +115,17 @@ export default function EditUser() {
       router.replace('/login');
       return;
     }
-    if (id && typeof id === 'string') {
-      fetchUser(parseInt(id, 10));
-      fetchOnboardingProgress(parseInt(id, 10));
+    if (routeUserId) {
+      fetchUser(routeUserId);
+      fetchOnboardingProgress(routeUserId);
+    } else {
+      setLoading(false);
+      setUser(null);
+      setError('User not found');
     }
     fetchUsersList();
     fetchTeamsList();
-  }, [token, id, router]);
+  }, [token, routeUserId, router]);
 
   const fetchOnboardingProgress = async (userId: number) => {
     setOnboardingLoading(true);
@@ -189,11 +204,11 @@ export default function EditUser() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!id || typeof id !== 'string') return;
+    if (!user?.id) return;
     setSaving(true);
     setError('');
     try {
-      const res = await fetch(`${apiUrl}/api/admin/users/${id}`, {
+      const res = await fetch(`${apiUrl}/api/admin/users/${user.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -308,7 +323,7 @@ export default function EditUser() {
     }
   };
 
-  if (!id || Array.isArray(id)) return null;
+  if (!routeUserId) return null;
 
   return (
     <>

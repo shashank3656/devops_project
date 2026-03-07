@@ -8,6 +8,9 @@ on:
       - feature/**
     types: [opened, synchronize, reopened, ready_for_review]
 
+permissions:
+  contents: read
+
 env:
   SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
 

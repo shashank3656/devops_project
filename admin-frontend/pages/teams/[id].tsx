@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -30,9 +30,20 @@ interface User {
   email: string;
 }
 
+function parsePositiveIntParam(value: unknown): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
 export default function TeamDetail() {
   const router = useRouter();
   const { id, created, group } = router.query;
+  const routeTeamId = useMemo(() => parsePositiveIntParam(id), [id]);
   const [team, setTeam] = useState<Team | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -59,11 +70,15 @@ export default function TeamDetail() {
       router.replace('/login');
       return;
     }
-    if (id && typeof id === 'string') {
-      fetchTeam(parseInt(id, 10));
-      fetchUsers();
+    if (routeTeamId) {
+      fetchTeam(routeTeamId);
+      void fetchUsers();
+    } else {
+      setLoading(false);
+      setTeam(null);
+      setError('Team not found');
     }
-  }, [token, id, router]);
+  }, [token, routeTeamId, router]);
 
   useEffect(() => {
     if (team?.team_type === 'portal' && !['developer', 'senior_developer', 'lead', 'manager'].includes(addRole)) {
@@ -77,22 +92,40 @@ export default function TeamDetail() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${apiUrl}/api/admin/teams/${teamId}`, {
+      const teamsRes = await fetch(`${apiUrl}/api/admin/teams`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.status === 401 || res.status === 403) {
+      if (teamsRes.status === 401 || teamsRes.status === 403) {
         router.replace('/login');
         return;
       }
-      const data = await res.json().catch(() => ({}));
-      if (data.team) {
-        setTeam(data.team);
-        setMembers(data.members || []);
-        setDefaultEnv(data.team.default_env || '');
-        setDefaultCloud(data.team.default_cloud || '');
-      } else {
-        setError(data.error || 'Team not found');
+      const teamsData = await teamsRes.json().catch(() => ({}));
+      const teams = Array.isArray(teamsData?.teams) ? teamsData.teams : [];
+      const matchedTeam = teams.find((entry: { id?: unknown }) => Number(entry?.id) === teamId);
+      if (!matchedTeam?.id) {
+        setError('Team not found');
+        setTeam(null);
+        setMembers([]);
+        return;
       }
+      const detailRes = await fetch(`${apiUrl}/api/admin/teams/${matchedTeam.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (detailRes.status === 401 || detailRes.status === 403) {
+        router.replace('/login');
+        return;
+      }
+      const data = await detailRes.json().catch(() => ({}));
+      if (!detailRes.ok || !data.team) {
+        setError(data.error || 'Team not found');
+        setTeam(null);
+        setMembers([]);
+        return;
+      }
+      setTeam(data.team);
+      setMembers(data.members || []);
+      setDefaultEnv(data.team.default_env || '');
+      setDefaultCloud(data.team.default_cloud || '');
     } catch (_) {
       setError('Failed to load team');
     } finally {
@@ -112,11 +145,11 @@ export default function TeamDetail() {
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!addUserId || !id) return;
+    if (!addUserId || !team?.id) return;
     setAdding(true);
     setError('');
     try {
-      const res = await fetch(`${apiUrl}/api/admin/teams/${id}/members`, {
+      const res = await fetch(`${apiUrl}/api/admin/teams/${team.id}/members`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -130,7 +163,7 @@ export default function TeamDetail() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setAddUserId('');
-        if (typeof id === 'string') fetchTeam(parseInt(id, 10));
+        fetchTeam(team.id);
       } else {
         setError(data.error || 'Failed to add member');
       }
@@ -143,11 +176,11 @@ export default function TeamDetail() {
 
   const handleBulkAddMembers = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedUserIds.length === 0 || !id) return;
+    if (selectedUserIds.length === 0 || !team?.id) return;
     setBulkAdding(true);
     setError('');
     try {
-      const res = await fetch(`${apiUrl}/api/admin/teams/${id}/members`, {
+      const res = await fetch(`${apiUrl}/api/admin/teams/${team.id}/members`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -161,7 +194,7 @@ export default function TeamDetail() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setSelectedUserIds([]);
-        if (typeof id === 'string') fetchTeam(parseInt(id, 10));
+        fetchTeam(team.id);
         const addedCount = Array.isArray(data.added) ? data.added.length : 1;
         const failedCount = Array.isArray(data.failed) ? data.failed.length : 0;
         if (failedCount > 0) {
@@ -184,27 +217,26 @@ export default function TeamDetail() {
   };
 
   const handleRemoveMember = async (userId: number) => {
-    if (!confirm('Remove this member from the team?')) return;
+    if (!team?.id || !confirm('Remove this member from the team?')) return;
     try {
       const res = await fetch(
-        `${apiUrl}/api/admin/teams/${id}/members/${userId}`,
+        `${apiUrl}/api/admin/teams/${team.id}/members/${userId}`,
         {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-      if (res.ok && typeof id === 'string')
-        fetchTeam(parseInt(id, 10));
+      if (res.ok) fetchTeam(team.id);
     } catch (_) {}
   };
 
   const handleRoleChange = async (userId: number, newRole: string) => {
-    if (!id || typeof id !== 'string') return;
+    if (!team?.id) return;
     setUpdatingRoleFor(userId);
     setError('');
     try {
       const res = await fetch(
-        `${apiUrl}/api/admin/teams/${id}/members/${userId}`,
+        `${apiUrl}/api/admin/teams/${team.id}/members/${userId}`,
         {
           method: 'PATCH',
           headers: {
@@ -233,12 +265,12 @@ export default function TeamDetail() {
 
   const handleSaveDefaults = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!id || typeof id !== 'string') return;
+    if (!team?.id) return;
     setSavingDefaults(true);
     setError('');
     setDefaultsSaved(false);
     try {
-      const res = await fetch(`${apiUrl}/api/admin/teams/${id}`, {
+      const res = await fetch(`${apiUrl}/api/admin/teams/${team.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -266,7 +298,7 @@ export default function TeamDetail() {
     setDeleting(true);
     setError('');
     try {
-      const res = await fetch(`${apiUrl}/api/admin/teams/${id}`, {
+      const res = await fetch(`${apiUrl}/api/admin/teams/${team.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -286,7 +318,7 @@ export default function TeamDetail() {
   const memberIds = new Set(members.map((m) => m.user_id));
   const availableUsers = users.filter((u) => !memberIds.has(u.id));
 
-  if (!id || Array.isArray(id)) return null;
+  if (!routeTeamId) return null;
 
   return (
     <>
