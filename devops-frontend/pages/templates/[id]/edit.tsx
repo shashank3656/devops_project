@@ -20,27 +20,38 @@ interface RequestTemplate {
   config: string;
 }
 
+function parsePositiveIntParam(value: unknown): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
 export default function EditDevOpsTemplate() {
   const router = useRouter();
-  const { id } = router.query;
   const apiUrl = useApiUrl();
+  const routeTemplateId = parsePositiveIntParam(router.query.id);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [cloud, setCloud] = useState('aws');
   const [env, setEnv] = useState('prod');
   const [service, setService] = useState('');
   const [config, setConfig] = useState('{}');
+  const [templateID, setTemplateID] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(true);
 
   const fetchTemplate = useCallback(async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token || token === 'undefined' || typeof id !== 'string' || !id) return;
+    if (!token || token === 'undefined' || !routeTemplateId) return;
     setFetchLoading(true);
     setError('');
     try {
-      const res = await fetch(`${apiUrl}/api/devops/templates/${id}`, {
+      const res = await fetch(`${apiUrl}/api/devops/templates`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401 || res.status === 403) {
@@ -48,8 +59,10 @@ export default function EditDevOpsTemplate() {
         return;
       }
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.template) {
-        const template = data.template as RequestTemplate;
+      const templates = Array.isArray(data?.templates) ? data.templates : [];
+      const template = templates.find((item: { id?: unknown }) => Number(item?.id) === routeTemplateId) as RequestTemplate | undefined;
+      if (res.ok && template) {
+        setTemplateID(template.id);
         setName(template.name);
         setDescription(template.description || '');
         setCloud(template.cloud || 'aws');
@@ -57,14 +70,16 @@ export default function EditDevOpsTemplate() {
         setService(template.service || '');
         setConfig(template.config || '{}');
       } else {
+        setTemplateID(null);
         setError(data.error || 'Template not found');
       }
     } catch {
+      setTemplateID(null);
       setError('Failed to load template. Check your connection.');
     } finally {
       setFetchLoading(false);
     }
-  }, [id, router, apiUrl]);
+  }, [routeTemplateId, router, apiUrl]);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -72,12 +87,18 @@ export default function EditDevOpsTemplate() {
       router.replace('/login');
       return;
     }
-    if (typeof id === 'string' && id) void fetchTemplate();
-  }, [id, router, fetchTemplate]);
+    if (routeTemplateId) {
+      void fetchTemplate();
+    } else {
+      setFetchLoading(false);
+      setTemplateID(null);
+      setError('Template not found');
+    }
+  }, [router, routeTemplateId, fetchTemplate]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (typeof id !== 'string') return;
+    if (!templateID) return;
     setError('');
     if (!name.trim() || !cloud.trim() || !env.trim() || !service.trim()) {
       setError('Name, cloud, env, and service are required.');
@@ -97,7 +118,7 @@ export default function EditDevOpsTemplate() {
         router.replace('/login');
         return;
       }
-      const res = await fetch(`${apiUrl}/api/devops/templates/${id}`, {
+      const res = await fetch(`${apiUrl}/api/devops/templates/${templateID}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

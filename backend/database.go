@@ -15,6 +15,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"golang.org/x/crypto/pbkdf2"
 )
 
 const (
@@ -31,6 +32,27 @@ const (
 
 const requestApplicationIDChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 const teamApplicationIDChars = "abcdefghijklmnopqrstuvwxyz0123456789"
+const defaultAPIKeyHashSecret = "infragate-apikey-hash-v1"
+const apiKeyHashIterations = 120000
+const apiKeyHashLength = 32
+
+func apiKeyHashSecret() string {
+	if value := strings.TrimSpace(os.Getenv("API_KEY_HASH_SECRET")); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(os.Getenv("API_KEY_PEPPER")); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(os.Getenv("JWT_SECRET")); value != "" {
+		return value
+	}
+	return defaultAPIKeyHashSecret
+}
+
+func hashAPIKey(rawKey string) string {
+	derived := pbkdf2.Key([]byte(rawKey), []byte(apiKeyHashSecret()), apiKeyHashIterations, apiKeyHashLength, sha256.New)
+	return hex.EncodeToString(derived)
+}
 
 func generateUniqueID(length int, charset string, existsFn func(string) (bool, error)) (string, error) {
 	for i := 0; i < 100; i++ {
@@ -2949,8 +2971,7 @@ func CreateAPIKey(userID int, name, scopes string) (rawKey string, rec *APIKeyRe
 	}
 	raw := hex.EncodeToString(bytes)
 	rawKey = APIKeyPrefix + raw
-	hash := sha256.Sum256([]byte(rawKey))
-	hashStr := hex.EncodeToString(hash[:])
+	hashStr := hashAPIKey(rawKey)
 	var id int
 	var createdAt time.Time
 	err = DB.QueryRow(
@@ -2969,8 +2990,7 @@ func GetUserIDAndScopesByAPIKey(rawKey string) (userID int, scopes string, keyID
 	if rawKey == "" || !strings.HasPrefix(rawKey, APIKeyPrefix) {
 		return 0, "", 0, fmt.Errorf("invalid api key format")
 	}
-	hash := sha256.Sum256([]byte(rawKey))
-	hashStr := hex.EncodeToString(hash[:])
+	hashStr := hashAPIKey(rawKey)
 	var uid int
 	var s string
 	err = DB.QueryRow(
