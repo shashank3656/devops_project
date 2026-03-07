@@ -530,12 +530,41 @@ func withObservability(next http.Handler) http.Handler {
 		if requestID == "" {
 			requestID = fmt.Sprintf("req-%d-%d", time.Now().UnixNano(), atomic.AddUint64(&reqCounter, 1))
 		}
+		requestCtx := withRequestID(r.Context(), requestID)
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		recorder.Header().Set(requestIDHeader, requestID)
-		next.ServeHTTP(recorder, r)
+		instrumentedNext := wrapWithOTelHTTP(http.HandlerFunc(func(innerW http.ResponseWriter, innerR *http.Request) {
+			requestCtx = innerR.Context()
+			next.ServeHTTP(innerW, innerR)
+		}))
+		instrumentedNext.ServeHTTP(recorder, r.WithContext(requestCtx))
 		elapsed := time.Since(start)
-		if elapsed >= RequestLogSlowThreshold {
-			log.Printf("[HTTP] request_id=%s method=%s path=%s status=%d duration_ms=%d", requestID, r.Method, r.URL.Path, recorder.status, elapsed.Milliseconds())
+
+		path := r.URL.Path
+		if strings.TrimSpace(path) == "" {
+			path = "/"
+		}
+		recordHTTPRequestMetrics(requestCtx, r.Method, path, recorder.status, elapsed)
+
+		shouldLog := elapsed >= RequestLogSlowThreshold || recorder.status >= http.StatusInternalServerError
+		if shouldLog {
+			severity := "warn"
+			if recorder.status >= http.StatusInternalServerError {
+				severity = "error"
+			}
+			traceID, spanID := traceAndSpanIDs(requestCtx)
+			log.Printf(
+				"[HTTP] severity=%s request_id=%s trace_id=%s span_id=%s method=%s path=%s status=%d duration_ms=%d",
+				severity,
+				requestIDFromContext(requestCtx),
+				traceID,
+				spanID,
+				r.Method,
+				path,
+				recorder.status,
+				elapsed.Milliseconds(),
+			)
+			recordMiddlewareLog(requestCtx, severity)
 		}
 	})
 }
