@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,7 +26,7 @@ func logsCloudHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
 
@@ -42,7 +41,7 @@ func logsCloudHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch logs", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "failed to fetch logs", "status": "error"})
 		return
 	}
 
@@ -75,7 +74,7 @@ func logsCloudHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeJSON(w, map[string]interface{}{
 		"clouds": byCloud,
 		"status": "ok",
 	})
@@ -95,7 +94,7 @@ func logsGitHubHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
 
@@ -110,7 +109,7 @@ func logsGitHubHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch logs", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "failed to fetch logs", "status": "error"})
 		return
 	}
 
@@ -134,7 +133,7 @@ func logsGitHubHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeJSON(w, map[string]interface{}{
 		"logs":   out,
 		"status": "ok",
 	})

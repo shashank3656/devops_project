@@ -9,7 +9,4 @@ require (
 	golang.org/x/oauth2 v0.20.0
 )
 
-require (
-	k8s.io/api v0.29.0 // indirect
-	k8s.io/client-go v0.29.0 // indirect
-)
+require github.com/google/go-querystring v1.1.0 // indirect

@@ -20,6 +20,7 @@ import {
   IconKey,
   IconArrowUpRight,
   IconRefreshCw,
+  IconK8s,
 } from './Icons';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -59,6 +60,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/change-calendar': 'Change Calendar',
   '/project-operations': 'Project Operations',
   '/service-heatmap': 'Service Heatmap',
+  '/k8s': 'K8s Dashboard',
   '/runbooks': 'Project Runbooks',
   '/incidents': 'Incident Panel',
   '/access-overrides': 'Access Overrides',
@@ -330,6 +332,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
 
   const baseNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
     { href: '/dashboard', label: 'Dashboard', Icon: IconTickets },
+    { href: '/k8s', label: 'K8s', Icon: IconK8s },
   ];
   if (isManager) {
     baseNavItems.push({ href: '/notifications', label: 'Notifications', Icon: IconBell });
@@ -393,10 +396,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </button>
           {!sidebarCollapsed && (
             <Link href="/dashboard" className="devops-sidebar-new__brand">
-              <>
-                <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">DevOps</span>
-                <span className="devops-sidebar-new__brand-word">Portal</span>
-              </>
+              <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">DevOps</span>
+              <span className="devops-sidebar-new__brand-word">Portal</span>
             </Link>
           )}
         </div>

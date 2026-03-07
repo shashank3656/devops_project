@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
@@ -44,20 +43,20 @@ func handleRequestPromote(w http.ResponseWriter, r *http.Request, id int, req *P
 	if !canPromote {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only creator or admin can promote", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only creator or admin can promote", "status": "error"})
 		return
 	}
 	if req.Status != "completed" && req.Status != "in_progress" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only completed or in_progress requests can be promoted", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only completed or in_progress requests can be promoted", "status": "error"})
 		return
 	}
 	nextEnvironment := nextEnv(req.Env)
 	if nextEnvironment == "" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "already at production; no next environment", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "already at production; no next environment", "status": "error"})
 		return
 	}
 	appID, err := GenerateApplicationID()
@@ -98,7 +97,7 @@ func handleRequestPromote(w http.ResponseWriter, r *http.Request, id int, req *P
 	AppendUserActivity(createdBy, "request_promote", "pr_request", strconv.Itoa(newReq.ID), "promoted from #"+strconv.Itoa(id)+" ("+req.Env+"→"+nextEnvironment+")")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeJSON(w, map[string]interface{}{
 		"status":  "ok",
 		"id":      newReq.ID,
 		"env":     nextEnvironment,

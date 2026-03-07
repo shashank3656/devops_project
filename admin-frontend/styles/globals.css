@@ -1109,7 +1109,6 @@ td code { font-size: var(--text-sm); background: var(--color-primary-light); col
   overflow-x: hidden;
   overflow-y: auto;
   padding: var(--space-6);
-  background: var(--color-bg);
 }
 
 /* Page header */

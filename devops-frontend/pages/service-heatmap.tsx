@@ -27,7 +27,9 @@ interface ServiceHeatmap {
 function normalizeHeatmap(value: Partial<ServiceHeatmap> | null | undefined): ServiceHeatmap | null {
   if (!value) return null;
   return {
-    columns: Array.isArray(value.columns) ? value.columns.filter((item): item is string => typeof item === 'string') : [],
+    columns: Array.isArray(value.columns)
+      ? value.columns.filter((item: unknown): item is string => typeof item === 'string')
+      : [],
     rows: Array.isArray(value.rows)
       ? value.rows.map((row) => ({
           project_id: typeof row?.project_id === 'number' ? row.project_id : 0,

@@ -19,7 +19,7 @@ export default function App({ Component, pageProps }: AppProps) {
     }
   }, []);
 
-  const showLayout = AUTHED_PATHS.some((p) => router.pathname === p || router.pathname.startsWith(p + '/'));
+  const showLayout = AUTHED_PATHS.some((p) => router.pathname === p || router.pathname.startsWith(`${p}/`));
 
   return (
     <ToastProvider>

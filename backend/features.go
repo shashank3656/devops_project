@@ -97,7 +97,7 @@ func handleRequestTags(w http.ResponseWriter, r *http.Request, requestID int, re
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"tags": tags, "status": "ok"})
+		encodeJSON(w, map[string]interface{}{"tags": tags, "status": "ok"})
 	case "POST":
 		var body struct {
 			Tags []string `json:"tags"`
@@ -114,7 +114,7 @@ func handleRequestTags(w http.ResponseWriter, r *http.Request, requestID int, re
 		}
 		tags, _ := GetRequestTags(requestID)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"tags": tags, "status": "ok"})
+		encodeJSON(w, map[string]interface{}{"tags": tags, "status": "ok"})
 	case "DELETE":
 		tag := r.URL.Query().Get("tag")
 		if tag != "" {
@@ -122,7 +122,7 @@ func handleRequestTags(w http.ResponseWriter, r *http.Request, requestID int, re
 		}
 		tags, _ := GetRequestTags(requestID)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"tags": tags, "status": "ok"})
+		encodeJSON(w, map[string]interface{}{"tags": tags, "status": "ok"})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -138,14 +138,14 @@ func requestDiffHandler(w http.ResponseWriter, r *http.Request, baseID int, user
 	if compareIDStr == "" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "compare_with query param required", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "compare_with query param required", "status": "error"})
 		return
 	}
 	compareID, err := strconv.Atoi(compareIDStr)
 	if err != nil || compareID <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid compare_with id", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "invalid compare_with id", "status": "error"})
 		return
 	}
 	base, _ := GetPRRequestByID(baseID)
@@ -153,7 +153,7 @@ func requestDiffHandler(w http.ResponseWriter, r *http.Request, baseID int, user
 	if base == nil || compare == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "request not found", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
 		return
 	}
 	// Build field-level diff
@@ -181,7 +181,7 @@ func requestDiffHandler(w http.ResponseWriter, r *http.Request, baseID int, user
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "diff": diff})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "diff": diff})
 	_ = userID
 }
 
@@ -356,7 +356,7 @@ func adminUserActivityHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"entries": []interface{}{}, "status": "ok"})
+		encodeJSON(w, map[string]interface{}{"entries": []interface{}{}, "status": "ok"})
 		return
 	}
 	limit := 50
@@ -389,7 +389,7 @@ func adminUserActivityHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"entries": entries, "status": "ok"})
+	encodeJSON(w, map[string]interface{}{"entries": entries, "status": "ok"})
 }
 
 // GetRequestsTrend returns daily request counts for charting

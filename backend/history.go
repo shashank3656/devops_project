@@ -24,11 +24,13 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		w.WriteHeader(http.StatusServiceUnavailable)
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "database not available",
 			"status": "error",
-		})
-		w.WriteHeader(http.StatusServiceUnavailable)
+		}); err != nil {
+			log.Printf("history database unavailable response encode failed: %v", err)
+		}
 		return
 	}
 
@@ -88,7 +90,9 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 				if scopes != "" && !hasScope(scopes, "history:read") {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusForbidden)
-					json.NewEncoder(w).Encode(map[string]interface{}{"error": "api key does not have history:read scope", "status": "error"})
+					if err := json.NewEncoder(w).Encode(map[string]interface{}{"error": "api key does not have history:read scope", "status": "error"}); err != nil {
+						log.Printf("history scope error response encode failed: %v", err)
+					}
 					return
 				}
 				userIDInt = id
@@ -108,11 +112,13 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Error fetching PR requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		w.WriteHeader(http.StatusInternalServerError)
+		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":  "failed to fetch history",
 			"status": "error",
-		})
-		w.WriteHeader(http.StatusInternalServerError)
+		}); encErr != nil {
+			log.Printf("history error response encode failed: %v", encErr)
+		}
 		return
 	}
 
@@ -149,12 +155,18 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return strings.Join(ss, ",")
 		}
-		w.Write([]byte(csvLine("id", "project", "team", "env", "cloud", "service", "status", "created_at", "updated_at") + "\n"))
+		if _, err := w.Write([]byte(csvLine("id", "project", "team", "env", "cloud", "service", "status", "created_at", "updated_at") + "\n")); err != nil {
+			log.Printf("history csv header write failed: %v", err)
+			return
+		}
 		for _, rq := range all {
-			w.Write([]byte(csvLine(
+			if _, err := w.Write([]byte(csvLine(
 				strconv.Itoa(rq.ID), rq.ProjectName, rq.Team, rq.Env, rq.Cloud, rq.Service, rq.Status,
 				rq.CreatedAt.Format(time.RFC3339), rq.UpdatedAt.Format(time.RFC3339),
-			) + "\n"))
+			) + "\n")); err != nil {
+				log.Printf("history csv row write failed: %v", err)
+				return
+			}
 		}
 		return
 	}
@@ -169,5 +181,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		"offset":      offset,
 	}
 
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("history response encode failed: %v", err)
+	}
 }

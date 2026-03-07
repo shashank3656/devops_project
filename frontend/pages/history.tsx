@@ -264,15 +264,6 @@ export default function History() {
     toast(`Loaded preset "${p.name}"`, 'success');
   };
 
-  const deletePreset = (name: string) => {
-    const next = presets.filter((x) => x.name !== name);
-    setPresets(next);
-    try {
-      localStorage.setItem(HISTORY_FILTER_PRESETS_KEY, JSON.stringify(next));
-    } catch (_) {}
-    toast('Preset deleted', 'success');
-  };
-
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token || token === 'undefined') return;
@@ -690,7 +681,7 @@ export default function History() {
       .catch(() => toast('Export failed', 'error'));
   };
 
-  const useAsTemplate = (req: PRRequest) => {
+  const applyAsTemplate = (req: PRRequest) => {
     try {
       const rawConfig = rawConfigByRequestId.current[req.id] ?? req.config ?? '';
       sessionStorage.setItem(TEMPLATE_KEY, JSON.stringify({
@@ -972,7 +963,10 @@ export default function History() {
                     value=""
                     onChange={(e) => {
                       const name = e.target.value;
-                      if (name) loadPreset(presets.find((p) => p.name === name)!);
+                      if (name) {
+                        const preset = presets.find((p) => p.name === name);
+                        if (preset) loadPreset(preset);
+                      }
                       e.target.value = '';
                     }}
                   >
@@ -1491,7 +1485,7 @@ export default function History() {
                       ) : null}
                       <button
                         type="button"
-                        onClick={() => useAsTemplate(detailRequest)}
+                        onClick={() => applyAsTemplate(detailRequest)}
                         className="btn btn-secondary"
                         style={{ padding: '8px 16px', fontSize: '14px' }}
                       >
@@ -1575,10 +1569,10 @@ export default function History() {
                         )}
                       </div>
                     )}
-                    {diffResult && diffResult.changes && diffResult.changes.length > 0 && (
+                    {(diffResult?.changes?.length ?? 0) > 0 && (
                       <div style={{ marginBottom: 12, padding: 12, background: 'var(--bg-gray-50)', borderRadius: 8 }}>
                         <strong>Diff (this vs #{compareWithId})</strong>
-                        {diffResult.changes.map((c: any) => (
+                        {diffResult?.changes?.map((c: any) => (
                           <div key={c.field} style={{ marginTop: 8, fontSize: 13 }}>
                             <strong>{c.field}:</strong> <span style={{ color: 'var(--error-color)' }}>− {String(c.base_value || '').slice(0, 80)}</span>
                             <br />
@@ -1695,7 +1689,13 @@ export default function History() {
                                       #{id}
                                     </button>
                                   ) : (
-                                    <a href="#" onClick={(e) => { e.preventDefault(); setFilterType('pr_number'); setFilterValue(String(id)); fetchHistory(); }} style={{ color: 'var(--primary-color)', fontSize: 13 }}>#{id}</a>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setFilterType('pr_number'); setFilterValue(String(id)); fetchHistory(); }}
+                                      style={{ color: 'var(--primary-color)', fontSize: 13, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                                    >
+                                      #{id}
+                                    </button>
                                   )}
                                   {canRemove && (
                                     <button type="button" onClick={async () => {
@@ -1719,7 +1719,14 @@ export default function History() {
                                   #{id}
                                 </button>
                               ) : (
-                                <a key={id} href="#" onClick={(e) => { e.preventDefault(); setFilterType('pr_number'); setFilterValue(String(id)); fetchHistory(); }} style={{ marginRight: 8, color: 'var(--info-color)', fontSize: 13 }}>#{id}</a>
+                                <button
+                                  key={id}
+                                  type="button"
+                                  onClick={() => { setFilterType('pr_number'); setFilterValue(String(id)); fetchHistory(); }}
+                                  style={{ marginRight: 8, color: 'var(--info-color)', fontSize: 13, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                                >
+                                  #{id}
+                                </button>
                               );
                             })}
                           </p>
@@ -1729,7 +1736,7 @@ export default function History() {
                             <input type="number" placeholder="Request #" value={newDepId} onChange={(e) => setNewDepId(e.target.value)} className="input" style={{ width: 100, padding: '6px 10px' }} min={1} />
                             <button type="button" className="btn btn-secondary btn-sm" disabled={addingDep || !newDepId.trim()} onClick={async () => {
                               const depId = parseInt(newDepId.trim(), 10);
-                              if (isNaN(depId) || depId <= 0 || !detailRequest) return;
+                              if (Number.isNaN(depId) || depId <= 0 || !detailRequest) return;
                               setAddingDep(true);
                               try {
                                 const token = localStorage.getItem('token');
@@ -1795,7 +1802,12 @@ export default function History() {
                           placeholder="Add a comment..."
                           value={commentBody}
                           onChange={(e) => setCommentBody(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addComment())}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              addComment();
+                            }
+                          }}
                           style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}
                         />
                         <button type="button" onClick={addComment} className="btn btn-primary" disabled={!commentBody.trim() || commentSubmitting} style={{ padding: '8px 16px' }}>
