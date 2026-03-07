@@ -39,6 +39,40 @@ interface ProjectOption {
 }
 
 const VALID_CLOUDS = ['aws', 'gcp', 'azure'];
+const ENV_LABEL_OVERRIDES: Record<string, string> = {
+  dev: 'Development',
+  development: 'Development',
+  qa: 'QA',
+  uat: 'UAT',
+  stage: 'Staging',
+  staging: 'Staging',
+  prod: 'Production',
+  production: 'Production',
+};
+
+function normalizeEnvironmentValues(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    const normalized = raw.trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function formatEnvironmentLabel(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  const configured = environments.find((item) => item.value === normalized);
+  if (configured) return configured.label;
+  if (ENV_LABEL_OVERRIDES[normalized]) return ENV_LABEL_OVERRIDES[normalized];
+  return normalized
+    .split(/[_-]/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
 
 export default function SelectService() {
   const router = useRouter();
@@ -70,7 +104,7 @@ export default function SelectService() {
     const qEnv = router.query.env;
     const qService = router.query.service;
     const cloudParam = typeof qCloud === 'string' ? qCloud.toLowerCase() : '';
-    const envParam = typeof qEnv === 'string' ? qEnv.trim() : '';
+    const envParam = typeof qEnv === 'string' ? qEnv.trim().toLowerCase() : '';
     const serviceParam = typeof qService === 'string' ? qService.trim() : '';
     if (typeof qProjectId === 'string') {
       const parsed = Number(qProjectId);
@@ -94,7 +128,7 @@ export default function SelectService() {
 
     const applyConfig = (data: { cloud?: string; env?: string; service?: string; config?: string; projects?: Array<{ id: number }> }) => {
       if (data.cloud && VALID_CLOUDS.includes(data.cloud.toLowerCase())) setCloud(data.cloud.toLowerCase());
-      if (data.env) setEnv(data.env);
+      if (data.env) setEnv(data.env.trim().toLowerCase());
       if (data.service) setService(data.service);
       if (projectId === '' && Array.isArray(data.projects) && data.projects.length === 1 && data.projects[0]?.id) {
         setProjectId(data.projects[0].id);
@@ -163,10 +197,15 @@ export default function SelectService() {
     : teams;
 
   const availableEnvironments = (() => {
-    if (!selectedProject) return environments.map((item) => item.value);
+    if (!selectedProject) return normalizeEnvironmentValues(environments.map((item) => item.value));
     const access = selectedProject.team_access.find((entry) => entry.team_slug === team);
-    return access?.environments?.length ? access.environments : selectedProject.environments;
+    const sourceValues = access?.environments?.length ? access.environments : selectedProject.environments;
+    return normalizeEnvironmentValues(sourceValues);
   })();
+  const availableEnvironmentOptions = availableEnvironments.map((value) => ({
+    value,
+    label: formatEnvironmentLabel(value),
+  }));
 
   const availableCloudOptions = selectedProject
     ? clouds.filter((option) => selectedProject.clouds.includes(option.value))
@@ -475,8 +514,10 @@ export default function SelectService() {
                       setTeam(slug);
                       const selected = availableTeams.find((t) => t.slug === slug);
                       if (selected) {
-                        if (selected.default_env && availableEnvironments.includes(selected.default_env)) setEnv(selected.default_env);
-                        if (selected.default_cloud && (!selectedProject || selectedProject.clouds.includes(selected.default_cloud))) setCloud(selected.default_cloud);
+                        const defaultEnv = selected.default_env?.trim().toLowerCase();
+                        if (defaultEnv && availableEnvironments.includes(defaultEnv)) setEnv(defaultEnv);
+                        const defaultCloud = selected.default_cloud?.trim().toLowerCase();
+                        if (defaultCloud && (!selectedProject || selectedProject.clouds.includes(defaultCloud))) setCloud(defaultCloud);
                       }
                     }}
                     required
@@ -510,17 +551,15 @@ export default function SelectService() {
                   <select
                     className="select"
                     value={env}
-                    onChange={(e) => setEnv(e.target.value)}
+                    onChange={(e) => setEnv(e.target.value.trim().toLowerCase())}
                     required
                   >
                     <option value="">Select Environment</option>
-                    {environments
-                      .filter((envOption) => availableEnvironments.includes(envOption.value))
-                      .map(envOption => (
-                        <option key={envOption.value} value={envOption.value}>
-                          {envOption.label}
-                        </option>
-                      ))}
+                    {availableEnvironmentOptions.map((envOption) => (
+                      <option key={envOption.value} value={envOption.value}>
+                        {envOption.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

@@ -1,8 +1,6 @@
 name: PR Security & Quality Checks
 
 on:
-  push:
-    branches: [feature/**]
   pull_request:
     branches:
       - main
@@ -232,6 +230,21 @@ jobs:
             --json \
             --output semgrep-go-report.json \
             ./backend || true
+
+      - name: Upload Findings to Semgrep App
+        run: |
+          if [ -z "${SEMGREP_APP_TOKEN:-}" ]; then
+            echo "SEMGREP_APP_TOKEN is not configured; skipping Semgrep App upload."
+            exit 0
+          fi
+          set +e
+          semgrep ci --config auto
+          EXIT_CODE=$?
+          echo "Semgrep App upload finished with exit code: $EXIT_CODE"
+          exit 0
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Parse Semgrep Results
         id: parse
