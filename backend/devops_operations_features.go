@@ -3,12 +3,19 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
+
+func encodeDevopsOperationsJSON(w http.ResponseWriter, payload interface{}) {
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("devops operations response encode failed: %v", err)
+	}
+}
 
 type changeCalendarSummary struct {
 	UpcomingCount        int `json:"upcoming_count"`
@@ -215,7 +222,7 @@ func devopsChangeCalendarHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeDevopsOperationsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 
@@ -272,7 +279,7 @@ func devopsChangeCalendarHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeDevopsOperationsJSON(w, map[string]interface{}{
 		"status":  "ok",
 		"summary": summary,
 		"items":   items,
@@ -297,7 +304,7 @@ func devopsApprovalSLAHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeDevopsOperationsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 
@@ -373,7 +380,7 @@ func devopsApprovalSLAHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeDevopsOperationsJSON(w, map[string]interface{}{
 		"status":  "ok",
 		"summary": response.Summary,
 		"sla":     response,
@@ -398,7 +405,7 @@ func devopsServiceHeatmapHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeDevopsOperationsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 
@@ -443,7 +450,7 @@ func devopsServiceHeatmapHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeDevopsOperationsJSON(w, map[string]interface{}{
 		"status":  "ok",
 		"heatmap": response,
 	})

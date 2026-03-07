@@ -30,7 +30,7 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil || id <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid request id", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "invalid request id", "status": "error"})
 		return
 	}
 
@@ -47,7 +47,7 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
 
@@ -55,7 +55,7 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil || req == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "request not found", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
 		return
 	}
 
@@ -134,7 +134,7 @@ func handleRequestClone(w http.ResponseWriter, r *http.Request, id int, req *PRR
 	if !canClone {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator or admin can clone this request", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only the creator or admin can clone this request", "status": "error"})
 		return
 	}
 	appID, err := GenerateApplicationID()
@@ -173,7 +173,7 @@ func handleRequestClone(w http.ResponseWriter, r *http.Request, id int, req *PRR
 	AppendUserActivity(createdBy, "request_clone", "pr_request", strconv.Itoa(newReq.ID), "cloned from #"+strconv.Itoa(id))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeJSON(w, map[string]interface{}{
 		"status":  "ok",
 		"id":      newReq.ID,
 		"message": "Request cloned as draft. Edit and submit from History.",
@@ -189,7 +189,7 @@ func handleRequestResubmit(w http.ResponseWriter, r *http.Request, id int, req *
 	if req.CreatedBy == nil || *req.CreatedBy != userID {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator can resubmit this request", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only the creator can resubmit this request", "status": "error"})
 		return
 	}
 	// Clone as new draft (same config, new application_id/branch)
@@ -225,7 +225,7 @@ func handleRequestResubmit(w http.ResponseWriter, r *http.Request, id int, req *
 	AppendUserActivity(req.CreatedBy, "request_resubmit", "pr_request", strconv.Itoa(newReq.ID), "cloned from #"+strconv.Itoa(id))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeJSON(w, map[string]interface{}{
 		"status":  "ok",
 		"id":      newReq.ID,
 		"message": "Request cloned as draft. Edit and submit from History.",
@@ -240,13 +240,13 @@ func handleRequestSubmit(w http.ResponseWriter, r *http.Request, id int, req *PR
 	if req.Status != "draft" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only drafts can be submitted", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only drafts can be submitted", "status": "error"})
 		return
 	}
 	if req.CreatedBy == nil || *req.CreatedBy != userID {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator can submit this draft", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only the creator can submit this draft", "status": "error"})
 		return
 	}
 	initialStatus := determineApprovalStatusForRequest(req.ProjectID, userID, req.Team, req.Env)
@@ -256,7 +256,7 @@ func handleRequestSubmit(w http.ResponseWriter, r *http.Request, id int, req *PR
 	}
 	AppendUserActivity(req.CreatedBy, "request_submit", "pr_request", strconv.Itoa(id), "draft submitted")
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Draft submitted for approval"})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "message": "Draft submitted for approval"})
 }
 
 // CanApproveByManager returns true if the given user can approve this request (status must be pending_user_manager_approval; user must be group manager for request's team or creator's manager_id). Used by history detail to show/hide Approve button.
@@ -288,7 +288,7 @@ func handleRequestApproveByManager(w http.ResponseWriter, r *http.Request, id in
 	if req.Status != "pending_user_manager_approval" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only requests pending user manager approval can be approved", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only requests pending user manager approval can be approved", "status": "error"})
 		return
 	}
 	if req.CreatedBy == nil {
@@ -298,7 +298,7 @@ func handleRequestApproveByManager(w http.ResponseWriter, r *http.Request, id in
 	if !CanApproveByManager(req, userID) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator's group manager or assigned manager can approve this step", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only the creator's group manager or assigned manager can approve this step", "status": "error"})
 		return
 	}
 	nextStatus := determinePostManagerApprovalStatus(req.ProjectID, req.Env)
@@ -308,27 +308,27 @@ func handleRequestApproveByManager(w http.ResponseWriter, r *http.Request, id in
 	}
 	AppendUserActivity(req.CreatedBy, "request_approved_by_manager", "pr_request", strconv.Itoa(id), strings.ReplaceAll(nextStatus, "_", " "))
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": fmt.Sprintf("Approved; request is now %s", strings.ReplaceAll(nextStatus, "_", " "))})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "message": fmt.Sprintf("Approved; request is now %s", strings.ReplaceAll(nextStatus, "_", " "))})
 }
 
 func handleRequestUpdateDraft(w http.ResponseWriter, r *http.Request, id int, req *PRRequest, userID int) {
 	if req.Status != "draft" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only drafts can be updated", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only drafts can be updated", "status": "error"})
 		return
 	}
 	if req.CreatedBy == nil || *req.CreatedBy != userID {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator can update this draft", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only the creator can update this draft", "status": "error"})
 		return
 	}
 	var payload InfraRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 		return
 	}
 	config := req.Config
@@ -361,20 +361,20 @@ func handleRequestUpdateDraft(w http.ResponseWriter, r *http.Request, id int, re
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Draft updated"})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "message": "Draft updated"})
 }
 
 func handleRequestDeleteDraft(w http.ResponseWriter, r *http.Request, id int, req *PRRequest, userID int) {
 	if req.Status != "draft" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only drafts can be deleted", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only drafts can be deleted", "status": "error"})
 		return
 	}
 	if req.CreatedBy == nil || *req.CreatedBy != userID {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator can delete this draft", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only the creator can delete this draft", "status": "error"})
 		return
 	}
 	if _, err := DB.Exec("DELETE FROM pr_requests WHERE id = $1", id); err != nil {
@@ -382,7 +382,7 @@ func handleRequestDeleteDraft(w http.ResponseWriter, r *http.Request, id int, re
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Draft deleted"})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "message": "Draft deleted"})
 }
 
 // handleRequestCancel lets the creator cancel their request (draft or any pending approval state, before PR is created).
@@ -394,7 +394,7 @@ func handleRequestCancel(w http.ResponseWriter, r *http.Request, id int, req *PR
 	if req.CreatedBy == nil || *req.CreatedBy != userID {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only the creator can cancel this request", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only the creator can cancel this request", "status": "error"})
 		return
 	}
 	cancellable := req.Status == "draft" || req.Status == "pending_user_manager_approval" ||
@@ -402,7 +402,7 @@ func handleRequestCancel(w http.ResponseWriter, r *http.Request, id int, req *PR
 	if !cancellable {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only draft or pending requests can be cancelled", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only draft or pending requests can be cancelled", "status": "error"})
 		return
 	}
 	if err := UpdatePRRequestReject(id, "Cancelled by creator"); err != nil {
@@ -411,7 +411,7 @@ func handleRequestCancel(w http.ResponseWriter, r *http.Request, id int, req *PR
 	}
 	AppendUserActivity(req.CreatedBy, "request_cancel", "pr_request", strconv.Itoa(id), "cancelled by creator")
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Request cancelled"})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "message": "Request cancelled"})
 }
 
 func handleRequestComments(w http.ResponseWriter, r *http.Request, requestID int, req *PRRequest, userID int) {
@@ -432,13 +432,13 @@ func handleRequestComments(w http.ResponseWriter, r *http.Request, requestID int
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "comments": comments})
+		encodeJSON(w, map[string]interface{}{"status": "success", "comments": comments})
 		return
 	case "POST":
 		if userID <= 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "use Bearer token to post comments", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "use Bearer token to post comments", "status": "error"})
 			return
 		}
 		var body struct {
@@ -447,7 +447,7 @@ func handleRequestComments(w http.ResponseWriter, r *http.Request, requestID int
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Body) == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "body is required", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "body is required", "status": "error"})
 			return
 		}
 		if err := AddRequestComment(requestID, userID, strings.TrimSpace(body.Body)); err != nil {
@@ -458,7 +458,7 @@ func handleRequestComments(w http.ResponseWriter, r *http.Request, requestID int
 		AppendUserActivity(&uid, "request_comment", "pr_request", strconv.Itoa(requestID), "")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Comment added"})
+		encodeJSON(w, map[string]interface{}{"status": "ok", "message": "Comment added"})
 		return
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -476,11 +476,11 @@ func handleRequestTimeline(w http.ResponseWriter, r *http.Request, id int, userI
 		log.Printf("GetRequestTimeline: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch timeline", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "failed to fetch timeline", "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "timeline": timeline})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "timeline": timeline})
 }
 
 // handleRequestDependencies GET /api/request/:id/dependencies, POST (add), DELETE /api/request/:id/dependencies/:depId
@@ -502,7 +502,7 @@ func handleRequestDependencies(w http.ResponseWriter, r *http.Request, id int, r
 	if !canAccess {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only creator or admin can manage dependencies", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only creator or admin can manage dependencies", "status": "error"})
 		return
 	}
 	switch r.Method {
@@ -511,12 +511,12 @@ func handleRequestDependencies(w http.ResponseWriter, r *http.Request, id int, r
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		blockedBy, _ := GetRequestsThatDependOn(id)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		encodeJSON(w, map[string]interface{}{
 			"status":     "ok",
 			"depends_on": deps,
 			"blocked_by": blockedBy,
@@ -529,30 +529,30 @@ func handleRequestDependencies(w http.ResponseWriter, r *http.Request, id int, r
 		if json.NewDecoder(r.Body).Decode(&body) != nil || body.DependsOnRequestID <= 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "depends_on_request_id required", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "depends_on_request_id required", "status": "error"})
 			return
 		}
 		if err := AddRequestDependency(id, body.DependsOnRequestID); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Dependency added"})
+		encodeJSON(w, map[string]interface{}{"status": "ok", "message": "Dependency added"})
 		return
 	case "DELETE":
 		if len(parts) < 3 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "depends_on_request_id required in path", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "depends_on_request_id required in path", "status": "error"})
 			return
 		}
 		depID, _ := strconv.Atoi(parts[2])
 		if depID <= 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid dependency id", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "invalid dependency id", "status": "error"})
 			return
 		}
 		if err := RemoveRequestDependency(id, depID); err != nil {
@@ -560,7 +560,7 @@ func handleRequestDependencies(w http.ResponseWriter, r *http.Request, id int, r
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Dependency removed"})
+		encodeJSON(w, map[string]interface{}{"status": "ok", "message": "Dependency removed"})
 		return
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

@@ -22,14 +22,14 @@ func requestRollbackHandler(w http.ResponseWriter, r *http.Request, id int, req 
 	if !canRollback {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only creator or admin can rollback", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only creator or admin can rollback", "status": "error"})
 		return
 	}
 	// Only draft or in_progress can be rolled back
 	if req.Status != "draft" && req.Status != "in_progress" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "only draft or in_progress requests can be rolled back", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "only draft or in_progress requests can be rolled back", "status": "error"})
 		return
 	}
 	var body struct {
@@ -39,7 +39,7 @@ func requestRollbackHandler(w http.ResponseWriter, r *http.Request, id int, req 
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 		return
 	}
 	var configToRestore string
@@ -58,7 +58,7 @@ func requestRollbackHandler(w http.ResponseWriter, r *http.Request, id int, req 
 		if configToRestore == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "history snapshot not found", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "history snapshot not found", "status": "error"})
 			return
 		}
 	} else if strings.TrimSpace(body.Config) != "" {
@@ -66,7 +66,7 @@ func requestRollbackHandler(w http.ResponseWriter, r *http.Request, id int, req 
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "history_id or config required", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "history_id or config required", "status": "error"})
 		return
 	}
 	// Update request config
@@ -76,7 +76,7 @@ func requestRollbackHandler(w http.ResponseWriter, r *http.Request, id int, req 
 	}
 	_ = SaveRequestConfigHistory(id, configToRestore, "rollback")
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Config rolled back"})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "message": "Config rolled back"})
 }
 
 // handleRequestConfigHistory GET /api/request/:id/config-history - list config snapshots for rollback
@@ -92,7 +92,7 @@ func handleRequestConfigHistory(w http.ResponseWriter, r *http.Request, id int, 
 	if !canView {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "access denied", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "access denied", "status": "error"})
 		return
 	}
 	limit := 20
@@ -116,5 +116,5 @@ func handleRequestConfigHistory(w http.ResponseWriter, r *http.Request, id int, 
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"history": out, "status": "ok"})
+	encodeJSON(w, map[string]interface{}{"history": out, "status": "ok"})
 }

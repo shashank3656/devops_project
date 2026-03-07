@@ -35,7 +35,7 @@ func githubWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	AppendGitHubLog("webhook_"+eventType, "GitHub webhook received", string(details))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "event": eventType})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "event": eventType})
 	log.Printf("GitHub webhook: %s", eventType)
 }
 
