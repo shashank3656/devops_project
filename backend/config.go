@@ -42,6 +42,16 @@ var (
 	DBQueryTimeout          = getEnvDurationSeconds("DB_QUERY_TIMEOUT_SECONDS", 5*time.Second)
 	SlowQueryThreshold      = getEnvDurationMilliseconds("DB_SLOW_QUERY_MS", 750*time.Millisecond)
 	RequestLogSlowThreshold = getEnvDurationMilliseconds("REQUEST_LOG_SLOW_MS", 500*time.Millisecond)
+
+	// OpenTelemetry
+	OpenTelemetryEnabled       = getEnvBool("OTEL_ENABLED", true)
+	OpenTelemetryServiceName   = getEnv("OTEL_SERVICE_NAME", "infra-backend")
+	OpenTelemetryServiceEnv    = getEnv("OTEL_SERVICE_ENV", getEnv("APP_ENV", "local"))
+	OpenTelemetryServiceVer    = getEnv("OTEL_SERVICE_VERSION", getEnv("APP_VERSION", "dev"))
+	OpenTelemetryEndpoint      = getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+	OpenTelemetryInsecure      = getEnvBool("OTEL_EXPORTER_OTLP_INSECURE", true)
+	OpenTelemetrySampleRatio   = getEnvFloat("OTEL_TRACES_SAMPLER_RATIO", 1.0)
+	OpenTelemetryMetricSeconds = getEnvDurationSeconds("OTEL_METRICS_EXPORT_INTERVAL_SECONDS", 30*time.Second)
 )
 
 func getEnv(key, defaultValue string) string {
@@ -57,6 +67,30 @@ func getEnvInt(key string, defaultValue int) int {
 		return defaultValue
 	}
 	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+	return parsed
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return defaultValue
+	}
+	return parsed
+}
+
+func getEnvFloat(key string, defaultValue float64) float64 {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
 	if err != nil {
 		return defaultValue
 	}

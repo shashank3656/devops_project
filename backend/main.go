@@ -479,6 +479,19 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	otelShutdown, otelErr := initOpenTelemetry(context.Background())
+	if otelErr != nil {
+		log.Printf("[OTEL] initialization failed: %v", otelErr)
+	} else {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := otelShutdown(shutdownCtx); err != nil {
+				log.Printf("[OTEL] shutdown failed: %v", err)
+			}
+		}()
+	}
+
 	allowStartWithoutDB := strings.EqualFold(strings.TrimSpace(os.Getenv("ALLOW_START_WITHOUT_DB")), "true")
 
 	// Initialize database
