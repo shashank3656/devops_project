@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
@@ -23,7 +22,7 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		encodeJSON(w, map[string]interface{}{
 			"error":  "database not available",
 			"status": "error",
 		})
@@ -44,7 +43,7 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Error fetching stats: %v", err)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		encodeJSON(w, map[string]interface{}{
 			"error":  "failed to fetch stats",
 			"status": "error",
 		})
@@ -53,7 +52,7 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeJSON(w, map[string]interface{}{
 		"status": "success",
 		"stats":  stats,
 	})
@@ -74,7 +73,7 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		encodeJSON(w, map[string]interface{}{
 			"error":  "database not available",
 			"status": "error",
 		})
@@ -87,7 +86,7 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := strings.Split(path, "/")[0]
 	if idStr == "" {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		encodeJSON(w, map[string]interface{}{
 			"error":  "missing request ID",
 			"status": "error",
 		})
@@ -98,7 +97,7 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(idStr)
 	if err != nil || id <= 0 {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		encodeJSON(w, map[string]interface{}{
 			"error":  "invalid request ID",
 			"status": "error",
 		})
@@ -110,7 +109,7 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Error fetching PR request: %v", err)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		encodeJSON(w, map[string]interface{}{
 			"error":  "failed to fetch request",
 			"status": "error",
 		})
@@ -120,7 +119,7 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	if req == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		encodeJSON(w, map[string]interface{}{
 			"error":  "request not found",
 			"status": "error",
 		})
@@ -153,7 +152,7 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeJSON(w, map[string]interface{}{
 		"status":                 "success",
 		"request":                requestPayload,
 		"can_approve_by_manager": canApproveByManager,

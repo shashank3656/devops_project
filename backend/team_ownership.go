@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
 	"sort"
 	"strconv"
@@ -344,7 +343,7 @@ func adminTeamOwnershipHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "failed to load team ownership"})
+		encodeJSON(w, map[string]interface{}{"status": "error", "error": "failed to load team ownership"})
 		return
 	}
 
@@ -388,5 +387,5 @@ func adminTeamOwnershipHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	encodeJSON(w, resp)
 }

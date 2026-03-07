@@ -322,10 +322,10 @@ jobs:
           fi
 
       - name: Send Slack Notification
-        if: env.SLACK_WEBHOOK != ''
+        # ✅ FIX: webhook-url must be passed directly under `with:`, NOT via env
         uses: slackapi/slack-github-action@v1.26.0
         with:
-          webhookUrl: ${{ env.SLACK_WEBHOOK }}
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}   # ← correct key
           webhook-type: incoming-webhook
           payload: |
             {
@@ -405,26 +405,17 @@ jobs:
                       "elements": [
                         {
                           "type": "button",
-                          "text": {
-                            "type": "plain_text",
-                            "text": "🔗 View PR"
-                          },
+                          "text": { "type": "plain_text", "text": "🔗 View PR" },
                           "url": "${{ github.event.pull_request.html_url || github.server_url }}"
                         },
                         {
                           "type": "button",
-                          "text": {
-                            "type": "plain_text",
-                            "text": "📊 View Full Run"
-                          },
+                          "text": { "type": "plain_text", "text": "📊 View Full Run" },
                           "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
                         },
                         {
                           "type": "button",
-                          "text": {
-                            "type": "plain_text",
-                            "text": "🔐 Security Alerts"
-                          },
+                          "text": { "type": "plain_text", "text": "🔐 Security Alerts" },
                           "url": "${{ github.server_url }}/${{ github.repository }}/security/code-scanning"
                         }
                       ]

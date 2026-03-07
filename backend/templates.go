@@ -24,18 +24,18 @@ func templatesListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"templates": []interface{}{}, "status": "ok"})
+		encodeJSON(w, map[string]interface{}{"templates": []interface{}{}, "status": "ok"})
 		return
 	}
 	list, err := ListRequestTemplatesForUser(userID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to list templates", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "failed to list templates", "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"templates": list, "status": "ok"})
+	encodeJSON(w, map[string]interface{}{"templates": list, "status": "ok"})
 }
 
 // templatesDetailHandler GET /api/templates/:id - get one template (auth required)
@@ -58,18 +58,18 @@ func templatesDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil || id <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid template id", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "invalid template id", "status": "error"})
 		return
 	}
 	t, err := GetRequestTemplateForUser(id, userID)
 	if err != nil || t == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "template not found", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "template not found", "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"template": t, "status": "ok"})
+	encodeJSON(w, map[string]interface{}{"template": t, "status": "ok"})
 }
 
 // adminTemplatesRouter GET/POST /api/admin/templates, GET/PUT/DELETE /api/admin/templates/:id
@@ -90,7 +90,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
 
@@ -103,10 +103,10 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			list, err := ListRequestTemplates()
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]interface{}{"templates": list, "status": "ok"})
+			encodeJSON(w, map[string]interface{}{"templates": list, "status": "ok"})
 			return
 		case "POST":
 			var body struct {
@@ -122,13 +122,13 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 				return
 			}
 			name := strings.TrimSpace(body.Name)
 			if name == "" || strings.TrimSpace(body.Cloud) == "" || strings.TrimSpace(body.Env) == "" || strings.TrimSpace(body.Service) == "" {
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": "name, cloud, env, service required", "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": "name, cloud, env, service required", "status": "error"})
 				return
 			}
 			config := body.Config
@@ -138,39 +138,39 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			teamIDs, err := ValidatePortalTemplateTeamIDs(body.TeamIDs)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, body.Status, adminIDPtr)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 			if err := SetRequestTemplateTeams(t.ID, teamIDs); err != nil {
 				_ = DeleteRequestTemplate(t.ID)
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 			projectIDs, err := ValidateTemplateProjectIDs(body.ProjectIDs)
 			if err != nil {
 				_ = DeleteRequestTemplate(t.ID)
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 			if err := SetRequestTemplateProjects(t.ID, projectIDs); err != nil {
 				_ = DeleteRequestTemplate(t.ID)
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 			t, _ = GetRequestTemplateByID(t.ID)
 			AppendAuditLog(adminIDPtr, "template_create", "request_template", strconv.Itoa(t.ID), name)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{"template": t, "status": "ok"})
+			encodeJSON(w, map[string]interface{}{"template": t, "status": "ok"})
 			return
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -186,13 +186,13 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 	t, err := GetRequestTemplateByID(id)
 	if err != nil || t == nil {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "template not found", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "template not found", "status": "error"})
 		return
 	}
 
 	switch r.Method {
 	case "GET":
-		json.NewEncoder(w).Encode(map[string]interface{}{"template": t, "status": "ok"})
+		encodeJSON(w, map[string]interface{}{"template": t, "status": "ok"})
 		return
 	case "PUT", "PATCH":
 		var body struct {
@@ -208,7 +208,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
 		name := strings.TrimSpace(body.Name)
@@ -234,19 +234,19 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := UpdateRequestTemplate(id, name, strings.TrimSpace(body.Description), cloud, env, service, config, status, adminIDPtr); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		if body.TeamIDs != nil {
 			teamIDs, err := ValidatePortalTemplateTeamIDs(*body.TeamIDs)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 			if err := SetRequestTemplateTeams(id, teamIDs); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 		}
@@ -254,27 +254,27 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			projectIDs, err := ValidateTemplateProjectIDs(*body.ProjectIDs)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 			if err := SetRequestTemplateProjects(id, projectIDs); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 		}
 		AppendAuditLog(adminIDPtr, "template_update", "request_template", strconv.Itoa(id), name)
 		updated, _ := GetRequestTemplateByID(id)
-		json.NewEncoder(w).Encode(map[string]interface{}{"template": updated, "status": "ok"})
+		encodeJSON(w, map[string]interface{}{"template": updated, "status": "ok"})
 		return
 	case "DELETE":
 		if err := DeleteRequestTemplate(id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		AppendAuditLog(adminIDPtr, "template_delete", "request_template", strconv.Itoa(id), t.Name)
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "deleted"})
+		encodeJSON(w, map[string]interface{}{"status": "ok", "message": "deleted"})
 		return
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -288,14 +288,14 @@ func checkAuth(w http.ResponseWriter, r *http.Request) (int, bool) {
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "authorization required", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "authorization required", "status": "error"})
 		return 0, false
 	}
 	id, err := validateToken(strings.TrimSpace(authHeader[7:]))
 	if err != nil || id <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid token", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "invalid token", "status": "error"})
 		return 0, false
 	}
 	return id, true
@@ -314,7 +314,7 @@ func savedConfigsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"saved_configs": []interface{}{}, "status": "ok"})
+		encodeJSON(w, map[string]interface{}{"saved_configs": []interface{}{}, "status": "ok"})
 		return
 	}
 
@@ -323,11 +323,11 @@ func savedConfigsHandler(w http.ResponseWriter, r *http.Request) {
 		list, err := ListUserSavedConfigs(userID)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to list", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "failed to list", "status": "error"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"saved_configs": list, "status": "ok"})
+		encodeJSON(w, map[string]interface{}{"saved_configs": list, "status": "ok"})
 		return
 	case "POST":
 		var body struct {
@@ -339,13 +339,13 @@ func savedConfigsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
 		name := strings.TrimSpace(body.Name)
 		if name == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "name required", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "name required", "status": "error"})
 			return
 		}
 		config := body.Config
@@ -355,12 +355,12 @@ func savedConfigsHandler(w http.ResponseWriter, r *http.Request) {
 		c, err := CreateUserSavedConfig(userID, name, config, strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service))
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]interface{}{"saved_config": c, "status": "ok"})
+		encodeJSON(w, map[string]interface{}{"saved_config": c, "status": "ok"})
 		return
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -384,13 +384,13 @@ func savedConfigDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil || id <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid id", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "invalid id", "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if DB == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
 	switch r.Method {
@@ -398,10 +398,10 @@ func savedConfigDetailHandler(w http.ResponseWriter, r *http.Request) {
 		c, err := GetUserSavedConfigByID(id, userID)
 		if err != nil || c == nil {
 			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "not found", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "not found", "status": "error"})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"saved_config": c, "status": "ok"})
+		encodeJSON(w, map[string]interface{}{"saved_config": c, "status": "ok"})
 		return
 	case "DELETE":
 		if err := DeleteUserSavedConfig(id, userID); err != nil {
@@ -410,10 +410,10 @@ func savedConfigDetailHandler(w http.ResponseWriter, r *http.Request) {
 			} else {
 				w.WriteHeader(http.StatusInternalServerError)
 			}
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "deleted"})
+		encodeJSON(w, map[string]interface{}{"status": "ok", "message": "deleted"})
 		return
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
