@@ -345,7 +345,9 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"}); err != nil {
+			log.Printf("admin requests db unavailable response encode failed: %v", err)
+		}
 		return
 	}
 
@@ -396,7 +398,9 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Admin requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch requests", "status": "error"})
+		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch requests", "status": "error"}); encErr != nil {
+			log.Printf("admin requests error response encode failed: %v", encErr)
+		}
 		return
 	}
 	totalCount, _ := GetTotalCount(team, env, cloud, projectID, statusFilter, priorityFilter, search, prID, 0, nil, atRiskOnly, "", "")
@@ -468,14 +472,16 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":      "success",
 		"requests":    enriched,
 		"count":       len(enriched),
 		"total_count": totalCount,
 		"limit":       limit,
 		"offset":      offset,
-	})
+	}); err != nil {
+		log.Printf("admin requests response encode failed: %v", err)
+	}
 }
 
 // adminStatsHandler GET /api/admin/stats - dashboard stats for all PR requests (admin only)
