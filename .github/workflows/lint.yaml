@@ -1,15 +1,11 @@
 name: Lint & Static Checks
 
 on:
-  push:
-    branches:
-      - main
-      - dev
-      - "feature/**"
   pull_request:
     branches:
-      - main
       - dev
+      - main
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: lint-${{ github.workflow }}-${{ github.ref }}
@@ -21,6 +17,7 @@ permissions:
 jobs:
   frontend-lint:
     name: Frontend Lint (Biome) - ${{ matrix.app }}
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -43,6 +40,7 @@ jobs:
 
   go-lint:
     name: Go Lint (golangci-lint)
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -69,6 +67,7 @@ jobs:
 
   workflow-lint:
     name: Workflow Lint (actionlint)
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -79,6 +78,7 @@ jobs:
 
   dockerfile-lint:
     name: Dockerfile Lint (Hadolint)
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
