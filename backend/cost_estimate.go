@@ -21,7 +21,7 @@ func costEstimateHandler(w http.ResponseWriter, r *http.Request) {
 	env := r.URL.Query().Get("env")
 	band, monthly, basis := estimateCostFootprint(cloud, service, env, "")
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"link":              getCostCalculatorLink(cloud, service),
 		"estimate":          monthly,
 		"estimated_band":    band,
@@ -31,5 +31,7 @@ func costEstimateHandler(w http.ResponseWriter, r *http.Request) {
 		"service":           service,
 		"env":               env,
 		"status":            "ok",
-	})
+	}); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+	}
 }
