@@ -218,9 +218,10 @@ export default function WebhooksPage() {
                 />
               </div>
               <div className="form-group" ref={eventsDropdownRef}>
-                <label className="label">Events</label>
+                <label className="label" htmlFor="webhook-events-trigger">Events</label>
                 <div className="webhook-events-dropdown">
                   <button
+                    id="webhook-events-trigger"
                     type="button"
                     className="webhook-events-dropdown__trigger input"
                     onClick={() => setEventsDropdownOpen((o) => !o)}

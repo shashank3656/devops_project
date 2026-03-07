@@ -83,7 +83,7 @@ export default function NavBar() {
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <button onClick={handleLogout} className="btn btn-secondary" style={{ padding: '8px 16px' }}>
+        <button type="button" onClick={handleLogout} className="btn btn-secondary" style={{ padding: '8px 16px' }}>
           Logout
         </button>
       </div>

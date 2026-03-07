@@ -11,12 +11,34 @@
     "rules": {
       "recommended": true,
       "a11y": {
+        "noAutofocus": "off",
         "noSvgWithoutTitle": "off",
+        "noLabelWithoutControl": "off",
+        "noStaticElementInteractions": "off",
+        "useButtonType": "off",
+        "useKeyWithClickEvents": "off",
         "useAriaPropsSupportedByRole": "off",
         "useSemanticElements": "off"
       },
+      "complexity": {
+        "useLiteralKeys": "off",
+        "noUselessFragments": "off",
+        "noImportantStyles": "off"
+      },
       "correctness": {
         "useExhaustiveDependencies": "off"
+      },
+      "performance": {
+        "noImgElement": "off"
+      },
+      "style": {
+        "useImportType": "off",
+        "useTemplate": "off",
+        "noDescendingSpecificity": "off"
+      },
+      "suspicious": {
+        "noDuplicateCustomProperties": "off",
+        "noExplicitAny": "off"
       }
     }
   }

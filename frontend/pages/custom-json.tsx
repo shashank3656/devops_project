@@ -91,8 +91,9 @@ export default function CustomJSON() {
       JSON.parse(jsonString);
       setJsonError('');
       return true;
-    } catch (e: any) {
-      setJsonError(`Invalid JSON: ${e.message}`);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Unknown error';
+      setJsonError(`Invalid JSON: ${message}`);
       return false;
     }
   };

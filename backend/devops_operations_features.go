@@ -97,17 +97,6 @@ type approvalSLAAccumulator struct {
 	OldestHours  float64
 }
 
-func stageQueueLabel(status string) string {
-	switch status {
-	case "pending_user_manager_approval":
-		return "Manager review"
-	case "pending_devops_approval":
-		return "DevOps review"
-	default:
-		return "Final approval"
-	}
-}
-
 func ageBucketKey(ageHours float64) string {
 	switch {
 	case ageHours < 4:
