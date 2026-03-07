@@ -74,6 +74,15 @@ function formatEnvironmentLabel(value: string): string {
     .join(' ');
 }
 
+function parsePositiveIntParam(value: unknown): number | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
 export default function SelectService() {
   const router = useRouter();
   const { toast } = useToast();
@@ -120,11 +129,9 @@ export default function SelectService() {
     if (!router.isReady) return;
     const token = localStorage.getItem('token');
     if (!token || token === 'undefined') return;
-    const templateId = router.query.template_id;
-    const savedId = router.query.saved_id;
-    const tid = typeof templateId === 'string' ? templateId : undefined;
-    const sid = typeof savedId === 'string' ? savedId : undefined;
-    if (!tid && !sid) return;
+    const templateId = parsePositiveIntParam(router.query.template_id);
+    const savedId = parsePositiveIntParam(router.query.saved_id);
+    if (!templateId && !savedId) return;
 
     const applyConfig = (data: { cloud?: string; env?: string; service?: string; config?: string; projects?: Array<{ id: number }> }) => {
       if (data.cloud && VALID_CLOUDS.includes(data.cloud.toLowerCase())) setCloud(data.cloud.toLowerCase());
@@ -154,15 +161,23 @@ export default function SelectService() {
       }
     };
 
-    if (tid) {
-      fetch(`${apiUrl}/api/templates/${tid}`, { headers: { Authorization: `Bearer ${token}` } })
-        .then((res) => res.ok ? res.json() : null)
-        .then((data) => data?.template && applyConfig(data.template))
+    if (templateId) {
+      fetch(`${apiUrl}/api/templates`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          const templates = Array.isArray(data?.templates) ? data.templates : [];
+          const matchedTemplate = templates.find((template: { id?: unknown }) => Number(template?.id) === templateId);
+          if (matchedTemplate) applyConfig(matchedTemplate);
+        })
         .catch(() => {});
-    } else if (sid) {
-      fetch(`${apiUrl}/api/me/saved-configs/${sid}`, { headers: { Authorization: `Bearer ${token}` } })
-        .then((res) => res.ok ? res.json() : null)
-        .then((data) => data?.saved_config && applyConfig(data.saved_config))
+    } else if (savedId) {
+      fetch(`${apiUrl}/api/me/saved-configs`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          const savedConfigs = Array.isArray(data?.saved_configs) ? data.saved_configs : [];
+          const matchedSavedConfig = savedConfigs.find((savedConfig: { id?: unknown }) => Number(savedConfig?.id) === savedId);
+          if (matchedSavedConfig) applyConfig(matchedSavedConfig);
+        })
         .catch(() => {});
     }
   }, [router.isReady, router.query.template_id, router.query.saved_id, apiUrl]);
