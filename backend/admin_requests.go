@@ -501,7 +501,9 @@ func adminStatsHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"}); err != nil {
+			log.Printf("admin stats db unavailable response encode failed: %v", err)
+		}
 		return
 	}
 	stats, err := GetStats(0)
@@ -509,11 +511,15 @@ func adminStatsHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Admin stats: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch stats", "status": "error"})
+		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch stats", "status": "error"}); encErr != nil {
+			log.Printf("admin stats error response encode failed: %v", encErr)
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "stats": stats})
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "stats": stats}); err != nil {
+		log.Printf("admin stats response encode failed: %v", err)
+	}
 }
 
 // adminNotificationsHandler GET /api/admin/notifications - admin inbox summary and project-aware notification items.
