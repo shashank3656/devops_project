@@ -538,7 +538,9 @@ func adminNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"new_requests": 0, "items": []interface{}{}, "total_count": 0, "counts_by_kind": map[string]int{"all": 0, "pending_request": 0, "project_event": 0}, "status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"new_requests": 0, "items": []interface{}{}, "total_count": 0, "counts_by_kind": map[string]int{"all": 0, "pending_request": 0, "project_event": 0}, "status": "ok"}); err != nil {
+			log.Printf("admin notifications empty response encode failed: %v", err)
+		}
 		return
 	}
 	limit, offset, projectID, kind := parseOpsNotificationFilters(
@@ -551,11 +553,15 @@ func adminNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch notifications", "status": "error"})
+		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch notifications", "status": "error"}); encErr != nil {
+			log.Printf("admin notifications error response encode failed: %v", encErr)
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(payload)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("admin notifications response encode failed: %v", err)
+	}
 }
 
 // adminBulkApproveHandler POST /api/admin/requests/bulk-approve with body {"ids": [1,2,3]}
