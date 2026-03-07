@@ -153,7 +153,9 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"entries": []interface{}{}, "status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"entries": []interface{}{}, "status": "ok"}); err != nil {
+			log.Printf("admin audit log empty response encode failed: %v", err)
+		}
 		return
 	}
 	limit := 50
@@ -181,7 +183,9 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch audit log", "status": "error"})
+		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch audit log", "status": "error"}); encErr != nil {
+			log.Printf("admin audit log error response encode failed: %v", encErr)
+		}
 		return
 	}
 	if r.URL.Query().Get("format") == "csv" {
@@ -217,7 +221,9 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"entries": entries, "status": "ok"})
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"entries": entries, "status": "ok"}); err != nil {
+		log.Printf("admin audit log response encode failed: %v", err)
+	}
 }
 
 // adminAnalyticsHandler GET /api/admin/analytics/requests - extended analytics (trend, by team/env/cloud, SLA)

@@ -2493,7 +2493,6 @@ func GetTotalCount(team, env, cloud string, projectID int, statusFilter, priorit
 	if toDate != "" {
 		query += fmt.Sprintf(" AND r.created_at < ($%d::date + interval '1 day')", argPos)
 		args = append(args, toDate)
-		argPos++
 	}
 
 	var count int
