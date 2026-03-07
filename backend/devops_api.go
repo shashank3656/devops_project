@@ -10,6 +10,12 @@ import (
 	"time"
 )
 
+func encodeDevopsJSON(w http.ResponseWriter, payload interface{}) {
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("devops response encode failed: %v", err)
+	}
+}
+
 // requireDevopsUser validates Bearer token and ensures user is devops_user or admin. Returns userID and ok.
 // Admin users (role=admin) can access DevOps endpoints for template management.
 func requireDevopsUser(w http.ResponseWriter, r *http.Request) (userID int, ok bool) {
@@ -22,7 +28,7 @@ func requireDevopsUser(w http.ResponseWriter, r *http.Request) (userID int, ok b
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
 		return 0, false
 	}
 	token := authHeader[7:]
@@ -30,27 +36,27 @@ func requireDevopsUser(w http.ResponseWriter, r *http.Request) (userID int, ok b
 	if err != nil || uid <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid or expired token", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "invalid or expired token", "status": "error"})
 		return 0, false
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return 0, false
 	}
 	user, err := GetUserByID(uid)
 	if err != nil || user == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "user not found", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "user not found", "status": "error"})
 		return 0, false
 	}
 	// Allow devops_user OR admin (for template management from either portal)
 	if user.UserType != "devops_user" && user.Role != "admin" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "DevOps portal access is for DevOps users or admins only", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "DevOps portal access is for DevOps users or admins only", "status": "error"})
 		return 0, false
 	}
 	return uid, true
@@ -66,7 +72,7 @@ func requireDevopsManager(w http.ResponseWriter, r *http.Request) (userID int, o
 	if err != nil || prof == nil || !prof.IsManager {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "DevOps manager access required", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "DevOps manager access required", "status": "error"})
 		return 0, false
 	}
 	return uid, true
