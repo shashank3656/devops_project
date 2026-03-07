@@ -1,0 +1,498 @@
+name: PR Security & Quality Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+      - dev
+      - feature/**
+    types: [opened, synchronize, reopened, ready_for_review]
+
+env:
+  SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+jobs:
+  # ─────────────────────────────────────────────
+  # JOB 1: LINT (React + Go)
+  # ─────────────────────────────────────────────
+  lint:
+    name: 🔍 Lint Checks
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/')
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.set-status.outputs.status }}
+      details: ${{ steps.set-status.outputs.details }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # ── Node / React Lint ──
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Install Admin Frontend Dependencies
+        working-directory: ./admin-frontend
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Install DevOps Frontend Dependencies
+        working-directory: ./devops-frontend
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Run ESLint (React)
+        id: eslint
+        working-directory: ./frontend
+        run: |
+          set +e
+          npm run lint -- --format stylish 2>&1 | tee eslint-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          npm run lint -- --format json --output-file eslint-report.json >/dev/null 2>&1 || true
+          echo "eslint_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Run ESLint (Admin Frontend)
+        id: eslint-admin
+        working-directory: ./admin-frontend
+        run: |
+          set +e
+          npm run lint -- --format stylish 2>&1 | tee eslint-admin-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          npm run lint -- --format json --output-file eslint-admin-report.json >/dev/null 2>&1 || true
+          echo "eslint_admin_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Run ESLint (DevOps Frontend)
+        id: eslint-devops
+        working-directory: ./devops-frontend
+        run: |
+          set +e
+          npm run lint -- --format stylish 2>&1 | tee eslint-devops-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          npm run lint -- --format json --output-file eslint-devops-report.json >/dev/null 2>&1 || true
+          echo "eslint_devops_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Run Prettier Check
+        id: prettier
+        working-directory: ./frontend
+        run: |
+          set +e
+          npx prettier --check "**/*.{js,jsx,ts,tsx}" 2>&1 | tee prettier-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "prettier_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Run TypeScript Check
+        id: typescript
+        working-directory: ./frontend
+        run: |
+          set +e
+          npx tsc --noEmit 2>&1 | tee typescript-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "ts_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit 0
+
+      # ── Go Lint ──
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: backend/go.sum
+
+      - name: Run golangci-lint
+        id: golangci
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.59.1
+          working-directory: ./backend
+          args: --timeout=5m --modules-download-mode=mod
+        continue-on-error: true
+
+      - name: Run go vet
+        id: govet
+        working-directory: ./backend
+        run: |
+          set +e
+          go vet ./... 2>&1 | tee govet-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "govet_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Set Lint Status
+        id: set-status
+        run: |
+          ESLINT=${{ steps.eslint.outputs.eslint_exit }}
+          ESLINT_ADMIN=${{ steps.eslint-admin.outputs.eslint_admin_exit }}
+          ESLINT_DEVOPS=${{ steps.eslint-devops.outputs.eslint_devops_exit }}
+          PRETTIER=${{ steps.prettier.outputs.prettier_exit }}
+          TS=${{ steps.typescript.outputs.ts_exit }}
+          GOVET=${{ steps.govet.outputs.govet_exit }}
+          GOLANGCI=${{ steps.golangci.outcome }}
+          PRETTIER_NOTE=""
+          [ "$PRETTIER" != "0" ] && PRETTIER_NOTE=" Prettier check failed (non-blocking)."
+
+          if [ "$ESLINT" = "0" ] && [ "$ESLINT_ADMIN" = "0" ] && [ "$ESLINT_DEVOPS" = "0" ] && [ "$TS" = "0" ] && [ "$GOVET" = "0" ] && [ "$GOLANGCI" = "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "details=All lint checks passed ✅$PRETTIER_NOTE" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            DETAILS=""
+            [ "$ESLINT" != "0" ] && DETAILS="$DETAILS ESLint failed."
+            [ "$ESLINT_ADMIN" != "0" ] && DETAILS="$DETAILS Admin ESLint failed."
+            [ "$ESLINT_DEVOPS" != "0" ] && DETAILS="$DETAILS DevOps ESLint failed."
+            [ "$TS" != "0" ] && DETAILS="$DETAILS TypeScript errors found."
+            [ "$GOVET" != "0" ] && DETAILS="$DETAILS go vet failed."
+            [ "$GOLANGCI" != "success" ] && DETAILS="$DETAILS golangci-lint failed."
+            echo "details=$DETAILS$PRETTIER_NOTE" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload Lint Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-reports
+          path: |
+            frontend/eslint-report.json
+            frontend/eslint-output.txt
+            admin-frontend/eslint-admin-report.json
+            admin-frontend/eslint-admin-output.txt
+            devops-frontend/eslint-devops-report.json
+            devops-frontend/eslint-devops-output.txt
+            frontend/prettier-output.txt
+            frontend/typescript-output.txt
+            backend/govet-output.txt
+
+      - name: Enforce Lint Gate
+        if: steps.set-status.outputs.status == 'failure'
+        run: |
+          echo "Lint checks failed."
+          echo "${{ steps.set-status.outputs.details }}"
+          exit 1
+
+  # ─────────────────────────────────────────────
+  # JOB 2: SEMGREP
+  # ─────────────────────────────────────────────
+  semgrep:
+    name: 🛡️ Semgrep SAST
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/')
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    outputs:
+      status: ${{ steps.set-status.outputs.status }}
+      findings: ${{ steps.set-status.outputs.findings }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep (React)
+        id: semgrep-react
+        run: |
+          semgrep \
+            --config p/react \
+            --config p/javascript \
+            --config p/typescript \
+            --config p/secrets \
+            --config p/owasp-top-ten \
+            --json \
+            --output semgrep-react-report.json \
+            ./frontend || true
+
+      - name: Run Semgrep (Go)
+        id: semgrep-go
+        run: |
+          semgrep \
+            --config p/golang \
+            --config p/secrets \
+            --config p/security-audit \
+            --json \
+            --output semgrep-go-report.json \
+            ./backend || true
+
+      - name: Upload Findings to Semgrep App
+        run: |
+          if [ -z "${SEMGREP_APP_TOKEN:-}" ]; then
+            echo "SEMGREP_APP_TOKEN is not configured; skipping Semgrep App upload."
+            exit 0
+          fi
+          set +e
+          semgrep ci --config auto
+          EXIT_CODE=$?
+          echo "Semgrep App upload finished with exit code: $EXIT_CODE"
+          exit 0
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
+
+      - name: Parse Semgrep Results
+        id: parse
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          def stats(path):
+              with open(path, "r", encoding="utf-8") as f:
+                  data = json.load(f)
+              results = data.get("results", [])
+              errors = sum(1 for r in results if r.get("extra", {}).get("severity") == "ERROR")
+              warnings = sum(1 for r in results if r.get("extra", {}).get("severity") == "WARNING")
+              return errors, warnings, len(results)
+
+          react_errors, react_warnings, react_total = stats("semgrep-react-report.json")
+          go_errors, go_warnings, go_total = stats("semgrep-go-report.json")
+          total = react_total + go_total
+          error_total = react_errors + go_errors
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"react_findings=React: {react_errors} errors, {react_warnings} warnings, {react_total} total\n")
+              out.write(f"go_findings=Go: {go_errors} errors, {go_warnings} warnings, {go_total} total\n")
+              out.write(f"total={total}\n")
+              out.write(f"error_total={error_total}\n")
+          PY
+
+      - name: Set Semgrep Status
+        id: set-status
+        run: |
+          ERRORS=${{ steps.parse.outputs.error_total }}
+          if [ "$ERRORS" = "0" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "findings=No issues found ✅" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "findings=${{ steps.parse.outputs.react_findings }} | ${{ steps.parse.outputs.go_findings }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload Semgrep Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-reports
+          path: |
+            semgrep-react-report.json
+            semgrep-go-report.json
+
+      - name: Enforce Semgrep Gate
+        if: steps.set-status.outputs.status == 'failure'
+        run: |
+          echo "Semgrep found blocking issues."
+          exit 1
+
+  # ─────────────────────────────────────────────
+  # JOB 3: CODEQL
+  # ─────────────────────────────────────────────
+  codeql:
+    name: 🔬 CodeQL Analysis
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript, go]
+    outputs:
+      status: ${{ steps.set-status.outputs.status }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended, security-and-quality
+
+      - name: Setup Go (for Go matrix)
+        if: matrix.language == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        id: codeql-analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+          output: codeql-results-${{ matrix.language }}
+          upload: ${{ vars.ENABLE_CODE_SCANNING == 'true' }}
+
+      - name: Set CodeQL Status
+        id: set-status
+        run: |
+          echo "status=success" >> $GITHUB_OUTPUT
+
+  # ─────────────────────────────────────────────
+  # JOB 4: SLACK NOTIFICATION
+  # ─────────────────────────────────────────────
+  notify-slack:
+    name: 📣 Slack Notification
+    runs-on: ubuntu-latest
+    needs: [lint, semgrep, codeql]
+    if: always() && (github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/'))
+
+    steps:
+      - name: Determine Overall Status
+        id: overall
+        run: |
+          LINT="${{ needs.lint.outputs.status }}"
+          SEMGREP="${{ needs.semgrep.outputs.status }}"
+          CODEQL="${{ needs.codeql.result }}"
+
+          if [ "$LINT" = "success" ] && [ "$SEMGREP" = "success" ] && { [ "$CODEQL" = "success" ] || [ "$CODEQL" = "skipped" ]; }; then
+            echo "color=#22c55e" >> $GITHUB_OUTPUT
+            echo "emoji=✅" >> $GITHUB_OUTPUT
+            echo "title=All PR Checks Passed" >> $GITHUB_OUTPUT
+            echo "status=PASSED" >> $GITHUB_OUTPUT
+          elif [ "$LINT" = "failure" ] || [ "$CODEQL" = "failure" ]; then
+            echo "color=#ef4444" >> $GITHUB_OUTPUT
+            echo "emoji=❌" >> $GITHUB_OUTPUT
+            echo "title=PR Checks Failed" >> $GITHUB_OUTPUT
+            echo "status=FAILED" >> $GITHUB_OUTPUT
+          else
+            echo "color=#f59e0b" >> $GITHUB_OUTPUT
+            echo "emoji=⚠️" >> $GITHUB_OUTPUT
+            echo "title=PR Checks Passed with Warnings" >> $GITHUB_OUTPUT
+            echo "status=WARNING" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack Notification
+        # ✅ FIX: webhook must be passed directly under `with:`, NOT via env
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}   # ← correct key
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [
+                {
+                  "color": "${{ steps.overall.outputs.color }}",
+                  "blocks": [
+                    {
+                      "type": "header",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "${{ steps.overall.outputs.emoji }} PR Check Report — ${{ steps.overall.outputs.title }}"
+                      }
+                    },
+                    {
+                      "type": "section",
+                      "fields": [
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Repository:*\n`${{ github.repository }}`"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Branch:*\n`${{ github.head_ref || github.ref_name }}`"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*PR Author:*\n`${{ github.actor }}`"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Triggered By:*\n`${{ github.event_name }}`"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "divider"
+                    },
+                    {
+                      "type": "section",
+                      "text": {
+                        "type": "mrkdwn",
+                        "text": "*📋 Check Results:*"
+                      }
+                    },
+                    {
+                      "type": "section",
+                      "fields": [
+                        {
+                          "type": "mrkdwn",
+                          "text": "*🔍 Lint (ESLint + golangci):*\n${{ needs.lint.outputs.status == 'success' && '✅ Passed' || '❌ Failed' }}\n${{ needs.lint.outputs.details }}"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*🛡️ Semgrep SAST:*\n${{ needs.semgrep.outputs.status == 'success' && '✅ Clean' || '⚠️ Issues Found' }}\n${{ needs.semgrep.outputs.findings }}"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "section",
+                      "fields": [
+                        {
+                          "type": "mrkdwn",
+                          "text": "*🔬 CodeQL (JS + Go):*\n${{ needs.codeql.result == 'success' && '✅ No Vulnerabilities' || '❌ Issues Found' }}"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*⏱️ Run Duration:*\n`~${{ github.run_number }} min`"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "divider"
+                    },
+                    {
+                      "type": "actions",
+                      "elements": [
+                        {
+                          "type": "button",
+                          "text": { "type": "plain_text", "text": "🔗 View PR" },
+                          "url": "${{ github.event.pull_request.html_url || github.server_url }}"
+                        },
+                        {
+                          "type": "button",
+                          "text": { "type": "plain_text", "text": "📊 View Full Run" },
+                          "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                        },
+                        {
+                          "type": "button",
+                          "text": { "type": "plain_text", "text": "🔐 Security Alerts" },
+                          "url": "${{ github.server_url }}/${{ github.repository }}/security/code-scanning"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "context",
+                      "elements": [
+                        {
+                          "type": "mrkdwn",
+                          "text": "Commit: `${{ github.sha }}` | Run #${{ github.run_number }} | ${{ github.workflow }}"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }

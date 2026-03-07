@@ -10,6 +10,12 @@ import (
 	"time"
 )
 
+func encodeAdminJSON(w http.ResponseWriter, payload interface{}) {
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("admin response encode failed: %v", err)
+	}
+}
+
 // adminDashboardStatsHandler GET /api/admin/dashboard-stats - quick counts for admin dashboard
 func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
@@ -26,15 +32,17 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"total_users": 0, "total_teams": 0, "unverified_users": 0,
 			"requests_this_week": 0, "pending_approval": 0, "status": "ok",
-		})
+		}); err != nil {
+			log.Printf("admin dashboard stats encode failed: %v", err)
+		}
 		return
 	}
 	stats, _ := GetDashboardStats()
 	atRisk, _ := GetAtRiskCount()
-	resp := map[string]interface{}{
+	baseResp := map[string]interface{}{
 		"total_users":        stats.TotalUsers,
 		"total_teams":        stats.TotalTeams,
 		"unverified_users":   stats.UnverifiedUsers,
@@ -87,7 +95,7 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 		r.URL.Query().Get("from"),
 		r.URL.Query().Get("to"),
 	}
-	resp, _ = cacheJSON[map[string]interface{}](cacheNamespaceAdmin, 90*time.Second, filterKey, func() (map[string]interface{}, error) {
+	resp, err := cacheJSON[map[string]interface{}](cacheNamespaceAdmin, 90*time.Second, filterKey, func() (map[string]interface{}, error) {
 		cachedResp := map[string]interface{}{
 			"total_users":        stats.TotalUsers,
 			"total_teams":        stats.TotalTeams,
@@ -126,8 +134,13 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return cachedResp, nil
 	})
+	if err != nil || resp == nil {
+		resp = baseResp
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("admin dashboard stats encode failed: %v", err)
+	}
 }
 
 // adminAuditLogHandler GET /api/admin/audit-log - list admin audit log entries
@@ -146,7 +159,9 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"entries": []interface{}{}, "status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"entries": []interface{}{}, "status": "ok"}); err != nil {
+			log.Printf("admin audit log empty response encode failed: %v", err)
+		}
 		return
 	}
 	limit := 50
@@ -174,7 +189,9 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch audit log", "status": "error"})
+		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch audit log", "status": "error"}); encErr != nil {
+			log.Printf("admin audit log error response encode failed: %v", encErr)
+		}
 		return
 	}
 	if r.URL.Query().Get("format") == "csv" {
@@ -188,10 +205,12 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return strings.Join(ss, ",")
 		}
-		w.Write([]byte(csvLine("id", "created_at", "admin_username", "action", "resource_type", "resource_id", "project_name", "project_code", "details") + "\n"))
+		if _, err := w.Write([]byte(csvLine("id", "created_at", "admin_username", "action", "resource_type", "resource_id", "project_name", "project_code", "details") + "\n")); err != nil {
+			return
+		}
 		all, _ := GetAuditLogs(10000, 0, actionFilter, fromDate, toDate, projectID)
 		for _, e := range all {
-			w.Write([]byte(csvLine(
+			if _, err := w.Write([]byte(csvLine(
 				strconv.Itoa(e.ID),
 				e.CreatedAt.Format("2006-01-02 15:04:05"),
 				e.AdminUsername,
@@ -201,12 +220,16 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 				e.ProjectName,
 				e.ProjectCode,
 				e.Details,
-			) + "\n"))
+			) + "\n")); err != nil {
+				return
+			}
 		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"entries": entries, "status": "ok"})
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"entries": entries, "status": "ok"}); err != nil {
+		log.Printf("admin audit log response encode failed: %v", err)
+	}
 }
 
 // adminAnalyticsHandler GET /api/admin/analytics/requests - extended analytics (trend, by team/env/cloud, SLA)
@@ -225,7 +248,9 @@ func adminAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"trend": []interface{}{}, "by_team": []interface{}{}, "by_env": []interface{}{}, "by_cloud": []interface{}{}, "sla": nil, "status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"trend": []interface{}{}, "by_team": []interface{}{}, "by_env": []interface{}{}, "by_cloud": []interface{}{}, "sla": nil, "status": "ok"}); err != nil {
+			log.Printf("admin analytics empty response encode failed: %v", err)
+		}
 		return
 	}
 	days := 14
@@ -254,14 +279,16 @@ func adminAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"trend":    trend,
 		"by_team":  teamComp,
 		"by_env":   byEnv,
 		"by_cloud": byCloud,
 		"sla":      slaResp,
 		"status":   "ok",
-	})
+	}); err != nil {
+		log.Printf("admin analytics response encode failed: %v", err)
+	}
 }
 
 // adminSLABreachCheckHandler GET /api/admin/sla-breach-check - find at-risk requests, send notifications, mark notified.
@@ -281,14 +308,18 @@ func adminSLABreachCheckHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"notified": 0, "status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"notified": 0, "status": "ok"}); err != nil {
+			log.Printf("admin sla breach empty response encode failed: %v", err)
+		}
 		return
 	}
 	reqs, err := GetAtRiskRequestsForSLABreach(50)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"}); encErr != nil {
+			log.Printf("admin sla breach error response encode failed: %v", encErr)
+		}
 		return
 	}
 	notified := 0
@@ -298,7 +329,9 @@ func adminSLABreachCheckHandler(w http.ResponseWriter, r *http.Request) {
 		notified++
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"notified": notified, "status": "ok"})
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"notified": notified, "status": "ok"}); err != nil {
+		log.Printf("admin sla breach response encode failed: %v", err)
+	}
 }
 
 // adminRequestsHandler GET /api/admin/requests - list all PR requests (admin only, no user filter)
@@ -318,7 +351,9 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"}); err != nil {
+			log.Printf("admin requests db unavailable response encode failed: %v", err)
+		}
 		return
 	}
 
@@ -369,7 +404,9 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Admin requests: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch requests", "status": "error"})
+		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch requests", "status": "error"}); encErr != nil {
+			log.Printf("admin requests error response encode failed: %v", encErr)
+		}
 		return
 	}
 	totalCount, _ := GetTotalCount(team, env, cloud, projectID, statusFilter, priorityFilter, search, prID, 0, nil, atRiskOnly, "", "")
@@ -420,31 +457,37 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return strings.Join(ss, ",")
 		}
-		w.Write([]byte(csvLine("id", "project", "team", "env", "cloud", "service", "priority", "status", "pr_url", "created_at", "updated_at") + "\n"))
+		if _, err := w.Write([]byte(csvLine("id", "project", "team", "env", "cloud", "service", "priority", "status", "pr_url", "created_at", "updated_at") + "\n")); err != nil {
+			return
+		}
 		for _, rq := range all {
 			prURL := rq.PRURL
 			if prURL == "" {
 				prURL = ""
 			}
-			w.Write([]byte(csvLine(
+			if _, err := w.Write([]byte(csvLine(
 				strconv.Itoa(rq.ID), rq.ProjectName, rq.Team, rq.Env, rq.Cloud, rq.Service,
 				rq.Priority, rq.Status, prURL,
 				rq.CreatedAt.Format("2006-01-02 15:04:05"),
 				rq.UpdatedAt.Format("2006-01-02 15:04:05"),
-			) + "\n"))
+			) + "\n")); err != nil {
+				return
+			}
 		}
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":      "success",
 		"requests":    enriched,
 		"count":       len(enriched),
 		"total_count": totalCount,
 		"limit":       limit,
 		"offset":      offset,
-	})
+	}); err != nil {
+		log.Printf("admin requests response encode failed: %v", err)
+	}
 }
 
 // adminStatsHandler GET /api/admin/stats - dashboard stats for all PR requests (admin only)
@@ -464,7 +507,9 @@ func adminStatsHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"}); err != nil {
+			log.Printf("admin stats db unavailable response encode failed: %v", err)
+		}
 		return
 	}
 	stats, err := GetStats(0)
@@ -472,11 +517,15 @@ func adminStatsHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Admin stats: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch stats", "status": "error"})
+		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch stats", "status": "error"}); encErr != nil {
+			log.Printf("admin stats error response encode failed: %v", encErr)
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "stats": stats})
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "stats": stats}); err != nil {
+		log.Printf("admin stats response encode failed: %v", err)
+	}
 }
 
 // adminNotificationsHandler GET /api/admin/notifications - admin inbox summary and project-aware notification items.
@@ -495,7 +544,9 @@ func adminNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"new_requests": 0, "items": []interface{}{}, "total_count": 0, "counts_by_kind": map[string]int{"all": 0, "pending_request": 0, "project_event": 0}, "status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"new_requests": 0, "items": []interface{}{}, "total_count": 0, "counts_by_kind": map[string]int{"all": 0, "pending_request": 0, "project_event": 0}, "status": "ok"}); err != nil {
+			log.Printf("admin notifications empty response encode failed: %v", err)
+		}
 		return
 	}
 	limit, offset, projectID, kind := parseOpsNotificationFilters(
@@ -508,11 +559,15 @@ func adminNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch notifications", "status": "error"})
+		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch notifications", "status": "error"}); encErr != nil {
+			log.Printf("admin notifications error response encode failed: %v", encErr)
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(payload)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("admin notifications response encode failed: %v", err)
+	}
 }
 
 // adminBulkApproveHandler POST /api/admin/requests/bulk-approve with body {"ids": [1,2,3]}
@@ -527,7 +582,7 @@ func adminBulkApproveHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "ids array required", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "ids array required", "status": "error"})
 		return
 	}
 	var approved, failed []int
@@ -566,7 +621,7 @@ func adminBulkApproveHandler(w http.ResponseWriter, r *http.Request) {
 		approved = append(approved, id)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeAdminJSON(w, map[string]interface{}{
 		"status":   "ok",
 		"approved": approved,
 		"failed":   failed,
@@ -590,7 +645,7 @@ func adminBulkRejectHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "ids array required", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "ids array required", "status": "error"})
 		return
 	}
 	reason := strings.TrimSpace(body.Reason)
@@ -620,7 +675,7 @@ func adminBulkRejectHandler(w http.ResponseWriter, r *http.Request) {
 		rejected = append(rejected, id)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeAdminJSON(w, map[string]interface{}{
 		"status":   "ok",
 		"rejected": rejected,
 		"failed":   failed,
@@ -644,13 +699,13 @@ func adminBulkStatusHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "ids array and status required", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "ids array and status required", "status": "error"})
 		return
 	}
 	if body.Status != "in_progress" && body.Status != "completed" && body.Status != "rejected" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "status must be in_progress, completed, or rejected", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "status must be in_progress, completed, or rejected", "status": "error"})
 		return
 	}
 	var adminIDPtr *int
@@ -670,7 +725,7 @@ func adminBulkStatusHandler(w http.ResponseWriter, r *http.Request) {
 		updated = append(updated, id)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeAdminJSON(w, map[string]interface{}{
 		"status":  "ok",
 		"updated": updated,
 		"failed":  failed,
@@ -715,7 +770,7 @@ func adminRequestDetailHandler(w http.ResponseWriter, r *http.Request, id int) {
 	if err != nil || req == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "request not found", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
 		return
 	}
 	createdByUsername := ""
@@ -756,7 +811,7 @@ func adminRequestDetailHandler(w http.ResponseWriter, r *http.Request, id int) {
 	resp["blocked_by"] = blockedBy
 	resp["blocked_by_with_status"] = blockedByWithStatus
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"request": resp, "status": "ok"})
+	encodeAdminJSON(w, map[string]interface{}{"request": resp, "status": "ok"})
 }
 
 // adminDevopsUsersHandler GET /api/admin/devops-users - list devops users for reassign dropdown (admin only)
@@ -775,18 +830,18 @@ func adminDevopsUsersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"users": []interface{}{}, "status": "ok"})
+		encodeAdminJSON(w, map[string]interface{}{"users": []interface{}{}, "status": "ok"})
 		return
 	}
 	users, err := GetDevopsUsers()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"users": users, "status": "ok"})
+	encodeAdminJSON(w, map[string]interface{}{"users": users, "status": "ok"})
 }
 
 // adminRequestActionHandler handles /api/admin/requests/:id (GET detail) and /api/admin/requests/:id/approve, /reject, /status, /reassign (admin only)
@@ -803,7 +858,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
 	var adminIDPtr *int
@@ -842,7 +897,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil || id <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid request id", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "invalid request id", "status": "error"})
 		return
 	}
 
@@ -850,7 +905,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil || req == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "request not found", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
 		return
 	}
 
@@ -863,7 +918,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if req.Status != "pending_approval" && req.Status != "pending_devops_approval" && req.Status != "pending_user_manager_approval" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending requests can be approved", "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": "only pending requests can be approved", "status": "error"})
 			return
 		}
 		// Admin full control: if pending_user_manager_approval, just move to pending_devops_approval; else create PR and assign
@@ -876,7 +931,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			FireOutboundWebhooks("approved", RequestPayloadForWebhook(req))
 			AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), "admin_step_to_devops_approval")
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Request moved to pending DevOps approval"})
+			encodeAdminJSON(w, map[string]interface{}{"status": "ok", "message": "Request moved to pending DevOps approval"})
 			return
 		}
 		// pending_approval or pending_devops_approval: create PR and assign
@@ -885,7 +940,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Admin approve: create PR failed: %v", err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": fmt.Sprintf("failed to create PR: %v", err), "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": fmt.Sprintf("failed to create PR: %v", err), "status": "error"})
 			return
 		}
 		if err := UpdatePRRequestWithPR(id, prURL); err != nil {
@@ -908,7 +963,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), prURL)
 		LogCredentialAuditFromConfig(id, req.Team, req.Env, req.Cloud, req.Config, req.CreatedBy, adminIDPtr)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "pr_url": prURL, "message": "PR created and request set to in_progress"})
+		encodeAdminJSON(w, map[string]interface{}{"status": "ok", "pr_url": prURL, "message": "PR created and request set to in_progress"})
 		return
 
 	case "reject":
@@ -919,7 +974,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if req.Status != "pending_approval" && req.Status != "pending_devops_approval" && req.Status != "pending_user_manager_approval" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending requests can be rejected", "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": "only pending requests can be rejected", "status": "error"})
 			return
 		}
 		reason := ""
@@ -939,7 +994,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		FireOutboundWebhooks("rejected", p)
 		AppendAuditLog(adminIDPtr, "request_reject", "pr_request", strconv.Itoa(id), reason)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Request rejected"})
+		encodeAdminJSON(w, map[string]interface{}{"status": "ok", "message": "Request rejected"})
 		return
 
 	case "status":
@@ -953,7 +1008,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
 		switch body.Status {
@@ -963,7 +1018,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "status must be in_progress, completed, or rejected", "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": "status must be in_progress, completed, or rejected", "status": "error"})
 			return
 		}
 		if err := UpdatePRRequestStatus(id, body.Status); err != nil {
@@ -971,7 +1026,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "request_status": body.Status})
+		encodeAdminJSON(w, map[string]interface{}{"status": "ok", "request_status": body.Status})
 		return
 
 	case "plan-output":
@@ -985,18 +1040,18 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
 		if err := UpdatePRRequestTerraformPlanOutput(id, body.Output); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		AppendAuditLog(adminIDPtr, "request_plan_output", "pr_request", strconv.Itoa(id), "terraform plan/output updated")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Terraform output updated"})
+		encodeAdminJSON(w, map[string]interface{}{"status": "ok", "message": "Terraform output updated"})
 		return
 
 	case "reassign":
@@ -1010,7 +1065,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
 		// Allow clearing assignment with assigned_to: null or 0
@@ -1022,20 +1077,20 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			if u == nil || u.UserType != "devops_user" {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": "assigned_to must be a devops user id", "status": "error"})
+				encodeAdminJSON(w, map[string]interface{}{"error": "assigned_to must be a devops user id", "status": "error"})
 				return
 			}
 		}
 		if body.AssignedTo != nil {
 			if err := UpdatePRRequestAssignedTo(id, *body.AssignedTo); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeAdminJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 		} else {
 			if _, err := DB.Exec("UPDATE pr_requests SET assigned_to = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1", id); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeAdminJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 		}
@@ -1048,7 +1103,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		AppendAuditLog(adminIDPtr, "request_reassign", "pr_request", strconv.Itoa(id), "")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "assigned_to": body.AssignedTo})
+		encodeAdminJSON(w, map[string]interface{}{"status": "ok", "assigned_to": body.AssignedTo})
 		return
 
 	case "jira":
@@ -1062,7 +1117,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
 		ticketID := strings.TrimSpace(body.JiraTicketID)
@@ -1072,7 +1127,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		AppendAuditLog(adminIDPtr, "request_jira", "pr_request", strconv.Itoa(id), ticketID)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "jira_ticket_id": ticketID})
+		encodeAdminJSON(w, map[string]interface{}{"status": "ok", "jira_ticket_id": ticketID})
 		return
 
 	default:

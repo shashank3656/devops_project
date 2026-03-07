@@ -97,7 +97,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	if !canCreate {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		encodeJSON(w, map[string]interface{}{
 			"error":  "you do not have permission to create PRs. Verify your email and ensure your account has contributor or admin role.",
 			"status": "error",
 		})
@@ -113,7 +113,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 			"status": "error",
 		}
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(errorResponse)
+		encodeJSON(w, errorResponse)
 		return
 	}
 
@@ -126,7 +126,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 			"status": "error",
 		}
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(errorResponse)
+		encodeJSON(w, errorResponse)
 		return
 	}
 
@@ -145,7 +145,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 			if !allowed {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": "you can only create PRs for a team you belong to", "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": "you can only create PRs for a team you belong to", "status": "error"})
 				return
 			}
 		}
@@ -160,7 +160,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 			"status": "error",
 		}
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(errorResponse)
+		encodeJSON(w, errorResponse)
 		return
 	}
 	env, ok := payload["env"].(string)
@@ -171,7 +171,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 			"status": "error",
 		}
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(errorResponse)
+		encodeJSON(w, errorResponse)
 		return
 	}
 	cloud, ok := payload["cloud"].(string)
@@ -182,7 +182,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 			"status": "error",
 		}
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(errorResponse)
+		encodeJSON(w, errorResponse)
 		return
 	}
 	service, ok := payload["service"].(string)
@@ -193,7 +193,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 			"status": "error",
 		}
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(errorResponse)
+		encodeJSON(w, errorResponse)
 		return
 	}
 	projectID := parseProjectIDFromPayload(payload)
@@ -210,7 +210,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 			"status": "error",
 		}
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(errorResponse)
+		encodeJSON(w, errorResponse)
 		return
 	}
 
@@ -221,7 +221,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("GenerateApplicationID: %v", appErr)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to generate application id", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "failed to generate application id", "status": "error"})
 		return
 	}
 	filePath, branchName := BuildRequestGitArtifacts(team, env, appID)
@@ -235,7 +235,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 			"status": "error",
 		}
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(errorResponse)
+		encodeJSON(w, errorResponse)
 		return
 	}
 
@@ -248,7 +248,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		if _, err := validateProjectRequestForUser(userID, projectID, team, env, cloud, service); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 	}
@@ -312,7 +312,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if !canCreate {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		encodeJSON(w, map[string]interface{}{
 			"error":  "you do not have permission to create requests. Verify your email and ensure your account has contributor or admin role.",
 			"status": "error",
 		})
@@ -323,13 +323,13 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 		return
 	}
 	if err := validatePayload(payload); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 
@@ -348,7 +348,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 			if !allowed {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": "you can only create requests for a team you belong to", "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": "you can only create requests for a team you belong to", "status": "error"})
 				return
 			}
 		}
@@ -381,7 +381,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("GenerateApplicationID: %v", appErr)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to generate application id", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "failed to generate application id", "status": "error"})
 		return
 	}
 	filePath, branchName := BuildRequestGitArtifacts(team, env, appID)
@@ -389,14 +389,14 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "error processing request", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "error processing request", "status": "error"})
 		return
 	}
 
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
 
@@ -409,7 +409,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		if clientName == "" {
@@ -451,7 +451,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Failed to save request: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to save request", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "failed to save request", "status": "error"})
 		return
 	}
 	AppendUserActivity(userIDPtr, "request_create", "pr_request", strconv.Itoa(prRequest.ID), status)
@@ -471,7 +471,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if draft {
 		msg = "Draft saved. You can edit or submit it from History."
 	}
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeJSON(w, map[string]interface{}{
 		"id":      prRequest.ID,
 		"status":  status,
 		"message": msg,
@@ -592,6 +592,8 @@ func main() {
 	http.HandleFunc("/api/devops/change-calendar", devopsChangeCalendarHandler)
 	http.HandleFunc("/api/devops/approval-sla", devopsApprovalSLAHandler)
 	http.HandleFunc("/api/devops/service-heatmap", devopsServiceHeatmapHandler)
+	http.HandleFunc("/api/devops/k8s-connections", devopsK8sConnectionsHandler)
+	http.HandleFunc("/api/devops/k8s-overview", devopsK8sOverviewHandler)
 	http.HandleFunc("/api/devops/runbooks", devopsRunbooksHandler)
 	http.HandleFunc("/api/devops/runbooks/", devopsRunbookDetailHandler)
 	http.HandleFunc("/api/devops/incidents", devopsIncidentsHandler)
@@ -734,7 +736,7 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	status["dependencies"] = dependencies
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
+	encodeJSON(w, status)
 }
 
 // readyHandler GET /ready - readiness probe (DB must be up)
@@ -743,7 +745,7 @@ func readyHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "not_ready", "reason": "database not initialized"})
+		encodeJSON(w, map[string]string{"status": "not_ready", "reason": "database not initialized"})
 		return
 	}
 	ctx, cancel := dbTimeoutContext()
@@ -752,7 +754,7 @@ func readyHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "not_ready", "reason": "database ping failed"})
+		encodeJSON(w, map[string]string{"status": "not_ready", "reason": "database ping failed"})
 		return
 	}
 	cacheStatus := "disabled"
@@ -763,11 +765,11 @@ func readyHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]string{"status": "not_ready", "reason": "cache ping failed"})
+			encodeJSON(w, map[string]string{"status": "not_ready", "reason": "cache ping failed"})
 			return
 		}
 		cacheStatus = "ready"
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ready", "cache": cacheStatus})
+	encodeJSON(w, map[string]string{"status": "ready", "cache": cacheStatus})
 }

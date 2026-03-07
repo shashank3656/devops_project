@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useToast } from '../context/ToastContext';
 import { SITE_NAME } from '../lib/site';
 
@@ -262,7 +263,7 @@ export default function Login() {
             )}
             {!pending2fa && (
               <p style={{ marginTop: 12, fontSize: 13 }}>
-                <a href="/forgot-password" style={{ color: 'var(--primary-color)', textDecoration: 'none' }}>Forgot password?</a>
+                <Link href="/forgot-password" style={{ color: 'var(--primary-color)', textDecoration: 'none' }}>Forgot password?</Link>
               </p>
             )}
             <p className="login-page__hint">

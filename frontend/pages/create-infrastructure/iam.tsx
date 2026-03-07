@@ -1,6 +1,7 @@
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEffect } from 'react';
 
 const CLOUDS = [
@@ -46,7 +47,8 @@ export default function IAMCloudSelect() {
             maxWidth: '960px',
           }}>
             {CLOUDS.map((c) => (
-              <div
+              <button
+                type="button"
                 key={c.id}
                 onClick={() => router.push(`/select-service?cloud=${c.id}&type=iam`)}
                 className="card card-interactive"
@@ -68,9 +70,11 @@ export default function IAMCloudSelect() {
                 }}
               >
                 <div style={{ height: '48px', display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
-                  <img
+                  <Image
                     src={`/${c.id}-logo.png`}
                     alt={c.short}
+                    width={120}
+                    height={48}
                     style={{ height: 48, width: 'auto', objectFit: 'contain' }}
                   />
                 </div>
@@ -80,7 +84,7 @@ export default function IAMCloudSelect() {
                 <p style={{ color: 'var(--color-text-muted)', fontSize: '14px', lineHeight: 1.6, margin: 0 }}>
                   {c.description}
                 </p>
-              </div>
+              </button>
             ))}
           </div>
         </div>

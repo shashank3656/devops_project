@@ -10,6 +10,12 @@ import (
 	"time"
 )
 
+func encodeDevopsJSON(w http.ResponseWriter, payload interface{}) {
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("devops response encode failed: %v", err)
+	}
+}
+
 // requireDevopsUser validates Bearer token and ensures user is devops_user or admin. Returns userID and ok.
 // Admin users (role=admin) can access DevOps endpoints for template management.
 func requireDevopsUser(w http.ResponseWriter, r *http.Request) (userID int, ok bool) {
@@ -22,7 +28,7 @@ func requireDevopsUser(w http.ResponseWriter, r *http.Request) (userID int, ok b
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
 		return 0, false
 	}
 	token := authHeader[7:]
@@ -30,27 +36,27 @@ func requireDevopsUser(w http.ResponseWriter, r *http.Request) (userID int, ok b
 	if err != nil || uid <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid or expired token", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "invalid or expired token", "status": "error"})
 		return 0, false
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return 0, false
 	}
 	user, err := GetUserByID(uid)
 	if err != nil || user == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "user not found", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "user not found", "status": "error"})
 		return 0, false
 	}
 	// Allow devops_user OR admin (for template management from either portal)
 	if user.UserType != "devops_user" && user.Role != "admin" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "DevOps portal access is for DevOps users or admins only", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "DevOps portal access is for DevOps users or admins only", "status": "error"})
 		return 0, false
 	}
 	return uid, true
@@ -66,7 +72,7 @@ func requireDevopsManager(w http.ResponseWriter, r *http.Request) (userID int, o
 	if err != nil || prof == nil || !prof.IsManager {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "DevOps manager access required", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "DevOps manager access required", "status": "error"})
 		return 0, false
 	}
 	return uid, true
@@ -106,7 +112,7 @@ func devopsMeHandler(w http.ResponseWriter, r *http.Request) {
 		resp["teams"] = []interface{}{}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeDevopsJSON(w, map[string]interface{}{
 		"user":   resp,
 		"token":  generateToken(userID),
 		"status": "ok",
@@ -133,11 +139,11 @@ func devopsTicketsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"tickets": requests, "status": "ok"})
+	encodeDevopsJSON(w, map[string]interface{}{"tickets": requests, "status": "ok"})
 }
 
 // devopsUsersHandler GET /api/devops/users - manager only; list of DevOps users for workload filter
@@ -156,18 +162,18 @@ func devopsUsersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"users": []interface{}{}, "status": "ok"})
+		encodeDevopsJSON(w, map[string]interface{}{"users": []interface{}{}, "status": "ok"})
 		return
 	}
 	users, err := GetDevopsUsers()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"users": users, "status": "ok"})
+	encodeDevopsJSON(w, map[string]interface{}{"users": users, "status": "ok"})
 }
 
 // devopsWorkloadHandler GET /api/devops/workload - manager only; in-progress list + summary by_team and by_person (open, in_progress, completed_this_week)
@@ -189,13 +195,13 @@ func devopsWorkloadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	byTeam, _ := GetWorkloadSummaryByTeam()
 	byPerson, _ := GetWorkloadSummaryByPerson()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeDevopsJSON(w, map[string]interface{}{
 		"workload":  workload,
 		"by_team":   byTeam,
 		"by_person": byPerson,
@@ -236,7 +242,7 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
 	team := strings.TrimSpace(r.URL.Query().Get("team"))
@@ -290,7 +296,7 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	totalCount, _ := GetTotalCount(team, "", cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, atRiskOnly, "", "")
@@ -317,7 +323,7 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 		out = append(out, obj)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeDevopsJSON(w, map[string]interface{}{
 		"requests": out, "total_count": totalCount, "limit": limit, "offset": offset, "status": "ok",
 	})
 }
@@ -338,7 +344,7 @@ func devopsDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		encodeDevopsJSON(w, map[string]interface{}{
 			"pending_approval": 0, "in_progress": 0, "status": "ok",
 		})
 		return
@@ -347,7 +353,7 @@ func devopsDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 	var inProgress int
 	_ = DB.QueryRow("SELECT COUNT(*) FROM pr_requests WHERE status = 'in_progress'").Scan(&inProgress)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeDevopsJSON(w, map[string]interface{}{
 		"pending_approval": pending,
 		"in_progress":      inProgress,
 		"status":           "ok",
@@ -370,7 +376,7 @@ func devopsNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"pending_approval_count": 0, "items": []interface{}{}, "total_count": 0, "counts_by_kind": map[string]int{"all": 0, "pending_approval": 0, "project_event": 0}, "status": "ok"})
+		encodeDevopsJSON(w, map[string]interface{}{"pending_approval_count": 0, "items": []interface{}{}, "total_count": 0, "counts_by_kind": map[string]int{"all": 0, "pending_approval": 0, "project_event": 0}, "status": "ok"})
 		return
 	}
 	limit, offset, projectID, kind := parseOpsNotificationFilters(
@@ -383,11 +389,11 @@ func devopsNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch notifications", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "failed to fetch notifications", "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(payload)
+	encodeDevopsJSON(w, payload)
 }
 
 // devopsPendingApprovalsHandler GET /api/devops/pending-approvals - manager only; list of requests pending_devops_approval
@@ -408,11 +414,11 @@ func devopsPendingApprovalsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"requests": requests, "status": "ok"})
+	encodeDevopsJSON(w, map[string]interface{}{"requests": requests, "status": "ok"})
 }
 
 // devopsMyTeamsHandler GET /api/devops/my-teams - DevOps teams the current user belongs to
@@ -434,11 +440,11 @@ func devopsMyTeamsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"teams": teams, "status": "ok"})
+	encodeDevopsJSON(w, map[string]interface{}{"teams": teams, "status": "ok"})
 }
 
 // devopsTeamsRouter handles /api/devops/teams/:id/members - POST add member (DevOps manager only)
@@ -463,7 +469,7 @@ func devopsTeamsRouter(w http.ResponseWriter, r *http.Request) {
 	if teamID <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid team id", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "invalid team id", "status": "error"})
 		return
 	}
 	userID, ok := requireDevopsManager(w, r)
@@ -473,7 +479,7 @@ func devopsTeamsRouter(w http.ResponseWriter, r *http.Request) {
 	if !CanUserManageDevopsTeam(userID, teamID) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "you cannot manage this team", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "you cannot manage this team", "status": "error"})
 		return
 	}
 	if r.Method == "GET" {
@@ -481,11 +487,11 @@ func devopsTeamsRouter(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"members": members, "status": "ok"})
+		encodeDevopsJSON(w, map[string]interface{}{"members": members, "status": "ok"})
 		return
 	}
 	if r.Method != "POST" {
@@ -500,7 +506,7 @@ func devopsTeamsRouter(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 		return
 	}
 	var targetUserID int
@@ -511,7 +517,7 @@ func devopsTeamsRouter(w http.ResponseWriter, r *http.Request) {
 		if err != nil || u == nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "user not found", "status": "error"})
+			encodeDevopsJSON(w, map[string]interface{}{"error": "user not found", "status": "error"})
 			return
 		}
 		targetUserID = u.ID
@@ -519,7 +525,7 @@ func devopsTeamsRouter(w http.ResponseWriter, r *http.Request) {
 	if targetUserID <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "user_id or email required", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "user_id or email required", "status": "error"})
 		return
 	}
 	role := strings.TrimSpace(body.Role)
@@ -533,11 +539,11 @@ func devopsTeamsRouter(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"member": member, "status": "ok"})
+	encodeDevopsJSON(w, map[string]interface{}{"member": member, "status": "ok"})
 }
 
 // devopsTemplatesRouter handles /api/devops/templates - Any devops_user can list, create, update, delete templates
@@ -558,7 +564,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
 
@@ -571,10 +577,10 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			list, err := ListRequestTemplates()
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]interface{}{"templates": list, "status": "ok"})
+			encodeDevopsJSON(w, map[string]interface{}{"templates": list, "status": "ok"})
 			return
 		case "POST":
 			var body struct {
@@ -589,13 +595,13 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+				encodeDevopsJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 				return
 			}
 			name := strings.TrimSpace(body.Name)
 			if name == "" || strings.TrimSpace(body.Cloud) == "" || strings.TrimSpace(body.Env) == "" || strings.TrimSpace(body.Service) == "" {
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": "name, cloud, env, service required", "status": "error"})
+				encodeDevopsJSON(w, map[string]interface{}{"error": "name, cloud, env, service required", "status": "error"})
 				return
 			}
 			config := body.Config
@@ -605,26 +611,26 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			teamIDs, err := ValidatePortalTemplateTeamIDs(body.TeamIDs)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, body.Status, userIDPtr)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 			if err := SetRequestTemplateTeams(t.ID, teamIDs); err != nil {
 				_ = DeleteRequestTemplate(t.ID)
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 			t, _ = GetRequestTemplateByID(t.ID)
 			AppendAuditLog(userIDPtr, "template_create", "request_template", strconv.Itoa(t.ID), "devops:"+name)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{"template": t, "status": "ok"})
+			encodeDevopsJSON(w, map[string]interface{}{"template": t, "status": "ok"})
 			return
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -640,13 +646,13 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 	t, err := GetRequestTemplateByID(id)
 	if err != nil || t == nil {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "template not found", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "template not found", "status": "error"})
 		return
 	}
 
 	switch r.Method {
 	case "GET":
-		json.NewEncoder(w).Encode(map[string]interface{}{"template": t, "status": "ok"})
+		encodeDevopsJSON(w, map[string]interface{}{"template": t, "status": "ok"})
 		return
 	case "PUT", "PATCH":
 		var body struct {
@@ -661,7 +667,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			encodeDevopsJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
 		name := strings.TrimSpace(body.Name)
@@ -687,34 +693,34 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := UpdateRequestTemplate(id, name, strings.TrimSpace(body.Description), cloud, env, service, config, status, userIDPtr); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		if body.TeamIDs != nil {
 			teamIDs, err := ValidatePortalTemplateTeamIDs(*body.TeamIDs)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 			if err := SetRequestTemplateTeams(id, teamIDs); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 		}
 		AppendAuditLog(userIDPtr, "template_update", "request_template", strconv.Itoa(id), "devops:"+name)
 		updated, _ := GetRequestTemplateByID(id)
-		json.NewEncoder(w).Encode(map[string]interface{}{"template": updated, "status": "ok"})
+		encodeDevopsJSON(w, map[string]interface{}{"template": updated, "status": "ok"})
 		return
 	case "DELETE":
 		if err := DeleteRequestTemplate(id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		AppendAuditLog(userIDPtr, "template_delete", "request_template", strconv.Itoa(id), "devops:"+t.Name)
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "deleted"})
+		encodeDevopsJSON(w, map[string]interface{}{"status": "ok", "message": "deleted"})
 		return
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -735,19 +741,19 @@ func devopsBulkActionHandler(w http.ResponseWriter, r *http.Request, managerID i
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 		return
 	}
 	if len(body.IDs) == 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "ids array is required and must not be empty", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "ids array is required and must not be empty", "status": "error"})
 		return
 	}
 	if len(body.IDs) > 50 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "maximum 50 requests per bulk action", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "maximum 50 requests per bulk action", "status": "error"})
 		return
 	}
 	adminIDPtr := &managerID
@@ -818,7 +824,7 @@ func devopsBulkActionHandler(w http.ResponseWriter, r *http.Request, managerID i
 		resp["errors"] = errs
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	encodeDevopsJSON(w, resp)
 }
 
 func devopsRequestDetailHandler(w http.ResponseWriter, id int) {
@@ -826,7 +832,7 @@ func devopsRequestDetailHandler(w http.ResponseWriter, id int) {
 	if err != nil || req == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "request not found", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
 		return
 	}
 	createdByUsername := ""
@@ -857,7 +863,7 @@ func devopsRequestDetailHandler(w http.ResponseWriter, id int) {
 	resp["blocked_by"] = blockedBy
 	resp["blocked_by_with_status"] = blockedByWithStatus
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"request": resp, "status": "ok"})
+	encodeDevopsJSON(w, map[string]interface{}{"request": resp, "status": "ok"})
 }
 
 func devopsRequestCommentsHandler(w http.ResponseWriter, r *http.Request, requestID int, userID int) {
@@ -867,11 +873,11 @@ func devopsRequestCommentsHandler(w http.ResponseWriter, r *http.Request, reques
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch comments", "status": "error"})
+			encodeDevopsJSON(w, map[string]interface{}{"error": "failed to fetch comments", "status": "error"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "comments": comments})
+		encodeDevopsJSON(w, map[string]interface{}{"status": "ok", "comments": comments})
 		return
 	case "POST":
 		var body struct {
@@ -880,18 +886,18 @@ func devopsRequestCommentsHandler(w http.ResponseWriter, r *http.Request, reques
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Body) == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "body is required", "status": "error"})
+			encodeDevopsJSON(w, map[string]interface{}{"error": "body is required", "status": "error"})
 			return
 		}
 		if err := AddRequestComment(requestID, userID, strings.TrimSpace(body.Body)); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to add comment", "status": "error"})
+			encodeDevopsJSON(w, map[string]interface{}{"error": "failed to add comment", "status": "error"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Comment added"})
+		encodeDevopsJSON(w, map[string]interface{}{"status": "ok", "message": "Comment added"})
 		return
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -903,11 +909,11 @@ func devopsRequestTimelineHandler(w http.ResponseWriter, requestID int) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch timeline", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "failed to fetch timeline", "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "timeline": timeline})
+	encodeDevopsJSON(w, map[string]interface{}{"status": "ok", "timeline": timeline})
 }
 
 func devopsRequestDependenciesHandler(w http.ResponseWriter, requestID int) {
@@ -915,13 +921,13 @@ func devopsRequestDependenciesHandler(w http.ResponseWriter, requestID int) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch dependencies", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "failed to fetch dependencies", "status": "error"})
 		return
 	}
 	blockedBy, _ := GetRequestsThatDependOn(requestID)
 	blockedByWithStatus, _ := GetBlockedByWithStatus(requestID)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeDevopsJSON(w, map[string]interface{}{
 		"status":                 "ok",
 		"depends_on":             dependsOn,
 		"blocked_by":             blockedBy,
@@ -943,7 +949,7 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/devops/requests/")
@@ -973,14 +979,14 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil || id <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid request id", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "invalid request id", "status": "error"})
 		return
 	}
 	req, err := GetPRRequestByID(id)
 	if err != nil || req == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "request not found", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
 		return
 	}
 	var adminIDPtr *int
@@ -1013,7 +1019,7 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if req.Status != "pending_devops_approval" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending_devops_approval requests can be approved", "status": "error"})
+			encodeDevopsJSON(w, map[string]interface{}{"error": "only pending_devops_approval requests can be approved", "status": "error"})
 			return
 		}
 		prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
@@ -1021,7 +1027,7 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("DevOps approve: create PR failed: %v", err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": fmt.Sprintf("failed to create PR: %v", err), "status": "error"})
+			encodeDevopsJSON(w, map[string]interface{}{"error": fmt.Sprintf("failed to create PR: %v", err), "status": "error"})
 			return
 		}
 		if err := UpdatePRRequestWithPR(id, prURL); err != nil {
@@ -1044,7 +1050,7 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), "devops_manager:"+prURL)
 		LogCredentialAuditFromConfig(id, req.Team, req.Env, req.Cloud, req.Config, req.CreatedBy, adminIDPtr)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "pr_url": prURL, "message": "PR created and request set to in_progress"})
+		encodeDevopsJSON(w, map[string]interface{}{"status": "ok", "pr_url": prURL, "message": "PR created and request set to in_progress"})
 		return
 	case "reject":
 		if r.Method != "POST" {
@@ -1054,7 +1060,7 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if req.Status != "pending_devops_approval" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending_devops_approval requests can be rejected", "status": "error"})
+			encodeDevopsJSON(w, map[string]interface{}{"error": "only pending_devops_approval requests can be rejected", "status": "error"})
 			return
 		}
 		reason := ""
@@ -1074,7 +1080,7 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		FireOutboundWebhooks("rejected", p)
 		AppendAuditLog(adminIDPtr, "request_reject", "pr_request", strconv.Itoa(id), "devops_manager:"+reason)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Request rejected"})
+		encodeDevopsJSON(w, map[string]interface{}{"status": "ok", "message": "Request rejected"})
 		return
 	default:
 		http.NotFound(w, r)
@@ -1098,7 +1104,7 @@ func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
 	q := r.URL.Query()
@@ -1118,7 +1124,9 @@ func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
 		allEntries, _ := GetCredentialAuditLogs(10000, 0, cloudFilter, fromDate, toDate, projectIDFilter)
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", "attachment; filename=credential-audit.csv")
-		w.Write([]byte("id,request_id,project_name,project_code,cloud,credential_type,team,env,created_by,approved_by,created_at\n"))
+		if _, err := w.Write([]byte("id,request_id,project_name,project_code,cloud,credential_type,team,env,created_by,approved_by,created_at\n")); err != nil {
+			return
+		}
 		for _, e := range allEntries {
 			reqID := ""
 			if e.RequestID != nil {
@@ -1127,7 +1135,9 @@ func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
 			line := fmt.Sprintf("%d,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
 				e.ID, reqID, e.ProjectName, e.ProjectCode, e.Cloud, e.CredentialType, e.Team, e.Env,
 				e.CreatedByUsername, e.ApprovedByUsername, e.CreatedAt.Format("2006-01-02 15:04:05"))
-			w.Write([]byte(line))
+			if _, err := w.Write([]byte(line)); err != nil {
+				return
+			}
 		}
 		return
 	}
@@ -1136,9 +1146,9 @@ func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("credential audit: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch credential audit", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "failed to fetch credential audit", "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"entries": entries, "status": "ok"})
+	encodeDevopsJSON(w, map[string]interface{}{"entries": entries, "status": "ok"})
 }

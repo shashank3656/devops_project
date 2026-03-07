@@ -196,8 +196,9 @@ export default function ActivityPage() {
             <div className="portal-surface">
               <div className="portal-page__actions" style={{ justifyContent: 'space-between' }}>
                 <div className="portal-page__actions">
-                  <label className="label">Action</label>
+                  <label className="label" htmlFor="activity-action-filter">Action</label>
                   <select
+                    id="activity-action-filter"
                     value={actionFilter}
                     onChange={(e) => { setActionFilter(e.target.value); setOffset(0); }}
                     className="input"
@@ -216,8 +217,9 @@ export default function ActivityPage() {
                     <option value="request_approve">Request approved</option>
                     <option value="request_reject">Request rejected</option>
                   </select>
-                  <label className="label">Project</label>
+                  <label className="label" htmlFor="activity-project-filter">Project</label>
                   <select
+                    id="activity-project-filter"
                     value={projectId}
                     onChange={(e) => { setProjectId(e.target.value); setOffset(0); }}
                     className="input"
@@ -228,16 +230,18 @@ export default function ActivityPage() {
                       <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
                     ))}
                   </select>
-                  <label className="label">From</label>
+                  <label className="label" htmlFor="activity-from-date">From</label>
                   <input
+                    id="activity-from-date"
                     type="date"
                     value={fromDate}
                     onChange={(e) => { setFromDate(e.target.value); setOffset(0); }}
                     className="input"
                     style={{ width: 140 }}
                   />
-                  <label className="label">To</label>
+                  <label className="label" htmlFor="activity-to-date">To</label>
                   <input
+                    id="activity-to-date"
                     type="date"
                     value={toDate}
                     onChange={(e) => { setToDate(e.target.value); setOffset(0); }}

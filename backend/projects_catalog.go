@@ -653,7 +653,9 @@ func createProjectCatalog(input ProjectCatalogInput, createdBy *int) (*ProjectCa
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	var projectID int
 	if err := tx.QueryRowContext(
@@ -696,7 +698,9 @@ func updateProjectCatalog(projectID int, input ProjectCatalogInput, updatedBy *i
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	result, err := tx.ExecContext(
 		ctx,
@@ -738,7 +742,7 @@ func performProjectLifecycleAction(projectID int, action string, updatedBy *int)
 	}
 
 	action = strings.TrimSpace(strings.ToLower(action))
-	nextStatus := project.Status
+	var nextStatus string
 	switch action {
 	case "activate":
 		nextStatus = "active"
@@ -1133,23 +1137,6 @@ func buildProjectAnalytics(projects []ProjectCatalog) (*ProjectAnalytics, error)
 		}
 	}
 	return analytics, nil
-}
-
-func filterProjectsByStatus(projects []ProjectCatalog, statuses ...string) []ProjectCatalog {
-	if len(statuses) == 0 {
-		return projects
-	}
-	allowed := make(map[string]struct{}, len(statuses))
-	for _, status := range statuses {
-		allowed[strings.TrimSpace(strings.ToLower(status))] = struct{}{}
-	}
-	filtered := make([]ProjectCatalog, 0, len(projects))
-	for _, project := range projects {
-		if _, ok := allowed[strings.TrimSpace(strings.ToLower(project.Status))]; ok {
-			filtered = append(filtered, project)
-		}
-	}
-	return filtered
 }
 
 func applyBulkProjectTeamAccess(projectIDs []int, teamIDs []int, environments []string, action string, updatedBy *int) ([]ProjectCatalog, error) {
@@ -1736,14 +1723,14 @@ func adminProjectsHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
 	projects, err := listProjectCatalogs()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("format")), "csv") {
@@ -1751,7 +1738,7 @@ func adminProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		w.Header().Set("Content-Type", "text/csv")
@@ -1760,7 +1747,7 @@ func adminProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "projects": projects})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "projects": projects})
 }
 
 func adminProjectAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
@@ -1780,18 +1767,18 @@ func adminProjectAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	analytics, err := buildProjectAnalytics(projects)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "analytics": analytics})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "analytics": analytics})
 }
 
 func adminProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
@@ -1817,17 +1804,17 @@ func adminProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	if project == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "project not found", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "project not found", "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "project": project})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "project": project})
 }
 
 func validateProjectRequestForUser(userID, projectID int, teamNameOrSlug, environment, cloud, service string) (*ProjectRequestValidation, error) {
@@ -1881,13 +1868,11 @@ func validateProjectRequestForUser(userID, projectID int, teamNameOrSlug, enviro
 		if !overrideAllowed {
 			return nil, fmt.Errorf("selected team does not have access to this project")
 		}
-		accessAllowed = true
 	}
 	if !envAllowed {
 		if !overrideAllowed {
 			return nil, fmt.Errorf("selected environment is not enabled for this project/team combination")
 		}
-		envAllowed = true
 	}
 
 	cloudAllowed := false
@@ -1929,25 +1914,25 @@ func meProjectsHandler(w http.ResponseWriter, r *http.Request) {
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
 		return
 	}
 	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	projects, err := getVisibleProjectsForUser(userID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "projects": projects})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "projects": projects})
 }
 
 func meProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
@@ -1964,14 +1949,14 @@ func meProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
 		return
 	}
 	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/me/projects/")
@@ -1984,19 +1969,19 @@ func meProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	for _, project := range projects {
 		if project.ID == projectID {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "project": project})
+			encodeJSON(w, map[string]interface{}{"status": "ok", "project": project})
 			return
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotFound)
-	json.NewEncoder(w).Encode(map[string]interface{}{"error": "project not found", "status": "error"})
+	encodeJSON(w, map[string]interface{}{"error": "project not found", "status": "error"})
 }
 
 func devopsProjectOptionsHandler(w http.ResponseWriter, r *http.Request) {
@@ -2016,18 +2001,18 @@ func devopsProjectOptionsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	ownerTeams, err := GetTeams()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeJSON(w, map[string]interface{}{
 		"status":       "ok",
 		"portal_teams": portalTeams,
 		"owner_teams":  ownerTeams,
@@ -2051,18 +2036,18 @@ func devopsProjectAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	analytics, err := buildProjectAnalytics(projects)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "analytics": analytics})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "analytics": analytics})
 }
 
 func devopsProjectsBulkHandler(w http.ResponseWriter, r *http.Request) {
@@ -2085,13 +2070,13 @@ func devopsProjectsBulkHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 		return
 	}
 	if len(payload.Projects) == 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "at least one project is required", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "at least one project is required", "status": "error"})
 		return
 	}
 	results := make([]ProjectBulkCreateResult, 0, len(payload.Projects))
@@ -2113,7 +2098,7 @@ func devopsProjectsBulkHandler(w http.ResponseWriter, r *http.Request) {
 		statusCode = http.StatusBadRequest
 	}
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeJSON(w, map[string]interface{}{
 		"status":        "ok",
 		"created_count": createdCount,
 		"error_count":   len(payload.Projects) - createdCount,
@@ -2136,14 +2121,14 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		if profile == nil || !profile.IsManager {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "DevOps manager access required", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "DevOps manager access required", "status": "error"})
 			return
 		}
 		projects, err := listProjectCatalogs()
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("format")), "csv") {
@@ -2151,7 +2136,7 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 			w.Header().Set("Content-Type", "text/csv")
@@ -2163,18 +2148,18 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		ownerTeams, err := GetTeams()
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		encodeJSON(w, map[string]interface{}{
 			"status":       "ok",
 			"projects":     projects,
 			"portal_teams": portalTeams,
@@ -2191,7 +2176,7 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
 		createdBy := &userID
@@ -2199,12 +2184,12 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "project": project})
+		encodeJSON(w, map[string]interface{}{"status": "ok", "project": project})
 		return
 	}
 	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -2233,18 +2218,18 @@ func devopsProjectBulkTeamAccessHandler(w http.ResponseWriter, r *http.Request) 
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 		return
 	}
 	projects, err := applyBulkProjectTeamAccess(payload.ProjectIDs, payload.TeamIDs, payload.Environments, payload.Action, &userID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "projects": projects})
+	encodeJSON(w, map[string]interface{}{"status": "ok", "projects": projects})
 }
 
 func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
@@ -2279,18 +2264,18 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
 		project, err := performProjectLifecycleAction(projectID, payload.Action, &userID)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "project": project})
+		encodeJSON(w, map[string]interface{}{"status": "ok", "project": project})
 		return
 	}
 	if r.Method == "GET" {
@@ -2301,17 +2286,17 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		if project == nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "project not found", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "project not found", "status": "error"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "project": project})
+		encodeJSON(w, map[string]interface{}{"status": "ok", "project": project})
 		return
 	}
 	if r.Method == "PUT" {
@@ -2323,18 +2308,18 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
 		project, err := updateProjectCatalog(projectID, input, &userID)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "project": project})
+		encodeJSON(w, map[string]interface{}{"status": "ok", "project": project})
 		return
 	}
 	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
