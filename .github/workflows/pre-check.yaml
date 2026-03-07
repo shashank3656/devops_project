@@ -242,7 +242,7 @@ jobs:
   # ─────────────────────────────────────────────
   codeql:
     name: 🔬 CodeQL Analysis
-    if: (github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/')) && vars.ENABLE_CODE_SCANNING == 'true'
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/')
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -280,7 +280,7 @@ jobs:
         with:
           category: "/language:${{ matrix.language }}"
           output: codeql-results-${{ matrix.language }}
-          upload: true
+          upload: ${{ vars.ENABLE_CODE_SCANNING == 'true' }}
 
       - name: Set CodeQL Status
         id: set-status
@@ -325,7 +325,7 @@ jobs:
         if: env.SLACK_WEBHOOK != ''
         uses: slackapi/slack-github-action@v1.26.0
         with:
-          webhook-url: ${{ env.SLACK_WEBHOOK }}
+          webhook: ${{ env.SLACK_WEBHOOK }}
           webhook-type: incoming-webhook
           payload: |
             {
