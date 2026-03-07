@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 
 const DEFAULT_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 const ApiUrlContext = createContext<string>(DEFAULT_API_URL);
 
-export function ApiUrlProvider({ children }: { children: React.ReactNode }) {
+export function ApiUrlProvider({ children }: { children: ReactNode }) {
   const [apiUrl, setApiUrl] = useState(DEFAULT_API_URL);
 
   useEffect(() => {

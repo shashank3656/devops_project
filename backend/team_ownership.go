@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
 	"sort"
 	"strconv"
@@ -216,11 +215,9 @@ func buildTeamOwnershipSummary() (TeamOwnershipResponse, error) {
 		resp.Summary["global_templates"] = globalTemplateCount
 
 		filteredTeams := make([]Team, 0, len(teams))
-		for _, team := range teams {
-			filteredTeams = append(filteredTeams, team)
-		}
+		filteredTeams = append(filteredTeams, teams...)
 		sort.Slice(filteredTeams, func(i, j int) bool {
-			if strings.ToLower(filteredTeams[i].TeamType) == strings.ToLower(filteredTeams[j].TeamType) {
+			if strings.EqualFold(filteredTeams[i].TeamType, filteredTeams[j].TeamType) {
 				return strings.ToLower(filteredTeams[i].Name) < strings.ToLower(filteredTeams[j].Name)
 			}
 			return strings.ToLower(filteredTeams[i].TeamType) < strings.ToLower(filteredTeams[j].TeamType)
@@ -346,7 +343,7 @@ func adminTeamOwnershipHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "failed to load team ownership"})
+		encodeJSON(w, map[string]interface{}{"status": "error", "error": "failed to load team ownership"})
 		return
 	}
 
@@ -390,5 +387,5 @@ func adminTeamOwnershipHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	encodeJSON(w, resp)
 }

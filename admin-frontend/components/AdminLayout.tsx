@@ -294,10 +294,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </button>
           {!sidebarCollapsed && (
             <Link href="/dashboard" className="admin-sidebar-shell__brand">
-              <>
-                <span className="admin-sidebar-shell__brand-word admin-sidebar-shell__brand-word--primary">Admin</span>
-                <span className="admin-sidebar-shell__brand-word">Portal</span>
-              </>
+              <span className="admin-sidebar-shell__brand-word admin-sidebar-shell__brand-word--primary">Admin</span>
+              <span className="admin-sidebar-shell__brand-word">Portal</span>
             </Link>
           )}
         </div>

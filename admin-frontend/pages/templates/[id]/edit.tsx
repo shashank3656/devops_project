@@ -153,7 +153,7 @@ export default function EditTemplate() {
       setError('Name, cloud, env, and service are required.');
       return;
     }
-    let configStr = config.trim() || '{}';
+    const configStr = config.trim() || '{}';
     try {
       JSON.parse(configStr);
     } catch {

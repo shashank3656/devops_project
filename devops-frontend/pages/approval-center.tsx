@@ -118,8 +118,13 @@ export default function DevOpsApprovalCenter() {
             <div className="portal-toolbar">
               <div className="portal-toolbar__group">
                 <div className="portal-toolbar__item">
-                  <label className="label">Project</label>
-                  <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                  <label className="label" htmlFor="approval-center-project-filter">Project</label>
+                  <select
+                    id="approval-center-project-filter"
+                    className="input"
+                    value={projectId}
+                    onChange={(event) => setProjectId(event.target.value)}
+                  >
                     <option value="">All projects</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>

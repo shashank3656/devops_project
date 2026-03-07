@@ -1,9 +1,45 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useToast } from '../context/ToastContext';
+import { environments } from '../config/clouds';
 
 const TEMPLATE_KEY = 'infra-request-template';
+const ENV_LABEL_OVERRIDES: Record<string, string> = {
+  dev: 'Development',
+  development: 'Development',
+  qa: 'QA',
+  uat: 'UAT',
+  stage: 'Staging',
+  staging: 'Staging',
+  prod: 'Production',
+  production: 'Production',
+};
+
+function normalizeEnvironmentValues(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    const normalized = raw.trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function formatEnvironmentLabel(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  const configured = environments.find((item) => item.value === normalized);
+  if (configured) return configured.label;
+  if (ENV_LABEL_OVERRIDES[normalized]) return ENV_LABEL_OVERRIDES[normalized];
+  return normalized
+    .split(/[_-]/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
 
 export default function CustomJSON() {
   const router = useRouter();
@@ -12,6 +48,7 @@ export default function CustomJSON() {
     id: number;
     name: string;
     slug: string;
+    default_env?: string;
   }
   interface ProjectTeamAccess {
     team_id: number;
@@ -56,7 +93,7 @@ export default function CustomJSON() {
         const data = JSON.parse(template);
         if (data.project_id) setProjectId(Number(data.project_id));
         if (data.team) setTeam(data.team);
-        if (data.env) setEnv(data.env);
+        if (data.env) setEnv(String(data.env).trim().toLowerCase());
         if (data.client_name) setClientName(data.client_name);
         if (data.config && typeof data.config === 'string') setJson(data.config);
         else if (data.config && typeof data.config === 'object') setJson(JSON.stringify(data.config, null, 2));
@@ -91,8 +128,9 @@ export default function CustomJSON() {
       JSON.parse(jsonString);
       setJsonError('');
       return true;
-    } catch (e: any) {
-      setJsonError(`Invalid JSON: ${e.message}`);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Unknown error';
+      setJsonError(`Invalid JSON: ${message}`);
       return false;
     }
   };
@@ -101,6 +139,23 @@ export default function CustomJSON() {
   const availableTeams = selectedProject
     ? teams.filter((option) => selectedProject.team_access.some((access) => access.team_id === option.id))
     : teams;
+  const availableEnvironments = (() => {
+    if (!selectedProject) return normalizeEnvironmentValues(environments.map((item) => item.value));
+    const access = selectedProject.team_access.find((entry) => entry.team_slug === team);
+    const sourceValues = access?.environments?.length ? access.environments : selectedProject.environments;
+    return normalizeEnvironmentValues(sourceValues);
+  })();
+  const availableEnvironmentOptions = availableEnvironments.map((value) => ({
+    value,
+    label: formatEnvironmentLabel(value),
+  }));
+
+  useEffect(() => {
+    if (!selectedProject) return;
+    const teamAllowed = availableTeams.some((entry) => entry.slug === team);
+    if (team && !teamAllowed) setTeam('');
+    if (env && !availableEnvironments.includes(env.trim().toLowerCase())) setEnv('');
+  }, [selectedProject, availableTeams, availableEnvironments, team, env]);
 
   const handleJsonChange = (value: string) => {
     setJson(value);
@@ -141,10 +196,17 @@ export default function CustomJSON() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
     try {
-      let jsonPayload;
+      let jsonPayload: Record<string, unknown> = {};
       try {
-        jsonPayload = JSON.parse(json);
-      } catch {
+        const parsed: unknown = JSON.parse(json);
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          throw new Error('JSON must be an object');
+        }
+        jsonPayload = parsed as Record<string, unknown>;
+      } catch (parseErr) {
+        if (parseErr instanceof Error && parseErr.message === 'JSON must be an object') {
+          throw parseErr;
+        }
         throw new Error('Invalid JSON format');
       }
 
@@ -175,7 +237,7 @@ export default function CustomJSON() {
         let errMsg = text || `Server returned ${response.status}`;
         try {
           const d = JSON.parse(text);
-          if (d && d.error) errMsg = d.error;
+          if (d?.error) errMsg = d.error;
         } catch (_) {}
         throw new Error(errMsg);
       }
@@ -274,7 +336,7 @@ export default function CustomJSON() {
 
             {canCreatePR === false && (
               <div className="error" style={{ marginBottom: '24px' }}>
-                You don&apos;t have permission to create PRs. Verify your email and ensure your account has contributor or admin role in <a href="/profile" style={{ color: 'inherit', textDecoration: 'underline' }}>Profile</a>.
+                You don&apos;t have permission to create PRs. Verify your email and ensure your account has contributor or admin role in <Link href="/profile" style={{ color: 'inherit', textDecoration: 'underline' }}>Profile</Link>.
               </div>
             )}
 
@@ -289,6 +351,7 @@ export default function CustomJSON() {
                       const nextProjectId = Number(e.target.value);
                       setProjectId(Number.isNaN(nextProjectId) ? '' : nextProjectId);
                       setTeam('');
+                      setEnv('');
                     }}
                     required
                   >
@@ -304,7 +367,15 @@ export default function CustomJSON() {
                   <select
                     className="select"
                     value={team}
-                    onChange={(e) => setTeam(e.target.value)}
+                    onChange={(e) => {
+                      const slug = e.target.value;
+                      setTeam(slug);
+                      const selected = availableTeams.find((entry) => entry.slug === slug);
+                      const defaultEnv = selected?.default_env?.trim().toLowerCase();
+                      if (defaultEnv && availableEnvironments.includes(defaultEnv)) {
+                        setEnv(defaultEnv);
+                      }
+                    }}
                     required
                   >
                     <option value="">{availableTeams.length === 0 ? 'No team access for this project' : 'Select team'}</option>
@@ -333,13 +404,15 @@ export default function CustomJSON() {
                   <select
                     className="select"
                     value={env}
-                    onChange={(e) => setEnv(e.target.value)}
+                    onChange={(e) => setEnv(e.target.value.trim().toLowerCase())}
                     required
                   >
                     <option value="">Select Environment</option>
-                    <option value="dev">Development</option>
-                    <option value="stage">Staging</option>
-                    <option value="prod">Production</option>
+                    {availableEnvironmentOptions.map((envOption) => (
+                      <option key={envOption.value} value={envOption.value}>
+                        {envOption.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
