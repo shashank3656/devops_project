@@ -10,6 +10,12 @@ import (
 	"time"
 )
 
+func encodeAdminJSON(w http.ResponseWriter, payload interface{}) {
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("admin response encode failed: %v", err)
+	}
+}
+
 // adminDashboardStatsHandler GET /api/admin/dashboard-stats - quick counts for admin dashboard
 func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
@@ -576,7 +582,7 @@ func adminBulkApproveHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "ids array required", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "ids array required", "status": "error"})
 		return
 	}
 	var approved, failed []int
@@ -615,7 +621,7 @@ func adminBulkApproveHandler(w http.ResponseWriter, r *http.Request) {
 		approved = append(approved, id)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeAdminJSON(w, map[string]interface{}{
 		"status":   "ok",
 		"approved": approved,
 		"failed":   failed,
@@ -639,7 +645,7 @@ func adminBulkRejectHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "ids array required", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "ids array required", "status": "error"})
 		return
 	}
 	reason := strings.TrimSpace(body.Reason)
@@ -669,7 +675,7 @@ func adminBulkRejectHandler(w http.ResponseWriter, r *http.Request) {
 		rejected = append(rejected, id)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeAdminJSON(w, map[string]interface{}{
 		"status":   "ok",
 		"rejected": rejected,
 		"failed":   failed,
@@ -693,13 +699,13 @@ func adminBulkStatusHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "ids array and status required", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "ids array and status required", "status": "error"})
 		return
 	}
 	if body.Status != "in_progress" && body.Status != "completed" && body.Status != "rejected" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "status must be in_progress, completed, or rejected", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "status must be in_progress, completed, or rejected", "status": "error"})
 		return
 	}
 	var adminIDPtr *int
@@ -719,7 +725,7 @@ func adminBulkStatusHandler(w http.ResponseWriter, r *http.Request) {
 		updated = append(updated, id)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeAdminJSON(w, map[string]interface{}{
 		"status":  "ok",
 		"updated": updated,
 		"failed":  failed,
@@ -764,7 +770,7 @@ func adminRequestDetailHandler(w http.ResponseWriter, r *http.Request, id int) {
 	if err != nil || req == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "request not found", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
 		return
 	}
 	createdByUsername := ""
@@ -805,7 +811,7 @@ func adminRequestDetailHandler(w http.ResponseWriter, r *http.Request, id int) {
 	resp["blocked_by"] = blockedBy
 	resp["blocked_by_with_status"] = blockedByWithStatus
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"request": resp, "status": "ok"})
+	encodeAdminJSON(w, map[string]interface{}{"request": resp, "status": "ok"})
 }
 
 // adminDevopsUsersHandler GET /api/admin/devops-users - list devops users for reassign dropdown (admin only)
@@ -824,18 +830,18 @@ func adminDevopsUsersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"users": []interface{}{}, "status": "ok"})
+		encodeAdminJSON(w, map[string]interface{}{"users": []interface{}{}, "status": "ok"})
 		return
 	}
 	users, err := GetDevopsUsers()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"users": users, "status": "ok"})
+	encodeAdminJSON(w, map[string]interface{}{"users": users, "status": "ok"})
 }
 
 // adminRequestActionHandler handles /api/admin/requests/:id (GET detail) and /api/admin/requests/:id/approve, /reject, /status, /reassign (admin only)
@@ -852,7 +858,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
 	var adminIDPtr *int
@@ -891,7 +897,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil || id <= 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid request id", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "invalid request id", "status": "error"})
 		return
 	}
 
@@ -899,7 +905,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil || req == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "request not found", "status": "error"})
+		encodeAdminJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
 		return
 	}
 
@@ -912,7 +918,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if req.Status != "pending_approval" && req.Status != "pending_devops_approval" && req.Status != "pending_user_manager_approval" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending requests can be approved", "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": "only pending requests can be approved", "status": "error"})
 			return
 		}
 		// Admin full control: if pending_user_manager_approval, just move to pending_devops_approval; else create PR and assign
@@ -925,7 +931,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			FireOutboundWebhooks("approved", RequestPayloadForWebhook(req))
 			AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), "admin_step_to_devops_approval")
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Request moved to pending DevOps approval"})
+			encodeAdminJSON(w, map[string]interface{}{"status": "ok", "message": "Request moved to pending DevOps approval"})
 			return
 		}
 		// pending_approval or pending_devops_approval: create PR and assign
@@ -934,7 +940,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Admin approve: create PR failed: %v", err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": fmt.Sprintf("failed to create PR: %v", err), "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": fmt.Sprintf("failed to create PR: %v", err), "status": "error"})
 			return
 		}
 		if err := UpdatePRRequestWithPR(id, prURL); err != nil {
@@ -957,7 +963,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		AppendAuditLog(adminIDPtr, "request_approve", "pr_request", strconv.Itoa(id), prURL)
 		LogCredentialAuditFromConfig(id, req.Team, req.Env, req.Cloud, req.Config, req.CreatedBy, adminIDPtr)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "pr_url": prURL, "message": "PR created and request set to in_progress"})
+		encodeAdminJSON(w, map[string]interface{}{"status": "ok", "pr_url": prURL, "message": "PR created and request set to in_progress"})
 		return
 
 	case "reject":
@@ -968,7 +974,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if req.Status != "pending_approval" && req.Status != "pending_devops_approval" && req.Status != "pending_user_manager_approval" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "only pending requests can be rejected", "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": "only pending requests can be rejected", "status": "error"})
 			return
 		}
 		reason := ""
@@ -988,7 +994,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		FireOutboundWebhooks("rejected", p)
 		AppendAuditLog(adminIDPtr, "request_reject", "pr_request", strconv.Itoa(id), reason)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Request rejected"})
+		encodeAdminJSON(w, map[string]interface{}{"status": "ok", "message": "Request rejected"})
 		return
 
 	case "status":
@@ -1002,7 +1008,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
 		switch body.Status {
@@ -1012,7 +1018,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "status must be in_progress, completed, or rejected", "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": "status must be in_progress, completed, or rejected", "status": "error"})
 			return
 		}
 		if err := UpdatePRRequestStatus(id, body.Status); err != nil {
@@ -1020,7 +1026,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "request_status": body.Status})
+		encodeAdminJSON(w, map[string]interface{}{"status": "ok", "request_status": body.Status})
 		return
 
 	case "plan-output":
@@ -1034,18 +1040,18 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
 		if err := UpdatePRRequestTerraformPlanOutput(id, body.Output); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		AppendAuditLog(adminIDPtr, "request_plan_output", "pr_request", strconv.Itoa(id), "terraform plan/output updated")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "message": "Terraform output updated"})
+		encodeAdminJSON(w, map[string]interface{}{"status": "ok", "message": "Terraform output updated"})
 		return
 
 	case "reassign":
@@ -1059,7 +1065,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
 		// Allow clearing assignment with assigned_to: null or 0
@@ -1071,20 +1077,20 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			if u == nil || u.UserType != "devops_user" {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": "assigned_to must be a devops user id", "status": "error"})
+				encodeAdminJSON(w, map[string]interface{}{"error": "assigned_to must be a devops user id", "status": "error"})
 				return
 			}
 		}
 		if body.AssignedTo != nil {
 			if err := UpdatePRRequestAssignedTo(id, *body.AssignedTo); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeAdminJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 		} else {
 			if _, err := DB.Exec("UPDATE pr_requests SET assigned_to = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1", id); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+				encodeAdminJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 				return
 			}
 		}
@@ -1097,7 +1103,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		AppendAuditLog(adminIDPtr, "request_reassign", "pr_request", strconv.Itoa(id), "")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "assigned_to": body.AssignedTo})
+		encodeAdminJSON(w, map[string]interface{}{"status": "ok", "assigned_to": body.AssignedTo})
 		return
 
 	case "jira":
@@ -1111,7 +1117,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid json", "status": "error"})
+			encodeAdminJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
 			return
 		}
 		ticketID := strings.TrimSpace(body.JiraTicketID)
@@ -1121,7 +1127,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		AppendAuditLog(adminIDPtr, "request_jira", "pr_request", strconv.Itoa(id), ticketID)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "jira_ticket_id": ticketID})
+		encodeAdminJSON(w, map[string]interface{}{"status": "ok", "jira_ticket_id": ticketID})
 		return
 
 	default:
