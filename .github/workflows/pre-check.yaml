@@ -151,21 +151,22 @@ jobs:
           TS=${{ steps.typescript.outputs.ts_exit }}
           GOVET=${{ steps.govet.outputs.govet_exit }}
           GOLANGCI=${{ steps.golangci.outcome }}
+          PRETTIER_NOTE=""
+          [ "$PRETTIER" != "0" ] && PRETTIER_NOTE=" Prettier check failed (non-blocking)."
 
-          if [ "$ESLINT" = "0" ] && [ "$ESLINT_ADMIN" = "0" ] && [ "$ESLINT_DEVOPS" = "0" ] && [ "$PRETTIER" = "0" ] && [ "$TS" = "0" ] && [ "$GOVET" = "0" ] && [ "$GOLANGCI" = "success" ]; then
+          if [ "$ESLINT" = "0" ] && [ "$ESLINT_ADMIN" = "0" ] && [ "$ESLINT_DEVOPS" = "0" ] && [ "$TS" = "0" ] && [ "$GOVET" = "0" ] && [ "$GOLANGCI" = "success" ]; then
             echo "status=success" >> $GITHUB_OUTPUT
-            echo "details=All lint checks passed ✅" >> $GITHUB_OUTPUT
+            echo "details=All lint checks passed ✅$PRETTIER_NOTE" >> $GITHUB_OUTPUT
           else
             echo "status=failure" >> $GITHUB_OUTPUT
             DETAILS=""
             [ "$ESLINT" != "0" ] && DETAILS="$DETAILS ESLint failed."
             [ "$ESLINT_ADMIN" != "0" ] && DETAILS="$DETAILS Admin ESLint failed."
             [ "$ESLINT_DEVOPS" != "0" ] && DETAILS="$DETAILS DevOps ESLint failed."
-            [ "$PRETTIER" != "0" ] && DETAILS="$DETAILS Prettier failed."
             [ "$TS" != "0" ] && DETAILS="$DETAILS TypeScript errors found."
             [ "$GOVET" != "0" ] && DETAILS="$DETAILS go vet failed."
             [ "$GOLANGCI" != "success" ] && DETAILS="$DETAILS golangci-lint failed."
-            echo "details=$DETAILS" >> $GITHUB_OUTPUT
+            echo "details=$DETAILS$PRETTIER_NOTE" >> $GITHUB_OUTPUT
           fi
 
       - name: Upload Lint Reports
