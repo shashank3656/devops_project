@@ -97,6 +97,16 @@ function getPreviewSignalClass(severity?: string): string {
   }
 }
 
+function parsePositiveIntParam(value: unknown): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
 export default function ProjectDetailsPage() {
   const router = useRouter();
   const [project, setProject] = useState<ProjectOption | null>(null);
@@ -111,19 +121,28 @@ export default function ProjectDetailsPage() {
       router.replace('/login');
       return;
     }
-    const rawId = router.query.id;
-    const projectId = Array.isArray(rawId) ? rawId[0] : rawId;
-    if (!projectId) return;
+    const projectId = parsePositiveIntParam(router.query.id);
+    if (!projectId) {
+      setLoading(false);
+      setProject(null);
+      setError('Project not found');
+      return;
+    }
 
     setLoading(true);
     setError('');
-    fetch(`${apiUrl}/api/me/projects/${projectId}`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${apiUrl}/api/me/projects`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(data?.error || 'Failed to load project');
         }
-        setProject(data.project || null);
+        const projects = Array.isArray(data?.projects) ? data.projects : [];
+        const matchedProject = projects.find((item: { id?: unknown }) => Number(item?.id) === projectId);
+        if (!matchedProject) {
+          throw new Error('Project not found');
+        }
+        setProject(matchedProject as ProjectOption);
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));

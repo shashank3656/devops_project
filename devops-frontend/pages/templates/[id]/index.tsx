@@ -18,6 +18,16 @@ interface RequestTemplate {
   created_at?: string;
 }
 
+function parsePositiveIntParam(value: unknown): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
 function formatTemplateConfig(config: string): string {
   const normalized = config?.trim();
   if (!normalized) return '{}';
@@ -49,22 +59,22 @@ function getConfigSummary(config: string): string {
 
 export default function ViewDevOpsTemplate() {
   const router = useRouter();
-  const { id } = router.query;
   const apiUrl = useApiUrl();
   const [template, setTemplate] = useState<RequestTemplate | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const templateId = useMemo(() => parsePositiveIntParam(router.query.id), [router.query.id]);
 
   const formattedConfig = useMemo(() => formatTemplateConfig(template?.config || '{}'), [template?.config]);
   const configSummary = useMemo(() => getConfigSummary(template?.config || '{}'), [template?.config]);
 
   const fetchTemplate = useCallback(async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token || token === 'undefined' || typeof id !== 'string' || !id) return;
+    if (!token || token === 'undefined' || !templateId) return;
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${apiUrl}/api/devops/templates/${id}`, {
+      const res = await fetch(`${apiUrl}/api/devops/templates`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401 || res.status === 403) {
@@ -72,8 +82,10 @@ export default function ViewDevOpsTemplate() {
         return;
       }
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.template) {
-        setTemplate(data.template as RequestTemplate);
+      const templates = Array.isArray(data?.templates) ? data.templates : [];
+      const matchedTemplate = templates.find((item: { id?: unknown }) => Number(item?.id) === templateId) as RequestTemplate | undefined;
+      if (res.ok && matchedTemplate) {
+        setTemplate(matchedTemplate);
         return;
       }
       setTemplate(null);
@@ -84,7 +96,7 @@ export default function ViewDevOpsTemplate() {
     } finally {
       setLoading(false);
     }
-  }, [id, router, apiUrl]);
+  }, [router, apiUrl, templateId]);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -92,8 +104,14 @@ export default function ViewDevOpsTemplate() {
       router.replace('/login');
       return;
     }
-    if (typeof id === 'string' && id) void fetchTemplate();
-  }, [id, router, fetchTemplate]);
+    if (templateId) {
+      void fetchTemplate();
+    } else {
+      setLoading(false);
+      setTemplate(null);
+      setError('Template not found');
+    }
+  }, [router, templateId, fetchTemplate]);
 
   return (
     <>
