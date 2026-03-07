@@ -26,10 +26,12 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"total_users": 0, "total_teams": 0, "unverified_users": 0,
 			"requests_this_week": 0, "pending_approval": 0, "status": "ok",
-		})
+		}); err != nil {
+			log.Printf("admin dashboard stats encode failed: %v", err)
+		}
 		return
 	}
 	stats, _ := GetDashboardStats()
@@ -130,7 +132,9 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 		resp = baseResp
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("admin dashboard stats encode failed: %v", err)
+	}
 }
 
 // adminAuditLogHandler GET /api/admin/audit-log - list admin audit log entries

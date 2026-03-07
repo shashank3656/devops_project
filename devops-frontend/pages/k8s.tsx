@@ -642,7 +642,7 @@ export default function DevOpsK8sPage() {
         return (
           <table className="k8s-resource-table">
             <thead><tr><th>Timestamp</th><th>Workload</th><th>Cluster</th><th>Namespace</th><th>Level</th><th>Message</th></tr></thead>
-            <tbody>{dashboardView.logs.map((item, index) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}-${index}`}><td>{formatDateTime(item.timestamp)}</td><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.level}</td><td>{item.message}</td></tr>)}</tbody>
+            <tbody>{dashboardView.logs.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}-${item.container}-${item.timestamp}-${item.message}`}><td>{formatDateTime(item.timestamp)}</td><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.level}</td><td>{item.message}</td></tr>)}</tbody>
           </table>
         );
       case 'replicasets':

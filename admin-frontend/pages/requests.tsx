@@ -241,7 +241,7 @@ export default function AdminRequests() {
     const idParam = router.query.id;
     if (!token || !router.isReady || !idParam) return;
     const numId = typeof idParam === 'string' ? parseInt(idParam, 10) : NaN;
-    if (isNaN(numId) || numId <= 0) return;
+    if (Number.isNaN(numId) || numId <= 0) return;
     fetch(`${apiUrl}/api/admin/requests/${numId}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -1529,7 +1529,12 @@ export default function AdminRequests() {
                       placeholder="Add a comment..."
                       value={commentBody}
                       onChange={(e) => setCommentBody(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addComment())}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addComment();
+                        }
+                      }}
                       style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-border)' }}
                     />
                     <button type="button" className="btn btn-primary" disabled={!commentBody.trim() || commentSubmitting} onClick={addComment} style={{ padding: '8px 16px' }}>

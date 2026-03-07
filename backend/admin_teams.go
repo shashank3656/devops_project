@@ -116,7 +116,9 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return strings.Join(ss, ",")
 		}
-		w.Write([]byte(csvLine("id", "username", "email", "role", "verified", "user_type") + "\n"))
+		if _, err := w.Write([]byte(csvLine("id", "username", "email", "role", "verified", "user_type") + "\n")); err != nil {
+			return
+		}
 		for _, usr := range users {
 			username, _ := usr["username"].(string)
 			email, _ := usr["email"].(string)
@@ -127,7 +129,9 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			userType, _ := usr["user_type"].(string)
 			idStr := fmt.Sprint(usr["id"])
-			w.Write([]byte(csvLine(idStr, username, email, role, verified, userType) + "\n"))
+			if _, err := w.Write([]byte(csvLine(idStr, username, email, role, verified, userType) + "\n")); err != nil {
+				return
+			}
 		}
 		return
 	}

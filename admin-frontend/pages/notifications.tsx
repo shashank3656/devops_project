@@ -61,7 +61,6 @@ export default function AdminNotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState(0);
-  const totalPages = Math.max(1, Math.ceil(counts.all / PAGE_SIZE));
 
   useEffect(() => {
     const token = localStorage.getItem('admin_token');
