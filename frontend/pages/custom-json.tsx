@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useToast } from '../context/ToastContext';
 
 const TEMPLATE_KEY = 'infra-request-template';
@@ -282,7 +283,7 @@ export default function CustomJSON() {
 
             {canCreatePR === false && (
               <div className="error" style={{ marginBottom: '24px' }}>
-                You don&apos;t have permission to create PRs. Verify your email and ensure your account has contributor or admin role in <a href="/profile" style={{ color: 'inherit', textDecoration: 'underline' }}>Profile</a>.
+                You don&apos;t have permission to create PRs. Verify your email and ensure your account has contributor or admin role in <Link href="/profile" style={{ color: 'inherit', textDecoration: 'underline' }}>Profile</Link>.
               </div>
             )}
 

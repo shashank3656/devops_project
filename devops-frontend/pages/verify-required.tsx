@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useApiUrl } from '../context/ApiUrlContext';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -81,7 +82,7 @@ export default function DevOpsVerifyRequired() {
               {resending ? 'Sending…' : 'Resend verification email'}
             </button>
             <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-              Already verified? <a href="/dashboard" onClick={(e) => { e.preventDefault(); router.push('/dashboard'); }}>Go to dashboard</a> to refresh.
+              Already verified? <Link href="/dashboard">Go to dashboard</Link> to refresh.
             </p>
             <div style={{ borderTop: '1px solid var(--color-border)', marginTop: 8, paddingTop: 16 }}>
               <button type="button" className="btn btn-secondary" onClick={handleLogout} style={{ padding: '10px 16px' }}>

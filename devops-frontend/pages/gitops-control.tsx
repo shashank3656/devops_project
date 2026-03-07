@@ -979,7 +979,7 @@ export default function GitOpsControlPage() {
                   <div>
                     <span className="portal-surface__eyebrow">Project Inventory</span>
                     <h2 className="portal-surface__title">Project-Infra workflow</h2>
-                    <p className="portal-surface__subtitle">Select a project, then manage that project's access, environment folders, and JSON files in the same flow.</p>
+                    <p className="portal-surface__subtitle">Select a project, then manage that project&apos;s access, environment folders, and JSON files in the same flow.</p>
                   </div>
                 </div>
                 {data.projects.length === 0 ? (
