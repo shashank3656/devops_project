@@ -242,7 +242,9 @@ func adminAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"trend": []interface{}{}, "by_team": []interface{}{}, "by_env": []interface{}{}, "by_cloud": []interface{}{}, "sla": nil, "status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"trend": []interface{}{}, "by_team": []interface{}{}, "by_env": []interface{}{}, "by_cloud": []interface{}{}, "sla": nil, "status": "ok"}); err != nil {
+			log.Printf("admin analytics empty response encode failed: %v", err)
+		}
 		return
 	}
 	days := 14
@@ -271,14 +273,16 @@ func adminAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"trend":    trend,
 		"by_team":  teamComp,
 		"by_env":   byEnv,
 		"by_cloud": byCloud,
 		"sla":      slaResp,
 		"status":   "ok",
-	})
+	}); err != nil {
+		log.Printf("admin analytics response encode failed: %v", err)
+	}
 }
 
 // adminSLABreachCheckHandler GET /api/admin/sla-breach-check - find at-risk requests, send notifications, mark notified.
@@ -298,14 +302,18 @@ func adminSLABreachCheckHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"notified": 0, "status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"notified": 0, "status": "ok"}); err != nil {
+			log.Printf("admin sla breach empty response encode failed: %v", err)
+		}
 		return
 	}
 	reqs, err := GetAtRiskRequestsForSLABreach(50)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"})
+		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"}); encErr != nil {
+			log.Printf("admin sla breach error response encode failed: %v", encErr)
+		}
 		return
 	}
 	notified := 0
@@ -315,7 +323,9 @@ func adminSLABreachCheckHandler(w http.ResponseWriter, r *http.Request) {
 		notified++
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"notified": notified, "status": "ok"})
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"notified": notified, "status": "ok"}); err != nil {
+		log.Printf("admin sla breach response encode failed: %v", err)
+	}
 }
 
 // adminRequestsHandler GET /api/admin/requests - list all PR requests (admin only, no user filter)
