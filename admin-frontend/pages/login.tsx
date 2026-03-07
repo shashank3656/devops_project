@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Link from 'next/link';
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -205,7 +206,7 @@ export default function AdminLogin() {
             )}
             {!pending2fa && (
               <p style={{ marginTop: 12, fontSize: 13 }}>
-                <a href="/forgot-password" style={{ color: 'var(--primary-color)', textDecoration: 'none' }}>Forgot password?</a>
+                <Link href="/forgot-password" style={{ color: 'var(--primary-color)', textDecoration: 'none' }}>Forgot password?</Link>
               </p>
             )}
             <p className="login-page__hint">
