@@ -303,7 +303,10 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		pendingBytes := make([]byte, 32)
-		rand.Read(pendingBytes)
+		if _, err := rand.Read(pendingBytes); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		pendingToken := hex.EncodeToString(pendingBytes)
 		_, _ = DB.Exec("INSERT INTO pending_2fa (token, user_id, expires_at) VALUES ($1, $2, $3)",
 			pendingToken, user.ID, otpExpires)

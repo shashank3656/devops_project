@@ -399,10 +399,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </button>
           {!sidebarCollapsed && (
             <Link href="/home" className="user-sidebar-shell__brand">
-              <>
-                <span className="user-sidebar-shell__brand-word user-sidebar-shell__brand-word--primary">User</span>
-                <span className="user-sidebar-shell__brand-word">Portal</span>
-              </>
+              <span className="user-sidebar-shell__brand-word user-sidebar-shell__brand-word--primary">User</span>
+              <span className="user-sidebar-shell__brand-word">Portal</span>
             </Link>
           )}
         </div>

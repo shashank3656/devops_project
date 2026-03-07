@@ -222,8 +222,24 @@ export default function UsersList() {
         </div>
 
         {userToDelete && (
-          <div className="modal-overlay" onClick={() => !deleting && setUserToDelete(null)} role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
-            <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-overlay"
+            onClick={(event) => {
+              if (event.target === event.currentTarget && !deleting) {
+                setUserToDelete(null);
+              }
+            }}
+            onKeyDown={(event) => {
+              if ((event.key === 'Escape' || event.key === 'Enter' || event.key === ' ') && !deleting) {
+                setUserToDelete(null);
+              }
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-modal-title"
+            tabIndex={0}
+          >
+            <div className="modal">
               <h3 id="delete-modal-title" className="modal-title">Delete user?</h3>
               <p className="modal-body">
                 This will remove <strong>{userToDelete.username}</strong> and their team memberships. This cannot be undone.

@@ -216,11 +216,9 @@ func buildTeamOwnershipSummary() (TeamOwnershipResponse, error) {
 		resp.Summary["global_templates"] = globalTemplateCount
 
 		filteredTeams := make([]Team, 0, len(teams))
-		for _, team := range teams {
-			filteredTeams = append(filteredTeams, team)
-		}
+		filteredTeams = append(filteredTeams, teams...)
 		sort.Slice(filteredTeams, func(i, j int) bool {
-			if strings.ToLower(filteredTeams[i].TeamType) == strings.ToLower(filteredTeams[j].TeamType) {
+			if strings.EqualFold(filteredTeams[i].TeamType, filteredTeams[j].TeamType) {
 				return strings.ToLower(filteredTeams[i].Name) < strings.ToLower(filteredTeams[j].Name)
 			}
 			return strings.ToLower(filteredTeams[i].TeamType) < strings.ToLower(filteredTeams[j].TeamType)

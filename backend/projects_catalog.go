@@ -653,7 +653,9 @@ func createProjectCatalog(input ProjectCatalogInput, createdBy *int) (*ProjectCa
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	var projectID int
 	if err := tx.QueryRowContext(
@@ -696,7 +698,9 @@ func updateProjectCatalog(projectID int, input ProjectCatalogInput, updatedBy *i
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	result, err := tx.ExecContext(
 		ctx,
@@ -738,7 +742,7 @@ func performProjectLifecycleAction(projectID int, action string, updatedBy *int)
 	}
 
 	action = strings.TrimSpace(strings.ToLower(action))
-	nextStatus := project.Status
+	var nextStatus string
 	switch action {
 	case "activate":
 		nextStatus = "active"
@@ -1133,23 +1137,6 @@ func buildProjectAnalytics(projects []ProjectCatalog) (*ProjectAnalytics, error)
 		}
 	}
 	return analytics, nil
-}
-
-func filterProjectsByStatus(projects []ProjectCatalog, statuses ...string) []ProjectCatalog {
-	if len(statuses) == 0 {
-		return projects
-	}
-	allowed := make(map[string]struct{}, len(statuses))
-	for _, status := range statuses {
-		allowed[strings.TrimSpace(strings.ToLower(status))] = struct{}{}
-	}
-	filtered := make([]ProjectCatalog, 0, len(projects))
-	for _, project := range projects {
-		if _, ok := allowed[strings.TrimSpace(strings.ToLower(project.Status))]; ok {
-			filtered = append(filtered, project)
-		}
-	}
-	return filtered
 }
 
 func applyBulkProjectTeamAccess(projectIDs []int, teamIDs []int, environments []string, action string, updatedBy *int) ([]ProjectCatalog, error) {
@@ -1881,13 +1868,11 @@ func validateProjectRequestForUser(userID, projectID int, teamNameOrSlug, enviro
 		if !overrideAllowed {
 			return nil, fmt.Errorf("selected team does not have access to this project")
 		}
-		accessAllowed = true
 	}
 	if !envAllowed {
 		if !overrideAllowed {
 			return nil, fmt.Errorf("selected environment is not enabled for this project/team combination")
 		}
-		envAllowed = true
 	}
 
 	cloudAllowed := false

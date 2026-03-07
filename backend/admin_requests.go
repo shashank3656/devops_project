@@ -34,7 +34,7 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	stats, _ := GetDashboardStats()
 	atRisk, _ := GetAtRiskCount()
-	resp := map[string]interface{}{
+	baseResp := map[string]interface{}{
 		"total_users":        stats.TotalUsers,
 		"total_teams":        stats.TotalTeams,
 		"unverified_users":   stats.UnverifiedUsers,
@@ -87,7 +87,7 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 		r.URL.Query().Get("from"),
 		r.URL.Query().Get("to"),
 	}
-	resp, _ = cacheJSON[map[string]interface{}](cacheNamespaceAdmin, 90*time.Second, filterKey, func() (map[string]interface{}, error) {
+	resp, err := cacheJSON[map[string]interface{}](cacheNamespaceAdmin, 90*time.Second, filterKey, func() (map[string]interface{}, error) {
 		cachedResp := map[string]interface{}{
 			"total_users":        stats.TotalUsers,
 			"total_teams":        stats.TotalTeams,
@@ -126,6 +126,9 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return cachedResp, nil
 	})
+	if err != nil || resp == nil {
+		resp = baseResp
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
@@ -188,10 +191,12 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return strings.Join(ss, ",")
 		}
-		w.Write([]byte(csvLine("id", "created_at", "admin_username", "action", "resource_type", "resource_id", "project_name", "project_code", "details") + "\n"))
+		if _, err := w.Write([]byte(csvLine("id", "created_at", "admin_username", "action", "resource_type", "resource_id", "project_name", "project_code", "details") + "\n")); err != nil {
+			return
+		}
 		all, _ := GetAuditLogs(10000, 0, actionFilter, fromDate, toDate, projectID)
 		for _, e := range all {
-			w.Write([]byte(csvLine(
+			if _, err := w.Write([]byte(csvLine(
 				strconv.Itoa(e.ID),
 				e.CreatedAt.Format("2006-01-02 15:04:05"),
 				e.AdminUsername,
@@ -201,7 +206,9 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 				e.ProjectName,
 				e.ProjectCode,
 				e.Details,
-			) + "\n"))
+			) + "\n")); err != nil {
+				return
+			}
 		}
 		return
 	}
@@ -420,18 +427,22 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return strings.Join(ss, ",")
 		}
-		w.Write([]byte(csvLine("id", "project", "team", "env", "cloud", "service", "priority", "status", "pr_url", "created_at", "updated_at") + "\n"))
+		if _, err := w.Write([]byte(csvLine("id", "project", "team", "env", "cloud", "service", "priority", "status", "pr_url", "created_at", "updated_at") + "\n")); err != nil {
+			return
+		}
 		for _, rq := range all {
 			prURL := rq.PRURL
 			if prURL == "" {
 				prURL = ""
 			}
-			w.Write([]byte(csvLine(
+			if _, err := w.Write([]byte(csvLine(
 				strconv.Itoa(rq.ID), rq.ProjectName, rq.Team, rq.Env, rq.Cloud, rq.Service,
 				rq.Priority, rq.Status, prURL,
 				rq.CreatedAt.Format("2006-01-02 15:04:05"),
 				rq.UpdatedAt.Format("2006-01-02 15:04:05"),
-			) + "\n"))
+			) + "\n")); err != nil {
+				return
+			}
 		}
 		return
 	}
