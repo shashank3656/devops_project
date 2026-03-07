@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"fmt"
-	"html"
+	"html/template"
 	"log"
 	"net/mail"
 	"net/smtp"
@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 func sanitizeEmailHeaderValue(value, field string) (string, error) {
@@ -44,6 +45,49 @@ func sanitizeEmailBody(value string) string {
 	normalized := strings.ReplaceAll(value, "\r\n", "\n")
 	normalized = strings.ReplaceAll(normalized, "\r", "\n")
 	return normalized
+}
+
+func sanitizeEmailTextContent(value string) string {
+	normalized := sanitizeEmailBody(value)
+	var b strings.Builder
+	b.Grow(len(normalized))
+	for _, r := range normalized {
+		if r == '\n' || r == '\t' {
+			b.WriteRune(r)
+			continue
+		}
+		if unicode.IsPrint(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func buildEscapedEmailHTML(subject, escapedBody string) string {
+	subjectEscaped := template.HTMLEscapeString(subject)
+	bodyWithBreaks := strings.ReplaceAll(escapedBody, "\n", "<br>\n")
+	return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>` + subjectEscaped + `</title>
+</head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.6;color:#334155;background:#f8fafc;">
+  <div style="max-width:600px;margin:24px auto;padding:24px;background:#fff;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
+    <div style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #e2e8f0;">
+      <h1 style="margin:0;font-size:20px;font-weight:600;color:#0f172a;">InfraGate</h1>
+      <p style="margin:4px 0 0;font-size:12px;color:#64748b;">Infrastructure Request Portal</p>
+    </div>
+    <div style="color:#334155;">
+      ` + bodyWithBreaks + `
+    </div>
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;">
+      This is an automated message from InfraGate. Do not reply to this email.
+    </div>
+  </div>
+</body>
+</html>`
 }
 
 // SendEmail sends an email via SMTP if configured. No-op if SMTP_HOST is empty.
@@ -80,7 +124,9 @@ func SendEmail(to, subject, body string) error {
 	if err != nil {
 		return err
 	}
-	body = sanitizeEmailBody(body)
+	subject = template.HTMLEscapeString(subject)
+	body = sanitizeEmailTextContent(body)
+	escapedBody := template.HTMLEscapeString(body)
 
 	useTLS := strings.ToLower(os.Getenv("SMTP_USE_TLS")) != "false"
 
@@ -88,8 +134,8 @@ func SendEmail(to, subject, body string) error {
 
 	addr := fmt.Sprintf("%s:%d", host, port)
 	boundary := fmt.Sprintf("boundary_%d", time.Now().UnixNano())
-	htmlBody := WrapEmailHTML(subject, body)
-	msg := buildMIMEMessage(from, to, subject, body, htmlBody, boundary)
+	htmlBody := buildEscapedEmailHTML(subject, escapedBody)
+	msg := buildMIMEMessage(from, to, subject, escapedBody, htmlBody, boundary)
 
 	var auth smtp.Auth
 	if user != "" && pass != "" {
@@ -181,31 +227,8 @@ func buildMIMEMessage(from, to, subject, textBody, htmlBody, boundary string) []
 
 // WrapEmailHTML wraps plain text in a simple HTML email template
 func WrapEmailHTML(subject, body string) string {
-	escaped := html.EscapeString(body)
-	escaped = strings.ReplaceAll(escaped, "\n", "<br>\n")
-	subjectEscaped := html.EscapeString(subject)
-	return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>` + subjectEscaped + `</title>
-</head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.6;color:#334155;background:#f8fafc;">
-  <div style="max-width:600px;margin:24px auto;padding:24px;background:#fff;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
-    <div style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #e2e8f0;">
-      <h1 style="margin:0;font-size:20px;font-weight:600;color:#0f172a;">InfraGate</h1>
-      <p style="margin:4px 0 0;font-size:12px;color:#64748b;">Infrastructure Request Portal</p>
-    </div>
-    <div style="color:#334155;">
-      ` + escaped + `
-    </div>
-    <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;">
-      This is an automated message from InfraGate. Do not reply to this email.
-    </div>
-  </div>
-</body>
-</html>`
+	escaped := template.HTMLEscapeString(sanitizeEmailTextContent(body))
+	return buildEscapedEmailHTML(subject, escaped)
 }
 
 // EmailTemplatePasswordReset returns HTML and plain text for password reset email
