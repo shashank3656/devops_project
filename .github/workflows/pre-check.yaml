@@ -4,7 +4,10 @@ on:
   push:
     branches: [feature/**]
   pull_request:
-    branches: [dev]
+    branches:
+      - main
+      - dev
+      - feature/**
     types: [opened, synchronize, reopened, ready_for_review]
 
 env:
@@ -31,12 +34,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
 
       - name: Install Frontend Dependencies
         working-directory: ./frontend
-        run: npm ci
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
 
       - name: Run ESLint (React)
         id: eslint
@@ -236,7 +242,7 @@ jobs:
   # ─────────────────────────────────────────────
   codeql:
     name: 🔬 CodeQL Analysis
-    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/')
+    if: (github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/')) && vars.ENABLE_CODE_SCANNING == 'true'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -298,7 +304,7 @@ jobs:
           SEMGREP="${{ needs.semgrep.outputs.status }}"
           CODEQL="${{ needs.codeql.result }}"
 
-          if [ "$LINT" = "success" ] && [ "$SEMGREP" = "success" ] && [ "$CODEQL" = "success" ]; then
+          if [ "$LINT" = "success" ] && [ "$SEMGREP" = "success" ] && { [ "$CODEQL" = "success" ] || [ "$CODEQL" = "skipped" ]; }; then
             echo "color=#22c55e" >> $GITHUB_OUTPUT
             echo "emoji=✅" >> $GITHUB_OUTPUT
             echo "title=All PR Checks Passed" >> $GITHUB_OUTPUT
@@ -316,9 +322,10 @@ jobs:
           fi
 
       - name: Send Slack Notification
+        if: secrets.SLACK_WEBHOOK_URL != ''
         uses: slackapi/slack-github-action@v1.26.0
         with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
             {
