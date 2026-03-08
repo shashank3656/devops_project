@@ -90,6 +90,7 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 			COALESCE(user_type,'portal_user'),
 			COALESCE(auth_source,'local'),
 			COALESCE(sso_provider,''),
+			COALESCE(sso_active, TRUE),
 			last_sso_sync_at
 		FROM users
 		WHERE role != 'admin' OR role IS NULL
@@ -107,8 +108,9 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 		var id int
 		var username, email, role, userType, authSource, ssoProvider string
 		var verified bool
+		var ssoActive bool
 		var lastSyncAt sql.NullTime
-		if err := rows.Scan(&id, &username, &email, &role, &verified, &userType, &authSource, &ssoProvider, &lastSyncAt); err != nil {
+		if err := rows.Scan(&id, &username, &email, &role, &verified, &userType, &authSource, &ssoProvider, &ssoActive, &lastSyncAt); err != nil {
 			continue
 		}
 		if userType != "devops_user" && userType != "portal_user" {
@@ -125,6 +127,7 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 			"sso_provider": func() string {
 				return strings.TrimSpace(strings.ToLower(ssoProvider))
 			}(),
+			"sso_active": ssoActive,
 		}
 		if lastSyncAt.Valid {
 			u["last_sso_sync_at"] = lastSyncAt.Time
@@ -153,7 +156,7 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return strings.Join(ss, ",")
 		}
-		if _, err := w.Write([]byte(csvLine("id", "username", "email", "role", "verified", "user_type", "auth_source", "sso_provider", "last_sso_sync_at") + "\n")); err != nil {
+		if _, err := w.Write([]byte(csvLine("id", "username", "email", "role", "verified", "user_type", "auth_source", "sso_provider", "sso_active", "last_sso_sync_at") + "\n")); err != nil {
 			return
 		}
 		for _, usr := range users {
@@ -167,12 +170,16 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 			userType, _ := usr["user_type"].(string)
 			authSource, _ := usr["auth_source"].(string)
 			ssoProvider, _ := usr["sso_provider"].(string)
+			ssoActive := "true"
+			if v, ok := usr["sso_active"].(bool); ok && !v {
+				ssoActive = "false"
+			}
 			lastSync := ""
 			if ts, ok := usr["last_sso_sync_at"].(time.Time); ok {
 				lastSync = ts.Format(time.RFC3339)
 			}
 			idStr := fmt.Sprint(usr["id"])
-			if _, err := w.Write([]byte(csvLine(idStr, username, email, role, verified, userType, authSource, ssoProvider, lastSync) + "\n")); err != nil {
+			if _, err := w.Write([]byte(csvLine(idStr, username, email, role, verified, userType, authSource, ssoProvider, ssoActive, lastSync) + "\n")); err != nil {
 				return
 			}
 		}
@@ -357,13 +364,15 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 			"user_type": user.UserType, "manager_id": user.ManagerID, "is_portal_manager": user.IsPortalManager,
 		}
 		var authSource, ssoProvider string
+		var ssoActive bool
 		var lastSyncAt sql.NullTime
 		_ = DB.QueryRow(
-			`SELECT COALESCE(auth_source,'local'), COALESCE(sso_provider,''), last_sso_sync_at FROM users WHERE id = $1`,
+			`SELECT COALESCE(auth_source,'local'), COALESCE(sso_provider,''), COALESCE(sso_active, TRUE), last_sso_sync_at FROM users WHERE id = $1`,
 			id,
-		).Scan(&authSource, &ssoProvider, &lastSyncAt)
+		).Scan(&authSource, &ssoProvider, &ssoActive, &lastSyncAt)
 		userResp["auth_source"] = strings.TrimSpace(strings.ToLower(authSource))
 		userResp["sso_provider"] = strings.TrimSpace(strings.ToLower(ssoProvider))
+		userResp["sso_active"] = ssoActive
 		if lastSyncAt.Valid {
 			userResp["last_sso_sync_at"] = lastSyncAt.Time
 		}
@@ -457,13 +466,15 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 			"role": updated.Role, "verified": updated.Verified, "user_type": updated.UserType, "manager_id": updated.ManagerID, "is_portal_manager": updated.IsPortalManager,
 		}
 		var authSource, ssoProvider string
+		var ssoActive bool
 		var lastSyncAt sql.NullTime
 		_ = DB.QueryRow(
-			`SELECT COALESCE(auth_source,'local'), COALESCE(sso_provider,''), last_sso_sync_at FROM users WHERE id = $1`,
+			`SELECT COALESCE(auth_source,'local'), COALESCE(sso_provider,''), COALESCE(sso_active, TRUE), last_sso_sync_at FROM users WHERE id = $1`,
 			id,
-		).Scan(&authSource, &ssoProvider, &lastSyncAt)
+		).Scan(&authSource, &ssoProvider, &ssoActive, &lastSyncAt)
 		respUser["auth_source"] = strings.TrimSpace(strings.ToLower(authSource))
 		respUser["sso_provider"] = strings.TrimSpace(strings.ToLower(ssoProvider))
+		respUser["sso_active"] = ssoActive
 		if lastSyncAt.Valid {
 			respUser["last_sso_sync_at"] = lastSyncAt.Time
 		}

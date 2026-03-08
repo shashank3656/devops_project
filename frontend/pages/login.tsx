@@ -7,6 +7,7 @@ import { SITE_NAME } from '../lib/site';
 
 interface PublicSSOState {
   enabled: boolean;
+  mode: string;
   provider: string;
   login_url: string;
 }
@@ -26,7 +27,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [pending2fa, setPending2fa] = useState<{ token: string } | null>(null);
   const [otp, setOtp] = useState('');
-  const [sso, setSso] = useState<PublicSSOState>({ enabled: false, provider: 'none', login_url: '' });
+  const [sso, setSso] = useState<PublicSSOState>({ enabled: false, mode: 'disabled', provider: 'none', login_url: '' });
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -51,6 +52,7 @@ export default function Login() {
         if (payload && typeof payload === 'object') {
           setSso({
             enabled: Boolean(payload.enabled),
+            mode: typeof payload.mode === 'string' ? payload.mode : 'disabled',
             provider: typeof payload.provider === 'string' ? payload.provider : 'none',
             login_url: typeof payload.login_url === 'string' ? payload.login_url : '',
           });
@@ -81,7 +83,7 @@ export default function Login() {
       const response = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, portal: 'user' }),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -268,49 +270,57 @@ export default function Login() {
                     Continue with {providerLabel(sso.provider)}
                   </button>
                   <p className="login-page__hint" style={{ marginTop: 12, marginBottom: 12 }}>
-                    or sign in with username and password
+                    {sso.mode === 'required' ? 'username/password login is disabled by policy' : 'or sign in with username and password'}
                   </p>
                 </>
               )}
-              <div className="form-group">
-                <label className="label" htmlFor="username">Username</label>
-                <input
-                  id="username"
-                  className="input"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                  disabled={loading}
-                  autoComplete="username"
-                  autoFocus
-                  placeholder="Enter your username"
-                />
-              </div>
-              <div className="form-group">
-                <label className="label" htmlFor="password">Password</label>
-                <input
-                  id="password"
-                  className="input"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={loading}
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                />
-              </div>
-              <button type="submit" className="btn btn-primary login-page__submit" disabled={loading}>
-                {loading ? (
-                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <span className="loading" style={{ width: 18, height: 18, borderWidth: 2 }} />
-                    Signing in…
-                  </span>
-                ) : (
-                  'Sign in'
-                )}
-              </button>
+              {sso.mode === 'required' ? (
+                <div className="alert alert-info" role="status" style={{ marginBottom: 12 }}>
+                  Use SSO to continue.
+                </div>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label className="label" htmlFor="username">Username</label>
+                    <input
+                      id="username"
+                      className="input"
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                      disabled={loading}
+                      autoComplete="username"
+                      autoFocus
+                      placeholder="Enter your username"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="label" htmlFor="password">Password</label>
+                    <input
+                      id="password"
+                      className="input"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      disabled={loading}
+                      autoComplete="current-password"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <button type="submit" className="btn btn-primary login-page__submit" disabled={loading}>
+                    {loading ? (
+                      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                        <span className="loading" style={{ width: 18, height: 18, borderWidth: 2 }} />
+                        Signing in…
+                      </span>
+                    ) : (
+                      'Sign in'
+                    )}
+                  </button>
+                </>
+              )}
             </form>
             )}
             {!pending2fa && (
