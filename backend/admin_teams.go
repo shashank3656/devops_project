@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -77,8 +79,22 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 		encodeAdminTeamJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
 		return
 	}
-	// Only present user credentials (exclude admin accounts) in admin console; include user_type and devops_profile
-	rows, err := DB.Query(`SELECT id, username, email, COALESCE(role,'viewer'), COALESCE(verified,false), COALESCE(user_type,'portal_user') FROM users WHERE role != 'admin' OR role IS NULL ORDER BY username`)
+	// Only present user credentials (exclude admin accounts) in admin console; include user_type/devops_profile + SSO source metadata.
+	rows, err := DB.Query(`
+		SELECT
+			id,
+			username,
+			email,
+			COALESCE(role,'viewer'),
+			COALESCE(verified,false),
+			COALESCE(user_type,'portal_user'),
+			COALESCE(auth_source,'local'),
+			COALESCE(sso_provider,''),
+			last_sso_sync_at
+		FROM users
+		WHERE role != 'admin' OR role IS NULL
+		ORDER BY username
+	`)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -89,15 +105,30 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 	var users []map[string]interface{}
 	for rows.Next() {
 		var id int
-		var username, email, role, userType string
+		var username, email, role, userType, authSource, ssoProvider string
 		var verified bool
-		if err := rows.Scan(&id, &username, &email, &role, &verified, &userType); err != nil {
+		var lastSyncAt sql.NullTime
+		if err := rows.Scan(&id, &username, &email, &role, &verified, &userType, &authSource, &ssoProvider, &lastSyncAt); err != nil {
 			continue
 		}
 		if userType != "devops_user" && userType != "portal_user" {
 			userType = "portal_user"
 		}
-		u := map[string]interface{}{"id": id, "username": username, "email": email, "role": role, "verified": verified, "user_type": userType}
+		u := map[string]interface{}{
+			"id":          id,
+			"username":    username,
+			"email":       email,
+			"role":        role,
+			"verified":    verified,
+			"user_type":   userType,
+			"auth_source": strings.TrimSpace(strings.ToLower(authSource)),
+			"sso_provider": func() string {
+				return strings.TrimSpace(strings.ToLower(ssoProvider))
+			}(),
+		}
+		if lastSyncAt.Valid {
+			u["last_sso_sync_at"] = lastSyncAt.Time
+		}
 		if userType == "devops_user" {
 			if prof, _ := GetDevopsProfile(id); prof != nil {
 				u["devops_profile"] = map[string]interface{}{
@@ -122,7 +153,7 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return strings.Join(ss, ",")
 		}
-		if _, err := w.Write([]byte(csvLine("id", "username", "email", "role", "verified", "user_type") + "\n")); err != nil {
+		if _, err := w.Write([]byte(csvLine("id", "username", "email", "role", "verified", "user_type", "auth_source", "sso_provider", "last_sso_sync_at") + "\n")); err != nil {
 			return
 		}
 		for _, usr := range users {
@@ -134,8 +165,14 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 				verified = "true"
 			}
 			userType, _ := usr["user_type"].(string)
+			authSource, _ := usr["auth_source"].(string)
+			ssoProvider, _ := usr["sso_provider"].(string)
+			lastSync := ""
+			if ts, ok := usr["last_sso_sync_at"].(time.Time); ok {
+				lastSync = ts.Format(time.RFC3339)
+			}
 			idStr := fmt.Sprint(usr["id"])
-			if _, err := w.Write([]byte(csvLine(idStr, username, email, role, verified, userType) + "\n")); err != nil {
+			if _, err := w.Write([]byte(csvLine(idStr, username, email, role, verified, userType, authSource, ssoProvider, lastSync) + "\n")); err != nil {
 				return
 			}
 		}
@@ -319,6 +356,17 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 			"role": user.Role, "verified": user.Verified, "created_at": user.CreatedAt,
 			"user_type": user.UserType, "manager_id": user.ManagerID, "is_portal_manager": user.IsPortalManager,
 		}
+		var authSource, ssoProvider string
+		var lastSyncAt sql.NullTime
+		_ = DB.QueryRow(
+			`SELECT COALESCE(auth_source,'local'), COALESCE(sso_provider,''), last_sso_sync_at FROM users WHERE id = $1`,
+			id,
+		).Scan(&authSource, &ssoProvider, &lastSyncAt)
+		userResp["auth_source"] = strings.TrimSpace(strings.ToLower(authSource))
+		userResp["sso_provider"] = strings.TrimSpace(strings.ToLower(ssoProvider))
+		if lastSyncAt.Valid {
+			userResp["last_sso_sync_at"] = lastSyncAt.Time
+		}
 		if user.UserType == "devops_user" {
 			if prof, _ := GetDevopsProfile(id); prof != nil {
 				userResp["devops_profile"] = map[string]interface{}{
@@ -407,6 +455,17 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 		respUser := map[string]interface{}{
 			"id": updated.ID, "username": updated.Username, "email": updated.Email,
 			"role": updated.Role, "verified": updated.Verified, "user_type": updated.UserType, "manager_id": updated.ManagerID, "is_portal_manager": updated.IsPortalManager,
+		}
+		var authSource, ssoProvider string
+		var lastSyncAt sql.NullTime
+		_ = DB.QueryRow(
+			`SELECT COALESCE(auth_source,'local'), COALESCE(sso_provider,''), last_sso_sync_at FROM users WHERE id = $1`,
+			id,
+		).Scan(&authSource, &ssoProvider, &lastSyncAt)
+		respUser["auth_source"] = strings.TrimSpace(strings.ToLower(authSource))
+		respUser["sso_provider"] = strings.TrimSpace(strings.ToLower(ssoProvider))
+		if lastSyncAt.Valid {
+			respUser["last_sso_sync_at"] = lastSyncAt.Time
 		}
 		if updated.UserType == "devops_user" {
 			if prof, _ := GetDevopsProfile(id); prof != nil {
