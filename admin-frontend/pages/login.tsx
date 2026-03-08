@@ -37,7 +37,7 @@ export default function AdminLogin() {
       const res = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, portal: 'admin' }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

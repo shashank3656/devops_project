@@ -776,6 +776,39 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_sso_sync_at TIMESTAMP")
 	_, _ = DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_sso_provider_external_id ON users (sso_provider, sso_external_id) WHERE sso_provider IS NOT NULL AND sso_provider != '' AND sso_external_id IS NOT NULL AND sso_external_id != ''")
 
+	// Migration 38: SSO policy expansion (modes, mappings, scheduler, claims, deprovision)
+	_, _ = DB.Exec("ALTER TABLE sso_settings ADD COLUMN IF NOT EXISTS user_portal_sso_mode VARCHAR(20) NOT NULL DEFAULT 'disabled'")
+	_, _ = DB.Exec("ALTER TABLE sso_settings ADD COLUMN IF NOT EXISTS devops_portal_sso_mode VARCHAR(20) NOT NULL DEFAULT 'disabled'")
+	_, _ = DB.Exec("ALTER TABLE sso_settings ADD COLUMN IF NOT EXISTS break_glass_admins_json TEXT NOT NULL DEFAULT '[]'")
+	_, _ = DB.Exec("ALTER TABLE sso_settings ADD COLUMN IF NOT EXISTS group_role_mappings_json TEXT NOT NULL DEFAULT '[]'")
+	_, _ = DB.Exec("ALTER TABLE sso_settings ADD COLUMN IF NOT EXISTS group_team_mappings_json TEXT NOT NULL DEFAULT '[]'")
+	_, _ = DB.Exec("ALTER TABLE sso_settings ADD COLUMN IF NOT EXISTS deprovision_missing_users BOOLEAN NOT NULL DEFAULT FALSE")
+	_, _ = DB.Exec("ALTER TABLE sso_settings ADD COLUMN IF NOT EXISTS scheduled_sync_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+	_, _ = DB.Exec("ALTER TABLE sso_settings ADD COLUMN IF NOT EXISTS sync_interval_minutes INTEGER NOT NULL DEFAULT 60")
+	_, _ = DB.Exec("ALTER TABLE sso_settings ADD COLUMN IF NOT EXISTS jit_provision_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+	_, _ = DB.Exec("ALTER TABLE sso_settings ADD COLUMN IF NOT EXISTS require_mfa_claim BOOLEAN NOT NULL DEFAULT FALSE")
+	_, _ = DB.Exec("ALTER TABLE sso_settings ADD COLUMN IF NOT EXISTS require_verified_email_claim BOOLEAN NOT NULL DEFAULT FALSE")
+	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS sso_active BOOLEAN NOT NULL DEFAULT TRUE")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_users_sso_state ON users (auth_source, sso_provider, sso_active)")
+	_, _ = DB.Exec(`
+		UPDATE sso_settings
+		SET
+			user_portal_sso_mode = CASE
+				WHEN user_portal_sso_enabled THEN 'optional'
+				ELSE 'disabled'
+			END
+		WHERE COALESCE(user_portal_sso_mode, '') = ''
+	`)
+	_, _ = DB.Exec(`
+		UPDATE sso_settings
+		SET
+			devops_portal_sso_mode = CASE
+				WHEN devops_portal_sso_enabled THEN 'optional'
+				ELSE 'disabled'
+			END
+		WHERE COALESCE(devops_portal_sso_mode, '') = ''
+	`)
+
 	log.Println("Database schema is up to date")
 	return nil
 }

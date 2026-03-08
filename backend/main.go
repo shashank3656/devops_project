@@ -540,6 +540,7 @@ func main() {
 	http.HandleFunc("/api/logs/github", logsGitHubHandler)
 	http.HandleFunc("/api/auth/signup", signupHandler)
 	http.HandleFunc("/api/auth/login", loginHandler)
+	http.HandleFunc("/api/auth/sso-login", authSSOLoginHandler)
 	http.HandleFunc("/api/auth/forgot-password", forgotPasswordHandler)
 	http.HandleFunc("/api/auth/reset-password", resetPasswordHandler)
 	http.HandleFunc("/api/me", meHandler)
@@ -584,6 +585,7 @@ func main() {
 	http.HandleFunc("/api/admin/user-activity", adminUserActivityHandler)
 	http.HandleFunc("/api/admin/sso/settings", adminSSOSettingsHandler)
 	http.HandleFunc("/api/admin/sso/sync", adminSSOSyncHandler)
+	http.HandleFunc("/api/admin/sso/audit", adminSSOAuditHandler)
 	http.HandleFunc("/api/admin/webhooks", adminWebhooksHandler)
 	http.HandleFunc("/api/admin/webhooks/", adminWebhookDetailHandler)
 	http.HandleFunc("/api/admin/projects", adminProjectsHandler)
@@ -660,6 +662,7 @@ func main() {
 	log.Println("  GET  /api/logs/github - GitHub activity logs")
 	log.Println("  POST /api/auth/signup - User signup")
 	log.Println("  POST /api/auth/login  - User login")
+	log.Println("  POST /api/auth/sso-login - SSO login exchange (for IdP callback/gateway)")
 	log.Println("  GET  /api/me         - Current user (auth required)")
 	log.Println("  GET  /api/me/teams   - Current user's teams (auth required; empty = not in any team)")
 	log.Println("  POST /api/change-password - Change password (auth required)")
@@ -676,6 +679,7 @@ func main() {
 	log.Println("  GET  /api/admin/sso/settings - Get SSO settings (admin only)")
 	log.Println("  PUT  /api/admin/sso/settings - Update SSO settings (admin only)")
 	log.Println("  POST /api/admin/sso/sync - Run SSO directory sync (admin only)")
+	log.Println("  GET  /api/admin/sso/audit - SSO audit trail (admin only)")
 	log.Println("  GET  /api/admin/access-review - Access review directory (admin only)")
 	log.Println("  GET  /api/admin/teams - List teams (admin only)")
 	log.Println("  POST /api/admin/teams - Create team (admin only)")
@@ -692,6 +696,8 @@ func main() {
 	log.Println("  GET  /health         - Health check")
 	log.Println("  GET  /swagger.json    - OpenAPI spec")
 	log.Println("  GET  /api-docs       - Swagger UI")
+
+	startSSOSyncScheduler()
 
 	if err := http.ListenAndServe(":8080", withObservability(http.DefaultServeMux)); err != nil {
 		log.Fatalf("Server failed to start: %v", err)

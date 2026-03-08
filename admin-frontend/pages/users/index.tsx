@@ -20,6 +20,7 @@ interface User {
   user_type?: 'portal_user' | 'devops_user';
   auth_source?: 'local' | 'sso';
   sso_provider?: string;
+  sso_active?: boolean;
   last_sso_sync_at?: string | null;
   devops_profile?: DevopsProfile;
 }
@@ -30,10 +31,32 @@ interface SSOSettings {
   sync_enabled: boolean;
   user_portal_sso_enabled: boolean;
   devops_portal_sso_enabled: boolean;
+  user_portal_sso_mode: 'disabled' | 'optional' | 'required';
+  devops_portal_sso_mode: 'disabled' | 'optional' | 'required';
   sso_login_url: string;
   directory_users_json?: string;
+  break_glass_admins_json?: string;
+  group_role_mappings_json?: string;
+  group_team_mappings_json?: string;
+  deprovision_missing_users?: boolean;
+  scheduled_sync_enabled?: boolean;
+  sync_interval_minutes?: number;
+  jit_provision_enabled?: boolean;
+  require_mfa_claim?: boolean;
+  require_verified_email_claim?: boolean;
   directory_users_json_size?: number;
   last_sync_at?: string | null;
+}
+
+interface SSOAuditEntry {
+  id: number;
+  admin_user_id?: number;
+  admin_username?: string;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  details: string;
+  created_at: string;
 }
 
 const defaultSSOSettings: SSOSettings = {
@@ -42,8 +65,19 @@ const defaultSSOSettings: SSOSettings = {
   sync_enabled: false,
   user_portal_sso_enabled: false,
   devops_portal_sso_enabled: false,
+  user_portal_sso_mode: 'disabled',
+  devops_portal_sso_mode: 'disabled',
   sso_login_url: '',
   directory_users_json: '',
+  break_glass_admins_json: '[]',
+  group_role_mappings_json: '[]',
+  group_team_mappings_json: '[]',
+  deprovision_missing_users: false,
+  scheduled_sync_enabled: false,
+  sync_interval_minutes: 60,
+  jit_provision_enabled: false,
+  require_mfa_claim: false,
+  require_verified_email_claim: false,
   directory_users_json_size: 0,
   last_sync_at: null,
 };
@@ -62,6 +96,8 @@ export default function UsersList() {
   const [ssoSyncing, setSsoSyncing] = useState(false);
   const [ssoError, setSsoError] = useState('');
   const [ssoMessage, setSsoMessage] = useState('');
+  const [ssoAudit, setSsoAudit] = useState<SSOAuditEntry[]>([]);
+  const [ssoAuditLoading, setSsoAuditLoading] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -73,6 +109,7 @@ export default function UsersList() {
     }
     fetchUsers();
     fetchSSOSettings();
+    fetchSSOAudit();
   }, [router]);
 
   const getAdminToken = () => localStorage.getItem('admin_token');
@@ -134,6 +171,31 @@ export default function UsersList() {
     }
   };
 
+  const fetchSSOAudit = async () => {
+    setSsoAuditLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/sso/audit?limit=40`, {
+        headers: {
+          Authorization: `Bearer ${getAdminToken()}`,
+        },
+      });
+      if (res.status === 401 || res.status === 403) {
+        router.replace('/login');
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.entries)) {
+        setSsoAudit(data.entries as SSOAuditEntry[]);
+      } else {
+        setSsoAudit([]);
+      }
+    } catch (_) {
+      setSsoAudit([]);
+    } finally {
+      setSsoAuditLoading(false);
+    }
+  };
+
   const saveSSOSettings = async () => {
     setSsoSaving(true);
     setSsoError('');
@@ -150,8 +212,19 @@ export default function UsersList() {
           sync_enabled: ssoSettings.sync_enabled,
           user_portal_sso_enabled: ssoSettings.user_portal_sso_enabled,
           devops_portal_sso_enabled: ssoSettings.devops_portal_sso_enabled,
+          user_portal_sso_mode: ssoSettings.user_portal_sso_mode,
+          devops_portal_sso_mode: ssoSettings.devops_portal_sso_mode,
           sso_login_url: ssoSettings.sso_login_url || '',
           directory_users_json: ssoSettings.directory_users_json || '',
+          break_glass_admins_json: ssoSettings.break_glass_admins_json || '[]',
+          group_role_mappings_json: ssoSettings.group_role_mappings_json || '[]',
+          group_team_mappings_json: ssoSettings.group_team_mappings_json || '[]',
+          deprovision_missing_users: Boolean(ssoSettings.deprovision_missing_users),
+          scheduled_sync_enabled: Boolean(ssoSettings.scheduled_sync_enabled),
+          sync_interval_minutes: Number(ssoSettings.sync_interval_minutes || 60),
+          jit_provision_enabled: Boolean(ssoSettings.jit_provision_enabled),
+          require_mfa_claim: Boolean(ssoSettings.require_mfa_claim),
+          require_verified_email_claim: Boolean(ssoSettings.require_verified_email_claim),
         }),
       });
       if (res.status === 401 || res.status === 403) {
@@ -162,6 +235,7 @@ export default function UsersList() {
       if (res.ok && data.settings) {
         setSsoSettings({ ...defaultSSOSettings, ...data.settings });
         setSsoMessage('SSO settings saved.');
+        fetchSSOAudit();
       } else {
         setSsoError(data.error || 'Failed to save SSO settings');
       }
@@ -189,12 +263,13 @@ export default function UsersList() {
       }
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.summary) {
-        const summary = data.summary as { processed?: number; created?: number; updated?: number; skipped?: number };
+        const summary = data.summary as { processed?: number; created?: number; updated?: number; skipped?: number; deprovisioned?: number };
         setSsoMessage(
-          `SSO sync completed. Processed: ${summary.processed ?? 0}, Created: ${summary.created ?? 0}, Updated: ${summary.updated ?? 0}, Skipped: ${summary.skipped ?? 0}.`
+          `SSO sync completed. Processed: ${summary.processed ?? 0}, Created: ${summary.created ?? 0}, Updated: ${summary.updated ?? 0}, Skipped: ${summary.skipped ?? 0}, Deprovisioned: ${summary.deprovisioned ?? 0}.`
         );
         fetchUsers();
         fetchSSOSettings();
+        fetchSSOAudit();
       } else {
         setSsoError(data.error || 'SSO sync failed');
       }
@@ -317,6 +392,44 @@ export default function UsersList() {
                     </select>
                   </div>
                   <div>
+                    <label className="label" htmlFor="sso-sync-interval">Scheduled sync interval (minutes)</label>
+                    <input
+                      id="sso-sync-interval"
+                      className="input"
+                      type="number"
+                      min={5}
+                      max={1440}
+                      value={Number(ssoSettings.sync_interval_minutes || 60)}
+                      onChange={(event) => setSsoSettings((prev) => ({ ...prev, sync_interval_minutes: Number(event.target.value || 60) }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="sso-user-mode">User portal SSO mode</label>
+                    <select
+                      id="sso-user-mode"
+                      className="input"
+                      value={ssoSettings.user_portal_sso_mode}
+                      onChange={(event) => setSsoSettings((prev) => ({ ...prev, user_portal_sso_mode: event.target.value as SSOSettings['user_portal_sso_mode'] }))}
+                    >
+                      <option value="disabled">Disabled</option>
+                      <option value="optional">Optional</option>
+                      <option value="required">Required</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="sso-devops-mode">DevOps portal SSO mode</label>
+                    <select
+                      id="sso-devops-mode"
+                      className="input"
+                      value={ssoSettings.devops_portal_sso_mode}
+                      onChange={(event) => setSsoSettings((prev) => ({ ...prev, devops_portal_sso_mode: event.target.value as SSOSettings['devops_portal_sso_mode'] }))}
+                    >
+                      <option value="disabled">Disabled</option>
+                      <option value="optional">Optional</option>
+                      <option value="required">Required</option>
+                    </select>
+                  </div>
+                  <div>
                     <label className="label" htmlFor="sso-login-url">SSO Login URL</label>
                     <input
                       id="sso-login-url"
@@ -341,6 +454,39 @@ export default function UsersList() {
                       If empty, backend falls back to environment variables: <code>SSO_DIRECTORY_USERS_JSON</code>, <code>AZURE_DIRECTORY_USERS_JSON</code>, or <code>SAML_DIRECTORY_USERS_JSON</code>.
                     </small>
                   </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label className="label" htmlFor="sso-break-glass-json">Break-glass admins JSON</label>
+                    <textarea
+                      id="sso-break-glass-json"
+                      className="input"
+                      rows={3}
+                      placeholder='["admin","admin@example.com"]'
+                      value={ssoSettings.break_glass_admins_json || '[]'}
+                      onChange={(event) => setSsoSettings((prev) => ({ ...prev, break_glass_admins_json: event.target.value }))}
+                    />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label className="label" htmlFor="sso-group-role-json">Group to role mappings JSON</label>
+                    <textarea
+                      id="sso-group-role-json"
+                      className="input"
+                      rows={4}
+                      placeholder='[{"group":"devops-managers","role":"admin"},{"group":"developers","role":"contributor"}]'
+                      value={ssoSettings.group_role_mappings_json || '[]'}
+                      onChange={(event) => setSsoSettings((prev) => ({ ...prev, group_role_mappings_json: event.target.value }))}
+                    />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label className="label" htmlFor="sso-group-team-json">Group to team mappings JSON</label>
+                    <textarea
+                      id="sso-group-team-json"
+                      className="input"
+                      rows={4}
+                      placeholder='[{"group":"payments-team","team_slug":"payments","team_role":"member"}]'
+                      value={ssoSettings.group_team_mappings_json || '[]'}
+                      onChange={(event) => setSsoSettings((prev) => ({ ...prev, group_team_mappings_json: event.target.value }))}
+                    />
+                  </div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <input
                       type="checkbox"
@@ -348,6 +494,46 @@ export default function UsersList() {
                       onChange={(event) => setSsoSettings((prev) => ({ ...prev, sync_enabled: event.target.checked }))}
                     />
                     Enable SSO sync
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(ssoSettings.scheduled_sync_enabled)}
+                      onChange={(event) => setSsoSettings((prev) => ({ ...prev, scheduled_sync_enabled: event.target.checked }))}
+                    />
+                    Enable scheduled sync
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(ssoSettings.deprovision_missing_users)}
+                      onChange={(event) => setSsoSettings((prev) => ({ ...prev, deprovision_missing_users: event.target.checked }))}
+                    />
+                    Deprovision users missing from directory sync
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(ssoSettings.jit_provision_enabled)}
+                      onChange={(event) => setSsoSettings((prev) => ({ ...prev, jit_provision_enabled: event.target.checked }))}
+                    />
+                    Enable JIT provisioning
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(ssoSettings.require_verified_email_claim)}
+                      onChange={(event) => setSsoSettings((prev) => ({ ...prev, require_verified_email_claim: event.target.checked }))}
+                    />
+                    Require verified-email claim
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(ssoSettings.require_mfa_claim)}
+                      onChange={(event) => setSsoSettings((prev) => ({ ...prev, require_mfa_claim: event.target.checked }))}
+                    />
+                    Require MFA claim
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <input
@@ -378,6 +564,39 @@ export default function UsersList() {
                   {ssoSyncing ? 'Syncing…' : 'Run SSO sync'}
                 </button>
               </div>
+              <div style={{ marginTop: 20 }}>
+                <h4 style={{ margin: '0 0 10px 0' }}>SSO audit trail</h4>
+                {ssoAuditLoading ? (
+                  <p style={{ margin: 0 }}>Loading SSO audit events...</p>
+                ) : ssoAudit.length === 0 ? (
+                  <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>No SSO audit entries yet.</p>
+                ) : (
+                  <div className="table-wrap">
+                    <table className="users-table">
+                      <thead>
+                        <tr>
+                          <th>Time</th>
+                          <th>Action</th>
+                          <th>Actor</th>
+                          <th>Resource</th>
+                          <th>Details</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ssoAudit.map((entry) => (
+                          <tr key={entry.id}>
+                            <td>{new Date(entry.created_at).toLocaleString()}</td>
+                            <td>{entry.action}</td>
+                            <td>{entry.admin_username || 'system'}</td>
+                            <td>{entry.resource_type}:{entry.resource_id || '-'}</td>
+                            <td>{entry.details || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
 
             {error && (
@@ -406,6 +625,7 @@ export default function UsersList() {
                       <th>Type</th>
                       <th>Role</th>
                       <th>Auth Source</th>
+                      <th>SSO State</th>
                       <th>Verified</th>
                       <th className="th-actions">Actions</th>
                     </tr>
@@ -443,6 +663,15 @@ export default function UsersList() {
                             </span>
                           ) : (
                             'Local'
+                          )}
+                        </td>
+                        <td>
+                          {u.auth_source === 'sso' ? (
+                            <span className={`role-badge role-badge--${u.sso_active === false ? 'viewer' : 'contributor'}`}>
+                              {u.sso_active === false ? 'Deprovisioned' : 'Active'}
+                            </span>
+                          ) : (
+                            '-'
                           )}
                         </td>
                         <td>{u.verified ? 'Yes' : 'No'}</td>

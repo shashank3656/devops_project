@@ -68,6 +68,7 @@ type SignupRequest struct {
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Portal   string `json:"portal,omitempty"` // user | devops | admin
 }
 
 type AuthResponse struct {
@@ -247,10 +248,12 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user from database
 	var user User
 	var hashedPassword string
+	var authSource string
+	var ssoActive bool
 	err := DB.QueryRow(
-		"SELECT id, username, email, password, created_at FROM users WHERE username = $1",
+		"SELECT id, username, email, password, created_at, COALESCE(auth_source, 'local'), COALESCE(sso_active, TRUE) FROM users WHERE username = $1",
 		req.Username,
-	).Scan(&user.ID, &user.Username, &user.Email, &hashedPassword, &user.CreatedAt)
+	).Scan(&user.ID, &user.Username, &user.Email, &hashedPassword, &user.CreatedAt, &authSource, &ssoActive)
 
 	if err == sql.ErrNoRows {
 		w.Header().Set("Content-Type", "application/json")
@@ -287,9 +290,21 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		user.Verified = fullUser.Verified
 		user.Role = fullUser.Role
 		user.TotpEnabled = fullUser.TotpEnabled
+		user.UserType = fullUser.UserType
 	} else {
 		user.Verified = false
 		user.Role = "viewer"
+	}
+
+	// Enforce portal SSO policy for local password login.
+	if policyErr := enforcePortalSSOPolicyForPasswordLogin(req.Portal, &user, authSource, ssoActive); policyErr != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		encodeAuthJSON(w, map[string]interface{}{
+			"error":  policyErr.Error(),
+			"status": "error",
+		})
+		return
 	}
 
 	// 2FA: if totp_enabled, require OTP before issuing token
