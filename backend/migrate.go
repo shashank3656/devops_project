@@ -753,6 +753,29 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_k8s_connections_cluster_name ON project_k8s_connections(cluster_name)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_project_k8s_connections_environment ON project_k8s_connections(environment)")
 
+	// Migration 37: SSO settings + SSO identity fields on users
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS sso_settings (
+			id INTEGER PRIMARY KEY,
+			provider VARCHAR(80) NOT NULL DEFAULT 'none',
+			enabled BOOLEAN NOT NULL DEFAULT FALSE,
+			sync_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+			user_portal_sso_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+			devops_portal_sso_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+			sso_login_url TEXT NOT NULL DEFAULT '',
+			directory_users_json TEXT NOT NULL DEFAULT '',
+			last_sync_at TIMESTAMP,
+			updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("INSERT INTO sso_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
+	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_source VARCHAR(40) NOT NULL DEFAULT 'local'")
+	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS sso_provider VARCHAR(80)")
+	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS sso_external_id VARCHAR(255)")
+	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_sso_sync_at TIMESTAMP")
+	_, _ = DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_sso_provider_external_id ON users (sso_provider, sso_external_id) WHERE sso_provider IS NOT NULL AND sso_provider != '' AND sso_external_id IS NOT NULL AND sso_external_id != ''")
+
 	log.Println("Database schema is up to date")
 	return nil
 }

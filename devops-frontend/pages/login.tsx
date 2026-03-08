@@ -7,6 +7,18 @@ import { useApiUrl } from '../context/ApiUrlContext';
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
 
+interface PublicSSOState {
+  enabled: boolean;
+  provider: string;
+  login_url: string;
+}
+
+function providerLabel(provider: string): string {
+  if (provider === 'azure_ad') return 'Azure AD';
+  if (provider === 'saml') return 'SAML SSO';
+  return 'SSO';
+}
+
 export default function DevOpsLogin() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -14,11 +26,39 @@ export default function DevOpsLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sso, setSso] = useState<PublicSSOState>({ enabled: false, provider: 'none', login_url: '' });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', 'dark');
     localStorage.setItem('infra-portal-theme', 'dark');
   }, []);
+
+  useEffect(() => {
+    fetch(`${apiUrl}/api/public/sso/options?portal=devops`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const payload = data?.sso;
+        if (payload && typeof payload === 'object') {
+          setSso({
+            enabled: Boolean(payload.enabled),
+            provider: typeof payload.provider === 'string' ? payload.provider : 'none',
+            login_url: typeof payload.login_url === 'string' ? payload.login_url : '',
+          });
+        }
+      })
+      .catch(() => {
+        // Keep local login flow operational if this optional call fails.
+      });
+  }, [apiUrl]);
+
+  const handleSSOLogin = () => {
+    if (!sso.enabled) return;
+    if (!sso.login_url) {
+      setError('SSO login is enabled but no SSO login URL is configured by admin.');
+      return;
+    }
+    window.location.assign(sso.login_url);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +141,16 @@ export default function DevOpsLogin() {
               <div className="alert alert-error" role="alert">{error}</div>
             )}
             <form onSubmit={handleSubmit}>
+              {sso.enabled && (
+                <>
+                  <button type="button" className="btn btn-secondary login-page__submit" onClick={handleSSOLogin} disabled={loading}>
+                    Continue with {providerLabel(sso.provider)}
+                  </button>
+                  <p className="login-page__hint" style={{ marginTop: 12, marginBottom: 12 }}>
+                    or sign in with username and password
+                  </p>
+                </>
+              )}
               <div className="form-group">
                 <label className="label" htmlFor="username">Username</label>
                 <input
