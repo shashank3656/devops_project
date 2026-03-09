@@ -64,6 +64,13 @@ export default function Login() {
       });
   }, [apiUrl]);
 
+  useEffect(() => {
+    // Only force redirect when policy is explicitly required.
+    if (sso.enabled && sso.mode === 'required' && sso.login_url) {
+      window.location.assign(sso.login_url);
+    }
+  }, [sso.enabled, sso.mode, sso.login_url]);
+
   const handleSSOLogin = () => {
     if (!sso.enabled) return;
     if (!sso.login_url) {
