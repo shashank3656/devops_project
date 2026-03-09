@@ -117,6 +117,8 @@ func normalizeSSOProvider(provider string) string {
 	switch strings.TrimSpace(strings.ToLower(provider)) {
 	case "azure", "azure_ad", "azuread", "microsoft":
 		return "azure_ad"
+	case "keycloak", "kc":
+		return "keycloak"
 	case "saml":
 		return "saml"
 	default:
@@ -381,6 +383,10 @@ func readDirectoryUsersSource(settings ssoSettings) string {
 	switch settings.Provider {
 	case "azure_ad":
 		if value := strings.TrimSpace(os.Getenv("AZURE_DIRECTORY_USERS_JSON")); value != "" {
+			return value
+		}
+	case "keycloak":
+		if value := strings.TrimSpace(os.Getenv("KEYCLOAK_DIRECTORY_USERS_JSON")); value != "" {
 			return value
 		}
 	case "saml":
@@ -1119,7 +1125,7 @@ func executeSSODirectorySync(settings ssoSettings, actorUserID *int, trigger str
 	}
 	source := readDirectoryUsersSource(settings)
 	if source == "" {
-		return summary, fmt.Errorf("no directory users payload found. save directory_users_json or set SSO_DIRECTORY_USERS_JSON/AZURE_DIRECTORY_USERS_JSON/SAML_DIRECTORY_USERS_JSON")
+		return summary, fmt.Errorf("no directory users payload found. save directory_users_json or set SSO_DIRECTORY_USERS_JSON/AZURE_DIRECTORY_USERS_JSON/KEYCLOAK_DIRECTORY_USERS_JSON/SAML_DIRECTORY_USERS_JSON")
 	}
 	users, err := parseDirectoryUsers(source)
 	if err != nil {
@@ -1603,6 +1609,8 @@ func publicSSOOptionsHandler(w http.ResponseWriter, r *http.Request) {
 		switch settings.Provider {
 		case "azure_ad":
 			loginURL = strings.TrimSpace(os.Getenv("AZURE_SSO_LOGIN_URL"))
+		case "keycloak":
+			loginURL = strings.TrimSpace(os.Getenv("KEYCLOAK_SSO_LOGIN_URL"))
 		case "saml":
 			loginURL = strings.TrimSpace(os.Getenv("SAML_SSO_LOGIN_URL"))
 		default:
