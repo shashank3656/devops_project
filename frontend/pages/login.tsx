@@ -14,6 +14,7 @@ interface PublicSSOState {
 
 function providerLabel(provider: string): string {
   if (provider === 'azure_ad') return 'Azure AD';
+  if (provider === 'keycloak') return 'Keycloak';
   if (provider === 'saml') return 'SAML SSO';
   return 'SSO';
 }

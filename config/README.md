@@ -23,6 +23,8 @@ This directory contains environment configuration files.
    NEXT_PUBLIC_API_URL=http://localhost:8080  # REQUIRED: Backend API URL
    ```
 
+   Optional SSO/Keycloak values are also available in `.env.example` if you want to run local SSO with docker-compose.
+
 **Important:** 
 - All GitHub configuration values must be set in `config/.env`
 - The docker-compose file does not have default values - they must come from your .env file

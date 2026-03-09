@@ -362,7 +362,7 @@ export default function UsersList() {
             <div style={{ padding: 24, borderBottom: '1px solid var(--color-border)' }}>
               <h3 style={{ margin: 0, fontSize: 20 }}>SSO Settings & Directory Sync</h3>
               <p style={{ marginTop: 8, color: 'var(--color-text-muted)' }}>
-                Configure Azure AD or SAML sync from Admin. When enabled, SSO login appears on User and DevOps login pages.
+                Configure Azure AD, Keycloak, or SAML sync from Admin. When enabled, SSO login appears on User and DevOps login pages.
               </p>
               {ssoError && (
                 <div className="alert alert-error" role="alert" style={{ marginTop: 12 }}>
@@ -388,6 +388,7 @@ export default function UsersList() {
                     >
                       <option value="none">Disabled</option>
                       <option value="azure_ad">Azure AD</option>
+                      <option value="keycloak">Keycloak</option>
                       <option value="saml">SAML</option>
                     </select>
                   </div>
