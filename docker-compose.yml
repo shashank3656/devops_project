@@ -390,8 +390,8 @@ services:
       - DB_QUERY_TIMEOUT_SECONDS=${DB_QUERY_TIMEOUT_SECONDS:-5}
       - DB_SLOW_QUERY_MS=${DB_SLOW_QUERY_MS:-750}
       - REQUEST_LOG_SLOW_MS=${REQUEST_LOG_SLOW_MS:-500}
-      - SSO_LOGIN_URL=${SSO_LOGIN_URL:-http://localhost:8081/realms/infra/protocol/openid-connect/auth}
-      - KEYCLOAK_SSO_LOGIN_URL=${KEYCLOAK_SSO_LOGIN_URL:-http://localhost:8081/realms/infra/protocol/openid-connect/auth}
+      - SSO_LOGIN_URL=${SSO_LOGIN_URL:-http://68.168.222.59:8081/realms/infra/protocol/openid-connect/auth}
+      - KEYCLOAK_SSO_LOGIN_URL=${KEYCLOAK_SSO_LOGIN_URL:-http://68.168.222.59:8081/realms/infra/protocol/openid-connect/auth}
       - SSO_AUTH_SHARED_SECRET=${SSO_AUTH_SHARED_SECRET:-}
     volumes:
       # Mount source code for hot reload
