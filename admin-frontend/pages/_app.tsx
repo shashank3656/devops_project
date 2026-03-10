@@ -9,23 +9,54 @@ const BUILT_API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080
 
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('infra-portal-theme', 'dark');
-      document.documentElement.setAttribute('data-theme', 'dark');
+    if (typeof window === 'undefined') return;
 
+    localStorage.setItem('infra-portal-theme', 'dark');
+    document.documentElement.setAttribute('data-theme', 'dark');
+
+    const win = window as Window & { __adminFetchPatched?: boolean };
+    if (win.__adminFetchPatched) return;
+
+    const originalFetch = window.fetch.bind(window);
+    win.__adminFetchPatched = true;
+
+    window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
       const override = (localStorage.getItem(API_OVERRIDE_KEY) || '').trim().replace(/\/+$/, '');
-      if (!override || override === BUILT_API_URL) return;
+      const normalize = (u: string) => u.replace(/\/+$/, '');
+      let requestUrl =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
 
-      const originalFetch = window.fetch.bind(window);
-      window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-        const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.toString() : '';
-        if (rawUrl && (rawUrl === BUILT_API_URL || rawUrl.startsWith(`${BUILT_API_URL}/`))) {
-          const rewritten = `${override}${rawUrl.slice(BUILT_API_URL.length)}`;
-          return originalFetch(rewritten, init);
+      let nextInput: RequestInfo | URL = input;
+
+      if (!override || override === BUILT_API_URL) {
+        requestUrl = normalize(requestUrl);
+      } else if (requestUrl && (requestUrl === BUILT_API_URL || requestUrl.startsWith(`${BUILT_API_URL}/`))) {
+        const rewritten = `${override}${requestUrl.slice(BUILT_API_URL.length)}`;
+        requestUrl = normalize(rewritten);
+        if (typeof input === 'string' || input instanceof URL) {
+          nextInput = rewritten;
+        } else {
+          nextInput = new Request(rewritten, input);
         }
-        return originalFetch(input, init);
-      };
-    }
+      }
+
+      return originalFetch(nextInput, init).then((response) => {
+        const responseUrl = response.url ? normalize(response.url) : requestUrl;
+        const isAdminProtectedAPI = responseUrl.includes('/api/admin/') || responseUrl.endsWith('/api/me');
+        if (response.status === 401 && isAdminProtectedAPI) {
+          localStorage.removeItem('admin_token');
+          localStorage.removeItem('admin_user');
+          if (window.location.pathname !== '/login') {
+            window.location.assign('/login');
+          }
+        }
+        return response;
+      });
+    };
   }, []);
   return (
     <>
