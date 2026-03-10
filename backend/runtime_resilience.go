@@ -29,6 +29,7 @@ const (
 	defaultSlowQuery      = 750 * time.Millisecond
 	defaultQueueName      = "infra:jobs"
 	requestIDHeader       = "X-Request-ID"
+	maxHTTPLogBodyBytes   = 512
 	cacheNamespaceAdmin   = "admin_dashboard"
 	cacheNamespaceTeam    = "team_ownership"
 	cacheNamespaceOnboard = "onboarding_progress"
@@ -553,8 +554,9 @@ func withObservability(next http.Handler) http.Handler {
 			severity = "warn"
 		}
 		traceID, spanID := traceAndSpanIDs(requestCtx)
+		message := deriveHTTPLogMessage(recorder.status, recorder.bodySnippet())
 		log.Printf(
-			"[HTTP] severity=%s request_id=%s trace_id=%s span_id=%s method=%s path=%s status=%d duration_ms=%d",
+			"[HTTP] severity=%s request_id=%s trace_id=%s span_id=%s method=%s path=%s status=%d duration_ms=%d message=%q",
 			severity,
 			requestIDFromContext(requestCtx),
 			traceID,
@@ -563,6 +565,7 @@ func withObservability(next http.Handler) http.Handler {
 			path,
 			recorder.status,
 			elapsed.Milliseconds(),
+			message,
 		)
 		recordMiddlewareLog(requestCtx, severity)
 	})
@@ -570,12 +573,70 @@ func withObservability(next http.Handler) http.Handler {
 
 type statusRecorder struct {
 	http.ResponseWriter
-	status int
+	status      int
+	bodyCapture bytes.Buffer
+	truncated   bool
 }
 
 func (r *statusRecorder) WriteHeader(statusCode int) {
 	r.status = statusCode
 	r.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (r *statusRecorder) Write(p []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	if r.bodyCapture.Len() < maxHTTPLogBodyBytes {
+		remaining := maxHTTPLogBodyBytes - r.bodyCapture.Len()
+		if len(p) > remaining {
+			_, _ = r.bodyCapture.Write(p[:remaining])
+			r.truncated = true
+		} else {
+			_, _ = r.bodyCapture.Write(p)
+		}
+	} else if len(p) > 0 {
+		r.truncated = true
+	}
+	return r.ResponseWriter.Write(p)
+}
+
+func (r *statusRecorder) bodySnippet() string {
+	raw := strings.TrimSpace(r.bodyCapture.String())
+	if raw == "" {
+		return ""
+	}
+	if r.truncated {
+		return raw + "..."
+	}
+	return raw
+}
+
+func deriveHTTPLogMessage(status int, snippet string) string {
+	if snippet == "" {
+		if text := strings.TrimSpace(http.StatusText(status)); text != "" {
+			return text
+		}
+		return "no response message"
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(snippet), &payload); err == nil {
+		for _, key := range []string{"error", "message", "status"} {
+			if v, ok := payload[key]; ok {
+				msg := strings.TrimSpace(fmt.Sprint(v))
+				if msg != "" {
+					return msg
+				}
+			}
+		}
+	}
+
+	normalized := strings.Join(strings.Fields(snippet), " ")
+	if len(normalized) > 240 {
+		return normalized[:240] + "..."
+	}
+	return normalized
 }
 
 func dbTimeoutContext() (context.Context, context.CancelFunc) {
