@@ -546,26 +546,25 @@ func withObservability(next http.Handler) http.Handler {
 		}
 		recordHTTPRequestMetrics(requestCtx, r.Method, path, recorder.status, elapsed)
 
-		shouldLog := elapsed >= RequestLogSlowThreshold || recorder.status >= http.StatusInternalServerError
-		if shouldLog {
-			severity := "warn"
-			if recorder.status >= http.StatusInternalServerError {
-				severity = "error"
-			}
-			traceID, spanID := traceAndSpanIDs(requestCtx)
-			log.Printf(
-				"[HTTP] severity=%s request_id=%s trace_id=%s span_id=%s method=%s path=%s status=%d duration_ms=%d",
-				severity,
-				requestIDFromContext(requestCtx),
-				traceID,
-				spanID,
-				r.Method,
-				path,
-				recorder.status,
-				elapsed.Milliseconds(),
-			)
-			recordMiddlewareLog(requestCtx, severity)
+		severity := "info"
+		if recorder.status >= http.StatusInternalServerError {
+			severity = "error"
+		} else if recorder.status >= http.StatusBadRequest || elapsed >= RequestLogSlowThreshold {
+			severity = "warn"
 		}
+		traceID, spanID := traceAndSpanIDs(requestCtx)
+		log.Printf(
+			"[HTTP] severity=%s request_id=%s trace_id=%s span_id=%s method=%s path=%s status=%d duration_ms=%d",
+			severity,
+			requestIDFromContext(requestCtx),
+			traceID,
+			spanID,
+			r.Method,
+			path,
+			recorder.status,
+			elapsed.Milliseconds(),
+		)
+		recordMiddlewareLog(requestCtx, severity)
 	})
 }
 
