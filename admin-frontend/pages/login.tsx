@@ -21,6 +21,11 @@ export default function AdminLogin() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', 'dark');
     localStorage.setItem('infra-portal-theme', 'dark');
+    const existingToken = (localStorage.getItem('admin_token') || '').trim();
+    if (!existingToken || existingToken === 'undefined' || existingToken === 'null' || !/^\d+:\d+$/.test(existingToken)) {
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_user');
+    }
     const override = (localStorage.getItem(API_OVERRIDE_KEY) || '').trim();
     if (override) {
       setEffectiveApiUrl(override);
