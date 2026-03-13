@@ -55,34 +55,26 @@ func onboardingProgressHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
 	if err != nil || userID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeJSON(w, map[string]interface{}{"error": "invalid token", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid token", err)
 		return
 	}
 	progress, err := BuildOnboardingProgressForUser(userID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": "failed to build onboarding progress", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to build onboarding progress", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -92,14 +84,12 @@ func onboardingProgressHandler(w http.ResponseWriter, r *http.Request) {
 func adminUserOnboardingProgressHandler(w http.ResponseWriter, r *http.Request, userID int) {
 	enableCORS(w)
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	progress, err := BuildOnboardingProgressForUser(userID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": "failed to build onboarding progress", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to build onboarding progress", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

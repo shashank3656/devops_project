@@ -88,7 +88,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 
@@ -143,9 +143,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if !allowed {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusForbidden)
-				encodeJSON(w, map[string]interface{}{"error": "you can only create PRs for a team you belong to", "status": "error"})
+				writeAPIError(w, r, http.StatusForbidden, "you can only create PRs for a team you belong to", nil)
 				return
 			}
 		}
@@ -219,9 +217,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	appID, appErr := GenerateApplicationID()
 	if appErr != nil {
 		log.Printf("GenerateApplicationID: %v", appErr)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": "failed to generate application id", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to generate application id", nil)
 		return
 	}
 	filePath, branchName := BuildRequestGitArtifacts(team, env, appID)
@@ -246,9 +242,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if projectID > 0 {
 		if _, err := validateProjectRequestForUser(userID, projectID, team, env, cloud, service); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
 			return
 		}
 	}
@@ -290,8 +284,17 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("Error encoding response: %v", err)
-		http.Error(w, "error encoding response", http.StatusInternalServerError)
+		requestID := requestIDFromContext(r.Context())
+		traceID, spanID := traceAndSpanIDs(r.Context())
+		log.Printf(
+			"[HTTP] error_response_encode_failed request_id=%s trace_id=%s span_id=%s method=%s path=%s err=%v",
+			requestID,
+			traceID,
+			spanID,
+			r.Method,
+			r.URL.Path,
+			err,
+		)
 		return
 	}
 }
@@ -304,7 +307,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 
@@ -321,15 +324,11 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 
 	var payload InfraRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
 		return
 	}
 	if err := validatePayload(payload); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
 		return
 	}
 
@@ -346,9 +345,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if !allowed {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusForbidden)
-				encodeJSON(w, map[string]interface{}{"error": "you can only create requests for a team you belong to", "status": "error"})
+				writeAPIError(w, r, http.StatusForbidden, "you can only create requests for a team you belong to", nil)
 				return
 			}
 		}
@@ -379,24 +376,18 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	appID, appErr := GenerateApplicationID()
 	if appErr != nil {
 		log.Printf("GenerateApplicationID: %v", appErr)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": "failed to generate application id", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to generate application id", nil)
 		return
 	}
 	filePath, branchName := BuildRequestGitArtifacts(team, env, appID)
 	content, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": "error processing request", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "error processing request", nil)
 		return
 	}
 
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 
@@ -407,9 +398,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if projectID > 0 {
 		validation, err := validateProjectRequestForUser(userID, projectID, team, env, cloud, service)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
 			return
 		}
 		if clientName == "" {
@@ -449,9 +438,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := SavePRRequest(prRequest); err != nil {
 		log.Printf("Failed to save request: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": "failed to save request", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to save request", nil)
 		return
 	}
 	AppendUserActivity(userIDPtr, "request_create", "pr_request", strconv.Itoa(prRequest.ID), status)
@@ -686,7 +673,7 @@ func main() {
 	log.Println("  GET  /swagger.json    - OpenAPI spec")
 	log.Println("  GET  /api-docs       - Swagger UI")
 
-	if err := http.ListenAndServe(":8080", withObservability(http.DefaultServeMux)); err != nil {
+	if err := http.ListenAndServe(":8080", withObservability(withRecovery(http.DefaultServeMux))); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }

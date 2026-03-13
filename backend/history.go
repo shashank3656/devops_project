@@ -18,19 +18,12 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{
-			"error":  "database not available",
-			"status": "error",
-		}); err != nil {
-			log.Printf("history database unavailable response encode failed: %v", err)
-		}
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 
@@ -88,11 +81,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 			id, scopes, err := validateTokenOrAPIKey(token)
 			if err == nil {
 				if scopes != "" && !hasScope(scopes, "history:read") {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusForbidden)
-					if err := json.NewEncoder(w).Encode(map[string]interface{}{"error": "api key does not have history:read scope", "status": "error"}); err != nil {
-						log.Printf("history scope error response encode failed: %v", err)
-					}
+					writeAPIError(w, r, http.StatusForbidden, "api key does not have history:read scope", nil)
 					return
 				}
 				userIDInt = id
@@ -111,14 +100,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	requests, err := GetPRRequestsForHistory(team, env, cloud, projectID, statusFilter, search, prID, applicationID, fromDate, toDate, userIDInt, createdByIn, limit, offset)
 	if err != nil {
 		log.Printf("Error fetching PR requests: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{
-			"error":  "failed to fetch history",
-			"status": "error",
-		}); encErr != nil {
-			log.Printf("history error response encode failed: %v", encErr)
-		}
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to fetch history", err)
 		return
 	}
 

@@ -26,16 +26,14 @@ func ciWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if CIWebhookSecret != "" {
 		secret := r.Header.Get("X-CI-Secret")
 		if secret != CIWebhookSecret {
 			log.Printf("[CI Webhook] invalid or missing secret")
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			encodeCIWebhookJSON(w, map[string]interface{}{"error": "invalid secret", "status": "error"})
+			writeAPIError(w, r, http.StatusUnauthorized, "invalid secret", nil)
 			return
 		}
 	}
@@ -48,9 +46,7 @@ func ciWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		Details       string `json:"details"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeCIWebhookJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
 	var req *PRRequest
@@ -60,9 +56,7 @@ func ciWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		req = GetPRRequestByApplicationID(payload.ApplicationID)
 	}
 	if req == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeCIWebhookJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
+		writeAPIError(w, r, http.StatusNotFound, "request not found", nil)
 		return
 	}
 	// Update terraform plan output if provided

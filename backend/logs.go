@@ -20,13 +20,11 @@ func logsCloudHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 
@@ -39,9 +37,7 @@ func logsCloudHandler(w http.ResponseWriter, r *http.Request) {
 
 	requests, err := GetPRRequests("", "", "", 0, "", "", "", 0, 0, nil, limit, 0, "", "", false, "", "")
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": "failed to fetch logs", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to fetch logs", err)
 		return
 	}
 
@@ -88,13 +84,11 @@ func logsGitHubHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 
@@ -107,9 +101,7 @@ func logsGitHubHandler(w http.ResponseWriter, r *http.Request) {
 
 	entries, err := GetGitHubLogs(limit)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": "failed to fetch logs", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to fetch logs", err)
 		return
 	}
 
