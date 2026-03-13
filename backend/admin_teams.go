@@ -27,23 +27,17 @@ func requireAdmin(w http.ResponseWriter, r *http.Request) (userID int, ok bool) 
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return 0, false
 	}
 	id, err := validateToken(strings.TrimSpace(authHeader[7:]))
 	if err != nil || id <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid token", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid token", err)
 		return 0, false
 	}
 	user, err := GetUserByID(id)
 	if err != nil || user == nil || user.Role != "admin" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "admin role required", "status": "error"})
+		writeAPIError(w, r, http.StatusForbidden, "admin role required", err)
 		return 0, false
 	}
 	return id, true
@@ -64,7 +58,7 @@ func adminUsersRouter(w http.ResponseWriter, r *http.Request) {
 		adminUsersCreateHandler(w, r)
 		return
 	}
-	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	writeMethodNotAllowed(w, r)
 }
 
 // adminUsersListHandler GET /api/admin/users - list users for adding to teams
@@ -74,9 +68,7 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	// Only present user credentials (exclude admin accounts) in admin console; include user_type/devops_profile + SSO source metadata.
@@ -97,9 +89,7 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 		ORDER BY username
 	`)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to list users", err)
 		return
 	}
 	defer rows.Close()
@@ -198,9 +188,7 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	var adminIDPtr *int
@@ -219,17 +207,13 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 		DevopsLevel string `json:"level"`        // L1..L4 for devops_user
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
 	req.Username = strings.TrimSpace(req.Username)
 	req.Email = strings.TrimSpace(req.Email)
 	if req.Username == "" || req.Email == "" || req.Password == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "username, email and password are required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "username, email and password are required", nil)
 		return
 	}
 	if req.Role != "contributor" && req.Role != "viewer" {
@@ -241,23 +225,17 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var exists int
 	if err := DB.QueryRow(`SELECT 1 FROM users WHERE username = $1`, req.Username).Scan(&exists); err == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "username already exists", "status": "error"})
+		writeAPIError(w, r, http.StatusConflict, "username already exists", nil)
 		return
 	}
 	if err := DB.QueryRow(`SELECT 1 FROM users WHERE email = $1`, req.Email).Scan(&exists); err == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "email already exists", "status": "error"})
+		writeAPIError(w, r, http.StatusConflict, "email already exists", nil)
 		return
 	}
 	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		log.Printf("Admin create user: bcrypt error: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "failed to create user", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to create user", err)
 		return
 	}
 	var userID int
@@ -269,9 +247,7 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 	).Scan(&userID, &createdAt)
 	if err != nil {
 		log.Printf("Admin create user: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "failed to create user", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to create user", err)
 		return
 	}
 	if userType == "devops_user" {
@@ -320,9 +296,7 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 		adminIDPtr = &adminID
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/admin/users/")
@@ -334,9 +308,7 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(path, "/")
 	id, err := strconv.Atoi(parts[0])
 	if err != nil || id <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid user id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid user id", err)
 		return
 	}
 	if len(parts) > 1 {
@@ -351,9 +323,7 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := GetUserByID(id)
 	if err != nil || user == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "user not found", "status": "error"})
+		writeAPIError(w, r, http.StatusNotFound, "user not found", err)
 		return
 	}
 	switch r.Method {
@@ -408,9 +378,7 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 			Level           string `json:"level"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 			return
 		}
 		username := strings.TrimSpace(req.Username)
@@ -430,9 +398,7 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 			verified = *req.Verified
 		}
 		if err := UpdateUserProfile(id, username, email, role, verified); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeAdminTeamJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "failed to update user profile", err)
 			return
 		}
 		userType := strings.TrimSpace(req.UserType)
@@ -491,13 +457,11 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	case "DELETE":
 		if err := DeleteUser(id); err != nil {
-			w.Header().Set("Content-Type", "application/json")
 			if err.Error() == "user not found" {
-				w.WriteHeader(http.StatusNotFound)
+				writeAPIError(w, r, http.StatusNotFound, "user not found", err)
 			} else {
-				w.WriteHeader(http.StatusBadRequest)
+				writeAPIError(w, r, http.StatusBadRequest, "failed to delete user", err)
 			}
-			encodeAdminTeamJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 			return
 		}
 		AppendAuditLog(adminIDPtr, "user_delete", "user", strconv.Itoa(id), user.Username)
@@ -505,7 +469,7 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 		encodeAdminTeamJSON(w, map[string]interface{}{"status": "ok", "message": "user deleted"})
 		return
 	}
-	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	writeMethodNotAllowed(w, r)
 }
 
 // adminTeamsListHandler GET /api/admin/teams
@@ -516,23 +480,19 @@ func adminTeamsListHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	teams, err := GetTeams()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to list teams", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -547,7 +507,7 @@ func adminTeamsCreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	userID, ok := requireAdmin(w, r)
@@ -555,9 +515,7 @@ func adminTeamsCreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	var body struct {
@@ -568,15 +526,11 @@ func adminTeamsCreateHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultCloud string `json:"default_cloud"` // optional default cloud
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
 	if strings.TrimSpace(body.Name) == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "name is required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "name is required", nil)
 		return
 	}
 	teamType := strings.TrimSpace(strings.ToLower(body.TeamType))
@@ -589,9 +543,7 @@ func adminTeamsCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	team, err := CreateTeam(strings.TrimSpace(body.Name), strings.TrimSpace(body.Slug), teamType, createdBy, strings.TrimSpace(body.DefaultEnv), strings.TrimSpace(body.DefaultCloud))
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "failed to create team", err)
 		return
 	}
 	AppendAuditLog(createdBy, "team_create", "team", strconv.Itoa(team.ID), team.Name)
@@ -607,31 +559,25 @@ func adminTeamDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/admin/teams/")
 	id, _ := strconv.Atoi(strings.Split(path, "/")[0])
 	if id <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid team id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid team id", nil)
 		return
 	}
 	team, err := GetTeamByID(id)
 	if err != nil || team == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "team not found", "status": "error"})
+		writeAPIError(w, r, http.StatusNotFound, "team not found", err)
 		return
 	}
 	members, _ := GetTeamMembers(id)
@@ -645,17 +591,13 @@ func adminTeamUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/admin/teams/")
 	id, _ := strconv.Atoi(strings.Split(path, "/")[0])
 	if id <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid team id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid team id", nil)
 		return
 	}
 	var body struct {
@@ -663,22 +605,16 @@ func adminTeamUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		DefaultCloud string `json:"default_cloud"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
 	team, err := GetTeamByID(id)
 	if err != nil || team == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "team not found", "status": "error"})
+		writeAPIError(w, r, http.StatusNotFound, "team not found", err)
 		return
 	}
 	if err := UpdateTeamDefaults(id, strings.TrimSpace(body.DefaultEnv), strings.TrimSpace(body.DefaultCloud)); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to update team defaults", err)
 		return
 	}
 	team, _ = GetTeamByID(id)
@@ -697,31 +633,23 @@ func adminTeamDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		adminIDPtr = &adminID
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/admin/teams/")
 	path = strings.TrimSuffix(path, "/")
 	teamID, _ := strconv.Atoi(strings.Split(path, "/")[0])
 	if teamID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid team id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid team id", nil)
 		return
 	}
 	team, err := GetTeamByID(teamID)
 	if err != nil || team == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "team not found", "status": "error"})
+		writeAPIError(w, r, http.StatusNotFound, "team not found", err)
 		return
 	}
 	if err := DeleteTeam(teamID); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "failed to delete team", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to delete team", err)
 		return
 	}
 	AppendAuditLog(adminIDPtr, "team_delete", "team", strconv.Itoa(teamID), fmt.Sprintf("name=%s", team.Name))
@@ -745,18 +673,14 @@ func adminTeamMembersAddHandler(w http.ResponseWriter, r *http.Request) {
 		adminIDPtr = &adminID
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/admin/teams/")
 	path = strings.TrimSuffix(path, "/members")
 	teamID, _ := strconv.Atoi(path)
 	if teamID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid team id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid team id", nil)
 		return
 	}
 	var body struct {
@@ -765,9 +689,7 @@ func adminTeamMembersAddHandler(w http.ResponseWriter, r *http.Request) {
 		Role    string `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
 	role := body.Role
@@ -785,9 +707,7 @@ func adminTeamMembersAddHandler(w http.ResponseWriter, r *http.Request) {
 		idsToAdd = []int{body.UserID}
 	}
 	if len(idsToAdd) == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "user_id or user_ids required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "user_id or user_ids required", nil)
 		return
 	}
 	var added []interface{}
@@ -825,44 +745,34 @@ func adminTeamMemberUpdateRoleHandler(w http.ResponseWriter, r *http.Request) {
 		adminIDPtr = &adminID
 	}
 	if r.Method != "PATCH" && r.Method != "PUT" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/admin/teams/")
 	parts := strings.Split(path, "/")
 	if len(parts) < 3 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid path", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid path", nil)
 		return
 	}
 	teamID, _ := strconv.Atoi(parts[0])
 	userID, _ := strconv.Atoi(parts[2])
 	if teamID <= 0 || userID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid team id or user id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid team id or user id", nil)
 		return
 	}
 	var body struct {
 		Role string `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
 	if err := UpdateTeamMemberRole(teamID, userID, body.Role); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "failed to update member role", err)
 		return
 	}
 	AppendAuditLog(adminIDPtr, "team_member_role_update", "team", strconv.Itoa(teamID), fmt.Sprintf("user_id=%d,role=%s", userID, body.Role))
@@ -886,36 +796,28 @@ func adminTeamMembersRemoveHandler(w http.ResponseWriter, r *http.Request) {
 		adminIDPtr = &adminID
 	}
 	if r.Method != "DELETE" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	// Path: /api/admin/teams/1/members/2
 	path := strings.TrimPrefix(r.URL.Path, "/api/admin/teams/")
 	parts := strings.Split(path, "/")
 	if len(parts) < 3 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid path", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid path", nil)
 		return
 	}
 	teamID, _ := strconv.Atoi(parts[0])
 	userID, _ := strconv.Atoi(parts[2])
 	if teamID <= 0 || userID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid team id or user id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid team id or user id", nil)
 		return
 	}
 	if err := RemoveTeamMember(teamID, userID); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to remove team member", err)
 		return
 	}
 	AppendAuditLog(adminIDPtr, "team_member_remove", "team", strconv.Itoa(teamID), fmt.Sprintf("user_id=%d", userID))
@@ -941,7 +843,7 @@ func adminTeamsRouter(w http.ResponseWriter, r *http.Request) {
 			adminTeamsCreateHandler(w, r)
 			return
 		}
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	// path is /:id or /:id/members or /:id/members/:user_id
@@ -958,7 +860,7 @@ func adminTeamsRouter(w http.ResponseWriter, r *http.Request) {
 			adminTeamDeleteHandler(w, r)
 			return
 		}
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if len(parts) >= 2 && parts[1] == "members" {
@@ -976,7 +878,7 @@ func adminTeamsRouter(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	http.NotFound(w, r)

@@ -782,7 +782,7 @@ func devopsK8sConnectionsHandler(w http.ResponseWriter, r *http.Request) {
 			"connection": connection,
 		})
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 	}
 }
 
@@ -793,7 +793,7 @@ func devopsK8sOverviewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireDevopsUser(w, r); !ok {

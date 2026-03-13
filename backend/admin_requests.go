@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -24,7 +23,7 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
@@ -151,7 +150,7 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
@@ -187,11 +186,7 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	entries, err := GetAuditLogs(limit, offset, actionFilter, fromDate, toDate, projectID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch audit log", "status": "error"}); encErr != nil {
-			log.Printf("admin audit log error response encode failed: %v", encErr)
-		}
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to fetch audit log", err)
 		return
 	}
 	if r.URL.Query().Get("format") == "csv" {
@@ -240,7 +235,7 @@ func adminAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
@@ -300,7 +295,7 @@ func adminSLABreachCheckHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" && r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
@@ -315,11 +310,7 @@ func adminSLABreachCheckHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	reqs, err := GetAtRiskRequestsForSLABreach(50)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"}); encErr != nil {
-			log.Printf("admin sla breach error response encode failed: %v", encErr)
-		}
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to fetch at-risk requests", err)
 		return
 	}
 	notified := 0
@@ -342,18 +333,14 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"}); err != nil {
-			log.Printf("admin requests db unavailable response encode failed: %v", err)
-		}
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 
@@ -402,11 +389,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	requests, err := GetPRRequests(team, env, cloud, projectID, statusFilter, priorityFilter, search, prID, 0, nil, limit, offset, sortBy, sortOrder, atRiskOnly, "", "")
 	if err != nil {
 		log.Printf("Admin requests: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch requests", "status": "error"}); encErr != nil {
-			log.Printf("admin requests error response encode failed: %v", encErr)
-		}
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to fetch requests", err)
 		return
 	}
 	totalCount, _ := GetTotalCount(team, env, cloud, projectID, statusFilter, priorityFilter, search, prID, 0, nil, atRiskOnly, "", "")
@@ -498,28 +481,20 @@ func adminStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"}); err != nil {
-			log.Printf("admin stats db unavailable response encode failed: %v", err)
-		}
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	stats, err := GetStats(0)
 	if err != nil {
 		log.Printf("Admin stats: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch stats", "status": "error"}); encErr != nil {
-			log.Printf("admin stats error response encode failed: %v", encErr)
-		}
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to fetch stats", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -536,7 +511,7 @@ func adminNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
@@ -557,11 +532,7 @@ func adminNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	)
 	payload, err := buildAdminNotifications(limit, offset, projectID, kind)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to fetch notifications", "status": "error"}); encErr != nil {
-			log.Printf("admin notifications error response encode failed: %v", encErr)
-		}
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to fetch notifications", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -573,16 +544,14 @@ func adminNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 // adminBulkApproveHandler POST /api/admin/requests/bulk-approve with body {"ids": [1,2,3]}
 func adminBulkApproveHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	var body struct {
 		IDs []int `json:"ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminJSON(w, map[string]interface{}{"error": "ids array required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "ids array required", err)
 		return
 	}
 	var approved, failed []int
@@ -631,7 +600,7 @@ func adminBulkApproveHandler(w http.ResponseWriter, r *http.Request) {
 // adminBulkRejectHandler POST /api/admin/requests/bulk-reject with body {"ids": [1,2,3], "reason": "optional"}
 func adminBulkRejectHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	adminID, ok := requireAdmin(w, r)
@@ -643,9 +612,7 @@ func adminBulkRejectHandler(w http.ResponseWriter, r *http.Request) {
 		Reason string `json:"reason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminJSON(w, map[string]interface{}{"error": "ids array required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "ids array required", err)
 		return
 	}
 	reason := strings.TrimSpace(body.Reason)
@@ -685,7 +652,7 @@ func adminBulkRejectHandler(w http.ResponseWriter, r *http.Request) {
 // adminBulkStatusHandler POST /api/admin/requests/bulk-status with body {"ids": [1,2,3], "status": "completed"}
 func adminBulkStatusHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	adminID, ok := requireAdmin(w, r)
@@ -697,15 +664,11 @@ func adminBulkStatusHandler(w http.ResponseWriter, r *http.Request) {
 		Status string `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.IDs) == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminJSON(w, map[string]interface{}{"error": "ids array and status required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "ids array and status required", err)
 		return
 	}
 	if body.Status != "in_progress" && body.Status != "completed" && body.Status != "rejected" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminJSON(w, map[string]interface{}{"error": "status must be in_progress, completed, or rejected", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "status must be in_progress, completed, or rejected", nil)
 		return
 	}
 	var adminIDPtr *int
@@ -768,9 +731,7 @@ func maskMap(m map[string]interface{}) {
 func adminRequestDetailHandler(w http.ResponseWriter, r *http.Request, id int) {
 	req, err := GetPRRequestByID(id)
 	if err != nil || req == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeAdminJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
+		writeAPIError(w, r, http.StatusNotFound, "request not found", err)
 		return
 	}
 	createdByUsername := ""
@@ -822,7 +783,7 @@ func adminDevopsUsersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
@@ -835,9 +796,7 @@ func adminDevopsUsersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	users, err := GetDevopsUsers()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAdminJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to list devops users", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -856,9 +815,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAdminJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	var adminIDPtr *int
@@ -895,36 +852,30 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	idStr, action := parts[0], parts[1]
 	id, err := strconv.Atoi(idStr)
 	if err != nil || id <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAdminJSON(w, map[string]interface{}{"error": "invalid request id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid request id", err)
 		return
 	}
 
 	req, err := GetPRRequestByID(id)
 	if err != nil || req == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeAdminJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
+		writeAPIError(w, r, http.StatusNotFound, "request not found", err)
 		return
 	}
 
 	switch action {
 	case "approve":
 		if r.Method != "POST" {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeMethodNotAllowed(w, r)
 			return
 		}
 		if req.Status != "pending_approval" && req.Status != "pending_devops_approval" && req.Status != "pending_user_manager_approval" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeAdminJSON(w, map[string]interface{}{"error": "only pending requests can be approved", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "only pending requests can be approved", nil)
 			return
 		}
 		// Admin full control: if pending_user_manager_approval, just move to pending_devops_approval; else create PR and assign
 		if req.Status == "pending_user_manager_approval" {
 			if err := UpdatePRRequestStatus(id, "pending_devops_approval"); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to move request to pending_devops_approval", err)
 				return
 			}
 			NotifyRequestApproved(req, "Request #"+strconv.Itoa(id)+" was approved by your manager and is now pending DevOps approval.")
@@ -938,14 +889,12 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
 		if err != nil {
 			log.Printf("Admin approve: create PR failed: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeAdminJSON(w, map[string]interface{}{"error": fmt.Sprintf("failed to create PR: %v", err), "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to create PR", err)
 			return
 		}
 		if err := UpdatePRRequestWithPR(id, prURL); err != nil {
 			log.Printf("Admin approve: update request failed: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to update request with PR link", err)
 			return
 		}
 		_ = AssignRequestByPriority(id)
@@ -968,13 +917,11 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 
 	case "reject":
 		if r.Method != "POST" {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeMethodNotAllowed(w, r)
 			return
 		}
 		if req.Status != "pending_approval" && req.Status != "pending_devops_approval" && req.Status != "pending_user_manager_approval" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeAdminJSON(w, map[string]interface{}{"error": "only pending requests can be rejected", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "only pending requests can be rejected", nil)
 			return
 		}
 		reason := ""
@@ -985,7 +932,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			reason = strings.TrimSpace(bodyReject.Reason)
 		}
 		if err := UpdatePRRequestReject(id, reason); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to reject request", err)
 			return
 		}
 		NotifyRequestRejected(req, reason)
@@ -999,16 +946,14 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 
 	case "status":
 		if r.Method != "PATCH" && r.Method != "PUT" {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeMethodNotAllowed(w, r)
 			return
 		}
 		var body struct {
 			Status string `json:"status"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeAdminJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 			return
 		}
 		switch body.Status {
@@ -1016,13 +961,11 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			// allow admin to set completed (e.g. when PR merged) or revert
 			break
 		default:
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeAdminJSON(w, map[string]interface{}{"error": "status must be in_progress, completed, or rejected", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "status must be in_progress, completed, or rejected", nil)
 			return
 		}
 		if err := UpdatePRRequestStatus(id, body.Status); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to update request status", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -1031,22 +974,18 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 
 	case "plan-output":
 		if r.Method != "PATCH" && r.Method != "PUT" && r.Method != "POST" {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeMethodNotAllowed(w, r)
 			return
 		}
 		var body struct {
 			Output string `json:"output"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeAdminJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 			return
 		}
 		if err := UpdatePRRequestTerraformPlanOutput(id, body.Output); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeAdminJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to update terraform output", err)
 			return
 		}
 		AppendAuditLog(adminIDPtr, "request_plan_output", "pr_request", strconv.Itoa(id), "terraform plan/output updated")
@@ -1056,16 +995,14 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 
 	case "reassign":
 		if r.Method != "POST" && r.Method != "PATCH" && r.Method != "PUT" {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeMethodNotAllowed(w, r)
 			return
 		}
 		var body struct {
 			AssignedTo *int `json:"assigned_to"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeAdminJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 			return
 		}
 		// Allow clearing assignment with assigned_to: null or 0
@@ -1075,22 +1012,18 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		if body.AssignedTo != nil {
 			u, _ := GetUserByID(*body.AssignedTo)
 			if u == nil || u.UserType != "devops_user" {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusBadRequest)
-				encodeAdminJSON(w, map[string]interface{}{"error": "assigned_to must be a devops user id", "status": "error"})
+				writeAPIError(w, r, http.StatusBadRequest, "assigned_to must be a devops user id", nil)
 				return
 			}
 		}
 		if body.AssignedTo != nil {
 			if err := UpdatePRRequestAssignedTo(id, *body.AssignedTo); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				encodeAdminJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to assign request", err)
 				return
 			}
 		} else {
 			if _, err := DB.Exec("UPDATE pr_requests SET assigned_to = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1", id); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				encodeAdminJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to clear request assignment", err)
 				return
 			}
 		}
@@ -1108,21 +1041,19 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 
 	case "jira":
 		if r.Method != "PATCH" && r.Method != "PUT" && r.Method != "POST" {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeMethodNotAllowed(w, r)
 			return
 		}
 		var body struct {
 			JiraTicketID string `json:"jira_ticket_id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeAdminJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 			return
 		}
 		ticketID := strings.TrimSpace(body.JiraTicketID)
 		if _, err := DB.Exec("UPDATE pr_requests SET jira_ticket_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2", ticketID, id); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to update jira ticket", err)
 			return
 		}
 		AppendAuditLog(adminIDPtr, "request_jira", "pr_request", strconv.Itoa(id), ticketID)

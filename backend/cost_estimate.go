@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -13,7 +14,7 @@ func costEstimateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	cloud := r.URL.Query().Get("cloud")
@@ -32,6 +33,16 @@ func costEstimateHandler(w http.ResponseWriter, r *http.Request) {
 		"env":               env,
 		"status":            "ok",
 	}); err != nil {
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		requestID := requestIDFromContext(r.Context())
+		traceID, spanID := traceAndSpanIDs(r.Context())
+		log.Printf(
+			"[HTTP] error_response_encode_failed request_id=%s trace_id=%s span_id=%s method=%s path=%s err=%v",
+			requestID,
+			traceID,
+			spanID,
+			r.Method,
+			r.URL.Path,
+			err,
+		)
 	}
 }

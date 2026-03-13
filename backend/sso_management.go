@@ -1406,9 +1406,7 @@ func adminSSOSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 
@@ -1416,9 +1414,7 @@ func adminSSOSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		settings, err := loadSSOSettings()
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeAdminTeamJSON(w, map[string]interface{}{"error": "failed to load sso settings", "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to load sso settings", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -1448,9 +1444,7 @@ func adminSSOSettingsHandler(w http.ResponseWriter, r *http.Request) {
 			RequireVerifiedEmailClaim bool   `json:"require_verified_email_claim"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeAdminTeamJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 			return
 		}
 		settings := ssoSettings{
@@ -1479,17 +1473,13 @@ func adminSSOSettingsHandler(w http.ResponseWriter, r *http.Request) {
 			settings.DevopsPortalMode = ssoModeOptional
 		}
 		if err := saveSSOSettings(settings, adminID); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeAdminTeamJSON(w, map[string]interface{}{"error": "failed to save sso settings", "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to save sso settings", err)
 			return
 		}
 		AppendAuditLog(&adminID, "sso_settings_update", "sso", "1", fmt.Sprintf("provider=%s user_mode=%s devops_mode=%s", normalizeSSOProvider(req.Provider), normalizePortalMode(settings.UserPortalMode), normalizePortalMode(settings.DevopsPortalMode)))
 		updated, err := loadSSOSettings()
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeAdminTeamJSON(w, map[string]interface{}{"error": "saved but failed to reload settings", "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "saved but failed to reload settings", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -1499,7 +1489,7 @@ func adminSSOSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 }
@@ -1511,7 +1501,7 @@ func adminSSOSyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	adminID, ok := requireAdmin(w, r)
@@ -1519,16 +1509,12 @@ func adminSSOSyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	settings, err := loadSSOSettings()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "failed to load sso settings", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to load sso settings", err)
 		return
 	}
 	summary, err := runSSOSyncWithLock(settings, &adminID, "manual")
@@ -1537,9 +1523,7 @@ func adminSSOSyncHandler(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(strings.ToLower(err.Error()), "already in progress") {
 			statusCode = http.StatusConflict
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(statusCode)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, statusCode, err.Error(), err)
 		return
 	}
 
@@ -1557,7 +1541,7 @@ func adminSSOAuditHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
@@ -1572,9 +1556,7 @@ func adminSSOAuditHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	entries, err := loadSSOAuditEntries(limit)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAdminTeamJSON(w, map[string]interface{}{"error": "failed to load sso audit trail", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to load sso audit trail", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1591,14 +1573,12 @@ func publicSSOOptionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	settings, err := loadSSOSettings()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": "failed to load sso options", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to load sso options", err)
 		return
 	}
 	portal := normalizePortalName(r.URL.Query().Get("portal"))
@@ -1646,46 +1626,36 @@ func authSSOLoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAuthJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	if sharedSecret := strings.TrimSpace(os.Getenv("SSO_AUTH_SHARED_SECRET")); sharedSecret != "" {
 		if strings.TrimSpace(r.Header.Get("X-SSO-Auth-Secret")) != sharedSecret {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			encodeAuthJSON(w, map[string]interface{}{"error": "invalid sso auth secret", "status": "error"})
+			writeAPIError(w, r, http.StatusUnauthorized, "invalid sso auth secret", nil)
 			return
 		}
 	}
 
 	var req ssoLoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
 
 	settings, err := loadSSOSettings()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{"error": "failed to load sso settings", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to load sso settings", err)
 		return
 	}
 
 	portal := normalizePortalName(req.Portal)
 	mode := ssoModeForPortal(settings, portal)
 	if mode == ssoModeDisabled {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		encodeAuthJSON(w, map[string]interface{}{"error": "sso login is disabled for this portal", "status": "error"})
+		writeAPIError(w, r, http.StatusForbidden, "sso login is disabled for this portal", nil)
 		AppendAuditLog(nil, "sso-login-denied", "sso", portal, "portal mode disabled")
 		return
 	}
@@ -1694,9 +1664,7 @@ func authSSOLoginHandler(w http.ResponseWriter, r *http.Request) {
 		provider = normalizeSSOProvider(settings.Provider)
 	}
 	if provider == "none" || provider != normalizeSSOProvider(settings.Provider) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid sso provider", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid sso provider", nil)
 		AppendAuditLog(nil, "sso-login-denied", "sso", portal, "provider mismatch")
 		return
 	}
@@ -1705,9 +1673,7 @@ func authSSOLoginHandler(w http.ResponseWriter, r *http.Request) {
 		req.Claims = map[string]interface{}{}
 	}
 	if err := validateSSOClaims(settings, req.Claims); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusForbidden, err.Error(), err)
 		AppendAuditLog(nil, "sso-login-denied", "sso", portal, "claims failed: "+err.Error())
 		return
 	}
@@ -1749,34 +1715,26 @@ func authSSOLoginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if existingUserID == 0 && !settings.JITProvisionEnabled {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		encodeAuthJSON(w, map[string]interface{}{"error": "jit provisioning is disabled. run directory sync first", "status": "error"})
+		writeAPIError(w, r, http.StatusForbidden, "jit provisioning is disabled. run directory sync first", nil)
 		AppendAuditLog(nil, "sso-login-denied", "sso", portal, "jit disabled")
 		return
 	}
 
 	userID, action, err := upsertSSODirectoryUser(settings, policy, user, settings.JITProvisionEnabled)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 		AppendAuditLog(nil, "sso-login-denied", "sso", portal, "upsert failed: "+err.Error())
 		return
 	}
 	if userID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		encodeAuthJSON(w, map[string]interface{}{"error": "sso user not allowed", "status": "error"})
+		writeAPIError(w, r, http.StatusForbidden, "sso user not allowed", nil)
 		AppendAuditLog(nil, "sso-login-denied", "sso", portal, "no user id")
 		return
 	}
 
 	fullUser, err := GetUserByID(userID)
 	if err != nil || fullUser == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{"error": "failed to load user", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to load user", err)
 		AppendAuditLog(nil, "sso-login-denied", "sso", portal, "failed to load user")
 		return
 	}

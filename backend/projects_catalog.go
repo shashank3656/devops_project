@@ -1714,31 +1714,25 @@ func adminProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	projects, err := listProjectCatalogs()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 		return
 	}
 	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("format")), "csv") {
 		content, err := buildProjectCatalogCSV(projects)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 			return
 		}
 		w.Header().Set("Content-Type", "text/csv")
@@ -1757,7 +1751,7 @@ func adminProjectAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
@@ -1765,16 +1759,12 @@ func adminProjectAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	projects, err := listProjectCatalogs()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 		return
 	}
 	analytics, err := buildProjectAnalytics(projects)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1788,7 +1778,7 @@ func adminProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
@@ -1802,15 +1792,11 @@ func adminProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	project, err := getProjectCatalogByID(projectID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 		return
 	}
 	if project == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeJSON(w, map[string]interface{}{"error": "project not found", "status": "error"})
+		writeAPIError(w, r, http.StatusNotFound, "project not found", nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1907,28 +1893,22 @@ func meProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "request failed", err)
 		return
 	}
 	projects, err := getVisibleProjectsForUser(userID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1942,21 +1922,17 @@ func meProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "request failed", err)
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/me/projects/")
@@ -1967,9 +1943,7 @@ func meProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	projects, err := getVisibleProjectsForUser(userID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 		return
 	}
 	for _, project := range projects {
@@ -1979,9 +1953,7 @@ func meProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotFound)
-	encodeJSON(w, map[string]interface{}{"error": "project not found", "status": "error"})
+	writeAPIError(w, r, http.StatusNotFound, "project not found", nil)
 }
 
 func devopsProjectOptionsHandler(w http.ResponseWriter, r *http.Request) {
@@ -1991,7 +1963,7 @@ func devopsProjectOptionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireDevopsManager(w, r); !ok {
@@ -1999,16 +1971,12 @@ func devopsProjectOptionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	portalTeams, err := getPortalTeams()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 		return
 	}
 	ownerTeams, err := GetTeams()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -2026,7 +1994,7 @@ func devopsProjectAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireDevopsManager(w, r); !ok {
@@ -2034,16 +2002,12 @@ func devopsProjectAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	projects, err := listProjectCatalogs()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 		return
 	}
 	analytics, err := buildProjectAnalytics(projects)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -2057,7 +2021,7 @@ func devopsProjectsBulkHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	managerID, ok := requireDevopsManager(w, r)
@@ -2068,15 +2032,11 @@ func devopsProjectsBulkHandler(w http.ResponseWriter, r *http.Request) {
 		Projects []ProjectCatalogInput `json:"projects"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
 		return
 	}
 	if len(payload.Projects) == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{"error": "at least one project is required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "at least one project is required", nil)
 		return
 	}
 	results := make([]ProjectBulkCreateResult, 0, len(payload.Projects))
@@ -2119,24 +2079,18 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		profile, _ := GetDevopsProfile(userID)
 		if profile == nil || !profile.IsManager {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusForbidden)
-			encodeJSON(w, map[string]interface{}{"error": "DevOps manager access required", "status": "error"})
+			writeAPIError(w, r, http.StatusForbidden, "DevOps manager access required", nil)
 			return
 		}
 		projects, err := listProjectCatalogs()
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 			return
 		}
 		if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("format")), "csv") {
 			content, err := buildProjectCatalogCSV(projects)
 			if err != nil {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusInternalServerError)
-				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+				writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 				return
 			}
 			w.Header().Set("Content-Type", "text/csv")
@@ -2146,16 +2100,12 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		portalTeams, err := getPortalTeams()
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 			return
 		}
 		ownerTeams, err := GetTeams()
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -2174,17 +2124,13 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		var input ProjectCatalogInput
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
 			return
 		}
 		createdBy := &userID
 		project, err := createProjectCatalog(input, createdBy)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -2192,7 +2138,7 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		encodeJSON(w, map[string]interface{}{"status": "ok", "project": project})
 		return
 	}
-	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	writeMethodNotAllowed(w, r)
 }
 
 func devopsProjectBulkTeamAccessHandler(w http.ResponseWriter, r *http.Request) {
@@ -2202,7 +2148,7 @@ func devopsProjectBulkTeamAccessHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	userID, ok := requireDevopsManager(w, r)
@@ -2216,16 +2162,12 @@ func devopsProjectBulkTeamAccessHandler(w http.ResponseWriter, r *http.Request) 
 		Action       string   `json:"action"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
 		return
 	}
 	projects, err := applyBulkProjectTeamAccess(payload.ProjectIDs, payload.TeamIDs, payload.Environments, payload.Action, &userID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -2251,7 +2193,7 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(pathParts) > 1 && pathParts[1] == "lifecycle" {
 		if r.Method != "POST" {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeMethodNotAllowed(w, r)
 			return
 		}
 		userID, ok := requireDevopsManager(w, r)
@@ -2262,16 +2204,12 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 			Action string `json:"action"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
 			return
 		}
 		project, err := performProjectLifecycleAction(projectID, payload.Action, &userID)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -2284,15 +2222,11 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		project, err := getProjectCatalogByID(projectID)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 			return
 		}
 		if project == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			encodeJSON(w, map[string]interface{}{"error": "project not found", "status": "error"})
+			writeAPIError(w, r, http.StatusNotFound, "project not found", nil)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -2306,21 +2240,17 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		var input ProjectCatalogInput
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
 			return
 		}
 		project, err := updateProjectCatalog(projectID, input, &userID)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		encodeJSON(w, map[string]interface{}{"status": "ok", "project": project})
 		return
 	}
-	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	writeMethodNotAllowed(w, r)
 }
