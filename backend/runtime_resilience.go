@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net"
@@ -729,13 +730,13 @@ func (r *statusRecorder) normalizeAPIErrorPayload(p []byte) []byte {
 		msg = "request failed"
 	}
 
-	r.Header().Set("Content-Type", "application/json")
-	r.Header().Del("X-Content-Type-Options")
+	r.Header().Set("Content-Type", "application/json; charset=utf-8")
+	r.Header().Set("X-Content-Type-Options", "nosniff")
 	return buildAPIErrorPayload(msg, r.requestID)
 }
 
 func buildAPIErrorPayload(message, requestID string) []byte {
-	msg := strings.TrimSpace(message)
+	msg := sanitizeAPIErrorMessage(message)
 	if msg == "" {
 		msg = "request failed"
 	}
@@ -752,6 +753,14 @@ func buildAPIErrorPayload(message, requestID string) []byte {
 		return []byte(fallback + "\n")
 	}
 	return append(encoded, '\n')
+}
+
+func sanitizeAPIErrorMessage(message string) string {
+	msg := strings.TrimSpace(message)
+	if msg == "" {
+		return ""
+	}
+	return template.HTMLEscapeString(msg)
 }
 
 func deriveHTTPLogMessage(status int, snippet string) string {
