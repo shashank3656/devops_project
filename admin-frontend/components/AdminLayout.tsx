@@ -110,6 +110,15 @@ function getAdminIdentity(): { initials: string; label: string } {
   }
 }
 
+function getAdminToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  const raw = (localStorage.getItem('admin_token') || '').trim();
+  if (!raw || raw === 'undefined' || raw === 'null') return null;
+  // Backend session token format is "<userID>:<unixTimestamp>".
+  if (!/^\d+:\d+$/.test(raw)) return null;
+  return raw;
+}
+
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = router.pathname;
@@ -147,7 +156,19 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     } catch (_) {}
   }, []);
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
+  const token = getAdminToken();
+
+  useEffect(() => {
+    const currentToken = getAdminToken();
+    if (currentToken) return;
+    try {
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_user');
+    } catch (_) {}
+    if (router.pathname !== '/login') {
+      router.replace('/login');
+    }
+  }, [router, router.pathname]);
 
   const toggleSidebar = () => {
     const next = !sidebarCollapsed;

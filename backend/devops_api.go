@@ -86,7 +86,7 @@ func devopsMeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	userID, ok := requireDevopsUser(w, r)
@@ -127,7 +127,7 @@ func devopsTicketsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	userID, ok := requireDevopsUser(w, r)
@@ -153,7 +153,7 @@ func devopsUsersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	_, ok := requireDevopsManager(w, r)
@@ -184,7 +184,7 @@ func devopsWorkloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	_, ok := requireDevopsManager(w, r)
@@ -232,7 +232,7 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	_, ok := requireDevopsManager(w, r)
@@ -335,7 +335,7 @@ func devopsDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	_, ok := requireDevopsManager(w, r)
@@ -367,7 +367,7 @@ func devopsNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	_, ok := requireDevopsManager(w, r)
@@ -403,7 +403,7 @@ func devopsPendingApprovalsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	_, ok := requireDevopsManager(w, r)
@@ -429,7 +429,7 @@ func devopsMyTeamsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	userID, ok := requireDevopsUser(w, r)
@@ -495,7 +495,7 @@ func devopsTeamsRouter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	var body struct {
@@ -633,7 +633,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			encodeDevopsJSON(w, map[string]interface{}{"template": t, "status": "ok"})
 			return
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeMethodNotAllowed(w, r)
 			return
 		}
 	}
@@ -723,7 +723,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		encodeDevopsJSON(w, map[string]interface{}{"status": "ok", "message": "deleted"})
 		return
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 }
@@ -731,7 +731,7 @@ func devopsTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 // devopsBulkActionHandler handles POST /api/devops/requests/bulk-approve and bulk-reject
 func devopsBulkActionHandler(w http.ResponseWriter, r *http.Request, managerID int, action string) {
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	var body struct {
@@ -900,7 +900,7 @@ func devopsRequestCommentsHandler(w http.ResponseWriter, r *http.Request, reques
 		encodeDevopsJSON(w, map[string]interface{}{"status": "ok", "message": "Comment added"})
 		return
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 	}
 }
 
@@ -999,21 +999,21 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	case "timeline":
 		if r.Method != "GET" {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeMethodNotAllowed(w, r)
 			return
 		}
 		devopsRequestTimelineHandler(w, id)
 		return
 	case "dependencies":
 		if r.Method != "GET" {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeMethodNotAllowed(w, r)
 			return
 		}
 		devopsRequestDependenciesHandler(w, id)
 		return
 	case "approve":
 		if r.Method != "POST" {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeMethodNotAllowed(w, r)
 			return
 		}
 		if req.Status != "pending_devops_approval" {
@@ -1054,7 +1054,7 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	case "reject":
 		if r.Method != "POST" {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeMethodNotAllowed(w, r)
 			return
 		}
 		if req.Status != "pending_devops_approval" {
@@ -1095,7 +1095,7 @@ func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireDevopsUser(w, r); !ok {

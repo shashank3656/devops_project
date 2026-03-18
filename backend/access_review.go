@@ -255,27 +255,19 @@ func adminAccessReviewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not available", "status": "error"}); err != nil {
-			log.Printf("access review response encode failed: %v", err)
-		}
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	users, err := listAccessReviewUsers()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"}); err != nil {
-			log.Printf("access review response encode failed: %v", err)
-		}
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to load access review users", err)
 		return
 	}
 
@@ -307,11 +299,7 @@ func adminAccessReviewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	_, projects, err := loadAccessReviewProjectScopes(uniqueTeamIDs)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error(), "status": "error"}); err != nil {
-			log.Printf("access review response encode failed: %v", err)
-		}
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to load access review project scopes", err)
 		return
 	}
 

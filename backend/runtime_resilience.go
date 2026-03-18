@@ -10,10 +10,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -29,6 +31,7 @@ const (
 	defaultSlowQuery      = 750 * time.Millisecond
 	defaultQueueName      = "infra:jobs"
 	requestIDHeader       = "X-Request-ID"
+	maxHTTPLogBodyBytes   = 512
 	cacheNamespaceAdmin   = "admin_dashboard"
 	cacheNamespaceTeam    = "team_ownership"
 	cacheNamespaceOnboard = "onboarding_progress"
@@ -530,24 +533,261 @@ func withObservability(next http.Handler) http.Handler {
 		if requestID == "" {
 			requestID = fmt.Sprintf("req-%d-%d", time.Now().UnixNano(), atomic.AddUint64(&reqCounter, 1))
 		}
-		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-		recorder.Header().Set(requestIDHeader, requestID)
-		next.ServeHTTP(recorder, r)
-		elapsed := time.Since(start)
-		if elapsed >= RequestLogSlowThreshold {
-			log.Printf("[HTTP] request_id=%s method=%s path=%s status=%d duration_ms=%d", requestID, r.Method, r.URL.Path, recorder.status, elapsed.Milliseconds())
+		requestCtx := withRequestID(r.Context(), requestID)
+		recorder := &statusRecorder{
+			ResponseWriter: w,
+			status:         http.StatusOK,
+			path:           r.URL.Path,
+			method:         r.Method,
+			requestID:      requestID,
 		}
+		recorder.Header().Set(requestIDHeader, requestID)
+		instrumentedNext := wrapWithOTelHTTP(http.HandlerFunc(func(innerW http.ResponseWriter, innerR *http.Request) {
+			requestCtx = innerR.Context()
+			next.ServeHTTP(innerW, innerR)
+		}))
+		instrumentedNext.ServeHTTP(recorder, r.WithContext(requestCtx))
+		recorder.ensureAPIErrorBody()
+		elapsed := time.Since(start)
+
+		path := r.URL.Path
+		if strings.TrimSpace(path) == "" {
+			path = "/"
+		}
+		recordHTTPRequestMetrics(requestCtx, r.Method, path, recorder.status, elapsed)
+
+		severity := "info"
+		if recorder.status >= http.StatusInternalServerError {
+			severity = "error"
+		} else if recorder.status >= http.StatusBadRequest || elapsed >= RequestLogSlowThreshold {
+			severity = "warn"
+		}
+		traceID, spanID := traceAndSpanIDs(requestCtx)
+		message := deriveHTTPLogMessage(recorder.status, recorder.bodySnippet())
+		log.Printf(
+			"[HTTP] severity=%s request_id=%s trace_id=%s span_id=%s method=%s path=%s status=%d duration_ms=%d message=%q",
+			severity,
+			requestIDFromContext(requestCtx),
+			traceID,
+			spanID,
+			r.Method,
+			path,
+			recorder.status,
+			elapsed.Milliseconds(),
+			message,
+		)
+		recordMiddlewareLog(requestCtx, severity)
+	})
+}
+
+func withRecovery(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			recovered := recover()
+			if recovered == nil {
+				return
+			}
+
+			panicErr := fmt.Errorf("panic recovered: %v", recovered)
+			requestID := requestIDFromContext(r.Context())
+			traceID, spanID := traceAndSpanIDs(r.Context())
+			stack := strings.TrimSpace(string(debug.Stack()))
+
+			log.Printf(
+				"[HTTP] severity=error request_id=%s trace_id=%s span_id=%s method=%s path=%s panic=%v stack=%s",
+				requestID,
+				traceID,
+				spanID,
+				r.Method,
+				r.URL.Path,
+				recovered,
+				stack,
+			)
+			recordMiddlewareLog(r.Context(), "error")
+
+			if strings.HasPrefix(strings.TrimSpace(r.URL.Path), "/api/") || strings.TrimSpace(r.URL.Path) == "/api" {
+				writeAPIError(w, r, http.StatusInternalServerError, "internal server error", panicErr)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusInternalServerError)
+			if _, err := w.Write([]byte(http.StatusText(http.StatusInternalServerError))); err != nil {
+				log.Printf(
+					"[HTTP] panic_recovery_write_failed request_id=%s trace_id=%s span_id=%s method=%s path=%s err=%v",
+					requestID,
+					traceID,
+					spanID,
+					r.Method,
+					r.URL.Path,
+					err,
+				)
+			}
+		}()
+		next.ServeHTTP(w, r)
 	})
 }
 
 type statusRecorder struct {
 	http.ResponseWriter
-	status int
+	status      int
+	bodyCapture bytes.Buffer
+	truncated   bool
+	path        string
+	method      string
+	requestID   string
+	normalized  bool
 }
 
 func (r *statusRecorder) WriteHeader(statusCode int) {
 	r.status = statusCode
 	r.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (r *statusRecorder) Write(p []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+
+	out := p
+	transformed := false
+	if normalized := r.normalizeAPIErrorPayload(p); normalized != nil {
+		out = normalized
+		r.normalized = true
+		transformed = true
+	}
+
+	if r.bodyCapture.Len() < maxHTTPLogBodyBytes {
+		remaining := maxHTTPLogBodyBytes - r.bodyCapture.Len()
+		if len(out) > remaining {
+			_, _ = r.bodyCapture.Write(out[:remaining])
+			r.truncated = true
+		} else {
+			_, _ = r.bodyCapture.Write(out)
+		}
+	} else if len(out) > 0 {
+		r.truncated = true
+	}
+
+	written, err := r.ResponseWriter.Write(out)
+	if transformed {
+		return len(p), err
+	}
+	return written, err
+}
+
+func (r *statusRecorder) bodySnippet() string {
+	raw := strings.TrimSpace(r.bodyCapture.String())
+	if raw == "" {
+		return ""
+	}
+	if r.truncated {
+		return raw + "..."
+	}
+	return raw
+}
+
+func (r *statusRecorder) ensureAPIErrorBody() {
+	if !r.isAPIRequest() || strings.EqualFold(r.method, http.MethodHead) {
+		return
+	}
+	if r.status < http.StatusBadRequest || r.bodyCapture.Len() > 0 {
+		return
+	}
+	msg := strings.TrimSpace(http.StatusText(r.status))
+	if msg == "" {
+		msg = "request failed"
+	}
+	r.Header().Set("Content-Type", "application/json")
+	r.normalized = true
+	_, _ = r.Write(buildAPIErrorPayload(msg, r.requestID))
+}
+
+func (r *statusRecorder) isAPIRequest() bool {
+	path := strings.TrimSpace(r.path)
+	if path == "" {
+		return false
+	}
+	return path == "/api" || strings.HasPrefix(path, "/api/")
+}
+
+func (r *statusRecorder) normalizeAPIErrorPayload(p []byte) []byte {
+	if r.normalized || !r.isAPIRequest() || r.status < http.StatusBadRequest || len(p) == 0 {
+		return nil
+	}
+
+	contentType := strings.ToLower(strings.TrimSpace(r.Header().Get("Content-Type")))
+	if strings.Contains(contentType, "application/json") {
+		return nil
+	}
+
+	msg := strings.TrimSpace(string(p))
+	msg = strings.TrimSuffix(msg, "\n")
+	if msg == "" {
+		msg = strings.TrimSpace(http.StatusText(r.status))
+	}
+	if msg == "" {
+		msg = "request failed"
+	}
+
+	r.Header().Set("Content-Type", "application/json; charset=utf-8")
+	r.Header().Set("X-Content-Type-Options", "nosniff")
+	return buildAPIErrorPayload(msg, r.requestID)
+}
+
+func buildAPIErrorPayload(message, requestID string) []byte {
+	msg := sanitizeAPIErrorMessage(message)
+	if msg == "" {
+		msg = "request failed"
+	}
+	payload := map[string]any{
+		"status": "error",
+		"error":  msg,
+	}
+	if strings.TrimSpace(requestID) != "" {
+		payload["request_id"] = requestID
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		fallback := fmt.Sprintf(`{"status":"error","error":"%s"}`, strings.ReplaceAll(msg, `"`, `'`))
+		return []byte(fallback + "\n")
+	}
+	return append(encoded, '\n')
+}
+
+func sanitizeAPIErrorMessage(message string) string {
+	msg := strings.TrimSpace(message)
+	if msg == "" {
+		return ""
+	}
+	return template.HTMLEscapeString(msg)
+}
+
+func deriveHTTPLogMessage(status int, snippet string) string {
+	if snippet == "" {
+		if text := strings.TrimSpace(http.StatusText(status)); text != "" {
+			return text
+		}
+		return "no response message"
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(snippet), &payload); err == nil {
+		for _, key := range []string{"error", "message", "status"} {
+			if v, ok := payload[key]; ok {
+				msg := strings.TrimSpace(fmt.Sprint(v))
+				if msg != "" {
+					return msg
+				}
+			}
+		}
+	}
+
+	normalized := strings.Join(strings.Fields(snippet), " ")
+	if len(normalized) > 240 {
+		return normalized[:240] + "..."
+	}
+	return normalized
 }
 
 func dbTimeoutContext() (context.Context, context.CancelFunc) {

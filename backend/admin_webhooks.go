@@ -76,7 +76,7 @@ func adminWebhooksHandler(w http.ResponseWriter, r *http.Request) {
 		encodeAdminWebhookJSON(w, map[string]interface{}{"webhook": webhook, "status": "ok"})
 		return
 	}
-	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	writeMethodNotAllowed(w, r)
 }
 
 // adminWebhookDetailHandler PATCH /api/admin/webhooks/:id, DELETE /api/admin/webhooks/:id
@@ -173,5 +173,5 @@ func adminWebhookDetailHandler(w http.ResponseWriter, r *http.Request) {
 		encodeAdminWebhookJSON(w, map[string]interface{}{"webhook": updated, "status": "ok"})
 		return
 	}
-	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	writeMethodNotAllowed(w, r)
 }

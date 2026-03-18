@@ -18,6 +18,10 @@ interface User {
   role?: string;
   verified?: boolean;
   user_type?: 'portal_user' | 'devops_user';
+  auth_source?: 'local' | 'sso';
+  sso_provider?: string;
+  sso_active?: boolean;
+  last_sso_sync_at?: string | null;
   devops_profile?: DevopsProfile;
 }
 
@@ -41,6 +45,8 @@ export default function UsersList() {
     fetchUsers();
   }, [router]);
 
+  const getAdminToken = () => localStorage.getItem('admin_token');
+
   const fetchUsers = async () => {
     setLoading(true);
     setError('');
@@ -48,7 +54,7 @@ export default function UsersList() {
     try {
       const res = await fetch(`${apiUrl}/api/admin/users`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('admin_token')}`,
+          Authorization: `Bearer ${getAdminToken()}`,
         },
       });
       if (res.status === 401 || res.status === 403) {

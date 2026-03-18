@@ -32,7 +32,7 @@ func nextEnv(current string) string {
 // handleRequestPromote POST /api/request/:id/promote - create new request for next environment (dev→staging→prod)
 func handleRequestPromote(w http.ResponseWriter, r *http.Request, id int, req *PRRequest, userID int) {
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	canPromote := req.CreatedBy != nil && *req.CreatedBy == userID
@@ -41,22 +41,16 @@ func handleRequestPromote(w http.ResponseWriter, r *http.Request, id int, req *P
 		canPromote = isAdmin
 	}
 	if !canPromote {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		encodeJSON(w, map[string]interface{}{"error": "only creator or admin can promote", "status": "error"})
+		writeAPIError(w, r, http.StatusForbidden, "only creator or admin can promote", nil)
 		return
 	}
 	if req.Status != "completed" && req.Status != "in_progress" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{"error": "only completed or in_progress requests can be promoted", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "only completed or in_progress requests can be promoted", nil)
 		return
 	}
 	nextEnvironment := nextEnv(req.Env)
 	if nextEnvironment == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{"error": "already at production; no next environment", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "already at production; no next environment", nil)
 		return
 	}
 	appID, err := GenerateApplicationID()

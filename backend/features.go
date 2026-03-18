@@ -124,36 +124,30 @@ func handleRequestTags(w http.ResponseWriter, r *http.Request, requestID int, re
 		w.Header().Set("Content-Type", "application/json")
 		encodeJSON(w, map[string]interface{}{"tags": tags, "status": "ok"})
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 	}
 }
 
 // requestDiffHandler GET /api/request/:id/diff?compare_with=:id - compare two requests
 func requestDiffHandler(w http.ResponseWriter, r *http.Request, baseID int, userID int) {
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	compareIDStr := r.URL.Query().Get("compare_with")
 	if compareIDStr == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{"error": "compare_with query param required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "compare_with query param required", nil)
 		return
 	}
 	compareID, err := strconv.Atoi(compareIDStr)
 	if err != nil || compareID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{"error": "invalid compare_with id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid compare_with id", nil)
 		return
 	}
 	base, _ := GetPRRequestByID(baseID)
 	compare, _ := GetPRRequestByID(compareID)
 	if base == nil || compare == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
+		writeAPIError(w, r, http.StatusNotFound, "request not found", nil)
 		return
 	}
 	// Build field-level diff
@@ -348,7 +342,7 @@ func adminUserActivityHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {

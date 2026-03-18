@@ -236,7 +236,7 @@ In `config/.env`:
 Reset links in the email use `FRONTEND_URL`. For production, set:
 
 ```
-FRONTEND_URL=http://20.219.96.249:3000
+FRONTEND_URL=http://34.93.200.156:3000
 ```
 
 (or your actual frontend URL). If backend runs in Docker and `FRONTEND_URL` is `localhost`, the link in the email will not work from the user’s machine.

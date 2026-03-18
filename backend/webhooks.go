@@ -14,7 +14,7 @@ func githubWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	// GitHub sends X-GitHub-Event header
@@ -24,7 +24,7 @@ func githubWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var payload map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json payload", err)
 		return
 	}
 	// Log the event

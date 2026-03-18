@@ -3,7 +3,7 @@ name: PR Security & Quality Checks
 on:
   pull_request:
     branches:
-      - main
+      - master
       - dev
       - feature/**
     types: [opened, synchronize, reopened, ready_for_review]

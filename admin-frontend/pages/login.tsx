@@ -3,6 +3,9 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 
+const API_OVERRIDE_KEY = 'admin_api_url_override';
+const LOGIN_ATTEMPT_TIMEOUT_MS = 6000;
+
 export default function AdminLogin() {
   const router = useRouter();
   const [username, setUsername] = useState('');
@@ -11,13 +14,48 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const [pending2fa, setPending2fa] = useState<{ token: string } | null>(null);
   const [otp, setOtp] = useState('');
+  const [effectiveApiUrl, setEffectiveApiUrl] = useState(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080');
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', 'dark');
     localStorage.setItem('infra-portal-theme', 'dark');
+    const existingToken = (localStorage.getItem('admin_token') || '').trim();
+    if (!existingToken || existingToken === 'undefined' || existingToken === 'null' || !/^\d+:\d+$/.test(existingToken)) {
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_user');
+    }
+    const override = (localStorage.getItem(API_OVERRIDE_KEY) || '').trim();
+    if (override) {
+      setEffectiveApiUrl(override);
+    }
   }, []);
+
+  const getFallbackApiUrl = () => {
+    if (typeof window === 'undefined') return '';
+    const host = window.location.hostname;
+    if (!host) return '';
+    return `${window.location.protocol}//${host}:8080`;
+  };
+
+  const rememberWorkingApiUrl = (url: string) => {
+    const normalized = url.trim().replace(/\/+$/, '');
+    if (!normalized) return;
+    localStorage.setItem(API_OVERRIDE_KEY, normalized);
+    setEffectiveApiUrl(normalized);
+  };
+
+  const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs = LOGIN_ATTEMPT_TIMEOUT_MS) => {
+    if (typeof AbortController === 'undefined') return fetch(url, init);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
 
   const finishAdminLogin = (data: { token: string; user?: { role?: string } }) => {
     if (data.user?.role !== 'admin') {
@@ -34,15 +72,47 @@ export default function AdminLogin() {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch(`${apiUrl}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
+      const primaryApi = effectiveApiUrl || apiUrl;
+      const fallbackApi = getFallbackApiUrl();
+      const candidates = [primaryApi];
+      if (fallbackApi && fallbackApi !== primaryApi) {
+        candidates.push(fallbackApi);
+      }
+
+      let res: Response | null = null;
+      let lastErr: unknown = null;
+      let chosenApi = primaryApi;
+      const attemptedApis: string[] = [];
+      for (const candidate of candidates) {
+        try {
+          attemptedApis.push(candidate);
+          const attempt = await fetchWithTimeout(`${candidate}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, portal: 'admin' }),
+          });
+          res = attempt;
+          chosenApi = candidate;
+          break;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+
+      if (!res) {
+        const attempted = attemptedApis.length > 0 ? attemptedApis.join(', ') : primaryApi;
+        if (lastErr instanceof Error) {
+          throw new Error(`Cannot connect to backend. Tried: ${attempted}. Last error: ${lastErr.message}`);
+        }
+        throw new Error(`Cannot connect to backend. Tried: ${attempted}.`);
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error || 'Login failed');
         return;
+      }
+      if (chosenApi !== primaryApi) {
+        rememberWorkingApiUrl(chosenApi);
       }
       if (data.requires_otp && data.pending_2fa_token) {
         setPending2fa({ token: data.pending_2fa_token });
@@ -58,9 +128,7 @@ export default function AdminLogin() {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '';
       setError(
-        message === 'Failed to fetch'
-          ? `Cannot connect to backend at ${apiUrl}. Ensure it is running.`
-          : message || 'Login failed'
+        message || `Cannot connect to backend at ${effectiveApiUrl}. Ensure it is running and reachable from browser.`
       );
     } finally {
       setLoading(false);
@@ -73,7 +141,7 @@ export default function AdminLogin() {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch(`${apiUrl}/api/auth/verify-2fa`, {
+      const res = await fetch(`${effectiveApiUrl}/api/auth/verify-2fa`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pending_2fa_token: pending2fa.token, otp: otp.trim() }),

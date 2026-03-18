@@ -7,6 +7,20 @@ import { useApiUrl } from '../context/ApiUrlContext';
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
 
+interface PublicSSOState {
+  enabled: boolean;
+  mode: string;
+  provider: string;
+  login_url: string;
+}
+
+function providerLabel(provider: string): string {
+  if (provider === 'azure_ad') return 'Azure AD';
+  if (provider === 'keycloak') return 'Keycloak';
+  if (provider === 'saml') return 'SAML SSO';
+  return 'SSO';
+}
+
 export default function DevOpsLogin() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -14,11 +28,47 @@ export default function DevOpsLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sso, setSso] = useState<PublicSSOState>({ enabled: false, mode: 'disabled', provider: 'none', login_url: '' });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', 'dark');
     localStorage.setItem('infra-portal-theme', 'dark');
   }, []);
+
+  useEffect(() => {
+    fetch(`${apiUrl}/api/public/sso/options?portal=devops`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const payload = data?.sso;
+        if (payload && typeof payload === 'object') {
+          setSso({
+            enabled: Boolean(payload.enabled),
+            mode: typeof payload.mode === 'string' ? payload.mode : 'disabled',
+            provider: typeof payload.provider === 'string' ? payload.provider : 'none',
+            login_url: typeof payload.login_url === 'string' ? payload.login_url : '',
+          });
+        }
+      })
+      .catch(() => {
+        // Keep local login flow operational if this optional call fails.
+      });
+  }, [apiUrl]);
+
+  useEffect(() => {
+    // Only force redirect when policy is explicitly required.
+    if (sso.enabled && sso.mode === 'required' && sso.login_url) {
+      window.location.assign(sso.login_url);
+    }
+  }, [sso.enabled, sso.mode, sso.login_url]);
+
+  const handleSSOLogin = () => {
+    if (!sso.enabled) return;
+    if (!sso.login_url) {
+      setError('SSO login is enabled but no SSO login URL is configured by admin.');
+      return;
+    }
+    window.location.assign(sso.login_url);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +78,7 @@ export default function DevOpsLogin() {
       const loginRes = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, portal: 'devops' }),
       });
       const loginData = await loginRes.json().catch(() => ({}));
       if (!loginRes.ok) {
@@ -101,34 +151,52 @@ export default function DevOpsLogin() {
               <div className="alert alert-error" role="alert">{error}</div>
             )}
             <form onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label className="label" htmlFor="username">Username</label>
-                <input
-                  id="username"
-                  className="input"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                  autoFocus
-                  placeholder="devops"
-                />
-              </div>
-              <div className="form-group">
-                <label className="label" htmlFor="password">Password</label>
-                <input
-                  id="password"
-                  className="input"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  placeholder="••••••••"
-                />
-              </div>
-              <button type="submit" className="btn btn-primary login-page__submit" disabled={loading}>
-                {loading ? 'Signing in…' : 'Sign in'}
-              </button>
+              {sso.enabled && (
+                <>
+                  <button type="button" className="btn btn-secondary login-page__submit" onClick={handleSSOLogin} disabled={loading}>
+                    Continue with {providerLabel(sso.provider)}
+                  </button>
+                  <p className="login-page__hint" style={{ marginTop: 12, marginBottom: 12 }}>
+                    {sso.mode === 'required' ? 'username/password login is disabled by policy' : 'or sign in with username and password'}
+                  </p>
+                </>
+              )}
+              {sso.mode === 'required' ? (
+                <div className="alert alert-info" role="status" style={{ marginBottom: 12 }}>
+                  Use SSO to continue.
+                </div>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label className="label" htmlFor="username">Username</label>
+                    <input
+                      id="username"
+                      className="input"
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                      autoFocus
+                      placeholder="devops"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="label" htmlFor="password">Password</label>
+                    <input
+                      id="password"
+                      className="input"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <button type="submit" className="btn btn-primary login-page__submit" disabled={loading}>
+                    {loading ? 'Signing in…' : 'Sign in'}
+                  </button>
+                </>
+              )}
             </form>
             <p className="login-page__hint" style={{ marginTop: 16 }}>
               <Link href="/forgot-password" style={{ color: 'var(--color-primary)', textDecoration: 'none' }}>

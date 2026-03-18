@@ -68,6 +68,7 @@ type SignupRequest struct {
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Portal   string `json:"portal,omitempty"` // user | devops | admin
 }
 
 type AuthResponse struct {
@@ -85,54 +86,34 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 
 	if DB == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 
 	var req SignupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "invalid json",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
 		return
 	}
 
 	// Validate input
 	if strings.TrimSpace(req.Username) == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "username is required",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusBadRequest, "username is required", nil)
 		return
 	}
 
 	if strings.TrimSpace(req.Email) == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "email is required",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusBadRequest, "email is required", nil)
 		return
 	}
 
 	if len(req.Password) < 6 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "password must be at least 6 characters",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusBadRequest, "password must be at least 6 characters", nil)
 		return
 	}
 
@@ -140,12 +121,7 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		log.Printf("Error hashing password: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "failed to process password",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to process password", nil)
 		return
 	}
 
@@ -153,21 +129,11 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 	var existingID int
 	err = DB.QueryRow("SELECT id FROM users WHERE username = $1 OR email = $2", req.Username, req.Email).Scan(&existingID)
 	if err == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "username or email already exists",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusConflict, "username or email already exists", nil)
 		return
 	} else if err != sql.ErrNoRows {
 		log.Printf("Error checking existing user: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "database error",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusInternalServerError, "database error", nil)
 		return
 	}
 
@@ -175,9 +141,7 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 	otpBytes := make([]byte, 6)
 	if _, err := rand.Read(otpBytes); err != nil {
 		log.Printf("Error generating OTP: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{"error": "failed to create user", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to create user", nil)
 		return
 	}
 	var otp string
@@ -196,9 +160,7 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 	).Scan(&user.ID, &user.Username, &user.Email, &user.CreatedAt)
 	if err != nil {
 		log.Printf("Error creating user: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{"error": "failed to create user", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to create user", nil)
 		return
 	}
 	user.Verified = false
@@ -224,23 +186,18 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 
 	if DB == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "invalid json",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
 		return
 	}
 
@@ -253,32 +210,17 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	).Scan(&user.ID, &user.Username, &user.Email, &hashedPassword, &user.CreatedAt)
 
 	if err == sql.ErrNoRows {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "invalid username or password",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid username or password", nil)
 		return
 	} else if err != nil {
 		log.Printf("Error querying user: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "database error",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusInternalServerError, "database error", nil)
 		return
 	}
 
 	// Verify password
 	if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(req.Password)); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "invalid username or password",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid username or password", nil)
 		return
 	}
 
@@ -287,6 +229,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		user.Verified = fullUser.Verified
 		user.Role = fullUser.Role
 		user.TotpEnabled = fullUser.TotpEnabled
+		user.UserType = fullUser.UserType
 	} else {
 		user.Verified = false
 		user.Role = "viewer"
@@ -296,7 +239,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if user.TotpEnabled {
 		otpBytes := make([]byte, 6)
 		if _, err := rand.Read(otpBytes); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to generate OTP", err)
 			return
 		}
 		var otp string
@@ -305,12 +248,12 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		otpExpires := time.Now().Add(10 * time.Minute)
 		if err := SetUserVerificationToken(user.ID, otp, otpExpires); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to persist OTP", err)
 			return
 		}
 		pendingBytes := make([]byte, 32)
 		if _, err := rand.Read(pendingBytes); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to generate pending 2FA token", err)
 			return
 		}
 		pendingToken := hex.EncodeToString(pendingBytes)
@@ -417,44 +360,29 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "missing or invalid authorization",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	token := strings.TrimSpace(authHeader[7:])
 	userID, err := validateToken(token)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  err.Error(),
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusUnauthorized, err.Error(), nil)
 		return
 	}
 
 	user, err := GetUserByID(userID)
 	if err != nil || user == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "user not found",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusNotFound, "user not found", nil)
 		return
 	}
 
@@ -492,33 +420,27 @@ func meTeamsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	token := strings.TrimSpace(authHeader[7:])
 	userID, err := validateToken(token)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, err.Error(), err)
 		return
 	}
 	teams, err := GetTeamsForUserWithDetails(userID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{"error": "failed to get teams", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to get teams", nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -536,43 +458,33 @@ func meAPIKeysHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" && r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAuthJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	token := strings.TrimSpace(authHeader[7:])
 	if strings.HasPrefix(token, APIKeyPrefix) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		encodeAuthJSON(w, map[string]interface{}{"error": "use session login to manage API keys", "status": "error"})
+		writeAPIError(w, r, http.StatusForbidden, "use session login to manage API keys", nil)
 		return
 	}
 	userID, err := validateToken(token)
 	if err != nil || userID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, err.Error(), err)
 		return
 	}
 
 	if r.Method == "GET" {
 		keys, err := ListAPIKeysForUser(userID)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeAuthJSON(w, map[string]interface{}{"error": "failed to list API keys", "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list API keys", nil)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -586,24 +498,18 @@ func meAPIKeysHandler(w http.ResponseWriter, r *http.Request) {
 		Scopes string `json:"scopes"` // comma-separated: request:create, history:read
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "name is required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "name is required", nil)
 		return
 	}
 	scopes := strings.TrimSpace(body.Scopes)
 	rawKey, rec, err := CreateAPIKey(userID, name, scopes)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, err.Error(), err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -623,49 +529,37 @@ func meAPIKeyDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "DELETE" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAuthJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/me/api-keys/")
 	idStr := strings.Split(path, "/")[0]
 	keyID, _ := strconv.Atoi(idStr)
 	if keyID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid key id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid key id", nil)
 		return
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	token := strings.TrimSpace(authHeader[7:])
 	if strings.HasPrefix(token, APIKeyPrefix) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		encodeAuthJSON(w, map[string]interface{}{"error": "use session login to revoke API keys", "status": "error"})
+		writeAPIError(w, r, http.StatusForbidden, "use session login to revoke API keys", nil)
 		return
 	}
 	userID, err := validateToken(token)
 	if err != nil || userID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, err.Error(), err)
 		return
 	}
 	if err := RevokeAPIKey(keyID, userID); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -680,35 +574,27 @@ func meNotificationPreferencesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" && r.Method != "PATCH" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAuthJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
 	if err != nil || userID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, err.Error(), err)
 		return
 	}
 	if r.Method == "GET" {
 		prefs, err := GetUserNotificationPreferences(userID)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeAuthJSON(w, map[string]interface{}{"error": "failed to get preferences", "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to get preferences", nil)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -723,9 +609,7 @@ func meNotificationPreferencesHandler(w http.ResponseWriter, r *http.Request) {
 		EmailSLABreach *bool `json:"email_sla_breach"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
 	prefs, err := GetUserNotificationPreferences(userID)
@@ -748,9 +632,7 @@ func meNotificationPreferencesHandler(w http.ResponseWriter, r *http.Request) {
 		prefs.EmailSLABreach = *body.EmailSLABreach
 	}
 	if err := UpdateUserNotificationPreferences(prefs); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{"error": "failed to update preferences", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to update preferences", nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -765,34 +647,26 @@ func meManagedTeamsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAuthJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
 	if err != nil || userID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid token", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid token", nil)
 		return
 	}
 	teams, err := GetPortalTeamsManagedByUser(userID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, err.Error(), err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -819,43 +693,31 @@ func meTeamMembersRouter(w http.ResponseWriter, r *http.Request) {
 	}
 	teamID, _ := strconv.Atoi(parts[0])
 	if teamID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid team id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid team id", nil)
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeAuthJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
 	if err != nil || userID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid token", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid token", nil)
 		return
 	}
 	if !CanUserManagePortalTeam(userID, teamID) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		encodeAuthJSON(w, map[string]interface{}{"error": "you cannot manage this team", "status": "error"})
+		writeAPIError(w, r, http.StatusForbidden, "you cannot manage this team", nil)
 		return
 	}
 	if r.Method == "GET" {
 		members, err := GetTeamMembers(teamID)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, err.Error(), err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -865,15 +727,11 @@ func meTeamMembersRouter(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "DELETE" && len(parts) >= 3 {
 		targetUserID, _ := strconv.Atoi(parts[2])
 		if targetUserID <= 0 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			encodeAuthJSON(w, map[string]interface{}{"error": "invalid user id", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "invalid user id", nil)
 			return
 		}
 		if err := RemoveTeamMember(teamID, targetUserID); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, err.Error(), err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -881,7 +739,7 @@ func meTeamMembersRouter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	var body struct {
@@ -890,9 +748,7 @@ func meTeamMembersRouter(w http.ResponseWriter, r *http.Request) {
 		Role     string `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
 	emailOrUsername := strings.TrimSpace(body.Email)
@@ -900,9 +756,7 @@ func meTeamMembersRouter(w http.ResponseWriter, r *http.Request) {
 		emailOrUsername = strings.TrimSpace(body.Username)
 	}
 	if emailOrUsername == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "email or username required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "email or username required", nil)
 		return
 	}
 	role := strings.TrimSpace(body.Role)
@@ -910,23 +764,17 @@ func meTeamMembersRouter(w http.ResponseWriter, r *http.Request) {
 		role = "developer"
 	}
 	if !ValidPortalRole(role) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid role; use developer, senior_developer, lead, or manager", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid role; use developer, senior_developer, lead, or manager", nil)
 		return
 	}
 	targetUser, err := GetUserByEmailOrUsername(emailOrUsername)
 	if err != nil || targetUser == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeAuthJSON(w, map[string]interface{}{"error": "user not found", "status": "error"})
+		writeAPIError(w, r, http.StatusNotFound, "user not found", nil)
 		return
 	}
 	member, err := AddTeamMember(teamID, targetUser.ID, role)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusConflict, err.Error(), err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -941,22 +789,18 @@ func mePendingManagerApprovalHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	token := strings.TrimSpace(authHeader[7:])
 	userID, err := validateToken(token)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, err.Error(), err)
 		return
 	}
 	if DB == nil {
@@ -978,17 +822,13 @@ func meNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	token := strings.TrimSpace(authHeader[7:])
 	userID, err := validateToken(token)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, err.Error(), err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1058,106 +898,61 @@ func changePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "missing or invalid authorization",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	token := strings.TrimSpace(authHeader[7:])
 	userID, err := validateToken(token)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  err.Error(),
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusUnauthorized, err.Error(), nil)
 		return
 	}
 
 	var req ChangePasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "invalid json",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
 		return
 	}
 	if strings.TrimSpace(req.NewPassword) == "" || len(req.NewPassword) < 6 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "new password must be at least 6 characters",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusBadRequest, "new password must be at least 6 characters", nil)
 		return
 	}
 
 	var hashedPassword string
 	err = DB.QueryRow("SELECT password FROM users WHERE id = $1", userID).Scan(&hashedPassword)
 	if err == sql.ErrNoRows {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "user not found",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusNotFound, "user not found", nil)
 		return
 	}
 	if err != nil {
 		log.Printf("Error querying user: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "database error",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusInternalServerError, "database error", nil)
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(req.CurrentPassword)); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "current password is incorrect",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusUnauthorized, "current password is incorrect", nil)
 		return
 	}
 
 	newHashed, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
 		log.Printf("Error hashing new password: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "failed to update password",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to update password", nil)
 		return
 	}
 	if err := UpdateUserPassword(userID, string(newHashed)); err != nil {
 		log.Printf("Error updating password: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "failed to update password",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to update password", nil)
 		return
 	}
 
@@ -1176,41 +971,26 @@ func verifyEmailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	token := strings.TrimSpace(r.URL.Query().Get("token"))
 	if token == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "missing token",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusBadRequest, "missing token", nil)
 		return
 	}
 	userID, err := GetUserByVerificationToken(token)
 	if err != nil || userID == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "invalid or expired verification link",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid or expired verification link", nil)
 		return
 	}
 	if err := SetUserVerified(userID); err != nil {
 		log.Printf("Error setting user verified: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{
-			"error":  "failed to verify",
-			"status": "error",
-		})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to verify", nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1234,40 +1014,32 @@ func verifyOtpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	var req VerifyOTPRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
 	email := strings.TrimSpace(req.Email)
 	otp := strings.TrimSpace(req.OTP)
 	if email == "" || otp == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "email and otp required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "email and otp required", nil)
 		return
 	}
 	userID, err := GetUserIDByEmailAndOTP(email, otp)
 	if err != nil || userID == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid or expired OTP", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid or expired OTP", nil)
 		return
 	}
 	if err := SetUserVerified(userID); err != nil {
 		log.Printf("Error setting user verified: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{"error": "failed to verify", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to verify", nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1282,11 +1054,11 @@ func verify2faHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	var req struct {
@@ -1294,17 +1066,13 @@ func verify2faHandler(w http.ResponseWriter, r *http.Request) {
 		OTP          string `json:"otp"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
 	token := strings.TrimSpace(req.PendingToken)
 	otp := strings.TrimSpace(req.OTP)
 	if token == "" || otp == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "pending_2fa_token and otp required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "pending_2fa_token and otp required", nil)
 		return
 	}
 	var userID int
@@ -1313,26 +1081,22 @@ func verify2faHandler(w http.ResponseWriter, r *http.Request) {
 		token,
 	).Scan(&userID)
 	if err == sql.ErrNoRows || userID == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid or expired 2FA token", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid or expired 2FA token", nil)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to validate pending 2FA token", err)
 		return
 	}
 	verifiedID, err := GetUserIDByIDAndOTP(userID, otp)
 	if err != nil || verifiedID == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid or expired OTP", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid or expired OTP", nil)
 		return
 	}
 	_, _ = DB.Exec("DELETE FROM pending_2fa WHERE token = $1", token)
 	user, _ := GetUserByID(verifiedID)
 	if user == nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		writeAPIError(w, r, http.StatusInternalServerError, "user not found after 2FA verification", nil)
 		return
 	}
 	sessionToken := generateToken(verifiedID)
@@ -1352,21 +1116,17 @@ func me2faHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if DB == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
 	if err != nil || userID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid token", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid token", nil)
 		return
 	}
 	switch r.Method {
@@ -1378,7 +1138,7 @@ func me2faHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	case "POST":
 		if err := UpdateUserTotpEnabled(userID, true); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to enable 2FA", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -1386,14 +1146,14 @@ func me2faHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	case "DELETE":
 		if err := UpdateUserTotpEnabled(userID, false); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to disable 2FA", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		encodeAuthJSON(w, map[string]interface{}{"message": "2FA disabled", "status": "ok"})
 		return
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 	}
 }
 
@@ -1405,32 +1165,26 @@ func resendVerificationHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
 		return
 	}
 	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, err.Error(), err)
 		return
 	}
 	user, err := GetUserByID(userID)
 	if err != nil || user == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeAuthJSON(w, map[string]interface{}{"error": "user not found", "status": "error"})
+		writeAPIError(w, r, http.StatusNotFound, "user not found", nil)
 		return
 	}
 	if user.Verified {
@@ -1443,17 +1197,13 @@ func resendVerificationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	verifyBytes := make([]byte, 32)
 	if _, err := rand.Read(verifyBytes); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{"error": "failed to generate token", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to generate token", nil)
 		return
 	}
 	verifyToken := hex.EncodeToString(verifyBytes)
 	verifyExpires := time.Now().Add(24 * time.Hour)
 	if err := SetUserVerificationToken(userID, verifyToken, verifyExpires); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{"error": "failed to resend", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to resend", nil)
 		return
 	}
 	// TODO: send verification email with link containing verifyToken
@@ -1473,24 +1223,20 @@ func setRoleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "PATCH" && r.Method != "PUT" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	adminSecret := os.Getenv("ADMIN_SECRET")
 	if adminSecret == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		encodeAuthJSON(w, map[string]interface{}{"error": "admin API not configured", "status": "error"})
+		writeAPIError(w, r, http.StatusForbidden, "admin API not configured", nil)
 		return
 	}
 	if r.Header.Get("X-Admin-Secret") != adminSecret {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		encodeAuthJSON(w, map[string]interface{}{"error": "forbidden", "status": "error"})
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", nil)
 		return
 	}
 	// Parse user ID from path: /api/users/123/role
@@ -1498,31 +1244,23 @@ func setRoleHandler(w http.ResponseWriter, r *http.Request) {
 	path = strings.TrimSuffix(path, "/role")
 	path = strings.TrimSuffix(path, "/")
 	if path == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "user id required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "user id required", nil)
 		return
 	}
 	var targetID int
 	if _, err := fmt.Sscanf(path, "%d", &targetID); err != nil || targetID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid user id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid user id", nil)
 		return
 	}
 	var body struct {
 		Role string `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Role == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "role required (viewer, contributor, admin)", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "role required (viewer, contributor, admin)", err)
 		return
 	}
 	if err := UpdateUserRole(targetID, body.Role); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1540,40 +1278,32 @@ func setVerifiedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "PATCH" && r.Method != "PUT" && r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	adminSecret := os.Getenv("ADMIN_SECRET")
 	if adminSecret == "" || r.Header.Get("X-Admin-Secret") != adminSecret {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		encodeAuthJSON(w, map[string]interface{}{"error": "forbidden", "status": "error"})
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", nil)
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/users/")
 	path = strings.TrimSuffix(path, "/verify")
 	path = strings.TrimSuffix(path, "/")
 	if path == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "user id required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "user id required", nil)
 		return
 	}
 	var targetID int
 	if _, err := fmt.Sscanf(path, "%d", &targetID); err != nil || targetID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid user id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid user id", nil)
 		return
 	}
 	if err := SetUserVerified(targetID); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{"error": "failed to set verified", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to set verified", nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1588,11 +1318,11 @@ func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	var body struct {
@@ -1600,49 +1330,39 @@ func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		Portal string `json:"portal"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
 	email := strings.TrimSpace(body.Email)
 	if email == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "email required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "email required", nil)
 		return
 	}
 	user, err := GetUserByEmailOrUsername(email)
 	if err != nil {
 		log.Printf("[Auth] Forgot-password: GetUserByEmailOrUsername failed for %q: %v", email, err)
 		if err == sql.ErrNoRows {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			encodeAuthJSON(w, map[string]interface{}{"error": "No account found with that email", "status": "error"})
+			writeAPIError(w, r, http.StatusNotFound, "No account found with that email", nil)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeAuthJSON(w, map[string]interface{}{"error": "Something went wrong. Please try again.", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "Something went wrong. Please try again.", nil)
 		return
 	}
 	if user == nil || user.Email == "" {
 		log.Printf("[Auth] Forgot-password: no user found for email/username %q - not sending email", email)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeAuthJSON(w, map[string]interface{}{"error": "No account found with that email", "status": "error"})
+		writeAPIError(w, r, http.StatusNotFound, "No account found with that email", nil)
 		return
 	}
 	log.Printf("[Auth] Forgot-password: user found id=%d email=%s - sending reset link", user.ID, user.Email)
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to generate password reset token", err)
 		return
 	}
 	token := hex.EncodeToString(tokenBytes)
 	if err := SavePasswordResetToken(user.ID, token); err != nil {
 		log.Printf("[Auth] SavePasswordResetToken: %v", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to save password reset token", err)
 		return
 	}
 	resetBaseURL := FrontendURL
@@ -1670,11 +1390,11 @@ func resetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	if DB == nil {
-		http.Error(w, "database not available", http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	var body struct {
@@ -1683,9 +1403,7 @@ func resetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		ConfirmPassword string `json:"confirm_password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
 	token := strings.TrimSpace(body.Token)
@@ -1693,44 +1411,34 @@ func resetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		token = r.URL.Query().Get("token")
 	}
 	if token == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "token required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "token required", nil)
 		return
 	}
 	if len(body.NewPassword) < 6 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "password must be at least 6 characters", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "password must be at least 6 characters", nil)
 		return
 	}
 	if body.ConfirmPassword == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "confirm password is required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "confirm password is required", nil)
 		return
 	}
 	if body.NewPassword != body.ConfirmPassword {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "passwords do not match", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "passwords do not match", nil)
 		return
 	}
 	userID, err := GetUserIDByPasswordResetToken(token)
 	if err != nil || userID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeAuthJSON(w, map[string]interface{}{"error": "invalid or expired token", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid or expired token", nil)
 		return
 	}
 	hashed, err := bcrypt.GenerateFromPassword([]byte(body.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to hash password", err)
 		return
 	}
 	if err := UpdateUserPassword(userID, string(hashed)); err != nil {
 		log.Printf("[Auth] Reset-password: UpdateUserPassword failed userID=%d: %v", userID, err)
-		w.WriteHeader(http.StatusInternalServerError)
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to update password", err)
 		return
 	}
 	_ = ConsumePasswordResetToken(token)

@@ -30,7 +30,7 @@ BASE_BRANCH=main
 
 # Frontend Configuration
 # Use your EC2 public IP (get it with: curl http://169.254.169.254/latest/meta-data/public-ipv4)
-NEXT_PUBLIC_API_URL=http://20.219.96.249:8080
+NEXT_PUBLIC_API_URL=http://34.93.200.156:8080
 ```
 
 **Important:** Replace `your-github-token-here` with your actual GitHub Personal Access Token.
@@ -65,7 +65,7 @@ GITHUB_OWNER=shashank3656
 GITHUB_REPO=Application_Onboarding
 GITHUB_TOKEN=your-actual-token
 BASE_BRANCH=main
-NEXT_PUBLIC_API_URL=http://20.219.96.249:8080
+NEXT_PUBLIC_API_URL=http://34.93.200.156:8080
 EOF
 ```
 

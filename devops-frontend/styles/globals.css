@@ -1255,14 +1255,14 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
 .k8s-warning-timeline {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  align-items: end;
+  align-items: flex-end;
   gap: 5px;
   min-height: 110px;
 }
 .k8s-warning-timeline__bar-wrap {
   height: 100%;
   display: flex;
-  align-items: end;
+  align-items: flex-end;
 }
 .k8s-warning-timeline__bar {
   width: 100%;
