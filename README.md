@@ -94,7 +94,7 @@ Database notes:
 
 ## Troubleshooting: "Failed to fetch" / "Cannot connect to backend" on Login
 
-If you see **"Failed to fetch"**, **"Cannot connect to backend"**, or **"Cannot connect to server"** on the **user frontend**, **admin frontend**, or **DevOps frontend** (e.g. at `http://68.168.222.59:8080`):
+If you see **"Failed to fetch"**, **"Cannot connect to backend"**, or **"Cannot connect to server"** on the **user frontend**, **admin frontend**, or **DevOps frontend** (e.g. at `http://34.93.200.156:8080`):
 
 1. **Backend must be running**  
    - Start the stack: `docker-compose up -d` (starts backend on port 8080).  
@@ -104,7 +104,7 @@ If you see **"Failed to fetch"**, **"Cannot connect to backend"**, or **"Cannot 
 2. **Correct API URL and rebuild**  
    - All frontends use `NEXT_PUBLIC_API_URL` from `config/.env`.  
    - **Local:** use `http://localhost:8080` if the browser and backend are on the same machine.  
-   - **Remote (e.g. EC2):** use the URL the **browser** can reach (e.g. `http://68.168.222.59:8080`).  
+   - **Remote (e.g. EC2):** use the URL the **browser** can reach (e.g. `http://34.93.200.156:8080`).  
    - After changing `NEXT_PUBLIC_API_URL`, **rebuild** so the URL is baked in:  
      - User/Admin: `docker-compose build frontend-prod admin-frontend-prod`  
      - **DevOps:** `docker-compose build devops-frontend-prod`  
@@ -127,8 +127,8 @@ If you see **"Failed to fetch"**, **"Cannot connect to backend"**, or **"Cannot 
 | Cause | What’s happening | What to do |
 |-------|-------------------|------------|
 | **Backend not running** | The backend container isn’t up, so nothing is listening on 8080. | On the server: `docker ps` and look for `infra-backend`. If missing, run `docker-compose up -d` (same directory as `docker-compose.yml`). |
-| **Port 8080 not reachable** | Backend is running, but the machine’s firewall or cloud security group blocks inbound 8080. Your browser never reaches the server. | On the server: `curl -s http://localhost:8080/health` should return JSON. If that works but from your laptop/browser `http://68.168.222.59:8080/health` fails, open port **8080** in the server’s firewall / Azure NSG / AWS security group. |
-| **Wrong URL** | Backend is on another IP, port, or host. The URL baked into the frontend doesn’t match. | Set `NEXT_PUBLIC_API_URL` in `config/.env` to the URL your **browser** can use (e.g. `http://68.168.222.59:8080`), then rebuild the frontend and restart. |
+| **Port 8080 not reachable** | Backend is running, but the machine’s firewall or cloud security group blocks inbound 8080. Your browser never reaches the server. | On the server: `curl -s http://localhost:8080/health` should return JSON. If that works but from your laptop/browser `http://34.93.200.156:8080/health` fails, open port **8080** in the server’s firewall / Azure NSG / AWS security group. |
+| **Wrong URL** | Backend is on another IP, port, or host. The URL baked into the frontend doesn’t match. | Set `NEXT_PUBLIC_API_URL` in `config/.env` to the URL your **browser** can use (e.g. `http://34.93.200.156:8080`), then rebuild the frontend and restart. |
 
 **Quick checks on the server (where Docker runs):**
 ```bash
@@ -138,7 +138,7 @@ docker ps --format '{{.Names}} {{.Ports}}' | grep -E 'backend|8080'
 # Does the backend respond locally?
 curl -s http://localhost:8080/health
 ```
-If the first shows no backend and the second fails, start the stack with `docker-compose up -d`. If the second works but the browser still can’t open `http://68.168.222.59:8080/health`, open port 8080 in the firewall/security group for that machine.
+If the first shows no backend and the second fails, start the stack with `docker-compose up -d`. If the second works but the browser still can’t open `http://34.93.200.156:8080/health`, open port 8080 in the firewall/security group for that machine.
 
 ## License
 
