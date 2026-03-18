@@ -709,7 +709,7 @@ func devopsRunbooksHandler(w http.ResponseWriter, r *http.Request) {
 		projectID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("project_id")))
 		runbooks, err := listProjectRunbooks(projectID)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list runbooks", err)
 			return
 		}
 		projects, _ := listProjectCatalogs()
@@ -724,19 +724,19 @@ func devopsRunbooksHandler(w http.ResponseWriter, r *http.Request) {
 			LinkURL   string `json:"link_url"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "invalid payload", http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
 			return
 		}
 		runbook, err := createProjectRunbook(body.ProjectID, body.Service, body.Title, body.Content, body.LinkURL, &managerID)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
 		}
 		AppendAuditLog(&managerID, "project_runbook_create", "project_runbook", strconv.Itoa(runbook.ID), runbook.Title)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"runbook": runbook, "status": "ok"})
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 	}
 }
 
@@ -753,7 +753,7 @@ func devopsRunbookDetailHandler(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/devops/runbooks/"), "/")
 	id, err := strconv.Atoi(path)
 	if err != nil || id <= 0 {
-		http.Error(w, "invalid runbook id", http.StatusBadRequest)
+		writeAPIError(w, r, http.StatusBadRequest, "invalid runbook id", err)
 		return
 	}
 	switch r.Method {
@@ -765,12 +765,12 @@ func devopsRunbookDetailHandler(w http.ResponseWriter, r *http.Request) {
 			LinkURL string `json:"link_url"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "invalid payload", http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
 			return
 		}
 		runbook, err := updateProjectRunbook(id, body.Service, body.Title, body.Content, body.LinkURL)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
 		}
 		AppendAuditLog(&managerID, "project_runbook_update", "project_runbook", strconv.Itoa(id), runbook.Title)
@@ -778,14 +778,14 @@ func devopsRunbookDetailHandler(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"runbook": runbook, "status": "ok"})
 	case "DELETE":
 		if err := deleteProjectRunbook(id); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to delete runbook", err)
 			return
 		}
 		AppendAuditLog(&managerID, "project_runbook_delete", "project_runbook", strconv.Itoa(id), "")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 	}
 }
 
@@ -803,7 +803,7 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		items, err := listRequestIncidents(strings.TrimSpace(r.URL.Query().Get("status")))
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incidents", err)
 			return
 		}
 		devopsUsers, _ := GetDevopsUsers()
@@ -820,19 +820,19 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			Notes           string `json:"notes"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "invalid payload", http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
 			return
 		}
 		item, err := createOrUpdateRequestIncident(body.RequestID, body.Severity, body.Status, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
 		}
 		AppendAuditLog(&managerID, "request_incident_upsert", "pr_request", strconv.Itoa(body.RequestID), item.Severity+":"+item.Status)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "status": "ok"})
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 	}
 }
 
@@ -849,17 +849,17 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/devops/incidents/"), "/")
 	id, err := strconv.Atoi(path)
 	if err != nil || id <= 0 {
-		http.Error(w, "invalid incident id", http.StatusBadRequest)
+		writeAPIError(w, r, http.StatusBadRequest, "invalid incident id", err)
 		return
 	}
 	if r.Method != "PATCH" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	var requestID int
 	err = queryRowContext(`SELECT request_id FROM request_incidents WHERE id = $1`, id).Scan(&requestID)
 	if err != nil {
-		http.Error(w, "incident not found", http.StatusNotFound)
+		writeAPIError(w, r, http.StatusNotFound, "incident not found", err)
 		return
 	}
 	var body struct {
@@ -871,12 +871,12 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		Notes           string `json:"notes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid payload", http.StatusBadRequest)
+		writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
 		return
 	}
 	item, err := createOrUpdateRequestIncident(requestID, body.Severity, body.Status, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 		return
 	}
 	AppendAuditLog(&managerID, "request_incident_update", "pr_request", strconv.Itoa(requestID), item.Severity+":"+item.Status)
@@ -898,7 +898,7 @@ func devopsAccessOverridesHandler(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		overrides, err := listProjectAccessOverrides(r.URL.Query().Get("active") != "false")
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list access overrides", err)
 			return
 		}
 		projects, _ := listProjectCatalogs()
@@ -915,24 +915,24 @@ func devopsAccessOverridesHandler(w http.ResponseWriter, r *http.Request) {
 			ExpiresAt    string   `json:"expires_at"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "invalid payload", http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
 			return
 		}
 		expiresAt, err := time.Parse(time.RFC3339, strings.TrimSpace(body.ExpiresAt))
 		if err != nil {
-			http.Error(w, "expires_at must be an RFC3339 datetime", http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, "expires_at must be an RFC3339 datetime", err)
 			return
 		}
 		item, err := createProjectAccessOverride(body.ProjectID, body.UserID, body.Environments, body.Permission, body.Reason, expiresAt, &managerID)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
 		}
 		AppendAuditLog(&managerID, "project_access_override_create", "project", strconv.Itoa(body.ProjectID), fmt.Sprintf("user_id=%d", body.UserID))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"override": item, "status": "ok"})
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 	}
 }
 
@@ -947,17 +947,17 @@ func devopsAccessOverrideDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "DELETE" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/devops/access-overrides/"), "/")
 	id, err := strconv.Atoi(path)
 	if err != nil || id <= 0 {
-		http.Error(w, "invalid override id", http.StatusBadRequest)
+		writeAPIError(w, r, http.StatusBadRequest, "invalid override id", err)
 		return
 	}
 	if err := revokeProjectAccessOverride(id, &managerID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to revoke access override", err)
 		return
 	}
 	AppendAuditLog(&managerID, "project_access_override_revoke", "project_access_override", strconv.Itoa(id), "")
@@ -979,7 +979,7 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		items, err := listPromotionCenterItems()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list promotions", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -993,18 +993,18 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		requestID, err := strconv.Atoi(parts[0])
 		if err != nil || requestID <= 0 {
-			http.Error(w, "invalid request id", http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, "invalid request id", err)
 			return
 		}
 		item, err := promoteRequestAsDevops(requestID, managerID)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"request": item, "status": "ok"})
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 	}
 }
 
@@ -1019,12 +1019,12 @@ func devopsRetryCenterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	items, err := listOpsDeliveryFailures(strings.TrimSpace(r.URL.Query().Get("status")))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to list retry-center failures", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1042,7 +1042,7 @@ func devopsRetryCenterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/devops/retry-center/"), "/")
@@ -1053,7 +1053,7 @@ func devopsRetryCenterDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := strconv.Atoi(parts[0])
 	if err != nil || id <= 0 {
-		http.Error(w, "invalid failure id", http.StatusBadRequest)
+		writeAPIError(w, r, http.StatusBadRequest, "invalid failure id", err)
 		return
 	}
 	item, retryErr := retryOpsDeliveryFailure(id)

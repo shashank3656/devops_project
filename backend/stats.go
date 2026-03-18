@@ -16,17 +16,12 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		encodeJSON(w, map[string]interface{}{
-			"error":  "database not available",
-			"status": "error",
-		})
-		w.WriteHeader(http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 
@@ -42,12 +37,7 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	stats, err := GetStats(userIDInt)
 	if err != nil {
 		log.Printf("Error fetching stats: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		encodeJSON(w, map[string]interface{}{
-			"error":  "failed to fetch stats",
-			"status": "error",
-		})
-		w.WriteHeader(http.StatusInternalServerError)
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to fetch stats", err)
 		return
 	}
 
@@ -67,17 +57,12 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		encodeJSON(w, map[string]interface{}{
-			"error":  "database not available",
-			"status": "error",
-		})
-		w.WriteHeader(http.StatusServiceUnavailable)
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 
@@ -85,45 +70,25 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/history/")
 	idStr := strings.Split(path, "/")[0]
 	if idStr == "" {
-		w.Header().Set("Content-Type", "application/json")
-		encodeJSON(w, map[string]interface{}{
-			"error":  "missing request ID",
-			"status": "error",
-		})
-		w.WriteHeader(http.StatusBadRequest)
+		writeAPIError(w, r, http.StatusBadRequest, "missing request ID", nil)
 		return
 	}
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil || id <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		encodeJSON(w, map[string]interface{}{
-			"error":  "invalid request ID",
-			"status": "error",
-		})
-		w.WriteHeader(http.StatusBadRequest)
+		writeAPIError(w, r, http.StatusBadRequest, "invalid request ID", err)
 		return
 	}
 
 	req, err := GetPRRequestByID(id)
 	if err != nil {
 		log.Printf("Error fetching PR request: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		encodeJSON(w, map[string]interface{}{
-			"error":  "failed to fetch request",
-			"status": "error",
-		})
-		w.WriteHeader(http.StatusInternalServerError)
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to fetch request", err)
 		return
 	}
 
 	if req == nil {
-		w.Header().Set("Content-Type", "application/json")
-		encodeJSON(w, map[string]interface{}{
-			"error":  "request not found",
-			"status": "error",
-		})
-		w.WriteHeader(http.StatusNotFound)
+		writeAPIError(w, r, http.StatusNotFound, "request not found", nil)
 		return
 	}
 

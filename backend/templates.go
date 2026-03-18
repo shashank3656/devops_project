@@ -15,7 +15,7 @@ func templatesListHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	userID, ok := checkAuth(w, r)
@@ -29,9 +29,7 @@ func templatesListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	list, err := ListRequestTemplatesForUser(userID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": "failed to list templates", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to list templates", nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -46,7 +44,7 @@ func templatesDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	userID, ok := checkAuth(w, r)
@@ -56,16 +54,12 @@ func templatesDetailHandler(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/templates/")
 	id, err := strconv.Atoi(strings.Trim(path, "/"))
 	if err != nil || id <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{"error": "invalid template id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid template id", nil)
 		return
 	}
 	t, err := GetRequestTemplateForUser(id, userID)
 	if err != nil || t == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		encodeJSON(w, map[string]interface{}{"error": "template not found", "status": "error"})
+		writeAPIError(w, r, http.StatusNotFound, "template not found", nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -88,9 +82,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		adminIDPtr = &adminID
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 
@@ -102,8 +94,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		case "GET":
 			list, err := ListRequestTemplates()
 			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to list templates", err)
 				return
 			}
 			encodeJSON(w, map[string]interface{}{"templates": list, "status": "ok"})
@@ -121,14 +112,12 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				ProjectIDs  []int  `json:"project_ids"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+				writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 				return
 			}
 			name := strings.TrimSpace(body.Name)
 			if name == "" || strings.TrimSpace(body.Cloud) == "" || strings.TrimSpace(body.Env) == "" || strings.TrimSpace(body.Service) == "" {
-				w.WriteHeader(http.StatusBadRequest)
-				encodeJSON(w, map[string]interface{}{"error": "name, cloud, env, service required", "status": "error"})
+				writeAPIError(w, r, http.StatusBadRequest, "name, cloud, env, service required", nil)
 				return
 			}
 			config := body.Config
@@ -137,33 +126,28 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			}
 			teamIDs, err := ValidatePortalTemplateTeamIDs(body.TeamIDs)
 			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 				return
 			}
 			t, err := CreateRequestTemplate(name, strings.TrimSpace(body.Description), strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service), config, body.Status, adminIDPtr)
 			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to create template", err)
 				return
 			}
 			if err := SetRequestTemplateTeams(t.ID, teamIDs); err != nil {
 				_ = DeleteRequestTemplate(t.ID)
-				w.WriteHeader(http.StatusInternalServerError)
-				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to map template teams", err)
 				return
 			}
 			projectIDs, err := ValidateTemplateProjectIDs(body.ProjectIDs)
 			if err != nil {
 				_ = DeleteRequestTemplate(t.ID)
-				w.WriteHeader(http.StatusBadRequest)
-				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 				return
 			}
 			if err := SetRequestTemplateProjects(t.ID, projectIDs); err != nil {
 				_ = DeleteRequestTemplate(t.ID)
-				w.WriteHeader(http.StatusInternalServerError)
-				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to map template projects", err)
 				return
 			}
 			t, _ = GetRequestTemplateByID(t.ID)
@@ -173,7 +157,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			encodeJSON(w, map[string]interface{}{"template": t, "status": "ok"})
 			return
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeMethodNotAllowed(w, r)
 			return
 		}
 	}
@@ -185,8 +169,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 	}
 	t, err := GetRequestTemplateByID(id)
 	if err != nil || t == nil {
-		w.WriteHeader(http.StatusNotFound)
-		encodeJSON(w, map[string]interface{}{"error": "template not found", "status": "error"})
+		writeAPIError(w, r, http.StatusNotFound, "template not found", err)
 		return
 	}
 
@@ -207,8 +190,7 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			ProjectIDs  *[]int `json:"project_ids"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 			return
 		}
 		name := strings.TrimSpace(body.Name)
@@ -233,33 +215,28 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			status = t.Status
 		}
 		if err := UpdateRequestTemplate(id, name, strings.TrimSpace(body.Description), cloud, env, service, config, status, adminIDPtr); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to update template", err)
 			return
 		}
 		if body.TeamIDs != nil {
 			teamIDs, err := ValidatePortalTemplateTeamIDs(*body.TeamIDs)
 			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 				return
 			}
 			if err := SetRequestTemplateTeams(id, teamIDs); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to update template teams", err)
 				return
 			}
 		}
 		if body.ProjectIDs != nil {
 			projectIDs, err := ValidateTemplateProjectIDs(*body.ProjectIDs)
 			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 				return
 			}
 			if err := SetRequestTemplateProjects(id, projectIDs); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to update template projects", err)
 				return
 			}
 		}
@@ -269,15 +246,14 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 		return
 	case "DELETE":
 		if err := DeleteRequestTemplate(id); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to delete template", err)
 			return
 		}
 		AppendAuditLog(adminIDPtr, "template_delete", "request_template", strconv.Itoa(id), t.Name)
 		encodeJSON(w, map[string]interface{}{"status": "ok", "message": "deleted"})
 		return
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 }
@@ -286,16 +262,12 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 func checkAuth(w http.ResponseWriter, r *http.Request) (int, bool) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeJSON(w, map[string]interface{}{"error": "authorization required", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "authorization required", nil)
 		return 0, false
 	}
 	id, err := validateToken(strings.TrimSpace(authHeader[7:]))
 	if err != nil || id <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		encodeJSON(w, map[string]interface{}{"error": "invalid token", "status": "error"})
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid token", nil)
 		return 0, false
 	}
 	return id, true
@@ -322,8 +294,7 @@ func savedConfigsHandler(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		list, err := ListUserSavedConfigs(userID)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeJSON(w, map[string]interface{}{"error": "failed to list", "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list saved configs", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -338,14 +309,12 @@ func savedConfigsHandler(w http.ResponseWriter, r *http.Request) {
 			Service string `json:"service"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			encodeJSON(w, map[string]interface{}{"error": "invalid json", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 			return
 		}
 		name := strings.TrimSpace(body.Name)
 		if name == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			encodeJSON(w, map[string]interface{}{"error": "name required", "status": "error"})
+			writeAPIError(w, r, http.StatusBadRequest, "name required", nil)
 			return
 		}
 		config := body.Config
@@ -354,8 +323,7 @@ func savedConfigsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		c, err := CreateUserSavedConfig(userID, name, config, strings.TrimSpace(body.Cloud), strings.TrimSpace(body.Env), strings.TrimSpace(body.Service))
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to create saved config", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -363,7 +331,7 @@ func savedConfigsHandler(w http.ResponseWriter, r *http.Request) {
 		encodeJSON(w, map[string]interface{}{"saved_config": c, "status": "ok"})
 		return
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 }
@@ -382,23 +350,19 @@ func savedConfigDetailHandler(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/me/saved-configs/")
 	id, err := strconv.Atoi(strings.Trim(path, "/"))
 	if err != nil || id <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{"error": "invalid id", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "invalid id", nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if DB == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 	switch r.Method {
 	case "GET":
 		c, err := GetUserSavedConfigByID(id, userID)
 		if err != nil || c == nil {
-			w.WriteHeader(http.StatusNotFound)
-			encodeJSON(w, map[string]interface{}{"error": "not found", "status": "error"})
+			writeAPIError(w, r, http.StatusNotFound, "not found", err)
 			return
 		}
 		encodeJSON(w, map[string]interface{}{"saved_config": c, "status": "ok"})
@@ -406,17 +370,16 @@ func savedConfigDetailHandler(w http.ResponseWriter, r *http.Request) {
 	case "DELETE":
 		if err := DeleteUserSavedConfig(id, userID); err != nil {
 			if err.Error() == "not found" {
-				w.WriteHeader(http.StatusNotFound)
-			} else {
-				w.WriteHeader(http.StatusInternalServerError)
+				writeAPIError(w, r, http.StatusNotFound, "not found", err)
+				return
 			}
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to delete saved config", err)
 			return
 		}
 		encodeJSON(w, map[string]interface{}{"status": "ok", "message": "deleted"})
 		return
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 }

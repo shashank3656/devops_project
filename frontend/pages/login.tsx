@@ -5,6 +5,20 @@ import Link from 'next/link';
 import { useToast } from '../context/ToastContext';
 import { SITE_NAME } from '../lib/site';
 
+interface PublicSSOState {
+  enabled: boolean;
+  mode: string;
+  provider: string;
+  login_url: string;
+}
+
+function providerLabel(provider: string): string {
+  if (provider === 'azure_ad') return 'Azure AD';
+  if (provider === 'keycloak') return 'Keycloak';
+  if (provider === 'saml') return 'SAML SSO';
+  return 'SSO';
+}
+
 export default function Login() {
   const router = useRouter();
   const { toast } = useToast();
@@ -14,6 +28,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [pending2fa, setPending2fa] = useState<{ token: string } | null>(null);
   const [otp, setOtp] = useState('');
+  const [sso, setSso] = useState<PublicSSOState>({ enabled: false, mode: 'disabled', provider: 'none', login_url: '' });
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -30,6 +45,43 @@ export default function Login() {
     localStorage.setItem('user-portal-theme', 'dark');
   }, []);
 
+  useEffect(() => {
+    fetch(`${apiUrl}/api/public/sso/options?portal=user`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const payload = data?.sso;
+        if (payload && typeof payload === 'object') {
+          setSso({
+            enabled: Boolean(payload.enabled),
+            mode: typeof payload.mode === 'string' ? payload.mode : 'disabled',
+            provider: typeof payload.provider === 'string' ? payload.provider : 'none',
+            login_url: typeof payload.login_url === 'string' ? payload.login_url : '',
+          });
+        }
+      })
+      .catch(() => {
+        // Keep local login flow operational if this optional call fails.
+      });
+  }, [apiUrl]);
+
+  useEffect(() => {
+    // Only force redirect when policy is explicitly required.
+    if (sso.enabled && sso.mode === 'required' && sso.login_url) {
+      window.location.assign(sso.login_url);
+    }
+  }, [sso.enabled, sso.mode, sso.login_url]);
+
+  const handleSSOLogin = () => {
+    if (!sso.enabled) return;
+    if (!sso.login_url) {
+      const msg = 'SSO login is enabled but no SSO login URL is configured by admin.';
+      setError(msg);
+      toast(msg, 'error');
+      return;
+    }
+    window.location.assign(sso.login_url);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -39,7 +91,7 @@ export default function Login() {
       const response = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, portal: 'user' }),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -220,45 +272,63 @@ export default function Login() {
               </form>
             ) : (
             <form onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label className="label" htmlFor="username">Username</label>
-                <input
-                  id="username"
-                  className="input"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                  disabled={loading}
-                  autoComplete="username"
-                  autoFocus
-                  placeholder="Enter your username"
-                />
-              </div>
-              <div className="form-group">
-                <label className="label" htmlFor="password">Password</label>
-                <input
-                  id="password"
-                  className="input"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={loading}
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                />
-              </div>
-              <button type="submit" className="btn btn-primary login-page__submit" disabled={loading}>
-                {loading ? (
-                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <span className="loading" style={{ width: 18, height: 18, borderWidth: 2 }} />
-                    Signing in…
-                  </span>
-                ) : (
-                  'Sign in'
-                )}
-              </button>
+              {sso.enabled && (
+                <>
+                  <button type="button" className="btn btn-secondary login-page__submit" onClick={handleSSOLogin} disabled={loading}>
+                    Continue with {providerLabel(sso.provider)}
+                  </button>
+                  <p className="login-page__hint" style={{ marginTop: 12, marginBottom: 12 }}>
+                    {sso.mode === 'required' ? 'username/password login is disabled by policy' : 'or sign in with username and password'}
+                  </p>
+                </>
+              )}
+              {sso.mode === 'required' ? (
+                <div className="alert alert-info" role="status" style={{ marginBottom: 12 }}>
+                  Use SSO to continue.
+                </div>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label className="label" htmlFor="username">Username</label>
+                    <input
+                      id="username"
+                      className="input"
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                      disabled={loading}
+                      autoComplete="username"
+                      autoFocus
+                      placeholder="Enter your username"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="label" htmlFor="password">Password</label>
+                    <input
+                      id="password"
+                      className="input"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      disabled={loading}
+                      autoComplete="current-password"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <button type="submit" className="btn btn-primary login-page__submit" disabled={loading}>
+                    {loading ? (
+                      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                        <span className="loading" style={{ width: 18, height: 18, borderWidth: 2 }} />
+                        Signing in…
+                      </span>
+                    ) : (
+                      'Sign in'
+                    )}
+                  </button>
+                </>
+              )}
             </form>
             )}
             {!pending2fa && (

@@ -357,7 +357,7 @@ func devopsGitOpsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	userID, ok := requireDevopsUser(w, r)
@@ -367,9 +367,7 @@ func devopsGitOpsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 
 	catalogProjects, err := listVisibleGitOpsProjectsForUser(userID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 		return
 	}
 
@@ -379,9 +377,7 @@ func devopsGitOpsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 	for _, catalogProject := range catalogProjects {
 		requests, err := loadGitOpsRequestsForProject(catalogProject)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 			return
 		}
 		project := buildGitOpsProjectSummary(catalogProject, requests)
@@ -423,7 +419,7 @@ func devopsGitOpsPreviewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	userID, ok := requireDevopsUser(w, r)
@@ -433,23 +429,17 @@ func devopsGitOpsPreviewHandler(w http.ResponseWriter, r *http.Request) {
 
 	projectID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("project_id")))
 	if projectID <= 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{"error": "project_id is required", "status": "error"})
+		writeAPIError(w, r, http.StatusBadRequest, "project_id is required", nil)
 		return
 	}
 
 	selectedProject, _, err := GetGitOpsProjectVisibleToUser(userID, projectID)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 		return
 	}
 	if selectedProject == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		encodeJSON(w, map[string]interface{}{"error": "project not available in this DevOps scope", "status": "error"})
+		writeAPIError(w, r, http.StatusForbidden, "project not available in this DevOps scope", nil)
 		return
 	}
 
