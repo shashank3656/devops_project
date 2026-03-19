@@ -1,5 +1,6 @@
 import Head from 'next/head';
-import { useEffect, useState } from 'react';
+import { useRouter } from 'next/router';
+import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 
@@ -14,6 +15,7 @@ interface OwnerOption {
 interface Incident {
   id: number;
   request_id: number;
+  project_id?: number | null;
   project_name?: string;
   project_code?: string;
   request_team?: string;
@@ -43,6 +45,7 @@ function normalizeIncidents(value: unknown): Incident[] {
   return value.map((incident) => ({
     id: typeof incident?.id === 'number' ? incident.id : 0,
     request_id: typeof incident?.request_id === 'number' ? incident.request_id : 0,
+    project_id: typeof incident?.project_id === 'number' ? incident.project_id : null,
     project_name: typeof incident?.project_name === 'string' ? incident.project_name : '',
     project_code: typeof incident?.project_code === 'string' ? incident.project_code : '',
     request_team: typeof incident?.request_team === 'string' ? incident.request_team : '',
@@ -66,7 +69,22 @@ function clearSessionAndRedirect() {
   window.location.assign('/login');
 }
 
+function parsePositiveIntQuery(value: string | string[] | undefined): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizeQueryValue(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+}
+
 export default function DevOpsIncidentsPage() {
+  const router = useRouter();
   const apiUrl = useApiUrl();
   const [owners, setOwners] = useState<OwnerOption[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -82,6 +100,27 @@ export default function DevOpsIncidentsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+
+  const activeProjectID = useMemo(() => parsePositiveIntQuery(router.query.project_id), [router.query.project_id]);
+  const activeRequestID = useMemo(() => parsePositiveIntQuery(router.query.request_id), [router.query.request_id]);
+  const activeSeverityFilter = useMemo(() => normalizeQueryValue(router.query.severity), [router.query.severity]);
+  const activeStatusFilter = useMemo(() => normalizeQueryValue(router.query.status), [router.query.status]);
+  const activeEnvironmentFilter = useMemo(() => normalizeQueryValue(router.query.environment), [router.query.environment]);
+
+  const filteredIncidents = useMemo(() => {
+    return incidents.filter((incident) => {
+      if (activeProjectID && incident.project_id !== activeProjectID) return false;
+      if (activeRequestID && incident.request_id !== activeRequestID) return false;
+      if (activeSeverityFilter && incident.severity.trim().toLowerCase() !== activeSeverityFilter) return false;
+      if (activeStatusFilter && incident.status.trim().toLowerCase() !== activeStatusFilter) return false;
+      if (activeEnvironmentFilter && incident.request_env?.trim().toLowerCase() !== activeEnvironmentFilter) return false;
+      return true;
+    });
+  }, [activeEnvironmentFilter, activeProjectID, activeRequestID, activeSeverityFilter, activeStatusFilter, incidents]);
+
+  const hasActiveFilters = Boolean(
+    activeProjectID || activeRequestID || activeSeverityFilter || activeStatusFilter || activeEnvironmentFilter,
+  );
 
   const loadData = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -192,6 +231,23 @@ export default function DevOpsIncidentsPage() {
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
+        {hasActiveFilters ? (
+          <div className="alert alert-info">
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span>
+                Showing incidents
+                {activeProjectID ? ` for project #${activeProjectID}` : ''}
+                {activeRequestID ? ` for request #${activeRequestID}` : ''}
+                {activeSeverityFilter ? ` with ${activeSeverityFilter} severity` : ''}
+                {activeStatusFilter ? ` in ${activeStatusFilter} status` : ''}
+                {activeEnvironmentFilter ? ` for ${activeEnvironmentFilter.toUpperCase()}` : ''}.
+              </span>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void router.push('/incidents')}>
+                Clear filters
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <section className="portal-surface">
           <div className="portal-surface__header">
@@ -267,8 +323,10 @@ export default function DevOpsIncidentsPage() {
           </div>
           {loading ? (
             <div className="empty-state">Loading incidents...</div>
-          ) : incidents.length === 0 ? (
-            <div className="empty-state">No incidents recorded yet.</div>
+          ) : filteredIncidents.length === 0 ? (
+            <div className="empty-state">
+              {hasActiveFilters ? 'No incidents match the current filters.' : 'No incidents recorded yet.'}
+            </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table className="templates-table">
@@ -284,7 +342,7 @@ export default function DevOpsIncidentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {incidents.map((incident) => (
+                  {filteredIncidents.map((incident) => (
                     <tr key={incident.id}>
                       <td>#{incident.request_id} · {incident.request_service || 'service'}</td>
                       <td>{incident.project_name ? `${incident.project_name} (${incident.project_code})` : 'No project'}</td>

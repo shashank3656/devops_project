@@ -1149,6 +1149,14 @@ func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
 		encodeDevopsJSON(w, map[string]interface{}{"error": "failed to fetch credential audit", "status": "error"})
 		return
 	}
+	expiryTracker, err := buildExpiryTracker(entries, cloudFilter, projectIDFilter, fromDate, toDate)
+	if err != nil {
+		log.Printf("credential audit expiry tracker: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		encodeDevopsJSON(w, map[string]interface{}{"error": "failed to build expiry tracker", "status": "error"})
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	encodeDevopsJSON(w, map[string]interface{}{"entries": entries, "status": "ok"})
+	encodeDevopsJSON(w, map[string]interface{}{"entries": entries, "expiry_tracker": expiryTracker, "status": "ok"})
 }

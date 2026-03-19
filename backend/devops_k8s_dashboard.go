@@ -162,27 +162,30 @@ type k8sConfigMapItem struct {
 }
 
 type k8sDashboardResponse struct {
-	Projects            []k8sProjectOption      `json:"projects"`
-	Connections         []k8sConnectionRecord   `json:"connections"`
-	SelectedProjectID   int                     `json:"selected_project_id"`
-	SelectedCluster     string                  `json:"selected_cluster"`
-	SelectedNamespace   string                  `json:"selected_namespace"`
-	SelectedEnvironment string                  `json:"selected_environment"`
-	Clusters            []string                `json:"clusters"`
-	Namespaces          []string                `json:"namespaces"`
-	Environments        []string                `json:"environments"`
-	Summary             k8sSummary              `json:"summary"`
-	NamespaceItems      []k8sNamespaceItem      `json:"namespace_items"`
-	Deployments         []k8sDeploymentItem     `json:"deployments"`
-	Pods                []k8sPodItem            `json:"pods"`
-	Logs                []k8sLogItem            `json:"logs"`
-	ReplicaSets         []k8sReplicaSetItem     `json:"replicasets"`
-	Volumes             []k8sVolumeItem         `json:"volumes"`
-	Services            []k8sServiceItem        `json:"services"`
-	Ingresses           []k8sIngressItem        `json:"ingresses"`
-	Secrets             []k8sSecretItem         `json:"secrets"`
-	ServiceAccounts     []k8sServiceAccountItem `json:"service_accounts"`
-	ConfigMaps          []k8sConfigMapItem      `json:"configmaps"`
+	Projects            []k8sProjectOption       `json:"projects"`
+	Connections         []k8sConnectionRecord    `json:"connections"`
+	SelectedProjectID   int                      `json:"selected_project_id"`
+	SelectedCluster     string                   `json:"selected_cluster"`
+	SelectedNamespace   string                   `json:"selected_namespace"`
+	SelectedEnvironment string                   `json:"selected_environment"`
+	Clusters            []string                 `json:"clusters"`
+	Namespaces          []string                 `json:"namespaces"`
+	Environments        []string                 `json:"environments"`
+	Summary             k8sSummary               `json:"summary"`
+	HealthSummary       k8sWorkloadHealthSummary `json:"health_summary"`
+	NamespaceItems      []k8sNamespaceItem       `json:"namespace_items"`
+	NamespaceHealth     []k8sNamespaceHealth     `json:"namespace_health"`
+	Deployments         []k8sDeploymentItem      `json:"deployments"`
+	WorkloadSpotlights  []k8sWorkloadSpotlight   `json:"workload_spotlights"`
+	Pods                []k8sPodItem             `json:"pods"`
+	Logs                []k8sLogItem             `json:"logs"`
+	ReplicaSets         []k8sReplicaSetItem      `json:"replicasets"`
+	Volumes             []k8sVolumeItem          `json:"volumes"`
+	Services            []k8sServiceItem         `json:"services"`
+	Ingresses           []k8sIngressItem         `json:"ingresses"`
+	Secrets             []k8sSecretItem          `json:"secrets"`
+	ServiceAccounts     []k8sServiceAccountItem  `json:"service_accounts"`
+	ConfigMaps          []k8sConfigMapItem       `json:"configmaps"`
 }
 
 func k8sAuthModes() []string {
@@ -700,6 +703,8 @@ func buildK8sDashboard(projectID int, clusterName, namespaceFilter, environmentF
 	sort.Slice(serviceAccounts, func(i, j int) bool { return serviceAccounts[i].Name < serviceAccounts[j].Name })
 	sort.Slice(configMaps, func(i, j int) bool { return configMaps[i].Name < configMaps[j].Name })
 
+	healthSummary, namespaceHealth, workloadSpotlights := buildK8sWorkloadHealth(namespaceItems, deployments, pods, logs)
+
 	response.Summary = k8sSummary{
 		NamespaceCount:    len(namespaceItems),
 		DeploymentCount:   len(deployments),
@@ -708,8 +713,11 @@ func buildK8sDashboard(projectID int, clusterName, namespaceFilter, environmentF
 		IngressCount:      len(ingresses),
 		WarningEventCount: warningEventCount,
 	}
+	response.HealthSummary = healthSummary
 	response.NamespaceItems = namespaceItems
+	response.NamespaceHealth = namespaceHealth
 	response.Deployments = deployments
+	response.WorkloadSpotlights = workloadSpotlights
 	response.Pods = pods
 	response.Logs = logs
 	response.ReplicaSets = replicaSets

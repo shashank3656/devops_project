@@ -81,6 +81,132 @@ interface ProjectOption {
   approval_rules: ProjectApprovalRule[];
 }
 
+interface ProjectReleaseSummary {
+  total_requests: number;
+  completed_requests: number;
+  pending_requests: number;
+  in_progress_requests: number;
+  promotion_ready_count: number;
+  open_incident_count: number;
+  runbook_count: number;
+  active_override_count: number;
+  last_release_at?: string;
+}
+
+interface ProjectReleaseEnvironmentStatus {
+  environment: string;
+  latest_request_id?: number;
+  latest_status?: string;
+  latest_service?: string;
+  latest_cloud?: string;
+  latest_updated_at?: string;
+  pending_count: number;
+  completed_count: number;
+  incident_count: number;
+  health: string;
+}
+
+interface ProjectReleaseActivityItem {
+  request_id: number;
+  team: string;
+  environment: string;
+  cloud: string;
+  service: string;
+  status: string;
+  priority: string;
+  client_name: string;
+  updated_at: string;
+  due_date?: string;
+  pr_url?: string;
+}
+
+interface ProjectReleaseTrendPoint {
+  label: string;
+  count: number;
+}
+
+interface PromotionQueueItem {
+  request_id: number;
+  environment: string;
+  next_environment: string;
+  cloud: string;
+  service: string;
+  status: string;
+  client_name: string;
+  updated_at: string;
+}
+
+interface ReleaseIncidentItem {
+  id: number;
+  request_id: number;
+  severity: string;
+  status: string;
+  summary: string;
+  owner_username?: string;
+  updated_at: string;
+  request_env?: string;
+  request_service?: string;
+}
+
+interface ReleaseRunbookItem {
+  id: number;
+  service: string;
+  title: string;
+  link_url: string;
+  updated_at: string;
+}
+
+interface ActiveOverrideItem {
+  id: number;
+  username: string;
+  environments: string[];
+  permission: string;
+  reason: string;
+  expires_at: string;
+}
+
+interface ProjectReleaseDashboard {
+  summary: ProjectReleaseSummary;
+  environment_statuses: ProjectReleaseEnvironmentStatus[];
+  recent_activity: ProjectReleaseActivityItem[];
+  release_trend: ProjectReleaseTrendPoint[];
+  promotion_queue: PromotionQueueItem[];
+  incidents: ReleaseIncidentItem[];
+  runbooks: ReleaseRunbookItem[];
+  active_overrides: ActiveOverrideItem[];
+  deployment_gates?: DeploymentGatePolicy | null;
+}
+
+interface DeploymentGateSummary {
+  ready_environments: number;
+  attention_environments: number;
+  blocked_environments: number;
+}
+
+interface DeploymentGateCheck {
+  key: string;
+  label: string;
+  status: string;
+  detail: string;
+}
+
+interface DeploymentGateEnvironment {
+  environment: string;
+  status: string;
+  summary: string;
+  requires_manager_approval: boolean;
+  requires_devops_approval: boolean;
+  promotion_candidate_count: number;
+  incident_count: number;
+  active_override_count: number;
+  checks: DeploymentGateCheck[];
+}
+
+interface DeploymentGatePolicy {
+  summary: DeploymentGateSummary;
+  environments: DeploymentGateEnvironment[];
+}
+
 function stageTone(stage?: string): { background: string; color: string } {
   switch (stage) {
     case 'ready':
@@ -128,10 +254,53 @@ function parsePositiveIntParam(value: unknown): number | null {
   return parsed;
 }
 
+function releaseHealthTone(health?: string): { background: string; color: string } {
+  switch ((health || '').toLowerCase()) {
+    case 'healthy':
+      return { background: 'var(--color-success-bg)', color: 'var(--color-success)' };
+    case 'blocked':
+      return { background: 'var(--color-danger-bg)', color: 'var(--color-danger)' };
+    case 'degraded':
+      return { background: 'var(--color-warning-bg)', color: 'var(--color-warning)' };
+    default:
+      return { background: 'rgba(34, 211, 238, 0.14)', color: 'var(--color-primary)' };
+    }
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+}
+
+function buildPortalHref(path: string, query: Record<string, string | number | undefined | null>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null) continue;
+    const normalized = String(value).trim();
+    if (!normalized) continue;
+    params.set(key, normalized);
+  }
+  const serialized = params.toString();
+  return serialized ? `${path}?${serialized}` : path;
+}
+
+function deploymentGateTone(status?: string): { background: string; color: string } {
+  switch ((status || '').toLowerCase()) {
+    case 'blocked':
+      return { background: 'var(--color-danger-bg)', color: 'var(--color-danger)' };
+    case 'attention':
+      return { background: 'var(--color-warning-bg)', color: 'var(--color-warning)' };
+    default:
+      return { background: 'var(--color-success-bg)', color: 'var(--color-success)' };
+  }
+}
+
 export default function DevOpsProjectDetailPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
   const [project, setProject] = useState<ProjectOption | null>(null);
+  const [releaseDashboard, setReleaseDashboard] = useState<ProjectReleaseDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -154,20 +323,23 @@ export default function DevOpsProjectDetailPage() {
 
     setLoading(true);
     setError('');
-    fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${apiUrl}/api/devops/projects/${projectId}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(data?.error || 'Failed to load project');
         }
-        const projects = Array.isArray(data?.projects) ? data.projects : [];
-        const matchedProject = projects.find((item: { id?: unknown }) => Number(item?.id) === projectId);
-        if (!matchedProject) {
+        if (!data?.project) {
           throw new Error('Project not found');
         }
-        setProject(matchedProject as ProjectOption);
+        setProject(data.project as ProjectOption);
+        setReleaseDashboard((data.release_dashboard as ProjectReleaseDashboard | null) || null);
       })
-      .catch((err: Error) => setError(err.message))
+      .catch((err: Error) => {
+        setProject(null);
+        setReleaseDashboard(null);
+        setError(err.message);
+      })
       .finally(() => setLoading(false));
   }, [apiUrl, router, router.isReady, router.query.id]);
 
@@ -229,9 +401,9 @@ export default function DevOpsProjectDetailPage() {
           </div>
           <div className="portal-page__actions">
             <Link href="/projects" className="btn btn-secondary">Back to Projects</Link>
-            <Link href="/runbooks" className="btn btn-secondary">Runbooks</Link>
+            <Link href={project ? buildPortalHref('/runbooks', { project_id: project.id }) : '/runbooks'} className="btn btn-secondary">Runbooks</Link>
             <Link href="/access-overrides" className="btn btn-secondary">Access Overrides</Link>
-            <Link href="/promotions" className="btn btn-secondary">Promotion Center</Link>
+            <Link href={project ? buildPortalHref('/promotions', { project_id: project.id }) : '/promotions'} className="btn btn-secondary">Promotion Center</Link>
           </div>
         </div>
 
@@ -384,6 +556,318 @@ export default function DevOpsProjectDetailPage() {
                   ))}
                 </div>
               </section>
+            ) : null}
+
+            {releaseDashboard ? (
+              <>
+                <section className="portal-surface">
+                  <div className="portal-surface__header">
+                    <div>
+                      <span className="portal-surface__eyebrow">Release Dashboard</span>
+                      <h2 className="portal-surface__title">Project Delivery Health</h2>
+                      <p className="portal-surface__subtitle">
+                        Release readiness, current queue pressure, and operational support signals for this project.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="portal-stat-grid">
+                    <article className="portal-stat-card">
+                      <span className="portal-stat-card__label">Total requests</span>
+                      <span className="portal-stat-card__value">{releaseDashboard.summary.total_requests}</span>
+                      <p className="portal-stat-card__copy">Completed {releaseDashboard.summary.completed_requests} · Pending {releaseDashboard.summary.pending_requests}</p>
+                    </article>
+                    <article className="portal-stat-card">
+                      <span className="portal-stat-card__label">In progress</span>
+                      <span className="portal-stat-card__value">{releaseDashboard.summary.in_progress_requests}</span>
+                      <p className="portal-stat-card__copy">Requests actively moving through delivery or approval.</p>
+                    </article>
+                    <article className="portal-stat-card">
+                      <span className="portal-stat-card__label">Promotion queue</span>
+                      <span className="portal-stat-card__value">{releaseDashboard.summary.promotion_ready_count}</span>
+                      <p className="portal-stat-card__copy">Requests ready for the next environment promotion.</p>
+                      <Link href={buildPortalHref('/promotions', { project_id: project.id })} className="btn btn-secondary btn-sm" style={{ marginTop: 12 }}>
+                        Open queue
+                      </Link>
+                    </article>
+                    <article className="portal-stat-card">
+                      <span className="portal-stat-card__label">Open incidents</span>
+                      <span className="portal-stat-card__value">{releaseDashboard.summary.open_incident_count}</span>
+                      <p className="portal-stat-card__copy">Linked incidents currently affecting this project.</p>
+                      <Link href={buildPortalHref('/incidents', { project_id: project.id })} className="btn btn-secondary btn-sm" style={{ marginTop: 12 }}>
+                        View incidents
+                      </Link>
+                    </article>
+                    <article className="portal-stat-card">
+                      <span className="portal-stat-card__label">Runbooks</span>
+                      <span className="portal-stat-card__value">{releaseDashboard.summary.runbook_count}</span>
+                      <p className="portal-stat-card__copy">Operational recovery references available from the portal.</p>
+                      <Link href={buildPortalHref('/runbooks', { project_id: project.id })} className="btn btn-secondary btn-sm" style={{ marginTop: 12 }}>
+                        Open runbooks
+                      </Link>
+                    </article>
+                    <article className="portal-stat-card">
+                      <span className="portal-stat-card__label">Last release</span>
+                      <span className="portal-stat-card__value" style={{ fontSize: 18 }}>
+                        {formatDateTime(releaseDashboard.summary.last_release_at)}
+                      </span>
+                      <p className="portal-stat-card__copy">Most recent completed release tracked for this project.</p>
+                    </article>
+                  </div>
+                </section>
+
+                {releaseDashboard.deployment_gates ? (
+                  <section className="portal-surface">
+                    <div className="portal-surface__header">
+                      <div>
+                        <span className="portal-surface__eyebrow">Deployment Controls</span>
+                        <h2 className="portal-surface__title">Deployment Gate Policy Engine</h2>
+                        <p className="portal-surface__subtitle">
+                          Evaluate whether each environment is ready for promotion based on approval policy, incidents, rollback coverage, and temporary override signals.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="portal-stat-grid">
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Ready environments</span>
+                        <span className="portal-stat-card__value">{releaseDashboard.deployment_gates.summary.ready_environments}</span>
+                        <p className="portal-stat-card__copy">No active blockers based on the current project policy.</p>
+                      </article>
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Needs review</span>
+                        <span className="portal-stat-card__value">{releaseDashboard.deployment_gates.summary.attention_environments}</span>
+                        <p className="portal-stat-card__copy">Operational follow-up is recommended before promotion.</p>
+                      </article>
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Blocked</span>
+                        <span className="portal-stat-card__value">{releaseDashboard.deployment_gates.summary.blocked_environments}</span>
+                        <p className="portal-stat-card__copy">Promotion is currently gated by incidents or missing rollback coverage.</p>
+                      </article>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginTop: 18 }}>
+                      {releaseDashboard.deployment_gates.environments.map((gate) => {
+                        const tone = deploymentGateTone(gate.status);
+                        return (
+                          <article key={`${project.id}-${gate.environment}-gate`} className="portal-detail-card">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                              <strong>{gate.environment.toUpperCase()}</strong>
+                              <span style={{ ...tone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, textTransform: 'uppercase' }}>
+                                {gate.status}
+                              </span>
+                            </div>
+                            <p style={{ margin: '10px 0 14px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>{gate.summary}</p>
+                            <div style={{ display: 'grid', gap: 10 }}>
+                              {gate.checks.map((check) => {
+                                const checkTone = deploymentGateTone(check.status);
+                                return (
+                                  <div key={`${gate.environment}-${check.key}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                                      <strong style={{ fontSize: 13 }}>{check.label}</strong>
+                                      <span style={{ ...checkTone, padding: '4px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                                        {check.status}
+                                      </span>
+                                    </div>
+                                    <p style={{ margin: '8px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>{check.detail}</p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+                              <Link
+                                href={buildPortalHref('/promotions', { project_id: project.id, next_environment: gate.environment })}
+                                className="btn btn-secondary btn-sm"
+                              >
+                                Promotions
+                              </Link>
+                              <Link
+                                href={buildPortalHref('/incidents', { project_id: project.id, environment: gate.environment })}
+                                className="btn btn-secondary btn-sm"
+                              >
+                                Incidents
+                              </Link>
+                              <Link href={buildPortalHref('/runbooks', { project_id: project.id })} className="btn btn-secondary btn-sm">
+                                Runbooks
+                              </Link>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ) : null}
+
+                <section className="portal-surface">
+                  <div className="portal-surface__header">
+                    <div>
+                      <span className="portal-surface__eyebrow">Environment Status</span>
+                      <h2 className="portal-surface__title">Release posture by environment</h2>
+                    </div>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="templates-table">
+                      <thead>
+                        <tr>
+                          <th>Environment</th>
+                          <th>Health</th>
+                          <th>Latest request</th>
+                          <th>Latest service</th>
+                          <th>Pending</th>
+                          <th>Completed</th>
+                          <th>Incidents</th>
+                          <th>Last update</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {releaseDashboard.environment_statuses.map((item) => {
+                          const tone = releaseHealthTone(item.health);
+                          return (
+                            <tr key={`${project.id}-${item.environment}`}>
+                              <td>{item.environment.toUpperCase()}</td>
+                              <td>
+                                <span style={{ ...tone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, textTransform: 'uppercase' }}>
+                                  {item.health}
+                                </span>
+                              </td>
+                              <td>{item.latest_request_id ? `#${item.latest_request_id}` : '—'}</td>
+                              <td>{item.latest_service ? `${item.latest_service} (${item.latest_cloud || 'n/a'})` : '—'}</td>
+                              <td>{item.pending_count}</td>
+                              <td>{item.completed_count}</td>
+                              <td>{item.incident_count}</td>
+                              <td>{formatDateTime(item.latest_updated_at)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section className="portal-surface">
+                  <div className="portal-surface__header">
+                    <div>
+                      <span className="portal-surface__eyebrow">Activity</span>
+                      <h2 className="portal-surface__title">Recent release activity and support queue</h2>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+                    <article className="portal-detail-card">
+                      <span className="portal-surface__eyebrow">Recent activity</span>
+                      <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                        {releaseDashboard.recent_activity.length > 0 ? releaseDashboard.recent_activity.slice(0, 5).map((item) => (
+                          <div key={item.request_id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                              <strong>#{item.request_id} · {item.service}</strong>
+                              <span>{item.status}</span>
+                            </div>
+                            <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                              {item.environment.toUpperCase()} · {item.cloud} · {item.team || item.client_name || 'Unassigned'}
+                            </p>
+                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                              Updated {formatDateTime(item.updated_at)}
+                            </p>
+                            <Link
+                              href={buildPortalHref('/promotions', { project_id: project.id, request_id: item.request_id })}
+                              className="btn btn-secondary btn-sm"
+                              style={{ marginTop: 10 }}
+                            >
+                              Open request context
+                            </Link>
+                          </div>
+                        )) : <div className="empty-state">No recent activity yet.</div>}
+                      </div>
+                    </article>
+
+                    <article className="portal-detail-card">
+                      <span className="portal-surface__eyebrow">Promotion queue</span>
+                      <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                        {releaseDashboard.promotion_queue.length > 0 ? releaseDashboard.promotion_queue.map((item) => (
+                          <div key={item.request_id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                            <strong>#{item.request_id} · {item.environment.toUpperCase()} to {item.next_environment.toUpperCase()}</strong>
+                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                              {item.service} · {item.cloud} · {item.status}
+                            </p>
+                            <Link
+                              href={buildPortalHref('/promotions', { project_id: project.id, request_id: item.request_id, next_environment: item.next_environment })}
+                              className="btn btn-secondary btn-sm"
+                              style={{ marginTop: 10 }}
+                            >
+                              Open promotion
+                            </Link>
+                          </div>
+                        )) : <div className="empty-state">Promotion queue is clear.</div>}
+                      </div>
+                    </article>
+
+                    <article className="portal-detail-card">
+                      <span className="portal-surface__eyebrow">Incidents and runbooks</span>
+                      <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                        {releaseDashboard.incidents.length > 0 ? releaseDashboard.incidents.slice(0, 3).map((item) => (
+                          <div key={item.id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                            <strong>Incident #{item.request_id} · {item.severity}</strong>
+                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>{item.summary}</p>
+                            <Link
+                              href={buildPortalHref('/incidents', { project_id: project.id, request_id: item.request_id, severity: item.severity })}
+                              className="btn btn-secondary btn-sm"
+                              style={{ marginTop: 10 }}
+                            >
+                              Open incident
+                            </Link>
+                          </div>
+                        )) : <div className="empty-state">No linked incidents right now.</div>}
+                        {releaseDashboard.runbooks.length > 0 ? releaseDashboard.runbooks.slice(0, 3).map((item) => (
+                          <div key={item.id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                            <strong>{item.title}</strong>
+                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                              {item.service || 'General'} · {item.link_url ? 'Linked' : 'Inline'}
+                            </p>
+                            <Link
+                              href={buildPortalHref('/runbooks', { project_id: project.id, service: item.service || undefined })}
+                              className="btn btn-secondary btn-sm"
+                              style={{ marginTop: 10 }}
+                            >
+                              Open runbook
+                            </Link>
+                          </div>
+                        )) : <div className="empty-state">No runbooks linked yet.</div>}
+                      </div>
+                    </article>
+
+                    <article className="portal-detail-card">
+                      <span className="portal-surface__eyebrow">Active overrides</span>
+                      <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                        {releaseDashboard.active_overrides.length > 0 ? releaseDashboard.active_overrides.map((item) => (
+                          <div key={item.id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                            <strong>{item.username} · {item.permission}</strong>
+                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                              {item.environments.join(', ') || 'all envs'} · Expires {formatDateTime(item.expires_at)}
+                            </p>
+                          </div>
+                        )) : <div className="empty-state">No active overrides for this project.</div>}
+                      </div>
+                    </article>
+                  </div>
+
+                  <div style={{ marginTop: 18 }}>
+                    <span className="portal-surface__eyebrow">Release trend</span>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, marginTop: 12, minHeight: 120 }}>
+                      {releaseDashboard.release_trend.map((point) => (
+                        <div key={point.label} style={{ display: 'grid', justifyItems: 'center', gap: 8, flex: 1 }}>
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{point.count}</span>
+                          <span
+                            style={{
+                              width: '100%',
+                              maxWidth: 48,
+                              height: `${Math.max(12, point.count * 18)}px`,
+                              borderRadius: 12,
+                              background: 'linear-gradient(180deg, rgba(34, 211, 238, 0.92), rgba(14, 165, 233, 0.4))',
+                            }}
+                          />
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{point.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              </>
             ) : null}
 
             <section className="portal-surface">

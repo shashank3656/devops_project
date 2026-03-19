@@ -2229,8 +2229,13 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusNotFound, "project not found", nil)
 			return
 		}
+		releaseDashboard, err := buildProjectReleaseDashboard(*project)
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		encodeJSON(w, map[string]interface{}{"status": "ok", "project": project})
+		encodeJSON(w, map[string]interface{}{"status": "ok", "project": project, "release_dashboard": releaseDashboard})
 		return
 	}
 	if r.Method == "PUT" {

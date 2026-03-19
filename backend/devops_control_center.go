@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -65,21 +66,22 @@ type projectAccessOverride struct {
 }
 
 type promotionCenterItem struct {
-	RequestID            int       `json:"request_id"`
-	ProjectID            *int      `json:"project_id,omitempty"`
-	ProjectName          string    `json:"project_name,omitempty"`
-	ProjectCode          string    `json:"project_code,omitempty"`
-	Team                 string    `json:"team"`
-	Environment          string    `json:"environment"`
-	NextEnvironment      string    `json:"next_environment"`
-	Cloud                string    `json:"cloud"`
-	Service              string    `json:"service"`
-	Status               string    `json:"status"`
-	ClientName           string    `json:"client_name"`
-	UpdatedAt            time.Time `json:"updated_at"`
-	LatestPromotedID     *int      `json:"latest_promoted_id,omitempty"`
-	LatestPromotedEnv    string    `json:"latest_promoted_env,omitempty"`
-	LatestPromotedStatus string    `json:"latest_promoted_status,omitempty"`
+	RequestID            int                    `json:"request_id"`
+	ProjectID            *int                   `json:"project_id,omitempty"`
+	ProjectName          string                 `json:"project_name,omitempty"`
+	ProjectCode          string                 `json:"project_code,omitempty"`
+	Team                 string                 `json:"team"`
+	Environment          string                 `json:"environment"`
+	NextEnvironment      string                 `json:"next_environment"`
+	Cloud                string                 `json:"cloud"`
+	Service              string                 `json:"service"`
+	Status               string                 `json:"status"`
+	ClientName           string                 `json:"client_name"`
+	UpdatedAt            time.Time              `json:"updated_at"`
+	LatestPromotedID     *int                   `json:"latest_promoted_id,omitempty"`
+	LatestPromotedEnv    string                 `json:"latest_promoted_env,omitempty"`
+	LatestPromotedStatus string                 `json:"latest_promoted_status,omitempty"`
+	Gate                 *promotionGateDecision `json:"gate,omitempty"`
 }
 
 type opsDeliveryFailure struct {
@@ -534,24 +536,163 @@ func listPromotionCenterItems() ([]promotionCenterItem, error) {
 	return out, nil
 }
 
-func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, error) {
-	req, err := GetPRRequestByID(requestID)
+func enrichPromotionItemsWithDeploymentGates(items []promotionCenterItem) error {
+	projectGateCache := make(map[int]*projectReleaseDashboard)
+	projectExistsCache := make(map[int]bool)
+
+	for index := range items {
+		targetEnvironment := items[index].NextEnvironment
+		if strings.TrimSpace(targetEnvironment) == "" {
+			items[index].Gate = buildPromotionGateDecision(
+				targetEnvironment,
+				nil,
+				"This request is already in the highest configured environment and cannot be promoted further.",
+				true,
+			)
+			continue
+		}
+
+		if items[index].ProjectID == nil || *items[index].ProjectID <= 0 {
+			items[index].Gate = buildPromotionGateDecision(
+				targetEnvironment,
+				nil,
+				"This request is not linked to a project catalog entry. Review it manually before promotion.",
+				false,
+			)
+			continue
+		}
+
+		projectID := *items[index].ProjectID
+		dashboard, cached := projectGateCache[projectID]
+		projectExists, hasExistsValue := projectExistsCache[projectID]
+		if !cached {
+			project, err := getProjectCatalogByID(projectID)
+			if err != nil {
+				return err
+			}
+			projectExists = project != nil
+			projectExistsCache[projectID] = projectExists
+			if projectExists {
+				builtDashboard, err := buildProjectReleaseDashboard(*project)
+				if err != nil {
+					return err
+				}
+				dashboard = builtDashboard
+			}
+			projectGateCache[projectID] = dashboard
+			hasExistsValue = true
+		}
+
+		if hasExistsValue && !projectExists {
+			items[index].Gate = buildPromotionGateDecision(
+				targetEnvironment,
+				nil,
+				"This request references a project that is no longer available in the catalog. Review it manually before promotion.",
+				false,
+			)
+			continue
+		}
+
+		gate := findDeploymentGateEnvironment(dashboard.DeploymentGates, targetEnvironment)
+		if gate == nil {
+			items[index].Gate = buildPromotionGateDecision(
+				targetEnvironment,
+				nil,
+				fmt.Sprintf("%s is not configured as a deployment gate target for this project.", strings.ToUpper(strings.TrimSpace(targetEnvironment))),
+				true,
+			)
+			continue
+		}
+		items[index].Gate = buildPromotionGateDecision(targetEnvironment, gate, "", false)
+	}
+
+	return nil
+}
+
+func evaluatePromotionGateForRequest(req *PRRequest) (*promotionGateDecision, error) {
+	if req == nil {
+		return buildPromotionGateDecision("", nil, "The source request could not be loaded for gate evaluation.", true), nil
+	}
+
+	targetEnvironment := nextEnv(req.Env)
+	if strings.TrimSpace(targetEnvironment) == "" {
+		return buildPromotionGateDecision(
+			req.Env,
+			nil,
+			"This request is already in the highest configured environment and cannot be promoted further.",
+			true,
+		), nil
+	}
+
+	if req.ProjectID == nil || *req.ProjectID <= 0 {
+		return buildPromotionGateDecision(
+			targetEnvironment,
+			nil,
+			"This request is not linked to a project catalog entry. Review it manually before promotion.",
+			false,
+		), nil
+	}
+
+	project, err := getProjectCatalogByID(*req.ProjectID)
 	if err != nil {
 		return nil, err
 	}
+	if project == nil {
+		return buildPromotionGateDecision(
+			targetEnvironment,
+			nil,
+			"This request references a project that is no longer available in the catalog. Review it manually before promotion.",
+			false,
+		), nil
+	}
+
+	dashboard, err := buildProjectReleaseDashboard(*project)
+	if err != nil {
+		return nil, err
+	}
+	gate := findDeploymentGateEnvironment(dashboard.DeploymentGates, targetEnvironment)
+	if gate == nil {
+		return buildPromotionGateDecision(
+			targetEnvironment,
+			nil,
+			fmt.Sprintf("%s is not configured as a deployment gate target for this project.", strings.ToUpper(strings.TrimSpace(targetEnvironment))),
+			true,
+		), nil
+	}
+	return buildPromotionGateDecision(targetEnvironment, gate, "", false), nil
+}
+
+func promoteRequestAsDevops(requestID int, userID int, acknowledgeAttention bool) (*PRRequest, *promotionGateDecision, error) {
+	req, err := GetPRRequestByID(requestID)
+	if err != nil {
+		return nil, nil, err
+	}
 	if req == nil {
-		return nil, fmt.Errorf("request not found")
+		return nil, nil, fmt.Errorf("request not found")
 	}
 	if req.Status != "completed" && req.Status != "in_progress" {
-		return nil, fmt.Errorf("only completed or in-progress requests can be promoted")
+		return nil, nil, fmt.Errorf("only completed or in-progress requests can be promoted")
 	}
 	nextEnvironment := nextEnv(req.Env)
 	if nextEnvironment == "" {
-		return nil, fmt.Errorf("request is already at the highest environment")
+		return nil, nil, fmt.Errorf("request is already at the highest environment")
+	}
+
+	gate, err := evaluatePromotionGateForRequest(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	if gate != nil {
+		if gate.Status == "blocked" {
+			return nil, gate, fmt.Errorf("promotion blocked by deployment gate policy")
+		}
+		if gate.RequiresAcknowledgement && !acknowledgeAttention {
+			return nil, gate, fmt.Errorf("promotion requires deployment gate acknowledgement")
+		}
 	}
 	appID, err := GenerateApplicationID()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	filePath, branchName := BuildRequestGitArtifacts(req.Team, nextEnvironment, appID)
 	createdBy := req.CreatedBy
@@ -576,11 +717,15 @@ func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, error) {
 		CreatedBy:     createdBy,
 	}
 	if err := SavePRRequest(newReq); err != nil {
-		return nil, err
+		return nil, gate, err
 	}
 	_, _ = execContext(`UPDATE pr_requests SET linked_request_id = $1 WHERE id = $2`, requestID, newReq.ID)
-	AppendAuditLog(&userID, "request_promote", "pr_request", strconv.Itoa(newReq.ID), fmt.Sprintf("devops:%d->%s", requestID, nextEnvironment))
-	return newReq, nil
+	auditDetails := fmt.Sprintf("devops:%d->%s", requestID, nextEnvironment)
+	if gate != nil && gate.RequiresAcknowledgement {
+		auditDetails += ":acknowledged"
+	}
+	AppendAuditLog(&userID, "request_promote", "pr_request", strconv.Itoa(newReq.ID), auditDetails)
+	return newReq, gate, nil
 }
 
 func listOpsDeliveryFailures(statusFilter string) ([]opsDeliveryFailure, error) {
@@ -982,6 +1127,10 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list promotions", err)
 			return
 		}
+		if err := enrichPromotionItemsWithDeploymentGates(items); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to evaluate promotion gates", err)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"promotions": items, "status": "ok"})
 	case "POST":
@@ -996,13 +1145,37 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid request id", err)
 			return
 		}
-		item, err := promoteRequestAsDevops(requestID, managerID)
+		var body struct {
+			AcknowledgeAttention bool `json:"acknowledge_attention"`
+		}
+		if r.Body != nil {
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
+				writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
+				return
+			}
+		}
+		item, gate, err := promoteRequestAsDevops(requestID, managerID, body.AcknowledgeAttention)
 		if err != nil {
+			if gate != nil && (gate.Status == "blocked" || gate.RequiresAcknowledgement) {
+				status := http.StatusConflict
+				message := "promotion blocked by deployment gate policy"
+				if gate.RequiresAcknowledgement {
+					message = "deployment gate acknowledgement is required before promotion"
+				}
+				if writeErr := writeJSONResponse(w, status, map[string]any{
+					"status": "error",
+					"error":  message,
+					"gate":   gate,
+				}); writeErr != nil {
+					writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotion gate response", writeErr)
+				}
+				return
+			}
 			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"request": item, "status": "ok"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"request": item, "gate": gate, "status": "ok"})
 	default:
 		writeMethodNotAllowed(w, r)
 	}
