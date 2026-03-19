@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -698,7 +698,7 @@ func (r *statusRecorder) ensureAPIErrorBody() {
 	if msg == "" {
 		msg = "request failed"
 	}
-	r.Header().Set("Content-Type", "application/json")
+	setSafeJSONResponseHeaders(r.Header())
 	r.normalized = true
 	_, _ = r.Write(buildAPIErrorPayload(msg, r.requestID))
 }
@@ -718,7 +718,10 @@ func (r *statusRecorder) normalizeAPIErrorPayload(p []byte) []byte {
 
 	contentType := strings.ToLower(strings.TrimSpace(r.Header().Get("Content-Type")))
 	if strings.Contains(contentType, "application/json") {
-		return nil
+		if sanitized := sanitizeAPIErrorJSONPayload(p); sanitized != nil {
+			setSafeJSONResponseHeaders(r.Header())
+			return sanitized
+		}
 	}
 
 	msg := strings.TrimSpace(string(p))
@@ -730,8 +733,7 @@ func (r *statusRecorder) normalizeAPIErrorPayload(p []byte) []byte {
 		msg = "request failed"
 	}
 
-	r.Header().Set("Content-Type", "application/json; charset=utf-8")
-	r.Header().Set("X-Content-Type-Options", "nosniff")
+	setSafeJSONResponseHeaders(r.Header())
 	return buildAPIErrorPayload(msg, r.requestID)
 }
 
@@ -760,7 +762,40 @@ func sanitizeAPIErrorMessage(message string) string {
 	if msg == "" {
 		return ""
 	}
-	return template.HTMLEscapeString(msg)
+	return html.EscapeString(msg)
+}
+
+func sanitizeAPIErrorJSONPayload(p []byte) []byte {
+	var payload any
+	if err := json.Unmarshal(p, &payload); err != nil {
+		return nil
+	}
+	encoded, err := json.Marshal(sanitizeJSONValue(payload))
+	if err != nil {
+		return nil
+	}
+	return append(encoded, '\n')
+}
+
+func sanitizeJSONValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		sanitized := make(map[string]any, len(v))
+		for key, item := range v {
+			sanitized[key] = sanitizeJSONValue(item)
+		}
+		return sanitized
+	case []any:
+		sanitized := make([]any, len(v))
+		for i, item := range v {
+			sanitized[i] = sanitizeJSONValue(item)
+		}
+		return sanitized
+	case string:
+		return html.EscapeString(v)
+	default:
+		return value
+	}
 }
 
 func deriveHTTPLogMessage(status int, snippet string) string {
