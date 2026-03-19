@@ -38,12 +38,14 @@ interface PromotionGateDecision {
   summary: string;
   can_promote: boolean;
   requires_acknowledgement: boolean;
+  comment_required: boolean;
   review_message: string;
   blocking_check_count: number;
   attention_check_count: number;
   checks: PromotionGateCheck[];
   approved: boolean;
   approval?: PromotionGateApproval | null;
+  approval_history: PromotionGateApproval[];
 }
 
 interface PromotionGateApproval {
@@ -53,6 +55,11 @@ interface PromotionGateApproval {
   approved_at: string;
   expires_at?: string | null;
   note: string;
+  revoked_at?: string | null;
+  revoked_by?: number | null;
+  revoked_by_username?: string;
+  revoke_note?: string;
+  state: string;
 }
 
 function normalizeGate(value: unknown): PromotionGateDecision | null {
@@ -66,6 +73,7 @@ function normalizeGate(value: unknown): PromotionGateDecision | null {
     summary: typeof record.summary === 'string' ? record.summary : '',
     can_promote: typeof record.can_promote === 'boolean' ? record.can_promote : false,
     requires_acknowledgement: typeof record.requires_acknowledgement === 'boolean' ? record.requires_acknowledgement : false,
+    comment_required: typeof record.comment_required === 'boolean' ? record.comment_required : false,
     review_message: typeof record.review_message === 'string' ? record.review_message : '',
     blocking_check_count: typeof record.blocking_check_count === 'number' ? record.blocking_check_count : 0,
     attention_check_count: typeof record.attention_check_count === 'number' ? record.attention_check_count : 0,
@@ -78,8 +86,31 @@ function normalizeGate(value: unknown): PromotionGateDecision | null {
           approved_at: typeof approvalRecord.approved_at === 'string' ? approvalRecord.approved_at : '',
           expires_at: typeof approvalRecord.expires_at === 'string' ? approvalRecord.expires_at : null,
           note: typeof approvalRecord.note === 'string' ? approvalRecord.note : '',
+          revoked_at: typeof approvalRecord.revoked_at === 'string' ? approvalRecord.revoked_at : null,
+          revoked_by: typeof approvalRecord.revoked_by === 'number' ? approvalRecord.revoked_by : null,
+          revoked_by_username: typeof approvalRecord.revoked_by_username === 'string' ? approvalRecord.revoked_by_username : '',
+          revoke_note: typeof approvalRecord.revoke_note === 'string' ? approvalRecord.revoke_note : '',
+          state: typeof approvalRecord.state === 'string' ? approvalRecord.state : 'active',
         }
       : null,
+    approval_history: Array.isArray(record.approval_history)
+      ? record.approval_history.map((entry) => {
+          const historyRecord = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {};
+          return {
+            id: typeof historyRecord.id === 'number' ? historyRecord.id : 0,
+            approved_by: typeof historyRecord.approved_by === 'number' ? historyRecord.approved_by : 0,
+            approved_by_username: typeof historyRecord.approved_by_username === 'string' ? historyRecord.approved_by_username : '',
+            approved_at: typeof historyRecord.approved_at === 'string' ? historyRecord.approved_at : '',
+            expires_at: typeof historyRecord.expires_at === 'string' ? historyRecord.expires_at : null,
+            note: typeof historyRecord.note === 'string' ? historyRecord.note : '',
+            revoked_at: typeof historyRecord.revoked_at === 'string' ? historyRecord.revoked_at : null,
+            revoked_by: typeof historyRecord.revoked_by === 'number' ? historyRecord.revoked_by : null,
+            revoked_by_username: typeof historyRecord.revoked_by_username === 'string' ? historyRecord.revoked_by_username : '',
+            revoke_note: typeof historyRecord.revoke_note === 'string' ? historyRecord.revoke_note : '',
+            state: typeof historyRecord.state === 'string' ? historyRecord.state : 'active',
+          };
+        })
+      : [],
     checks: checks.map((check) => {
       const checkRecord = check && typeof check === 'object' ? (check as Record<string, unknown>) : {};
       return {
@@ -158,6 +189,7 @@ export default function DevOpsPromotionsPage() {
   const [loading, setLoading] = useState(true);
   const [promotingId, setPromotingId] = useState<number | null>(null);
   const [approvingId, setApprovingId] = useState<number | null>(null);
+  const [revokingId, setRevokingId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -222,6 +254,17 @@ export default function DevOpsPromotionsPage() {
     }
     const note = window.prompt('Add an approval note for the deployment gate (optional):', '') ?? null;
     if (note === null) return;
+    if (item.gate.comment_required && !note.trim()) {
+      setError('A justification note is required before approving production promotions.');
+      return;
+    }
+    const expiryInput = window.prompt('Approval expiry in hours (default 24, max 168):', '24');
+    if (expiryInput === null) return;
+    const parsedExpiry = Number(expiryInput.trim() || '24');
+    if (!Number.isFinite(parsedExpiry) || parsedExpiry <= 0) {
+      setError('Approval expiry must be a positive number of hours.');
+      return;
+    }
 
     setApprovingId(item.request_id);
     setError('');
@@ -233,7 +276,7 @@ export default function DevOpsPromotionsPage() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ note }),
+        body: JSON.stringify({ note, expires_in_hours: Math.round(parsedExpiry) }),
       });
       if (response.status === 401 || response.status === 403) {
         clearSessionAndRedirect();
@@ -266,6 +309,57 @@ export default function DevOpsPromotionsPage() {
       setError(err instanceof Error ? err.message : 'Failed to approve deployment gate');
     } finally {
       setApprovingId(null);
+    }
+  };
+
+  const revokeGate = async (item: PromotionItem) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      clearSessionAndRedirect();
+      return;
+    }
+    if (!item.gate?.approved) {
+      setNotice('There is no active gate approval to revoke.');
+      return;
+    }
+    const note = window.prompt('Add a revoke note (optional):', '') ?? null;
+    if (note === null) return;
+
+    setRevokingId(item.request_id);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/promotions/${item.request_id}/revoke-gate`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ note }),
+      });
+      if (response.status === 401 || response.status === 403) {
+        clearSessionAndRedirect();
+        return;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to revoke deployment gate approval');
+      }
+      const nextGate = normalizeGate(data?.gate);
+      if (nextGate) {
+        setItems((current) =>
+          current.map((candidate) =>
+            candidate.request_id === item.request_id ? { ...candidate, gate: nextGate } : candidate
+          )
+        );
+      } else {
+        await loadData();
+      }
+      setNotice(`Deployment gate approval revoked for request #${item.request_id}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to revoke deployment gate approval');
+    } finally {
+      setRevokingId(null);
     }
   };
 
@@ -425,6 +519,33 @@ export default function DevOpsPromotionsPage() {
                                 {item.gate.approval.note ? <div style={{ marginTop: 4 }}>Note: {item.gate.approval.note}</div> : null}
                               </div>
                             ) : null}
+                            {item.gate.approval_history.length > 0 ? (
+                              <details>
+                                <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--color-primary)' }}>
+                                  Approval history ({item.gate.approval_history.length})
+                                </summary>
+                                <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                                  {item.gate.approval_history.map((entry) => (
+                                    <div key={`${item.request_id}-approval-${entry.id}`} style={{ border: '1px solid var(--color-border)', borderRadius: 10, padding: 8 }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                                        <strong style={{ fontSize: 12 }}>{entry.approved_by_username || 'reviewer'}</strong>
+                                        <span style={{ textTransform: 'capitalize', fontSize: 11, color: gateTone(entry.state === 'active' ? 'ready' : entry.state === 'revoked' ? 'blocked' : 'attention').color }}>
+                                          {entry.state}
+                                        </span>
+                                      </div>
+                                      <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>
+                                        Approved at {formatDateTime(entry.approved_at)}
+                                      </div>
+                                      {entry.expires_at ? <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>Expires at {formatDateTime(entry.expires_at)}</div> : null}
+                                      {entry.note ? <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>Approval note: {entry.note}</div> : null}
+                                      {entry.revoked_at ? <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>Revoked at {formatDateTime(entry.revoked_at)}</div> : null}
+                                      {entry.revoked_by_username ? <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>Revoked by {entry.revoked_by_username}</div> : null}
+                                      {entry.revoke_note ? <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>Revoke note: {entry.revoke_note}</div> : null}
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            ) : null}
                             {item.gate.checks.length > 0 ? (
                               <details>
                                 <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--color-primary)' }}>Review checks</summary>
@@ -458,10 +579,20 @@ export default function DevOpsPromotionsPage() {
                             <button
                               type="button"
                               className="btn btn-secondary btn-sm"
-                              disabled={approvingId === item.request_id || promotingId === item.request_id}
+                              disabled={approvingId === item.request_id || promotingId === item.request_id || revokingId === item.request_id}
                               onClick={() => void approveGate(item)}
                             >
                               {approvingId === item.request_id ? 'Approving...' : 'Approve gate'}
+                            </button>
+                          ) : null}
+                          {item.gate?.approved ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              disabled={revokingId === item.request_id || promotingId === item.request_id || approvingId === item.request_id}
+                              onClick={() => void revokeGate(item)}
+                            >
+                              {revokingId === item.request_id ? 'Revoking...' : 'Revoke approval'}
                             </button>
                           ) : null}
                           <button
@@ -470,6 +601,7 @@ export default function DevOpsPromotionsPage() {
                             disabled={
                               promotingId === item.request_id ||
                               approvingId === item.request_id ||
+                              revokingId === item.request_id ||
                               !item.next_environment ||
                               item.gate?.status === 'blocked' ||
                               item.gate?.requires_acknowledgement

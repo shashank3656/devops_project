@@ -611,7 +611,12 @@ func enrichPromotionItemsWithDeploymentGates(items []promotionCenterItem) error 
 		if err != nil {
 			return err
 		}
+		history, err := listDeploymentGateApprovals(items[index].RequestID, targetEnvironment, items[index].UpdatedAt)
+		if err != nil {
+			return err
+		}
 		items[index].Gate = buildPromotionGateDecision(targetEnvironment, gate, approval, "", false)
+		items[index].Gate.ApprovalHistory = history
 	}
 
 	return nil
@@ -675,10 +680,16 @@ func evaluatePromotionGateForRequest(req *PRRequest) (*promotionGateDecision, er
 	if err != nil {
 		return nil, err
 	}
-	return buildPromotionGateDecision(targetEnvironment, gate, approval, "", false), nil
+	history, err := listDeploymentGateApprovals(req.ID, targetEnvironment, req.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	decision := buildPromotionGateDecision(targetEnvironment, gate, approval, "", false)
+	decision.ApprovalHistory = history
+	return decision, nil
 }
 
-func approvePromotionGateAsDevops(requestID int, userID int, note string) (*deploymentGateApprovalRecord, *promotionGateDecision, error) {
+func approvePromotionGateAsDevops(requestID int, userID int, note string, expiresInHours int) (*deploymentGateApprovalRecord, *promotionGateDecision, error) {
 	req, err := GetPRRequestByID(requestID)
 	if err != nil {
 		return nil, nil, err
@@ -709,7 +720,17 @@ func approvePromotionGateAsDevops(requestID int, userID int, note string) (*depl
 			return nil, gate, fmt.Errorf("deployment gate approval is not required for this promotion")
 		}
 	}
-	expiresAt := time.Now().Add(24 * time.Hour)
+	trimmedNote := strings.TrimSpace(note)
+	if gate != nil && gate.CommentRequired && trimmedNote == "" {
+		return nil, gate, fmt.Errorf("a justification note is required before approving production promotions")
+	}
+	if expiresInHours <= 0 {
+		expiresInHours = 24
+	}
+	if expiresInHours > 168 {
+		return nil, gate, fmt.Errorf("approval expiry cannot exceed 168 hours")
+	}
+	expiresAt := time.Now().Add(time.Duration(expiresInHours) * time.Hour)
 	approval, err := createDeploymentGateApproval(req, gate, userID, note, &expiresAt)
 	if err != nil {
 		return nil, gate, err
@@ -724,6 +745,34 @@ func approvePromotionGateAsDevops(requestID int, userID int, note string) (*depl
 	}
 	AppendAuditLog(&userID, "deployment_gate_approve", "pr_request", strconv.Itoa(requestID), details)
 	return approval, updatedGate, nil
+}
+
+func revokePromotionGateAsDevops(requestID int, userID int, note string) (*deploymentGateApprovalRecord, *promotionGateDecision, error) {
+	req, err := GetPRRequestByID(requestID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if req == nil {
+		return nil, nil, fmt.Errorf("request not found")
+	}
+	nextEnvironment := nextEnv(req.Env)
+	if nextEnvironment == "" {
+		return nil, nil, fmt.Errorf("request is already at the highest environment")
+	}
+	record, err := revokeDeploymentGateApproval(req.ID, nextEnvironment, req.UpdatedAt, userID, note)
+	if err != nil {
+		return nil, nil, err
+	}
+	updatedGate, err := evaluatePromotionGateForRequest(req)
+	if err != nil {
+		return record, nil, err
+	}
+	details := fmt.Sprintf("gate:%d:%s->%s", requestID, strings.ToLower(strings.TrimSpace(req.Env)), nextEnvironment)
+	if trimmedNote := strings.TrimSpace(note); trimmedNote != "" {
+		details += ":" + trimmedNote
+	}
+	AppendAuditLog(&userID, "deployment_gate_revoke", "pr_request", strconv.Itoa(requestID), details)
+	return record, updatedGate, nil
 }
 
 func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, *promotionGateDecision, error) {
@@ -1201,7 +1250,7 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 	case "POST":
 		path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/devops/promotions/"), "/")
 		parts := strings.Split(path, "/")
-		if len(parts) != 2 || (parts[1] != "promote" && parts[1] != "approve-gate") {
+		if len(parts) != 2 || (parts[1] != "promote" && parts[1] != "approve-gate" && parts[1] != "revoke-gate") {
 			http.NotFound(w, r)
 			return
 		}
@@ -1211,7 +1260,8 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body struct {
-			Note string `json:"note"`
+			Note           string `json:"note"`
+			ExpiresInHours int    `json:"expires_in_hours"`
 		}
 		if r.Body != nil {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
@@ -1220,7 +1270,7 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if parts[1] == "approve-gate" {
-			approval, gate, err := approvePromotionGateAsDevops(requestID, managerID, body.Note)
+			approval, gate, err := approvePromotionGateAsDevops(requestID, managerID, body.Note, body.ExpiresInHours)
 			if err != nil {
 				if gate != nil && gate.Status == "blocked" {
 					if writeErr := writeJSONResponse(w, http.StatusConflict, map[string]any{
@@ -1237,6 +1287,17 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			if err := writeJSONResponse(w, http.StatusOK, map[string]any{"approval": approval, "gate": gate, "status": "ok"}); err != nil {
 				writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotion gate approval response", err)
+			}
+			return
+		}
+		if parts[1] == "revoke-gate" {
+			approval, gate, err := revokePromotionGateAsDevops(requestID, managerID, body.Note)
+			if err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			if err := writeJSONResponse(w, http.StatusOK, map[string]any{"approval": approval, "gate": gate, "status": "ok"}); err != nil {
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotion gate revoke response", err)
 			}
 			return
 		}

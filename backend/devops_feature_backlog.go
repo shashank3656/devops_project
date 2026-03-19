@@ -94,17 +94,19 @@ type deploymentGatePolicyEngine struct {
 }
 
 type promotionGateDecision struct {
-	TargetEnvironment       string                        `json:"target_environment"`
-	Status                  string                        `json:"status"`
-	Summary                 string                        `json:"summary"`
-	CanPromote              bool                          `json:"can_promote"`
-	RequiresAcknowledgement bool                          `json:"requires_acknowledgement"`
-	ReviewMessage           string                        `json:"review_message"`
-	BlockingCheckCount      int                           `json:"blocking_check_count"`
-	AttentionCheckCount     int                           `json:"attention_check_count"`
-	Checks                  []deploymentGateCheck         `json:"checks"`
-	Approved                bool                          `json:"approved"`
-	Approval                *deploymentGateApprovalRecord `json:"approval,omitempty"`
+	TargetEnvironment       string                         `json:"target_environment"`
+	Status                  string                         `json:"status"`
+	Summary                 string                         `json:"summary"`
+	CanPromote              bool                           `json:"can_promote"`
+	RequiresAcknowledgement bool                           `json:"requires_acknowledgement"`
+	CommentRequired         bool                           `json:"comment_required"`
+	ReviewMessage           string                         `json:"review_message"`
+	BlockingCheckCount      int                            `json:"blocking_check_count"`
+	AttentionCheckCount     int                            `json:"attention_check_count"`
+	Checks                  []deploymentGateCheck          `json:"checks"`
+	Approved                bool                           `json:"approved"`
+	Approval                *deploymentGateApprovalRecord  `json:"approval,omitempty"`
+	ApprovalHistory         []deploymentGateApprovalRecord `json:"approval_history,omitempty"`
 }
 
 type expiryTrackerSummary struct {
@@ -712,7 +714,12 @@ func buildPromotionGateDecision(targetEnvironment string, gate *deploymentGateEn
 			} else {
 				decision.CanPromote = false
 				decision.RequiresAcknowledgement = true
-				decision.ReviewMessage = "This promotion requires a persisted deployment gate approval before continuing."
+				decision.CommentRequired = targetEnvironment == "prod"
+				if decision.CommentRequired {
+					decision.ReviewMessage = "This promotion requires a persisted deployment gate approval and a justification note before continuing."
+				} else {
+					decision.ReviewMessage = "This promotion requires a persisted deployment gate approval before continuing."
+				}
 			}
 		default:
 			decision.Status = "ready"
