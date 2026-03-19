@@ -81,6 +81,7 @@ func TestBuildPromotionGateDecisionStatuses(t *testing.T) {
 				{Key: "incident_guard", Label: "Incident guard", Status: "blocked", Detail: "1 active incident."},
 			},
 		},
+		nil,
 		"",
 		false,
 	)
@@ -104,16 +105,51 @@ func TestBuildPromotionGateDecisionStatuses(t *testing.T) {
 				{Key: "change_window", Label: "Change window", Status: "attention", Detail: "Manual confirmation required."},
 			},
 		},
+		nil,
 		"",
 		false,
 	)
-	if !attention.CanPromote {
-		t.Fatalf("expected attention gate to remain promotable after acknowledgement")
+	if attention.CanPromote {
+		t.Fatalf("expected attention gate to wait for persisted approval")
 	}
 	if !attention.RequiresAcknowledgement {
 		t.Fatalf("expected attention gate to require acknowledgement")
 	}
 	if attention.AttentionCheckCount != 1 {
 		t.Fatalf("expected 1 attention check, got %d", attention.AttentionCheckCount)
+	}
+
+	approved := buildPromotionGateDecision(
+		"uat",
+		&deploymentGateEnvironment{
+			Environment: "uat",
+			Status:      "attention",
+			Summary:     "Needs change window review.",
+			Checks: []deploymentGateCheck{
+				{Key: "change_window", Label: "Change window", Status: "attention", Detail: "Manual confirmation required."},
+			},
+		},
+		&deploymentGateApprovalRecord{
+			ID:                 9,
+			RequestID:          55,
+			TargetEnvironment:  "uat",
+			ApprovedBy:         8,
+			ApprovedByUsername: "ops-lead",
+			ApprovedAt:         time.Now(),
+		},
+		"",
+		false,
+	)
+	if !approved.CanPromote {
+		t.Fatalf("expected approved attention gate to become promotable")
+	}
+	if approved.RequiresAcknowledgement {
+		t.Fatalf("expected approved attention gate not to require acknowledgement")
+	}
+	if !approved.Approved {
+		t.Fatalf("expected approved decision to be flagged as approved")
+	}
+	if approved.Status != "ready" {
+		t.Fatalf("expected approved attention gate to become ready, got %q", approved.Status)
 	}
 }

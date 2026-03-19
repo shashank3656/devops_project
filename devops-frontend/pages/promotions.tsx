@@ -42,12 +42,24 @@ interface PromotionGateDecision {
   blocking_check_count: number;
   attention_check_count: number;
   checks: PromotionGateCheck[];
+  approved: boolean;
+  approval?: PromotionGateApproval | null;
+}
+
+interface PromotionGateApproval {
+  id: number;
+  approved_by: number;
+  approved_by_username: string;
+  approved_at: string;
+  expires_at?: string | null;
+  note: string;
 }
 
 function normalizeGate(value: unknown): PromotionGateDecision | null {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
   const checks = Array.isArray(record.checks) ? record.checks : [];
+  const approvalRecord = record.approval && typeof record.approval === 'object' ? (record.approval as Record<string, unknown>) : null;
   return {
     target_environment: typeof record.target_environment === 'string' ? record.target_environment : '',
     status: typeof record.status === 'string' ? record.status : 'attention',
@@ -57,6 +69,17 @@ function normalizeGate(value: unknown): PromotionGateDecision | null {
     review_message: typeof record.review_message === 'string' ? record.review_message : '',
     blocking_check_count: typeof record.blocking_check_count === 'number' ? record.blocking_check_count : 0,
     attention_check_count: typeof record.attention_check_count === 'number' ? record.attention_check_count : 0,
+    approved: typeof record.approved === 'boolean' ? record.approved : false,
+    approval: approvalRecord
+      ? {
+          id: typeof approvalRecord.id === 'number' ? approvalRecord.id : 0,
+          approved_by: typeof approvalRecord.approved_by === 'number' ? approvalRecord.approved_by : 0,
+          approved_by_username: typeof approvalRecord.approved_by_username === 'string' ? approvalRecord.approved_by_username : '',
+          approved_at: typeof approvalRecord.approved_at === 'string' ? approvalRecord.approved_at : '',
+          expires_at: typeof approvalRecord.expires_at === 'string' ? approvalRecord.expires_at : null,
+          note: typeof approvalRecord.note === 'string' ? approvalRecord.note : '',
+        }
+      : null,
     checks: checks.map((check) => {
       const checkRecord = check && typeof check === 'object' ? (check as Record<string, unknown>) : {};
       return {
@@ -121,12 +144,20 @@ function gateTone(status?: string): { background: string; color: string } {
   }
 }
 
+function formatDateTime(value?: string | null): string {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString();
+}
+
 export default function DevOpsPromotionsPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
   const [items, setItems] = useState<PromotionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [promotingId, setPromotingId] = useState<number | null>(null);
+  const [approvingId, setApprovingId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -179,6 +210,65 @@ export default function DevOpsPromotionsPage() {
     void loadData();
   }, [apiUrl]);
 
+  const approveGate = async (item: PromotionItem) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      clearSessionAndRedirect();
+      return;
+    }
+    if (!item.gate?.requires_acknowledgement) {
+      setNotice('This promotion does not need a gate approval.');
+      return;
+    }
+    const note = window.prompt('Add an approval note for the deployment gate (optional):', '') ?? null;
+    if (note === null) return;
+
+    setApprovingId(item.request_id);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/promotions/${item.request_id}/approve-gate`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ note }),
+      });
+      if (response.status === 401 || response.status === 403) {
+        clearSessionAndRedirect();
+        return;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const nextGate = normalizeGate(data?.gate);
+        if (nextGate) {
+          setItems((current) =>
+            current.map((candidate) =>
+              candidate.request_id === item.request_id ? { ...candidate, gate: nextGate } : candidate
+            )
+          );
+        }
+        throw new Error(data?.error || 'Failed to approve deployment gate');
+      }
+      const nextGate = normalizeGate(data?.gate);
+      if (nextGate) {
+        setItems((current) =>
+          current.map((candidate) =>
+            candidate.request_id === item.request_id ? { ...candidate, gate: nextGate } : candidate
+          )
+        );
+      } else {
+        await loadData();
+      }
+      setNotice(`Deployment gate approval recorded for request #${item.request_id}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve deployment gate');
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
   const promote = async (item: PromotionItem) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
@@ -189,26 +279,9 @@ export default function DevOpsPromotionsPage() {
       setError(item.gate.summary || 'This promotion is blocked by deployment gate policy.');
       return;
     }
-
-    let acknowledgeAttention = false;
     if (item.gate?.requires_acknowledgement) {
-      const reviewLines = item.gate.checks
-        .filter((check) => check.status !== 'ready')
-        .map((check) => `- ${check.label}: ${check.detail}`);
-      const confirmed = window.confirm(
-        [
-          item.gate.review_message || 'This promotion requires an explicit operational review.',
-          item.gate.summary,
-          reviewLines.length > 0 ? '' : undefined,
-          ...reviewLines,
-          '',
-          'Continue with acknowledgement and create the downstream request?',
-        ]
-          .filter(Boolean)
-          .join('\n')
-      );
-      if (!confirmed) return;
-      acknowledgeAttention = true;
+      setError(item.gate.review_message || 'A persisted deployment gate approval is required before promotion.');
+      return;
     }
 
     setPromotingId(item.request_id);
@@ -221,7 +294,7 @@ export default function DevOpsPromotionsPage() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ acknowledge_attention: acknowledgeAttention }),
+        body: JSON.stringify({}),
       });
       if (response.status === 401 || response.status === 403) {
         clearSessionAndRedirect();
@@ -333,6 +406,25 @@ export default function DevOpsPromotionsPage() {
                               {item.gate.status}
                             </span>
                             <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{item.gate.summary}</div>
+                            {item.gate.approved && item.gate.approval ? (
+                              <div
+                                style={{
+                                  border: '1px solid rgba(34, 197, 94, 0.3)',
+                                  background: 'rgba(34, 197, 94, 0.08)',
+                                  borderRadius: 10,
+                                  padding: 8,
+                                  fontSize: 12,
+                                  color: 'var(--color-text-muted)',
+                                }}
+                              >
+                                <div style={{ color: 'var(--color-success)', fontWeight: 700 }}>
+                                  Approved by {item.gate.approval.approved_by_username || 'reviewer'}
+                                </div>
+                                <div style={{ marginTop: 4 }}>Approved at {formatDateTime(item.gate.approval.approved_at)}</div>
+                                {item.gate.approval.expires_at ? <div>Expires at {formatDateTime(item.gate.approval.expires_at)}</div> : null}
+                                {item.gate.approval.note ? <div style={{ marginTop: 4 }}>Note: {item.gate.approval.note}</div> : null}
+                              </div>
+                            ) : null}
                             {item.gate.checks.length > 0 ? (
                               <details>
                                 <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--color-primary)' }}>Review checks</summary>
@@ -361,18 +453,32 @@ export default function DevOpsPromotionsPage() {
                           : 'No downstream promotion yet'}
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          disabled={promotingId === item.request_id || !item.next_environment || item.gate?.status === 'blocked'}
-                          onClick={() => void promote(item)}
-                        >
-                          {promotingId === item.request_id
-                            ? 'Promoting...'
-                            : item.gate?.requires_acknowledgement
-                              ? 'Review & Promote'
-                              : 'Promote'}
-                        </button>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {item.gate?.requires_acknowledgement ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              disabled={approvingId === item.request_id || promotingId === item.request_id}
+                              onClick={() => void approveGate(item)}
+                            >
+                              {approvingId === item.request_id ? 'Approving...' : 'Approve gate'}
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            disabled={
+                              promotingId === item.request_id ||
+                              approvingId === item.request_id ||
+                              !item.next_environment ||
+                              item.gate?.status === 'blocked' ||
+                              item.gate?.requires_acknowledgement
+                            }
+                            onClick={() => void promote(item)}
+                          >
+                            {promotingId === item.request_id ? 'Promoting...' : 'Promote'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

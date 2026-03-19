@@ -809,6 +809,27 @@ func MigrateDatabase() error {
 		WHERE COALESCE(devops_portal_sso_mode, '') = ''
 	`)
 
+	// Migration 39: deployment gate approvals for persisted promotion reviews
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS deployment_gate_approvals (
+			id SERIAL PRIMARY KEY,
+			request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+			source_environment VARCHAR(40) NOT NULL DEFAULT '',
+			target_environment VARCHAR(40) NOT NULL DEFAULT '',
+			gate_status VARCHAR(20) NOT NULL DEFAULT 'attention',
+			summary TEXT NOT NULL DEFAULT '',
+			note TEXT NOT NULL DEFAULT '',
+			approved_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			source_request_updated_at TIMESTAMP NOT NULL,
+			approved_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			expires_at TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_deployment_gate_approvals_request_target ON deployment_gate_approvals(request_id, target_environment)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_deployment_gate_approvals_approved_by ON deployment_gate_approvals(approved_by)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_deployment_gate_approvals_expires_at ON deployment_gate_approvals(expires_at)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }
