@@ -22,6 +22,16 @@ func encodeAuthJSON(w http.ResponseWriter, payload interface{}) {
 	}
 }
 
+func normalizeUserNotificationKind(raw string) string {
+	normalized := strings.TrimSpace(strings.ToLower(raw))
+	switch normalized {
+	case "", "approved", "rejected", "pr_created", "sla_breach", "assigned", "project_assigned", "project_access_updated", "project_access_removed", "project_catalog_updated":
+		return normalized
+	default:
+		return ""
+	}
+}
+
 // EnsureDefaultAdmin creates a default admin user if no admin exists (username/password from env)
 func EnsureDefaultAdmin() {
 	if DB == nil {
@@ -861,7 +871,7 @@ func meNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	unreadOnly := r.URL.Query().Get("unread_only") == "1" || r.URL.Query().Get("unread_only") == "true"
-	kind := strings.TrimSpace(r.URL.Query().Get("kind"))
+	kind := normalizeUserNotificationKind(r.URL.Query().Get("kind"))
 	list, _ := ListUserNotificationsFiltered(userID, limit, offset, unreadOnly, kind)
 	unreadCount, _ := CountUserNotifications(userID, true, "")
 	totalCount, _ := CountUserNotifications(userID, unreadOnly, kind)
