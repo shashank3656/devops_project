@@ -850,6 +850,52 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_expiry_tracker_actions_updated_by ON expiry_tracker_actions(updated_by)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_expiry_tracker_actions_updated_at ON expiry_tracker_actions(updated_at)")
 
+	// Migration 41: incident postmortem workspace records
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS incident_postmortems (
+			id SERIAL PRIMARY KEY,
+			incident_id INTEGER NOT NULL UNIQUE,
+			request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'draft',
+			impact_summary TEXT NOT NULL DEFAULT '',
+			root_cause TEXT NOT NULL DEFAULT '',
+			detection_summary TEXT NOT NULL DEFAULT '',
+			mitigation_summary TEXT NOT NULL DEFAULT '',
+			corrective_actions TEXT NOT NULL DEFAULT '',
+			follow_up_owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			review_notes TEXT NOT NULL DEFAULT '',
+			updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_incident_postmortems_request_id ON incident_postmortems(request_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_incident_postmortems_project_id ON incident_postmortems(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_incident_postmortems_status ON incident_postmortems(status)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_incident_postmortems_follow_up_owner ON incident_postmortems(follow_up_owner_user_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_incident_postmortems_updated_at ON incident_postmortems(updated_at)")
+
+	// Migration 42: rollback console operation audit
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS rollback_operations (
+			id SERIAL PRIMARY KEY,
+			source_request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			rollback_request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			history_id INTEGER REFERENCES request_config_history(id) ON DELETE SET NULL,
+			project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+			reason TEXT NOT NULL DEFAULT '',
+			notes TEXT NOT NULL DEFAULT '',
+			approved_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_rollback_operations_source_request_id ON rollback_operations(source_request_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_rollback_operations_rollback_request_id ON rollback_operations(rollback_request_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_rollback_operations_project_id ON rollback_operations(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_rollback_operations_approved_by ON rollback_operations(approved_by)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_rollback_operations_created_at ON rollback_operations(created_at)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }

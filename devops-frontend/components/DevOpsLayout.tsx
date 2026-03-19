@@ -60,11 +60,17 @@ const PAGE_TITLES: Record<string, string> = {
   '/change-calendar': 'Change Calendar',
   '/project-operations': 'Project Operations',
   '/service-heatmap': 'Service Heatmap',
+  '/change-risk': 'Change Risk',
+  '/environment-drift': 'Environment Drift',
+  '/ops-command-center': 'Ops Command Center',
+  '/project-dependencies': 'Project Dependencies',
   '/k8s': 'K8s Dashboard',
   '/runbooks': 'Project Runbooks',
   '/incidents': 'Incident Panel',
+  '/incident-workspace': 'Incident Workspace',
   '/access-overrides': 'Access Overrides',
   '/promotions': 'Promotion Center',
+  '/rollback-console': 'Rollback Console',
   '/gate-approvals': 'Gate Approval Audit',
   '/gate-policies': 'Gate Policies',
   '/retry-center': 'Retry Center',
@@ -343,10 +349,16 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     baseNavItems.push({ href: '/change-calendar', label: 'Change Calendar', Icon: IconCalendar });
     baseNavItems.push({ href: '/project-operations', label: 'Project Operations', Icon: IconWorkload });
     baseNavItems.push({ href: '/service-heatmap', label: 'Service Heatmap', Icon: IconHeatmap });
+    baseNavItems.push({ href: '/change-risk', label: 'Change Risk', Icon: IconAlertTriangle });
+    baseNavItems.push({ href: '/environment-drift', label: 'Environment Drift', Icon: IconRefreshCw });
+    baseNavItems.push({ href: '/ops-command-center', label: 'Ops Command Center', Icon: IconAlertTriangle });
+    baseNavItems.push({ href: '/project-dependencies', label: 'Project Dependencies', Icon: IconHeatmap });
     baseNavItems.push({ href: '/runbooks', label: 'Runbooks', Icon: IconBookOpen });
     baseNavItems.push({ href: '/incidents', label: 'Incidents', Icon: IconAlertTriangle });
+    baseNavItems.push({ href: '/incident-workspace', label: 'Incident Workspace', Icon: IconBookOpen });
     baseNavItems.push({ href: '/access-overrides', label: 'Access Overrides', Icon: IconKey });
     baseNavItems.push({ href: '/promotions', label: 'Promotion Center', Icon: IconArrowUpRight });
+    baseNavItems.push({ href: '/rollback-console', label: 'Rollback Console', Icon: IconRefreshCw });
     baseNavItems.push({ href: '/gate-approvals', label: 'Gate Audit', Icon: IconShield });
     baseNavItems.push({ href: '/gate-policies', label: 'Gate Policies', Icon: IconShield });
     baseNavItems.push({ href: '/retry-center', label: 'Retry Center', Icon: IconRefreshCw });
