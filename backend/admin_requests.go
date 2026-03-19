@@ -53,28 +53,36 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Date-wise filter: ?from=YYYY-MM-DD&to=YYYY-MM-DD or ?period=today|week|month
 	var fromDate, toDate time.Time
+	filterPeriod := ""
+	filterFrom := ""
+	filterTo := ""
 	now := time.Now()
-	if period := r.URL.Query().Get("period"); period != "" {
+	if period := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("period"))); period != "" {
 		switch period {
 		case "today":
+			filterPeriod = period
 			fromDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 			toDate = fromDate
 		case "week":
+			filterPeriod = period
 			fromDate = now.AddDate(0, 0, -6)
 			fromDate = time.Date(fromDate.Year(), fromDate.Month(), fromDate.Day(), 0, 0, 0, 0, fromDate.Location())
 			toDate = now
 		case "month":
+			filterPeriod = period
 			fromDate = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 			toDate = now
 		}
 	}
 	if fromStr := r.URL.Query().Get("from"); fromStr != "" {
 		if t, err := time.Parse("2006-01-02", fromStr); err == nil {
+			filterFrom = t.Format("2006-01-02")
 			fromDate = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 		}
 	}
 	if toStr := r.URL.Query().Get("to"); toStr != "" {
 		if t, err := time.Parse("2006-01-02", toStr); err == nil {
+			filterTo = t.Format("2006-01-02")
 			toDate = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 		}
 	}
@@ -90,9 +98,9 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	filterKey := []string{
-		r.URL.Query().Get("period"),
-		r.URL.Query().Get("from"),
-		r.URL.Query().Get("to"),
+		filterPeriod,
+		filterFrom,
+		filterTo,
 	}
 	resp, err := cacheJSON[map[string]interface{}](cacheNamespaceAdmin, 90*time.Second, filterKey, func() (map[string]interface{}, error) {
 		cachedResp := map[string]interface{}{

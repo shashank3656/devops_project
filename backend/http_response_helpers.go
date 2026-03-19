@@ -12,15 +12,13 @@ func writeJSONResponse(w http.ResponseWriter, status int, payload interface{}) e
 	if status <= 0 {
 		status = http.StatusOK
 	}
-	if contentType := strings.TrimSpace(w.Header().Get("Content-Type")); contentType == "" {
-		w.Header().Set("Content-Type", "application/json")
-	}
+	setSafeJSONResponseHeaders(w.Header())
 	w.WriteHeader(status)
 	return json.NewEncoder(w).Encode(payload)
 }
 
 func writeAPIError(w http.ResponseWriter, r *http.Request, status int, message string, cause error) {
-	msg := strings.TrimSpace(message)
+	msg := sanitizeAPIErrorMessage(message)
 	if msg == "" {
 		msg = strings.TrimSpace(http.StatusText(status))
 	}
@@ -49,7 +47,7 @@ func writeAPIError(w http.ResponseWriter, r *http.Request, status int, message s
 		payload["span_id"] = spanID
 	}
 	if cause != nil {
-		payload["cause"] = cause.Error()
+		payload["cause"] = sanitizeAPIErrorMessage(cause.Error())
 	}
 
 	if err := writeJSONResponse(w, status, payload); err != nil {
@@ -85,6 +83,14 @@ func writeAPIError(w http.ResponseWriter, r *http.Request, status int, message s
 		spanID,
 		msg,
 	)
+}
+
+func setSafeJSONResponseHeaders(header http.Header) {
+	if header == nil {
+		return
+	}
+	header.Set("Content-Type", "application/json; charset=utf-8")
+	header.Set("X-Content-Type-Options", "nosniff")
 }
 
 func writeMethodNotAllowed(w http.ResponseWriter, r *http.Request, allowed ...string) {
