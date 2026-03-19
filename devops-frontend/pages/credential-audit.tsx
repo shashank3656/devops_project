@@ -30,6 +30,42 @@ interface ProjectSummary {
   code: string;
 }
 
+interface ExpiryTrackerSummary {
+  total_items: number;
+  credential_items: number;
+  secret_items: number;
+  certificate_items: number;
+  expired_count: number;
+  expiring_within_30_days: number;
+  expiring_within_60_days: number;
+  healthy_count: number;
+}
+
+interface ExpiryTrackerItem {
+  category: string;
+  source: string;
+  project_id?: number;
+  project_name?: string;
+  project_code?: string;
+  cloud?: string;
+  environment?: string;
+  cluster_name?: string;
+  namespace?: string;
+  resource_name: string;
+  resource_type: string;
+  owner?: string;
+  created_at?: string;
+  expires_at?: string;
+  days_remaining: number;
+  status: string;
+  recommendation: string;
+}
+
+interface ExpiryTrackerPayload {
+  summary: ExpiryTrackerSummary;
+  items: ExpiryTrackerItem[];
+}
+
 const CLOUD_BADGES: Record<string, { bg: string; color: string }> = {
   AWS: { bg: '#ea580c', color: '#fff' },
   GCP: { bg: '#2563eb', color: '#fff' },
@@ -40,6 +76,7 @@ export default function CredentialAuditPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
   const [entries, setEntries] = useState<CredentialAuditEntry[]>([]);
+  const [expiryTracker, setExpiryTracker] = useState<ExpiryTrackerPayload | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -55,6 +92,8 @@ export default function CredentialAuditPage() {
       return;
     }
     setLoading(true);
+    setError('');
+    setExpiryTracker(null);
     const params = new URLSearchParams();
     params.set('limit', '100');
     if (cloudFilter) params.set('cloud', cloudFilter);
@@ -73,7 +112,8 @@ export default function CredentialAuditPage() {
       })
       .then((data) => {
         if (data?.entries) setEntries(data.entries);
-        else if (data?.error) setError(data.error);
+        setExpiryTracker(data?.expiry_tracker || null);
+        if (data?.error) setError(data.error);
       })
       .catch(() => setError('Failed to load credential audit'))
       .finally(() => setLoading(false));
@@ -115,6 +155,19 @@ export default function CredentialAuditPage() {
         URL.revokeObjectURL(url);
       })
       .catch(() => {});
+  };
+
+  const statusTone = (status?: string): { background: string; color: string } => {
+    switch (status) {
+      case 'expired':
+        return { background: 'var(--color-danger-bg)', color: 'var(--color-danger)' };
+      case 'expiring_30d':
+        return { background: 'rgba(250, 204, 21, 0.18)', color: '#facc15' };
+      case 'expiring_60d':
+        return { background: 'var(--color-warning-bg)', color: 'var(--color-warning)' };
+      default:
+        return { background: 'var(--color-success-bg)', color: 'var(--color-success)' };
+    }
   };
 
   return (
@@ -240,6 +293,107 @@ export default function CredentialAuditPage() {
           </section>
 
           {error && <div className="alert alert-error">{error}</div>}
+
+          {expiryTracker ? (
+            <>
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Expiry Tracker</span>
+                    <h2 className="portal-surface__title">Secrets and certificate review windows</h2>
+                    <p className="portal-surface__subtitle">
+                      Phase-one expiry visibility combines real credential events with project cluster connection review windows.
+                    </p>
+                  </div>
+                </div>
+                <div className="portal-stat-grid">
+                  <article className="portal-stat-card">
+                    <span className="portal-stat-card__label">Tracked items</span>
+                    <strong className="portal-stat-card__value">{expiryTracker.summary.total_items}</strong>
+                    <p className="portal-stat-card__copy">Credentials {expiryTracker.summary.credential_items} · Secrets {expiryTracker.summary.secret_items} · Certificates {expiryTracker.summary.certificate_items}</p>
+                  </article>
+                  <article className="portal-stat-card">
+                    <span className="portal-stat-card__label">Expired</span>
+                    <strong className="portal-stat-card__value">{expiryTracker.summary.expired_count}</strong>
+                    <p className="portal-stat-card__copy">Items already outside the safe review or rotation window.</p>
+                  </article>
+                  <article className="portal-stat-card">
+                    <span className="portal-stat-card__label">Next 30 days</span>
+                    <strong className="portal-stat-card__value">{expiryTracker.summary.expiring_within_30_days}</strong>
+                    <p className="portal-stat-card__copy">Immediate rotation and certificate review attention required.</p>
+                  </article>
+                  <article className="portal-stat-card">
+                    <span className="portal-stat-card__label">Next 60 days</span>
+                    <strong className="portal-stat-card__value">{expiryTracker.summary.expiring_within_60_days}</strong>
+                    <p className="portal-stat-card__copy">Upcoming rotation pressure that should enter planning now.</p>
+                  </article>
+                  <article className="portal-stat-card">
+                    <span className="portal-stat-card__label">Healthy</span>
+                    <strong className="portal-stat-card__value">{expiryTracker.summary.healthy_count}</strong>
+                    <p className="portal-stat-card__copy">Tracked items still outside the active risk window.</p>
+                  </article>
+                </div>
+              </section>
+
+              <section className="portal-surface portal-surface--table">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Rotation Queue</span>
+                    <h2 className="portal-surface__title">Expiry watchlist</h2>
+                  </div>
+                </div>
+                <div className="table-wrap">
+                  <table className="credential-audit-table">
+                    <thead>
+                      <tr>
+                        <th>Resource</th>
+                        <th>Category</th>
+                        <th>Project</th>
+                        <th>Cloud / Env</th>
+                        <th>Namespace</th>
+                        <th>Expires</th>
+                        <th>Days left</th>
+                        <th>Status</th>
+                        <th>Recommendation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {expiryTracker.items.map((item) => {
+                        const tone = statusTone(item.status);
+                        return (
+                          <tr key={`${item.category}-${item.resource_name}-${item.namespace || item.project_code || 'global'}`}>
+                            <td>
+                              <strong>{item.resource_name}</strong>
+                              <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.resource_type}</div>
+                            </td>
+                            <td>{item.category}</td>
+                            <td>
+                              {item.project_name ? (
+                                <div>
+                                  <strong>{item.project_name}</strong>
+                                  {item.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.project_code}</div> : null}
+                                </div>
+                              ) : '—'}
+                            </td>
+                            <td>{[item.cloud, item.environment].filter(Boolean).join(' / ') || '—'}</td>
+                            <td>{item.namespace || item.cluster_name || '—'}</td>
+                            <td>{item.expires_at ? new Date(item.expires_at).toLocaleDateString() : '—'}</td>
+                            <td>{item.days_remaining}</td>
+                            <td>
+                              <span style={{ ...tone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+                                {item.status}
+                              </span>
+                            </td>
+                            <td style={{ minWidth: 260 }}>{item.recommendation}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
+          ) : null}
 
           {loading ? (
             <section className="portal-surface">

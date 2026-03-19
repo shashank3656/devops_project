@@ -56,6 +56,38 @@ interface Summary {
   warning_event_count: number;
 }
 
+interface WorkloadHealthSummary {
+  healthy_deployments: number;
+  degraded_deployments: number;
+  blocked_deployments: number;
+  scaled_down_deployments: number;
+  restarting_pods: number;
+  non_running_pods: number;
+  warning_logs: number;
+  unhealthy_namespaces: number;
+}
+
+interface NamespaceHealthItem {
+  namespace: string;
+  cluster_name: string;
+  status: string;
+  issue_count: number;
+  restarting_pods: number;
+  warning_logs: number;
+  affected_deployments: number;
+}
+
+interface WorkloadSpotlightItem {
+  name: string;
+  namespace: string;
+  cluster_name: string;
+  status: string;
+  ready_replicas: number;
+  replicas: number;
+  restart_count: number;
+  warning_count: number;
+}
+
 interface NamespaceItem {
   name: string;
   status: string;
@@ -175,8 +207,11 @@ interface K8sOverviewData {
   namespaces: string[];
   environments: string[];
   summary: Summary;
+  health_summary: WorkloadHealthSummary;
   namespace_items: NamespaceItem[];
+  namespace_health: NamespaceHealthItem[];
   deployments: DeploymentItem[];
+  workload_spotlights: WorkloadSpotlightItem[];
   pods: PodItem[];
   logs: LogItem[];
   replicasets: ReplicaSetItem[];
@@ -290,8 +325,20 @@ function normalizeOverviewData(value: Partial<K8sOverviewData> | null | undefine
       ingress_count: typeof value.summary?.ingress_count === 'number' ? value.summary.ingress_count : 0,
       warning_event_count: typeof value.summary?.warning_event_count === 'number' ? value.summary.warning_event_count : 0,
     },
+    health_summary: {
+      healthy_deployments: typeof value.health_summary?.healthy_deployments === 'number' ? value.health_summary.healthy_deployments : 0,
+      degraded_deployments: typeof value.health_summary?.degraded_deployments === 'number' ? value.health_summary.degraded_deployments : 0,
+      blocked_deployments: typeof value.health_summary?.blocked_deployments === 'number' ? value.health_summary.blocked_deployments : 0,
+      scaled_down_deployments: typeof value.health_summary?.scaled_down_deployments === 'number' ? value.health_summary.scaled_down_deployments : 0,
+      restarting_pods: typeof value.health_summary?.restarting_pods === 'number' ? value.health_summary.restarting_pods : 0,
+      non_running_pods: typeof value.health_summary?.non_running_pods === 'number' ? value.health_summary.non_running_pods : 0,
+      warning_logs: typeof value.health_summary?.warning_logs === 'number' ? value.health_summary.warning_logs : 0,
+      unhealthy_namespaces: typeof value.health_summary?.unhealthy_namespaces === 'number' ? value.health_summary.unhealthy_namespaces : 0,
+    },
     namespace_items: Array.isArray(value.namespace_items) ? value.namespace_items as NamespaceItem[] : [],
+    namespace_health: Array.isArray(value.namespace_health) ? value.namespace_health as NamespaceHealthItem[] : [],
     deployments: Array.isArray(value.deployments) ? value.deployments as DeploymentItem[] : [],
+    workload_spotlights: Array.isArray(value.workload_spotlights) ? value.workload_spotlights as WorkloadSpotlightItem[] : [],
     pods: Array.isArray(value.pods) ? value.pods as PodItem[] : [],
     logs: Array.isArray(value.logs) ? value.logs as LogItem[] : [],
     replicasets: Array.isArray(value.replicasets) ? value.replicasets as ReplicaSetItem[] : [],
@@ -467,10 +514,28 @@ export default function DevOpsK8sPage() {
     const serviceAccounts = overview.service_accounts.filter((item) => hasWorkload(item.name));
     const configmaps = overview.configmaps.filter((item) => hasWorkload(item.name));
     const podNamespaces = new Set(pods.map((item) => item.namespace));
-    const namespaceItems = overview.namespace_items.filter((item) => podNamespaces.has(item.name));
+    const deploymentNamespaces = new Set(deployments.map((item) => item.namespace));
+    const visibleNamespaces = new Set([...podNamespaces, ...deploymentNamespaces]);
+    const namespaceItems = overview.namespace_items.filter((item) => visibleNamespaces.has(item.name));
+    const namespaceHealth = overview.namespace_health.filter((item) => visibleNamespaces.has(item.namespace));
+    const workloadSpotlights = overview.workload_spotlights.filter((item) => hasWorkload(item.name));
+    const healthSummary = {
+      healthy_deployments: deployments.filter((item) => item.status.toLowerCase() === 'healthy').length,
+      degraded_deployments: deployments.filter((item) => item.status.toLowerCase() === 'degraded').length,
+      blocked_deployments: deployments.filter((item) => item.status.toLowerCase() === 'blocked').length,
+      scaled_down_deployments: deployments.filter((item) => item.status.toLowerCase() === 'scaled-down').length,
+      restarting_pods: pods.filter((item) => item.restarts > 0).length,
+      non_running_pods: pods.filter((item) => {
+        const status = item.status.toLowerCase();
+        return status !== 'running' && status !== 'completed' && status !== 'succeeded';
+      }).length,
+      warning_logs: logs.filter((item) => item.level.toLowerCase() !== 'info').length,
+      unhealthy_namespaces: namespaceHealth.length,
+    };
 
     return {
       ...overview,
+      health_summary: healthSummary,
       deployments,
       pods,
       logs,
@@ -482,6 +547,8 @@ export default function DevOpsK8sPage() {
       service_accounts: serviceAccounts,
       configmaps,
       namespace_items: namespaceItems,
+      namespace_health: namespaceHealth,
+      workload_spotlights: workloadSpotlights,
       summary: {
         ...overview.summary,
         namespace_count: namespaceItems.length,
@@ -1042,6 +1109,85 @@ export default function DevOpsK8sPage() {
               <article className="portal-surface portal-surface--tight"><span className="portal-surface__eyebrow">Services</span><h3 className="portal-surface__title">{dashboardView?.summary.service_count || 0}</h3></article>
               <article className="portal-surface portal-surface--tight"><span className="portal-surface__eyebrow">Ingress</span><h3 className="portal-surface__title">{dashboardView?.summary.ingress_count || 0}</h3></article>
               <article className="portal-surface portal-surface--tight"><span className="portal-surface__eyebrow">Warnings</span><h3 className="portal-surface__title">{dashboardView?.summary.warning_event_count || 0}</h3></article>
+            </section>
+
+            <section className="portal-stat-grid" style={{ marginBottom: 24 }}>
+              <article className="portal-stat-card">
+                <span className="portal-stat-card__label">Restarting pods</span>
+                <strong className="portal-stat-card__value">{dashboardView?.health_summary.restarting_pods || 0}</strong>
+                <p className="portal-stat-card__copy">Pods with restart activity under the active filter set.</p>
+              </article>
+              <article className="portal-stat-card">
+                <span className="portal-stat-card__label">Non-running pods</span>
+                <strong className="portal-stat-card__value">{dashboardView?.health_summary.non_running_pods || 0}</strong>
+                <p className="portal-stat-card__copy">Pods not currently in a stable running state.</p>
+              </article>
+              <article className="portal-stat-card">
+                <span className="portal-stat-card__label">Warning logs</span>
+                <strong className="portal-stat-card__value">{dashboardView?.health_summary.warning_logs || 0}</strong>
+                <p className="portal-stat-card__copy">Log events above `info` severity from visible workloads.</p>
+              </article>
+              <article className="portal-stat-card">
+                <span className="portal-stat-card__label">Unhealthy namespaces</span>
+                <strong className="portal-stat-card__value">{dashboardView?.health_summary.unhealthy_namespaces || 0}</strong>
+                <p className="portal-stat-card__copy">Namespaces currently showing workload or signal issues.</p>
+              </article>
+            </section>
+
+            <section className="portal-grid" style={{ marginBottom: 24, gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
+              <article className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Namespace Watchlist</span>
+                    <h2 className="portal-surface__title">Cluster pressure by namespace</h2>
+                  </div>
+                </div>
+                {dashboardView?.namespace_health.length ? (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {dashboardView.namespace_health.map((item) => (
+                      <div key={`${item.cluster_name}-${item.namespace}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                          <strong>{item.namespace}</strong>
+                          <span>{item.status}</span>
+                        </div>
+                        <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                          {item.cluster_name} · Issues {item.issue_count} · Deployments {item.affected_deployments}
+                        </p>
+                        <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                          Restarts {item.restarting_pods} · Warning logs {item.warning_logs}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : <div className="empty-state">No unhealthy namespaces for the current filter set.</div>}
+              </article>
+
+              <article className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Workload Spotlight</span>
+                    <h2 className="portal-surface__title">Degraded workloads</h2>
+                  </div>
+                </div>
+                {dashboardView?.workload_spotlights.length ? (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {dashboardView.workload_spotlights.map((item) => (
+                      <div key={`${item.cluster_name}-${item.namespace}-${item.name}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                          <strong>{item.name}</strong>
+                          <span>{item.status}</span>
+                        </div>
+                        <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                          {item.cluster_name} · {item.namespace} · Ready {item.ready_replicas}/{item.replicas}
+                        </p>
+                        <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                          Restarts {item.restart_count} · Warning logs {item.warning_count}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : <div className="empty-state">No degraded workloads for the current filter set.</div>}
+              </article>
             </section>
 
             <section className="portal-surface">

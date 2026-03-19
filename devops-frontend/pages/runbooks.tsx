@@ -1,4 +1,5 @@
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -48,11 +49,19 @@ function clearSessionAndRedirect() {
   window.location.assign('/login');
 }
 
+function normalizeQueryValue(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
 export default function DevOpsRunbooksPage() {
+  const router = useRouter();
   const apiUrl = useApiUrl();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [runbooks, setRunbooks] = useState<Runbook[]>([]);
   const [projectId, setProjectId] = useState('');
+  const [libraryProjectId, setLibraryProjectId] = useState('');
+  const [libraryService, setLibraryService] = useState('');
   const [service, setService] = useState('');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -64,9 +73,14 @@ export default function DevOpsRunbooksPage() {
   const [notice, setNotice] = useState('');
 
   const selectedProjectRunbooks = useMemo(() => {
-    if (!projectId) return runbooks;
-    return runbooks.filter((runbook) => String(runbook.project_id) === projectId);
-  }, [projectId, runbooks]);
+    return runbooks.filter((runbook) => {
+      if (libraryProjectId && String(runbook.project_id) !== libraryProjectId) return false;
+      if (libraryService && runbook.service.trim().toLowerCase() !== libraryService.trim().toLowerCase()) return false;
+      return true;
+    });
+  }, [libraryProjectId, libraryService, runbooks]);
+
+  const hasLibraryFilters = Boolean(libraryProjectId || libraryService);
 
   const loadData = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -100,6 +114,12 @@ export default function DevOpsRunbooksPage() {
   useEffect(() => {
     void loadData();
   }, [apiUrl]);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    setLibraryProjectId(normalizeQueryValue(router.query.project_id));
+    setLibraryService(normalizeQueryValue(router.query.service));
+  }, [router.isReady, router.query.project_id, router.query.service]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -199,6 +219,28 @@ export default function DevOpsRunbooksPage() {
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
+        {hasLibraryFilters ? (
+          <div className="alert alert-info">
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span>
+                Showing runbooks
+                {libraryProjectId ? ` for project #${libraryProjectId}` : ''}
+                {libraryService ? ` for ${libraryService}` : ''}.
+              </span>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setLibraryProjectId('');
+                  setLibraryService('');
+                  void router.push('/runbooks');
+                }}
+              >
+                Clear filters
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <section className="portal-surface">
           <div className="portal-surface__header">
@@ -251,10 +293,32 @@ export default function DevOpsRunbooksPage() {
               <h2 className="portal-surface__title">Available runbooks</h2>
             </div>
           </div>
+          <div className="portal-form-grid" style={{ marginBottom: 16 }}>
+            <label className="label">
+              Filter by project
+              <select className="input" value={libraryProjectId} onChange={(event) => setLibraryProjectId(event.target.value)}>
+                <option value="">All projects</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+                ))}
+              </select>
+            </label>
+            <label className="label">
+              Filter by service
+              <input
+                className="input"
+                value={libraryService}
+                onChange={(event) => setLibraryService(event.target.value)}
+                placeholder="eks, rds, networking"
+              />
+            </label>
+          </div>
           {loading ? (
             <div className="empty-state">Loading runbooks...</div>
           ) : selectedProjectRunbooks.length === 0 ? (
-            <div className="empty-state">No runbooks yet.</div>
+            <div className="empty-state">
+              {hasLibraryFilters ? 'No runbooks match the current filters.' : 'No runbooks yet.'}
+            </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table className="templates-table">

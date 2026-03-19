@@ -17,6 +17,7 @@ import (
 )
 
 func encodeAuthJSON(w http.ResponseWriter, payload interface{}) {
+	setSafeJSONResponseHeaders(w.Header())
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		log.Printf("auth response encode failed: %v", err)
 	}
@@ -30,6 +31,18 @@ func normalizeUserNotificationKind(raw string) string {
 	default:
 		return ""
 	}
+}
+
+func parseRFC3339Query(raw string) (time.Time, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return time.Time{}, false
+	}
+	parsed, err := time.Parse(time.RFC3339, trimmed)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed, true
 }
 
 // EnsureDefaultAdmin creates a default admin user if no admin exists (username/password from env)
@@ -876,7 +889,7 @@ func meNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	unreadCount, _ := CountUserNotifications(userID, true, "")
 	totalCount, _ := CountUserNotifications(userID, unreadOnly, kind)
 	countsByKind, _ := CountUserNotificationsByKind(userID)
-	sinceStr := r.URL.Query().Get("since")
+	sinceStr := strings.TrimSpace(r.URL.Query().Get("since"))
 	resp := map[string]interface{}{
 		"notifications":  list,
 		"unread_count":   unreadCount,
@@ -886,13 +899,11 @@ func meNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 		"limit":          limit,
 		"status":         "ok",
 	}
-	if sinceStr != "" {
-		if t, err := time.Parse(time.RFC3339, sinceStr); err == nil {
-			count, _ := GetUserRequestsUpdatedSince(userID, t)
-			resp["updated_count"] = count
-		}
+	if sinceTime, ok := parseRFC3339Query(sinceStr); ok {
+		count, _ := GetUserRequestsUpdatedSince(userID, sinceTime)
+		resp["updated_count"] = count
 	}
-	encodeAuthJSON(w, resp)
+	encodeAuthJSON(w, sanitizeJSONValue(resp))
 }
 
 type ChangePasswordRequest struct {
