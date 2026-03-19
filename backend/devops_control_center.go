@@ -546,6 +546,7 @@ func enrichPromotionItemsWithDeploymentGates(items []promotionCenterItem) error 
 			items[index].Gate = buildPromotionGateDecision(
 				targetEnvironment,
 				nil,
+				nil,
 				"This request is already in the highest configured environment and cannot be promoted further.",
 				true,
 			)
@@ -555,6 +556,7 @@ func enrichPromotionItemsWithDeploymentGates(items []promotionCenterItem) error 
 		if items[index].ProjectID == nil || *items[index].ProjectID <= 0 {
 			items[index].Gate = buildPromotionGateDecision(
 				targetEnvironment,
+				nil,
 				nil,
 				"This request is not linked to a project catalog entry. Review it manually before promotion.",
 				false,
@@ -587,6 +589,7 @@ func enrichPromotionItemsWithDeploymentGates(items []promotionCenterItem) error 
 			items[index].Gate = buildPromotionGateDecision(
 				targetEnvironment,
 				nil,
+				nil,
 				"This request references a project that is no longer available in the catalog. Review it manually before promotion.",
 				false,
 			)
@@ -598,12 +601,17 @@ func enrichPromotionItemsWithDeploymentGates(items []promotionCenterItem) error 
 			items[index].Gate = buildPromotionGateDecision(
 				targetEnvironment,
 				nil,
+				nil,
 				fmt.Sprintf("%s is not configured as a deployment gate target for this project.", strings.ToUpper(strings.TrimSpace(targetEnvironment))),
 				true,
 			)
 			continue
 		}
-		items[index].Gate = buildPromotionGateDecision(targetEnvironment, gate, "", false)
+		approval, err := getActiveDeploymentGateApproval(items[index].RequestID, targetEnvironment, items[index].UpdatedAt)
+		if err != nil {
+			return err
+		}
+		items[index].Gate = buildPromotionGateDecision(targetEnvironment, gate, approval, "", false)
 	}
 
 	return nil
@@ -611,13 +619,14 @@ func enrichPromotionItemsWithDeploymentGates(items []promotionCenterItem) error 
 
 func evaluatePromotionGateForRequest(req *PRRequest) (*promotionGateDecision, error) {
 	if req == nil {
-		return buildPromotionGateDecision("", nil, "The source request could not be loaded for gate evaluation.", true), nil
+		return buildPromotionGateDecision("", nil, nil, "The source request could not be loaded for gate evaluation.", true), nil
 	}
 
 	targetEnvironment := nextEnv(req.Env)
 	if strings.TrimSpace(targetEnvironment) == "" {
 		return buildPromotionGateDecision(
 			req.Env,
+			nil,
 			nil,
 			"This request is already in the highest configured environment and cannot be promoted further.",
 			true,
@@ -627,6 +636,7 @@ func evaluatePromotionGateForRequest(req *PRRequest) (*promotionGateDecision, er
 	if req.ProjectID == nil || *req.ProjectID <= 0 {
 		return buildPromotionGateDecision(
 			targetEnvironment,
+			nil,
 			nil,
 			"This request is not linked to a project catalog entry. Review it manually before promotion.",
 			false,
@@ -640,6 +650,7 @@ func evaluatePromotionGateForRequest(req *PRRequest) (*promotionGateDecision, er
 	if project == nil {
 		return buildPromotionGateDecision(
 			targetEnvironment,
+			nil,
 			nil,
 			"This request references a project that is no longer available in the catalog. Review it manually before promotion.",
 			false,
@@ -655,14 +666,67 @@ func evaluatePromotionGateForRequest(req *PRRequest) (*promotionGateDecision, er
 		return buildPromotionGateDecision(
 			targetEnvironment,
 			nil,
+			nil,
 			fmt.Sprintf("%s is not configured as a deployment gate target for this project.", strings.ToUpper(strings.TrimSpace(targetEnvironment))),
 			true,
 		), nil
 	}
-	return buildPromotionGateDecision(targetEnvironment, gate, "", false), nil
+	approval, err := getActiveDeploymentGateApproval(req.ID, targetEnvironment, req.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return buildPromotionGateDecision(targetEnvironment, gate, approval, "", false), nil
 }
 
-func promoteRequestAsDevops(requestID int, userID int, acknowledgeAttention bool) (*PRRequest, *promotionGateDecision, error) {
+func approvePromotionGateAsDevops(requestID int, userID int, note string) (*deploymentGateApprovalRecord, *promotionGateDecision, error) {
+	req, err := GetPRRequestByID(requestID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if req == nil {
+		return nil, nil, fmt.Errorf("request not found")
+	}
+	if req.Status != "completed" && req.Status != "in_progress" {
+		return nil, nil, fmt.Errorf("only completed or in-progress requests can be reviewed for promotion")
+	}
+	nextEnvironment := nextEnv(req.Env)
+	if nextEnvironment == "" {
+		return nil, nil, fmt.Errorf("request is already at the highest environment")
+	}
+
+	gate, err := evaluatePromotionGateForRequest(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	if gate != nil {
+		if gate.Status == "blocked" {
+			return nil, gate, fmt.Errorf("promotion blocked by deployment gate policy")
+		}
+		if gate.Approved && gate.Approval != nil {
+			return gate.Approval, gate, nil
+		}
+		if !gate.RequiresAcknowledgement {
+			return nil, gate, fmt.Errorf("deployment gate approval is not required for this promotion")
+		}
+	}
+	expiresAt := time.Now().Add(24 * time.Hour)
+	approval, err := createDeploymentGateApproval(req, gate, userID, note, &expiresAt)
+	if err != nil {
+		return nil, gate, err
+	}
+	updatedGate, err := evaluatePromotionGateForRequest(req)
+	if err != nil {
+		return approval, nil, err
+	}
+	details := fmt.Sprintf("gate:%d:%s->%s", requestID, strings.ToLower(strings.TrimSpace(req.Env)), nextEnvironment)
+	if trimmedNote := strings.TrimSpace(approval.Note); trimmedNote != "" {
+		details += ":" + trimmedNote
+	}
+	AppendAuditLog(&userID, "deployment_gate_approve", "pr_request", strconv.Itoa(requestID), details)
+	return approval, updatedGate, nil
+}
+
+func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, *promotionGateDecision, error) {
 	req, err := GetPRRequestByID(requestID)
 	if err != nil {
 		return nil, nil, err
@@ -686,8 +750,8 @@ func promoteRequestAsDevops(requestID int, userID int, acknowledgeAttention bool
 		if gate.Status == "blocked" {
 			return nil, gate, fmt.Errorf("promotion blocked by deployment gate policy")
 		}
-		if gate.RequiresAcknowledgement && !acknowledgeAttention {
-			return nil, gate, fmt.Errorf("promotion requires deployment gate acknowledgement")
+		if gate.RequiresAcknowledgement {
+			return nil, gate, fmt.Errorf("promotion requires deployment gate approval")
 		}
 	}
 	appID, err := GenerateApplicationID()
@@ -721,8 +785,8 @@ func promoteRequestAsDevops(requestID int, userID int, acknowledgeAttention bool
 	}
 	_, _ = execContext(`UPDATE pr_requests SET linked_request_id = $1 WHERE id = $2`, requestID, newReq.ID)
 	auditDetails := fmt.Sprintf("devops:%d->%s", requestID, nextEnvironment)
-	if gate != nil && gate.RequiresAcknowledgement {
-		auditDetails += ":acknowledged"
+	if gate != nil && gate.Approved {
+		auditDetails += ":gate-approved"
 	}
 	AppendAuditLog(&userID, "request_promote", "pr_request", strconv.Itoa(newReq.ID), auditDetails)
 	return newReq, gate, nil
@@ -1131,12 +1195,13 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to evaluate promotion gates", err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"promotions": items, "status": "ok"})
+		if err := writeJSONResponse(w, http.StatusOK, map[string]any{"promotions": items, "status": "ok"}); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotions response", err)
+		}
 	case "POST":
 		path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/devops/promotions/"), "/")
 		parts := strings.Split(path, "/")
-		if len(parts) != 2 || parts[1] != "promote" {
+		if len(parts) != 2 || (parts[1] != "promote" && parts[1] != "approve-gate") {
 			http.NotFound(w, r)
 			return
 		}
@@ -1146,7 +1211,7 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body struct {
-			AcknowledgeAttention bool `json:"acknowledge_attention"`
+			Note string `json:"note"`
 		}
 		if r.Body != nil {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
@@ -1154,13 +1219,34 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		item, gate, err := promoteRequestAsDevops(requestID, managerID, body.AcknowledgeAttention)
+		if parts[1] == "approve-gate" {
+			approval, gate, err := approvePromotionGateAsDevops(requestID, managerID, body.Note)
+			if err != nil {
+				if gate != nil && gate.Status == "blocked" {
+					if writeErr := writeJSONResponse(w, http.StatusConflict, map[string]any{
+						"status": "error",
+						"error":  "promotion blocked by deployment gate policy",
+						"gate":   gate,
+					}); writeErr != nil {
+						writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotion gate approval response", writeErr)
+					}
+					return
+				}
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			if err := writeJSONResponse(w, http.StatusOK, map[string]any{"approval": approval, "gate": gate, "status": "ok"}); err != nil {
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotion gate approval response", err)
+			}
+			return
+		}
+		item, gate, err := promoteRequestAsDevops(requestID, managerID)
 		if err != nil {
 			if gate != nil && (gate.Status == "blocked" || gate.RequiresAcknowledgement) {
 				status := http.StatusConflict
 				message := "promotion blocked by deployment gate policy"
 				if gate.RequiresAcknowledgement {
-					message = "deployment gate acknowledgement is required before promotion"
+					message = "deployment gate approval is required before promotion"
 				}
 				if writeErr := writeJSONResponse(w, status, map[string]any{
 					"status": "error",
@@ -1174,8 +1260,9 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"request": item, "gate": gate, "status": "ok"})
+		if err := writeJSONResponse(w, http.StatusOK, map[string]any{"request": item, "gate": gate, "status": "ok"}); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotion response", err)
+		}
 	default:
 		writeMethodNotAllowed(w, r)
 	}

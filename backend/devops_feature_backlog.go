@@ -94,15 +94,17 @@ type deploymentGatePolicyEngine struct {
 }
 
 type promotionGateDecision struct {
-	TargetEnvironment       string                `json:"target_environment"`
-	Status                  string                `json:"status"`
-	Summary                 string                `json:"summary"`
-	CanPromote              bool                  `json:"can_promote"`
-	RequiresAcknowledgement bool                  `json:"requires_acknowledgement"`
-	ReviewMessage           string                `json:"review_message"`
-	BlockingCheckCount      int                   `json:"blocking_check_count"`
-	AttentionCheckCount     int                   `json:"attention_check_count"`
-	Checks                  []deploymentGateCheck `json:"checks"`
+	TargetEnvironment       string                        `json:"target_environment"`
+	Status                  string                        `json:"status"`
+	Summary                 string                        `json:"summary"`
+	CanPromote              bool                          `json:"can_promote"`
+	RequiresAcknowledgement bool                          `json:"requires_acknowledgement"`
+	ReviewMessage           string                        `json:"review_message"`
+	BlockingCheckCount      int                           `json:"blocking_check_count"`
+	AttentionCheckCount     int                           `json:"attention_check_count"`
+	Checks                  []deploymentGateCheck         `json:"checks"`
+	Approved                bool                          `json:"approved"`
+	Approval                *deploymentGateApprovalRecord `json:"approval,omitempty"`
 }
 
 type expiryTrackerSummary struct {
@@ -653,7 +655,7 @@ func findDeploymentGateEnvironment(engine deploymentGatePolicyEngine, environmen
 	return nil
 }
 
-func buildPromotionGateDecision(targetEnvironment string, gate *deploymentGateEnvironment, fallbackSummary string, fallbackBlocked bool) *promotionGateDecision {
+func buildPromotionGateDecision(targetEnvironment string, gate *deploymentGateEnvironment, approval *deploymentGateApprovalRecord, fallbackSummary string, fallbackBlocked bool) *promotionGateDecision {
 	targetEnvironment = strings.ToLower(strings.TrimSpace(targetEnvironment))
 	if targetEnvironment == "" {
 		targetEnvironment = "unknown"
@@ -664,6 +666,7 @@ func buildPromotionGateDecision(targetEnvironment string, gate *deploymentGateEn
 		Status:            "attention",
 		Summary:           strings.TrimSpace(fallbackSummary),
 		CanPromote:        !fallbackBlocked,
+		Approval:          approval,
 	}
 
 	if fallbackBlocked {
@@ -695,9 +698,22 @@ func buildPromotionGateDecision(targetEnvironment string, gate *deploymentGateEn
 			decision.RequiresAcknowledgement = false
 			decision.ReviewMessage = "This promotion is blocked by deployment gate policy and cannot continue until the blocking issue is resolved."
 		case "attention":
-			decision.CanPromote = true
-			decision.RequiresAcknowledgement = true
-			decision.ReviewMessage = "This promotion needs an explicit operator acknowledgement before continuing."
+			if approval != nil {
+				decision.Status = "ready"
+				decision.CanPromote = true
+				decision.RequiresAcknowledgement = false
+				decision.Approved = true
+				decision.ReviewMessage = "A deployment gate approval has already been recorded for this promotion candidate."
+				username := strings.TrimSpace(approval.ApprovedByUsername)
+				if username == "" {
+					username = "the assigned reviewer"
+				}
+				decision.Summary = fmt.Sprintf("%s Approval recorded by %s.", strings.TrimSpace(gate.Summary), username)
+			} else {
+				decision.CanPromote = false
+				decision.RequiresAcknowledgement = true
+				decision.ReviewMessage = "This promotion requires a persisted deployment gate approval before continuing."
+			}
 		default:
 			decision.Status = "ready"
 			decision.CanPromote = true
