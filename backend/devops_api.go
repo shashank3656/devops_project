@@ -1157,6 +1157,15 @@ func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
 		encodeDevopsJSON(w, map[string]interface{}{"error": "failed to build expiry tracker", "status": "error"})
 		return
 	}
+	actions, err := listExpiryTrackerActions(expiryTrackerItemKeys(expiryTracker.Items))
+	if err != nil {
+		log.Printf("credential audit expiry tracker actions: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		encodeDevopsJSON(w, map[string]interface{}{"error": "failed to load expiry tracker workflow", "status": "error"})
+		return
+	}
+	applyExpiryTrackerActions(expiryTracker, actions)
 	w.Header().Set("Content-Type", "application/json")
 	encodeDevopsJSON(w, map[string]interface{}{"entries": entries, "expiry_tracker": expiryTracker, "status": "ok"})
 }

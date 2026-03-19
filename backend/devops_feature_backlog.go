@@ -2,9 +2,12 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type projectReleaseSummary struct {
@@ -61,6 +64,22 @@ type projectReleaseDashboard struct {
 	Runbooks            []projectRunbook                  `json:"runbooks"`
 	ActiveOverrides     []projectAccessOverride           `json:"active_overrides"`
 	DeploymentGates     deploymentGatePolicyEngine        `json:"deployment_gates"`
+	K8sPreview          *projectK8sPreview                `json:"k8s_preview,omitempty"`
+	ExpiryPreview       *projectExpiryPreview             `json:"expiry_preview,omitempty"`
+}
+
+type projectK8sPreview struct {
+	ConnectionCount    int                      `json:"connection_count"`
+	ClusterCount       int                      `json:"cluster_count"`
+	NamespaceCount     int                      `json:"namespace_count"`
+	HealthSummary      k8sWorkloadHealthSummary `json:"health_summary"`
+	NamespaceWatchlist []k8sNamespaceHealth     `json:"namespace_watchlist"`
+	WorkloadSpotlights []k8sWorkloadSpotlight   `json:"workload_spotlights"`
+}
+
+type projectExpiryPreview struct {
+	Summary       expiryTrackerSummary `json:"summary"`
+	PriorityItems []expiryTrackerItem  `json:"priority_items"`
 }
 
 type deploymentGatePolicySummary struct {
@@ -118,26 +137,35 @@ type expiryTrackerSummary struct {
 	ExpiringWithin30Days int `json:"expiring_within_30_days"`
 	ExpiringWithin60Days int `json:"expiring_within_60_days"`
 	HealthyCount         int `json:"healthy_count"`
+	ActionableCount      int `json:"actionable_count"`
+	AcknowledgedCount    int `json:"acknowledged_count"`
+	InProgressCount      int `json:"in_progress_count"`
+	RotatedCount         int `json:"rotated_count"`
 }
 
 type expiryTrackerItem struct {
-	Category       string     `json:"category"`
-	Source         string     `json:"source"`
-	ProjectID      *int       `json:"project_id,omitempty"`
-	ProjectName    string     `json:"project_name,omitempty"`
-	ProjectCode    string     `json:"project_code,omitempty"`
-	Cloud          string     `json:"cloud,omitempty"`
-	Environment    string     `json:"environment,omitempty"`
-	ClusterName    string     `json:"cluster_name,omitempty"`
-	Namespace      string     `json:"namespace,omitempty"`
-	ResourceName   string     `json:"resource_name"`
-	ResourceType   string     `json:"resource_type"`
-	Owner          string     `json:"owner,omitempty"`
-	CreatedAt      *time.Time `json:"created_at,omitempty"`
-	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
-	DaysRemaining  int        `json:"days_remaining"`
-	Status         string     `json:"status"`
-	Recommendation string     `json:"recommendation"`
+	ItemKey                   string     `json:"item_key"`
+	Category                  string     `json:"category"`
+	Source                    string     `json:"source"`
+	ProjectID                 *int       `json:"project_id,omitempty"`
+	ProjectName               string     `json:"project_name,omitempty"`
+	ProjectCode               string     `json:"project_code,omitempty"`
+	Cloud                     string     `json:"cloud,omitempty"`
+	Environment               string     `json:"environment,omitempty"`
+	ClusterName               string     `json:"cluster_name,omitempty"`
+	Namespace                 string     `json:"namespace,omitempty"`
+	ResourceName              string     `json:"resource_name"`
+	ResourceType              string     `json:"resource_type"`
+	Owner                     string     `json:"owner,omitempty"`
+	CreatedAt                 *time.Time `json:"created_at,omitempty"`
+	ExpiresAt                 *time.Time `json:"expires_at,omitempty"`
+	DaysRemaining             int        `json:"days_remaining"`
+	Status                    string     `json:"status"`
+	Recommendation            string     `json:"recommendation"`
+	WorkflowState             string     `json:"workflow_state"`
+	WorkflowNote              string     `json:"workflow_note,omitempty"`
+	WorkflowUpdatedAt         *time.Time `json:"workflow_updated_at,omitempty"`
+	WorkflowUpdatedByUsername string     `json:"workflow_updated_by_username,omitempty"`
 }
 
 type expiryTrackerPayload struct {
@@ -392,6 +420,17 @@ func buildProjectReleaseDashboard(project ProjectCatalog) (*projectReleaseDashbo
 		})
 	}
 
+	k8sPreview, err := buildProjectK8sPreview(project)
+	if err != nil {
+		log.Printf("project k8s preview: %v", err)
+		k8sPreview = nil
+	}
+	expiryPreview, err := buildProjectExpiryPreview(project)
+	if err != nil {
+		log.Printf("project expiry preview: %v", err)
+		expiryPreview = nil
+	}
+
 	return &projectReleaseDashboard{
 		Summary:             summary,
 		EnvironmentStatuses: environmentStatuses,
@@ -402,6 +441,76 @@ func buildProjectReleaseDashboard(project ProjectCatalog) (*projectReleaseDashbo
 		Runbooks:            displayRunbooks,
 		ActiveOverrides:     displayOverrides,
 		DeploymentGates:     buildDeploymentGatePolicyEngine(project, environmentStatuses, filteredPromotions, runbooks, filteredOverrides),
+		K8sPreview:          k8sPreview,
+		ExpiryPreview:       expiryPreview,
+	}, nil
+}
+
+func buildProjectK8sPreview(project ProjectCatalog) (*projectK8sPreview, error) {
+	overview, err := buildK8sDashboard(project.ID, "", "", "")
+	if err != nil {
+		return nil, err
+	}
+	if overview == nil {
+		return &projectK8sPreview{}, nil
+	}
+
+	namespaceWatchlist := append([]k8sNamespaceHealth(nil), overview.NamespaceHealth...)
+	workloadSpotlights := append([]k8sWorkloadSpotlight(nil), overview.WorkloadSpotlights...)
+	if len(namespaceWatchlist) > 4 {
+		namespaceWatchlist = namespaceWatchlist[:4]
+	}
+	if len(workloadSpotlights) > 4 {
+		workloadSpotlights = workloadSpotlights[:4]
+	}
+
+	return &projectK8sPreview{
+		ConnectionCount:    len(overview.Connections),
+		ClusterCount:       len(overview.Clusters),
+		NamespaceCount:     overview.Summary.NamespaceCount,
+		HealthSummary:      overview.HealthSummary,
+		NamespaceWatchlist: namespaceWatchlist,
+		WorkloadSpotlights: workloadSpotlights,
+	}, nil
+}
+
+func buildProjectExpiryPreview(project ProjectCatalog) (*projectExpiryPreview, error) {
+	entries, err := GetCredentialAuditLogs(200, 0, "", "", "", project.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	payload, err := buildExpiryTracker(entries, "", project.ID, "", "")
+	if err != nil {
+		return nil, err
+	}
+	if payload == nil {
+		return &projectExpiryPreview{}, nil
+	}
+
+	actions, err := listExpiryTrackerActions(expiryTrackerItemKeys(payload.Items))
+	if err != nil {
+		return nil, err
+	}
+	applyExpiryTrackerActions(payload, actions)
+
+	priorityItems := make([]expiryTrackerItem, 0, len(payload.Items))
+	for _, item := range payload.Items {
+		if item.Status == "healthy" && item.WorkflowState == "open" {
+			continue
+		}
+		priorityItems = append(priorityItems, item)
+	}
+	if len(priorityItems) == 0 {
+		priorityItems = append(priorityItems, payload.Items...)
+	}
+	if len(priorityItems) > 5 {
+		priorityItems = priorityItems[:5]
+	}
+
+	return &projectExpiryPreview{
+		Summary:       payload.Summary,
+		PriorityItems: priorityItems,
 	}, nil
 }
 
@@ -965,6 +1074,8 @@ func buildExpiryTracker(entries []CredentialAuditEntry, cloudFilter string, proj
 		if hasTo && item.CreatedAt != nil && item.CreatedAt.After(toTime) {
 			return
 		}
+		item.ItemKey = buildExpiryTrackerItemKey(item)
+		item.WorkflowState = "open"
 		items = append(items, item)
 	}
 
@@ -1069,7 +1180,8 @@ func buildExpiryTracker(entries []CredentialAuditEntry, cloudFilter string, proj
 	})
 
 	summary := expiryTrackerSummary{
-		TotalItems: len(items),
+		TotalItems:      len(items),
+		ActionableCount: len(items),
 	}
 	for _, item := range items {
 		switch item.Category {
@@ -1148,4 +1260,50 @@ func timePointer(value time.Time) *time.Time {
 	}
 	copyValue := value
 	return &copyValue
+}
+
+func buildExpiryTrackerItemKey(item expiryTrackerItem) string {
+	projectID := ""
+	if item.ProjectID != nil && *item.ProjectID > 0 {
+		projectID = strconv.Itoa(*item.ProjectID)
+	}
+	parts := []string{
+		normalizeExpiryTrackerKeyPart(item.Category),
+		normalizeExpiryTrackerKeyPart(item.Source),
+		projectID,
+		normalizeExpiryTrackerKeyPart(item.ProjectCode),
+		normalizeExpiryTrackerKeyPart(item.Cloud),
+		normalizeExpiryTrackerKeyPart(item.Environment),
+		normalizeExpiryTrackerKeyPart(item.ClusterName),
+		normalizeExpiryTrackerKeyPart(item.Namespace),
+		normalizeExpiryTrackerKeyPart(item.ResourceName),
+		normalizeExpiryTrackerKeyPart(item.ResourceType),
+	}
+	return strings.Join(parts, "|")
+}
+
+func normalizeExpiryTrackerKeyPart(value string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" {
+		return "-"
+	}
+	var builder strings.Builder
+	builder.Grow(len(trimmed))
+	lastUnderscore := false
+	for _, character := range trimmed {
+		if unicode.IsLetter(character) || unicode.IsDigit(character) {
+			builder.WriteRune(character)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			builder.WriteByte('_')
+			lastUnderscore = true
+		}
+	}
+	normalized := strings.Trim(builder.String(), "_")
+	if normalized == "" {
+		return "-"
+	}
+	return normalized
 }

@@ -197,14 +197,7 @@ func listDeploymentGateApprovals(requestID int, targetEnvironment string, source
 			value := int(revokedBy.Int64)
 			record.RevokedBy = &value
 		}
-		switch {
-		case record.RevokedAt != nil:
-			record.State = "revoked"
-		case record.ExpiresAt != nil && record.ExpiresAt.Before(now):
-			record.State = "expired"
-		default:
-			record.State = "active"
-		}
+		record.State = deriveDeploymentGateApprovalState(record.ExpiresAt, record.RevokedAt, now)
 		out = append(out, record)
 	}
 	if err := rows.Err(); err != nil {

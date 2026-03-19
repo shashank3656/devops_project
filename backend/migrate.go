@@ -834,6 +834,22 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("ALTER TABLE deployment_gate_approvals ADD COLUMN IF NOT EXISTS revoke_note TEXT NOT NULL DEFAULT ''")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_deployment_gate_approvals_revoked_at ON deployment_gate_approvals(revoked_at)")
 
+	// Migration 40: expiry tracker workflow state for acknowledge/rotate operations
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS expiry_tracker_actions (
+			id SERIAL PRIMARY KEY,
+			item_key TEXT NOT NULL UNIQUE,
+			workflow_state VARCHAR(30) NOT NULL DEFAULT 'acknowledged',
+			note TEXT NOT NULL DEFAULT '',
+			updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_expiry_tracker_actions_workflow_state ON expiry_tracker_actions(workflow_state)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_expiry_tracker_actions_updated_by ON expiry_tracker_actions(updated_by)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_expiry_tracker_actions_updated_at ON expiry_tracker_actions(updated_at)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }
