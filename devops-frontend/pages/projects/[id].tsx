@@ -125,6 +125,92 @@ interface ProjectReleaseTrendPoint {
   count: number;
 }
 
+interface ProjectK8sHealthSummary {
+  healthy_deployments: number;
+  degraded_deployments: number;
+  blocked_deployments: number;
+  scaled_down_deployments: number;
+  restarting_pods: number;
+  non_running_pods: number;
+  warning_logs: number;
+  unhealthy_namespaces: number;
+}
+
+interface ProjectK8sNamespaceWatchItem {
+  namespace: string;
+  cluster_name: string;
+  status: string;
+  issue_count: number;
+  restarting_pods: number;
+  warning_logs: number;
+  affected_deployments: number;
+}
+
+interface ProjectK8sWorkloadSpotlight {
+  name: string;
+  namespace: string;
+  cluster_name: string;
+  status: string;
+  ready_replicas: number;
+  replicas: number;
+  restart_count: number;
+  warning_count: number;
+}
+
+interface ProjectK8sPreview {
+  connection_count: number;
+  cluster_count: number;
+  namespace_count: number;
+  health_summary: ProjectK8sHealthSummary;
+  namespace_watchlist: ProjectK8sNamespaceWatchItem[];
+  workload_spotlights: ProjectK8sWorkloadSpotlight[];
+}
+
+interface ProjectExpirySummary {
+  total_items: number;
+  credential_items: number;
+  secret_items: number;
+  certificate_items: number;
+  expired_count: number;
+  expiring_within_30_days: number;
+  expiring_within_60_days: number;
+  healthy_count: number;
+  actionable_count: number;
+  acknowledged_count: number;
+  in_progress_count: number;
+  rotated_count: number;
+}
+
+interface ProjectExpiryItem {
+  item_key: string;
+  category: string;
+  source: string;
+  project_id?: number;
+  project_name?: string;
+  project_code?: string;
+  cloud?: string;
+  environment?: string;
+  cluster_name?: string;
+  namespace?: string;
+  resource_name: string;
+  resource_type: string;
+  owner?: string;
+  created_at?: string;
+  expires_at?: string;
+  days_remaining: number;
+  status: string;
+  recommendation: string;
+  workflow_state: string;
+  workflow_note?: string;
+  workflow_updated_at?: string;
+  workflow_updated_by_username?: string;
+}
+
+interface ProjectExpiryPreview {
+  summary: ProjectExpirySummary;
+  priority_items: ProjectExpiryItem[];
+}
+
 interface PromotionQueueItem {
   request_id: number;
   environment: string;
@@ -175,6 +261,8 @@ interface ProjectReleaseDashboard {
   runbooks: ReleaseRunbookItem[];
   active_overrides: ActiveOverrideItem[];
   deployment_gates?: DeploymentGatePolicy | null;
+  k8s_preview?: ProjectK8sPreview | null;
+  expiry_preview?: ProjectExpiryPreview | null;
 }
 
 interface DeploymentGateSummary {
@@ -293,6 +381,45 @@ function deploymentGateTone(status?: string): { background: string; color: strin
       return { background: 'var(--color-warning-bg)', color: 'var(--color-warning)' };
     default:
       return { background: 'var(--color-success-bg)', color: 'var(--color-success)' };
+  }
+}
+
+function expiryStatusTone(status?: string): { background: string; color: string } {
+  switch (status) {
+    case 'expired':
+      return { background: 'var(--color-danger-bg)', color: 'var(--color-danger)' };
+    case 'expiring_30d':
+      return { background: 'rgba(250, 204, 21, 0.18)', color: '#facc15' };
+    case 'expiring_60d':
+      return { background: 'var(--color-warning-bg)', color: 'var(--color-warning)' };
+    default:
+      return { background: 'var(--color-success-bg)', color: 'var(--color-success)' };
+  }
+}
+
+function expiryWorkflowTone(state?: string): { background: string; color: string } {
+  switch (state) {
+    case 'acknowledged':
+      return { background: 'rgba(59, 130, 246, 0.18)', color: '#93c5fd' };
+    case 'in_progress':
+      return { background: 'rgba(250, 204, 21, 0.18)', color: '#fde68a' };
+    case 'rotated':
+      return { background: 'var(--color-success-bg)', color: 'var(--color-success)' };
+    default:
+      return { background: 'var(--color-bg-subtle)', color: 'var(--color-text-muted)' };
+  }
+}
+
+function expiryWorkflowLabel(state?: string): string {
+  switch (state) {
+    case 'acknowledged':
+      return 'Acknowledged';
+    case 'in_progress':
+      return 'In progress';
+    case 'rotated':
+      return 'Rotated';
+    default:
+      return 'Open';
   }
 }
 
@@ -614,6 +741,208 @@ export default function DevOpsProjectDetailPage() {
                     </article>
                   </div>
                 </section>
+
+                {releaseDashboard.k8s_preview ? (
+                  <section className="portal-surface">
+                    <div className="portal-surface__header">
+                      <div>
+                        <span className="portal-surface__eyebrow">Kubernetes Health</span>
+                        <h2 className="portal-surface__title">Project workload health summary</h2>
+                        <p className="portal-surface__subtitle">
+                          Surface cluster pressure, unstable namespaces, and degraded workloads for this project without leaving the release view.
+                        </p>
+                      </div>
+                      <Link
+                        href={buildPortalHref('/k8s', { project_id: project.id })}
+                        className="btn btn-secondary"
+                      >
+                        Open K8s dashboard
+                      </Link>
+                    </div>
+                    <div className="portal-stat-grid">
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Connections</span>
+                        <span className="portal-stat-card__value">{releaseDashboard.k8s_preview.connection_count}</span>
+                        <p className="portal-stat-card__copy">
+                          Clusters {releaseDashboard.k8s_preview.cluster_count} · Namespaces {releaseDashboard.k8s_preview.namespace_count}
+                        </p>
+                      </article>
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Restarting pods</span>
+                        <span className="portal-stat-card__value">{releaseDashboard.k8s_preview.health_summary.restarting_pods}</span>
+                        <p className="portal-stat-card__copy">Pods restarting often enough to warrant follow-up.</p>
+                      </article>
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Non-running pods</span>
+                        <span className="portal-stat-card__value">{releaseDashboard.k8s_preview.health_summary.non_running_pods}</span>
+                        <p className="portal-stat-card__copy">Pods not currently in a stable running state.</p>
+                      </article>
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Warning logs</span>
+                        <span className="portal-stat-card__value">{releaseDashboard.k8s_preview.health_summary.warning_logs}</span>
+                        <p className="portal-stat-card__copy">Visible log events above info severity for this project.</p>
+                      </article>
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Unhealthy namespaces</span>
+                        <span className="portal-stat-card__value">{releaseDashboard.k8s_preview.health_summary.unhealthy_namespaces}</span>
+                        <p className="portal-stat-card__copy">Namespaces currently showing workload or signal issues.</p>
+                      </article>
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Blocked deployments</span>
+                        <span className="portal-stat-card__value">{releaseDashboard.k8s_preview.health_summary.blocked_deployments}</span>
+                        <p className="portal-stat-card__copy">Deployments with no ready path forward until remediation.</p>
+                      </article>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 18 }}>
+                      <article className="portal-detail-card">
+                        <span className="portal-surface__eyebrow">Namespace Watchlist</span>
+                        <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                          {releaseDashboard.k8s_preview.namespace_watchlist.length > 0 ? (
+                            releaseDashboard.k8s_preview.namespace_watchlist.map((item) => {
+                              const tone = releaseHealthTone(item.status);
+                              return (
+                                <div key={`${item.cluster_name}-${item.namespace}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                                    <strong>{item.namespace}</strong>
+                                    <span style={{ ...tone, padding: '4px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                                      {item.status}
+                                    </span>
+                                  </div>
+                                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                                    {item.cluster_name} · Issues {item.issue_count} · Deployments {item.affected_deployments}
+                                  </p>
+                                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                    Restarts {item.restarting_pods} · Warning logs {item.warning_logs}
+                                  </p>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="empty-state">No unhealthy namespaces surfaced for this project.</div>
+                          )}
+                        </div>
+                      </article>
+                      <article className="portal-detail-card">
+                        <span className="portal-surface__eyebrow">Workload Spotlight</span>
+                        <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                          {releaseDashboard.k8s_preview.workload_spotlights.length > 0 ? (
+                            releaseDashboard.k8s_preview.workload_spotlights.map((item) => {
+                              const tone = releaseHealthTone(item.status);
+                              return (
+                                <div key={`${item.cluster_name}-${item.namespace}-${item.name}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                                    <strong>{item.name}</strong>
+                                    <span style={{ ...tone, padding: '4px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                                      {item.status}
+                                    </span>
+                                  </div>
+                                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                                    {item.cluster_name} · {item.namespace} · Ready {item.ready_replicas}/{item.replicas}
+                                  </p>
+                                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                    Restarts {item.restart_count} · Warning logs {item.warning_count}
+                                  </p>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="empty-state">No degraded workloads surfaced for this project.</div>
+                          )}
+                        </div>
+                      </article>
+                    </div>
+                  </section>
+                ) : null}
+
+                {releaseDashboard.expiry_preview ? (
+                  <section className="portal-surface">
+                    <div className="portal-surface__header">
+                      <div>
+                        <span className="portal-surface__eyebrow">Expiry Tracker</span>
+                        <h2 className="portal-surface__title">Secrets and certificate review windows</h2>
+                        <p className="portal-surface__subtitle">
+                          Highlight the highest-priority rotation and review items for this project directly from the delivery view.
+                        </p>
+                      </div>
+                      <Link
+                        href={buildPortalHref('/credential-audit', { project_id: project.id })}
+                        className="btn btn-secondary"
+                      >
+                        Open credential audit
+                      </Link>
+                    </div>
+                    <div className="portal-stat-grid">
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Tracked items</span>
+                        <span className="portal-stat-card__value">{releaseDashboard.expiry_preview.summary.total_items}</span>
+                        <p className="portal-stat-card__copy">
+                          Credentials {releaseDashboard.expiry_preview.summary.credential_items} · Secrets {releaseDashboard.expiry_preview.summary.secret_items} · Certificates {releaseDashboard.expiry_preview.summary.certificate_items}
+                        </p>
+                      </article>
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Expired</span>
+                        <span className="portal-stat-card__value">{releaseDashboard.expiry_preview.summary.expired_count}</span>
+                        <p className="portal-stat-card__copy">Items already outside the safe review or rotation window.</p>
+                      </article>
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Next 30 days</span>
+                        <span className="portal-stat-card__value">{releaseDashboard.expiry_preview.summary.expiring_within_30_days}</span>
+                        <p className="portal-stat-card__copy">Immediate review or rotation attention required.</p>
+                      </article>
+                      <article className="portal-stat-card">
+                        <span className="portal-stat-card__label">Actionable</span>
+                        <span className="portal-stat-card__value">{releaseDashboard.expiry_preview.summary.actionable_count}</span>
+                        <p className="portal-stat-card__copy">Non-healthy items still waiting for completion.</p>
+                      </article>
+                    </div>
+                    <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
+                      {releaseDashboard.expiry_preview.priority_items.length > 0 ? (
+                        releaseDashboard.expiry_preview.priority_items.map((item) => {
+                          const statusTone = expiryStatusTone(item.status);
+                          const workflowTone = expiryWorkflowTone(item.workflow_state);
+                          return (
+                            <article key={item.item_key} className="portal-detail-card">
+                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                                <div>
+                                  <strong>{item.resource_name}</strong>
+                                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                                    {item.category} · {item.resource_type}
+                                  </p>
+                                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                    {[item.cloud, item.environment, item.namespace || item.cluster_name].filter(Boolean).join(' · ') || 'General scope'}
+                                  </p>
+                                </div>
+                                <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
+                                  <span style={{ ...statusTone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+                                    {item.status}
+                                  </span>
+                                  <span style={{ ...workflowTone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+                                    {expiryWorkflowLabel(item.workflow_state)}
+                                  </span>
+                                </div>
+                              </div>
+                              <p style={{ margin: '12px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                                {item.recommendation}
+                              </p>
+                              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 12, color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                <span>Days left: {item.days_remaining}</span>
+                                <span>Expires: {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : '—'}</span>
+                                <span>Owner: {item.owner || 'Unassigned'}</span>
+                              </div>
+                              {item.workflow_note ? (
+                                <p style={{ margin: '10px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                  Note: {item.workflow_note}
+                                </p>
+                              ) : null}
+                            </article>
+                          );
+                        })
+                      ) : (
+                        <div className="empty-state">No expiry watchlist items for this project right now.</div>
+                      )}
+                    </div>
+                  </section>
+                ) : null}
 
                 {releaseDashboard.deployment_gates ? (
                   <section className="portal-surface">

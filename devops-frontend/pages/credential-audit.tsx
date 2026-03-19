@@ -32,6 +32,10 @@ interface ProjectSummary {
 
 interface ExpiryTrackerSummary {
   total_items: number;
+  actionable_count: number;
+  acknowledged_count: number;
+  in_progress_count: number;
+  rotated_count: number;
   credential_items: number;
   secret_items: number;
   certificate_items: number;
@@ -42,6 +46,7 @@ interface ExpiryTrackerSummary {
 }
 
 interface ExpiryTrackerItem {
+  item_key: string;
   category: string;
   source: string;
   project_id?: number;
@@ -59,6 +64,10 @@ interface ExpiryTrackerItem {
   days_remaining: number;
   status: string;
   recommendation: string;
+  workflow_state: string;
+  workflow_note?: string;
+  workflow_updated_at?: string;
+  workflow_updated_by_username?: string;
 }
 
 interface ExpiryTrackerPayload {
@@ -80,6 +89,8 @@ export default function CredentialAuditPage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [workflowSavingKey, setWorkflowSavingKey] = useState('');
   const [cloudFilter, setCloudFilter] = useState('');
   const [projectId, setProjectId] = useState('');
   const [fromDate, setFromDate] = useState('');
@@ -93,6 +104,7 @@ export default function CredentialAuditPage() {
     }
     setLoading(true);
     setError('');
+    setNotice('');
     setExpiryTracker(null);
     const params = new URLSearchParams();
     params.set('limit', '100');
@@ -167,6 +179,86 @@ export default function CredentialAuditPage() {
         return { background: 'var(--color-warning-bg)', color: 'var(--color-warning)' };
       default:
         return { background: 'var(--color-success-bg)', color: 'var(--color-success)' };
+    }
+  };
+
+  const workflowTone = (state?: string): { background: string; color: string } => {
+    switch (state) {
+      case 'acknowledged':
+        return { background: 'rgba(59, 130, 246, 0.18)', color: '#93c5fd' };
+      case 'in_progress':
+        return { background: 'rgba(250, 204, 21, 0.18)', color: '#fde68a' };
+      case 'rotated':
+        return { background: 'var(--color-success-bg)', color: 'var(--color-success)' };
+      default:
+        return { background: 'var(--color-bg-subtle)', color: 'var(--color-text-muted)' };
+    }
+  };
+
+  const workflowLabel = (state?: string): string => {
+    switch (state) {
+      case 'acknowledged':
+        return 'Acknowledged';
+      case 'in_progress':
+        return 'In progress';
+      case 'rotated':
+        return 'Rotated';
+      default:
+        return 'Open';
+    }
+  };
+
+  const updateWorkflow = async (item: ExpiryTrackerItem, nextState: string) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+
+    const nextLabel = workflowLabel(nextState);
+    const defaultNote =
+      nextState === 'rotated'
+        ? 'Rotation completed'
+        : nextState === 'in_progress'
+          ? 'Rotation work started'
+          : nextState === 'acknowledged'
+            ? 'Owner notified'
+            : 'Reopened for follow-up';
+    const note = window.prompt(`Add a note for "${nextLabel}"`, item.workflow_note || defaultNote);
+    if (note === null) {
+      return;
+    }
+
+    setWorkflowSavingKey(item.item_key);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/expiry-tracker/actions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          item_key: item.item_key,
+          workflow_state: nextState,
+          note,
+        }),
+      });
+      if (response.status === 401 || response.status === 403) {
+        router.replace('/login');
+        return;
+      }
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to update expiry workflow');
+      }
+      setNotice(`Workflow updated: ${item.resource_name} is now ${nextLabel.toLowerCase()}.`);
+      fetchEntries();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update expiry workflow');
+    } finally {
+      setWorkflowSavingKey('');
     }
   };
 
@@ -293,6 +385,7 @@ export default function CredentialAuditPage() {
           </section>
 
           {error && <div className="alert alert-error">{error}</div>}
+          {notice && <div className="alert alert-success">{notice}</div>}
 
           {expiryTracker ? (
             <>
@@ -332,6 +425,26 @@ export default function CredentialAuditPage() {
                     <strong className="portal-stat-card__value">{expiryTracker.summary.healthy_count}</strong>
                     <p className="portal-stat-card__copy">Tracked items still outside the active risk window.</p>
                   </article>
+                  <article className="portal-stat-card">
+                    <span className="portal-stat-card__label">Actionable</span>
+                    <strong className="portal-stat-card__value">{expiryTracker.summary.actionable_count}</strong>
+                    <p className="portal-stat-card__copy">Non-healthy items still waiting for completion.</p>
+                  </article>
+                  <article className="portal-stat-card">
+                    <span className="portal-stat-card__label">Acknowledged</span>
+                    <strong className="portal-stat-card__value">{expiryTracker.summary.acknowledged_count}</strong>
+                    <p className="portal-stat-card__copy">Items that have an owner but no active rotation work yet.</p>
+                  </article>
+                  <article className="portal-stat-card">
+                    <span className="portal-stat-card__label">In progress</span>
+                    <strong className="portal-stat-card__value">{expiryTracker.summary.in_progress_count}</strong>
+                    <p className="portal-stat-card__copy">Items currently being rotated or reviewed.</p>
+                  </article>
+                  <article className="portal-stat-card">
+                    <span className="portal-stat-card__label">Rotated</span>
+                    <strong className="portal-stat-card__value">{expiryTracker.summary.rotated_count}</strong>
+                    <p className="portal-stat-card__copy">Completed items kept for operational history.</p>
+                  </article>
                 </div>
               </section>
 
@@ -354,12 +467,17 @@ export default function CredentialAuditPage() {
                         <th>Expires</th>
                         <th>Days left</th>
                         <th>Status</th>
+                        <th>Workflow</th>
+                        <th>Workflow updated</th>
                         <th>Recommendation</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {expiryTracker.items.map((item) => {
                         const tone = statusTone(item.status);
+                        const workflow = workflowTone(item.workflow_state);
+                        const saving = workflowSavingKey === item.item_key;
                         return (
                           <tr key={`${item.category}-${item.resource_name}-${item.namespace || item.project_code || 'global'}`}>
                             <td>
@@ -384,7 +502,53 @@ export default function CredentialAuditPage() {
                                 {item.status}
                               </span>
                             </td>
+                            <td>
+                              <span style={{ ...workflow, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+                                {workflowLabel(item.workflow_state)}
+                              </span>
+                              {item.workflow_note ? (
+                                <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 6 }}>
+                                  {item.workflow_note}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td style={{ whiteSpace: 'nowrap' }}>
+                              {item.workflow_updated_at ? (
+                                <div>
+                                  <div>{new Date(item.workflow_updated_at).toLocaleString()}</div>
+                                  {item.workflow_updated_by_username ? (
+                                    <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                      by {item.workflow_updated_by_username}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : '—'}
+                            </td>
                             <td style={{ minWidth: 260 }}>{item.recommendation}</td>
+                            <td style={{ minWidth: 220 }}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                {item.workflow_state !== 'acknowledged' ? (
+                                  <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => updateWorkflow(item, 'acknowledged')}>
+                                    {saving ? 'Saving...' : 'Acknowledge'}
+                                  </button>
+                                ) : null}
+                                {item.workflow_state !== 'in_progress' ? (
+                                  <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => updateWorkflow(item, 'in_progress')}>
+                                    {saving ? 'Saving...' : 'Start rotation'}
+                                  </button>
+                                ) : null}
+                                {item.workflow_state !== 'rotated' ? (
+                                  <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => updateWorkflow(item, 'rotated')}>
+                                    {saving ? 'Saving...' : 'Mark rotated'}
+                                  </button>
+                                ) : null}
+                                {item.workflow_state !== 'open' ? (
+                                  <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => updateWorkflow(item, 'open')}>
+                                    {saving ? 'Saving...' : 'Reopen'}
+                                  </button>
+                                ) : null}
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}

@@ -65,6 +65,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/incidents': 'Incident Panel',
   '/access-overrides': 'Access Overrides',
   '/promotions': 'Promotion Center',
+  '/gate-approvals': 'Gate Approval Audit',
+  '/gate-policies': 'Gate Policies',
   '/retry-center': 'Retry Center',
   '/workload': 'Workload',
   '/tickets': 'Tickets',
@@ -345,6 +347,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     baseNavItems.push({ href: '/incidents', label: 'Incidents', Icon: IconAlertTriangle });
     baseNavItems.push({ href: '/access-overrides', label: 'Access Overrides', Icon: IconKey });
     baseNavItems.push({ href: '/promotions', label: 'Promotion Center', Icon: IconArrowUpRight });
+    baseNavItems.push({ href: '/gate-approvals', label: 'Gate Audit', Icon: IconShield });
+    baseNavItems.push({ href: '/gate-policies', label: 'Gate Policies', Icon: IconShield });
     baseNavItems.push({ href: '/retry-center', label: 'Retry Center', Icon: IconRefreshCw });
     baseNavItems.push({ href: '/workload', label: 'Workload', Icon: IconWorkload });
     baseNavItems.push({ href: '/tickets', label: 'Tickets', Icon: IconTickets });
