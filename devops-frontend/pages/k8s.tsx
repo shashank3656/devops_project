@@ -513,9 +513,9 @@ export default function DevOpsK8sPage() {
     const secrets = overview.secrets.filter((item) => hasWorkload(item.name));
     const serviceAccounts = overview.service_accounts.filter((item) => hasWorkload(item.name));
     const configmaps = overview.configmaps.filter((item) => hasWorkload(item.name));
-    const podNamespaces = new Set(pods.map((item) => item.namespace));
-    const deploymentNamespaces = new Set(deployments.map((item) => item.namespace));
-    const visibleNamespaces = new Set([...podNamespaces, ...deploymentNamespaces]);
+    const visibleNamespaces = new Set<string>();
+    pods.forEach((item) => visibleNamespaces.add(item.namespace));
+    deployments.forEach((item) => visibleNamespaces.add(item.namespace));
     const namespaceItems = overview.namespace_items.filter((item) => visibleNamespaces.has(item.name));
     const namespaceHealth = overview.namespace_health.filter((item) => visibleNamespaces.has(item.namespace));
     const workloadSpotlights = overview.workload_spotlights.filter((item) => hasWorkload(item.name));
