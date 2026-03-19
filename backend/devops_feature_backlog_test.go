@@ -118,6 +118,27 @@ func TestBuildPromotionGateDecisionStatuses(t *testing.T) {
 	if attention.AttentionCheckCount != 1 {
 		t.Fatalf("expected 1 attention check, got %d", attention.AttentionCheckCount)
 	}
+	if attention.CommentRequired {
+		t.Fatalf("expected non-production attention gate not to require a comment")
+	}
+
+	prodAttention := buildPromotionGateDecision(
+		"prod",
+		&deploymentGateEnvironment{
+			Environment: "prod",
+			Status:      "attention",
+			Summary:     "Needs production review.",
+			Checks: []deploymentGateCheck{
+				{Key: "change_window", Label: "Change window", Status: "attention", Detail: "Manual confirmation required."},
+			},
+		},
+		nil,
+		"",
+		false,
+	)
+	if !prodAttention.CommentRequired {
+		t.Fatalf("expected production attention gate to require a comment")
+	}
 
 	approved := buildPromotionGateDecision(
 		"uat",

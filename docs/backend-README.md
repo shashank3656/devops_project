@@ -13,7 +13,7 @@ The backend is a stateless, cloud-agnostic service that:
 
 ## Tech Stack
 
-- **Go 1.22+** - Programming language
+- **Go 1.25+** - Programming language
 - **github.com/google/go-github/v61** - GitHub API client
 - **github.com/bradleyfalzon/ghinstallation/v2** - GitHub App authentication
 

@@ -829,6 +829,10 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_deployment_gate_approvals_request_target ON deployment_gate_approvals(request_id, target_environment)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_deployment_gate_approvals_approved_by ON deployment_gate_approvals(approved_by)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_deployment_gate_approvals_expires_at ON deployment_gate_approvals(expires_at)")
+	_, _ = DB.Exec("ALTER TABLE deployment_gate_approvals ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMP")
+	_, _ = DB.Exec("ALTER TABLE deployment_gate_approvals ADD COLUMN IF NOT EXISTS revoked_by INTEGER REFERENCES users(id) ON DELETE SET NULL")
+	_, _ = DB.Exec("ALTER TABLE deployment_gate_approvals ADD COLUMN IF NOT EXISTS revoke_note TEXT NOT NULL DEFAULT ''")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_deployment_gate_approvals_revoked_at ON deployment_gate_approvals(revoked_at)")
 
 	log.Println("Database schema is up to date")
 	return nil
