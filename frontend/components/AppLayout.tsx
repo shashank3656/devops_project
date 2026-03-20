@@ -49,7 +49,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/my-projects': 'My Projects',
   '/history': 'Request History',
   '/incidents': 'Incidents',
-  '/notifications': 'Notifications',
   '/my-teams': 'My Teams',
   '/profile': 'Profile',
 };
@@ -222,6 +221,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (notifyOpen) refreshUserNotifications(true);
   }, [notifyOpen]);
+
+  useEffect(() => {
+    setNotifyOpen(false);
+    setProfileOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -561,11 +565,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   aria-haspopup="true"
                 >
                   <IconBell />
-                  {notifyBadgeCount > 0 && (
-                    <span className="user-topbar__badge" aria-label={`${notifyBadgeCount} updates`}>
-                      {notifyBadgeCount > 99 ? '99+' : notifyBadgeCount}
-                    </span>
-                  )}
+                  {notifyBadgeCount > 0 && <span className="user-topbar__badge user-topbar__badge--dot" aria-hidden />}
                 </button>
 
                 {notifyOpen && (
@@ -573,7 +573,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     <div className="user-topbar__notify-header">
                       <h3 className="user-topbar__notify-title">Notifications</h3>
                       <button type="button" className="user-topbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
-                        x
+                        Close
                       </button>
                     </div>
                     <div className="user-topbar__notify-summary">
@@ -581,8 +581,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                       <span>{notificationSummary}</span>
                     </div>
                     <div className="user-topbar__notify-links">
-                      <Link href="/notifications" className="user-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                        Open notifications
+                      <Link href="/history" className="user-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                        Open request history
                       </Link>
                       {hasManagedTeams && (
                         <Link href="/history" className="user-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
@@ -606,7 +606,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         recentNotifications.map((notification) => (
                           <Link
                             key={notification.id}
-                            href={notification.request_id ? `/history?id=${notification.request_id}` : '/notifications'}
+                            href={notification.request_id ? `/history?id=${notification.request_id}` : '/history'}
                             className="user-topbar__notify-ticket"
                             onClick={() => setNotifyOpen(false)}
                           >

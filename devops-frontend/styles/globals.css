@@ -491,6 +491,19 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   font-size: 12px;
   font-weight: 700;
 }
+
+.devops-navbar__badge--dot {
+  top: 7px;
+  right: 7px;
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
+  padding: 0;
+  border: 2px solid rgba(3, 12, 24, 0.98);
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+}
 .devops-navbar__notify-wrap,
 .devops-navbar__profile-wrap { position: relative; }
 .devops-navbar__notify-panel,
@@ -529,10 +542,19 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   color: var(--color-text);
 }
 .devops-navbar__notify-close {
-  border: none;
-  background: transparent;
-  color: var(--color-text-muted);
+  border: 1px solid rgba(34, 211, 238, 0.16);
+  background: rgba(7, 24, 48, 0.72);
+  color: var(--color-primary);
   cursor: pointer;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.devops-navbar__notify-close:hover {
+  background: rgba(12, 33, 61, 0.9);
 }
 .devops-navbar__notify-link {
   display: inline-flex;
@@ -3691,6 +3713,12 @@ tbody tr:hover,
   background: transparent;
   border: 1px solid rgba(255, 176, 0, 0.44);
   color: var(--color-warning);
+}
+
+.devops-navbar__badge--dot {
+  border-color: rgba(3, 12, 24, 0.98);
+  background: #00d084;
+  color: transparent;
 }
 
 .devops-navbar__role,

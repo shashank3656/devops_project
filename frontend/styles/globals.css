@@ -2765,6 +2765,19 @@ kbd {
   color: #fff;
 }
 
+.user-topbar__badge--dot {
+  top: 7px;
+  right: 7px;
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
+  padding: 0;
+  border: 2px solid rgba(3, 12, 24, 0.98);
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+}
+
 .user-topbar__approval-badge {
   color: #fcd34d;
   background: rgba(251, 191, 36, 0.14);
@@ -2814,10 +2827,19 @@ kbd {
 }
 
 .user-topbar__notify-close {
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
+  border: 1px solid rgba(34, 211, 238, 0.16);
+  background: rgba(7, 24, 48, 0.72);
+  color: var(--primary-color);
   cursor: pointer;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.user-topbar__notify-close:hover {
+  background: rgba(12, 33, 61, 0.9);
 }
 
 .user-topbar__notify-link {
@@ -4094,6 +4116,12 @@ tbody tr:hover,
   background: transparent;
   border: 1px solid rgba(255, 176, 0, 0.44);
   color: #ffb000;
+}
+
+.user-topbar__badge--dot {
+  border-color: rgba(3, 12, 24, 0.98);
+  background: #00d084;
+  color: transparent;
 }
 
 .user-topbar__role,

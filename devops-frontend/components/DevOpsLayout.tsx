@@ -54,7 +54,6 @@ function getProfileInitials(): string {
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
-  '/notifications': 'Notifications',
   '/approval-center': 'Approval Center',
   '/approval-sla': 'Approval SLA',
   '/change-calendar': 'Change Calendar',
@@ -279,6 +278,11 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   }, [notifyOpen, refreshPendingApprovals]);
 
   useEffect(() => {
+    setNotifyOpen(false);
+    setProfileOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (notifyRef.current && !notifyRef.current.contains(e.target as Node)) setNotifyOpen(false);
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
@@ -345,7 +349,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     { href: '/k8s', label: 'K8s', Icon: IconK8s },
   ];
   if (isManager) {
-    baseNavItems.push({ href: '/notifications', label: 'Notifications', Icon: IconBell });
     baseNavItems.push({ href: '/approval-center', label: 'Approval Center', Icon: IconShield });
     baseNavItems.push({ href: '/approval-sla', label: 'Approval SLA', Icon: IconShield });
     baseNavItems.push({ href: '/change-calendar', label: 'Change Calendar', Icon: IconCalendar });
@@ -505,11 +508,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                     aria-haspopup="true"
                   >
                     <IconBell />
-                    {pendingCount > 0 && (
-                      <span className="devops-navbar__badge" aria-label={`${pendingCount} pending approvals`}>
-                        {pendingCount > 99 ? '99+' : pendingCount}
-                      </span>
-                    )}
+                    {pendingCount > 0 && <span className="devops-navbar__badge devops-navbar__badge--dot" aria-hidden />}
                   </button>
 
                   {notifyOpen && (
@@ -517,7 +516,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                       <div className="devops-navbar__notify-header">
                         <h3 className="devops-navbar__notify-title">Pending Approvals</h3>
                         <button type="button" className="devops-navbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
-                          x
+                          Close
                         </button>
                       </div>
                       <div className="devops-navbar__notify-summary">
@@ -531,9 +530,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                       <div className="devops-navbar__notify-links">
                         <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
                           Open tickets
-                        </Link>
-                        <Link href="/notifications" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                          Open notifications center
                         </Link>
                       </div>
                       <div className="devops-navbar__notify-list">

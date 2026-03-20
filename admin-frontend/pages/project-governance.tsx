@@ -151,7 +151,7 @@ export default function AdminProjectGovernancePage() {
               <button type="button" className="btn btn-secondary" onClick={() => void exportProjects()} disabled={exporting}>
                 {exporting ? 'Exporting…' : 'Export CSV'}
               </button>
-              <Link href="/notifications" className="btn btn-primary">Open notifications</Link>
+              <Link href="/requests" className="btn btn-primary">Open requests</Link>
             </div>
           </div>
 
