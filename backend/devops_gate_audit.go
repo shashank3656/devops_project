@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/csv"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -53,6 +54,17 @@ func normalizeDeploymentGateApprovalStateFilter(raw string) string {
 	}
 }
 
+func normalizeDeploymentGateApprovalExpiryWindow(raw string) int {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || value <= 0 {
+		return 0
+	}
+	if value > 365 {
+		return 365
+	}
+	return value
+}
+
 func deriveDeploymentGateApprovalState(expiresAt, revokedAt *time.Time, now time.Time) string {
 	switch {
 	case revokedAt != nil:
@@ -64,7 +76,7 @@ func deriveDeploymentGateApprovalState(expiresAt, revokedAt *time.Time, now time
 	}
 }
 
-func listDeploymentGateApprovalAuditRecords(limit, offset, projectID int, targetEnvironment, state, approver, fromDate, toDate string) ([]deploymentGateApprovalAuditRecord, deploymentGateApprovalAuditSummary, error) {
+func listDeploymentGateApprovalAuditRecords(limit, offset, projectID int, targetEnvironment, state, approver, fromDate, toDate string, expiresWithinDays int) ([]deploymentGateApprovalAuditRecord, deploymentGateApprovalAuditSummary, error) {
 	records := make([]deploymentGateApprovalAuditRecord, 0)
 	summary := deploymentGateApprovalAuditSummary{}
 	if limit <= 0 {
@@ -111,6 +123,13 @@ func listDeploymentGateApprovalAuditRecords(limit, offset, projectID int, target
 	}
 	if hasTo {
 		whereParts = append(whereParts, fmt.Sprintf("a.approved_at <= %s", addArg(toTime)))
+	}
+	if expiresWithinDays > 0 {
+		expiresBefore := time.Now().Add(time.Duration(expiresWithinDays) * 24 * time.Hour)
+		whereParts = append(whereParts, "a.expires_at IS NOT NULL")
+		whereParts = append(whereParts, "a.revoked_at IS NULL")
+		whereParts = append(whereParts, "a.expires_at >= CURRENT_TIMESTAMP")
+		whereParts = append(whereParts, fmt.Sprintf("a.expires_at <= %s", addArg(expiresBefore)))
 	}
 	switch normalizeDeploymentGateApprovalStateFilter(state) {
 	case "active":
@@ -245,6 +264,73 @@ func listDeploymentGateApprovalAuditRecords(limit, offset, projectID int, target
 	return records, summary, nil
 }
 
+func writeDeploymentGateApprovalsCSV(w http.ResponseWriter, records []deploymentGateApprovalAuditRecord) error {
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	if err := writer.Write([]string{
+		"id",
+		"request_id",
+		"project_name",
+		"project_code",
+		"team",
+		"cloud",
+		"service",
+		"source_environment",
+		"target_environment",
+		"gate_status",
+		"state",
+		"summary",
+		"note",
+		"approved_by_username",
+		"approved_at",
+		"expires_at",
+		"revoked_at",
+		"revoked_by_username",
+		"revoke_note",
+	}); err != nil {
+		return err
+	}
+
+	for _, record := range records {
+		projectName := strings.TrimSpace(record.ProjectName)
+		projectCode := strings.TrimSpace(record.ProjectCode)
+		expiresAt := ""
+		if record.ExpiresAt != nil {
+			expiresAt = record.ExpiresAt.Format(time.RFC3339)
+		}
+		revokedAt := ""
+		if record.RevokedAt != nil {
+			revokedAt = record.RevokedAt.Format(time.RFC3339)
+		}
+		if err := writer.Write([]string{
+			strconv.Itoa(record.ID),
+			strconv.Itoa(record.RequestID),
+			projectName,
+			projectCode,
+			record.Team,
+			record.Cloud,
+			record.Service,
+			record.SourceEnvironment,
+			record.TargetEnvironment,
+			record.GateStatus,
+			record.State,
+			record.Summary,
+			record.Note,
+			record.ApprovedByUsername,
+			record.ApprovedAt.Format(time.RFC3339),
+			expiresAt,
+			revokedAt,
+			record.RevokedByUsername,
+			record.RevokeNote,
+		}); err != nil {
+			return err
+		}
+	}
+	writer.Flush()
+	return writer.Error()
+}
+
 func devopsDeploymentGateApprovalsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
@@ -263,6 +349,7 @@ func devopsDeploymentGateApprovalsHandler(w http.ResponseWriter, r *http.Request
 	limit, _ := strconv.Atoi(strings.TrimSpace(query.Get("limit")))
 	offset, _ := strconv.Atoi(strings.TrimSpace(query.Get("offset")))
 	projectID, _ := strconv.Atoi(strings.TrimSpace(query.Get("project_id")))
+	expiresWithinDays := normalizeDeploymentGateApprovalExpiryWindow(query.Get("expires_within_days"))
 	stateRaw := strings.TrimSpace(query.Get("state"))
 	state := normalizeDeploymentGateApprovalStateFilter(stateRaw)
 	if stateRaw != "" && state == "" {
@@ -279,9 +366,19 @@ func devopsDeploymentGateApprovalsHandler(w http.ResponseWriter, r *http.Request
 		query.Get("approver"),
 		query.Get("from"),
 		query.Get("to"),
+		expiresWithinDays,
 	)
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to load deployment gate approvals", err)
+		return
+	}
+
+	if strings.EqualFold(strings.TrimSpace(query.Get("format")), "csv") {
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", "attachment; filename=deployment-gate-approvals.csv")
+		if err := writeDeploymentGateApprovalsCSV(w, records); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to write deployment gate approval export", err)
+		}
 		return
 	}
 

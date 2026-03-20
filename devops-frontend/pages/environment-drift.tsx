@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { downloadCSV } from '../lib/csv';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -153,6 +154,53 @@ export default function EnvironmentDriftPage() {
   const items = drift?.items || [];
   const projects = drift?.projects || [];
 
+  const exportDriftCSV = () => {
+    const rows: unknown[][] = [];
+    items.forEach((item) => {
+      item.environments.forEach((snapshot) => {
+        rows.push([
+          item.project_name,
+          item.project_code,
+          item.owner_team || '',
+          item.state,
+          item.drift_score,
+          snapshot.environment,
+          snapshot.state,
+          snapshot.connection_count,
+          snapshot.expected_namespace,
+          snapshot.observed_namespaces.join(' | '),
+          snapshot.connected_clusters.join(' | '),
+          snapshot.secret_inventory_count,
+          snapshot.latest_request_id || '',
+          snapshot.latest_request_status || '',
+          item.findings.map((finding) => `${finding.label}: ${finding.detail}`).join(' | '),
+        ]);
+      });
+    });
+
+    downloadCSV(
+      `environment-drift-${new Date().toISOString().slice(0, 10)}.csv`,
+      [
+        'project_name',
+        'project_code',
+        'owner_team',
+        'project_state',
+        'drift_score',
+        'environment',
+        'environment_state',
+        'connection_count',
+        'expected_namespace',
+        'observed_namespaces',
+        'connected_clusters',
+        'secret_inventory_count',
+        'latest_request_id',
+        'latest_request_status',
+        'findings',
+      ],
+      rows,
+    );
+  };
+
   return (
     <DevOpsLayout>
       <Head>
@@ -170,6 +218,9 @@ export default function EnvironmentDriftPage() {
           <div className="portal-page__actions">
             <Link href="/ops-command-center" className="btn btn-secondary">Ops Command Center</Link>
             <Link href="/projects" className="btn btn-secondary">Projects</Link>
+            <button type="button" className="btn btn-secondary" onClick={exportDriftCSV} disabled={items.length === 0}>
+              Export CSV
+            </button>
             <Link href="/k8s" className="btn btn-primary">K8s</Link>
           </div>
         </div>

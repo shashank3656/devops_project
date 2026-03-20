@@ -1166,6 +1166,9 @@ func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	applyExpiryTrackerActions(expiryTracker, actions)
+	if err := notifyExpiryTrackerWatchers(expiryTracker.Items); err != nil {
+		log.Printf("credential audit expiry notifications failed: %v", err)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeDevopsJSON(w, map[string]interface{}{"entries": entries, "expiry_tracker": expiryTracker, "status": "ok"})
 }

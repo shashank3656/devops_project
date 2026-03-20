@@ -1,7 +1,7 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 
@@ -72,6 +72,27 @@ interface DependencyPayload {
   focus_node?: DependencyNode;
 }
 
+interface GraphNodeLayout {
+  node: DependencyNode;
+  x: number;
+  y: number;
+}
+
+function relationshipColor(relationship: string): string {
+  switch (relationship) {
+    case 'shared_service':
+      return '#0ea5e9';
+    case 'shared_team':
+      return '#8b5cf6';
+    case 'shared_cluster':
+      return '#22c55e';
+    case 'shared_cloud':
+      return '#f97316';
+    default:
+      return '#94a3b8';
+  }
+}
+
 export default function ProjectDependenciesPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -130,6 +151,73 @@ export default function ProjectDependenciesPage() {
 
   const summary = dependencies?.summary;
   const projects = dependencies?.projects || [];
+  const graphLayouts = useMemo(() => {
+    const nodes = dependencies?.nodes || [];
+    const edges = dependencies?.edges || [];
+    if (nodes.length === 0) return [] as GraphNodeLayout[];
+
+    const visibleNodeMap = new Map<number, DependencyNode>();
+    const focusNode = dependencies?.focus_node;
+    if (focusNode) {
+      visibleNodeMap.set(focusNode.project_id, focusNode);
+      edges.forEach((edge) => {
+        if (edge.source_project_id === focusNode.project_id) {
+          const target = nodes.find((node) => node.project_id === edge.target_project_id);
+          if (target) visibleNodeMap.set(target.project_id, target);
+        }
+        if (edge.target_project_id === focusNode.project_id) {
+          const source = nodes.find((node) => node.project_id === edge.source_project_id);
+          if (source) visibleNodeMap.set(source.project_id, source);
+        }
+      });
+    } else {
+      const hotspotIds = (dependencies?.hotspots || []).slice(0, 8).map((item) => item.project_id);
+      nodes.forEach((node) => {
+        if (hotspotIds.includes(node.project_id)) visibleNodeMap.set(node.project_id, node);
+      });
+      if (visibleNodeMap.size === 0) {
+        nodes.slice(0, 8).forEach((node) => visibleNodeMap.set(node.project_id, node));
+      }
+    }
+
+    const visibleNodes = Array.from(visibleNodeMap.values()).slice(0, 9);
+    if (visibleNodes.length === 0) return [] as GraphNodeLayout[];
+
+    if (focusNode && visibleNodeMap.has(focusNode.project_id)) {
+      const orbitNodes = visibleNodes.filter((node) => node.project_id !== focusNode.project_id);
+      const layouts: GraphNodeLayout[] = [{ node: focusNode, x: 340, y: 180 }];
+      orbitNodes.forEach((node, index) => {
+        const angle = (Math.PI * 2 * index) / Math.max(orbitNodes.length, 1);
+        layouts.push({
+          node,
+          x: 340 + Math.cos(angle) * 170,
+          y: 180 + Math.sin(angle) * 120,
+        });
+      });
+      return layouts;
+    }
+
+    return visibleNodes.map((node, index) => {
+      const angle = (Math.PI * 2 * index) / visibleNodes.length;
+      return {
+        node,
+        x: 340 + Math.cos(angle) * 200,
+        y: 180 + Math.sin(angle) * 130,
+      };
+    });
+  }, [dependencies?.edges, dependencies?.focus_node, dependencies?.hotspots, dependencies?.nodes]);
+
+  const visibleNodeIds = useMemo(() => graphLayouts.map((item) => item.node.project_id), [graphLayouts]);
+  const visibleEdges = useMemo(() => {
+    return (dependencies?.edges || []).filter((edge) => visibleNodeIds.includes(edge.source_project_id) && visibleNodeIds.includes(edge.target_project_id));
+  }, [dependencies?.edges, visibleNodeIds]);
+  const relationshipLegend = useMemo(() => {
+    const legendMap = new Map<string, string>();
+    visibleEdges.forEach((edge) => {
+      if (!legendMap.has(edge.relationship)) legendMap.set(edge.relationship, edge.label);
+    });
+    return Array.from(legendMap.entries());
+  }, [visibleEdges]);
 
   return (
     <DevOpsLayout>
@@ -239,6 +327,77 @@ export default function ProjectDependenciesPage() {
                 </div>
               </section>
             ) : null}
+
+            <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Graph view</span>
+                  <h2 className="portal-surface__title">Dependency relationship graph</h2>
+                  <p className="portal-surface__subtitle">
+                    {dependencies?.focus_node
+                      ? 'Focused project in the center with its visible dependency peers around it.'
+                      : 'Top connected projects laid out as a lightweight dependency graph.'}
+                  </p>
+                </div>
+              </div>
+              {graphLayouts.length === 0 ? (
+                <div className="empty-state">No graph data available for the current scope.</div>
+              ) : (
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <div style={{ overflowX: 'auto', paddingBottom: 8 }}>
+                    <svg viewBox="0 0 680 360" role="img" aria-label="Project dependency graph" style={{ width: '100%', minWidth: 680, height: 'auto' }}>
+                      <rect x="0" y="0" width="680" height="360" rx="24" fill="rgba(15, 23, 42, 0.02)" />
+                      {visibleEdges.map((edge) => {
+                        const source = graphLayouts.find((item) => item.node.project_id === edge.source_project_id);
+                        const target = graphLayouts.find((item) => item.node.project_id === edge.target_project_id);
+                        if (!source || !target) return null;
+                        return (
+                          <g key={`graph-edge-${edge.source_project_id}-${edge.target_project_id}-${edge.relationship}`}>
+                            <line
+                              x1={source.x}
+                              y1={source.y}
+                              x2={target.x}
+                              y2={target.y}
+                              stroke={relationshipColor(edge.relationship)}
+                              strokeOpacity="0.6"
+                              strokeWidth={Math.min(7, 2 + edge.shared_count)}
+                            />
+                          </g>
+                        );
+                      })}
+                      {graphLayouts.map((layout) => {
+                        const nodeRadius = dependencies?.focus_node?.project_id === layout.node.project_id ? 32 : 24;
+                        const nodeColor = layout.node.open_incident_count > 0
+                          ? 'rgba(239, 68, 68, 0.92)'
+                          : layout.node.pending_request_count > 0
+                            ? 'rgba(249, 115, 22, 0.92)'
+                            : 'rgba(14, 165, 233, 0.92)';
+                        return (
+                          <g key={`graph-node-${layout.node.project_id}`}>
+                            <circle cx={layout.x} cy={layout.y} r={nodeRadius} fill={nodeColor} />
+                            <text x={layout.x} y={layout.y + 4} textAnchor="middle" fontSize="11" fill="#f8fafc" fontWeight="700">
+                              {layout.node.project_code || String(layout.node.project_id)}
+                            </text>
+                            <text x={layout.x} y={layout.y + nodeRadius + 18} textAnchor="middle" fontSize="12" fill="var(--color-text)">
+                              {layout.node.project_name}
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  </div>
+                  {relationshipLegend.length > 0 ? (
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      {relationshipLegend.map(([relationship, label]) => (
+                        <span key={`legend-${relationship}`} className="portal-pill" style={{ borderColor: relationshipColor(relationship), color: relationshipColor(relationship) }}>
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </section>
 
             <div className="portal-grid" style={{ alignItems: 'start' }}>
               <section className="portal-surface">

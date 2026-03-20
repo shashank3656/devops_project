@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -26,6 +27,7 @@ type projectRunbook struct {
 
 type requestIncident struct {
 	ID              int       `json:"id"`
+	IncidentNumber  string    `json:"incident_number"`
 	RequestID       int       `json:"request_id"`
 	ProjectID       *int      `json:"project_id,omitempty"`
 	ProjectName     string    `json:"project_name,omitempty"`
@@ -35,6 +37,8 @@ type requestIncident struct {
 	RequestService  string    `json:"request_service,omitempty"`
 	RequestCloud    string    `json:"request_cloud,omitempty"`
 	RequestStatus   string    `json:"request_status,omitempty"`
+	TeamID          *int      `json:"team_id,omitempty"`
+	TeamName        string    `json:"team_name,omitempty"`
 	Severity        string    `json:"severity"`
 	Status          string    `json:"status"`
 	EscalationLevel string    `json:"escalation_level"`
@@ -45,6 +49,13 @@ type requestIncident struct {
 	CreatedBy       *int      `json:"created_by,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+func formatIncidentNumber(id int) string {
+	if id <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("INC%07d", id)
 }
 
 type projectAccessOverride struct {
@@ -246,20 +257,41 @@ func deleteProjectRunbook(id int) error {
 }
 
 func listRequestIncidents(statusFilter string) ([]requestIncident, error) {
+	return listRequestIncidentsFiltered(statusFilter, nil, true)
+}
+
+func listAssignedRequestIncidents(userID int, statusFilter string) ([]requestIncident, error) {
+	return listRequestIncidentsFiltered(statusFilter, &userID, false)
+}
+
+func listRequestIncidentsFiltered(statusFilter string, ownerUserID *int, includeDraft bool) ([]requestIncident, error) {
 	query := `
-		SELECT i.id, i.request_id, i.project_id, COALESCE(p.name,''), COALESCE(p.code,''),
+		SELECT i.id, COALESCE(i.incident_number,''), i.request_id, i.project_id, COALESCE(p.name,''), COALESCE(p.code,''),
 		       COALESCE(r.team,''), COALESCE(r.env,''), COALESCE(r.service,''), COALESCE(r.cloud,''), COALESCE(r.status,''),
+		       i.team_id, COALESCE(t.name,''),
 		       i.severity, i.status, i.escalation_level, i.owner_user_id, COALESCE(u.username,''), COALESCE(i.summary,''), COALESCE(i.notes,''),
 		       i.created_by, i.created_at, i.updated_at
 		FROM request_incidents i
 		LEFT JOIN pr_requests r ON r.id = i.request_id
 		LEFT JOIN projects p ON p.id = i.project_id
+		LEFT JOIN teams t ON t.id = i.team_id
 		LEFT JOIN users u ON u.id = i.owner_user_id
 	`
 	args := []any{}
-	if strings.TrimSpace(statusFilter) != "" {
-		query += ` WHERE i.status = $1`
-		args = append(args, strings.TrimSpace(statusFilter))
+	whereParts := []string{}
+	if trimmedStatus := strings.TrimSpace(statusFilter); trimmedStatus != "" {
+		args = append(args, trimmedStatus)
+		whereParts = append(whereParts, fmt.Sprintf("i.status = $%d", len(args)))
+	}
+	if ownerUserID != nil && *ownerUserID > 0 {
+		args = append(args, *ownerUserID)
+		whereParts = append(whereParts, fmt.Sprintf("i.owner_user_id = $%d", len(args)))
+	}
+	if !includeDraft {
+		whereParts = append(whereParts, "COALESCE(i.status, '') <> 'draft'")
+	}
+	if len(whereParts) > 0 {
+		query += ` WHERE ` + strings.Join(whereParts, " AND ")
 	}
 	query += ` ORDER BY i.updated_at DESC, i.created_at DESC`
 	rows, cancel, err := queryRowsWithTimeout(query, args...)
@@ -274,11 +306,12 @@ func listRequestIncidents(statusFilter string) ([]requestIncident, error) {
 	out := []requestIncident{}
 	for rows.Next() {
 		var item requestIncident
-		var projectID, ownerUserID, createdBy sql.NullInt64
+		var projectID, incidentTeamID, incidentOwnerUserID, createdBy sql.NullInt64
 		if err := rows.Scan(
-			&item.ID, &item.RequestID, &projectID, &item.ProjectName, &item.ProjectCode,
+			&item.ID, &item.IncidentNumber, &item.RequestID, &projectID, &item.ProjectName, &item.ProjectCode,
 			&item.RequestTeam, &item.RequestEnv, &item.RequestService, &item.RequestCloud, &item.RequestStatus,
-			&item.Severity, &item.Status, &item.EscalationLevel, &ownerUserID, &item.OwnerUsername, &item.Summary, &item.Notes,
+			&incidentTeamID, &item.TeamName,
+			&item.Severity, &item.Status, &item.EscalationLevel, &incidentOwnerUserID, &item.OwnerUsername, &item.Summary, &item.Notes,
 			&createdBy, &item.CreatedAt, &item.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -287,20 +320,74 @@ func listRequestIncidents(statusFilter string) ([]requestIncident, error) {
 			value := int(projectID.Int64)
 			item.ProjectID = &value
 		}
-		if ownerUserID.Valid {
-			value := int(ownerUserID.Int64)
+		if incidentTeamID.Valid {
+			value := int(incidentTeamID.Int64)
+			item.TeamID = &value
+		}
+		if incidentOwnerUserID.Valid {
+			value := int(incidentOwnerUserID.Int64)
 			item.OwnerUserID = &value
 		}
 		if createdBy.Valid {
 			value := int(createdBy.Int64)
 			item.CreatedBy = &value
 		}
+		if strings.TrimSpace(item.IncidentNumber) == "" {
+			item.IncidentNumber = formatIncidentNumber(item.ID)
+		}
 		out = append(out, item)
 	}
 	return out, nil
 }
 
-func createOrUpdateRequestIncident(requestID int, severity, status, escalationLevel string, ownerUserID *int, summary, notes string, createdBy *int) (*requestIncident, error) {
+func getRequestIncidentByRequestID(requestID int) (*requestIncident, error) {
+	if requestID <= 0 {
+		return nil, fmt.Errorf("request id is required")
+	}
+	items, err := listRequestIncidents("")
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range items {
+		if item.RequestID == requestID {
+			return &item, nil
+		}
+	}
+	return nil, fmt.Errorf("incident not found")
+}
+
+func listPortalIncidentTeams() ([]Team, error) {
+	teams, err := GetTeams()
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]Team, 0, len(teams))
+	for _, team := range teams {
+		if strings.ToLower(strings.TrimSpace(team.TeamType)) == "devops" {
+			continue
+		}
+		filtered = append(filtered, team)
+	}
+	return filtered, nil
+}
+
+func listPortalIncidentTeamMembersByTeam() (map[string]any, error) {
+	teams, err := listPortalIncidentTeams()
+	if err != nil {
+		return nil, err
+	}
+	membersByTeam := make(map[string]any, len(teams))
+	for _, team := range teams {
+		members, err := GetTeamMembers(team.ID)
+		if err != nil {
+			return nil, err
+		}
+		membersByTeam[strconv.Itoa(team.ID)] = members
+	}
+	return membersByTeam, nil
+}
+
+func createOrUpdateRequestIncident(requestID int, teamID *int, severity, status, escalationLevel string, ownerUserID *int, summary, notes string, createdBy *int) (*requestIncident, error) {
 	req, err := GetPRRequestByID(requestID)
 	if err != nil {
 		return nil, err
@@ -320,20 +407,58 @@ func createOrUpdateRequestIncident(requestID int, severity, status, escalationLe
 	if escalationLevel == "" {
 		escalationLevel = "monitoring"
 	}
+	var normalizedTeamID *int
+	if teamID != nil && *teamID > 0 {
+		team, err := GetTeamByID(*teamID)
+		if err != nil {
+			return nil, err
+		}
+		if team == nil || strings.ToLower(strings.TrimSpace(team.TeamType)) == "devops" {
+			return nil, fmt.Errorf("a valid portal team is required")
+		}
+		value := team.ID
+		normalizedTeamID = &value
+	} else if team, err := GetTeamByNameOrSlug(strings.TrimSpace(req.Team)); err == nil && team != nil && strings.ToLower(strings.TrimSpace(team.TeamType)) != "devops" {
+		value := team.ID
+		normalizedTeamID = &value
+	}
 	var ownerAny any
 	if ownerUserID != nil && *ownerUserID > 0 {
+		if normalizedTeamID == nil || *normalizedTeamID <= 0 {
+			return nil, fmt.Errorf("team is required when assigning an incident owner")
+		}
+		members, err := GetTeamMembers(*normalizedTeamID)
+		if err != nil {
+			return nil, err
+		}
+		ownerAllowed := false
+		for _, member := range members {
+			if member.UserID == *ownerUserID {
+				ownerAllowed = true
+				break
+			}
+		}
+		if !ownerAllowed {
+			return nil, fmt.Errorf("assigned owner must belong to the selected team")
+		}
 		ownerAny = *ownerUserID
+	}
+	var teamAny any
+	if normalizedTeamID != nil && *normalizedTeamID > 0 {
+		teamAny = *normalizedTeamID
 	}
 	var createdAny any
 	if createdBy != nil && *createdBy > 0 {
 		createdAny = *createdBy
 	}
-	_, err = execContext(`
-		INSERT INTO request_incidents (request_id, project_id, severity, status, escalation_level, owner_user_id, summary, notes, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	var incidentID int
+	err = queryRowContext(`
+		INSERT INTO request_incidents (request_id, project_id, team_id, severity, status, escalation_level, owner_user_id, summary, notes, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (request_id)
 		DO UPDATE SET
 			project_id = EXCLUDED.project_id,
+			team_id = EXCLUDED.team_id,
 			severity = EXCLUDED.severity,
 			status = EXCLUDED.status,
 			escalation_level = EXCLUDED.escalation_level,
@@ -341,20 +466,26 @@ func createOrUpdateRequestIncident(requestID int, severity, status, escalationLe
 			summary = EXCLUDED.summary,
 			notes = EXCLUDED.notes,
 			updated_at = CURRENT_TIMESTAMP
-	`, requestID, req.ProjectID, severity, status, escalationLevel, ownerAny, strings.TrimSpace(summary), strings.TrimSpace(notes), createdAny)
+		RETURNING id
+	`, requestID, req.ProjectID, teamAny, severity, status, escalationLevel, ownerAny, strings.TrimSpace(summary), strings.TrimSpace(notes), createdAny).Scan(&incidentID)
 	if err != nil {
 		return nil, err
 	}
-	items, err := listRequestIncidents("")
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range items {
-		if item.RequestID == requestID {
-			return &item, nil
+	if incidentID > 0 {
+		if _, err := execContext(`
+			UPDATE request_incidents
+			SET incident_number = $2
+			WHERE id = $1
+			  AND COALESCE(incident_number, '') = ''
+		`, incidentID, formatIncidentNumber(incidentID)); err != nil {
+			return nil, err
 		}
 	}
-	return nil, fmt.Errorf("incident not found after save")
+	item, err := getRequestIncidentByRequestID(requestID)
+	if err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 func activeProjectAccessOverridesForUser(userID int) ([]projectAccessOverride, error) {
@@ -1064,12 +1195,27 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incidents", err)
 			return
 		}
-		devopsUsers, _ := GetDevopsUsers()
+		teams, err := listPortalIncidentTeams()
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incident teams", err)
+			return
+		}
+		membersByTeam, err := listPortalIncidentTeamMembersByTeam()
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incident assignees", err)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"incidents": items, "owners": devopsUsers, "status": "ok"})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"incidents":            items,
+			"teams":                teams,
+			"team_members_by_team": membersByTeam,
+			"status":               "ok",
+		})
 	case "POST":
 		var body struct {
 			RequestID       int    `json:"request_id"`
+			TeamID          *int   `json:"team_id"`
 			Severity        string `json:"severity"`
 			Status          string `json:"status"`
 			EscalationLevel string `json:"escalation_level"`
@@ -1081,7 +1227,23 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
 			return
 		}
-		item, err := createOrUpdateRequestIncident(body.RequestID, body.Severity, body.Status, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID)
+		normalizedStatus := strings.ToLower(strings.TrimSpace(body.Status))
+		if normalizedStatus == "" {
+			normalizedStatus = "open"
+		}
+		if body.TeamID == nil || *body.TeamID <= 0 {
+			writeAPIError(w, r, http.StatusBadRequest, "team is required", nil)
+			return
+		}
+		if normalizedStatus != "draft" && (body.OwnerUserID == nil || *body.OwnerUserID <= 0) {
+			writeAPIError(w, r, http.StatusBadRequest, "assignee is required before submitting an incident", nil)
+			return
+		}
+		if normalizedStatus != "draft" && strings.TrimSpace(body.Summary) == "" {
+			writeAPIError(w, r, http.StatusBadRequest, "summary is required before submitting an incident", nil)
+			return
+		}
+		item, err := createOrUpdateRequestIncident(body.RequestID, body.TeamID, body.Severity, normalizedStatus, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID)
 		if err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
@@ -1121,6 +1283,7 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
+		TeamID          *int   `json:"team_id"`
 		Severity        string `json:"severity"`
 		Status          string `json:"status"`
 		EscalationLevel string `json:"escalation_level"`
@@ -1132,7 +1295,23 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
 		return
 	}
-	item, err := createOrUpdateRequestIncident(requestID, body.Severity, body.Status, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID)
+	normalizedStatus := strings.ToLower(strings.TrimSpace(body.Status))
+	if normalizedStatus == "" {
+		normalizedStatus = "open"
+	}
+	if body.TeamID == nil || *body.TeamID <= 0 {
+		writeAPIError(w, r, http.StatusBadRequest, "team is required", nil)
+		return
+	}
+	if normalizedStatus != "draft" && (body.OwnerUserID == nil || *body.OwnerUserID <= 0) {
+		writeAPIError(w, r, http.StatusBadRequest, "assignee is required before submitting an incident", nil)
+		return
+	}
+	if normalizedStatus != "draft" && strings.TrimSpace(body.Summary) == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "summary is required before submitting an incident", nil)
+		return
+	}
+	item, err := createOrUpdateRequestIncident(requestID, body.TeamID, body.Severity, normalizedStatus, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 		return
@@ -1244,6 +1423,9 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to evaluate promotion gates", err)
 			return
 		}
+		if err := notifyPromotionCenterWatchers(items); err != nil {
+			log.Printf("promotion center notifications failed: %v", err)
+		}
 		if err := writeJSONResponse(w, http.StatusOK, map[string]any{"promotions": items, "status": "ok"}); err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotions response", err)
 		}
@@ -1304,6 +1486,11 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 		item, gate, err := promoteRequestAsDevops(requestID, managerID)
 		if err != nil {
 			if gate != nil && (gate.Status == "blocked" || gate.RequiresAcknowledgement) {
+				if req, reqErr := GetPRRequestByID(requestID); reqErr == nil && req != nil && gate.Status == "blocked" {
+					if notifyErr := notifyBlockedPromotion(req, gate); notifyErr != nil {
+						log.Printf("blocked promotion notification failed request_id=%d: %v", requestID, notifyErr)
+					}
+				}
 				status := http.StatusConflict
 				message := "promotion blocked by deployment gate policy"
 				if gate.RequiresAcknowledgement {

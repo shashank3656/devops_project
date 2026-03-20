@@ -4,6 +4,7 @@ import type { ComponentType, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useToast } from '../context/ToastContext';
 import {
+  IconAlertCircle,
   IconLogout,
   IconBell,
   IconHome,
@@ -47,6 +48,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/templates': 'Templates',
   '/my-projects': 'My Projects',
   '/history': 'Request History',
+  '/incidents': 'Incidents',
   '/notifications': 'Notifications',
   '/my-teams': 'My Teams',
   '/profile': 'Profile',
@@ -324,6 +326,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     { href: '/my-projects', label: 'My Projects', Icon: IconProjects },
     { href: '/templates', label: 'Templates', Icon: IconTemplates },
     { href: '/history', label: 'Request History', Icon: IconHistory },
+    { href: '/incidents', label: 'Incidents', Icon: IconAlertCircle },
   ];
 
   if (hasManagedTeams) {
