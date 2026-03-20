@@ -30,6 +30,7 @@ interface IncidentWorkspaceSummary {
 
 interface IncidentItem {
   id: number;
+  incident_number?: string;
   request_id: number;
   project_id?: number | null;
   project_name?: string;
@@ -399,7 +400,7 @@ export default function IncidentWorkspacePage() {
                       <option value="">Auto focus</option>
                       {incidents.map((incident) => (
                         <option key={incident.id} value={incident.id}>
-                          #{incident.id} · {incident.summary}
+                          {incident.incident_number || `INC${String(incident.id).padStart(7, '0')}`} · {incident.summary}
                         </option>
                       ))}
                     </select>
@@ -434,7 +435,7 @@ export default function IncidentWorkspacePage() {
                         onClick={() => setIncidentId(String(incident.id))}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
-                          <strong>#{incident.id} · {incident.summary}</strong>
+                          <strong>{incident.incident_number || `INC${String(incident.id).padStart(7, '0')}`} · {incident.summary}</strong>
                           <span className="portal-pill">{incident.severity.toUpperCase()} · {incident.status}</span>
                         </div>
                         <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
@@ -455,7 +456,7 @@ export default function IncidentWorkspacePage() {
                     <span className="portal-surface__eyebrow">Focused incident</span>
                     <h2 className="portal-surface__title">{detail?.incident?.summary || 'Select an incident'}</h2>
                     <p className="portal-surface__subtitle">
-                      {detail?.incident?.project_name ? `${detail.incident.project_name} (${detail.incident.project_code})` : 'No project'} · Request #{detail?.incident?.request_id || '—'}
+                      {detail?.incident?.incident_number || 'No incident selected'} · {detail?.incident?.project_name ? `${detail.incident.project_name} (${detail.incident.project_code})` : 'No project'} · Request #{detail?.incident?.request_id || '—'}
                     </p>
                   </div>
                 </div>

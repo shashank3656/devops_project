@@ -73,6 +73,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/rollback-console': 'Rollback Console',
   '/gate-approvals': 'Gate Approval Audit',
   '/gate-policies': 'Gate Policies',
+  '/notification-settings': 'Notification Settings',
+  '/approval-notification-analytics': 'Approval & Notification Analytics',
   '/retry-center': 'Retry Center',
   '/workload': 'Workload',
   '/tickets': 'Tickets',
@@ -361,6 +363,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     baseNavItems.push({ href: '/rollback-console', label: 'Rollback Console', Icon: IconRefreshCw });
     baseNavItems.push({ href: '/gate-approvals', label: 'Gate Audit', Icon: IconShield });
     baseNavItems.push({ href: '/gate-policies', label: 'Gate Policies', Icon: IconShield });
+    baseNavItems.push({ href: '/notification-settings', label: 'Notification Settings', Icon: IconBell });
+    baseNavItems.push({ href: '/approval-notification-analytics', label: 'Ops Analytics', Icon: IconHeatmap });
     baseNavItems.push({ href: '/retry-center', label: 'Retry Center', Icon: IconRefreshCw });
     baseNavItems.push({ href: '/workload', label: 'Workload', Icon: IconWorkload });
     baseNavItems.push({ href: '/tickets', label: 'Tickets', Icon: IconTickets });

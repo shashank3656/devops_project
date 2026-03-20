@@ -896,6 +896,62 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_rollback_operations_approved_by ON rollback_operations(approved_by)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_rollback_operations_created_at ON rollback_operations(created_at)")
 
+	// Migration 43: incident numbers and ops notification event dedupe
+	_, _ = DB.Exec("ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS incident_number VARCHAR(20)")
+	_, _ = DB.Exec(`
+		UPDATE request_incidents
+		SET incident_number = 'INC' || LPAD(id::text, 7, '0')
+		WHERE COALESCE(incident_number, '') = ''
+	`)
+	_, _ = DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_request_incidents_incident_number ON request_incidents(incident_number)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS ops_notification_events (
+			id SERIAL PRIMARY KEY,
+			event_key TEXT NOT NULL UNIQUE,
+			category VARCHAR(80) NOT NULL DEFAULT '',
+			target TEXT NOT NULL DEFAULT '',
+			details TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_ops_notification_events_category ON ops_notification_events(category)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_ops_notification_events_created_at ON ops_notification_events(created_at)")
+
+	// Migration 44: ops notification settings
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS ops_notification_settings (
+			id INTEGER PRIMARY KEY,
+			in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			email_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			slack_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+			slack_webhook_url TEXT NOT NULL DEFAULT '',
+			teams_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+			teams_webhook_url TEXT NOT NULL DEFAULT '',
+			webhook_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+			webhook_url TEXT NOT NULL DEFAULT '',
+			notify_expiring_assets BOOLEAN NOT NULL DEFAULT TRUE,
+			notify_blocked_promotions BOOLEAN NOT NULL DEFAULT TRUE,
+			notify_gate_approval_expiring BOOLEAN NOT NULL DEFAULT TRUE,
+			updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_ops_notification_settings_updated_by ON ops_notification_settings(updated_by)")
+
+	// Migration 45: incident team assignment
+	_, _ = DB.Exec("ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL")
+	_, _ = DB.Exec(`
+		UPDATE request_incidents AS incidents
+		SET team_id = teams.id
+		FROM pr_requests AS requests
+		INNER JOIN teams ON COALESCE(teams.team_type, 'portal') = 'portal' AND (teams.name = requests.team OR teams.slug = requests.team)
+		WHERE incidents.request_id = requests.id
+		  AND incidents.team_id IS NULL
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_incidents_team_id ON request_incidents(team_id)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }

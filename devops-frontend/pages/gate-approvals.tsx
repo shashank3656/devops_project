@@ -102,6 +102,7 @@ export default function GateApprovalsPage() {
   const [approver, setApprover] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [expiresWithinDays, setExpiresWithinDays] = useState('');
 
   const fetchApprovals = useCallback(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -120,6 +121,7 @@ export default function GateApprovalsPage() {
     if (approver.trim()) params.set('approver', approver.trim());
     if (fromDate) params.set('from', fromDate);
     if (toDate) params.set('to', toDate);
+    if (expiresWithinDays) params.set('expires_within_days', expiresWithinDays);
 
     fetch(`${apiUrl}/api/devops/deployment-gate-approvals?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -140,7 +142,51 @@ export default function GateApprovalsPage() {
       })
       .catch(() => setError('Failed to load gate approvals'))
       .finally(() => setLoading(false));
-  }, [apiUrl, approver, fromDate, projectId, router, stateFilter, targetEnvironment, toDate]);
+  }, [apiUrl, approver, expiresWithinDays, fromDate, projectId, router, stateFilter, targetEnvironment, toDate]);
+
+  const exportCSV = useCallback(async () => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+
+    const params = new URLSearchParams();
+    params.set('limit', '500');
+    params.set('format', 'csv');
+    if (projectId) params.set('project_id', projectId);
+    if (targetEnvironment) params.set('target_environment', targetEnvironment);
+    if (stateFilter) params.set('state', stateFilter);
+    if (approver.trim()) params.set('approver', approver.trim());
+    if (fromDate) params.set('from', fromDate);
+    if (toDate) params.set('to', toDate);
+    if (expiresWithinDays) params.set('expires_within_days', expiresWithinDays);
+
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/deployment-gate-approvals?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401 || response.status === 403) {
+        router.replace('/login');
+        return;
+      }
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to export gate approvals');
+      }
+      const blob = await response.blob();
+      const objectURL = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectURL;
+      anchor.download = 'deployment-gate-approvals.csv';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(objectURL);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export gate approvals');
+    }
+  }, [apiUrl, approver, expiresWithinDays, fromDate, projectId, router, stateFilter, targetEnvironment, toDate]);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -274,10 +320,28 @@ export default function GateApprovalsPage() {
                   <label className="credential-audit-label" htmlFor="gate-audit-to-date">To date</label>
                   <input id="gate-audit-to-date" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="input" />
                 </div>
+                <div className="portal-toolbar__item">
+                  <label className="credential-audit-label" htmlFor="gate-audit-expiry-window">Expiring within</label>
+                  <select
+                    id="gate-audit-expiry-window"
+                    value={expiresWithinDays}
+                    onChange={(event) => setExpiresWithinDays(event.target.value)}
+                    className="input"
+                  >
+                    <option value="">Any expiry window</option>
+                    <option value="1">24 hours</option>
+                    <option value="7">7 days</option>
+                    <option value="14">14 days</option>
+                    <option value="30">30 days</option>
+                  </select>
+                </div>
               </div>
               <div className="portal-page__actions">
                 <button type="button" className="btn btn-secondary" onClick={fetchApprovals}>
                   Refresh
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={() => void exportCSV()}>
+                  Export CSV
                 </button>
                 <Link href="/promotions" className="btn btn-primary">
                   Open Promotions
@@ -335,7 +399,7 @@ export default function GateApprovalsPage() {
                         </td>
                         <td>
                           <div>
-                            <strong>#{item.request_id}</strong>
+                            <strong>Request #{item.request_id}</strong>
                             <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
                               {[item.cloud, item.service, item.team].filter(Boolean).join(' / ') || item.request_status || '—'}
                             </div>

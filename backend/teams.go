@@ -6,12 +6,13 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
-// SendTeamsNotification sends a message to Microsoft Teams if TEAMS_WEBHOOK_URL is configured.
+// sendTeamsNotificationToWebhook sends a message to Microsoft Teams if a webhook is configured.
 // Uses Adaptive Card format for Teams incoming webhooks.
-func SendTeamsNotification(text string) {
-	if TeamsWebhookURL == "" {
+func sendTeamsNotificationToWebhook(webhookURL, text string) {
+	if strings.TrimSpace(webhookURL) == "" {
 		return
 	}
 	payload := map[string]interface{}{
@@ -39,7 +40,7 @@ func SendTeamsNotification(text string) {
 		log.Printf("[Teams] marshal: %v", err)
 		return
 	}
-	resp, err := http.Post(TeamsWebhookURL, "application/json", bytes.NewReader(body))
+	resp, err := http.Post(strings.TrimSpace(webhookURL), "application/json", bytes.NewReader(body))
 	if err != nil {
 		log.Printf("[Teams] POST: %v", err)
 		return
@@ -48,6 +49,11 @@ func SendTeamsNotification(text string) {
 	if resp.StatusCode >= 400 {
 		log.Printf("[Teams] status %d", resp.StatusCode)
 	}
+}
+
+// SendTeamsNotification sends a message to Microsoft Teams if TEAMS_WEBHOOK_URL is configured.
+func SendTeamsNotification(text string) {
+	sendTeamsNotificationToWebhook(TeamsWebhookURL, text)
 }
 
 // NotifyTeamsRequestApproved sends Teams notification when request is approved
