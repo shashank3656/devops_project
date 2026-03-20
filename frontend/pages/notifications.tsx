@@ -352,6 +352,7 @@ export default function NotificationsPage() {
                                 {new Date(notification.created_at).toLocaleString()}
                               </span>
                             </div>
+                            <strong className="notification-row__title">{formatNotificationKind(notification.kind)}</strong>
                             <p className="notification-row__message">{notification.message}</p>
                           </div>
                           <div className="notification-row__actions">

@@ -520,12 +520,22 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                           x
                         </button>
                       </div>
-                      <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                        Open tickets
-                      </Link>
-                      <Link href="/notifications" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                        Open notifications center
-                      </Link>
+                      <div className="devops-navbar__notify-summary">
+                        <strong>{pendingCount > 99 ? '99+' : pendingCount}</strong>
+                        <span>
+                          {pendingCount > 0
+                            ? 'Approval work is waiting across projects and release flows.'
+                            : 'No approval tickets are waiting right now.'}
+                        </span>
+                      </div>
+                      <div className="devops-navbar__notify-links">
+                        <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                          Open tickets
+                        </Link>
+                        <Link href="/notifications" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                          Open notifications center
+                        </Link>
+                      </div>
                       <div className="devops-navbar__notify-list">
                         {pendingApprovalsLoading ? (
                           <p className="devops-navbar__notify-empty">Loading...</p>
