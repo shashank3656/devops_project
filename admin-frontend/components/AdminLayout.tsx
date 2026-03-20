@@ -28,7 +28,6 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
-  '/notifications': 'Notifications',
   '/approval-center': 'Approval Center',
   '/project-governance': 'Project Governance',
   '/requests': 'Requests',
@@ -78,7 +77,6 @@ interface PendingRequest {
 
 const NAV_ITEMS: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
   { href: '/dashboard', label: 'Dashboard', Icon: IconDashboard },
-  { href: '/notifications', label: 'Notifications', Icon: IconBell },
   { href: '/approval-center', label: 'Approval Center', Icon: IconShield },
   { href: '/project-governance', label: 'Project Governance', Icon: IconTrendingUp },
   { href: '/requests', label: 'Requests', Icon: IconRequests },
@@ -210,6 +208,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (notifyOpen) fetchPendingTickets();
   }, [notifyOpen]);
+
+  useEffect(() => {
+    setNotifyOpen(false);
+    setProfileOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     const q = router.query.q;
@@ -412,17 +415,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <button
                 type="button"
                 className="admin-topbar__icon-btn"
-                onClick={() => setNotifyOpen((o) => !o)}
+                onClick={() => {
+                  setNotifyOpen((o) => !o);
+                  setProfileOpen(false);
+                }}
                 title={newRequestsCount > 0 ? `${newRequestsCount} new request(s) pending` : 'Notifications'}
                 aria-expanded={notifyOpen}
                 aria-haspopup="true"
               >
                 <IconBell />
-                {newRequestsCount > 0 && (
-                  <span className="admin-topbar__badge" aria-label={`${newRequestsCount} new requests`}>
-                    {newRequestsCount > 99 ? '99+' : newRequestsCount}
-                  </span>
-                )}
+                {newRequestsCount > 0 && <span className="admin-topbar__badge admin-topbar__badge--dot" aria-hidden />}
               </button>
 
               {notifyOpen && (
@@ -430,7 +432,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   <div className="admin-topbar__notify-header">
                     <h3 className="admin-topbar__notify-title">Pending Requests</h3>
                     <button type="button" className="admin-topbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
-                      x
+                      Close
                     </button>
                   </div>
                   <div className="admin-topbar__notify-summary">
@@ -444,9 +446,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   <div className="admin-topbar__notify-links">
                     <Link href="/requests" className="admin-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
                       Open requests
-                    </Link>
-                    <Link href="/notifications" className="admin-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                      Open notifications center
                     </Link>
                   </div>
                   <div className="admin-topbar__notify-list">
