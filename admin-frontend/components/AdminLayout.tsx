@@ -433,12 +433,22 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                       x
                     </button>
                   </div>
-                  <Link href="/requests" className="admin-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                    Open requests
-                  </Link>
-                  <Link href="/notifications" className="admin-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                    Open notifications center
-                  </Link>
+                  <div className="admin-topbar__notify-summary">
+                    <strong>{newRequestsCount > 99 ? '99+' : newRequestsCount}</strong>
+                    <span>
+                      {newRequestsCount > 0
+                        ? 'Requests are waiting for admin review right now.'
+                        : 'No pending request tickets at the moment.'}
+                    </span>
+                  </div>
+                  <div className="admin-topbar__notify-links">
+                    <Link href="/requests" className="admin-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                      Open requests
+                    </Link>
+                    <Link href="/notifications" className="admin-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                      Open notifications center
+                    </Link>
+                  </div>
                   <div className="admin-topbar__notify-list">
                     {ticketsLoading ? (
                       <p className="admin-topbar__notify-empty">Loading...</p>

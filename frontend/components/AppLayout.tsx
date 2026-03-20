@@ -387,6 +387,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     : unreadNotificationsCount > 0
       ? unreadNotificationsCount
       : updatedRequestsCount;
+  const notificationSummary = notifyBadgeCount > 0
+    ? hasManagedTeams
+      ? `${notifyBadgeCount} updates are waiting across approvals and personal notifications.`
+      : `${notifyBadgeCount} unread updates are waiting in your inbox.`
+    : hasManagedTeams
+      ? 'You are caught up on approvals and recent notifications.'
+      : 'No fresh updates right now.';
 
   return (
     <div className="user-layout user-layout-sidebar user-shell">
@@ -569,9 +576,20 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         x
                       </button>
                     </div>
-                    <Link href="/notifications" className="user-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                      Open notifications
-                    </Link>
+                    <div className="user-topbar__notify-summary">
+                      <strong>{notifyBadgeCount > 99 ? '99+' : notifyBadgeCount}</strong>
+                      <span>{notificationSummary}</span>
+                    </div>
+                    <div className="user-topbar__notify-links">
+                      <Link href="/notifications" className="user-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                        Open notifications
+                      </Link>
+                      {hasManagedTeams && (
+                        <Link href="/history" className="user-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                          Review approvals
+                        </Link>
+                      )}
+                    </div>
                     <div className="user-topbar__notify-list">
                       {hasManagedTeams && pendingManagerApprovalCount > 0 && (
                         <Link href="/history" className="user-topbar__notify-ticket" onClick={() => setNotifyOpen(false)}>
