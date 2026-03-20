@@ -886,9 +886,9 @@ export default function OpsCommandCenterPage() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                           <div>
                             <strong>{item.project_name || `Request #${item.request_id}`}</strong>
-                            <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
-                              {item.environment.toUpperCase()} -> {item.next_environment.toUpperCase()} · {item.cloud} / {item.service}
-                            </div>
+                                <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                  {item.environment.toUpperCase()} {'->'} {item.next_environment.toUpperCase()} · {item.cloud} / {item.service}
+                                </div>
                           </div>
                           <span className="portal-pill">{item.status}</span>
                         </div>
