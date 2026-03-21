@@ -76,10 +76,11 @@ export default function DevOpsChangeCalendarPage() {
         return payload;
       })
       .then((payload) => {
-        if (payload.summary && Array.isArray(payload.items)) {
+        const data = asRecord(payload);
+        if (data.summary && Array.isArray(data.items)) {
           setCalendar({
-            summary: payload.summary as ChangeCalendarResponse['summary'],
-            items: payload.items as ChangeCalendarItem[],
+            summary: data.summary as ChangeCalendarResponse['summary'],
+            items: data.items as ChangeCalendarItem[],
           });
         }
       })
