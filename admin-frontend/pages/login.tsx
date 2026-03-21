@@ -58,13 +58,13 @@ export default function AdminLogin() {
     }
   };
 
-  const finishAdminLogin = (data: { token: string; user?: { role?: string } }) => {
-    if (data.user?.role !== 'admin') {
+  const finishAdminLogin = (token: string, user?: { role?: string }) => {
+    if (user?.role !== 'admin') {
       setError('Admin access only. Your account does not have admin role.');
       return;
     }
-    localStorage.setItem('admin_token', data.token);
-    localStorage.setItem('admin_user', JSON.stringify(data.user || {}));
+    localStorage.setItem('admin_token', token);
+    localStorage.setItem('admin_user', JSON.stringify(user || {}));
     router.push('/teams');
   };
 
@@ -125,7 +125,10 @@ export default function AdminLogin() {
         setError('Login failed');
         return;
       }
-      finishAdminLogin(data);
+      const user = asRecord(data.user);
+      finishAdminLogin(data.token, {
+        role: getString(user.role),
+      });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '';
       setError(
@@ -156,7 +159,10 @@ export default function AdminLogin() {
         setError('Verification failed');
         return;
       }
-      finishAdminLogin(data);
+      const user = asRecord(data.user);
+      finishAdminLogin(data.token, {
+        role: getString(user.role),
+      });
     } catch (_) {
       setError('Verification failed');
     } finally {
