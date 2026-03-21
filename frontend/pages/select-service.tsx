@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useToast } from '../context/ToastContext';
+import CalendarDateInput from '../components/CalendarDateInput';
 import { clouds, environments } from '../config/clouds';
 import { awsServices, awsServiceList, ServiceField } from '../config/awsServices';
 import { gcpServices, gcpServiceList } from '../config/gcpServices';
@@ -594,12 +595,7 @@ export default function SelectService() {
 
                 <div className="form-group">
                   <label className="label">Due date</label>
-                  <input
-                    type="date"
-                    className="input"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                  />
+                  <CalendarDateInput value={dueDate} onChange={setDueDate} />
                 </div>
               </div>
 
