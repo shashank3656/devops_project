@@ -142,7 +142,8 @@ export default function DevOpsProjectOperationsPage() {
         return payload;
       })
       .then((payload) => {
-        const nextAnalytics = normalizeProjectAnalytics(payload.analytics as Partial<ProjectAnalytics> | null | undefined);
+        const data = asRecord(payload);
+        const nextAnalytics = normalizeProjectAnalytics(data.analytics as Partial<ProjectAnalytics> | null | undefined);
         if (nextAnalytics) setAnalytics(nextAnalytics);
       })
       .catch((err: Error) => setError(err.message))
