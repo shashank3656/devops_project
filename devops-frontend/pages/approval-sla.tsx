@@ -95,7 +95,8 @@ export default function DevOpsApprovalSLAPage() {
         return payload;
       })
       .then((payload) => {
-        const nextValue = normalizeSLA(payload.sla as Partial<ApprovalSLA> | null | undefined);
+        const data = asRecord(payload);
+        const nextValue = normalizeSLA(data.sla as Partial<ApprovalSLA> | null | undefined);
         if (nextValue) setSla(nextValue);
       })
       .catch((err: Error) => setError(err.message))
