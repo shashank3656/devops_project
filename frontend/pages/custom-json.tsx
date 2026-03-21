@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useToast } from '../context/ToastContext';
+import CalendarDateInput from '../components/CalendarDateInput';
 import { environments } from '../config/clouds';
 
 const TEMPLATE_KEY = 'infra-request-template';
@@ -432,12 +433,7 @@ export default function CustomJSON() {
 
                 <div className="form-group">
                   <label className="label">Due date</label>
-                  <input
-                    type="date"
-                    className="input"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                  />
+                  <CalendarDateInput value={dueDate} onChange={setDueDate} />
                 </div>
               </div>
 
