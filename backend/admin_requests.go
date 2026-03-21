@@ -10,9 +10,35 @@ import (
 )
 
 func encodeAdminJSON(w http.ResponseWriter, payload interface{}) {
+	setSafeJSONResponseHeaders(w.Header())
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		log.Printf("admin response encode failed: %v", err)
 	}
+}
+
+func normalizeDashboardPeriod(raw string) string {
+	switch strings.TrimSpace(strings.ToLower(raw)) {
+	case "today":
+		return "today"
+	case "week":
+		return "week"
+	case "month":
+		return "month"
+	default:
+		return ""
+	}
+}
+
+func normalizeDateOnlyQuery(raw string) (string, time.Time, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", time.Time{}, false
+	}
+	parsed, err := time.Parse("2006-01-02", trimmed)
+	if err != nil {
+		return "", time.Time{}, false
+	}
+	return parsed.Format("2006-01-02"), parsed, true
 }
 
 // adminDashboardStatsHandler GET /api/admin/dashboard-stats - quick counts for admin dashboard
@@ -30,13 +56,10 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		encodeAdminJSON(w, map[string]interface{}{
 			"total_users": 0, "total_teams": 0, "unverified_users": 0,
 			"requests_this_week": 0, "pending_approval": 0, "status": "ok",
-		}); err != nil {
-			log.Printf("admin dashboard stats encode failed: %v", err)
-		}
+		})
 		return
 	}
 	stats, _ := GetDashboardStats()
@@ -57,7 +80,7 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 	filterFrom := ""
 	filterTo := ""
 	now := time.Now()
-	if period := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("period"))); period != "" {
+	if period := normalizeDashboardPeriod(r.URL.Query().Get("period")); period != "" {
 		switch period {
 		case "today":
 			filterPeriod = period
@@ -74,17 +97,13 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 			toDate = now
 		}
 	}
-	if fromStr := r.URL.Query().Get("from"); fromStr != "" {
-		if t, err := time.Parse("2006-01-02", fromStr); err == nil {
-			filterFrom = t.Format("2006-01-02")
-			fromDate = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-		}
+	if normalizedFrom, parsedFrom, ok := normalizeDateOnlyQuery(r.URL.Query().Get("from")); ok {
+		filterFrom = normalizedFrom
+		fromDate = time.Date(parsedFrom.Year(), parsedFrom.Month(), parsedFrom.Day(), 0, 0, 0, 0, parsedFrom.Location())
 	}
-	if toStr := r.URL.Query().Get("to"); toStr != "" {
-		if t, err := time.Parse("2006-01-02", toStr); err == nil {
-			filterTo = t.Format("2006-01-02")
-			toDate = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-		}
+	if normalizedTo, parsedTo, ok := normalizeDateOnlyQuery(r.URL.Query().Get("to")); ok {
+		filterTo = normalizedTo
+		toDate = time.Date(parsedTo.Year(), parsedTo.Month(), parsedTo.Day(), 0, 0, 0, 0, parsedTo.Location())
 	}
 	if !fromDate.IsZero() || !toDate.IsZero() {
 		if fromDate.IsZero() {
@@ -116,8 +135,8 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 			dateStats, err := GetRequestsByStatusInDateRange(fromDate, toDate)
 			if err == nil {
 				cachedResp["date_filter"] = map[string]interface{}{
-					"from":      dateStats.From,
-					"to":        dateStats.To,
+					"from":      sanitizeAPIErrorMessage(dateStats.From),
+					"to":        sanitizeAPIErrorMessage(dateStats.To),
 					"total":     dateStats.Total,
 					"by_status": dateStats.ByStatus,
 				}
@@ -144,10 +163,7 @@ func adminDashboardStatsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil || resp == nil {
 		resp = baseResp
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		log.Printf("admin dashboard stats encode failed: %v", err)
-	}
+	encodeAdminJSON(w, sanitizeJSONValue(resp))
 }
 
 // adminAuditLogHandler GET /api/admin/audit-log - list admin audit log entries
@@ -165,10 +181,7 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{"entries": []interface{}{}, "status": "ok"}); err != nil {
-			log.Printf("admin audit log empty response encode failed: %v", err)
-		}
+		encodeAdminJSON(w, map[string]interface{}{"entries": []interface{}{}, "status": "ok"})
 		return
 	}
 	limit := 50
@@ -229,10 +242,7 @@ func adminAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{"entries": entries, "status": "ok"}); err != nil {
-		log.Printf("admin audit log response encode failed: %v", err)
-	}
+	encodeAdminJSON(w, sanitizeJSONValue(map[string]interface{}{"entries": entries, "status": "ok"}))
 }
 
 // adminAnalyticsHandler GET /api/admin/analytics/requests - extended analytics (trend, by team/env/cloud, SLA)
@@ -250,10 +260,7 @@ func adminAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{"trend": []interface{}{}, "by_team": []interface{}{}, "by_env": []interface{}{}, "by_cloud": []interface{}{}, "sla": nil, "status": "ok"}); err != nil {
-			log.Printf("admin analytics empty response encode failed: %v", err)
-		}
+		encodeAdminJSON(w, map[string]interface{}{"trend": []interface{}{}, "by_team": []interface{}{}, "by_env": []interface{}{}, "by_cloud": []interface{}{}, "sla": nil, "status": "ok"})
 		return
 	}
 	days := 14
@@ -281,17 +288,14 @@ func adminAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
 			byCloud = append(byCloud, map[string]interface{}{"name": k, "count": v})
 		}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeAdminJSON(w, sanitizeJSONValue(map[string]interface{}{
 		"trend":    trend,
 		"by_team":  teamComp,
 		"by_env":   byEnv,
 		"by_cloud": byCloud,
 		"sla":      slaResp,
 		"status":   "ok",
-	}); err != nil {
-		log.Printf("admin analytics response encode failed: %v", err)
-	}
+	}))
 }
 
 // adminSLABreachCheckHandler GET /api/admin/sla-breach-check - find at-risk requests, send notifications, mark notified.
@@ -310,10 +314,7 @@ func adminSLABreachCheckHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{"notified": 0, "status": "ok"}); err != nil {
-			log.Printf("admin sla breach empty response encode failed: %v", err)
-		}
+		encodeAdminJSON(w, map[string]interface{}{"notified": 0, "status": "ok"})
 		return
 	}
 	reqs, err := GetAtRiskRequestsForSLABreach(50)
@@ -327,10 +328,7 @@ func adminSLABreachCheckHandler(w http.ResponseWriter, r *http.Request) {
 		_ = UpdateSLABreachNotified(req.ID)
 		notified++
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{"notified": notified, "status": "ok"}); err != nil {
-		log.Printf("admin sla breach response encode failed: %v", err)
-	}
+	encodeAdminJSON(w, map[string]interface{}{"notified": notified, "status": "ok"})
 }
 
 // adminRequestsHandler GET /api/admin/requests - list all PR requests (admin only, no user filter)
@@ -468,17 +466,14 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+	encodeAdminJSON(w, sanitizeJSONValue(map[string]interface{}{
 		"status":      "success",
 		"requests":    enriched,
 		"count":       len(enriched),
 		"total_count": totalCount,
 		"limit":       limit,
 		"offset":      offset,
-	}); err != nil {
-		log.Printf("admin requests response encode failed: %v", err)
-	}
+	}))
 }
 
 // adminStatsHandler GET /api/admin/stats - dashboard stats for all PR requests (admin only)
@@ -505,10 +500,7 @@ func adminStatsHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to fetch stats", err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{"status": "success", "stats": stats}); err != nil {
-		log.Printf("admin stats response encode failed: %v", err)
-	}
+	encodeAdminJSON(w, sanitizeJSONValue(map[string]interface{}{"status": "success", "stats": stats}))
 }
 
 // adminNotificationsHandler GET /api/admin/notifications - admin inbox summary and project-aware notification items.
@@ -526,10 +518,7 @@ func adminNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if DB == nil {
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{"new_requests": 0, "items": []interface{}{}, "total_count": 0, "counts_by_kind": map[string]int{"all": 0, "pending_request": 0, "project_event": 0}, "status": "ok"}); err != nil {
-			log.Printf("admin notifications empty response encode failed: %v", err)
-		}
+		encodeAdminJSON(w, map[string]interface{}{"new_requests": 0, "items": []interface{}{}, "total_count": 0, "counts_by_kind": map[string]int{"all": 0, "pending_request": 0, "project_event": 0}, "status": "ok"})
 		return
 	}
 	limit, offset, projectID, kind := parseOpsNotificationFilters(
@@ -543,10 +532,7 @@ func adminNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to fetch notifications", err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		log.Printf("admin notifications response encode failed: %v", err)
-	}
+	encodeAdminJSON(w, sanitizeJSONValue(payload))
 }
 
 // adminBulkApproveHandler POST /api/admin/requests/bulk-approve with body {"ids": [1,2,3]}

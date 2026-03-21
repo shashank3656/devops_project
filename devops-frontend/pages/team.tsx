@@ -5,6 +5,7 @@ import { useRouter } from 'next/router';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { DEVOPS_SITE_NAME } from '../lib/site';
+import { asRecord } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -50,18 +51,20 @@ export default function DevOpsTeamPage() {
           router.replace('/login');
           return null;
         }
-        return response.json();
+        return response.json().catch(() => ({}));
       })
-      .then((data) => {
-        if (!data?.teams) return;
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        if (!Array.isArray(data.teams)) return;
         const nextTeams = data.teams as Team[];
         setTeams(nextTeams);
         nextTeams.forEach((team) => {
           fetch(`${apiUrl}/api/devops/teams/${team.id}/members`, { headers: { Authorization: `Bearer ${token}` } })
             .then((response) => (response.ok ? response.json() : null))
-            .then((membersData) => {
-              if (membersData?.members) {
-                setMembersByTeam((previous) => ({ ...previous, [team.id]: membersData.members }));
+            .then((rawMembersData) => {
+              const membersData = asRecord(rawMembersData);
+              if (Array.isArray(membersData.members)) {
+                setMembersByTeam((previous) => ({ ...previous, [team.id]: membersData.members as Member[] }));
               }
             })
             .catch(() => {});
@@ -76,9 +79,10 @@ export default function DevOpsTeamPage() {
     if (!token) return;
     fetch(`${apiUrl}/api/devops/teams/${teamId}/members`, { headers: { Authorization: `Bearer ${token}` } })
       .then((response) => (response.ok ? response.json() : null))
-      .then((data) => {
-        if (data?.members) {
-          setMembersByTeam((previous) => ({ ...previous, [teamId]: data.members }));
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        if (Array.isArray(data.members)) {
+          setMembersByTeam((previous) => ({ ...previous, [teamId]: data.members as Member[] }));
         }
       })
       .catch(() => {});

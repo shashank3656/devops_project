@@ -809,6 +809,149 @@ func MigrateDatabase() error {
 		WHERE COALESCE(devops_portal_sso_mode, '') = ''
 	`)
 
+	// Migration 39: deployment gate approvals for persisted promotion reviews
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS deployment_gate_approvals (
+			id SERIAL PRIMARY KEY,
+			request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+			source_environment VARCHAR(40) NOT NULL DEFAULT '',
+			target_environment VARCHAR(40) NOT NULL DEFAULT '',
+			gate_status VARCHAR(20) NOT NULL DEFAULT 'attention',
+			summary TEXT NOT NULL DEFAULT '',
+			note TEXT NOT NULL DEFAULT '',
+			approved_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			source_request_updated_at TIMESTAMP NOT NULL,
+			approved_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			expires_at TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_deployment_gate_approvals_request_target ON deployment_gate_approvals(request_id, target_environment)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_deployment_gate_approvals_approved_by ON deployment_gate_approvals(approved_by)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_deployment_gate_approvals_expires_at ON deployment_gate_approvals(expires_at)")
+	_, _ = DB.Exec("ALTER TABLE deployment_gate_approvals ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMP")
+	_, _ = DB.Exec("ALTER TABLE deployment_gate_approvals ADD COLUMN IF NOT EXISTS revoked_by INTEGER REFERENCES users(id) ON DELETE SET NULL")
+	_, _ = DB.Exec("ALTER TABLE deployment_gate_approvals ADD COLUMN IF NOT EXISTS revoke_note TEXT NOT NULL DEFAULT ''")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_deployment_gate_approvals_revoked_at ON deployment_gate_approvals(revoked_at)")
+
+	// Migration 40: expiry tracker workflow state for acknowledge/rotate operations
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS expiry_tracker_actions (
+			id SERIAL PRIMARY KEY,
+			item_key TEXT NOT NULL UNIQUE,
+			workflow_state VARCHAR(30) NOT NULL DEFAULT 'acknowledged',
+			note TEXT NOT NULL DEFAULT '',
+			updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_expiry_tracker_actions_workflow_state ON expiry_tracker_actions(workflow_state)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_expiry_tracker_actions_updated_by ON expiry_tracker_actions(updated_by)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_expiry_tracker_actions_updated_at ON expiry_tracker_actions(updated_at)")
+
+	// Migration 41: incident postmortem workspace records
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS incident_postmortems (
+			id SERIAL PRIMARY KEY,
+			incident_id INTEGER NOT NULL UNIQUE,
+			request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'draft',
+			impact_summary TEXT NOT NULL DEFAULT '',
+			root_cause TEXT NOT NULL DEFAULT '',
+			detection_summary TEXT NOT NULL DEFAULT '',
+			mitigation_summary TEXT NOT NULL DEFAULT '',
+			corrective_actions TEXT NOT NULL DEFAULT '',
+			follow_up_owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			review_notes TEXT NOT NULL DEFAULT '',
+			updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_incident_postmortems_request_id ON incident_postmortems(request_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_incident_postmortems_project_id ON incident_postmortems(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_incident_postmortems_status ON incident_postmortems(status)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_incident_postmortems_follow_up_owner ON incident_postmortems(follow_up_owner_user_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_incident_postmortems_updated_at ON incident_postmortems(updated_at)")
+
+	// Migration 42: rollback console operation audit
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS rollback_operations (
+			id SERIAL PRIMARY KEY,
+			source_request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			rollback_request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			history_id INTEGER REFERENCES request_config_history(id) ON DELETE SET NULL,
+			project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+			reason TEXT NOT NULL DEFAULT '',
+			notes TEXT NOT NULL DEFAULT '',
+			approved_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_rollback_operations_source_request_id ON rollback_operations(source_request_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_rollback_operations_rollback_request_id ON rollback_operations(rollback_request_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_rollback_operations_project_id ON rollback_operations(project_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_rollback_operations_approved_by ON rollback_operations(approved_by)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_rollback_operations_created_at ON rollback_operations(created_at)")
+
+	// Migration 43: incident numbers and ops notification event dedupe
+	_, _ = DB.Exec("ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS incident_number VARCHAR(20)")
+	_, _ = DB.Exec(`
+		UPDATE request_incidents
+		SET incident_number = 'INC' || LPAD(id::text, 7, '0')
+		WHERE COALESCE(incident_number, '') = ''
+	`)
+	_, _ = DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_request_incidents_incident_number ON request_incidents(incident_number)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS ops_notification_events (
+			id SERIAL PRIMARY KEY,
+			event_key TEXT NOT NULL UNIQUE,
+			category VARCHAR(80) NOT NULL DEFAULT '',
+			target TEXT NOT NULL DEFAULT '',
+			details TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_ops_notification_events_category ON ops_notification_events(category)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_ops_notification_events_created_at ON ops_notification_events(created_at)")
+
+	// Migration 44: ops notification settings
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS ops_notification_settings (
+			id INTEGER PRIMARY KEY,
+			in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			email_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			slack_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+			slack_webhook_url TEXT NOT NULL DEFAULT '',
+			teams_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+			teams_webhook_url TEXT NOT NULL DEFAULT '',
+			webhook_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+			webhook_url TEXT NOT NULL DEFAULT '',
+			notify_expiring_assets BOOLEAN NOT NULL DEFAULT TRUE,
+			notify_blocked_promotions BOOLEAN NOT NULL DEFAULT TRUE,
+			notify_gate_approval_expiring BOOLEAN NOT NULL DEFAULT TRUE,
+			updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_ops_notification_settings_updated_by ON ops_notification_settings(updated_by)")
+
+	// Migration 45: incident team assignment
+	_, _ = DB.Exec("ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL")
+	_, _ = DB.Exec(`
+		UPDATE request_incidents AS incidents
+		SET team_id = teams.id
+		FROM pr_requests AS requests
+		INNER JOIN teams ON COALESCE(teams.team_type, 'portal') = 'portal' AND (teams.name = requests.team OR teams.slug = requests.team)
+		WHERE incidents.request_id = requests.id
+		  AND incidents.team_id IS NULL
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_incidents_team_id ON request_incidents(team_id)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }

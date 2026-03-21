@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { asRecord, getString } from '../../lib/payload';
 
 interface ProjectServiceOption {
   cloud: string;
@@ -133,11 +134,11 @@ export default function ProjectDetailsPage() {
     setError('');
     fetch(`${apiUrl}/api/me/projects`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
+        const data = asRecord(await res.json().catch(() => ({})));
         if (!res.ok) {
-          throw new Error(data?.error || 'Failed to load project');
+          throw new Error(getString(data.error, 'Failed to load project'));
         }
-        const projects = Array.isArray(data?.projects) ? data.projects : [];
+        const projects = Array.isArray(data.projects) ? data.projects : [];
         const matchedProject = projects.find((item: { id?: unknown }) => Number(item?.id) === projectId);
         if (!matchedProject) {
           throw new Error('Project not found');

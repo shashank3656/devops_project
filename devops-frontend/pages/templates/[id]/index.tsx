@@ -4,6 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
+import { asRecord, getString } from '../../../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -81,15 +82,15 @@ export default function ViewDevOpsTemplate() {
         router.replace('/login');
         return;
       }
-      const data = await res.json().catch(() => ({}));
-      const templates = Array.isArray(data?.templates) ? data.templates : [];
+      const data = asRecord(await res.json().catch(() => ({})));
+      const templates = Array.isArray(data.templates) ? data.templates : [];
       const matchedTemplate = templates.find((item: { id?: unknown }) => Number(item?.id) === templateId) as RequestTemplate | undefined;
       if (res.ok && matchedTemplate) {
         setTemplate(matchedTemplate);
         return;
       }
       setTemplate(null);
-      setError(data.error || 'Template not found');
+      setError(getString(data.error, 'Template not found'));
     } catch {
       setTemplate(null);
       setError('Failed to load template. Check your connection.');

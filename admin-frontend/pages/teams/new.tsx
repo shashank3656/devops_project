@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import AdminLayout from '../../components/AdminLayout';
+import { asRecord, getString } from '../../lib/payload';
 
 export default function NewTeam() {
   const router = useRouter();
@@ -35,13 +36,14 @@ export default function NewTeam() {
           default_cloud: defaultCloud.trim() || undefined,
         }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.team) {
-        const groupName = (data.team.team_type || 'portal') === 'devops' ? 'DevOps team group' : 'Portal team group';
-        router.push(`/teams/${data.team.id}?created=1&group=${encodeURIComponent(groupName)}`);
+      const data = asRecord(await res.json().catch(() => ({})));
+      const teamData = asRecord(data.team);
+      if (res.ok && typeof teamData.id === 'number') {
+        const groupName = getString(teamData.team_type, 'portal') === 'devops' ? 'DevOps team group' : 'Portal team group';
+        router.push(`/teams/${teamData.id}?created=1&group=${encodeURIComponent(groupName)}`);
         return;
       }
-      setError(data.error || 'Failed to create team');
+      setError(getString(data.error, 'Failed to create team'));
     } catch (_) {
       setError('Failed to create team');
     } finally {

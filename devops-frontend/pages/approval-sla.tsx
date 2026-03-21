@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -87,14 +88,15 @@ export default function DevOpsApprovalSLAPage() {
           clearSessionAndRedirect();
           return null;
         }
-        const data = await res.json().catch(() => ({}));
+        const payload = asRecord(await res.json().catch(() => ({})));
         if (!res.ok) {
-          throw new Error(data?.error || 'Failed to load approval SLA');
+          throw new Error(getString(payload.error, 'Failed to load approval SLA'));
         }
-        return data;
+        return payload;
       })
-      .then((data) => {
-        const nextValue = normalizeSLA(data?.sla);
+      .then((payload) => {
+        const data = asRecord(payload);
+        const nextValue = normalizeSLA(data.sla as Partial<ApprovalSLA> | null | undefined);
         if (nextValue) setSla(nextValue);
       })
       .catch((err: Error) => setError(err.message))

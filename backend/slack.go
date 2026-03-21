@@ -6,11 +6,11 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
-// SendSlackNotification sends a message to Slack if SLACK_WEBHOOK_URL is configured
-func SendSlackNotification(text string, blocks []map[string]interface{}) {
-	if SlackWebhookURL == "" {
+func sendSlackNotificationToWebhook(webhookURL, text string, blocks []map[string]interface{}) {
+	if strings.TrimSpace(webhookURL) == "" {
 		log.Printf("[Slack] Skipped: SLACK_WEBHOOK_URL not configured")
 		return
 	}
@@ -23,7 +23,7 @@ func SendSlackNotification(text string, blocks []map[string]interface{}) {
 		log.Printf("[Slack] marshal: %v", err)
 		return
 	}
-	resp, err := http.Post(SlackWebhookURL, "application/json", bytes.NewReader(body))
+	resp, err := http.Post(strings.TrimSpace(webhookURL), "application/json", bytes.NewReader(body))
 	if err != nil {
 		log.Printf("[Slack] POST failed: %v", err)
 		return
@@ -34,6 +34,11 @@ func SendSlackNotification(text string, blocks []map[string]interface{}) {
 	} else {
 		log.Printf("[Slack] Message sent successfully")
 	}
+}
+
+// SendSlackNotification sends a message to Slack if SLACK_WEBHOOK_URL is configured
+func SendSlackNotification(text string, blocks []map[string]interface{}) {
+	sendSlackNotificationToWebhook(SlackWebhookURL, text, blocks)
 }
 
 // NotifySlackRequestApproved sends Slack notification when request is approved

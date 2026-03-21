@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"net/http/httptest"
+	"testing"
+	"time"
+)
 
 func TestNormalizeUserNotificationKind(t *testing.T) {
 	tests := []struct {
@@ -23,5 +27,32 @@ func TestNormalizeUserNotificationKind(t *testing.T) {
 				t.Fatalf("normalizeUserNotificationKind(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseRFC3339Query(t *testing.T) {
+	parsed, ok := parseRFC3339Query(" 2026-03-19T08:30:00Z ")
+	if !ok {
+		t.Fatal("expected RFC3339 timestamp to be accepted")
+	}
+	if parsed.UTC().Format(time.RFC3339) != "2026-03-19T08:30:00Z" {
+		t.Fatalf("parseRFC3339Query() = %q, want %q", parsed.UTC().Format(time.RFC3339), "2026-03-19T08:30:00Z")
+	}
+
+	if _, ok := parseRFC3339Query("not-a-timestamp"); ok {
+		t.Fatal("expected invalid timestamp to be rejected")
+	}
+}
+
+func TestEncodeAuthJSONSetsSafeHeaders(t *testing.T) {
+	rec := httptest.NewRecorder()
+
+	encodeAuthJSON(rec, map[string]any{"status": "ok"})
+
+	if got := rec.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
+		t.Fatalf("Content-Type = %q, want %q", got, "application/json; charset=utf-8")
+	}
+	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q, want %q", got, "nosniff")
 	}
 }

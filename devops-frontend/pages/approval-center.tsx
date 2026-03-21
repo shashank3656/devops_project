@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -40,7 +41,10 @@ export default function DevOpsApprovalCenter() {
     if (!token) return;
     fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setProjects(Array.isArray(data?.projects) ? data.projects : []))
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        setProjects(Array.isArray(data.projects) ? (data.projects as ProjectSummary[]) : []);
+      })
       .catch(() => setProjects([]));
   }, [apiUrl, token]);
 
@@ -57,11 +61,12 @@ export default function DevOpsApprovalCenter() {
     fetch(`${apiUrl}/api/devops/requests?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data?.requests)) setRequests(data.requests);
-        else setRequests([]);
-        if (data?.error) setError(data.error);
+      .then((res) => res.json().catch(() => ({})))
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        setRequests(Array.isArray(data.requests) ? (data.requests as ApprovalRequest[]) : []);
+        const nextError = getString(data.error);
+        if (nextError) setError(nextError);
       })
       .catch(() => setError('Failed to load approval queue'))
       .finally(() => setLoading(false));

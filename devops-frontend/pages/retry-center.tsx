@@ -2,6 +2,7 @@ import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -19,16 +20,19 @@ interface FailureItem {
 
 function normalizeFailures(value: unknown): FailureItem[] {
   if (!Array.isArray(value)) return [];
-  return value.map((failure) => ({
-    id: typeof failure?.id === 'number' ? failure.id : 0,
-    job_type: typeof failure?.job_type === 'string' ? failure.job_type : 'unknown',
-    target: typeof failure?.target === 'string' ? failure.target : '',
-    error_message: typeof failure?.error_message === 'string' ? failure.error_message : '',
-    status: typeof failure?.status === 'string' ? failure.status : 'failed',
-    retry_count: typeof failure?.retry_count === 'number' ? failure.retry_count : 0,
-    created_at: typeof failure?.created_at === 'string' ? failure.created_at : '',
-    updated_at: typeof failure?.updated_at === 'string' ? failure.updated_at : '',
-  }));
+  return value.map((failure) => {
+    const item = failure && typeof failure === 'object' ? (failure as Record<string, unknown>) : {};
+    return {
+      id: typeof item.id === 'number' ? item.id : 0,
+      job_type: typeof item.job_type === 'string' ? item.job_type : 'unknown',
+      target: typeof item.target === 'string' ? item.target : '',
+      error_message: typeof item.error_message === 'string' ? item.error_message : '',
+      status: typeof item.status === 'string' ? item.status : 'failed',
+      retry_count: typeof item.retry_count === 'number' ? item.retry_count : 0,
+      created_at: typeof item.created_at === 'string' ? item.created_at : '',
+      updated_at: typeof item.updated_at === 'string' ? item.updated_at : '',
+    };
+  });
 }
 
 function clearSessionAndRedirect() {
@@ -61,11 +65,11 @@ export default function DevOpsRetryCenterPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to load retry center');
+        throw new Error(getString(data.error, 'Failed to load retry center'));
       }
-      setFailures(normalizeFailures(data?.failures));
+      setFailures(normalizeFailures(data.failures));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load retry center');
     } finally {
@@ -95,11 +99,12 @@ export default function DevOpsRetryCenterPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok && data?.error) {
-        throw new Error(data.error);
+      const data = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok && data.error) {
+        throw new Error(getString(data.error, 'Retry failed'));
       }
-      setNotice(data?.failure?.status === 'resolved' ? 'Delivery retried successfully.' : 'Retry attempted.');
+      const failureRecord = asRecord(data.failure);
+      setNotice(failureRecord.status === 'resolved' ? 'Delivery retried successfully.' : 'Retry attempted.');
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Retry failed');

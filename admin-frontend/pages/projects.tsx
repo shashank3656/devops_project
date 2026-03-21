@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../components/AdminLayout';
+import { asRecord, getString } from '../lib/payload';
 
 interface ProjectOption {
   id: number;
@@ -56,11 +57,11 @@ export default function AdminProjectsPage() {
     setError('');
     fetch(`${apiUrl}/api/admin/projects`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
+        const data = asRecord(await res.json().catch(() => ({})));
         if (!res.ok) {
-          throw new Error(data?.error || 'Failed to load projects');
+          throw new Error(getString(data.error, 'Failed to load projects'));
         }
-        setProjects(Array.isArray(data.projects) ? data.projects : []);
+        setProjects(Array.isArray(data.projects) ? (data.projects as ProjectOption[]) : []);
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
@@ -99,8 +100,8 @@ export default function AdminProjectsPage() {
         return;
       }
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data?.error || 'Failed to export projects');
+        const data = asRecord(await response.json().catch(() => ({})));
+        throw new Error(getString(data.error, 'Failed to export projects'));
       }
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);

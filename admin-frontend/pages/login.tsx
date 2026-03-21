@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { asRecord, getString } from '../lib/payload';
 
 const API_OVERRIDE_KEY = 'admin_api_url_override';
 const LOGIN_ATTEMPT_TIMEOUT_MS = 6000;
@@ -57,13 +58,13 @@ export default function AdminLogin() {
     }
   };
 
-  const finishAdminLogin = (data: { token: string; user?: { role?: string } }) => {
-    if (data.user?.role !== 'admin') {
+  const finishAdminLogin = (token: string, user?: { role?: string }) => {
+    if (user?.role !== 'admin') {
       setError('Admin access only. Your account does not have admin role.');
       return;
     }
-    localStorage.setItem('admin_token', data.token);
-    localStorage.setItem('admin_user', JSON.stringify(data.user || {}));
+    localStorage.setItem('admin_token', token);
+    localStorage.setItem('admin_user', JSON.stringify(user || {}));
     router.push('/teams');
   };
 
@@ -106,25 +107,28 @@ export default function AdminLogin() {
         }
         throw new Error(`Cannot connect to backend. Tried: ${attempted}.`);
       }
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (!res.ok) {
-        setError(data.error || 'Login failed');
+        setError(getString(data.error, 'Login failed'));
         return;
       }
       if (chosenApi !== primaryApi) {
         rememberWorkingApiUrl(chosenApi);
       }
-      if (data.requires_otp && data.pending_2fa_token) {
+      if (data.requires_otp && typeof data.pending_2fa_token === 'string') {
         setPending2fa({ token: data.pending_2fa_token });
         setError('');
         setPassword('');
         return;
       }
-      if (!data.token) {
+      if (typeof data.token !== 'string' || !data.token) {
         setError('Login failed');
         return;
       }
-      finishAdminLogin(data);
+      const user = asRecord(data.user);
+      finishAdminLogin(data.token, {
+        role: getString(user.role),
+      });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '';
       setError(
@@ -146,16 +150,19 @@ export default function AdminLogin() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pending_2fa_token: pending2fa.token, otp: otp.trim() }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (!res.ok) {
-        setError(data.error || 'Invalid OTP');
+        setError(getString(data.error, 'Invalid OTP'));
         return;
       }
-      if (!data.token) {
+      if (typeof data.token !== 'string' || !data.token) {
         setError('Verification failed');
         return;
       }
-      finishAdminLogin(data);
+      const user = asRecord(data.user);
+      finishAdminLogin(data.token, {
+        role: getString(user.role),
+      });
     } catch (_) {
       setError('Verification failed');
     } finally {
