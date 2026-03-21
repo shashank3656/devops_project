@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -138,10 +139,11 @@ export default function DevOpsWorkload() {
     fetch(`${apiUrl}/api/devops/pending-approvals`, { headers })
       .then((res) => {
         if (res.status === 401 || res.status === 403) router.replace('/login');
-        return res.json();
+        return res.json().catch(() => ({}));
       })
-      .then((data) => {
-        if (data?.requests) setPendingApprovals(data.requests);
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        setPendingApprovals(Array.isArray(data.requests) ? (data.requests as Request[]) : []);
       })
       .catch(() => {})
       .finally(() => setPendingLoading(false));
@@ -153,13 +155,15 @@ export default function DevOpsWorkload() {
     fetch(`${apiUrl}/api/devops/workload`, { headers })
       .then((res) => {
         if (res.status === 401 || res.status === 403) router.replace('/login');
-        return res.json();
+        return res.json().catch(() => ({}));
       })
-      .then((data) => {
-        if (data?.workload) setWorkload(data.workload);
-        if (Array.isArray(data?.by_team)) setByTeam(data.by_team);
-        if (Array.isArray(data?.by_person)) setByPerson(data.by_person);
-        if (data?.error) setError(data.error);
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        setWorkload(Array.isArray(data.workload) ? (data.workload as WorkloadItem[]) : []);
+        setByTeam(Array.isArray(data.by_team) ? (data.by_team as WorkloadSummaryRow[]) : []);
+        setByPerson(Array.isArray(data.by_person) ? (data.by_person as WorkloadSummaryRow[]) : []);
+        const nextError = getString(data.error);
+        if (nextError) setError(nextError);
       })
       .catch(() => setError('Failed to load workload'))
       .finally(() => setLoading(false));
@@ -170,10 +174,11 @@ export default function DevOpsWorkload() {
     fetch(`${apiUrl}/api/devops/users`, { headers })
       .then((res) => {
         if (res.status === 401 || res.status === 403) return null;
-        return res.json();
+        return res.json().catch(() => ({}));
       })
-      .then((data) => {
-        if (data?.users) setDevopsUsers(data.users);
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        setDevopsUsers(Array.isArray(data.users) ? (data.users as DevopsUser[]) : []);
       })
       .catch(() => {});
   }, [token, apiUrl]);
@@ -191,15 +196,16 @@ export default function DevOpsWorkload() {
   const handleApprove = (id: number) => {
     setActioningId(id);
     fetch(`${apiUrl}/api/devops/requests/${id}/approve`, { method: 'POST', headers })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.status === 'ok') {
+      .then((res) => res.json().catch(() => ({})))
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        if (getString(data.status) === 'ok') {
           setPendingApprovals((previous) => previous.filter((request) => request.id !== id));
           fetchPending();
           fetchWorkload();
           window.dispatchEvent(new CustomEvent('devops-notifications-refresh'));
         } else {
-          setError(data?.error || 'Approve failed');
+          setError(getString(data.error, 'Approve failed'));
         }
       })
       .catch(() => setError('Approve request failed'))
@@ -232,17 +238,24 @@ export default function DevOpsWorkload() {
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids }),
     })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.status === 'ok') {
+      .then((res) => res.json().catch(() => ({})))
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        if (getString(data.status) === 'ok') {
           setPendingApprovals((previous) => previous.filter((request) => !ids.includes(request.id)));
           setSelectedIds(new Set());
           fetchPending();
           fetchWorkload();
           window.dispatchEvent(new CustomEvent('devops-notifications-refresh'));
-          if (data?.errors?.length) setError(data.errors.join('; '));
+          if (Array.isArray(data.errors) && data.errors.length > 0) {
+            setError(
+              data.errors
+                .filter((value): value is string => typeof value === 'string')
+                .join('; ')
+            );
+          }
         } else {
-          setError(data?.error || 'Bulk approve failed');
+          setError(getString(data.error, 'Bulk approve failed'));
         }
       })
       .catch(() => setError('Bulk approve failed'))
@@ -258,17 +271,24 @@ export default function DevOpsWorkload() {
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids, reason: '' }),
     })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.status === 'ok') {
+      .then((res) => res.json().catch(() => ({})))
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        if (getString(data.status) === 'ok') {
           setPendingApprovals((previous) => previous.filter((request) => !ids.includes(request.id)));
           setSelectedIds(new Set());
           fetchPending();
           fetchWorkload();
           window.dispatchEvent(new CustomEvent('devops-notifications-refresh'));
-          if (data?.errors?.length) setError(data.errors.join('; '));
+          if (Array.isArray(data.errors) && data.errors.length > 0) {
+            setError(
+              data.errors
+                .filter((value): value is string => typeof value === 'string')
+                .join('; ')
+            );
+          }
         } else {
-          setError(data?.error || 'Bulk reject failed');
+          setError(getString(data.error, 'Bulk reject failed'));
         }
       })
       .catch(() => setError('Bulk reject failed'))
@@ -282,15 +302,16 @@ export default function DevOpsWorkload() {
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason: reason || '' }),
     })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.status === 'ok') {
+      .then((res) => res.json().catch(() => ({})))
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        if (getString(data.status) === 'ok') {
           setPendingApprovals((previous) => previous.filter((request) => request.id !== id));
           fetchPending();
           fetchWorkload();
           window.dispatchEvent(new CustomEvent('devops-notifications-refresh'));
         } else {
-          setError(data?.error || 'Reject failed');
+          setError(getString(data.error, 'Reject failed'));
         }
       })
       .catch(() => setError('Reject request failed'))

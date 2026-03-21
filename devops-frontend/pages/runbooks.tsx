@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -24,23 +25,29 @@ interface Runbook {
 
 function normalizeProjects(value: unknown): ProjectOption[] {
   if (!Array.isArray(value)) return [];
-  return value.map((project) => ({
-    id: typeof project?.id === 'number' ? project.id : 0,
-    name: typeof project?.name === 'string' ? project.name : 'Unknown',
-    code: typeof project?.code === 'string' ? project.code : 'n/a',
-  }));
+  return value.map((project) => {
+    const item = project && typeof project === 'object' ? (project as Record<string, unknown>) : {};
+    return {
+      id: typeof item.id === 'number' ? item.id : 0,
+      name: typeof item.name === 'string' ? item.name : 'Unknown',
+      code: typeof item.code === 'string' ? item.code : 'n/a',
+    };
+  });
 }
 
 function normalizeRunbooks(value: unknown): Runbook[] {
   if (!Array.isArray(value)) return [];
-  return value.map((runbook) => ({
-    id: typeof runbook?.id === 'number' ? runbook.id : 0,
-    project_id: typeof runbook?.project_id === 'number' ? runbook.project_id : 0,
-    service: typeof runbook?.service === 'string' ? runbook.service : '',
-    title: typeof runbook?.title === 'string' ? runbook.title : '',
-    content: typeof runbook?.content === 'string' ? runbook.content : '',
-    link_url: typeof runbook?.link_url === 'string' ? runbook.link_url : '',
-  }));
+  return value.map((runbook) => {
+    const item = runbook && typeof runbook === 'object' ? (runbook as Record<string, unknown>) : {};
+    return {
+      id: typeof item.id === 'number' ? item.id : 0,
+      project_id: typeof item.project_id === 'number' ? item.project_id : 0,
+      service: typeof item.service === 'string' ? item.service : '',
+      title: typeof item.title === 'string' ? item.title : '',
+      content: typeof item.content === 'string' ? item.content : '',
+      link_url: typeof item.link_url === 'string' ? item.link_url : '',
+    };
+  });
 }
 
 function clearSessionAndRedirect() {
@@ -98,12 +105,12 @@ export default function DevOpsRunbooksPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to load runbooks');
+        throw new Error(getString(data.error, 'Failed to load runbooks'));
       }
-      setProjects(normalizeProjects(data?.projects));
-      setRunbooks(normalizeRunbooks(data?.runbooks));
+      setProjects(normalizeProjects(data.projects));
+      setRunbooks(normalizeRunbooks(data.runbooks));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load runbooks');
     } finally {
@@ -161,9 +168,9 @@ export default function DevOpsRunbooksPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to save runbook');
+        throw new Error(getString(data.error, 'Failed to save runbook'));
       }
       setNotice(editingId ? 'Runbook updated.' : 'Runbook created.');
       resetForm();

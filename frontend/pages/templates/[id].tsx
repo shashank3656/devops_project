@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { asRecord, getString } from '../../lib/payload';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -91,15 +92,15 @@ export default function TemplateDetailPage() {
         router.replace('/login');
         return;
       }
-      const data = await res.json().catch(() => ({}));
-      const templates = Array.isArray(data?.templates) ? data.templates : [];
+      const data = asRecord(await res.json().catch(() => ({})));
+      const templates = Array.isArray(data.templates) ? data.templates : [];
       const matchedTemplate = templates.find((item: { id?: unknown }) => Number(item?.id) === templateId) as RequestTemplate | undefined;
       if (res.ok && matchedTemplate) {
         setTemplate(matchedTemplate);
         return;
       }
       setTemplate(null);
-      setError(data?.error || 'Template not found');
+      setError(getString(data.error, 'Template not found'));
     } catch {
       setTemplate(null);
       setError('Failed to load template. Check your connection.');

@@ -4,6 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useToast } from '../context/ToastContext';
 import CalendarDateInput from '../components/CalendarDateInput';
+import { asRecord } from '../lib/payload';
 import { clouds, environments } from '../config/clouds';
 import { awsServices, awsServiceList, ServiceField } from '../config/awsServices';
 import { gcpServices, gcpServiceList } from '../config/gcpServices';
@@ -165,8 +166,9 @@ export default function SelectService() {
     if (templateId) {
       fetch(`${apiUrl}/api/templates`, { headers: { Authorization: `Bearer ${token}` } })
         .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          const templates = Array.isArray(data?.templates) ? data.templates : [];
+        .then((rawData) => {
+          const data = asRecord(rawData);
+          const templates = Array.isArray(data.templates) ? data.templates : [];
           const matchedTemplate = templates.find((template: { id?: unknown }) => Number(template?.id) === templateId);
           if (matchedTemplate) applyConfig(matchedTemplate);
         })
@@ -174,8 +176,9 @@ export default function SelectService() {
     } else if (savedId) {
       fetch(`${apiUrl}/api/me/saved-configs`, { headers: { Authorization: `Bearer ${token}` } })
         .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          const savedConfigs = Array.isArray(data?.saved_configs) ? data.saved_configs : [];
+        .then((rawData) => {
+          const data = asRecord(rawData);
+          const savedConfigs = Array.isArray(data.saved_configs) ? data.saved_configs : [];
           const matchedSavedConfig = savedConfigs.find((savedConfig: { id?: unknown }) => Number(savedConfig?.id) === savedId);
           if (matchedSavedConfig) applyConfig(matchedSavedConfig);
         })
@@ -195,11 +198,14 @@ export default function SelectService() {
         fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.ok ? res.json() : null),
         fetch(`${apiUrl}/api/me/teams`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.ok ? res.json() : null),
         fetch(`${apiUrl}/api/me/projects`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.ok ? res.json() : null),
-      ]).then(([meData, teamsData, projectsData]) => {
-        const u = meData?.user;
+      ]).then(([rawMeData, rawTeamsData, rawProjectsData]) => {
+        const meData = asRecord(rawMeData);
+        const teamsData = asRecord(rawTeamsData);
+        const projectsData = asRecord(rawProjectsData);
+        const u = asRecord(meData.user);
         setCanCreatePR(!!(u?.verified && (u?.role === 'contributor' || u?.role === 'admin')));
-        setTeams(teamsData?.teams || []);
-        setProjects(Array.isArray(projectsData?.projects) ? projectsData.projects : []);
+        setTeams(Array.isArray(teamsData.teams) ? (teamsData.teams as TeamOption[]) : []);
+        setProjects(Array.isArray(projectsData.projects) ? (projectsData.projects as ProjectOption[]) : []);
       }).catch(() => setCanCreatePR(false));
     } else {
       setCanCreatePR(false);

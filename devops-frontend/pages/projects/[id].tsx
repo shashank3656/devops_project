@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { asRecord, getString } from '../../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -452,11 +453,11 @@ export default function DevOpsProjectDetailPage() {
     setError('');
     fetch(`${apiUrl}/api/devops/projects/${projectId}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
+        const data = asRecord(await res.json().catch(() => ({})));
         if (!res.ok) {
-          throw new Error(data?.error || 'Failed to load project');
+          throw new Error(getString(data.error, 'Failed to load project'));
         }
-        if (!data?.project) {
+        if (!data.project) {
           throw new Error('Project not found');
         }
         setProject(data.project as ProjectOption);
@@ -500,11 +501,11 @@ export default function DevOpsProjectDetailPage() {
         },
         body: JSON.stringify({ action: action.action }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (!res.ok) {
-        throw new Error(data?.error || `Failed to ${action.action} project`);
+        throw new Error(getString(data.error, `Failed to ${action.action} project`));
       }
-      setProject(data.project || null);
+      setProject((data.project as ProjectOption | null) || null);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to update project lifecycle');
     } finally {

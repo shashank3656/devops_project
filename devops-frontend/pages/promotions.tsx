@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -125,23 +126,26 @@ function normalizeGate(value: unknown): PromotionGateDecision | null {
 
 function normalizePromotions(value: unknown): PromotionItem[] {
   if (!Array.isArray(value)) return [];
-  return value.map((item) => ({
-    request_id: typeof item?.request_id === 'number' ? item.request_id : 0,
-    project_id: typeof item?.project_id === 'number' ? item.project_id : null,
-    project_name: typeof item?.project_name === 'string' ? item.project_name : '',
-    project_code: typeof item?.project_code === 'string' ? item.project_code : '',
-    team: typeof item?.team === 'string' ? item.team : '',
-    environment: typeof item?.environment === 'string' ? item.environment : '',
-    next_environment: typeof item?.next_environment === 'string' ? item.next_environment : '',
-    cloud: typeof item?.cloud === 'string' ? item.cloud : '',
-    service: typeof item?.service === 'string' ? item.service : '',
-    status: typeof item?.status === 'string' ? item.status : '',
-    client_name: typeof item?.client_name === 'string' ? item.client_name : '',
-    latest_promoted_id: typeof item?.latest_promoted_id === 'number' ? item.latest_promoted_id : null,
-    latest_promoted_env: typeof item?.latest_promoted_env === 'string' ? item.latest_promoted_env : '',
-    latest_promoted_status: typeof item?.latest_promoted_status === 'string' ? item.latest_promoted_status : '',
-    gate: normalizeGate(item?.gate),
-  }));
+  return value.map((promotion) => {
+    const item = promotion && typeof promotion === 'object' ? (promotion as Record<string, unknown>) : {};
+    return {
+      request_id: typeof item.request_id === 'number' ? item.request_id : 0,
+      project_id: typeof item.project_id === 'number' ? item.project_id : null,
+      project_name: typeof item.project_name === 'string' ? item.project_name : '',
+      project_code: typeof item.project_code === 'string' ? item.project_code : '',
+      team: typeof item.team === 'string' ? item.team : '',
+      environment: typeof item.environment === 'string' ? item.environment : '',
+      next_environment: typeof item.next_environment === 'string' ? item.next_environment : '',
+      cloud: typeof item.cloud === 'string' ? item.cloud : '',
+      service: typeof item.service === 'string' ? item.service : '',
+      status: typeof item.status === 'string' ? item.status : '',
+      client_name: typeof item.client_name === 'string' ? item.client_name : '',
+      latest_promoted_id: typeof item.latest_promoted_id === 'number' ? item.latest_promoted_id : null,
+      latest_promoted_env: typeof item.latest_promoted_env === 'string' ? item.latest_promoted_env : '',
+      latest_promoted_status: typeof item.latest_promoted_status === 'string' ? item.latest_promoted_status : '',
+      gate: normalizeGate(item.gate),
+    };
+  });
 }
 
 function clearSessionAndRedirect() {
@@ -226,11 +230,11 @@ export default function DevOpsPromotionsPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to load promotion flow');
+        throw new Error(getString(data.error, 'Failed to load promotion flow'));
       }
-      setItems(normalizePromotions(data?.promotions));
+      setItems(normalizePromotions(data.promotions));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load promotion flow');
     } finally {
@@ -282,9 +286,9 @@ export default function DevOpsPromotionsPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        const nextGate = normalizeGate(data?.gate);
+        const nextGate = normalizeGate(data.gate);
         if (nextGate) {
           setItems((current) =>
             current.map((candidate) =>
@@ -292,9 +296,9 @@ export default function DevOpsPromotionsPage() {
             )
           );
         }
-        throw new Error(data?.error || 'Failed to approve deployment gate');
+        throw new Error(getString(data.error, 'Failed to approve deployment gate'));
       }
-      const nextGate = normalizeGate(data?.gate);
+      const nextGate = normalizeGate(data.gate);
       if (nextGate) {
         setItems((current) =>
           current.map((candidate) =>
@@ -341,11 +345,11 @@ export default function DevOpsPromotionsPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to revoke deployment gate approval');
+        throw new Error(getString(data.error, 'Failed to revoke deployment gate approval'));
       }
-      const nextGate = normalizeGate(data?.gate);
+      const nextGate = normalizeGate(data.gate);
       if (nextGate) {
         setItems((current) =>
           current.map((candidate) =>
@@ -394,9 +398,9 @@ export default function DevOpsPromotionsPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        const nextGate = normalizeGate(data?.gate);
+        const nextGate = normalizeGate(data.gate);
         if (nextGate) {
           setItems((current) =>
             current.map((candidate) =>
@@ -404,9 +408,10 @@ export default function DevOpsPromotionsPage() {
             )
           );
         }
-        throw new Error(data?.error || 'Failed to promote request');
+        throw new Error(getString(data.error, 'Failed to promote request'));
       }
-      setNotice(`Created draft request #${data?.request?.id || ''} for the next environment.`);
+      const requestRecord = asRecord(data.request);
+      setNotice(`Created draft request #${typeof requestRecord.id === 'number' ? requestRecord.id : ''} for the next environment.`);
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to promote request');

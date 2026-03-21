@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -36,11 +37,11 @@ export default function DevOpsVerifyRequired() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       });
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (res.ok && data.status === 'ok') {
-        alert(data.message || 'Verification email sent. Check your inbox.');
+        alert(getString(data.message, 'Verification email sent. Check your inbox.'));
       } else {
-        alert(data.error || 'Failed to resend');
+        alert(getString(data.error, 'Failed to resend'));
       }
     } catch (_) {
       alert('Failed to send verification email');

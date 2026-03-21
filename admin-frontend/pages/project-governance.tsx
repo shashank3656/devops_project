@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import AdminLayout from '../components/AdminLayout';
+import { asRecord, getString } from '../lib/payload';
 
 interface ProjectAnalyticsDistributionItem {
   key: string;
@@ -107,14 +108,17 @@ export default function AdminProjectGovernancePage() {
           router.replace('/login');
           return null;
         }
-        const data = await res.json().catch(() => ({}));
+        const data = asRecord(await res.json().catch(() => ({})));
         if (!res.ok) {
-          throw new Error(data?.error || 'Failed to load project governance analytics');
+          throw new Error(getString(data.error, 'Failed to load project governance analytics'));
         }
         return data;
       })
       .then((data) => {
-        if (data?.analytics) setAnalytics(data.analytics);
+        const payload = asRecord(data);
+        if (payload.analytics && typeof payload.analytics === 'object') {
+          setAnalytics(payload.analytics as ProjectAnalytics);
+        }
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));

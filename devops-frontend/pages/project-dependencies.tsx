@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -132,15 +133,18 @@ export default function ProjectDependenciesPage() {
           router.replace('/login');
           return null;
         }
-        const data = await response.json().catch(() => ({}));
+        const payload = asRecord(await response.json().catch(() => ({})));
         if (!response.ok) {
-          throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to load project dependencies');
+          throw new Error(getString(payload.error, 'Failed to load project dependencies'));
         }
-        return data;
+        return payload;
       })
-      .then((data) => {
-        if (!data) return;
-        setDependencies(data?.dependencies || null);
+      .then((payload) => {
+        if (!payload) return;
+        const nextDependencies = payload.dependencies && typeof payload.dependencies === 'object'
+          ? (payload.dependencies as DependencyPayload)
+          : null;
+        setDependencies(nextDependencies);
       })
       .catch((err) => {
         const message = err instanceof Error ? err.message : 'Failed to load project dependencies';

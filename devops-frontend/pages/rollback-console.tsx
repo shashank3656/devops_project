@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -125,11 +126,13 @@ export default function RollbackConsolePage() {
         clearSessionAndRedirect(router);
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const payload = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to load rollback console');
+        throw new Error(getString(payload.error, 'Failed to load rollback console'));
       }
-      const nextConsole = data?.console || null;
+      const nextConsole = payload.console && typeof payload.console === 'object'
+        ? (payload.console as RollbackPayload)
+        : null;
       setConsoleData(nextConsole);
       if (nextConsole?.focus_request_id) {
         setFocusRequestId(String(nextConsole.focus_request_id));
@@ -200,11 +203,15 @@ export default function RollbackConsolePage() {
         clearSessionAndRedirect(router);
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const payload = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to create rollback request');
+        throw new Error(getString(payload.error, 'Failed to create rollback request'));
       }
-      setNotice(`Prepared rollback draft request #${data?.rollback_request?.id || ''}.`);
+      const rollbackRequest = payload.rollback_request && typeof payload.rollback_request === 'object'
+        ? asRecord(payload.rollback_request)
+        : {};
+      const rollbackRequestId = typeof rollbackRequest.id === 'number' ? rollbackRequest.id : '';
+      setNotice(`Prepared rollback draft request #${rollbackRequestId}.`);
       setReason('');
       setNotes('');
       await loadConsole();

@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -88,11 +89,11 @@ export default function NotificationSettingsPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const payload = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to load notification settings');
+        throw new Error(getString(payload.error, 'Failed to load notification settings'));
       }
-      setSettings({ ...defaultSettings, ...(data?.settings || {}) });
+      setSettings({ ...defaultSettings, ...asRecord(payload.settings) } as NotificationSettings);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load notification settings');
     } finally {
@@ -142,11 +143,11 @@ export default function NotificationSettingsPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const payload = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to save notification settings');
+        throw new Error(getString(payload.error, 'Failed to save notification settings'));
       }
-      setSettings({ ...defaultSettings, ...(data?.settings || {}) });
+      setSettings({ ...defaultSettings, ...asRecord(payload.settings) } as NotificationSettings);
       setNotice('Notification settings saved.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save notification settings');

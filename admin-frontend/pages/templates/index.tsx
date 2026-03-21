@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import AdminLayout from '../../components/AdminLayout';
+import { asRecord, getString } from '../../lib/payload';
 
 interface RequestTemplate {
   id: number;
@@ -60,13 +61,13 @@ export default function TemplatesList() {
         router.replace('/login');
         return;
       }
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (res.ok) {
-        setTemplates(Array.isArray(data.templates) ? data.templates : []);
+        setTemplates(Array.isArray(data.templates) ? (data.templates as RequestTemplate[]) : []);
         setError('');
       } else {
         setTemplates([]);
-        setError(data?.error || 'Failed to load templates');
+        setError(getString(data.error, 'Failed to load templates'));
       }
     } catch (_) {
       setTemplates([]);
@@ -85,11 +86,11 @@ export default function TemplatesList() {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
       });
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (res.ok) {
         setTemplates((prev) => prev.filter((x) => x.id !== template.id));
       } else {
-        setError(data.error || 'Failed to delete');
+        setError(getString(data.error, 'Failed to delete'));
       }
     } catch (_) {
       setError('Failed to delete');

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { asRecord, getString } from '../lib/payload';
 
 export default function AdminForgotPassword() {
   const [email, setEmail] = useState('');
@@ -26,11 +27,11 @@ export default function AdminForgotPassword() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim() }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (res.ok) {
         setSent(true);
       } else {
-        setError(data.error || 'Request failed');
+        setError(getString(data.error, 'Request failed'));
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Request failed');

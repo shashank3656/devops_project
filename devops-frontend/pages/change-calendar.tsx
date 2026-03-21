@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -68,15 +69,18 @@ export default function DevOpsChangeCalendarPage() {
           clearSessionAndRedirect();
           return null;
         }
-        const data = await res.json().catch(() => ({}));
+        const payload = asRecord(await res.json().catch(() => ({})));
         if (!res.ok) {
-          throw new Error(data?.error || 'Failed to load change calendar');
+          throw new Error(getString(payload.error, 'Failed to load change calendar'));
         }
-        return data;
+        return payload;
       })
-      .then((data) => {
-        if (data?.summary && Array.isArray(data.items)) {
-          setCalendar({ summary: data.summary, items: data.items });
+      .then((payload) => {
+        if (payload.summary && Array.isArray(payload.items)) {
+          setCalendar({
+            summary: payload.summary as ChangeCalendarResponse['summary'],
+            items: payload.items as ChangeCalendarItem[],
+          });
         }
       })
       .catch((err: Error) => setError(err.message))

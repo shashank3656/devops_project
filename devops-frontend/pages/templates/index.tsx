@@ -4,6 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { asRecord, getString } from '../../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -60,12 +61,12 @@ export default function DevOpsTemplatesList() {
         router.replace('/login');
         return;
       }
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (res.ok) {
-        setTemplates(Array.isArray(data.templates) ? data.templates : []);
+        setTemplates(Array.isArray(data.templates) ? (data.templates as RequestTemplate[]) : []);
       } else {
         setTemplates([]);
-        setError(data.error || 'Failed to load templates');
+        setError(getString(data.error, 'Failed to load templates'));
       }
     } catch {
       setTemplates([]);
@@ -93,11 +94,11 @@ export default function DevOpsTemplatesList() {
         router.replace('/login');
         return;
       }
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (res.ok) {
         setTemplates((previous) => previous.filter((item) => item.id !== template.id));
       } else {
-        setError(data.error || 'Failed to delete template');
+        setError(getString(data.error, 'Failed to delete template'));
       }
     } catch {
       setError('Failed to delete template');

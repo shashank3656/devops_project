@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { downloadCSV } from '../lib/csv';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -264,15 +265,18 @@ export default function OpsCommandCenterPage() {
           router.replace('/login');
           return null;
         }
-        const data = await response.json().catch(() => ({}));
+        const payload = asRecord(await response.json().catch(() => ({})));
         if (!response.ok) {
-          throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to load ops command center');
+          throw new Error(getString(payload.error, 'Failed to load ops command center'));
         }
-        return data;
+        return payload;
       })
-      .then((data) => {
-        if (!data) return;
-        setCenter(data?.center || null);
+      .then((payload) => {
+        if (!payload) return;
+        const nextCenter = payload.center && typeof payload.center === 'object'
+          ? (payload.center as OpsPayload)
+          : null;
+        setCenter(nextCenter);
       })
       .catch((err) => {
         const message = err instanceof Error ? err.message : 'Failed to load ops command center';

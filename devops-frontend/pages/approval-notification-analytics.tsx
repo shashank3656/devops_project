@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -173,15 +174,18 @@ export default function ApprovalNotificationAnalyticsPage() {
           router.replace('/login');
           return null;
         }
-        const data = await response.json().catch(() => ({}));
+        const payload = asRecord(await response.json().catch(() => ({})));
         if (!response.ok) {
-          throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to load approval analytics');
+          throw new Error(getString(payload.error, 'Failed to load approval analytics'));
         }
-        return data;
+        return payload;
       })
-      .then((data) => {
-        if (!data) return;
-        setAnalytics(data.analytics || null);
+      .then((payload) => {
+        if (!payload) return;
+        const nextAnalytics = payload.analytics && typeof payload.analytics === 'object'
+          ? (payload.analytics as OpsAnalyticsPayload)
+          : null;
+        setAnalytics(nextAnalytics);
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : 'Failed to load approval analytics');
