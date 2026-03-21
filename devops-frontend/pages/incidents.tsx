@@ -47,6 +47,31 @@ interface Incident {
   notes: string;
 }
 
+function normalizeIncident(incident: unknown): Incident {
+  return {
+    id: typeof incident?.id === 'number' ? incident.id : 0,
+    incident_number: typeof incident?.incident_number === 'string' ? incident.incident_number : '',
+    request_id: typeof incident?.request_id === 'number' ? incident.request_id : 0,
+    project_id: typeof incident?.project_id === 'number' ? incident.project_id : null,
+    project_name: typeof incident?.project_name === 'string' ? incident.project_name : '',
+    project_code: typeof incident?.project_code === 'string' ? incident.project_code : '',
+    request_team: typeof incident?.request_team === 'string' ? incident.request_team : '',
+    request_env: typeof incident?.request_env === 'string' ? incident.request_env : '',
+    request_service: typeof incident?.request_service === 'string' ? incident.request_service : '',
+    request_cloud: typeof incident?.request_cloud === 'string' ? incident.request_cloud : '',
+    request_status: typeof incident?.request_status === 'string' ? incident.request_status : '',
+    team_id: typeof incident?.team_id === 'number' ? incident.team_id : null,
+    team_name: typeof incident?.team_name === 'string' ? incident.team_name : '',
+    severity: typeof incident?.severity === 'string' ? incident.severity : 'medium',
+    status: typeof incident?.status === 'string' ? incident.status : 'open',
+    escalation_level: typeof incident?.escalation_level === 'string' ? incident.escalation_level : 'monitoring',
+    owner_user_id: typeof incident?.owner_user_id === 'number' ? incident.owner_user_id : null,
+    owner_username: typeof incident?.owner_username === 'string' ? incident.owner_username : '',
+    summary: typeof incident?.summary === 'string' ? incident.summary : '',
+    notes: typeof incident?.notes === 'string' ? incident.notes : '',
+  };
+}
+
 function normalizeTeams(value: unknown): TeamOption[] {
   if (!Array.isArray(value)) return [];
   return value.map((team) => ({
@@ -78,28 +103,7 @@ function normalizeMembersByTeam(value: unknown): Record<number, TeamMemberOption
 
 function normalizeIncidents(value: unknown): Incident[] {
   if (!Array.isArray(value)) return [];
-  return value.map((incident) => ({
-    id: typeof incident?.id === 'number' ? incident.id : 0,
-    incident_number: typeof incident?.incident_number === 'string' ? incident.incident_number : '',
-    request_id: typeof incident?.request_id === 'number' ? incident.request_id : 0,
-    project_id: typeof incident?.project_id === 'number' ? incident.project_id : null,
-    project_name: typeof incident?.project_name === 'string' ? incident.project_name : '',
-    project_code: typeof incident?.project_code === 'string' ? incident.project_code : '',
-    request_team: typeof incident?.request_team === 'string' ? incident.request_team : '',
-    request_env: typeof incident?.request_env === 'string' ? incident.request_env : '',
-    request_service: typeof incident?.request_service === 'string' ? incident.request_service : '',
-    request_cloud: typeof incident?.request_cloud === 'string' ? incident.request_cloud : '',
-    request_status: typeof incident?.request_status === 'string' ? incident.request_status : '',
-    team_id: typeof incident?.team_id === 'number' ? incident.team_id : null,
-    team_name: typeof incident?.team_name === 'string' ? incident.team_name : '',
-    severity: typeof incident?.severity === 'string' ? incident.severity : 'medium',
-    status: typeof incident?.status === 'string' ? incident.status : 'open',
-    escalation_level: typeof incident?.escalation_level === 'string' ? incident.escalation_level : 'monitoring',
-    owner_user_id: typeof incident?.owner_user_id === 'number' ? incident.owner_user_id : null,
-    owner_username: typeof incident?.owner_username === 'string' ? incident.owner_username : '',
-    summary: typeof incident?.summary === 'string' ? incident.summary : '',
-    notes: typeof incident?.notes === 'string' ? incident.notes : '',
-  }));
+  return value.map((incident) => normalizeIncident(incident));
 }
 
 function clearSessionAndRedirect() {
@@ -137,10 +141,14 @@ export default function DevOpsIncidentsPage() {
   const [summary, setSummary] = useState('');
   const [notes, setNotes] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [currentIncidentNumber, setCurrentIncidentNumber] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+
+  const displayedIncidentNumber =
+    currentIncidentNumber || (editingId ? `INC${String(editingId).padStart(7, '0')}` : '');
 
   const selectedTeamMembers = useMemo(() => {
     const parsedTeamID = Number(teamId);
@@ -243,6 +251,7 @@ export default function DevOpsIncidentsPage() {
 
   const resetForm = () => {
     setEditingId(null);
+    setCurrentIncidentNumber('');
     setRequestId('');
     setTeamId('');
     setSeverity('medium');
@@ -304,12 +313,26 @@ export default function DevOpsIncidentsPage() {
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to save incident');
       }
+      const savedIncident = normalizeIncident(data?.incident);
+      setEditingId(savedIncident.id || editingId);
+      setCurrentIncidentNumber(savedIncident.incident_number || `INC${String(savedIncident.id).padStart(7, '0')}`);
+      setRequestId(savedIncident.request_id ? String(savedIncident.request_id) : requestId);
+      setTeamId(savedIncident.team_id ? String(savedIncident.team_id) : teamId);
+      setSeverity(savedIncident.severity || severity);
+      setStatus(savedIncident.status || normalizedStatus);
+      setEscalationLevel(savedIncident.escalation_level || escalationLevel);
+      setOwnerUserId(savedIncident.owner_user_id ? String(savedIncident.owner_user_id) : ownerUserId);
+      setSummary(savedIncident.summary || summary);
+      setNotes(savedIncident.notes || notes);
       if (mode === 'draft') {
-        setNotice(editingId ? 'Incident draft saved.' : 'Incident draft created.');
+        setNotice(
+          `${editingId ? 'Incident draft saved' : 'Incident draft created'}: ${savedIncident.incident_number || `INC${String(savedIncident.id).padStart(7, '0')}`}.`,
+        );
       } else {
-        setNotice(editingId ? 'Incident updated.' : 'Incident submitted.');
+        setNotice(
+          `${editingId ? 'Incident updated' : 'Incident submitted'}: ${savedIncident.incident_number || `INC${String(savedIncident.id).padStart(7, '0')}`}.`,
+        );
       }
-      resetForm();
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save incident');
@@ -366,6 +389,20 @@ export default function DevOpsIncidentsPage() {
               <h2 className="portal-surface__title">{editingId ? 'Update incident' : 'Create / link incident'}</h2>
             </div>
           </div>
+          {displayedIncidentNumber ? (
+            <div className="alert alert-info" style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span>
+                  Incident reference: <strong>{displayedIncidentNumber}</strong>
+                  {requestId.trim() ? <> · Linked request <strong>#{requestId.trim()}</strong></> : null}
+                  {status === 'draft' ? ' (draft)' : ''}
+                </span>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={resetForm}>
+                  Start another incident
+                </button>
+              </div>
+            </div>
+          ) : null}
           <div className="portal-form-grid">
             <label className="label">
               Request ID
@@ -508,6 +545,7 @@ export default function DevOpsIncidentsPage() {
                                     teams.find((team) => team.name === incident.request_team || team.slug === incident.request_team)?.id || '',
                                   );
                             setEditingId(incident.id);
+                            setCurrentIncidentNumber(incident.incident_number || `INC${String(incident.id).padStart(7, '0')}`);
                             setRequestId(String(incident.request_id));
                             setTeamId(matchedTeam);
                             setSeverity(incident.severity);
