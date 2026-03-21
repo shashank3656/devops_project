@@ -453,8 +453,8 @@ export default function GitOpsControlPage() {
       if (!response.ok || getString(payload.status) !== 'ok') {
         throw new Error(getString(payload.error, 'Failed to load repository tree'));
       }
-      const nodes = Array.isArray(payload.nodes)
-        ? (payload.nodes as Partial<RepoTreeNode>[]).map((node: Partial<RepoTreeNode>) => ({
+      const nodes: RepoTreeNode[] = Array.isArray(payload.nodes)
+        ? (payload.nodes as Partial<RepoTreeNode>[]).map((node: Partial<RepoTreeNode>): RepoTreeNode => ({
             id: String(node.id || ''),
             depth: Number(node.depth || 0),
             kind: node.kind === 'file' ? 'file' : 'folder',
