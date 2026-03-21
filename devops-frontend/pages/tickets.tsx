@@ -4,6 +4,7 @@ import Head from 'next/head';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -238,13 +239,13 @@ export default function DevOpsTickets() {
     params.set('limit', String(limit));
     params.set('offset', String(offset));
     fetch(`${apiUrl}/api/devops/requests?${params}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => {
+      .then(async (res) => {
         if (res.status === 401 || res.status === 403) router.replace('/login');
-        return res.json();
+        return asRecord(await res.json().catch(() => ({})));
       })
       .then((data) => {
-        if (data?.requests) setRequests(data.requests);
-        if (typeof data?.total_count === 'number') setTotal(data.total_count);
+        if (Array.isArray(data.requests)) setRequests(data.requests as TicketRow[]);
+        if (typeof data.total_count === 'number') setTotal(data.total_count);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -253,8 +254,8 @@ export default function DevOpsTickets() {
   const fetchProjects = () => {
     if (!token) return;
     fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setProjects(Array.isArray(data?.projects) ? data.projects : []))
+      .then(async (res) => (res.ok ? asRecord(await res.json().catch(() => ({}))) : null))
+      .then((data) => setProjects(Array.isArray(data?.projects) ? (data.projects as Array<{ id: number; name: string; code: string }>) : []))
       .catch(() => setProjects([]));
   };
 
@@ -273,18 +274,19 @@ export default function DevOpsTickets() {
       ]);
 
       if (!detailRes.ok) {
-        const data = await detailRes.json().catch(() => ({}));
-        throw new Error(data?.error || 'Failed to load ticket');
+        const data = asRecord(await detailRes.json().catch(() => ({})));
+        throw new Error(getString(data.error, 'Failed to load ticket'));
       }
 
-      const detailData = await detailRes.json();
-      const commentsData = commentsRes.ok ? await commentsRes.json().catch(() => ({})) : {};
-      const timelineData = timelineRes.ok ? await timelineRes.json().catch(() => ({})) : {};
+      const detailData = asRecord(await detailRes.json());
+      const commentsData = commentsRes.ok ? asRecord(await commentsRes.json().catch(() => ({}))) : {};
+      const timelineData = timelineRes.ok ? asRecord(await timelineRes.json().catch(() => ({}))) : {};
 
-      setDetailRequest(detailData?.request || null);
-      setDetailComments(commentsData?.comments || []);
-      setDetailTimeline(timelineData?.timeline || []);
-      setRejectReason(detailData?.request?.reject_reason || '');
+      const detailRequestData = asRecord(detailData.request);
+      setDetailRequest((detailData.request as TicketDetail | null) || null);
+      setDetailComments(Array.isArray(commentsData.comments) ? (commentsData.comments as RequestComment[]) : []);
+      setDetailTimeline(Array.isArray(timelineData.timeline) ? (timelineData.timeline as RequestTimelineEvent[]) : []);
+      setRejectReason(getString(detailRequestData.reject_reason));
       setCommentBody('');
 
       addRecentRequestId(id);
@@ -338,9 +340,9 @@ export default function DevOpsTickets() {
         },
         body: JSON.stringify({ body: commentBody.trim() }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (!res.ok) {
-        setDetailError(data?.error || 'Failed to add comment');
+        setDetailError(getString(data.error, 'Failed to add comment'));
         return;
       }
       setCommentBody('');
@@ -367,12 +369,12 @@ export default function DevOpsTickets() {
         },
         body: action === 'reject' ? JSON.stringify({ reason: rejectReason.trim() }) : undefined,
       });
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (!res.ok) {
-        setDetailError(data?.error || `Failed to ${action} request`);
+        setDetailError(getString(data.error, `Failed to ${action} request`));
         return;
       }
-      setDetailNotice(data?.message || `Request ${action}d.`);
+      setDetailNotice(getString(data.message, `Request ${action}d.`));
       if (action === 'reject') setRejectReason('');
       fetchTickets();
       await loadDetail(detailRequest.id, false);

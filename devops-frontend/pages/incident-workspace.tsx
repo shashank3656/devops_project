@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -239,13 +240,16 @@ export default function IncidentWorkspacePage() {
         clearSessionAndRedirect(router);
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const payload = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to load incident workspace');
+        throw new Error(getString(payload.error, 'Failed to load incident workspace'));
       }
-      setWorkspace(data?.workspace || null);
-      if (data?.workspace?.focus_incident_id) {
-        setIncidentId(String(data.workspace.focus_incident_id));
+      const nextWorkspace = payload.workspace && typeof payload.workspace === 'object'
+        ? (payload.workspace as WorkspacePayload)
+        : null;
+      setWorkspace(nextWorkspace);
+      if (nextWorkspace?.focus_incident_id) {
+        setIncidentId(String(nextWorkspace.focus_incident_id));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load incident workspace');
@@ -294,9 +298,9 @@ export default function IncidentWorkspacePage() {
         clearSessionAndRedirect(router);
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const payload = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to save postmortem workspace');
+        throw new Error(getString(payload.error, 'Failed to save postmortem workspace'));
       }
       setNotice('Incident postmortem workspace saved.');
       await loadWorkspace();

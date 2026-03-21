@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -38,8 +39,9 @@ export default function DevOpsLogin() {
   useEffect(() => {
     fetch(`${apiUrl}/api/public/sso/options?portal=devops`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        const payload = data?.sso;
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        const payload = asRecord(data.sso);
         if (payload && typeof payload === 'object') {
           setSso({
             enabled: Boolean(payload.enabled),

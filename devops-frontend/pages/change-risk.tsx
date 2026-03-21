@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -124,15 +125,18 @@ export default function ChangeRiskPage() {
           clearSessionAndRedirect(router);
           return null;
         }
-        const data = await response.json().catch(() => ({}));
+        const payload = asRecord(await response.json().catch(() => ({})));
         if (!response.ok) {
-          throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to load change risk');
+          throw new Error(getString(payload.error, 'Failed to load change risk'));
         }
-        return data;
+        return payload;
       })
-      .then((data) => {
-        if (!data) return;
-        setRisk(data?.risk || null);
+      .then((payload) => {
+        if (!payload) return;
+        const nextRisk = payload.risk && typeof payload.risk === 'object'
+          ? (payload.risk as ChangeRiskPayload)
+          : null;
+        setRisk(nextRisk);
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : 'Failed to load change risk');

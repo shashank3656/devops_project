@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { downloadCSV } from '../lib/csv';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -75,12 +76,15 @@ function normalizeIncident(incident: unknown): Incident {
 
 function normalizeTeams(value: unknown): TeamOption[] {
   if (!Array.isArray(value)) return [];
-  return value.map((team) => ({
-    id: typeof team?.id === 'number' ? team.id : 0,
-    name: typeof team?.name === 'string' ? team.name : 'Unnamed team',
-    slug: typeof team?.slug === 'string' ? team.slug : '',
-    team_type: typeof team?.team_type === 'string' ? team.team_type : 'portal',
-  }));
+  return value.map((team) => {
+    const item = team && typeof team === 'object' ? (team as Record<string, unknown>) : {};
+    return {
+      id: typeof item.id === 'number' ? item.id : 0,
+      name: typeof item.name === 'string' ? item.name : 'Unnamed team',
+      slug: typeof item.slug === 'string' ? item.slug : '',
+      team_type: typeof item.team_type === 'string' ? item.team_type : 'portal',
+    };
+  });
 }
 
 function normalizeMembersByTeam(value: unknown): Record<number, TeamMemberOption[]> {
@@ -90,14 +94,17 @@ function normalizeMembersByTeam(value: unknown): Record<number, TeamMemberOption
   for (const [key, rawMembers] of entries) {
     const teamID = Number(key);
     if (!Number.isFinite(teamID) || teamID <= 0 || !Array.isArray(rawMembers)) continue;
-    normalized[teamID] = rawMembers.map((member) => ({
-      id: typeof member?.id === 'number' ? member.id : 0,
-      team_id: typeof member?.team_id === 'number' ? member.team_id : teamID,
-      user_id: typeof member?.user_id === 'number' ? member.user_id : 0,
-      role: typeof member?.role === 'string' ? member.role : 'member',
-      username: typeof member?.username === 'string' ? member.username : 'unknown',
-      email: typeof member?.email === 'string' ? member.email : '',
-    }));
+    normalized[teamID] = rawMembers.map((member) => {
+      const item = member && typeof member === 'object' ? (member as Record<string, unknown>) : {};
+      return {
+        id: typeof item.id === 'number' ? item.id : 0,
+        team_id: typeof item.team_id === 'number' ? item.team_id : teamID,
+        user_id: typeof item.user_id === 'number' ? item.user_id : 0,
+        role: typeof item.role === 'string' ? item.role : 'member',
+        username: typeof item.username === 'string' ? item.username : 'unknown',
+        email: typeof item.email === 'string' ? item.email : '',
+      };
+    });
   }
   return normalized;
 }
@@ -232,13 +239,13 @@ export default function DevOpsIncidentsPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to load incidents');
+        throw new Error(getString(data.error, 'Failed to load incidents'));
       }
-      setTeams(normalizeTeams(data?.teams));
-      setMembersByTeam(normalizeMembersByTeam(data?.team_members_by_team));
-      setIncidents(normalizeIncidents(data?.incidents));
+      setTeams(normalizeTeams(data.teams));
+      setMembersByTeam(normalizeMembersByTeam(data.team_members_by_team));
+      setIncidents(normalizeIncidents(data.incidents));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load incidents');
     } finally {
@@ -310,11 +317,11 @@ export default function DevOpsIncidentsPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to save incident');
+        throw new Error(getString(data.error, 'Failed to save incident'));
       }
-      const savedIncident = normalizeIncident(data?.incident);
+      const savedIncident = normalizeIncident(data.incident);
       setEditingId(savedIncident.id || editingId);
       setCurrentIncidentNumber(savedIncident.incident_number || `INC${String(savedIncident.id).padStart(7, '0')}`);
       setRequestId(savedIncident.request_id ? String(savedIncident.request_id) : requestId);

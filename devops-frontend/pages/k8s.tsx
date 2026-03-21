@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -238,32 +239,40 @@ function clearSessionAndRedirect() {
 
 function normalizeProjects(value: unknown): ProjectOption[] {
   if (!Array.isArray(value)) return [];
-  return value.map((project) => ({
-    id: typeof project?.id === 'number' ? project.id : 0,
-    name: typeof project?.name === 'string' ? project.name : 'Unknown',
-    code: typeof project?.code === 'string' ? project.code : 'n/a',
-    clouds: Array.isArray(project?.clouds) ? project.clouds.filter((item: unknown): item is string => typeof item === 'string') : [],
-    environments: Array.isArray(project?.environments) ? project.environments.filter((item: unknown): item is string => typeof item === 'string') : [],
-  }));
+  return value.map((project) => {
+    const item = project && typeof project === 'object' ? (project as Record<string, unknown>) : {};
+    return {
+      id: typeof item.id === 'number' ? item.id : 0,
+      name: typeof item.name === 'string' ? item.name : 'Unknown',
+      code: typeof item.code === 'string' ? item.code : 'n/a',
+      clouds: Array.isArray(item.clouds) ? item.clouds.filter((entry: unknown): entry is string => typeof entry === 'string') : [],
+      environments: Array.isArray(item.environments)
+        ? item.environments.filter((entry: unknown): entry is string => typeof entry === 'string')
+        : [],
+    };
+  });
 }
 
 function normalizeConnections(value: unknown): K8sConnection[] {
   if (!Array.isArray(value)) return [];
-  return value.map((item) => ({
-    id: typeof item?.id === 'number' ? item.id : 0,
-    project_id: typeof item?.project_id === 'number' ? item.project_id : 0,
-    project_name: typeof item?.project_name === 'string' ? item.project_name : 'Unknown',
-    project_code: typeof item?.project_code === 'string' ? item.project_code : 'n/a',
-    cloud: typeof item?.cloud === 'string' ? item.cloud : '',
-    cluster_name: typeof item?.cluster_name === 'string' ? item.cluster_name : '',
-    cluster_endpoint: typeof item?.cluster_endpoint === 'string' ? item.cluster_endpoint : '',
-    environment: typeof item?.environment === 'string' ? item.environment : '',
-    namespace: typeof item?.namespace === 'string' ? item.namespace : '',
-    auth_mode: typeof item?.auth_mode === 'string' ? item.auth_mode : '',
-    has_auth_credential: item?.has_auth_credential === true,
-    created_at: typeof item?.created_at === 'string' ? item.created_at : '',
-    updated_at: typeof item?.updated_at === 'string' ? item.updated_at : '',
-  }));
+  return value.map((connection) => {
+    const item = connection && typeof connection === 'object' ? (connection as Record<string, unknown>) : {};
+    return {
+      id: typeof item.id === 'number' ? item.id : 0,
+      project_id: typeof item.project_id === 'number' ? item.project_id : 0,
+      project_name: typeof item.project_name === 'string' ? item.project_name : 'Unknown',
+      project_code: typeof item.project_code === 'string' ? item.project_code : 'n/a',
+      cloud: typeof item.cloud === 'string' ? item.cloud : '',
+      cluster_name: typeof item.cluster_name === 'string' ? item.cluster_name : '',
+      cluster_endpoint: typeof item.cluster_endpoint === 'string' ? item.cluster_endpoint : '',
+      environment: typeof item.environment === 'string' ? item.environment : '',
+      namespace: typeof item.namespace === 'string' ? item.namespace : '',
+      auth_mode: typeof item.auth_mode === 'string' ? item.auth_mode : '',
+      has_auth_credential: item.has_auth_credential === true,
+      created_at: typeof item.created_at === 'string' ? item.created_at : '',
+      updated_at: typeof item.updated_at === 'string' ? item.updated_at : '',
+    };
+  });
 }
 
 function authModeRequiresCredential(mode: string): boolean {
@@ -420,11 +429,13 @@ export default function DevOpsK8sPage() {
       clearSessionAndRedirect();
       return;
     }
-    const payload = await response.json().catch(() => ({}));
+    const payload = asRecord(await response.json().catch(() => ({})));
     if (!response.ok) {
-      throw new Error(payload?.error || 'Failed to load K8s onboarding');
+      throw new Error(getString(payload.error, 'Failed to load K8s onboarding'));
     }
-    const nextData = normalizeOnboardingData(payload?.data);
+    const nextData = normalizeOnboardingData(
+      payload.data && typeof payload.data === 'object' ? (payload.data as Partial<K8sOnboardingData>) : undefined
+    );
     setOnboarding(nextData);
     if (!form.project_id && nextData.projects[0]?.id) {
       setForm((current) => ({
@@ -461,11 +472,13 @@ export default function DevOpsK8sPage() {
       clearSessionAndRedirect();
       return;
     }
-    const payload = await response.json().catch(() => ({}));
+    const payload = asRecord(await response.json().catch(() => ({})));
     if (!response.ok) {
-      throw new Error(payload?.error || 'Failed to load K8s dashboard');
+      throw new Error(getString(payload.error, 'Failed to load K8s dashboard'));
     }
-    const nextData = normalizeOverviewData(payload?.data);
+    const nextData = normalizeOverviewData(
+      payload.data && typeof payload.data === 'object' ? (payload.data as Partial<K8sOverviewData>) : undefined
+    );
     if (nextData) {
       setOverview(nextData);
       setProjectId(String(nextData.selected_project_id || ''));
@@ -779,11 +792,11 @@ export default function DevOpsK8sPage() {
         clearSessionAndRedirect();
         return;
       }
-      const payload = await response.json().catch(() => ({}));
+      const payload = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(payload?.error || 'Failed to save K8s onboarding');
+        throw new Error(getString(payload.error, 'Failed to save K8s onboarding'));
       }
-      setSuccess(payload?.message || 'K8s onboarding saved');
+      setSuccess(getString(payload.message, 'K8s onboarding saved'));
       await Promise.all([
         loadOnboarding(),
         loadOverview(String(form.project_id), form.cluster_name, '', form.environment),

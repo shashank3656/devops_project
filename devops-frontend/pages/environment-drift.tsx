@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { downloadCSV } from '../lib/csv';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -133,15 +134,18 @@ export default function EnvironmentDriftPage() {
           router.replace('/login');
           return null;
         }
-        const data = await response.json().catch(() => ({}));
+        const payload = asRecord(await response.json().catch(() => ({})));
         if (!response.ok) {
-          throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to load environment drift');
+          throw new Error(getString(payload.error, 'Failed to load environment drift'));
         }
-        return data;
+        return payload;
       })
-      .then((data) => {
-        if (!data) return;
-        setDrift(data?.drift || null);
+      .then((payload) => {
+        if (!payload) return;
+        const nextDrift = payload.drift && typeof payload.drift === 'object'
+          ? (payload.drift as DriftPayload)
+          : null;
+        setDrift(nextDrift);
       })
       .catch((err) => {
         const message = err instanceof Error ? err.message : 'Failed to load environment drift';

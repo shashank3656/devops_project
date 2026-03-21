@@ -2,6 +2,7 @@ import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -32,37 +33,46 @@ interface OverrideItem {
 
 function normalizeProjects(value: unknown): ProjectOption[] {
   if (!Array.isArray(value)) return [];
-  return value.map((project) => ({
-    id: typeof project?.id === 'number' ? project.id : 0,
-    name: typeof project?.name === 'string' ? project.name : 'Unknown',
-    code: typeof project?.code === 'string' ? project.code : 'n/a',
-  }));
+  return value.map((project) => {
+    const item = project && typeof project === 'object' ? (project as Record<string, unknown>) : {};
+    return {
+      id: typeof item.id === 'number' ? item.id : 0,
+      name: typeof item.name === 'string' ? item.name : 'Unknown',
+      code: typeof item.code === 'string' ? item.code : 'n/a',
+    };
+  });
 }
 
 function normalizeUsers(value: unknown): UserOption[] {
   if (!Array.isArray(value)) return [];
-  return value.map((user) => ({
-    id: typeof user?.id === 'number' ? user.id : 0,
-    username: typeof user?.username === 'string' ? user.username : 'unknown',
-  }));
+  return value.map((user) => {
+    const item = user && typeof user === 'object' ? (user as Record<string, unknown>) : {};
+    return {
+      id: typeof item.id === 'number' ? item.id : 0,
+      username: typeof item.username === 'string' ? item.username : 'unknown',
+    };
+  });
 }
 
 function normalizeOverrides(value: unknown): OverrideItem[] {
   if (!Array.isArray(value)) return [];
-  return value.map((override) => ({
-    id: typeof override?.id === 'number' ? override.id : 0,
-    project_id: typeof override?.project_id === 'number' ? override.project_id : 0,
-    project_name: typeof override?.project_name === 'string' ? override.project_name : 'Unknown',
-    project_code: typeof override?.project_code === 'string' ? override.project_code : 'n/a',
-    user_id: typeof override?.user_id === 'number' ? override.user_id : 0,
-    username: typeof override?.username === 'string' ? override.username : 'unknown',
-    environments: Array.isArray(override?.environments)
-      ? override.environments.filter((item: unknown): item is string => typeof item === 'string')
-      : [],
-    permission: typeof override?.permission === 'string' ? override.permission : 'read',
-    reason: typeof override?.reason === 'string' ? override.reason : '',
-    expires_at: typeof override?.expires_at === 'string' ? override.expires_at : '',
-  }));
+  return value.map((override) => {
+    const item = override && typeof override === 'object' ? (override as Record<string, unknown>) : {};
+    return {
+      id: typeof item.id === 'number' ? item.id : 0,
+      project_id: typeof item.project_id === 'number' ? item.project_id : 0,
+      project_name: typeof item.project_name === 'string' ? item.project_name : 'Unknown',
+      project_code: typeof item.project_code === 'string' ? item.project_code : 'n/a',
+      user_id: typeof item.user_id === 'number' ? item.user_id : 0,
+      username: typeof item.username === 'string' ? item.username : 'unknown',
+      environments: Array.isArray(item.environments)
+        ? item.environments.filter((entry: unknown): entry is string => typeof entry === 'string')
+        : [],
+      permission: typeof item.permission === 'string' ? item.permission : 'read',
+      reason: typeof item.reason === 'string' ? item.reason : '',
+      expires_at: typeof item.expires_at === 'string' ? item.expires_at : '',
+    };
+  });
 }
 
 function clearSessionAndRedirect() {
@@ -103,13 +113,13 @@ export default function DevOpsAccessOverridesPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to load access overrides');
+        throw new Error(getString(data.error, 'Failed to load access overrides'));
       }
-      setProjects(normalizeProjects(data?.projects));
-      setUsers(normalizeUsers(data?.users));
-      setOverrides(normalizeOverrides(data?.overrides));
+      setProjects(normalizeProjects(data.projects));
+      setUsers(normalizeUsers(data.users));
+      setOverrides(normalizeOverrides(data.overrides));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load access overrides');
     } finally {
@@ -151,9 +161,9 @@ export default function DevOpsAccessOverridesPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to create override');
+        throw new Error(getString(data.error, 'Failed to create override'));
       }
       setNotice('Access override created.');
       setProjectId('');

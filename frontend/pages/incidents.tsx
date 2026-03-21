@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AppLayout, { getApiUrl } from '../components/AppLayout';
+import { asRecord, getString } from '../lib/payload';
 import { SITE_NAME } from '../lib/site';
 
 interface Incident {
@@ -32,30 +33,33 @@ interface Incident {
 
 function normalizeIncidents(value: unknown): Incident[] {
   if (!Array.isArray(value)) return [];
-  return value.map((incident) => ({
-    id: typeof incident?.id === 'number' ? incident.id : 0,
-    incident_number: typeof incident?.incident_number === 'string' ? incident.incident_number : '',
-    request_id: typeof incident?.request_id === 'number' ? incident.request_id : 0,
-    project_id: typeof incident?.project_id === 'number' ? incident.project_id : null,
-    project_name: typeof incident?.project_name === 'string' ? incident.project_name : '',
-    project_code: typeof incident?.project_code === 'string' ? incident.project_code : '',
-    request_team: typeof incident?.request_team === 'string' ? incident.request_team : '',
-    request_env: typeof incident?.request_env === 'string' ? incident.request_env : '',
-    request_service: typeof incident?.request_service === 'string' ? incident.request_service : '',
-    request_cloud: typeof incident?.request_cloud === 'string' ? incident.request_cloud : '',
-    request_status: typeof incident?.request_status === 'string' ? incident.request_status : '',
-    team_id: typeof incident?.team_id === 'number' ? incident.team_id : null,
-    team_name: typeof incident?.team_name === 'string' ? incident.team_name : '',
-    severity: typeof incident?.severity === 'string' ? incident.severity : 'medium',
-    status: typeof incident?.status === 'string' ? incident.status : 'open',
-    escalation_level: typeof incident?.escalation_level === 'string' ? incident.escalation_level : 'monitoring',
-    owner_user_id: typeof incident?.owner_user_id === 'number' ? incident.owner_user_id : null,
-    owner_username: typeof incident?.owner_username === 'string' ? incident.owner_username : '',
-    summary: typeof incident?.summary === 'string' ? incident.summary : '',
-    notes: typeof incident?.notes === 'string' ? incident.notes : '',
-    created_at: typeof incident?.created_at === 'string' ? incident.created_at : '',
-    updated_at: typeof incident?.updated_at === 'string' ? incident.updated_at : '',
-  }));
+  return value.map((incident) => {
+    const item = incident && typeof incident === 'object' ? (incident as Record<string, unknown>) : {};
+    return {
+      id: typeof item.id === 'number' ? item.id : 0,
+      incident_number: typeof item.incident_number === 'string' ? item.incident_number : '',
+      request_id: typeof item.request_id === 'number' ? item.request_id : 0,
+      project_id: typeof item.project_id === 'number' ? item.project_id : null,
+      project_name: typeof item.project_name === 'string' ? item.project_name : '',
+      project_code: typeof item.project_code === 'string' ? item.project_code : '',
+      request_team: typeof item.request_team === 'string' ? item.request_team : '',
+      request_env: typeof item.request_env === 'string' ? item.request_env : '',
+      request_service: typeof item.request_service === 'string' ? item.request_service : '',
+      request_cloud: typeof item.request_cloud === 'string' ? item.request_cloud : '',
+      request_status: typeof item.request_status === 'string' ? item.request_status : '',
+      team_id: typeof item.team_id === 'number' ? item.team_id : null,
+      team_name: typeof item.team_name === 'string' ? item.team_name : '',
+      severity: typeof item.severity === 'string' ? item.severity : 'medium',
+      status: typeof item.status === 'string' ? item.status : 'open',
+      escalation_level: typeof item.escalation_level === 'string' ? item.escalation_level : 'monitoring',
+      owner_user_id: typeof item.owner_user_id === 'number' ? item.owner_user_id : null,
+      owner_username: typeof item.owner_username === 'string' ? item.owner_username : '',
+      summary: typeof item.summary === 'string' ? item.summary : '',
+      notes: typeof item.notes === 'string' ? item.notes : '',
+      created_at: typeof item.created_at === 'string' ? item.created_at : '',
+      updated_at: typeof item.updated_at === 'string' ? item.updated_at : '',
+    };
+  });
 }
 
 function formatTimestamp(value: string): string {
@@ -99,11 +103,11 @@ export default function UserIncidentsPage() {
           router.replace('/login');
           return;
         }
-        const data = await res.json().catch(() => ({}));
+        const data = asRecord(await res.json().catch(() => ({})));
         if (!res.ok) {
-          throw new Error(data?.error || 'Failed to load incidents');
+          throw new Error(getString(data.error, 'Failed to load incidents'));
         }
-        setIncidents(normalizeIncidents(data?.incidents));
+        setIncidents(normalizeIncidents(data.incidents));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load incidents');
       } finally {

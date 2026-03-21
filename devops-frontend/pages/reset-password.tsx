@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 export default function DevOpsResetPassword() {
   const router = useRouter();
@@ -52,9 +53,9 @@ export default function DevOpsResetPassword() {
           confirm_password: confirmPassword,
         }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (!res.ok) {
-        setError(data.error || 'Reset failed');
+        setError(getString(data.error, 'Reset failed'));
         return;
       }
       setSuccess(true);

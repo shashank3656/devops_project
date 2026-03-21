@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -134,14 +135,14 @@ export default function DevOpsProjectOperationsPage() {
           clearSessionAndRedirect();
           return null;
         }
-        const data = await res.json().catch(() => ({}));
+        const payload = asRecord(await res.json().catch(() => ({})));
         if (!res.ok) {
-          throw new Error(data?.error || 'Failed to load project operations');
+          throw new Error(getString(payload.error, 'Failed to load project operations'));
         }
-        return data;
+        return payload;
       })
-      .then((data) => {
-        const nextAnalytics = normalizeProjectAnalytics(data?.analytics);
+      .then((payload) => {
+        const nextAnalytics = normalizeProjectAnalytics(payload.analytics as Partial<ProjectAnalytics> | null | undefined);
         if (nextAnalytics) setAnalytics(nextAnalytics);
       })
       .catch((err: Error) => setError(err.message))

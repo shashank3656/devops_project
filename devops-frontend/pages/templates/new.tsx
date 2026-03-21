@@ -5,6 +5,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { asRecord, getString } from '../../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const CLOUDS = ['aws', 'azure', 'gcp'];
@@ -69,12 +70,12 @@ export default function NewDevOpsTemplate() {
         router.replace('/login');
         return;
       }
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (res.ok && data.template) {
         router.push('/templates?created=1');
         return;
       }
-      setError(data.error || 'Failed to create template');
+      setError(getString(data.error, 'Failed to create template'));
     } catch {
       setError('Failed to create template. Check your connection.');
     } finally {

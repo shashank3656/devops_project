@@ -5,6 +5,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -270,12 +271,16 @@ export default function DevOpsDashboard() {
     if (!token) return;
     fetch(`${apiUrl}/api/devops/dashboard-stats`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => {
-        if (res.status === 200) return res.json();
+        if (res.status === 200) return res.json().catch(() => ({}));
         return null;
       })
-      .then((data) => {
-        if (data?.status === 'ok' && typeof data.pending_approval === 'number') {
-          setStats({ pending_approval: data.pending_approval, in_progress: data.in_progress ?? 0 });
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        if (getString(data.status) === 'ok' && typeof data.pending_approval === 'number') {
+          setStats({
+            pending_approval: data.pending_approval,
+            in_progress: typeof data.in_progress === 'number' ? data.in_progress : 0,
+          });
         }
       })
       .catch(() => {});

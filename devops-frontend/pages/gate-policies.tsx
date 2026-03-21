@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -80,11 +81,11 @@ export default function GatePoliciesPage() {
         clearSessionAndRedirect();
         return;
       }
-      const payload = await response.json().catch(() => ({}));
+      const payload = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(payload?.error || 'Failed to load gate policies');
+        throw new Error(getString(payload.error, 'Failed to load gate policies'));
       }
-      const nextProjects = Array.isArray(payload?.projects) ? payload.projects : [];
+      const nextProjects = Array.isArray(payload.projects) ? (payload.projects as ProjectOption[]) : [];
       setProjects(nextProjects.map((project: ProjectOption) => ({
         ...project,
         approval_rules: project.approval_rules?.length
@@ -152,9 +153,9 @@ export default function GatePoliciesPage() {
         clearSessionAndRedirect();
         return;
       }
-      const payload = await response.json().catch(() => ({}));
+      const payload = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(payload?.error || 'Failed to save gate policy');
+        throw new Error(getString(payload.error, 'Failed to save gate policy'));
       }
       setNotice(`Saved gate policy for ${project.name}.`);
       void fetchProjects();

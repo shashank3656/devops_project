@@ -4,6 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -171,8 +172,8 @@ export default function GateApprovalsPage() {
         return;
       }
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to export gate approvals');
+        const payload = asRecord(await response.json().catch(() => ({})));
+        throw new Error(getString(payload.error, 'Failed to export gate approvals'));
       }
       const blob = await response.blob();
       const objectURL = window.URL.createObjectURL(blob);
@@ -195,7 +196,10 @@ export default function GateApprovalsPage() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((response) => (response.ok ? response.json() : null))
-      .then((data) => setProjects(Array.isArray(data?.projects) ? data.projects : []))
+      .then((data) => {
+        const payload = asRecord(data);
+        setProjects(Array.isArray(payload.projects) ? (payload.projects as ProjectSummary[]) : []);
+      })
       .catch(() => setProjects([]));
   }, [apiUrl]);
 

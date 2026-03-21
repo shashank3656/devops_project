@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { asRecord, getString } from '../../lib/payload';
 
 interface UserSavedConfig {
   id: number;
@@ -64,9 +65,9 @@ export default function CreateInfrastructureNew() {
     setSavedConfigsError('');
     fetch(`${apiUrl}/api/me/saved-configs`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
+        const data = asRecord(await res.json().catch(() => ({})));
         if (res.ok && Array.isArray(data.saved_configs)) {
-          setSavedConfigs(data.saved_configs);
+          setSavedConfigs(data.saved_configs as UserSavedConfig[]);
           setSavedConfigsError('');
         } else {
           setSavedConfigs([]);
@@ -93,11 +94,11 @@ export default function CreateInfrastructureNew() {
     setProjectsError('');
     fetch(`${apiUrl}/api/me/projects`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
+        const data = asRecord(await res.json().catch(() => ({})));
         if (!res.ok) {
-          throw new Error(data?.error || 'Failed to load projects');
+          throw new Error(getString(data.error, 'Failed to load projects'));
         }
-        setProjects(Array.isArray(data.projects) ? data.projects : []);
+        setProjects(Array.isArray(data.projects) ? (data.projects as ProjectOption[]) : []);
       })
       .catch((err: Error) => {
         setProjects([]);

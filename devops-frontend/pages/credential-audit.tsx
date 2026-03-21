@@ -4,6 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -120,12 +121,15 @@ export default function CredentialAuditPage() {
           router.replace('/login');
           return null;
         }
-        return res.json();
+        return res.json().catch(() => ({}));
       })
-      .then((data) => {
-        if (data?.entries) setEntries(data.entries);
-        setExpiryTracker(data?.expiry_tracker || null);
-        if (data?.error) setError(data.error);
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        setEntries(Array.isArray(data.entries) ? (data.entries as CredentialAuditEntry[]) : []);
+        const tracker = data.expiry_tracker;
+        setExpiryTracker(tracker && typeof tracker === 'object' ? (tracker as ExpiryTrackerPayload) : null);
+        const nextError = getString(data.error);
+        if (nextError) setError(nextError);
       })
       .catch(() => setError('Failed to load credential audit'))
       .finally(() => setLoading(false));
@@ -138,7 +142,10 @@ export default function CredentialAuditPage() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setProjects(Array.isArray(data?.projects) ? data.projects : []))
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        setProjects(Array.isArray(data.projects) ? (data.projects as ProjectSummary[]) : []);
+      })
       .catch(() => setProjects([]));
   }, [apiUrl]);
 
@@ -249,9 +256,9 @@ export default function CredentialAuditPage() {
         router.replace('/login');
         return;
       }
-      const payload = await response.json().catch(() => ({}));
+      const payload = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(payload?.error || 'Failed to update expiry workflow');
+        throw new Error(getString(payload.error, 'Failed to update expiry workflow'));
       }
       setNotice(`Workflow updated: ${item.resource_name} is now ${nextLabel.toLowerCase()}.`);
       fetchEntries();

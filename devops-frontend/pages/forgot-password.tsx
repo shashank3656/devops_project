@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 export default function DevOpsForgotPassword() {
   const apiUrl = useApiUrl();
@@ -29,9 +30,9 @@ export default function DevOpsForgotPassword() {
           portal: 'devops',
         }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (!res.ok) {
-        setError(data.error || 'Request failed');
+        setError(getString(data.error, 'Request failed'));
         return;
       }
       setSent(true);
