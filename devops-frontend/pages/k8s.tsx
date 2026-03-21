@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -22,6 +23,7 @@ type ResourceTab =
   | 'configmaps';
 type DataSourceMode = 'prometheus' | 'kube_state_metrics' | 'loki';
 type ResolutionMode = '15s' | '30s' | '1m' | '5m';
+type K8sHealthFocus = '' | 'restarting_pods' | 'non_running_pods' | 'warning_logs' | 'unhealthy_namespaces' | 'degraded_workloads';
 
 interface ProjectOption {
   id: number;
@@ -54,6 +56,38 @@ interface Summary {
   service_count: number;
   ingress_count: number;
   warning_event_count: number;
+}
+
+interface WorkloadHealthSummary {
+  healthy_deployments: number;
+  degraded_deployments: number;
+  blocked_deployments: number;
+  scaled_down_deployments: number;
+  restarting_pods: number;
+  non_running_pods: number;
+  warning_logs: number;
+  unhealthy_namespaces: number;
+}
+
+interface NamespaceHealthItem {
+  namespace: string;
+  cluster_name: string;
+  status: string;
+  issue_count: number;
+  restarting_pods: number;
+  warning_logs: number;
+  affected_deployments: number;
+}
+
+interface WorkloadSpotlightItem {
+  name: string;
+  namespace: string;
+  cluster_name: string;
+  status: string;
+  ready_replicas: number;
+  replicas: number;
+  restart_count: number;
+  warning_count: number;
 }
 
 interface NamespaceItem {
@@ -175,8 +209,11 @@ interface K8sOverviewData {
   namespaces: string[];
   environments: string[];
   summary: Summary;
+  health_summary: WorkloadHealthSummary;
   namespace_items: NamespaceItem[];
+  namespace_health: NamespaceHealthItem[];
   deployments: DeploymentItem[];
+  workload_spotlights: WorkloadSpotlightItem[];
   pods: PodItem[];
   logs: LogItem[];
   replicasets: ReplicaSetItem[];
@@ -202,32 +239,40 @@ function clearSessionAndRedirect() {
 
 function normalizeProjects(value: unknown): ProjectOption[] {
   if (!Array.isArray(value)) return [];
-  return value.map((project) => ({
-    id: typeof project?.id === 'number' ? project.id : 0,
-    name: typeof project?.name === 'string' ? project.name : 'Unknown',
-    code: typeof project?.code === 'string' ? project.code : 'n/a',
-    clouds: Array.isArray(project?.clouds) ? project.clouds.filter((item: unknown): item is string => typeof item === 'string') : [],
-    environments: Array.isArray(project?.environments) ? project.environments.filter((item: unknown): item is string => typeof item === 'string') : [],
-  }));
+  return value.map((project) => {
+    const item = project && typeof project === 'object' ? (project as Record<string, unknown>) : {};
+    return {
+      id: typeof item.id === 'number' ? item.id : 0,
+      name: typeof item.name === 'string' ? item.name : 'Unknown',
+      code: typeof item.code === 'string' ? item.code : 'n/a',
+      clouds: Array.isArray(item.clouds) ? item.clouds.filter((entry: unknown): entry is string => typeof entry === 'string') : [],
+      environments: Array.isArray(item.environments)
+        ? item.environments.filter((entry: unknown): entry is string => typeof entry === 'string')
+        : [],
+    };
+  });
 }
 
 function normalizeConnections(value: unknown): K8sConnection[] {
   if (!Array.isArray(value)) return [];
-  return value.map((item) => ({
-    id: typeof item?.id === 'number' ? item.id : 0,
-    project_id: typeof item?.project_id === 'number' ? item.project_id : 0,
-    project_name: typeof item?.project_name === 'string' ? item.project_name : 'Unknown',
-    project_code: typeof item?.project_code === 'string' ? item.project_code : 'n/a',
-    cloud: typeof item?.cloud === 'string' ? item.cloud : '',
-    cluster_name: typeof item?.cluster_name === 'string' ? item.cluster_name : '',
-    cluster_endpoint: typeof item?.cluster_endpoint === 'string' ? item.cluster_endpoint : '',
-    environment: typeof item?.environment === 'string' ? item.environment : '',
-    namespace: typeof item?.namespace === 'string' ? item.namespace : '',
-    auth_mode: typeof item?.auth_mode === 'string' ? item.auth_mode : '',
-    has_auth_credential: item?.has_auth_credential === true,
-    created_at: typeof item?.created_at === 'string' ? item.created_at : '',
-    updated_at: typeof item?.updated_at === 'string' ? item.updated_at : '',
-  }));
+  return value.map((connection) => {
+    const item = connection && typeof connection === 'object' ? (connection as Record<string, unknown>) : {};
+    return {
+      id: typeof item.id === 'number' ? item.id : 0,
+      project_id: typeof item.project_id === 'number' ? item.project_id : 0,
+      project_name: typeof item.project_name === 'string' ? item.project_name : 'Unknown',
+      project_code: typeof item.project_code === 'string' ? item.project_code : 'n/a',
+      cloud: typeof item.cloud === 'string' ? item.cloud : '',
+      cluster_name: typeof item.cluster_name === 'string' ? item.cluster_name : '',
+      cluster_endpoint: typeof item.cluster_endpoint === 'string' ? item.cluster_endpoint : '',
+      environment: typeof item.environment === 'string' ? item.environment : '',
+      namespace: typeof item.namespace === 'string' ? item.namespace : '',
+      auth_mode: typeof item.auth_mode === 'string' ? item.auth_mode : '',
+      has_auth_credential: item.has_auth_credential === true,
+      created_at: typeof item.created_at === 'string' ? item.created_at : '',
+      updated_at: typeof item.updated_at === 'string' ? item.updated_at : '',
+    };
+  });
 }
 
 function authModeRequiresCredential(mode: string): boolean {
@@ -290,8 +335,20 @@ function normalizeOverviewData(value: Partial<K8sOverviewData> | null | undefine
       ingress_count: typeof value.summary?.ingress_count === 'number' ? value.summary.ingress_count : 0,
       warning_event_count: typeof value.summary?.warning_event_count === 'number' ? value.summary.warning_event_count : 0,
     },
+    health_summary: {
+      healthy_deployments: typeof value.health_summary?.healthy_deployments === 'number' ? value.health_summary.healthy_deployments : 0,
+      degraded_deployments: typeof value.health_summary?.degraded_deployments === 'number' ? value.health_summary.degraded_deployments : 0,
+      blocked_deployments: typeof value.health_summary?.blocked_deployments === 'number' ? value.health_summary.blocked_deployments : 0,
+      scaled_down_deployments: typeof value.health_summary?.scaled_down_deployments === 'number' ? value.health_summary.scaled_down_deployments : 0,
+      restarting_pods: typeof value.health_summary?.restarting_pods === 'number' ? value.health_summary.restarting_pods : 0,
+      non_running_pods: typeof value.health_summary?.non_running_pods === 'number' ? value.health_summary.non_running_pods : 0,
+      warning_logs: typeof value.health_summary?.warning_logs === 'number' ? value.health_summary.warning_logs : 0,
+      unhealthy_namespaces: typeof value.health_summary?.unhealthy_namespaces === 'number' ? value.health_summary.unhealthy_namespaces : 0,
+    },
     namespace_items: Array.isArray(value.namespace_items) ? value.namespace_items as NamespaceItem[] : [],
+    namespace_health: Array.isArray(value.namespace_health) ? value.namespace_health as NamespaceHealthItem[] : [],
     deployments: Array.isArray(value.deployments) ? value.deployments as DeploymentItem[] : [],
+    workload_spotlights: Array.isArray(value.workload_spotlights) ? value.workload_spotlights as WorkloadSpotlightItem[] : [],
     pods: Array.isArray(value.pods) ? value.pods as PodItem[] : [],
     logs: Array.isArray(value.logs) ? value.logs as LogItem[] : [],
     replicasets: Array.isArray(value.replicasets) ? value.replicasets as ReplicaSetItem[] : [],
@@ -336,6 +393,7 @@ export default function DevOpsK8sPage() {
   const [resolution, setResolution] = useState<ResolutionMode>('30s');
   const [workload, setWorkload] = useState('');
   const [activeTab, setActiveTab] = useState<ResourceTab>('pods');
+  const [healthFocus, setHealthFocus] = useState<K8sHealthFocus>('');
   const [form, setForm] = useState({
     project_id: '',
     cloud: '',
@@ -371,11 +429,13 @@ export default function DevOpsK8sPage() {
       clearSessionAndRedirect();
       return;
     }
-    const payload = await response.json().catch(() => ({}));
+    const payload = asRecord(await response.json().catch(() => ({})));
     if (!response.ok) {
-      throw new Error(payload?.error || 'Failed to load K8s onboarding');
+      throw new Error(getString(payload.error, 'Failed to load K8s onboarding'));
     }
-    const nextData = normalizeOnboardingData(payload?.data);
+    const nextData = normalizeOnboardingData(
+      payload.data && typeof payload.data === 'object' ? (payload.data as Partial<K8sOnboardingData>) : undefined
+    );
     setOnboarding(nextData);
     if (!form.project_id && nextData.projects[0]?.id) {
       setForm((current) => ({
@@ -412,17 +472,31 @@ export default function DevOpsK8sPage() {
       clearSessionAndRedirect();
       return;
     }
-    const payload = await response.json().catch(() => ({}));
+    const payload = asRecord(await response.json().catch(() => ({})));
     if (!response.ok) {
-      throw new Error(payload?.error || 'Failed to load K8s dashboard');
+      throw new Error(getString(payload.error, 'Failed to load K8s dashboard'));
     }
-    const nextData = normalizeOverviewData(payload?.data);
+    const nextData = normalizeOverviewData(
+      payload.data && typeof payload.data === 'object' ? (payload.data as Partial<K8sOverviewData>) : undefined
+    );
     if (nextData) {
       setOverview(nextData);
       setProjectId(String(nextData.selected_project_id || ''));
       setClusterName(nextData.selected_cluster || '');
       setNamespace(nextData.selected_namespace || '');
       setEnvironment(nextData.selected_environment || '');
+    }
+  };
+
+  const loadFilteredView = async (nextProjectId = projectId, nextClusterName = clusterName, nextNamespace = namespace, nextEnvironment = environment) => {
+    setLoading(true);
+    setError('');
+    try {
+      await loadOverview(nextProjectId, nextClusterName, nextNamespace, nextEnvironment);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load K8s dashboard');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -466,11 +540,29 @@ export default function DevOpsK8sPage() {
     const secrets = overview.secrets.filter((item) => hasWorkload(item.name));
     const serviceAccounts = overview.service_accounts.filter((item) => hasWorkload(item.name));
     const configmaps = overview.configmaps.filter((item) => hasWorkload(item.name));
-    const podNamespaces = new Set(pods.map((item) => item.namespace));
-    const namespaceItems = overview.namespace_items.filter((item) => podNamespaces.has(item.name));
+    const visibleNamespaces = new Set<string>();
+    pods.forEach((item) => visibleNamespaces.add(item.namespace));
+    deployments.forEach((item) => visibleNamespaces.add(item.namespace));
+    const namespaceItems = overview.namespace_items.filter((item) => visibleNamespaces.has(item.name));
+    const namespaceHealth = overview.namespace_health.filter((item) => visibleNamespaces.has(item.namespace));
+    const workloadSpotlights = overview.workload_spotlights.filter((item) => hasWorkload(item.name));
+    const healthSummary = {
+      healthy_deployments: deployments.filter((item) => item.status.toLowerCase() === 'healthy').length,
+      degraded_deployments: deployments.filter((item) => item.status.toLowerCase() === 'degraded').length,
+      blocked_deployments: deployments.filter((item) => item.status.toLowerCase() === 'blocked').length,
+      scaled_down_deployments: deployments.filter((item) => item.status.toLowerCase() === 'scaled-down').length,
+      restarting_pods: pods.filter((item) => item.restarts > 0).length,
+      non_running_pods: pods.filter((item) => {
+        const status = item.status.toLowerCase();
+        return status !== 'running' && status !== 'completed' && status !== 'succeeded';
+      }).length,
+      warning_logs: logs.filter((item) => item.level.toLowerCase() !== 'info').length,
+      unhealthy_namespaces: namespaceHealth.length,
+    };
 
     return {
       ...overview,
+      health_summary: healthSummary,
       deployments,
       pods,
       logs,
@@ -482,6 +574,8 @@ export default function DevOpsK8sPage() {
       service_accounts: serviceAccounts,
       configmaps,
       namespace_items: namespaceItems,
+      namespace_health: namespaceHealth,
+      workload_spotlights: workloadSpotlights,
       summary: {
         ...overview.summary,
         namespace_count: namespaceItems.length,
@@ -494,9 +588,92 @@ export default function DevOpsK8sPage() {
     };
   }, [overview, workload]);
 
+  const focusedDashboardView = useMemo(() => {
+    if (!dashboardView || !healthFocus) return dashboardView;
+
+    const nextView = {
+      ...dashboardView,
+      deployments: [...dashboardView.deployments],
+      pods: [...dashboardView.pods],
+      logs: [...dashboardView.logs],
+      replicasets: [...dashboardView.replicasets],
+      volumes: [...dashboardView.volumes],
+      services: [...dashboardView.services],
+      ingresses: [...dashboardView.ingresses],
+      secrets: [...dashboardView.secrets],
+      service_accounts: [...dashboardView.service_accounts],
+      configmaps: [...dashboardView.configmaps],
+      namespace_items: [...dashboardView.namespace_items],
+      namespace_health: [...dashboardView.namespace_health],
+      workload_spotlights: [...dashboardView.workload_spotlights],
+      summary: { ...dashboardView.summary },
+      health_summary: { ...dashboardView.health_summary },
+    };
+
+    if (healthFocus === 'restarting_pods') {
+      nextView.pods = nextView.pods.filter((item) => item.restarts > 0);
+    } else if (healthFocus === 'non_running_pods') {
+      nextView.pods = nextView.pods.filter((item) => {
+        const status = item.status.toLowerCase();
+        return status !== 'running' && status !== 'completed' && status !== 'succeeded';
+      });
+    } else if (healthFocus === 'warning_logs') {
+      nextView.logs = nextView.logs.filter((item) => item.level.toLowerCase() !== 'info');
+    } else if (healthFocus === 'unhealthy_namespaces') {
+      const affectedNamespaces = new Set(
+        nextView.namespace_health
+          .filter((item) => item.issue_count > 0 || item.status.toLowerCase() !== 'healthy')
+          .map((item) => `${item.cluster_name}::${item.namespace}`)
+      );
+      nextView.namespace_health = nextView.namespace_health.filter((item) => affectedNamespaces.has(`${item.cluster_name}::${item.namespace}`));
+      nextView.namespace_items = nextView.namespace_items.filter((item) => affectedNamespaces.has(`${item.cluster_name}::${item.name}`));
+      nextView.pods = nextView.pods.filter((item) => affectedNamespaces.has(`${item.cluster_name}::${item.namespace}`));
+      nextView.deployments = nextView.deployments.filter((item) => affectedNamespaces.has(`${item.cluster_name}::${item.namespace}`));
+      nextView.logs = nextView.logs.filter((item) => affectedNamespaces.has(`${item.cluster_name}::${item.namespace}`));
+    } else if (healthFocus === 'degraded_workloads') {
+      const spotlightNames = new Set(
+        nextView.workload_spotlights
+          .filter((item) => item.status.toLowerCase() !== 'healthy' || item.warning_count > 0 || item.restart_count > 0)
+          .map((item) => `${item.cluster_name}::${item.namespace}::${item.name}`)
+      );
+      nextView.deployments = nextView.deployments.filter((item) => {
+        const status = item.status.toLowerCase();
+        return status !== 'healthy' || spotlightNames.has(`${item.cluster_name}::${item.namespace}::${item.name}`);
+      });
+      nextView.workload_spotlights = nextView.workload_spotlights.filter((item) => spotlightNames.has(`${item.cluster_name}::${item.namespace}::${item.name}`));
+      nextView.pods = nextView.pods.filter((item) => spotlightNames.has(`${item.cluster_name}::${item.namespace}::${item.deployment}`));
+      nextView.logs = nextView.logs.filter((item) => spotlightNames.has(`${item.cluster_name}::${item.namespace}::${item.name}`));
+    }
+
+    nextView.summary = {
+      ...nextView.summary,
+      namespace_count: nextView.namespace_items.length,
+      deployment_count: nextView.deployments.length,
+      pod_count: nextView.pods.length,
+      service_count: nextView.services.length,
+      ingress_count: nextView.ingresses.length,
+      warning_event_count: nextView.logs.filter((item) => item.level.toLowerCase() !== 'info').length,
+    };
+    nextView.health_summary = {
+      healthy_deployments: nextView.deployments.filter((item) => item.status.toLowerCase() === 'healthy').length,
+      degraded_deployments: nextView.deployments.filter((item) => item.status.toLowerCase() === 'degraded').length,
+      blocked_deployments: nextView.deployments.filter((item) => item.status.toLowerCase() === 'blocked').length,
+      scaled_down_deployments: nextView.deployments.filter((item) => item.status.toLowerCase() === 'scaled-down').length,
+      restarting_pods: nextView.pods.filter((item) => item.restarts > 0).length,
+      non_running_pods: nextView.pods.filter((item) => {
+        const status = item.status.toLowerCase();
+        return status !== 'running' && status !== 'completed' && status !== 'succeeded';
+      }).length,
+      warning_logs: nextView.logs.filter((item) => item.level.toLowerCase() !== 'info').length,
+      unhealthy_namespaces: nextView.namespace_health.filter((item) => item.issue_count > 0 || item.status.toLowerCase() !== 'healthy').length,
+    };
+
+    return nextView;
+  }, [dashboardView, healthFocus]);
+
   const deploymentHealth = useMemo(() => {
     const health = { healthy: 0, degraded: 0, blocked: 0, scaledDown: 0 };
-    for (const item of dashboardView?.deployments || []) {
+    for (const item of focusedDashboardView?.deployments || []) {
       const status = (item.status || '').toLowerCase();
       if (status === 'healthy') health.healthy += 1;
       else if (status === 'degraded') health.degraded += 1;
@@ -504,10 +681,10 @@ export default function DevOpsK8sPage() {
       else if (status === 'scaled-down') health.scaledDown += 1;
     }
     return health;
-  }, [dashboardView]);
+  }, [focusedDashboardView]);
 
   const namespaceLoad = useMemo(() => {
-    const source = dashboardView?.namespace_items || [];
+    const source = focusedDashboardView?.namespace_items || [];
     return source
       .map((item) => ({
         namespace: item.name,
@@ -516,10 +693,10 @@ export default function DevOpsK8sPage() {
       }))
       .sort((a, b) => b.pods - a.pods)
       .slice(0, 6);
-  }, [dashboardView]);
+  }, [focusedDashboardView]);
 
   const warningTimeline = useMemo(() => {
-    const baseWarnings = dashboardView?.summary.warning_event_count || 0;
+    const baseWarnings = focusedDashboardView?.summary.warning_event_count || 0;
     const multiplier = resolution === '15s' ? 0.8 : resolution === '30s' ? 1 : resolution === '1m' ? 1.2 : 1.5;
     return Array.from({ length: 12 }, (_, index) => {
       const wave = Math.sin((index / 11) * Math.PI * 2) * 1.5;
@@ -527,21 +704,21 @@ export default function DevOpsK8sPage() {
       const value = Math.max(0, Math.round((baseWarnings + wave + drift) * multiplier));
       return { bucket: index + 1, value };
     });
-  }, [dashboardView, resolution]);
+  }, [focusedDashboardView, resolution]);
 
   const tabCounts = useMemo(() => ({
-    pods: dashboardView?.pods.length || 0,
-    deployments: dashboardView?.deployments.length || 0,
-    logs: dashboardView?.logs.length || 0,
-    replicasets: dashboardView?.replicasets.length || 0,
-    namespaces: dashboardView?.namespace_items.length || 0,
-    volumes: dashboardView?.volumes.length || 0,
-    services: dashboardView?.services.length || 0,
-    ingresses: dashboardView?.ingresses.length || 0,
-    secrets: dashboardView?.secrets.length || 0,
-    service_accounts: dashboardView?.service_accounts.length || 0,
-    configmaps: dashboardView?.configmaps.length || 0,
-  }), [dashboardView]);
+    pods: focusedDashboardView?.pods.length || 0,
+    deployments: focusedDashboardView?.deployments.length || 0,
+    logs: focusedDashboardView?.logs.length || 0,
+    replicasets: focusedDashboardView?.replicasets.length || 0,
+    namespaces: focusedDashboardView?.namespace_items.length || 0,
+    volumes: focusedDashboardView?.volumes.length || 0,
+    services: focusedDashboardView?.services.length || 0,
+    ingresses: focusedDashboardView?.ingresses.length || 0,
+    secrets: focusedDashboardView?.secrets.length || 0,
+    service_accounts: focusedDashboardView?.service_accounts.length || 0,
+    configmaps: focusedDashboardView?.configmaps.length || 0,
+  }), [focusedDashboardView]);
 
   const tabItems: { key: ResourceTab; label: string }[] = [
     { key: 'pods', label: 'Pods' },
@@ -558,15 +735,30 @@ export default function DevOpsK8sPage() {
   ];
 
   const handleApplyFilters = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      await loadOverview();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load K8s dashboard');
-    } finally {
-      setLoading(false);
-    }
+    setHealthFocus('');
+    await loadFilteredView();
+  };
+
+  const handleHealthDrilldown = (nextTab: ResourceTab, nextFocus: K8sHealthFocus) => {
+    setActiveTab(nextTab);
+    setHealthFocus(nextFocus);
+  };
+
+  const handleNamespaceDrilldown = async (item: NamespaceHealthItem) => {
+    setClusterName(item.cluster_name);
+    setNamespace(item.namespace);
+    setActiveTab('pods');
+    setHealthFocus('unhealthy_namespaces');
+    await loadFilteredView(projectId, item.cluster_name, item.namespace, environment);
+  };
+
+  const handleWorkloadDrilldown = async (item: WorkloadSpotlightItem, nextTab: ResourceTab) => {
+    setClusterName(item.cluster_name);
+    setNamespace(item.namespace);
+    setWorkload(item.name);
+    setActiveTab(nextTab);
+    setHealthFocus('degraded_workloads');
+    await loadFilteredView(projectId, item.cluster_name, item.namespace, environment);
   };
 
   const handleOnboardingSubmit = async (event: React.FormEvent) => {
@@ -600,11 +792,11 @@ export default function DevOpsK8sPage() {
         clearSessionAndRedirect();
         return;
       }
-      const payload = await response.json().catch(() => ({}));
+      const payload = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(payload?.error || 'Failed to save K8s onboarding');
+        throw new Error(getString(payload.error, 'Failed to save K8s onboarding'));
       }
-      setSuccess(payload?.message || 'K8s onboarding saved');
+      setSuccess(getString(payload.message, 'K8s onboarding saved'));
       await Promise.all([
         loadOnboarding(),
         loadOverview(String(form.project_id), form.cluster_name, '', form.environment),
@@ -622,83 +814,83 @@ export default function DevOpsK8sPage() {
   };
 
   const renderDashboardTable = () => {
-    if (!dashboardView) return null;
+    if (!focusedDashboardView) return null;
     switch (activeTab) {
       case 'pods':
         return (
           <table className="k8s-resource-table">
             <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Status</th><th>Restarts</th><th>Node</th><th>Deployment</th></tr></thead>
-            <tbody>{dashboardView.pods.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.status}</td><td>{item.restarts}</td><td>{item.node}</td><td>{item.deployment}</td></tr>)}</tbody>
+            <tbody>{focusedDashboardView.pods.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.status}</td><td>{item.restarts}</td><td>{item.node}</td><td>{item.deployment}</td></tr>)}</tbody>
           </table>
         );
       case 'deployments':
         return (
           <table className="k8s-resource-table">
             <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Image</th><th>Ready</th><th>Replicas</th><th>Status</th></tr></thead>
-            <tbody>{dashboardView.deployments.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.image}</td><td>{item.ready_replicas}/{item.updated_replicas}</td><td>{item.replicas}</td><td>{item.status}</td></tr>)}</tbody>
+            <tbody>{focusedDashboardView.deployments.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.image}</td><td>{item.ready_replicas}/{item.updated_replicas}</td><td>{item.replicas}</td><td>{item.status}</td></tr>)}</tbody>
           </table>
         );
       case 'logs':
         return (
           <table className="k8s-resource-table">
             <thead><tr><th>Timestamp</th><th>Workload</th><th>Cluster</th><th>Namespace</th><th>Level</th><th>Message</th></tr></thead>
-            <tbody>{dashboardView.logs.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}-${item.container}-${item.timestamp}-${item.message}`}><td>{formatDateTime(item.timestamp)}</td><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.level}</td><td>{item.message}</td></tr>)}</tbody>
+            <tbody>{focusedDashboardView.logs.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}-${item.container}-${item.timestamp}-${item.message}`}><td>{formatDateTime(item.timestamp)}</td><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.level}</td><td>{item.message}</td></tr>)}</tbody>
           </table>
         );
       case 'replicasets':
         return (
           <table className="k8s-resource-table">
             <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Deployment</th><th>Ready</th><th>Age</th></tr></thead>
-            <tbody>{dashboardView.replicasets.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.deployment}</td><td>{item.ready_replicas}/{item.desired_replicas}</td><td>{item.age}</td></tr>)}</tbody>
+            <tbody>{focusedDashboardView.replicasets.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.deployment}</td><td>{item.ready_replicas}/{item.desired_replicas}</td><td>{item.age}</td></tr>)}</tbody>
           </table>
         );
       case 'namespaces':
         return (
           <table className="k8s-resource-table">
             <thead><tr><th>Name</th><th>Cluster</th><th>Environment</th><th>Pods</th><th>Services</th><th>Last activity</th></tr></thead>
-            <tbody>{dashboardView.namespace_items.map((item) => <tr key={`${item.cluster_name}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.environment}</td><td>{item.pod_count}</td><td>{item.service_count}</td><td>{formatDateTime(item.last_activity)}</td></tr>)}</tbody>
+            <tbody>{focusedDashboardView.namespace_items.map((item) => <tr key={`${item.cluster_name}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.environment}</td><td>{item.pod_count}</td><td>{item.service_count}</td><td>{formatDateTime(item.last_activity)}</td></tr>)}</tbody>
           </table>
         );
       case 'volumes':
         return (
           <table className="k8s-resource-table">
             <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Type</th><th>Claim</th><th>Status</th><th>Mounted by</th></tr></thead>
-            <tbody>{dashboardView.volumes.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.type}</td><td>{item.claim}</td><td>{item.status}</td><td>{item.mounted_by}</td></tr>)}</tbody>
+            <tbody>{focusedDashboardView.volumes.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.type}</td><td>{item.claim}</td><td>{item.status}</td><td>{item.mounted_by}</td></tr>)}</tbody>
           </table>
         );
       case 'services':
         return (
           <table className="k8s-resource-table">
             <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Type</th><th>Cluster IP</th><th>Ports</th><th>Exposure</th></tr></thead>
-            <tbody>{dashboardView.services.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.type}</td><td>{item.cluster_ip}</td><td>{item.ports}</td><td>{item.exposure}</td></tr>)}</tbody>
+            <tbody>{focusedDashboardView.services.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.type}</td><td>{item.cluster_ip}</td><td>{item.ports}</td><td>{item.exposure}</td></tr>)}</tbody>
           </table>
         );
       case 'ingresses':
         return (
           <table className="k8s-resource-table">
             <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Host</th><th>Paths</th><th>Status</th></tr></thead>
-            <tbody>{dashboardView.ingresses.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.host}</td><td>{item.paths}</td><td>{item.status}</td></tr>)}</tbody>
+            <tbody>{focusedDashboardView.ingresses.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.host}</td><td>{item.paths}</td><td>{item.status}</td></tr>)}</tbody>
           </table>
         );
       case 'secrets':
         return (
           <table className="k8s-resource-table">
             <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Type</th><th>Managed by</th><th>Age</th></tr></thead>
-            <tbody>{dashboardView.secrets.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.type}</td><td>{item.managed_by}</td><td>{item.age}</td></tr>)}</tbody>
+            <tbody>{focusedDashboardView.secrets.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.type}</td><td>{item.managed_by}</td><td>{item.age}</td></tr>)}</tbody>
           </table>
         );
       case 'service_accounts':
         return (
           <table className="k8s-resource-table">
             <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Automount</th><th>Tokens</th></tr></thead>
-            <tbody>{dashboardView.service_accounts.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.automount ? 'Yes' : 'No'}</td><td>{item.token_count}</td></tr>)}</tbody>
+            <tbody>{focusedDashboardView.service_accounts.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.automount ? 'Yes' : 'No'}</td><td>{item.token_count}</td></tr>)}</tbody>
           </table>
         );
       case 'configmaps':
         return (
           <table className="k8s-resource-table">
             <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Data keys</th><th>Mounted by</th></tr></thead>
-            <tbody>{dashboardView.configmaps.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.data_keys}</td><td>{item.mounted_by}</td></tr>)}</tbody>
+            <tbody>{focusedDashboardView.configmaps.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.data_keys}</td><td>{item.mounted_by}</td></tr>)}</tbody>
           </table>
         );
       default:
@@ -891,6 +1083,28 @@ export default function DevOpsK8sPage() {
           </>
         ) : (
           <>
+            {healthFocus ? (
+              <section className="portal-surface" style={{ marginBottom: 24 }}>
+                <div className="portal-page__actions" style={{ justifyContent: 'space-between' }}>
+                  <div>
+                    <span className="portal-surface__eyebrow">Focused view</span>
+                    <h2 className="portal-surface__title">
+                      {healthFocus === 'restarting_pods' ? 'Restarting pods' :
+                        healthFocus === 'non_running_pods' ? 'Non-running pods' :
+                          healthFocus === 'warning_logs' ? 'Warning logs' :
+                            healthFocus === 'unhealthy_namespaces' ? 'Unhealthy namespaces' :
+                              'Degraded workloads'}
+                    </h2>
+                    <p className="portal-surface__subtitle">
+                      The resource tables below are narrowed to the selected operational issue so the team can move quickly from summary to action.
+                    </p>
+                  </div>
+                  <button type="button" className="btn btn-secondary" onClick={() => setHealthFocus('')}>
+                    Clear focus
+                  </button>
+                </div>
+              </section>
+            ) : null}
             <section className="portal-surface" style={{ marginBottom: 24 }}>
               <div className="portal-surface__header">
                 <div>
@@ -1042,6 +1256,122 @@ export default function DevOpsK8sPage() {
               <article className="portal-surface portal-surface--tight"><span className="portal-surface__eyebrow">Services</span><h3 className="portal-surface__title">{dashboardView?.summary.service_count || 0}</h3></article>
               <article className="portal-surface portal-surface--tight"><span className="portal-surface__eyebrow">Ingress</span><h3 className="portal-surface__title">{dashboardView?.summary.ingress_count || 0}</h3></article>
               <article className="portal-surface portal-surface--tight"><span className="portal-surface__eyebrow">Warnings</span><h3 className="portal-surface__title">{dashboardView?.summary.warning_event_count || 0}</h3></article>
+            </section>
+
+            <section className="portal-stat-grid" style={{ marginBottom: 24 }}>
+              <article className="portal-stat-card">
+                <span className="portal-stat-card__label">Restarting pods</span>
+                <strong className="portal-stat-card__value">{dashboardView?.health_summary.restarting_pods || 0}</strong>
+                <p className="portal-stat-card__copy">Pods with restart activity under the active filter set.</p>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('pods', 'restarting_pods')}>
+                  View pods
+                </button>
+              </article>
+              <article className="portal-stat-card">
+                <span className="portal-stat-card__label">Non-running pods</span>
+                <strong className="portal-stat-card__value">{dashboardView?.health_summary.non_running_pods || 0}</strong>
+                <p className="portal-stat-card__copy">Pods not currently in a stable running state.</p>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('pods', 'non_running_pods')}>
+                  View pods
+                </button>
+              </article>
+              <article className="portal-stat-card">
+                <span className="portal-stat-card__label">Warning logs</span>
+                <strong className="portal-stat-card__value">{dashboardView?.health_summary.warning_logs || 0}</strong>
+                <p className="portal-stat-card__copy">Log events above `info` severity from visible workloads.</p>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('logs', 'warning_logs')}>
+                  View logs
+                </button>
+              </article>
+              <article className="portal-stat-card">
+                <span className="portal-stat-card__label">Unhealthy namespaces</span>
+                <strong className="portal-stat-card__value">{dashboardView?.health_summary.unhealthy_namespaces || 0}</strong>
+                <p className="portal-stat-card__copy">Namespaces currently showing workload or signal issues.</p>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('namespaces', 'unhealthy_namespaces')}>
+                  View namespaces
+                </button>
+              </article>
+            </section>
+
+            <section className="portal-grid" style={{ marginBottom: 24, gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
+              <article className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Namespace Watchlist</span>
+                    <h2 className="portal-surface__title">Cluster pressure by namespace</h2>
+                  </div>
+                </div>
+                {dashboardView?.namespace_health.length ? (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {dashboardView.namespace_health.map((item) => (
+                      <div key={`${item.cluster_name}-${item.namespace}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                          <strong>{item.namespace}</strong>
+                          <span>{item.status}</span>
+                        </div>
+                        <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                          {item.cluster_name} · Issues {item.issue_count} · Deployments {item.affected_deployments}
+                        </p>
+                        <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                          Restarts {item.restarting_pods} · Warning logs {item.warning_logs}
+                        </p>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void handleNamespaceDrilldown(item)}>
+                            View pods
+                          </button>
+                          <Link
+                            href={`/incidents?project_id=${encodeURIComponent(projectId || String(overview?.selected_project_id || ''))}&environment=${encodeURIComponent(environment || '')}&status=open`}
+                            className="btn btn-secondary btn-sm"
+                          >
+                            Open incidents
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : <div className="empty-state">No unhealthy namespaces for the current filter set.</div>}
+              </article>
+
+              <article className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Workload Spotlight</span>
+                    <h2 className="portal-surface__title">Degraded workloads</h2>
+                  </div>
+                </div>
+                {dashboardView?.workload_spotlights.length ? (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {dashboardView.workload_spotlights.map((item) => (
+                      <div key={`${item.cluster_name}-${item.namespace}-${item.name}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                          <strong>{item.name}</strong>
+                          <span>{item.status}</span>
+                        </div>
+                        <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                          {item.cluster_name} · {item.namespace} · Ready {item.ready_replicas}/{item.replicas}
+                        </p>
+                        <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                          Restarts {item.restart_count} · Warning logs {item.warning_count}
+                        </p>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void handleWorkloadDrilldown(item, 'deployments')}>
+                            View deployment
+                          </button>
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void handleWorkloadDrilldown(item, 'logs')}>
+                            View logs
+                          </button>
+                          <Link
+                            href={`/runbooks?project_id=${encodeURIComponent(projectId || String(overview?.selected_project_id || ''))}&service=${encodeURIComponent(item.name)}`}
+                            className="btn btn-secondary btn-sm"
+                          >
+                            Runbooks
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : <div className="empty-state">No degraded workloads for the current filter set.</div>}
+              </article>
             </section>
 
             <section className="portal-surface">

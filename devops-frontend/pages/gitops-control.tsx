@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -448,12 +449,12 @@ export default function GitOpsControlPage() {
       const response = await fetch(`${apiUrl}/api/devops/gitops/manage/projects/${projectId}/tree`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.status !== 'ok') {
-        throw new Error(payload?.error || 'Failed to load repository tree');
+      const payload = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok || getString(payload.status) !== 'ok') {
+        throw new Error(getString(payload.error, 'Failed to load repository tree'));
       }
-      const nodes = Array.isArray(payload?.nodes)
-        ? payload.nodes.map((node: Partial<RepoTreeNode>) => ({
+      const nodes: RepoTreeNode[] = Array.isArray(payload.nodes)
+        ? (payload.nodes as Partial<RepoTreeNode>[]).map((node: Partial<RepoTreeNode>): RepoTreeNode => ({
             id: String(node.id || ''),
             depth: Number(node.depth || 0),
             kind: node.kind === 'file' ? 'file' : 'folder',
@@ -464,7 +465,7 @@ export default function GitOpsControlPage() {
           }))
         : [];
       setTreeNodes(nodes);
-      setTreeWarning(String(payload?.warning || ''));
+      setTreeWarning(getString(payload.warning));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load repository tree';
       setTreeWarning(message);
@@ -488,11 +489,12 @@ export default function GitOpsControlPage() {
       const response = await fetch(`${apiUrl}/api/devops/gitops/manage/project-files?${query.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.status !== 'ok' || !payload?.document) {
-        throw new Error(payload?.error || 'Failed to load file');
+      const payload = asRecord(await response.json().catch(() => ({})));
+      const documentValue = payload.document;
+      if (!response.ok || getString(payload.status) !== 'ok' || !documentValue || typeof documentValue !== 'object') {
+        throw new Error(getString(payload.error, 'Failed to load file'));
       }
-      const document = payload.document as RepoFileDocument;
+      const document = documentValue as RepoFileDocument;
       setOpenDocument(document);
       setEditorValue(String(document.content || ''));
       if (document.environment) {
@@ -562,17 +564,23 @@ export default function GitOpsControlPage() {
           }),
         },
       );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.status !== 'ok') {
-        throw new Error(payload?.error || `Failed to ${editingProjectId ? 'update' : 'create'} project structure`);
+      const payload = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok || getString(payload.status) !== 'ok') {
+        throw new Error(getString(payload.error, `Failed to ${editingProjectId ? 'update' : 'create'} project structure`));
       }
-      if (payload?.project?.id) {
-        setSelectedProjectId(Number(payload.project.id));
-        setAccessProjectId(String(payload.project.id));
+      const projectRecord = asRecord(payload.project);
+      if (typeof projectRecord.id === 'number') {
+        setSelectedProjectId(projectRecord.id);
+        setAccessProjectId(String(projectRecord.id));
       }
       setActiveRail('explorer');
       resetProjectForm();
-      setFeedback(buildSyncFeedback(payload?.sync as GitOpsSyncFeedback | undefined, isEditing ? 'Project structure updated.' : 'Project structure created.'));
+      setFeedback(
+        buildSyncFeedback(
+          payload.sync && typeof payload.sync === 'object' ? (payload.sync as GitOpsSyncFeedback) : undefined,
+          isEditing ? 'Project structure updated.' : 'Project structure created.'
+        )
+      );
       await loadData();
     } catch (err) {
       const message = err instanceof Error ? err.message : `Failed to ${editingProjectId ? 'update' : 'create'} project structure`;
@@ -603,15 +611,20 @@ export default function GitOpsControlPage() {
         body: JSON.stringify({
           project_id: project.id,
           component: componentName,
-        }),
+          }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.status !== 'ok') {
-        throw new Error(payload?.error || 'Failed to create JSON file');
+      const payload = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok || getString(payload.status) !== 'ok') {
+        throw new Error(getString(payload.error, 'Failed to create JSON file'));
       }
       setJsonProjectId(null);
       setNewJsonComponent('');
-      setFeedback(buildSyncFeedback(payload?.sync as GitOpsSyncFeedback | undefined, `${componentName}.json created for ${project.name}.`));
+      setFeedback(
+        buildSyncFeedback(
+          payload.sync && typeof payload.sync === 'object' ? (payload.sync as GitOpsSyncFeedback) : undefined,
+          `${componentName}.json created for ${project.name}.`
+        )
+      );
       await loadData();
       await loadProjectTree(project.id);
       await loadDocument(project.id, activeEnvironment || project.environments[0] || 'dev', componentName);
@@ -642,11 +655,11 @@ export default function GitOpsControlPage() {
           user_id: Number(accessUserId),
           permission: accessPermission,
           environments: accessEnvironments,
-        }),
+          }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.status !== 'ok') {
-        throw new Error(payload?.error || 'Failed to grant access');
+      const payload = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok || getString(payload.status) !== 'ok') {
+        throw new Error(getString(payload.error, 'Failed to grant access'));
       }
       setFeedback({ tone: 'success', message: 'Project access saved.' });
       await loadData();
@@ -685,11 +698,11 @@ export default function GitOpsControlPage() {
           user_id: userId,
           permission: 'read',
           environments: [],
-        }),
+          }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.status !== 'ok') {
-        throw new Error(payload?.error || 'Failed to remove access');
+      const payload = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok || getString(payload.status) !== 'ok') {
+        throw new Error(getString(payload.error, 'Failed to remove access'));
       }
       setFeedback({ tone: 'success', message: 'Project access removed.' });
       await loadData();
@@ -720,13 +733,18 @@ export default function GitOpsControlPage() {
           environment: openDocument.environment,
           component: openDocument.component,
           content: editorValue,
-        }),
+          }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.status !== 'ok') {
-        throw new Error(payload?.error || 'Failed to save JSON file');
+      const payload = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok || getString(payload.status) !== 'ok') {
+        throw new Error(getString(payload.error, 'Failed to save JSON file'));
       }
-      setFeedback(buildSyncFeedback(payload?.sync as GitOpsSyncFeedback | undefined, `${openDocument.name} saved.`));
+      setFeedback(
+        buildSyncFeedback(
+          payload.sync && typeof payload.sync === 'object' ? (payload.sync as GitOpsSyncFeedback) : undefined,
+          `${openDocument.name} saved.`
+        )
+      );
       await loadProjectTree(selectedPanelProject.id);
       await loadDocument(selectedPanelProject.id, openDocument.environment, openDocument.component);
     } catch (err) {

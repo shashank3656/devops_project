@@ -323,7 +323,7 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD:-avhbdsfwpllsgogm}
       - SMTP_FROM=${SMTP_FROM:-devops3656@gmail.com}
       - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
-      - GITHUB_OWNER=${GITHUB_OWNER:-shashank3656}
+      - GITHUB_OWNER=${GITHUB_OWNER:-ngsops}
       - GITHUB_REPO=${GITHUB_REPO:-Application_Onboarding}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-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}
       - BASE_BRANCH=${BASE_BRANCH:-main}
@@ -378,7 +378,7 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD:-avhbdsfwpllsgogm}
       - SMTP_FROM=${SMTP_FROM:-devops3656@gmail.com}
       - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
-      - GITHUB_OWNER=${GITHUB_OWNER:-shashank3656}
+      - GITHUB_OWNER=${GITHUB_OWNER:-ngsops}
       - GITHUB_REPO=${GITHUB_REPO:-Application_Onboarding}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-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}
       - BASE_BRANCH=${BASE_BRANCH:-main}

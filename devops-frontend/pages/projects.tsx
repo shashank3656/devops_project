@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -152,9 +153,9 @@ export default function DevOpsProjectsPage() {
       clearSessionAndRedirect();
       return null;
     }
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data?.user) {
-      throw new Error(data?.error || 'Failed to validate DevOps session');
+    const data = asRecord(await response.json().catch(() => ({})));
+    if (!response.ok || !data.user) {
+      throw new Error(getString(data.error, 'Failed to validate DevOps session'));
     }
     localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(data.user));
     const nextToken = typeof data.token === 'string' && data.token.trim() ? data.token.trim() : token;
@@ -169,12 +170,12 @@ export default function DevOpsProjectsPage() {
           clearSessionAndRedirect();
           return null;
         }
-        const data = await res.json().catch(() => ({}));
+        const data = asRecord(await res.json().catch(() => ({})));
         if (!res.ok) {
-          throw new Error(data?.error || 'Failed to load team options');
+          throw new Error(getString(data.error, 'Failed to load team options'));
         }
-        setPortalTeams(Array.isArray(data.portal_teams) ? data.portal_teams : []);
-        setOwnerTeams(Array.isArray(data.owner_teams) ? data.owner_teams : []);
+        setPortalTeams(Array.isArray(data.portal_teams) ? (data.portal_teams as TeamOption[]) : []);
+        setOwnerTeams(Array.isArray(data.owner_teams) ? (data.owner_teams as TeamOption[]) : []);
         setTeamOptionsError('');
         return data;
       })
@@ -202,14 +203,20 @@ export default function DevOpsProjectsPage() {
           clearSessionAndRedirect();
           return null;
         }
-        const data = await res.json().catch(() => ({}));
+        const data = asRecord(await res.json().catch(() => ({})));
         if (!res.ok) {
-          throw new Error(data?.error || 'Failed to load projects');
+          throw new Error(getString(data.error, 'Failed to load projects'));
         }
-        setProjects(Array.isArray(data.projects) ? data.projects : []);
+        setProjects(Array.isArray(data.projects) ? (data.projects as ProjectOption[]) : []);
         if (!teamOptionsError) {
-          setPortalTeams(Array.isArray(data.portal_teams) ? data.portal_teams : []);
-          setOwnerTeams(Array.isArray(data.owner_teams) ? data.owner_teams : Array.isArray(data.portal_teams) ? data.portal_teams : []);
+          setPortalTeams(Array.isArray(data.portal_teams) ? (data.portal_teams as TeamOption[]) : []);
+          setOwnerTeams(
+            Array.isArray(data.owner_teams)
+              ? (data.owner_teams as TeamOption[])
+              : Array.isArray(data.portal_teams)
+                ? (data.portal_teams as TeamOption[])
+                : [],
+          );
         }
         return data;
       })
@@ -404,9 +411,9 @@ export default function DevOpsProjectsPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to save project');
+        throw new Error(getString(data.error, 'Failed to save project'));
       }
       setEditingId(null);
       setForm(createEmptyForm());
@@ -458,9 +465,9 @@ export default function DevOpsProjectsPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to apply bulk team access');
+        throw new Error(getString(data.error, 'Failed to apply bulk team access'));
       }
       setNotice(`Bulk ${bulkAction} applied to ${selectedProjectIds.length} project${selectedProjectIds.length === 1 ? '' : 's'}.`);
       fetchData();
@@ -488,8 +495,8 @@ export default function DevOpsProjectsPage() {
         return;
       }
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data?.error || 'Failed to export projects');
+        const data = asRecord(await response.json().catch(() => ({})));
+        throw new Error(getString(data.error, 'Failed to export projects'));
       }
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -539,13 +546,19 @@ export default function DevOpsProjectsPage() {
         clearSessionAndRedirect();
         return;
       }
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok && !Array.isArray(data?.results)) {
-        throw new Error(data?.error || 'Failed to import projects');
+      const data = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok && !Array.isArray(data.results)) {
+        throw new Error(getString(data.error, 'Failed to import projects'));
       }
-      setBulkResults(Array.isArray(data?.results) ? data.results : []);
-      setNotice(`Bulk onboarding finished: ${data?.created_count ?? 0} created, ${data?.error_count ?? 0} errors.`);
-      if ((data?.created_count ?? 0) > 0) {
+      const createdCount = typeof data.created_count === 'number' ? data.created_count : 0;
+      const errorCount = typeof data.error_count === 'number' ? data.error_count : 0;
+      setBulkResults(
+        Array.isArray(data.results)
+          ? (data.results as Array<{ index: number; project?: { id: number; name: string; code: string }; error?: string }>)
+          : [],
+      );
+      setNotice(`Bulk onboarding finished: ${createdCount} created, ${errorCount} errors.`);
+      if (createdCount > 0) {
         setBulkInput('');
         fetchData();
       }

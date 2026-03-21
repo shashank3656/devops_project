@@ -1149,6 +1149,26 @@ func devopsCredentialAuditHandler(w http.ResponseWriter, r *http.Request) {
 		encodeDevopsJSON(w, map[string]interface{}{"error": "failed to fetch credential audit", "status": "error"})
 		return
 	}
+	expiryTracker, err := buildExpiryTracker(entries, cloudFilter, projectIDFilter, fromDate, toDate)
+	if err != nil {
+		log.Printf("credential audit expiry tracker: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		encodeDevopsJSON(w, map[string]interface{}{"error": "failed to build expiry tracker", "status": "error"})
+		return
+	}
+	actions, err := listExpiryTrackerActions(expiryTrackerItemKeys(expiryTracker.Items))
+	if err != nil {
+		log.Printf("credential audit expiry tracker actions: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		encodeDevopsJSON(w, map[string]interface{}{"error": "failed to load expiry tracker workflow", "status": "error"})
+		return
+	}
+	applyExpiryTrackerActions(expiryTracker, actions)
+	if err := notifyExpiryTrackerWatchers(expiryTracker.Items); err != nil {
+		log.Printf("credential audit expiry notifications failed: %v", err)
+	}
 	w.Header().Set("Content-Type", "application/json")
-	encodeDevopsJSON(w, map[string]interface{}{"entries": entries, "status": "ok"})
+	encodeDevopsJSON(w, map[string]interface{}{"entries": entries, "expiry_tracker": expiryTracker, "status": "ok"})
 }

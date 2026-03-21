@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -25,6 +27,7 @@ type projectRunbook struct {
 
 type requestIncident struct {
 	ID              int       `json:"id"`
+	IncidentNumber  string    `json:"incident_number"`
 	RequestID       int       `json:"request_id"`
 	ProjectID       *int      `json:"project_id,omitempty"`
 	ProjectName     string    `json:"project_name,omitempty"`
@@ -34,6 +37,8 @@ type requestIncident struct {
 	RequestService  string    `json:"request_service,omitempty"`
 	RequestCloud    string    `json:"request_cloud,omitempty"`
 	RequestStatus   string    `json:"request_status,omitempty"`
+	TeamID          *int      `json:"team_id,omitempty"`
+	TeamName        string    `json:"team_name,omitempty"`
 	Severity        string    `json:"severity"`
 	Status          string    `json:"status"`
 	EscalationLevel string    `json:"escalation_level"`
@@ -44,6 +49,13 @@ type requestIncident struct {
 	CreatedBy       *int      `json:"created_by,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+func formatIncidentNumber(id int) string {
+	if id <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("INC%07d", id)
 }
 
 type projectAccessOverride struct {
@@ -65,21 +77,22 @@ type projectAccessOverride struct {
 }
 
 type promotionCenterItem struct {
-	RequestID            int       `json:"request_id"`
-	ProjectID            *int      `json:"project_id,omitempty"`
-	ProjectName          string    `json:"project_name,omitempty"`
-	ProjectCode          string    `json:"project_code,omitempty"`
-	Team                 string    `json:"team"`
-	Environment          string    `json:"environment"`
-	NextEnvironment      string    `json:"next_environment"`
-	Cloud                string    `json:"cloud"`
-	Service              string    `json:"service"`
-	Status               string    `json:"status"`
-	ClientName           string    `json:"client_name"`
-	UpdatedAt            time.Time `json:"updated_at"`
-	LatestPromotedID     *int      `json:"latest_promoted_id,omitempty"`
-	LatestPromotedEnv    string    `json:"latest_promoted_env,omitempty"`
-	LatestPromotedStatus string    `json:"latest_promoted_status,omitempty"`
+	RequestID            int                    `json:"request_id"`
+	ProjectID            *int                   `json:"project_id,omitempty"`
+	ProjectName          string                 `json:"project_name,omitempty"`
+	ProjectCode          string                 `json:"project_code,omitempty"`
+	Team                 string                 `json:"team"`
+	Environment          string                 `json:"environment"`
+	NextEnvironment      string                 `json:"next_environment"`
+	Cloud                string                 `json:"cloud"`
+	Service              string                 `json:"service"`
+	Status               string                 `json:"status"`
+	ClientName           string                 `json:"client_name"`
+	UpdatedAt            time.Time              `json:"updated_at"`
+	LatestPromotedID     *int                   `json:"latest_promoted_id,omitempty"`
+	LatestPromotedEnv    string                 `json:"latest_promoted_env,omitempty"`
+	LatestPromotedStatus string                 `json:"latest_promoted_status,omitempty"`
+	Gate                 *promotionGateDecision `json:"gate,omitempty"`
 }
 
 type opsDeliveryFailure struct {
@@ -244,20 +257,41 @@ func deleteProjectRunbook(id int) error {
 }
 
 func listRequestIncidents(statusFilter string) ([]requestIncident, error) {
+	return listRequestIncidentsFiltered(statusFilter, nil, true)
+}
+
+func listAssignedRequestIncidents(userID int, statusFilter string) ([]requestIncident, error) {
+	return listRequestIncidentsFiltered(statusFilter, &userID, false)
+}
+
+func listRequestIncidentsFiltered(statusFilter string, ownerUserID *int, includeDraft bool) ([]requestIncident, error) {
 	query := `
-		SELECT i.id, i.request_id, i.project_id, COALESCE(p.name,''), COALESCE(p.code,''),
+		SELECT i.id, COALESCE(i.incident_number,''), i.request_id, i.project_id, COALESCE(p.name,''), COALESCE(p.code,''),
 		       COALESCE(r.team,''), COALESCE(r.env,''), COALESCE(r.service,''), COALESCE(r.cloud,''), COALESCE(r.status,''),
+		       i.team_id, COALESCE(t.name,''),
 		       i.severity, i.status, i.escalation_level, i.owner_user_id, COALESCE(u.username,''), COALESCE(i.summary,''), COALESCE(i.notes,''),
 		       i.created_by, i.created_at, i.updated_at
 		FROM request_incidents i
 		LEFT JOIN pr_requests r ON r.id = i.request_id
 		LEFT JOIN projects p ON p.id = i.project_id
+		LEFT JOIN teams t ON t.id = i.team_id
 		LEFT JOIN users u ON u.id = i.owner_user_id
 	`
 	args := []any{}
-	if strings.TrimSpace(statusFilter) != "" {
-		query += ` WHERE i.status = $1`
-		args = append(args, strings.TrimSpace(statusFilter))
+	whereParts := []string{}
+	if trimmedStatus := strings.TrimSpace(statusFilter); trimmedStatus != "" {
+		args = append(args, trimmedStatus)
+		whereParts = append(whereParts, fmt.Sprintf("i.status = $%d", len(args)))
+	}
+	if ownerUserID != nil && *ownerUserID > 0 {
+		args = append(args, *ownerUserID)
+		whereParts = append(whereParts, fmt.Sprintf("i.owner_user_id = $%d", len(args)))
+	}
+	if !includeDraft {
+		whereParts = append(whereParts, "COALESCE(i.status, '') <> 'draft'")
+	}
+	if len(whereParts) > 0 {
+		query += ` WHERE ` + strings.Join(whereParts, " AND ")
 	}
 	query += ` ORDER BY i.updated_at DESC, i.created_at DESC`
 	rows, cancel, err := queryRowsWithTimeout(query, args...)
@@ -272,11 +306,12 @@ func listRequestIncidents(statusFilter string) ([]requestIncident, error) {
 	out := []requestIncident{}
 	for rows.Next() {
 		var item requestIncident
-		var projectID, ownerUserID, createdBy sql.NullInt64
+		var projectID, incidentTeamID, incidentOwnerUserID, createdBy sql.NullInt64
 		if err := rows.Scan(
-			&item.ID, &item.RequestID, &projectID, &item.ProjectName, &item.ProjectCode,
+			&item.ID, &item.IncidentNumber, &item.RequestID, &projectID, &item.ProjectName, &item.ProjectCode,
 			&item.RequestTeam, &item.RequestEnv, &item.RequestService, &item.RequestCloud, &item.RequestStatus,
-			&item.Severity, &item.Status, &item.EscalationLevel, &ownerUserID, &item.OwnerUsername, &item.Summary, &item.Notes,
+			&incidentTeamID, &item.TeamName,
+			&item.Severity, &item.Status, &item.EscalationLevel, &incidentOwnerUserID, &item.OwnerUsername, &item.Summary, &item.Notes,
 			&createdBy, &item.CreatedAt, &item.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -285,20 +320,74 @@ func listRequestIncidents(statusFilter string) ([]requestIncident, error) {
 			value := int(projectID.Int64)
 			item.ProjectID = &value
 		}
-		if ownerUserID.Valid {
-			value := int(ownerUserID.Int64)
+		if incidentTeamID.Valid {
+			value := int(incidentTeamID.Int64)
+			item.TeamID = &value
+		}
+		if incidentOwnerUserID.Valid {
+			value := int(incidentOwnerUserID.Int64)
 			item.OwnerUserID = &value
 		}
 		if createdBy.Valid {
 			value := int(createdBy.Int64)
 			item.CreatedBy = &value
 		}
+		if strings.TrimSpace(item.IncidentNumber) == "" {
+			item.IncidentNumber = formatIncidentNumber(item.ID)
+		}
 		out = append(out, item)
 	}
 	return out, nil
 }
 
-func createOrUpdateRequestIncident(requestID int, severity, status, escalationLevel string, ownerUserID *int, summary, notes string, createdBy *int) (*requestIncident, error) {
+func getRequestIncidentByRequestID(requestID int) (*requestIncident, error) {
+	if requestID <= 0 {
+		return nil, fmt.Errorf("request id is required")
+	}
+	items, err := listRequestIncidents("")
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range items {
+		if item.RequestID == requestID {
+			return &item, nil
+		}
+	}
+	return nil, fmt.Errorf("incident not found")
+}
+
+func listPortalIncidentTeams() ([]Team, error) {
+	teams, err := GetTeams()
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]Team, 0, len(teams))
+	for _, team := range teams {
+		if strings.ToLower(strings.TrimSpace(team.TeamType)) == "devops" {
+			continue
+		}
+		filtered = append(filtered, team)
+	}
+	return filtered, nil
+}
+
+func listPortalIncidentTeamMembersByTeam() (map[string]any, error) {
+	teams, err := listPortalIncidentTeams()
+	if err != nil {
+		return nil, err
+	}
+	membersByTeam := make(map[string]any, len(teams))
+	for _, team := range teams {
+		members, err := GetTeamMembers(team.ID)
+		if err != nil {
+			return nil, err
+		}
+		membersByTeam[strconv.Itoa(team.ID)] = members
+	}
+	return membersByTeam, nil
+}
+
+func createOrUpdateRequestIncident(requestID int, teamID *int, severity, status, escalationLevel string, ownerUserID *int, summary, notes string, createdBy *int) (*requestIncident, error) {
 	req, err := GetPRRequestByID(requestID)
 	if err != nil {
 		return nil, err
@@ -318,20 +407,58 @@ func createOrUpdateRequestIncident(requestID int, severity, status, escalationLe
 	if escalationLevel == "" {
 		escalationLevel = "monitoring"
 	}
+	var normalizedTeamID *int
+	if teamID != nil && *teamID > 0 {
+		team, err := GetTeamByID(*teamID)
+		if err != nil {
+			return nil, err
+		}
+		if team == nil || strings.ToLower(strings.TrimSpace(team.TeamType)) == "devops" {
+			return nil, fmt.Errorf("a valid portal team is required")
+		}
+		value := team.ID
+		normalizedTeamID = &value
+	} else if team, err := GetTeamByNameOrSlug(strings.TrimSpace(req.Team)); err == nil && team != nil && strings.ToLower(strings.TrimSpace(team.TeamType)) != "devops" {
+		value := team.ID
+		normalizedTeamID = &value
+	}
 	var ownerAny any
 	if ownerUserID != nil && *ownerUserID > 0 {
+		if normalizedTeamID == nil || *normalizedTeamID <= 0 {
+			return nil, fmt.Errorf("team is required when assigning an incident owner")
+		}
+		members, err := GetTeamMembers(*normalizedTeamID)
+		if err != nil {
+			return nil, err
+		}
+		ownerAllowed := false
+		for _, member := range members {
+			if member.UserID == *ownerUserID {
+				ownerAllowed = true
+				break
+			}
+		}
+		if !ownerAllowed {
+			return nil, fmt.Errorf("assigned owner must belong to the selected team")
+		}
 		ownerAny = *ownerUserID
+	}
+	var teamAny any
+	if normalizedTeamID != nil && *normalizedTeamID > 0 {
+		teamAny = *normalizedTeamID
 	}
 	var createdAny any
 	if createdBy != nil && *createdBy > 0 {
 		createdAny = *createdBy
 	}
-	_, err = execContext(`
-		INSERT INTO request_incidents (request_id, project_id, severity, status, escalation_level, owner_user_id, summary, notes, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	var incidentID int
+	err = queryRowContext(`
+		INSERT INTO request_incidents (request_id, project_id, team_id, severity, status, escalation_level, owner_user_id, summary, notes, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (request_id)
 		DO UPDATE SET
 			project_id = EXCLUDED.project_id,
+			team_id = EXCLUDED.team_id,
 			severity = EXCLUDED.severity,
 			status = EXCLUDED.status,
 			escalation_level = EXCLUDED.escalation_level,
@@ -339,20 +466,26 @@ func createOrUpdateRequestIncident(requestID int, severity, status, escalationLe
 			summary = EXCLUDED.summary,
 			notes = EXCLUDED.notes,
 			updated_at = CURRENT_TIMESTAMP
-	`, requestID, req.ProjectID, severity, status, escalationLevel, ownerAny, strings.TrimSpace(summary), strings.TrimSpace(notes), createdAny)
+		RETURNING id
+	`, requestID, req.ProjectID, teamAny, severity, status, escalationLevel, ownerAny, strings.TrimSpace(summary), strings.TrimSpace(notes), createdAny).Scan(&incidentID)
 	if err != nil {
 		return nil, err
 	}
-	items, err := listRequestIncidents("")
-	if err != nil {
-		return nil, err
-	}
-	for _, item := range items {
-		if item.RequestID == requestID {
-			return &item, nil
+	if incidentID > 0 {
+		if _, err := execContext(`
+			UPDATE request_incidents
+			SET incident_number = $2
+			WHERE id = $1
+			  AND COALESCE(incident_number, '') = ''
+		`, incidentID, formatIncidentNumber(incidentID)); err != nil {
+			return nil, err
 		}
 	}
-	return nil, fmt.Errorf("incident not found after save")
+	item, err := getRequestIncidentByRequestID(requestID)
+	if err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 func activeProjectAccessOverridesForUser(userID int) ([]projectAccessOverride, error) {
@@ -534,24 +667,276 @@ func listPromotionCenterItems() ([]promotionCenterItem, error) {
 	return out, nil
 }
 
-func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, error) {
-	req, err := GetPRRequestByID(requestID)
+func enrichPromotionItemsWithDeploymentGates(items []promotionCenterItem) error {
+	projectGateCache := make(map[int]*projectReleaseDashboard)
+	projectExistsCache := make(map[int]bool)
+
+	for index := range items {
+		targetEnvironment := items[index].NextEnvironment
+		if strings.TrimSpace(targetEnvironment) == "" {
+			items[index].Gate = buildPromotionGateDecision(
+				targetEnvironment,
+				nil,
+				nil,
+				"This request is already in the highest configured environment and cannot be promoted further.",
+				true,
+			)
+			continue
+		}
+
+		if items[index].ProjectID == nil || *items[index].ProjectID <= 0 {
+			items[index].Gate = buildPromotionGateDecision(
+				targetEnvironment,
+				nil,
+				nil,
+				"This request is not linked to a project catalog entry. Review it manually before promotion.",
+				false,
+			)
+			continue
+		}
+
+		projectID := *items[index].ProjectID
+		dashboard, cached := projectGateCache[projectID]
+		projectExists, hasExistsValue := projectExistsCache[projectID]
+		if !cached {
+			project, err := getProjectCatalogByID(projectID)
+			if err != nil {
+				return err
+			}
+			projectExists = project != nil
+			projectExistsCache[projectID] = projectExists
+			if projectExists {
+				builtDashboard, err := buildProjectReleaseDashboard(*project)
+				if err != nil {
+					return err
+				}
+				dashboard = builtDashboard
+			}
+			projectGateCache[projectID] = dashboard
+			hasExistsValue = true
+		}
+
+		if hasExistsValue && !projectExists {
+			items[index].Gate = buildPromotionGateDecision(
+				targetEnvironment,
+				nil,
+				nil,
+				"This request references a project that is no longer available in the catalog. Review it manually before promotion.",
+				false,
+			)
+			continue
+		}
+
+		gate := findDeploymentGateEnvironment(dashboard.DeploymentGates, targetEnvironment)
+		if gate == nil {
+			items[index].Gate = buildPromotionGateDecision(
+				targetEnvironment,
+				nil,
+				nil,
+				fmt.Sprintf("%s is not configured as a deployment gate target for this project.", strings.ToUpper(strings.TrimSpace(targetEnvironment))),
+				true,
+			)
+			continue
+		}
+		approval, err := getActiveDeploymentGateApproval(items[index].RequestID, targetEnvironment, items[index].UpdatedAt)
+		if err != nil {
+			return err
+		}
+		history, err := listDeploymentGateApprovals(items[index].RequestID, targetEnvironment, items[index].UpdatedAt)
+		if err != nil {
+			return err
+		}
+		items[index].Gate = buildPromotionGateDecision(targetEnvironment, gate, approval, "", false)
+		items[index].Gate.ApprovalHistory = history
+	}
+
+	return nil
+}
+
+func evaluatePromotionGateForRequest(req *PRRequest) (*promotionGateDecision, error) {
+	if req == nil {
+		return buildPromotionGateDecision("", nil, nil, "The source request could not be loaded for gate evaluation.", true), nil
+	}
+
+	targetEnvironment := nextEnv(req.Env)
+	if strings.TrimSpace(targetEnvironment) == "" {
+		return buildPromotionGateDecision(
+			req.Env,
+			nil,
+			nil,
+			"This request is already in the highest configured environment and cannot be promoted further.",
+			true,
+		), nil
+	}
+
+	if req.ProjectID == nil || *req.ProjectID <= 0 {
+		return buildPromotionGateDecision(
+			targetEnvironment,
+			nil,
+			nil,
+			"This request is not linked to a project catalog entry. Review it manually before promotion.",
+			false,
+		), nil
+	}
+
+	project, err := getProjectCatalogByID(*req.ProjectID)
 	if err != nil {
 		return nil, err
 	}
+	if project == nil {
+		return buildPromotionGateDecision(
+			targetEnvironment,
+			nil,
+			nil,
+			"This request references a project that is no longer available in the catalog. Review it manually before promotion.",
+			false,
+		), nil
+	}
+
+	dashboard, err := buildProjectReleaseDashboard(*project)
+	if err != nil {
+		return nil, err
+	}
+	gate := findDeploymentGateEnvironment(dashboard.DeploymentGates, targetEnvironment)
+	if gate == nil {
+		return buildPromotionGateDecision(
+			targetEnvironment,
+			nil,
+			nil,
+			fmt.Sprintf("%s is not configured as a deployment gate target for this project.", strings.ToUpper(strings.TrimSpace(targetEnvironment))),
+			true,
+		), nil
+	}
+	approval, err := getActiveDeploymentGateApproval(req.ID, targetEnvironment, req.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	history, err := listDeploymentGateApprovals(req.ID, targetEnvironment, req.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	decision := buildPromotionGateDecision(targetEnvironment, gate, approval, "", false)
+	decision.ApprovalHistory = history
+	return decision, nil
+}
+
+func approvePromotionGateAsDevops(requestID int, userID int, note string, expiresInHours int) (*deploymentGateApprovalRecord, *promotionGateDecision, error) {
+	req, err := GetPRRequestByID(requestID)
+	if err != nil {
+		return nil, nil, err
+	}
 	if req == nil {
-		return nil, fmt.Errorf("request not found")
+		return nil, nil, fmt.Errorf("request not found")
 	}
 	if req.Status != "completed" && req.Status != "in_progress" {
-		return nil, fmt.Errorf("only completed or in-progress requests can be promoted")
+		return nil, nil, fmt.Errorf("only completed or in-progress requests can be reviewed for promotion")
 	}
 	nextEnvironment := nextEnv(req.Env)
 	if nextEnvironment == "" {
-		return nil, fmt.Errorf("request is already at the highest environment")
+		return nil, nil, fmt.Errorf("request is already at the highest environment")
+	}
+
+	gate, err := evaluatePromotionGateForRequest(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	if gate != nil {
+		if gate.Status == "blocked" {
+			return nil, gate, fmt.Errorf("promotion blocked by deployment gate policy")
+		}
+		if gate.Approved && gate.Approval != nil {
+			return gate.Approval, gate, nil
+		}
+		if !gate.RequiresAcknowledgement {
+			return nil, gate, fmt.Errorf("deployment gate approval is not required for this promotion")
+		}
+	}
+	trimmedNote := strings.TrimSpace(note)
+	if gate != nil && gate.CommentRequired && trimmedNote == "" {
+		return nil, gate, fmt.Errorf("a justification note is required before approving production promotions")
+	}
+	if expiresInHours <= 0 {
+		expiresInHours = 24
+	}
+	if expiresInHours > 168 {
+		return nil, gate, fmt.Errorf("approval expiry cannot exceed 168 hours")
+	}
+	expiresAt := time.Now().Add(time.Duration(expiresInHours) * time.Hour)
+	approval, err := createDeploymentGateApproval(req, gate, userID, note, &expiresAt)
+	if err != nil {
+		return nil, gate, err
+	}
+	updatedGate, err := evaluatePromotionGateForRequest(req)
+	if err != nil {
+		return approval, nil, err
+	}
+	details := fmt.Sprintf("gate:%d:%s->%s", requestID, strings.ToLower(strings.TrimSpace(req.Env)), nextEnvironment)
+	if trimmedNote := strings.TrimSpace(approval.Note); trimmedNote != "" {
+		details += ":" + trimmedNote
+	}
+	AppendAuditLog(&userID, "deployment_gate_approve", "pr_request", strconv.Itoa(requestID), details)
+	return approval, updatedGate, nil
+}
+
+func revokePromotionGateAsDevops(requestID int, userID int, note string) (*deploymentGateApprovalRecord, *promotionGateDecision, error) {
+	req, err := GetPRRequestByID(requestID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if req == nil {
+		return nil, nil, fmt.Errorf("request not found")
+	}
+	nextEnvironment := nextEnv(req.Env)
+	if nextEnvironment == "" {
+		return nil, nil, fmt.Errorf("request is already at the highest environment")
+	}
+	record, err := revokeDeploymentGateApproval(req.ID, nextEnvironment, req.UpdatedAt, userID, note)
+	if err != nil {
+		return nil, nil, err
+	}
+	updatedGate, err := evaluatePromotionGateForRequest(req)
+	if err != nil {
+		return record, nil, err
+	}
+	details := fmt.Sprintf("gate:%d:%s->%s", requestID, strings.ToLower(strings.TrimSpace(req.Env)), nextEnvironment)
+	if trimmedNote := strings.TrimSpace(note); trimmedNote != "" {
+		details += ":" + trimmedNote
+	}
+	AppendAuditLog(&userID, "deployment_gate_revoke", "pr_request", strconv.Itoa(requestID), details)
+	return record, updatedGate, nil
+}
+
+func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, *promotionGateDecision, error) {
+	req, err := GetPRRequestByID(requestID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if req == nil {
+		return nil, nil, fmt.Errorf("request not found")
+	}
+	if req.Status != "completed" && req.Status != "in_progress" {
+		return nil, nil, fmt.Errorf("only completed or in-progress requests can be promoted")
+	}
+	nextEnvironment := nextEnv(req.Env)
+	if nextEnvironment == "" {
+		return nil, nil, fmt.Errorf("request is already at the highest environment")
+	}
+
+	gate, err := evaluatePromotionGateForRequest(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	if gate != nil {
+		if gate.Status == "blocked" {
+			return nil, gate, fmt.Errorf("promotion blocked by deployment gate policy")
+		}
+		if gate.RequiresAcknowledgement {
+			return nil, gate, fmt.Errorf("promotion requires deployment gate approval")
+		}
 	}
 	appID, err := GenerateApplicationID()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	filePath, branchName := BuildRequestGitArtifacts(req.Team, nextEnvironment, appID)
 	createdBy := req.CreatedBy
@@ -576,11 +961,15 @@ func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, error) {
 		CreatedBy:     createdBy,
 	}
 	if err := SavePRRequest(newReq); err != nil {
-		return nil, err
+		return nil, gate, err
 	}
 	_, _ = execContext(`UPDATE pr_requests SET linked_request_id = $1 WHERE id = $2`, requestID, newReq.ID)
-	AppendAuditLog(&userID, "request_promote", "pr_request", strconv.Itoa(newReq.ID), fmt.Sprintf("devops:%d->%s", requestID, nextEnvironment))
-	return newReq, nil
+	auditDetails := fmt.Sprintf("devops:%d->%s", requestID, nextEnvironment)
+	if gate != nil && gate.Approved {
+		auditDetails += ":gate-approved"
+	}
+	AppendAuditLog(&userID, "request_promote", "pr_request", strconv.Itoa(newReq.ID), auditDetails)
+	return newReq, gate, nil
 }
 
 func listOpsDeliveryFailures(statusFilter string) ([]opsDeliveryFailure, error) {
@@ -806,12 +1195,27 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incidents", err)
 			return
 		}
-		devopsUsers, _ := GetDevopsUsers()
+		teams, err := listPortalIncidentTeams()
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incident teams", err)
+			return
+		}
+		membersByTeam, err := listPortalIncidentTeamMembersByTeam()
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incident assignees", err)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"incidents": items, "owners": devopsUsers, "status": "ok"})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"incidents":            items,
+			"teams":                teams,
+			"team_members_by_team": membersByTeam,
+			"status":               "ok",
+		})
 	case "POST":
 		var body struct {
 			RequestID       int    `json:"request_id"`
+			TeamID          *int   `json:"team_id"`
 			Severity        string `json:"severity"`
 			Status          string `json:"status"`
 			EscalationLevel string `json:"escalation_level"`
@@ -823,7 +1227,23 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
 			return
 		}
-		item, err := createOrUpdateRequestIncident(body.RequestID, body.Severity, body.Status, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID)
+		normalizedStatus := strings.ToLower(strings.TrimSpace(body.Status))
+		if normalizedStatus == "" {
+			normalizedStatus = "open"
+		}
+		if body.TeamID == nil || *body.TeamID <= 0 {
+			writeAPIError(w, r, http.StatusBadRequest, "team is required", nil)
+			return
+		}
+		if normalizedStatus != "draft" && (body.OwnerUserID == nil || *body.OwnerUserID <= 0) {
+			writeAPIError(w, r, http.StatusBadRequest, "assignee is required before submitting an incident", nil)
+			return
+		}
+		if normalizedStatus != "draft" && strings.TrimSpace(body.Summary) == "" {
+			writeAPIError(w, r, http.StatusBadRequest, "summary is required before submitting an incident", nil)
+			return
+		}
+		item, err := createOrUpdateRequestIncident(body.RequestID, body.TeamID, body.Severity, normalizedStatus, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID)
 		if err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
@@ -863,6 +1283,7 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
+		TeamID          *int   `json:"team_id"`
 		Severity        string `json:"severity"`
 		Status          string `json:"status"`
 		EscalationLevel string `json:"escalation_level"`
@@ -874,7 +1295,23 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
 		return
 	}
-	item, err := createOrUpdateRequestIncident(requestID, body.Severity, body.Status, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID)
+	normalizedStatus := strings.ToLower(strings.TrimSpace(body.Status))
+	if normalizedStatus == "" {
+		normalizedStatus = "open"
+	}
+	if body.TeamID == nil || *body.TeamID <= 0 {
+		writeAPIError(w, r, http.StatusBadRequest, "team is required", nil)
+		return
+	}
+	if normalizedStatus != "draft" && (body.OwnerUserID == nil || *body.OwnerUserID <= 0) {
+		writeAPIError(w, r, http.StatusBadRequest, "assignee is required before submitting an incident", nil)
+		return
+	}
+	if normalizedStatus != "draft" && strings.TrimSpace(body.Summary) == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "summary is required before submitting an incident", nil)
+		return
+	}
+	item, err := createOrUpdateRequestIncident(requestID, body.TeamID, body.Severity, normalizedStatus, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 		return
@@ -982,12 +1419,20 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list promotions", err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"promotions": items, "status": "ok"})
+		if err := enrichPromotionItemsWithDeploymentGates(items); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to evaluate promotion gates", err)
+			return
+		}
+		if err := notifyPromotionCenterWatchers(items); err != nil {
+			log.Printf("promotion center notifications failed: %v", err)
+		}
+		if err := writeJSONResponse(w, http.StatusOK, map[string]any{"promotions": items, "status": "ok"}); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotions response", err)
+		}
 	case "POST":
 		path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/devops/promotions/"), "/")
 		parts := strings.Split(path, "/")
-		if len(parts) != 2 || parts[1] != "promote" {
+		if len(parts) != 2 || (parts[1] != "promote" && parts[1] != "approve-gate" && parts[1] != "revoke-gate") {
 			http.NotFound(w, r)
 			return
 		}
@@ -996,13 +1441,76 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid request id", err)
 			return
 		}
-		item, err := promoteRequestAsDevops(requestID, managerID)
+		var body struct {
+			Note           string `json:"note"`
+			ExpiresInHours int    `json:"expires_in_hours"`
+		}
+		if r.Body != nil {
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
+				writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
+				return
+			}
+		}
+		if parts[1] == "approve-gate" {
+			approval, gate, err := approvePromotionGateAsDevops(requestID, managerID, body.Note, body.ExpiresInHours)
+			if err != nil {
+				if gate != nil && gate.Status == "blocked" {
+					if writeErr := writeJSONResponse(w, http.StatusConflict, map[string]any{
+						"status": "error",
+						"error":  "promotion blocked by deployment gate policy",
+						"gate":   gate,
+					}); writeErr != nil {
+						writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotion gate approval response", writeErr)
+					}
+					return
+				}
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			if err := writeJSONResponse(w, http.StatusOK, map[string]any{"approval": approval, "gate": gate, "status": "ok"}); err != nil {
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotion gate approval response", err)
+			}
+			return
+		}
+		if parts[1] == "revoke-gate" {
+			approval, gate, err := revokePromotionGateAsDevops(requestID, managerID, body.Note)
+			if err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			if err := writeJSONResponse(w, http.StatusOK, map[string]any{"approval": approval, "gate": gate, "status": "ok"}); err != nil {
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotion gate revoke response", err)
+			}
+			return
+		}
+		item, gate, err := promoteRequestAsDevops(requestID, managerID)
 		if err != nil {
+			if gate != nil && (gate.Status == "blocked" || gate.RequiresAcknowledgement) {
+				if req, reqErr := GetPRRequestByID(requestID); reqErr == nil && req != nil && gate.Status == "blocked" {
+					if notifyErr := notifyBlockedPromotion(req, gate); notifyErr != nil {
+						log.Printf("blocked promotion notification failed request_id=%d: %v", requestID, notifyErr)
+					}
+				}
+				status := http.StatusConflict
+				message := "promotion blocked by deployment gate policy"
+				if gate.RequiresAcknowledgement {
+					message = "deployment gate approval is required before promotion"
+				}
+				if writeErr := writeJSONResponse(w, status, map[string]any{
+					"status": "error",
+					"error":  message,
+					"gate":   gate,
+				}); writeErr != nil {
+					writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotion gate response", writeErr)
+				}
+				return
+			}
 			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"request": item, "status": "ok"})
+		if err := writeJSONResponse(w, http.StatusOK, map[string]any{"request": item, "gate": gate, "status": "ok"}); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotion response", err)
+		}
 	default:
 		writeMethodNotAllowed(w, r)
 	}

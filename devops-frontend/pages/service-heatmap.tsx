@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -24,25 +25,31 @@ interface ServiceHeatmap {
   service_totals: Record<string, number>;
 }
 
-function normalizeHeatmap(value: Partial<ServiceHeatmap> | null | undefined): ServiceHeatmap | null {
-  if (!value) return null;
+function normalizeHeatmap(value: unknown): ServiceHeatmap | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
   return {
-    columns: Array.isArray(value.columns)
-      ? value.columns.filter((item: unknown): item is string => typeof item === 'string')
+    columns: Array.isArray(record.columns)
+      ? record.columns.filter((item: unknown): item is string => typeof item === 'string')
       : [],
-    rows: Array.isArray(value.rows)
-      ? value.rows.map((row) => ({
-          project_id: typeof row?.project_id === 'number' ? row.project_id : 0,
-          project_name: typeof row?.project_name === 'string' ? row.project_name : 'Unknown project',
-          project_code: typeof row?.project_code === 'string' ? row.project_code : 'n/a',
-          status: typeof row?.status === 'string' ? row.status : 'unknown',
-          request_count: typeof row?.request_count === 'number' ? row.request_count : 0,
-          pending_count: typeof row?.pending_count === 'number' ? row.pending_count : 0,
-          service_counts: row?.service_counts && typeof row.service_counts === 'object' ? row.service_counts : {},
-        }))
+    rows: Array.isArray(record.rows)
+      ? record.rows.map((row) => {
+          const item = row && typeof row === 'object' ? (row as Record<string, unknown>) : {};
+          return {
+            project_id: typeof item.project_id === 'number' ? item.project_id : 0,
+            project_name: typeof item.project_name === 'string' ? item.project_name : 'Unknown project',
+            project_code: typeof item.project_code === 'string' ? item.project_code : 'n/a',
+            status: typeof item.status === 'string' ? item.status : 'unknown',
+            request_count: typeof item.request_count === 'number' ? item.request_count : 0,
+            pending_count: typeof item.pending_count === 'number' ? item.pending_count : 0,
+            service_counts: item.service_counts && typeof item.service_counts === 'object'
+              ? (item.service_counts as Record<string, number>)
+              : {},
+          };
+        })
       : [],
-    cloud_totals: value.cloud_totals && typeof value.cloud_totals === 'object' ? value.cloud_totals : {},
-    service_totals: value.service_totals && typeof value.service_totals === 'object' ? value.service_totals : {},
+    cloud_totals: record.cloud_totals && typeof record.cloud_totals === 'object' ? (record.cloud_totals as Record<string, number>) : {},
+    service_totals: record.service_totals && typeof record.service_totals === 'object' ? (record.service_totals as Record<string, number>) : {},
   };
 }
 
@@ -78,14 +85,14 @@ export default function DevOpsServiceHeatmapPage() {
           clearSessionAndRedirect();
           return null;
         }
-        const data = await res.json().catch(() => ({}));
+        const data = asRecord(await res.json().catch(() => ({})));
         if (!res.ok) {
-          throw new Error(data?.error || 'Failed to load service heatmap');
+          throw new Error(getString(data.error, 'Failed to load service heatmap'));
         }
         return data;
       })
       .then((data) => {
-        const nextHeatmap = normalizeHeatmap(data?.heatmap);
+        const nextHeatmap = normalizeHeatmap(asRecord(data).heatmap);
         if (nextHeatmap) setHeatmap(nextHeatmap);
       })
       .catch((err: Error) => setError(err.message))

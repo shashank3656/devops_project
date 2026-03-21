@@ -54,17 +54,26 @@ function getProfileInitials(): string {
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
-  '/notifications': 'Notifications',
   '/approval-center': 'Approval Center',
   '/approval-sla': 'Approval SLA',
   '/change-calendar': 'Change Calendar',
   '/project-operations': 'Project Operations',
   '/service-heatmap': 'Service Heatmap',
+  '/change-risk': 'Change Risk',
+  '/environment-drift': 'Environment Drift',
+  '/ops-command-center': 'Ops Command Center',
+  '/project-dependencies': 'Project Dependencies',
   '/k8s': 'K8s Dashboard',
   '/runbooks': 'Project Runbooks',
   '/incidents': 'Incident Panel',
+  '/incident-workspace': 'Incident Workspace',
   '/access-overrides': 'Access Overrides',
   '/promotions': 'Promotion Center',
+  '/rollback-console': 'Rollback Console',
+  '/gate-approvals': 'Gate Approval Audit',
+  '/gate-policies': 'Gate Policies',
+  '/notification-settings': 'Notification Settings',
+  '/approval-notification-analytics': 'Approval & Notification Analytics',
   '/retry-center': 'Retry Center',
   '/workload': 'Workload',
   '/tickets': 'Tickets',
@@ -269,6 +278,11 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   }, [notifyOpen, refreshPendingApprovals]);
 
   useEffect(() => {
+    setNotifyOpen(false);
+    setProfileOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (notifyRef.current && !notifyRef.current.contains(e.target as Node)) setNotifyOpen(false);
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
@@ -335,16 +349,25 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     { href: '/k8s', label: 'K8s', Icon: IconK8s },
   ];
   if (isManager) {
-    baseNavItems.push({ href: '/notifications', label: 'Notifications', Icon: IconBell });
     baseNavItems.push({ href: '/approval-center', label: 'Approval Center', Icon: IconShield });
     baseNavItems.push({ href: '/approval-sla', label: 'Approval SLA', Icon: IconShield });
     baseNavItems.push({ href: '/change-calendar', label: 'Change Calendar', Icon: IconCalendar });
     baseNavItems.push({ href: '/project-operations', label: 'Project Operations', Icon: IconWorkload });
     baseNavItems.push({ href: '/service-heatmap', label: 'Service Heatmap', Icon: IconHeatmap });
+    baseNavItems.push({ href: '/change-risk', label: 'Change Risk', Icon: IconAlertTriangle });
+    baseNavItems.push({ href: '/environment-drift', label: 'Environment Drift', Icon: IconRefreshCw });
+    baseNavItems.push({ href: '/ops-command-center', label: 'Ops Command Center', Icon: IconAlertTriangle });
+    baseNavItems.push({ href: '/project-dependencies', label: 'Project Dependencies', Icon: IconHeatmap });
     baseNavItems.push({ href: '/runbooks', label: 'Runbooks', Icon: IconBookOpen });
     baseNavItems.push({ href: '/incidents', label: 'Incidents', Icon: IconAlertTriangle });
+    baseNavItems.push({ href: '/incident-workspace', label: 'Incident Workspace', Icon: IconBookOpen });
     baseNavItems.push({ href: '/access-overrides', label: 'Access Overrides', Icon: IconKey });
     baseNavItems.push({ href: '/promotions', label: 'Promotion Center', Icon: IconArrowUpRight });
+    baseNavItems.push({ href: '/rollback-console', label: 'Rollback Console', Icon: IconRefreshCw });
+    baseNavItems.push({ href: '/gate-approvals', label: 'Gate Audit', Icon: IconShield });
+    baseNavItems.push({ href: '/gate-policies', label: 'Gate Policies', Icon: IconShield });
+    baseNavItems.push({ href: '/notification-settings', label: 'Notification Settings', Icon: IconBell });
+    baseNavItems.push({ href: '/approval-notification-analytics', label: 'Ops Analytics', Icon: IconHeatmap });
     baseNavItems.push({ href: '/retry-center', label: 'Retry Center', Icon: IconRefreshCw });
     baseNavItems.push({ href: '/workload', label: 'Workload', Icon: IconWorkload });
     baseNavItems.push({ href: '/tickets', label: 'Tickets', Icon: IconTickets });
@@ -485,11 +508,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                     aria-haspopup="true"
                   >
                     <IconBell />
-                    {pendingCount > 0 && (
-                      <span className="devops-navbar__badge" aria-label={`${pendingCount} pending approvals`}>
-                        {pendingCount > 99 ? '99+' : pendingCount}
-                      </span>
-                    )}
+                    {pendingCount > 0 && <span className="devops-navbar__badge devops-navbar__badge--dot" aria-hidden />}
                   </button>
 
                   {notifyOpen && (
@@ -497,15 +516,22 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                       <div className="devops-navbar__notify-header">
                         <h3 className="devops-navbar__notify-title">Pending Approvals</h3>
                         <button type="button" className="devops-navbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
-                          x
+                          Close
                         </button>
                       </div>
-                      <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                        Open tickets
-                      </Link>
-                      <Link href="/notifications" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                        Open notifications center
-                      </Link>
+                      <div className="devops-navbar__notify-summary">
+                        <strong>{pendingCount > 99 ? '99+' : pendingCount}</strong>
+                        <span>
+                          {pendingCount > 0
+                            ? 'Approval work is waiting across projects and release flows.'
+                            : 'No approval tickets are waiting right now.'}
+                        </span>
+                      </div>
+                      <div className="devops-navbar__notify-links">
+                        <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                          Open tickets
+                        </Link>
+                      </div>
                       <div className="devops-navbar__notify-list">
                         {pendingApprovalsLoading ? (
                           <p className="devops-navbar__notify-empty">Loading...</p>

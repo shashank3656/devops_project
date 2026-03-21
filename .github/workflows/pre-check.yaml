@@ -116,11 +116,31 @@ jobs:
           echo "ts_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
           exit 0
 
+      - name: Run TypeScript Check (Admin Frontend)
+        id: typescript-admin
+        working-directory: ./admin-frontend
+        run: |
+          set +e
+          npx tsc --noEmit 2>&1 | tee typescript-admin-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "ts_admin_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Run TypeScript Check (DevOps Frontend)
+        id: typescript-devops
+        working-directory: ./devops-frontend
+        run: |
+          set +e
+          npx tsc --noEmit 2>&1 | tee typescript-devops-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "ts_devops_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit 0
+
       # ── Go Lint ──
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.25"
           cache-dependency-path: backend/go.sum
 
       - name: Run golangci-lint
@@ -150,12 +170,14 @@ jobs:
           ESLINT_DEVOPS=${{ steps.eslint-devops.outputs.eslint_devops_exit }}
           PRETTIER=${{ steps.prettier.outputs.prettier_exit }}
           TS=${{ steps.typescript.outputs.ts_exit }}
+          TS_ADMIN=${{ steps.typescript-admin.outputs.ts_admin_exit }}
+          TS_DEVOPS=${{ steps.typescript-devops.outputs.ts_devops_exit }}
           GOVET=${{ steps.govet.outputs.govet_exit }}
           GOLANGCI=${{ steps.golangci.outcome }}
           PRETTIER_NOTE=""
           [ "$PRETTIER" != "0" ] && PRETTIER_NOTE=" Prettier check failed (non-blocking)."
 
-          if [ "$ESLINT" = "0" ] && [ "$ESLINT_ADMIN" = "0" ] && [ "$ESLINT_DEVOPS" = "0" ] && [ "$TS" = "0" ] && [ "$GOVET" = "0" ] && [ "$GOLANGCI" = "success" ]; then
+          if [ "$ESLINT" = "0" ] && [ "$ESLINT_ADMIN" = "0" ] && [ "$ESLINT_DEVOPS" = "0" ] && [ "$TS" = "0" ] && [ "$TS_ADMIN" = "0" ] && [ "$TS_DEVOPS" = "0" ] && [ "$GOVET" = "0" ] && [ "$GOLANGCI" = "success" ]; then
             echo "status=success" >> $GITHUB_OUTPUT
             echo "details=All lint checks passed ✅$PRETTIER_NOTE" >> $GITHUB_OUTPUT
           else
@@ -165,6 +187,8 @@ jobs:
             [ "$ESLINT_ADMIN" != "0" ] && DETAILS="$DETAILS Admin ESLint failed."
             [ "$ESLINT_DEVOPS" != "0" ] && DETAILS="$DETAILS DevOps ESLint failed."
             [ "$TS" != "0" ] && DETAILS="$DETAILS TypeScript errors found."
+            [ "$TS_ADMIN" != "0" ] && DETAILS="$DETAILS Admin TypeScript errors found."
+            [ "$TS_DEVOPS" != "0" ] && DETAILS="$DETAILS DevOps TypeScript errors found."
             [ "$GOVET" != "0" ] && DETAILS="$DETAILS go vet failed."
             [ "$GOLANGCI" != "success" ] && DETAILS="$DETAILS golangci-lint failed."
             echo "details=$DETAILS$PRETTIER_NOTE" >> $GITHUB_OUTPUT
@@ -184,6 +208,8 @@ jobs:
             devops-frontend/eslint-devops-output.txt
             frontend/prettier-output.txt
             frontend/typescript-output.txt
+            admin-frontend/typescript-admin-output.txt
+            devops-frontend/typescript-devops-output.txt
             backend/govet-output.txt
 
       - name: Enforce Lint Gate
@@ -335,7 +361,7 @@ jobs:
         if: matrix.language == 'go'
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.25"
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3

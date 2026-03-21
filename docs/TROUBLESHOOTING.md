@@ -43,7 +43,7 @@ Make sure your `.env` file has the correct values:
 cat .env
 
 # Should contain:
-# GITHUB_OWNER=shashank3656
+# GITHUB_OWNER=ngsops
 # GITHUB_REPO=Application_Onboarding
 # GITHUB_TOKEN=your-token-here
 # BASE_BRANCH=main

@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { DEVOPS_SITE_NAME } from '../lib/site';
+import { asRecord } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -46,10 +47,14 @@ export default function DevOpsProfilePage() {
           router.replace('/login');
           return null;
         }
-        return response.json();
+        return response.json().catch(() => ({}));
       })
-      .then((data) => {
-        if (data?.user) setUser(data.user);
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        const nextUser = data.user;
+        if (nextUser && typeof nextUser === 'object') {
+          setUser(nextUser as DevopsUser);
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false));

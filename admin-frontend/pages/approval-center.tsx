@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import AdminLayout from '../components/AdminLayout';
+import { asRecord, getString } from '../lib/payload';
 
 interface ProjectSummary {
   id: number;
@@ -49,7 +50,10 @@ export default function AdminApprovalCenter() {
     if (!token) return;
     fetch(`${apiUrl}/api/admin/projects`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setProjects(Array.isArray(data?.projects) ? data.projects : []))
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        setProjects(Array.isArray(data.projects) ? (data.projects as ProjectSummary[]) : []);
+      })
       .catch(() => setProjects([]));
   }, [apiUrl, token]);
 
@@ -67,10 +71,12 @@ export default function AdminApprovalCenter() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data?.requests)) setRequests(data.requests);
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        if (Array.isArray(data.requests)) setRequests(data.requests as ApprovalRequest[]);
         else setRequests([]);
-        if (data?.error) setError(data.error);
+        const nextError = getString(data.error);
+        if (nextError) setError(nextError);
       })
       .catch(() => setError('Failed to load approval queue'))
       .finally(() => setLoading(false));

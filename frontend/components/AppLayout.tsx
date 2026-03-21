@@ -4,6 +4,7 @@ import type { ComponentType, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useToast } from '../context/ToastContext';
 import {
+  IconAlertCircle,
   IconLogout,
   IconBell,
   IconHome,
@@ -47,7 +48,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/templates': 'Templates',
   '/my-projects': 'My Projects',
   '/history': 'Request History',
-  '/notifications': 'Notifications',
+  '/incidents': 'Incidents',
   '/my-teams': 'My Teams',
   '/profile': 'Profile',
 };
@@ -222,6 +223,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }, [notifyOpen]);
 
   useEffect(() => {
+    setNotifyOpen(false);
+    setProfileOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token || token === 'undefined') return;
 
@@ -324,6 +330,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     { href: '/my-projects', label: 'My Projects', Icon: IconProjects },
     { href: '/templates', label: 'Templates', Icon: IconTemplates },
     { href: '/history', label: 'Request History', Icon: IconHistory },
+    { href: '/incidents', label: 'Incidents', Icon: IconAlertCircle },
   ];
 
   if (hasManagedTeams) {
@@ -384,6 +391,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     : unreadNotificationsCount > 0
       ? unreadNotificationsCount
       : updatedRequestsCount;
+  const notificationSummary = notifyBadgeCount > 0
+    ? hasManagedTeams
+      ? `${notifyBadgeCount} updates are waiting across approvals and personal notifications.`
+      : `${notifyBadgeCount} unread updates are waiting in your inbox.`
+    : hasManagedTeams
+      ? 'You are caught up on approvals and recent notifications.'
+      : 'No fresh updates right now.';
 
   return (
     <div className="user-layout user-layout-sidebar user-shell">
@@ -551,11 +565,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   aria-haspopup="true"
                 >
                   <IconBell />
-                  {notifyBadgeCount > 0 && (
-                    <span className="user-topbar__badge" aria-label={`${notifyBadgeCount} updates`}>
-                      {notifyBadgeCount > 99 ? '99+' : notifyBadgeCount}
-                    </span>
-                  )}
+                  {notifyBadgeCount > 0 && <span className="user-topbar__badge user-topbar__badge--dot" aria-hidden />}
                 </button>
 
                 {notifyOpen && (
@@ -563,12 +573,23 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     <div className="user-topbar__notify-header">
                       <h3 className="user-topbar__notify-title">Notifications</h3>
                       <button type="button" className="user-topbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
-                        x
+                        Close
                       </button>
                     </div>
-                    <Link href="/notifications" className="user-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                      Open notifications
-                    </Link>
+                    <div className="user-topbar__notify-summary">
+                      <strong>{notifyBadgeCount > 99 ? '99+' : notifyBadgeCount}</strong>
+                      <span>{notificationSummary}</span>
+                    </div>
+                    <div className="user-topbar__notify-links">
+                      <Link href="/history" className="user-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                        Open request history
+                      </Link>
+                      {hasManagedTeams && (
+                        <Link href="/history" className="user-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                          Review approvals
+                        </Link>
+                      )}
+                    </div>
                     <div className="user-topbar__notify-list">
                       {hasManagedTeams && pendingManagerApprovalCount > 0 && (
                         <Link href="/history" className="user-topbar__notify-ticket" onClick={() => setNotifyOpen(false)}>
@@ -585,7 +606,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         recentNotifications.map((notification) => (
                           <Link
                             key={notification.id}
-                            href={notification.request_id ? `/history?id=${notification.request_id}` : '/notifications'}
+                            href={notification.request_id ? `/history?id=${notification.request_id}` : '/history'}
                             className="user-topbar__notify-ticket"
                             onClick={() => setNotifyOpen(false)}
                           >

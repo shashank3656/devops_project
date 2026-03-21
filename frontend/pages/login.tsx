@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useToast } from '../context/ToastContext';
+import { asRecord, getString } from '../lib/payload';
 import { SITE_NAME } from '../lib/site';
 
 interface PublicSSOState {
@@ -48,8 +49,9 @@ export default function Login() {
   useEffect(() => {
     fetch(`${apiUrl}/api/public/sso/options?portal=user`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        const payload = data?.sso;
+      .then((rawData) => {
+        const data = asRecord(rawData);
+        const payload = asRecord(data.sso);
         if (payload && typeof payload === 'object') {
           setSso({
             enabled: Boolean(payload.enabled),
@@ -94,38 +96,39 @@ export default function Login() {
         body: JSON.stringify({ username, password, portal: 'user' }),
       });
 
-      const data = await response.json().catch(() => ({}));
+      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        const msg = data.error || `Server returned ${response.status}`;
+        const msg = getString(data.error, `Server returned ${response.status}`);
         setError(msg);
         toast(msg, 'error');
         return;
       }
-      if (data.requires_otp && data.pending_2fa_token) {
+      if (data.requires_otp && typeof data.pending_2fa_token === 'string') {
         setPending2fa({ token: data.pending_2fa_token });
         setError('');
         setPassword('');
-        if (data.otp_for_testing) {
+        if (typeof data.otp_for_testing === 'string') {
           toast(`OTP for testing: ${data.otp_for_testing}`, 'success');
         } else {
           toast('Enter the 6-digit code sent to your email', 'success');
         }
         return;
       }
-      if (!data.token) {
-        setError(data.error || 'Login failed');
-        toast(data.error || 'Login failed', 'error');
+      if (typeof data.token !== 'string' || !data.token) {
+        const message = getString(data.error, 'Login failed');
+        setError(message);
+        toast(message, 'error');
         return;
       }
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user || {}));
+      localStorage.setItem('user', JSON.stringify(data.user && typeof data.user === 'object' ? data.user : {}));
       localStorage.setItem('isAuthenticated', 'true');
 
       const teamsRes = await fetch(`${apiUrl}/api/me/teams`, {
         headers: { Authorization: `Bearer ${data.token}` },
       });
-      const teamsData = await teamsRes.json().catch(() => ({}));
-      const teams = teamsData.teams || [];
+      const teamsData = asRecord(await teamsRes.json().catch(() => ({})));
+      const teams = Array.isArray(teamsData.teams) ? teamsData.teams : [];
       if (teams.length === 0) {
         localStorage.removeItem('token');
         localStorage.removeItem('isAuthenticated');
@@ -159,22 +162,23 @@ export default function Login() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pending_2fa_token: pending2fa.token, otp: otp.trim() }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (!res.ok) {
-        setError(data.error || 'Invalid OTP');
-        toast(data.error || 'Invalid OTP', 'error');
+        const message = getString(data.error, 'Invalid OTP');
+        setError(message);
+        toast(message, 'error');
         return;
       }
-      if (!data.token) {
+      if (typeof data.token !== 'string' || !data.token) {
         setError('Verification failed');
         return;
       }
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user || {}));
+      localStorage.setItem('user', JSON.stringify(data.user && typeof data.user === 'object' ? data.user : {}));
       localStorage.setItem('isAuthenticated', 'true');
       const teamsRes = await fetch(`${apiUrl}/api/me/teams`, { headers: { Authorization: `Bearer ${data.token}` } });
-      const teamsData = await teamsRes.json().catch(() => ({}));
-      const teams = teamsData.teams || [];
+      const teamsData = asRecord(await teamsRes.json().catch(() => ({})));
+      const teams = Array.isArray(teamsData.teams) ? teamsData.teams : [];
       if (teams.length === 0) {
         localStorage.removeItem('token');
         localStorage.removeItem('isAuthenticated');

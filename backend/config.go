@@ -23,6 +23,9 @@ var (
 	// TeamsWebhookURL - optional Microsoft Teams incoming webhook for notifications
 	TeamsWebhookURL = getEnv("TEAMS_WEBHOOK_URL", "")
 
+	// OpsNotificationWebhookURL - optional generic webhook for ops notifications
+	OpsNotificationWebhookURL = getEnv("OPS_NOTIFICATION_WEBHOOK_URL", "")
+
 	// FrontendURL - base URL for user frontend (for password reset links). Default: http://localhost:3000
 	FrontendURL = getEnv("FRONTEND_URL", "http://localhost:3000")
 

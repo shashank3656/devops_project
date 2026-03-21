@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useToast } from '../context/ToastContext';
+import { asRecord, getString } from '../lib/payload';
 
 export default function ResetPassword() {
   const router = useRouter();
@@ -42,13 +43,13 @@ export default function ResetPassword() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, new_password: password, confirm_password: confirm }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (res.ok) {
         setSuccess(true);
         toast('Password updated. You can now sign in.', 'success');
         setTimeout(() => router.push('/login'), 2000);
       } else {
-        toast(data.error || 'Reset failed', 'error');
+        toast(getString(data.error, 'Reset failed'), 'error');
       }
     } catch (err: any) {
       toast(err?.message || 'Reset failed', 'error');

@@ -23,7 +23,7 @@ Fill in your values (all are REQUIRED):
 
 ```env
 # GitHub Configuration
-GITHUB_OWNER=shashank3656
+GITHUB_OWNER=ngsops
 GITHUB_REPO=Application_Onboarding
 GITHUB_TOKEN=your-github-token-here
 BASE_BRANCH=main
@@ -61,7 +61,7 @@ sudo docker-compose up -d
 ```bash
 # Copy the variable assignments from config/.env to root .env
 cat > .env << EOF
-GITHUB_OWNER=shashank3656
+GITHUB_OWNER=ngsops
 GITHUB_REPO=Application_Onboarding
 GITHUB_TOKEN=your-actual-token
 BASE_BRANCH=main

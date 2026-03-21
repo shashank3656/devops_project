@@ -571,8 +571,8 @@ export default function Home() {
                 <h2 className="portal-surface__title">Automation feedback</h2>
                 <p className="portal-surface__subtitle">Recent GitHub-side events for submitted requests.</p>
               </div>
-              <Link href="/notifications" className="btn btn-secondary btn-sm">
-                View alerts
+              <Link href="/history" className="btn btn-secondary btn-sm">
+                View updates
               </Link>
             </div>
 

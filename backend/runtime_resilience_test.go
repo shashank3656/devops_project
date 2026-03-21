@@ -121,3 +121,28 @@ func TestStatusRecorder_SanitizesJSONAPIErrorBody(t *testing.T) {
 		t.Fatalf("expected nosniff header, got: %q", got)
 	}
 }
+
+func TestSanitizeJSONValueEscapesStringsRecursively(t *testing.T) {
+	input := map[string]any{
+		"status": "ok",
+		"filters": map[string]any{
+			"from": "<script>alert(1)</script>",
+		},
+		"items": []any{
+			"plain",
+			map[string]any{"message": "bad <input>"},
+		},
+	}
+
+	sanitized := sanitizeJSONValue(input).(map[string]any)
+	filters := sanitized["filters"].(map[string]any)
+	items := sanitized["items"].([]any)
+
+	if filters["from"] != "&lt;script&gt;alert(1)&lt;/script&gt;" {
+		t.Fatalf("unexpected sanitized filter value: %#v", filters["from"])
+	}
+	secondItem := items[1].(map[string]any)
+	if secondItem["message"] != "bad &lt;input&gt;" {
+		t.Fatalf("unexpected sanitized nested value: %#v", secondItem["message"])
+	}
+}

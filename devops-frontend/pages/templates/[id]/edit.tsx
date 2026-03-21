@@ -5,6 +5,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
+import { asRecord, getString } from '../../../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const CLOUDS = ['aws', 'azure', 'gcp'];
@@ -58,8 +59,8 @@ export default function EditDevOpsTemplate() {
         router.replace('/login');
         return;
       }
-      const data = await res.json().catch(() => ({}));
-      const templates = Array.isArray(data?.templates) ? data.templates : [];
+      const data = asRecord(await res.json().catch(() => ({})));
+      const templates = Array.isArray(data.templates) ? data.templates : [];
       const template = templates.find((item: { id?: unknown }) => Number(item?.id) === routeTemplateId) as RequestTemplate | undefined;
       if (res.ok && template) {
         setTemplateID(template.id);
@@ -71,7 +72,7 @@ export default function EditDevOpsTemplate() {
         setConfig(template.config || '{}');
       } else {
         setTemplateID(null);
-        setError(data.error || 'Template not found');
+        setError(getString(data.error, 'Template not found'));
       }
     } catch {
       setTemplateID(null);
@@ -137,12 +138,12 @@ export default function EditDevOpsTemplate() {
         router.replace('/login');
         return;
       }
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (res.ok) {
         router.push('/templates?updated=1');
         return;
       }
-      setError(data.error || 'Failed to update template');
+      setError(getString(data.error, 'Failed to update template'));
     } catch {
       setError('Failed to update template. Check your connection.');
     } finally {

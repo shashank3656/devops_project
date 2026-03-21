@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useToast } from '../context/ToastContext';
+import { asRecord, getString } from '../lib/payload';
 
 export default function ForgotPassword() {
   const { toast } = useToast();
@@ -28,12 +29,12 @@ export default function ForgotPassword() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim() }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = asRecord(await res.json().catch(() => ({})));
       if (res.ok) {
         setSent(true);
         toast('Check your email for a reset link.', 'success');
       } else {
-        const errMsg = data.error || 'Request failed';
+        const errMsg = getString(data.error, 'Request failed');
         setError(errMsg);
         toast(errMsg, 'error');
       }
