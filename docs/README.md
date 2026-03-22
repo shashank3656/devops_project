@@ -1,30 +1,44 @@
-# Infrastructure Portal - Documentation
+# Documentation
 
-This directory contains all documentation for the Infrastructure Portal project.
+This repo keeps the docs intentionally small, task-focused, and easy to navigate for new users, operators, and contributors.
 
-## Documentation Files
+## Start Here
 
-### Main Documentation
-- **README.md** - This file (documentation index)
-- **DOCKER_COMPOSE.md** - Docker Compose setup and usage guide
-- **DOCKER_NETWORKING.md** - Docker networking explanation
-- **DEPLOYMENT.md** - Deployment guide for EC2 and other environments
+- [Architecture](./ARCHITECTURE.md) - whole-app flow, workflow lifecycle, deployment topology, and system view
+- [Tech Stack](./TECH_STACK.md) - frontend, backend, data, deployment, CI/CD, and observability choices
+- [Deployment](./DEPLOYMENT.md)
+- [Configuration](./CONFIGURATION.md)
+- [CI/CD](./CICD.md)
+- [Troubleshooting](./TROUBLESHOOTING.md)
 
-### Frontend Documentation
-- **frontend-README.md** - Frontend project documentation
-- **QUICK_START.md** - Frontend quick start guide
-- **TECH_STACK.md** - Frontend technology stack details
+## Read by Role
 
-### Backend Documentation
-- **backend-README.md** - Backend API documentation
+### If you want to understand the app
 
-## Quick Links
-
-- [Project Overview](../README.md)
-- [Docker Setup](./DOCKER_COMPOSE.md)
-- [Docker Networking](./DOCKER_NETWORKING.md)
-- [Deployment Guide](./DEPLOYMENT.md) - **EC2 and production deployment**
-- [Frontend Guide](./frontend-README.md)
-- [Backend Guide](./backend-README.md)
-- [Quick Start](./QUICK_START.md)
+- [Architecture](./ARCHITECTURE.md)
 - [Tech Stack](./TECH_STACK.md)
+- [README.md](../README.md)
+
+### If you want to deploy it
+
+- [Deployment](./DEPLOYMENT.md)
+- [Configuration](./CONFIGURATION.md)
+- [CI/CD](./CICD.md)
+
+### If you want to contribute
+
+- [Contributing](../CONTRIBUTING.md)
+- [Code of Conduct](../CODE_OF_CONDUCT.md)
+- [Support](../SUPPORT.md)
+- [Security policy](../SECURITY.md)
+- [Architecture](./ARCHITECTURE.md)
+
+## Recommended Reading Order
+
+1. `README.md` in the repo root for platform overview
+2. [Architecture](./ARCHITECTURE.md) for the system layout and whole-app flow
+3. [Tech Stack](./TECH_STACK.md) for the implementation and tooling choices
+4. [Configuration](./CONFIGURATION.md) for runtime values and secrets
+5. [Deployment](./DEPLOYMENT.md) for Docker Compose or Helm rollout
+6. [CI/CD](./CICD.md) for GitHub Actions deployment pipelines
+7. [Troubleshooting](./TROUBLESHOOTING.md) when validating or debugging

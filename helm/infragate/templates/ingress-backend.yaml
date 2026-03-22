@@ -1,0 +1,32 @@
+{{- if .Values.ingress.backend.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "infragate.fullname" . }}-backend
+  labels:
+    {{- include "infragate.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/component: backend-ingress
+  {{- with .Values.ingress.backend.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.backend.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.backend.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.backend.path }}
+            pathType: {{ .Values.ingress.backend.pathType }}
+            backend:
+              service:
+                name: {{ include "infragate.backend.fullname" . }}
+                port:
+                  number: {{ .Values.backend.service.port }}
+  {{- with .Values.ingress.backend.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,22 @@
+1. Frontend ingress:
+{{- if .Values.ingress.frontend.enabled }}
+{{- range $name, $frontend := .Values.frontends }}
+{{- if $frontend.enabled }}
+   - {{ $name }}: https://{{ $frontend.ingress.host }}
+{{- end }}
+{{- end }}
+{{- else }}
+   - disabled
+{{- end }}
+
+2. Backend ingress:
+{{- if .Values.ingress.backend.enabled }}
+   - https://{{ .Values.ingress.backend.host }}
+{{- else }}
+   - disabled
+{{- end }}
+
+3. Important:
+   - Set backend secrets in values or pass them with --set-file / -f overrides.
+   - The user/admin frontends rely on NEXT_PUBLIC_API_URL. Make sure it matches the backend ingress URL.
+   - For user/admin frontends, NEXT_PUBLIC_API_URL should also match the value used when the image was built.

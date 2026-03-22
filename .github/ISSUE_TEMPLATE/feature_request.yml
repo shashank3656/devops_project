@@ -1,0 +1,49 @@
+name: Feature request
+description: Propose a new capability or improvement
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the problem first, then the proposed improvement. That helps keep feature requests grounded in real operator or user needs.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: value
+    attributes:
+      label: Expected outcome
+      description: What will this make easier, safer, or faster?
+  - type: dropdown
+    id: affected_area
+    attributes:
+      label: Affected area
+      options:
+        - User Portal
+        - Admin Portal
+        - DevOps Portal
+        - Backend API
+        - Deployment / Helm
+        - CI/CD
+        - Documentation
+        - Cross-cutting
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: If you considered a workaround or alternate design, include it here.

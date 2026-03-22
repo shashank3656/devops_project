@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support and setup help
+    url: https://github.com/ngsops/devops_project/blob/main/SUPPORT.md
+    about: Start here for setup, deployment, and usage questions before opening an issue.
+  - name: Security vulnerability report
+    url: https://github.com/ngsops/devops_project/blob/main/SECURITY.md
+    about: Please do not open public issues for security-sensitive reports.

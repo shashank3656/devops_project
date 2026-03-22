@@ -1,0 +1,688 @@
+name: Reusable Helm Deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment_name:
+        description: Deployment environment name
+        required: true
+        type: string
+      values_file:
+        description: Helm values file for the target environment
+        required: true
+        type: string
+      release_name:
+        description: Helm release name
+        required: true
+        type: string
+      namespace:
+        description: Kubernetes namespace
+        required: true
+        type: string
+      release_notes:
+        description: Optional deployment release notes shown in summaries and notifications
+        required: false
+        default: ""
+        type: string
+    secrets:
+      GHCR_USERNAME:
+        required: true
+      GHCR_PASSWORD:
+        required: true
+      KUBECONFIG_B64:
+        required: true
+      SONAR_TOKEN:
+        required: true
+      SNYK_TOKEN:
+        required: false
+      DATABASE_URL:
+        required: true
+      DB_PASSWORD:
+        required: true
+      GITHUB_TOKEN:
+        required: true
+      ADMIN_SECRET:
+        required: true
+      DEFAULT_ADMIN_PASSWORD:
+        required: true
+      SMTP_PASSWORD:
+        required: false
+      CI_WEBHOOK_SECRET:
+        required: false
+      SLACK_WEBHOOK_URL:
+        required: false
+      TEAMS_WEBHOOK_URL:
+        required: false
+      OPS_NOTIFICATION_WEBHOOK_URL:
+        required: false
+      API_KEY_HASH_SECRET:
+        required: false
+      API_KEY_PEPPER:
+        required: false
+      JWT_SECRET:
+        required: false
+      POSTGRES_PASSWORD:
+        required: false
+      SSO_AUTH_SHARED_SECRET:
+        required: false
+      AZURE_DIRECTORY_USERS_JSON:
+        required: false
+      KEYCLOAK_DIRECTORY_USERS_JSON:
+        required: false
+      SAML_DIRECTORY_USERS_JSON:
+        required: false
+      SSO_DIRECTORY_USERS_JSON:
+        required: false
+      SSO_BREAK_GLASS_USERS:
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  quality-gates:
+    uses: ./.github/workflows/quality-gates-reusable.yaml
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+  build-and-push:
+    name: Build, Scan, and Push Images
+    needs: quality-gates
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: backend
+            context: ./backend
+            dockerfile: ./backend/Dockerfile
+            image_suffix: backend
+            needs_api_url: false
+          - service: frontend
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
+            image_suffix: frontend
+            needs_api_url: true
+          - service: admin-frontend
+            context: ./admin-frontend
+            dockerfile: ./admin-frontend/Dockerfile
+            image_suffix: admin-frontend
+            needs_api_url: true
+          - service: devops-frontend
+            context: ./devops-frontend
+            dockerfile: ./devops-frontend/Dockerfile
+            image_suffix: devops-frontend
+            needs_api_url: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute image metadata
+        id: image-meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          repo="$(echo '${{ github.event.repository.name }}' | tr '[:upper:]' '[:lower:]')"
+          image_uri="${{ env.REGISTRY }}/${owner}/${repo}-${{ matrix.image_suffix }}"
+          latest_tag="${{ inputs.environment_name }}-latest"
+          echo "image_uri=$image_uri" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve public API URL from Helm values
+        id: public-api
+        shell: bash
+        run: |
+          set -euo pipefail
+          public_api_url="$(grep -m1 'NEXT_PUBLIC_API_URL:' '${{ inputs.values_file }}' | awk '{print $2}')"
+          if [ -z "$public_api_url" ]; then
+            echo "::error::Unable to resolve NEXT_PUBLIC_API_URL from ${{ inputs.values_file }}"
+            exit 1
+          fi
+          echo "url=$public_api_url" >> "$GITHUB_OUTPUT"
+
+      - name: Build local image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          load: true
+          push: false
+          tags: ${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}
+          build-args: ${{ matrix.needs_api_url && format('NEXT_PUBLIC_API_URL={0}', steps.public-api.outputs.url) || '' }}
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_PASSWORD }}
+
+      - name: Push image tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker tag "${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}" "${{ steps.image-meta.outputs.image_uri }}:${{ steps.image-meta.outputs.latest_tag }}"
+          docker push "${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}"
+          docker push "${{ steps.image-meta.outputs.image_uri }}:${{ steps.image-meta.outputs.latest_tag }}"
+
+  deploy:
+    name: Helm Deploy
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment_name }}
+    concurrency:
+      group: deploy-${{ inputs.environment_name }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 --decode > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Ensure namespace exists
+        run: kubectl create namespace "${{ inputs.namespace }}" --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Validate deployment environment configuration
+        env:
+          FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
+          ADMIN_FRONTEND_HOST: ${{ vars.ADMIN_FRONTEND_HOST }}
+          DEVOPS_FRONTEND_HOST: ${{ vars.DEVOPS_FRONTEND_HOST }}
+          BACKEND_HOST: ${{ vars.BACKEND_HOST }}
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          DEVOPS_FRONTEND_URL: ${{ vars.DEVOPS_FRONTEND_URL }}
+          DB_HOST: ${{ vars.DB_HOST }}
+          DB_PORT: ${{ vars.DB_PORT }}
+          DB_USER: ${{ vars.DB_USER }}
+          DB_NAME: ${{ vars.DB_NAME }}
+          REDIS_ADDR: ${{ vars.REDIS_ADDR }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for key in FRONTEND_HOST ADMIN_FRONTEND_HOST DEVOPS_FRONTEND_HOST BACKEND_HOST NEXT_PUBLIC_API_URL FRONTEND_URL DEVOPS_FRONTEND_URL DB_HOST DB_PORT DB_USER DB_NAME REDIS_ADDR; do
+            if [ -z "${!key:-}" ]; then
+              echo "::error::Missing required deployment variable: $key"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Create GHCR pull secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl -n "${{ inputs.namespace }}" create secret docker-registry ghcr-credentials \
+            --docker-server="${{ env.REGISTRY }}" \
+            --docker-username="${{ secrets.GHCR_USERNAME }}" \
+            --docker-password="${{ secrets.GHCR_PASSWORD }}" \
+            --docker-email="actions@github.com" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Show Helm client and current release state
+        id: current-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          helm version
+          helm status "${{ inputs.release_name }}" -n "${{ inputs.namespace }}" || true
+          helm history "${{ inputs.release_name }}" -n "${{ inputs.namespace }}" || true
+          previous_revision="$(helm history "${{ inputs.release_name }}" -n "${{ inputs.namespace }}" -o json 2>/dev/null | jq -r 'map(select(.status == "deployed")) | last | .revision // empty')"
+          echo "previous_revision=$previous_revision" >> "$GITHUB_OUTPUT"
+
+      - name: Generate CI override values
+        shell: bash
+        env:
+          ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
+          ADMIN_FRONTEND_HOST: ${{ vars.ADMIN_FRONTEND_HOST }}
+          DEVOPS_FRONTEND_HOST: ${{ vars.DEVOPS_FRONTEND_HOST }}
+          BACKEND_HOST: ${{ vars.BACKEND_HOST }}
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          DEVOPS_FRONTEND_URL: ${{ vars.DEVOPS_FRONTEND_URL }}
+          INGRESS_CLASS: ${{ vars.INGRESS_CLASS }}
+          GITHUB_OWNER: ${{ vars.GITHUB_OWNER }}
+          GITHUB_REPO: ${{ vars.GITHUB_REPO }}
+          BASE_BRANCH: ${{ vars.BASE_BRANCH }}
+          DB_HOST: ${{ vars.DB_HOST }}
+          DB_PORT: ${{ vars.DB_PORT }}
+          DB_USER: ${{ vars.DB_USER }}
+          DB_NAME: ${{ vars.DB_NAME }}
+          DB_SSLMODE: ${{ vars.DB_SSLMODE }}
+          DB_CONNECT_TIMEOUT_SECONDS: ${{ vars.DB_CONNECT_TIMEOUT_SECONDS }}
+          POSTGRES_HOST: ${{ vars.POSTGRES_HOST }}
+          POSTGRES_PORT: ${{ vars.POSTGRES_PORT }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+          REDIS_ADDR: ${{ vars.REDIS_ADDR }}
+          REDIS_DB: ${{ vars.REDIS_DB }}
+          REDIS_CACHE_TTL_SECONDS: ${{ vars.REDIS_CACHE_TTL_SECONDS }}
+          REDIS_QUEUE_NAME: ${{ vars.REDIS_QUEUE_NAME }}
+          REDIS_JOB_POLL_TIMEOUT_SECONDS: ${{ vars.REDIS_JOB_POLL_TIMEOUT_SECONDS }}
+          DB_QUERY_TIMEOUT_SECONDS: ${{ vars.DB_QUERY_TIMEOUT_SECONDS }}
+          DB_SLOW_QUERY_MS: ${{ vars.DB_SLOW_QUERY_MS }}
+          REQUEST_LOG_SLOW_MS: ${{ vars.REQUEST_LOG_SLOW_MS }}
+          DEFAULT_ADMIN_USERNAME: ${{ vars.DEFAULT_ADMIN_USERNAME }}
+          DEFAULT_ADMIN_EMAIL: ${{ vars.DEFAULT_ADMIN_EMAIL }}
+          SESSION_TIMEOUT_MINUTES: ${{ vars.SESSION_TIMEOUT_MINUTES }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_USER: ${{ vars.SMTP_USER }}
+          SMTP_FROM: ${{ vars.SMTP_FROM }}
+          SMTP_USE_TLS: ${{ vars.SMTP_USE_TLS }}
+          WEBHOOK_APPROVE_URL: ${{ vars.WEBHOOK_APPROVE_URL }}
+          SSO_LOGIN_URL: ${{ vars.SSO_LOGIN_URL }}
+          AZURE_SSO_LOGIN_URL: ${{ vars.AZURE_SSO_LOGIN_URL }}
+          KEYCLOAK_SSO_LOGIN_URL: ${{ vars.KEYCLOAK_SSO_LOGIN_URL }}
+          SAML_SSO_LOGIN_URL: ${{ vars.SAML_SSO_LOGIN_URL }}
+          OTEL_ENABLED: ${{ vars.OTEL_ENABLED }}
+          OTEL_SERVICE_ENV: ${{ vars.OTEL_SERVICE_ENV }}
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+          OTEL_EXPORTER_OTLP_INSECURE: ${{ vars.OTEL_EXPORTER_OTLP_INSECURE }}
+          OTEL_TRACES_SAMPLER_RATIO: ${{ vars.OTEL_TRACES_SAMPLER_RATIO }}
+          OTEL_METRICS_EXPORT_INTERVAL_SECONDS: ${{ vars.OTEL_METRICS_EXPORT_INTERVAL_SECONDS }}
+          ALLOW_START_WITHOUT_DB: ${{ vars.ALLOW_START_WITHOUT_DB }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+          DEFAULT_ADMIN_PASSWORD: ${{ secrets.DEFAULT_ADMIN_PASSWORD }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          CI_WEBHOOK_SECRET: ${{ secrets.CI_WEBHOOK_SECRET }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          OPS_NOTIFICATION_WEBHOOK_URL: ${{ secrets.OPS_NOTIFICATION_WEBHOOK_URL }}
+          API_KEY_HASH_SECRET: ${{ secrets.API_KEY_HASH_SECRET }}
+          API_KEY_PEPPER: ${{ secrets.API_KEY_PEPPER }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          SSO_AUTH_SHARED_SECRET: ${{ secrets.SSO_AUTH_SHARED_SECRET }}
+          AZURE_DIRECTORY_USERS_JSON: ${{ secrets.AZURE_DIRECTORY_USERS_JSON }}
+          KEYCLOAK_DIRECTORY_USERS_JSON: ${{ secrets.KEYCLOAK_DIRECTORY_USERS_JSON }}
+          SAML_DIRECTORY_USERS_JSON: ${{ secrets.SAML_DIRECTORY_USERS_JSON }}
+          SSO_DIRECTORY_USERS_JSON: ${{ secrets.SSO_DIRECTORY_USERS_JSON }}
+          SSO_BREAK_GLASS_USERS: ${{ secrets.SSO_BREAK_GLASS_USERS }}
+        run: |
+          set -euo pipefail
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          repo="$(echo '${{ github.event.repository.name }}' | tr '[:upper:]' '[:lower:]')"
+          image_prefix="${{ env.REGISTRY }}/${owner}/${repo}"
+          ingress_class="${INGRESS_CLASS:-nginx}"
+          cat > .helm-ci-values.yaml <<EOF
+          commonLabels:
+            environment: "${ENVIRONMENT_NAME}"
+          imagePullSecrets:
+            - name: ghcr-credentials
+          ingress:
+            frontend:
+              className: "${ingress_class}"
+            backend:
+              className: "${ingress_class}"
+              host: "${BACKEND_HOST}"
+          backend:
+            image:
+              repository: "${image_prefix}-backend"
+              tag: "${IMAGE_TAG}"
+            env:
+              APP_ENV: "${ENVIRONMENT_NAME}"
+              DB_HOST: "${DB_HOST}"
+              DB_PORT: "${DB_PORT}"
+              DB_USER: "${DB_USER}"
+              DB_NAME: "${DB_NAME}"
+              DB_SSLMODE: "${DB_SSLMODE}"
+              DB_CONNECT_TIMEOUT_SECONDS: "${DB_CONNECT_TIMEOUT_SECONDS}"
+              POSTGRES_HOST: "${POSTGRES_HOST}"
+              POSTGRES_PORT: "${POSTGRES_PORT}"
+              POSTGRES_USER: "${POSTGRES_USER}"
+              POSTGRES_DB: "${POSTGRES_DB}"
+              REDIS_ADDR: "${REDIS_ADDR}"
+              REDIS_DB: "${REDIS_DB}"
+              REDIS_CACHE_TTL_SECONDS: "${REDIS_CACHE_TTL_SECONDS}"
+              REDIS_QUEUE_NAME: "${REDIS_QUEUE_NAME}"
+              REDIS_JOB_POLL_TIMEOUT_SECONDS: "${REDIS_JOB_POLL_TIMEOUT_SECONDS}"
+              DB_QUERY_TIMEOUT_SECONDS: "${DB_QUERY_TIMEOUT_SECONDS}"
+              DB_SLOW_QUERY_MS: "${DB_SLOW_QUERY_MS}"
+              REQUEST_LOG_SLOW_MS: "${REQUEST_LOG_SLOW_MS}"
+              GITHUB_OWNER: "${GITHUB_OWNER}"
+              GITHUB_REPO: "${GITHUB_REPO}"
+              BASE_BRANCH: "${BASE_BRANCH}"
+              DEFAULT_ADMIN_USERNAME: "${DEFAULT_ADMIN_USERNAME}"
+              DEFAULT_ADMIN_EMAIL: "${DEFAULT_ADMIN_EMAIL}"
+              SESSION_TIMEOUT_MINUTES: "${SESSION_TIMEOUT_MINUTES}"
+              FRONTEND_URL: "${FRONTEND_URL}"
+              DEVOPS_FRONTEND_URL: "${DEVOPS_FRONTEND_URL}"
+              SMTP_HOST: "${SMTP_HOST}"
+              SMTP_PORT: "${SMTP_PORT}"
+              SMTP_USER: "${SMTP_USER}"
+              SMTP_FROM: "${SMTP_FROM}"
+              SMTP_USE_TLS: "${SMTP_USE_TLS}"
+              WEBHOOK_APPROVE_URL: "${WEBHOOK_APPROVE_URL}"
+              SSO_LOGIN_URL: "${SSO_LOGIN_URL}"
+              AZURE_SSO_LOGIN_URL: "${AZURE_SSO_LOGIN_URL}"
+              KEYCLOAK_SSO_LOGIN_URL: "${KEYCLOAK_SSO_LOGIN_URL}"
+              SAML_SSO_LOGIN_URL: "${SAML_SSO_LOGIN_URL}"
+              OTEL_ENABLED: "${OTEL_ENABLED}"
+              OTEL_SERVICE_ENV: "${OTEL_SERVICE_ENV}"
+              OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
+              OTEL_EXPORTER_OTLP_INSECURE: "${OTEL_EXPORTER_OTLP_INSECURE}"
+              OTEL_TRACES_SAMPLER_RATIO: "${OTEL_TRACES_SAMPLER_RATIO}"
+              OTEL_METRICS_EXPORT_INTERVAL_SECONDS: "${OTEL_METRICS_EXPORT_INTERVAL_SECONDS}"
+              ALLOW_START_WITHOUT_DB: "${ALLOW_START_WITHOUT_DB}"
+            secretEnv:
+              DATABASE_URL: "${DATABASE_URL}"
+              DB_PASSWORD: "${DB_PASSWORD}"
+              POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+              GITHUB_TOKEN: "${GITHUB_TOKEN}"
+              ADMIN_SECRET: "${ADMIN_SECRET}"
+              DEFAULT_ADMIN_PASSWORD: "${DEFAULT_ADMIN_PASSWORD}"
+              SMTP_PASSWORD: "${SMTP_PASSWORD}"
+              CI_WEBHOOK_SECRET: "${CI_WEBHOOK_SECRET}"
+              SLACK_WEBHOOK_URL: "${SLACK_WEBHOOK_URL}"
+              TEAMS_WEBHOOK_URL: "${TEAMS_WEBHOOK_URL}"
+              OPS_NOTIFICATION_WEBHOOK_URL: "${OPS_NOTIFICATION_WEBHOOK_URL}"
+              API_KEY_HASH_SECRET: "${API_KEY_HASH_SECRET}"
+              API_KEY_PEPPER: "${API_KEY_PEPPER}"
+              JWT_SECRET: "${JWT_SECRET}"
+              SSO_AUTH_SHARED_SECRET: "${SSO_AUTH_SHARED_SECRET}"
+              AZURE_DIRECTORY_USERS_JSON: "${AZURE_DIRECTORY_USERS_JSON}"
+              KEYCLOAK_DIRECTORY_USERS_JSON: "${KEYCLOAK_DIRECTORY_USERS_JSON}"
+              SAML_DIRECTORY_USERS_JSON: "${SAML_DIRECTORY_USERS_JSON}"
+              SSO_DIRECTORY_USERS_JSON: "${SSO_DIRECTORY_USERS_JSON}"
+              SSO_BREAK_GLASS_USERS: "${SSO_BREAK_GLASS_USERS}"
+          frontends:
+            user:
+              image:
+                repository: "${image_prefix}-frontend"
+                tag: "${IMAGE_TAG}"
+              ingress:
+                host: "${FRONTEND_HOST}"
+              env:
+                NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL}"
+            admin:
+              image:
+                repository: "${image_prefix}-admin-frontend"
+                tag: "${IMAGE_TAG}"
+              ingress:
+                host: "${ADMIN_FRONTEND_HOST}"
+              env:
+                NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL}"
+            devops:
+              image:
+                repository: "${image_prefix}-devops-frontend"
+                tag: "${IMAGE_TAG}"
+              ingress:
+                host: "${DEVOPS_FRONTEND_HOST}"
+              env:
+                NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL}"
+          EOF
+
+      - name: Helm lint
+        run: helm lint ./helm/infragate -f "${{ inputs.values_file }}" -f .helm-ci-values.yaml
+
+      - name: Render manifest artifact
+        run: helm template "${{ inputs.release_name }}" ./helm/infragate --namespace "${{ inputs.namespace }}" -f "${{ inputs.values_file }}" -f .helm-ci-values.yaml > rendered-manifest.yaml
+
+      - name: Upload rendered manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-manifest-${{ inputs.environment_name }}
+          path: rendered-manifest.yaml
+
+      - name: Helm upgrade or install
+        id: deploy
+        continue-on-error: true
+        run: |
+          helm upgrade --install "${{ inputs.release_name }}" ./helm/infragate \
+            --namespace "${{ inputs.namespace }}" \
+            --create-namespace \
+            --wait \
+            --timeout 15m \
+            --history-max 10 \
+            -f "${{ inputs.values_file }}" \
+            -f .helm-ci-values.yaml
+
+      - name: Run post-deploy smoke tests
+        id: smoke
+        if: steps.deploy.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          RELEASE_NAME: ${{ inputs.release_name }}
+          NAMESPACE: ${{ inputs.namespace }}
+        run: |
+          set -euo pipefail
+          smoke_pod="smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          service_prefix="${RELEASE_NAME}-infragate"
+          backend_service="${service_prefix}-backend"
+          user_service="${service_prefix}-user"
+          admin_service="${service_prefix}-admin"
+          devops_service="${service_prefix}-devops"
+
+          kubectl -n "${NAMESPACE}" run "${smoke_pod}" \
+            --image=curlimages/curl:8.12.1 \
+            --restart=Never \
+            --labels="app.kubernetes.io/component=smoke" \
+            --command -- sleep 300
+
+          kubectl -n "${NAMESPACE}" wait --for=condition=Ready "pod/${smoke_pod}" --timeout=120s
+
+          kubectl -n "${NAMESPACE}" exec "${smoke_pod}" -- sh -ceu "
+            curl --fail --silent --show-error --location --max-time 20 http://${backend_service}:8080/health >/dev/null
+            curl --fail --silent --show-error --location --max-time 20 http://${user_service}:3000/ >/dev/null
+            curl --fail --silent --show-error --location --max-time 20 http://${admin_service}:3001/ >/dev/null
+            curl --fail --silent --show-error --location --max-time 20 http://${devops_service}:3002/ >/dev/null
+          "
+
+      - name: Clean up smoke test pod
+        if: always() && steps.smoke.conclusion != 'skipped'
+        shell: bash
+        run: |
+          kubectl -n "${{ inputs.namespace }}" delete pod "smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --ignore-not-found=true --wait=false
+
+      - name: Roll back failed deployment
+        id: rollback
+        if: (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure') && steps.current-release.outputs.previous_revision != ''
+        run: |
+          helm rollback "${{ inputs.release_name }}" "${{ steps.current-release.outputs.previous_revision }}" \
+            --namespace "${{ inputs.namespace }}" \
+            --wait \
+            --timeout 15m
+
+      - name: Compute deployment result
+        id: result
+        if: always()
+        shell: bash
+        env:
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          ROLLBACK_OUTCOME: ${{ steps.rollback.outcome }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          final_status="success"
+          failure_stage="none"
+          smoke_status="passed"
+          rollback_attempted="No"
+          rollback_status="not-needed"
+
+          if [ "${DEPLOY_OUTCOME}" = "failure" ]; then
+            final_status="failure"
+            failure_stage="helm-upgrade-install"
+            smoke_status="not-run"
+          elif [ "${SMOKE_OUTCOME}" = "failure" ]; then
+            final_status="failure"
+            failure_stage="post-deploy-smoke-tests"
+            smoke_status="failed"
+          elif [ "${SMOKE_OUTCOME}" != "success" ]; then
+            smoke_status="not-run"
+          fi
+
+          if [ "${ROLLBACK_OUTCOME}" = "success" ]; then
+            rollback_attempted="Yes"
+            rollback_status="successful"
+          elif [ "${ROLLBACK_OUTCOME}" = "failure" ]; then
+            rollback_attempted="Yes"
+            rollback_status="failed"
+          fi
+
+          release_notes_compact="$(printf '%s' "${RELEASE_NOTES:-}" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ //; s/ $//')"
+          if [ "${#release_notes_compact}" -gt 220 ]; then
+            release_notes_compact="${release_notes_compact:0:217}..."
+          fi
+          release_notes_display="${release_notes_compact}"
+          if [ -z "${release_notes_display}" ]; then
+            release_notes_display="Not provided"
+          fi
+          release_notes_slack="$(jq -Rn --arg text "*Release Notes:*\n${release_notes_display}" '$text')"
+
+          echo "final_status=${final_status}" >> "$GITHUB_OUTPUT"
+          echo "failure_stage=${failure_stage}" >> "$GITHUB_OUTPUT"
+          echo "smoke_status=${smoke_status}" >> "$GITHUB_OUTPUT"
+          echo "rollback_attempted=${rollback_attempted}" >> "$GITHUB_OUTPUT"
+          echo "rollback_status=${rollback_status}" >> "$GITHUB_OUTPUT"
+          echo "release_notes_compact=${release_notes_compact}" >> "$GITHUB_OUTPUT"
+          echo "release_notes_slack=${release_notes_slack}" >> "$GITHUB_OUTPUT"
+
+      - name: Write deployment summary
+        if: always()
+        shell: bash
+        env:
+          RELEASE_NOTES_COMPACT: ${{ steps.result.outputs.release_notes_compact }}
+        run: |
+          {
+            echo "## Deployment Summary"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Environment | ${{ inputs.environment_name }} |"
+            echo "| Release | ${{ inputs.release_name }} |"
+            echo "| Namespace | ${{ inputs.namespace }} |"
+            echo "| Commit | \`${{ github.sha }}\` |"
+            echo "| Final status | ${{ steps.result.outputs.final_status }} |"
+            echo "| Smoke tests | ${{ steps.result.outputs.smoke_status }} |"
+            echo "| Rollback | ${{ steps.result.outputs.rollback_status }} |"
+            if [ -n "${RELEASE_NOTES_COMPACT}" ]; then
+              echo
+              echo "### Release notes"
+              echo
+              echo "${RELEASE_NOTES_COMPACT}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Notify Slack on success
+        if: steps.result.outputs.final_status == 'success' && secrets.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [
+                {
+                  "color": "#16a34a",
+                  "blocks": [
+                    {
+                      "type": "header",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "Deployment Succeeded"
+                      }
+                    },
+                    {
+                      "type": "section",
+                      "fields": [
+                        { "type": "mrkdwn", "text": "*Environment:*\n${{ inputs.environment_name }}" },
+                        { "type": "mrkdwn", "text": "*Release:*\n${{ inputs.release_name }}" },
+                        { "type": "mrkdwn", "text": "*Namespace:*\n${{ inputs.namespace }}" },
+                        { "type": "mrkdwn", "text": "*Commit:*\n${{ github.sha }}" },
+                        { "type": "mrkdwn", "text": "*Smoke Tests:*\n${{ steps.result.outputs.smoke_status }}" },
+                        { "type": "mrkdwn", "text": ${{ steps.result.outputs.release_notes_slack }} }
+                      ]
+                    },
+                    {
+                      "type": "context",
+                      "elements": [
+                        { "type": "mrkdwn", "text": "Workflow: ${{ github.workflow }} | Run #${{ github.run_number }}" }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+
+      - name: Notify Slack on failure
+        if: steps.result.outputs.final_status == 'failure' && secrets.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [
+                {
+                  "color": "#dc2626",
+                  "blocks": [
+                    {
+                      "type": "header",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "Deployment Failed"
+                      }
+                    },
+                    {
+                      "type": "section",
+                      "fields": [
+                        { "type": "mrkdwn", "text": "*Environment:*\n${{ inputs.environment_name }}" },
+                        { "type": "mrkdwn", "text": "*Release:*\n${{ inputs.release_name }}" },
+                        { "type": "mrkdwn", "text": "*Namespace:*\n${{ inputs.namespace }}" },
+                        { "type": "mrkdwn", "text": "*Failure Stage:*\n${{ steps.result.outputs.failure_stage }}" },
+                        { "type": "mrkdwn", "text": "*Rollback Attempted:*\n${{ steps.result.outputs.rollback_attempted }}" },
+                        { "type": "mrkdwn", "text": "*Rollback Status:*\n${{ steps.result.outputs.rollback_status }}" },
+                        { "type": "mrkdwn", "text": ${{ steps.result.outputs.release_notes_slack }} }
+                      ]
+                    },
+                    {
+                      "type": "context",
+                      "elements": [
+                        { "type": "mrkdwn", "text": "Workflow: ${{ github.workflow }} | Run #${{ github.run_number }}" }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+
+      - name: Fail workflow when deployment did not succeed
+        if: steps.result.outputs.final_status == 'failure'
+        run: exit 1

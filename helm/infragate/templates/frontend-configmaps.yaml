@@ -1,0 +1,15 @@
+{{- range $name, $frontend := .Values.frontends }}
+{{- if $frontend.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "infragate.frontend.fullname" (dict "root" $ "name" $name) }}-config
+  labels:
+    {{- include "infragate.componentLabels" (dict "root" $ "component" $name) | nindent 4 }}
+data:
+  {{- range $key, $value := $frontend.env }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+---
+{{- end }}
+{{- end }}

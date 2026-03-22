@@ -1,121 +1,285 @@
-# Frontend Tech Stack Recommendation
+# Tech Stack
 
-> **Note:** This document describes the frontend technology stack. For full project documentation, see [README.md](./README.md)
+This document explains the technology choices behind InfraGate, what each layer is responsible for, and what teams can expect when developing, deploying, and operating the platform.
 
-## Recommended Stack: Next.js + TypeScript + React
+## Stack at a Glance
 
-### Why Next.js?
+| Layer | Technology | Purpose |
+| --- | --- | --- |
+| User Portal | Next.js | Self-service requests, templates, history, assigned incidents |
+| Admin Portal | Next.js | Governance, approvals, users, teams, administration |
+| DevOps Portal | Next.js | Promotions, gates, K8s health, incidents, rollback, operations |
+| Backend API | Go | Shared workflow engine, auth, persistence, notifications, integrations |
+| Database | PostgreSQL | Primary system of record |
+| Cache / Queue | Redis | Caching and lightweight background-job behavior |
+| Packaging | Docker | Containerized local and deployment builds |
+| Kubernetes Packaging | Helm | Structured cluster deployment with env/secret injection |
+| CI/CD | GitHub Actions | Quality gates, image publish, Helm rollout, rollback |
+| Registry | GHCR | Docker image storage |
+| Security Scanning | SonarQube, Trivy, optional Snyk | Code quality, container scanning, optional dependency scanning |
+| Observability | OpenTelemetry | Traces, metrics, logs |
 
-1. **Production-Ready Framework**
-   - Built on React with excellent developer experience
-   - Automatic code splitting and optimization
-   - Server-side rendering (SSR) capabilities for better SEO
-   - File-based routing (no need for React Router setup)
+## Frontend Stack
 
-2. **Easy Deployment**
-   - Can deploy to Vercel (seamless integration)
-   - Docker support (already configured)
-   - Can deploy to any Node.js hosting (AWS, GCP, Azure)
+All three portals use the same frontend foundation so teams can reuse patterns and keep the overall platform consistent.
 
-3. **Performance**
-   - Automatic image optimization
-   - Built-in CSS support
-   - Fast refresh for development
+### Core
 
-4. **Ecosystem**
-   - Large community and extensive documentation
-   - Many plugins and integrations available
-   - Active development and updates
+- `Next.js 16`
+- `React`
+- `TypeScript`
+- custom CSS with shared design language per portal
 
-### Why TypeScript?
+### Why this stack
 
-1. **Type Safety**
-   - Catches errors at compile time
-   - Better IDE autocomplete
-   - Self-documenting code
+- Next.js gives a structured app layout and production build pipeline
+- TypeScript helps keep API-heavy pages safer as the product grows
+- separate portals allow clearer role-based UX without turning one app into an overloaded super-admin interface
 
-2. **Maintainability**
-   - Easier refactoring
-   - Better code navigation
-   - Reduced bugs in production
+### Portal responsibilities
 
-### Why React?
+#### User Portal
 
-1. **Component-Based Architecture**
-   - Reusable components
-   - Easy to extend
-   - Large ecosystem
+Located in:
 
-2. **State Management**
-   - Built-in hooks (useState, useEffect)
-   - Can easily add Redux/Zustand if needed later
+- [frontend](/Users/gowthamshashank/New_Ideas/Devops_Tool/devops_project/frontend)
 
-## Alternative Stacks Considered
+Key responsibilities:
 
-### 1. Vue.js + Nuxt.js
-- **Pros**: Simpler learning curve, good documentation
-- **Cons**: Smaller ecosystem than React, less enterprise adoption
+- infrastructure request creation
+- request templates
+- request history
+- assigned incidents
+- notification drawer UX
 
-### 2. Angular
-- **Pros**: Full-featured framework, strong typing
-- **Cons**: Steeper learning curve, more boilerplate, heavier
+#### Admin Portal
 
-### 3. Svelte + SvelteKit
-- **Pros**: Very fast, smaller bundle size
-- **Cons**: Smaller ecosystem, newer framework
+Located in:
 
-### 4. Plain React + Vite
-- **Pros**: Faster build times, simpler setup
-- **Cons**: Need to configure routing, SSR separately
+- [admin-frontend](/Users/gowthamshashank/New_Ideas/Devops_Tool/devops_project/admin-frontend)
 
-## Final Recommendation
+Key responsibilities:
 
-**Next.js 14 + TypeScript + React 18** is the best choice because:
+- user management
+- team management
+- governance and approval views
+- templates and platform controls
 
-✅ **Enterprise-Ready**: Used by major companies (Netflix, TikTok, Hulu)
-✅ **Developer Experience**: Excellent tooling and hot reload
-✅ **Performance**: Optimized out of the box
-✅ **Scalability**: Can grow from MVP to enterprise application
-✅ **Community**: Large community, extensive resources
-✅ **Future-Proof**: Active development, long-term support
+#### DevOps Portal
 
-## UI Libraries (Optional Additions)
+Located in:
 
-If you need more UI components later, consider:
+- [devops-frontend](/Users/gowthamshashank/New_Ideas/Devops_Tool/devops_project/devops-frontend)
 
-1. **Tailwind CSS** - Utility-first CSS framework
-2. **Material-UI (MUI)** - React component library
-3. **Chakra UI** - Simple, modular component library
-4. **Ant Design** - Enterprise-class UI design language
+Key responsibilities:
 
-For now, we're using custom CSS which gives full control and keeps the bundle size small.
+- release dashboards
+- promotion gates
+- environment drift
+- K8s workload health
+- expiry tracker
+- incidents and rollback
+- ops command center
 
-## State Management (Future)
+## Backend Stack
 
-Current implementation uses React hooks. If you need global state management later:
+Located in:
 
-1. **Zustand** - Lightweight, simple
-2. **Redux Toolkit** - Industry standard, powerful
-3. **Jotai** - Atomic state management
-4. **Context API** - Built-in React solution
+- [backend](/Users/gowthamshashank/New_Ideas/Devops_Tool/devops_project/backend)
 
-## Testing (Future)
+### Core
 
-When ready to add tests:
+- `Go 1.25`
+- standard library HTTP stack
+- PostgreSQL access through SQL-based persistence
+- Redis for cache/queue-style support
 
-1. **Jest** - Unit testing
-2. **React Testing Library** - Component testing
-3. **Playwright** - E2E testing
-4. **Cypress** - Alternative E2E testing
+### Why Go
 
-## Conclusion
+The backend acts as the shared workflow engine for three separate portals. Go is a good fit here because it keeps the runtime small, fast, and operationally straightforward for:
 
-The chosen stack (Next.js + TypeScript + React) provides:
-- Fast development
-- Type safety
-- Great performance
-- Easy deployment
-- Scalability
-- Strong community support
+- API handling
+- workflow orchestration
+- GitHub integration
+- deployment and operational control flows
+- logging and telemetry
 
-This stack will serve you well from MVP to production enterprise application.
+### What the backend handles
+
+- authentication and sessions
+- request lifecycle
+- approvals and deployment gates
+- incidents and postmortems
+- rollback operations
+- notification workflows
+- GitHub and PR-driven automation
+- operational summaries such as drift, health, risk, and dependencies
+
+## Data Layer
+
+### PostgreSQL
+
+Used as the primary source of truth for:
+
+- users
+- teams
+- requests
+- approvals
+- incidents
+- rollback records
+- analytics and audit-oriented workflow objects
+
+### Redis
+
+Used for:
+
+- caching
+- notification and workflow coordination
+- lightweight queue-style runtime support
+
+This keeps the backend responsive without turning the architecture into a large event-platform dependency too early.
+
+## Deployment Stack
+
+### Docker Compose
+
+Used for:
+
+- local development
+- single-host validation
+- simpler bring-up for new evaluators
+
+Primary file:
+
+- [docker-compose.yml](/Users/gowthamshashank/New_Ideas/Devops_Tool/devops_project/docker-compose.yml)
+
+### Helm
+
+Used for:
+
+- Kubernetes deployment
+- structured env and secret injection
+- environment-specific values
+- reusable ingress and service topology
+
+Chart location:
+
+- [helm/infragate](/Users/gowthamshashank/New_Ideas/Devops_Tool/devops_project/helm/infragate)
+
+The Helm setup uses:
+
+- one shared frontend ingress
+- one backend ingress
+- separate deployments for backend and each portal
+
+## CI/CD Stack
+
+### GitHub Actions
+
+Used for:
+
+- reusable quality gates
+- reusable deployment flow
+- environment-specific wrappers for `dev`, `uat`, and `prod`
+
+Main docs:
+
+- [docs/CICD.md](/Users/gowthamshashank/New_Ideas/Devops_Tool/devops_project/docs/CICD.md)
+
+### GHCR
+
+Used for:
+
+- backend image storage
+- frontend image storage
+- environment-tagged image promotion
+
+### Quality and Security Gates
+
+- `SonarQube` for code quality and SAST-style analysis
+- `Trivy` for image vulnerability scanning
+- optional `Snyk` for dependency/package risk visibility
+
+## Observability Stack
+
+InfraGate includes OpenTelemetry support from the backend.
+
+Used for:
+
+- request tracing
+- metrics
+- log correlation with `trace_id` and `span_id`
+
+This is important because the platform spans:
+
+- end-user request flows
+- admin approvals
+- DevOps promotion and incident workflows
+
+Observability is what makes those cross-portal workflows debuggable.
+
+## Notification Stack
+
+InfraGate supports operational notifications through:
+
+- Slack
+- Microsoft Teams
+- email
+- generic webhook callbacks
+
+Notifications are used for:
+
+- blocked promotions
+- approval lifecycle changes
+- expiry events
+- incident-linked operational actions
+
+## Why the Stack Works Well for This App
+
+This product is not just a CRUD dashboard. It combines:
+
+- self-service intake
+- approval and policy workflows
+- release gating
+- infrastructure operations
+- incident response
+- rollback and auditability
+
+The chosen stack works well because:
+
+- Next.js portals keep role-based UX separate and focused
+- Go keeps the shared workflow engine fast and operationally simple
+- PostgreSQL gives a strong transactional base for audit-heavy workflows
+- Redis adds lightweight runtime support without overcomplicating the system
+- Helm and GitHub Actions make the deployment model understandable for platform teams
+
+## Developer Workflow
+
+Typical local workflow:
+
+1. Start with [README.md](/Users/gowthamshashank/New_Ideas/Devops_Tool/devops_project/README.md)
+2. Configure env values through [docs/CONFIGURATION.md](/Users/gowthamshashank/New_Ideas/Devops_Tool/devops_project/docs/CONFIGURATION.md)
+3. Run Docker Compose or build components individually
+4. Validate backend tests
+5. Validate frontend builds
+6. Deploy through Helm or GitHub Actions when needed
+
+Useful commands:
+
+```bash
+make help
+make backend-test
+make frontend-build
+make admin-build
+make devops-build
+make compose-dev
+make helm-template
+```
+
+## Related Docs
+
+- [README.md](/Users/gowthamshashank/New_Ideas/Devops_Tool/devops_project/README.md)
+- [docs/ARCHITECTURE.md](/Users/gowthamshashank/New_Ideas/Devops_Tool/devops_project/docs/ARCHITECTURE.md)
+- [docs/DEPLOYMENT.md](/Users/gowthamshank/New_Ideas/Devops_Tool/devops_project/docs/DEPLOYMENT.md)
+- [docs/CONFIGURATION.md](/Users/gowthamshank/New_Ideas/Devops_Tool/devops_project/docs/CONFIGURATION.md)
+- [docs/CICD.md](/Users/gowthamshashank/New_Ideas/Devops_Tool/devops_project/docs/CICD.md)
