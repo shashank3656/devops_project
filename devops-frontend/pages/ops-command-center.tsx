@@ -232,8 +232,9 @@ function getSpotlightSubtitle(item: CommandCenterSpotlight): string {
 }
 
 function getSpotlightProjectId(item: CommandCenterSpotlight): number | null {
-  if (!item || typeof item.project_id !== 'number') return null;
-  return item.project_id;
+  if (!item) return null;
+  const projectId = asRecord(item).project_id;
+  return typeof projectId === 'number' ? projectId : null;
 }
 
 export default function OpsCommandCenterPage() {
