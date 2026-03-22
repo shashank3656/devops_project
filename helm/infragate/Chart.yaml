@@ -1,0 +1,6 @@
+apiVersion: v2
+name: infragate
+description: Helm chart for deploying the InfraGate backend and all three portals.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

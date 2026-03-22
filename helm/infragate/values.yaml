@@ -1,0 +1,229 @@
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+commonLabels: {}
+
+ingress:
+  frontend:
+    enabled: true
+    className: nginx
+    annotations: {}
+    tls: []
+  backend:
+    enabled: true
+    className: nginx
+    annotations: {}
+    host: api.example.com
+    path: /
+    pathType: Prefix
+    tls: []
+
+backend:
+  replicaCount: 1
+  image:
+    repository: your-registry/infragate-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  podAnnotations: {}
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  env:
+    APP_ENV: production
+    DB_HOST: postgres.default.svc.cluster.local
+    DB_PORT: "5432"
+    DB_USER: infra_user
+    DB_NAME: infra_portal
+    DB_SSLMODE: disable
+    POSTGRES_HOST: ""
+    POSTGRES_PORT: ""
+    POSTGRES_USER: ""
+    POSTGRES_DB: ""
+    DB_CONNECT_TIMEOUT_SECONDS: "5"
+    REDIS_ADDR: redis.default.svc.cluster.local:6379
+    REDIS_DB: "0"
+    REDIS_CACHE_TTL_SECONDS: "90"
+    REDIS_QUEUE_NAME: infra:jobs
+    REDIS_JOB_POLL_TIMEOUT_SECONDS: "5"
+    DB_QUERY_TIMEOUT_SECONDS: "5"
+    DB_SLOW_QUERY_MS: "750"
+    REQUEST_LOG_SLOW_MS: "500"
+    GITHUB_OWNER: ngsops
+    GITHUB_REPO: your-repo
+    BASE_BRANCH: main
+    DEFAULT_ADMIN_USERNAME: admin
+    DEFAULT_ADMIN_EMAIL: admin@example.com
+    SESSION_TIMEOUT_MINUTES: "1440"
+    FRONTEND_URL: https://portal.example.com
+    DEVOPS_FRONTEND_URL: https://devops.example.com
+    SMTP_HOST: ""
+    SMTP_PORT: "587"
+    SMTP_USER: ""
+    SMTP_FROM: ""
+    SMTP_USE_TLS: "true"
+    WEBHOOK_APPROVE_URL: ""
+    SSO_LOGIN_URL: ""
+    AZURE_SSO_LOGIN_URL: ""
+    KEYCLOAK_SSO_LOGIN_URL: ""
+    SAML_SSO_LOGIN_URL: ""
+    OTEL_ENABLED: "true"
+    OTEL_SERVICE_NAME: infra-backend
+    OTEL_SERVICE_ENV: production
+    OTEL_SERVICE_VERSION: helm
+    OTEL_EXPORTER_OTLP_ENDPOINT: ""
+    OTEL_EXPORTER_OTLP_INSECURE: "true"
+    OTEL_TRACES_SAMPLER_RATIO: "1"
+    OTEL_METRICS_EXPORT_INTERVAL_SECONDS: "30"
+    ALLOW_START_WITHOUT_DB: "false"
+  secretEnv:
+    DATABASE_URL: ""
+    DB_PASSWORD: change-me
+    POSTGRES_PASSWORD: ""
+    GITHUB_TOKEN: change-me
+    ADMIN_SECRET: change-me-admin-secret
+    DEFAULT_ADMIN_PASSWORD: change-me-admin-password
+    SMTP_PASSWORD: ""
+    CI_WEBHOOK_SECRET: ""
+    SLACK_WEBHOOK_URL: ""
+    TEAMS_WEBHOOK_URL: ""
+    OPS_NOTIFICATION_WEBHOOK_URL: ""
+    API_KEY_HASH_SECRET: ""
+    API_KEY_PEPPER: ""
+    JWT_SECRET: ""
+    SSO_AUTH_SHARED_SECRET: ""
+    AZURE_DIRECTORY_USERS_JSON: ""
+    KEYCLOAK_DIRECTORY_USERS_JSON: ""
+    SAML_DIRECTORY_USERS_JSON: ""
+    SSO_DIRECTORY_USERS_JSON: ""
+    SSO_BREAK_GLASS_USERS: ""
+  extraEnv: []
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 30
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 15
+
+frontends:
+  user:
+    enabled: true
+    replicaCount: 1
+    image:
+      repository: your-registry/infragate-frontend
+      tag: latest
+      pullPolicy: IfNotPresent
+    service:
+      type: ClusterIP
+      port: 3000
+      targetPort: 3000
+    ingress:
+      host: portal.example.com
+      path: /
+      pathType: Prefix
+    podAnnotations: {}
+    resources: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    env:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://api.example.com
+    secretEnv: {}
+    extraEnv: []
+    livenessProbe:
+      httpGet:
+        path: /
+        port: http
+      initialDelaySeconds: 40
+      periodSeconds: 30
+    readinessProbe:
+      httpGet:
+        path: /
+        port: http
+      initialDelaySeconds: 20
+      periodSeconds: 15
+  admin:
+    enabled: true
+    replicaCount: 1
+    image:
+      repository: your-registry/infragate-admin-frontend
+      tag: latest
+      pullPolicy: IfNotPresent
+    service:
+      type: ClusterIP
+      port: 3001
+      targetPort: 3001
+    ingress:
+      host: admin.example.com
+      path: /
+      pathType: Prefix
+    podAnnotations: {}
+    resources: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    env:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://api.example.com
+    secretEnv: {}
+    extraEnv: []
+    livenessProbe:
+      httpGet:
+        path: /
+        port: http
+      initialDelaySeconds: 40
+      periodSeconds: 30
+    readinessProbe:
+      httpGet:
+        path: /
+        port: http
+      initialDelaySeconds: 20
+      periodSeconds: 15
+  devops:
+    enabled: true
+    replicaCount: 1
+    image:
+      repository: your-registry/infragate-devops-frontend
+      tag: latest
+      pullPolicy: IfNotPresent
+    service:
+      type: ClusterIP
+      port: 3002
+      targetPort: 3002
+    ingress:
+      host: devops.example.com
+      path: /
+      pathType: Prefix
+    podAnnotations: {}
+    resources: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    env:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://api.example.com
+    secretEnv: {}
+    extraEnv: []
+    livenessProbe:
+      httpGet:
+        path: /
+        port: http
+      initialDelaySeconds: 40
+      periodSeconds: 30
+    readinessProbe:
+      httpGet:
+        path: /
+        port: http
+      initialDelaySeconds: 20
+      periodSeconds: 15

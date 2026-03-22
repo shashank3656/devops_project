@@ -1,0 +1,20 @@
+name: Deploy Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: Release notes for this production deployment
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-reusable.yaml
+    with:
+      environment_name: prod
+      values_file: ./helm/infragate/values-prod.yaml
+      release_name: infragate-prod
+      namespace: infragate-prod
+      release_notes: ${{ inputs.release_notes }}
+    secrets: inherit

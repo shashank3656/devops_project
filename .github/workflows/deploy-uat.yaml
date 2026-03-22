@@ -1,0 +1,14 @@
+name: Deploy UAT
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-reusable.yaml
+    with:
+      environment_name: uat
+      values_file: ./helm/infragate/values-uat.yaml
+      release_name: infragate-uat
+      namespace: infragate-uat
+    secrets: inherit
