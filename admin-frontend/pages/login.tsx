@@ -20,8 +20,6 @@ export default function AdminLogin() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    localStorage.setItem('infra-portal-theme', 'dark');
     const existingToken = (localStorage.getItem('admin_token') || '').trim();
     if (!existingToken || existingToken === 'undefined' || existingToken === 'null' || !/^\d+:\d+$/.test(existingToken)) {
       localStorage.removeItem('admin_token');
@@ -173,28 +171,27 @@ export default function AdminLogin() {
   return (
     <>
       <Head>
-        <title>Admin Login - Admin</title>
+        <title>Portal Sign-in - SetuOps Governance</title>
       </Head>
-      <div className="login-page">
-        <div className="login-page__left">
-          <div className="login-page__brand">
-            <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">Admin</h1>
-            <p className="login-page__tagline">
-              Cloud-agnostic infrastructure management. Secure, self-service, and audit-ready.
-            </p>
-          </div>
-          <div className="login-page__decor">
-            <div className="login-page__blob login-page__blob--1" />
-            <div className="login-page__blob login-page__blob--2" />
-            <div className="login-page__blob login-page__blob--3" />
-          </div>
-        </div>
-        <div className="login-page__right">
-          <div className="login-page__card">
-            <h2 className="login-page__card-title">Welcome back</h2>
+      <div className="login-page login-page--portal">
+        <div className="login-page__shell">
+          <header className="login-page__masthead">
+            <Link href="/login" className="login-page__wordmark">
+              <img src="/logo.svg" alt="" width={44} height={44} className="login-page__wordmark-logo" />
+              <div className="login-page__wordmark-copy">
+                <span className="login-page__brand-name">SetuOps</span>
+                <span className="login-page__brand-context">Governance Portal</span>
+              </div>
+            </Link>
+            <span className="login-page__portal-pill">Admin review</span>
+          </header>
+
+          <main className="login-page__stage">
+            <div className="login-page__card">
+            <p className="login-page__eyebrow">Portal Sign-in</p>
+            <h1 className="login-page__card-title">Portal Sign-in</h1>
             <p className="login-page__card-subtitle">
-              Sign in with your admin account
+              Enter your credentials to access the SetuOps governance workspace.
             </p>
             {error && (
               <div className="alert alert-error" role="alert">
@@ -203,14 +200,14 @@ export default function AdminLogin() {
             )}
             {pending2fa ? (
               <form onSubmit={handleVerify2FA}>
-                <p className="login-page__card-subtitle" style={{ marginBottom: '1rem' }}>
+                <p className="login-page__form-copy">
                   Enter the 6-digit code sent to your email
                 </p>
                 <div className="form-group">
-                  <label className="label" htmlFor="admin-otp">Verification code</label>
+                  <label className="login-page__field-label" htmlFor="admin-otp">Verification code</label>
                   <input
                     id="admin-otp"
-                    className="input"
+                    className="input login-page__input"
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
@@ -224,13 +221,12 @@ export default function AdminLogin() {
                     placeholder="000000"
                   />
                 </div>
-                <button type="submit" className="btn btn-primary login-page__submit" disabled={loading || otp.length !== 6}>
+                <button type="submit" className="btn btn-primary login-page__submit login-page__submit--primary" disabled={loading || otp.length !== 6}>
                   {loading ? 'Verifying…' : 'Verify'}
                 </button>
                 <button
                   type="button"
-                  className="btn btn-secondary"
-                  style={{ marginTop: '12px', width: '100%' }}
+                  className="btn btn-secondary login-page__submit login-page__submit--secondary"
                   onClick={() => { setPending2fa(null); setOtp(''); setError(''); }}
                   disabled={loading}
                 >
@@ -240,12 +236,10 @@ export default function AdminLogin() {
             ) : (
             <form onSubmit={handleSubmit}>
               <div className="form-group">
-                <label className="label" htmlFor="admin-username">
-                  Username
-                </label>
+                <label className="login-page__field-label" htmlFor="admin-username">Admin username</label>
                 <input
                   id="admin-username"
-                  className="input"
+                  className="input login-page__input"
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
@@ -256,12 +250,13 @@ export default function AdminLogin() {
                 />
               </div>
               <div className="form-group">
-                <label className="label" htmlFor="admin-password">
-                  Password
-                </label>
+                <div className="login-page__field-label-row">
+                  <label className="login-page__field-label" htmlFor="admin-password">Access key</label>
+                  <Link href="/forgot-password" className="login-page__field-link">Forgot password?</Link>
+                </div>
                 <input
                   id="admin-password"
-                  className="input"
+                  className="input login-page__input"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -272,22 +267,30 @@ export default function AdminLogin() {
               </div>
               <button
                 type="submit"
-                className="btn btn-primary login-page__submit"
+                className="btn btn-primary login-page__submit login-page__submit--primary"
                 disabled={loading}
               >
-                {loading ? 'Signing in…' : 'Sign in'}
+                {loading ? 'Initiating…' : 'Initiate Session'}
               </button>
             </form>
             )}
-            {!pending2fa && (
-              <p style={{ marginTop: 12, fontSize: 13 }}>
-                <Link href="/forgot-password" style={{ color: 'var(--primary-color)', textDecoration: 'none' }}>Forgot password?</Link>
-              </p>
-            )}
-            <p className="login-page__hint">
-              Default: admin / admin123 — change after first login
+            <p className="login-page__trust-copy">
+              Review policies, approvals, and governance controls from one secure control surface.
             </p>
-          </div>
+            <p className="login-page__hint">
+              Use your assigned platform administrator credentials.
+            </p>
+            </div>
+          </main>
+          <footer className="login-page__footer">
+            <span>© {new Date().getFullYear()} SetuOps governance suite.</span>
+            <div className="login-page__footer-links">
+              <span>Privacy</span>
+              <span>Security</span>
+              <span>Status</span>
+              <span>Support</span>
+            </div>
+          </footer>
         </div>
       </div>
     </>

@@ -121,7 +121,7 @@ export default function CreateInfrastructureNew() {
   return (
     <>
       <Head>
-        <title>Create Infrastructure - InfraGate</title>
+        <title>Create Infrastructure - SetuOps</title>
         <meta name="description" content="Create infrastructure resources" />
       </Head>
 

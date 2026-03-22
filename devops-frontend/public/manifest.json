@@ -1,7 +1,7 @@
 {
-  "name": "InfraGate DevOps",
+  "name": "SetuOps DevOps",
   "short_name": "DevOps",
-  "description": "DevOps portal for InfraGate infrastructure requests",
+  "description": "DevOps portal for SetuOps infrastructure requests",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#0f172a",

@@ -461,7 +461,7 @@ export default function DevOpsDashboard() {
   return (
     <>
       <Head>
-        <title>Dashboard - InfraGate DevOps</title>
+        <title>Dashboard - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="devops-portal">

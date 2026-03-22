@@ -1,6 +1,6 @@
 {
-  "name": "InfraGate",
-  "short_name": "InfraGate",
+  "name": "SetuOps",
+  "short_name": "SetuOps",
   "description": "Cloud-agnostic infrastructure management. Self-service requests for your team.",
   "start_url": "/home",
   "display": "standalone",

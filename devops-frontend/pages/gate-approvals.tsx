@@ -217,7 +217,7 @@ export default function GateApprovalsPage() {
   return (
     <>
       <Head>
-        <title>Gate Approval Audit - InfraGate DevOps</title>
+        <title>Gate Approval Audit - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">

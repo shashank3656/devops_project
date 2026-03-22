@@ -419,7 +419,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </button>
           {!sidebarCollapsed && (
             <Link href="/dashboard" className="devops-sidebar-new__brand">
-              <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">InfraGate</span>
+              <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">SetuOps</span>
               <span className="devops-sidebar-new__brand-word">DevOps</span>
             </Link>
           )}

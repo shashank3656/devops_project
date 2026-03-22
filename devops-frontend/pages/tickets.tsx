@@ -448,7 +448,7 @@ export default function DevOpsTickets() {
   return (
     <>
       <Head>
-        <title>Tickets - InfraGate DevOps</title>
+        <title>Tickets - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="devops-tickets-page">

@@ -12,7 +12,7 @@ export default function RequestSuccess() {
   return (
     <>
       <Head>
-        <title>Ticket Created - InfraGate</title>
+        <title>Ticket Created - SetuOps</title>
       </Head>
       <div style={{ minHeight: '100vh', padding: '40px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div className="card" style={{ maxWidth: 480, width: '100%' }}>

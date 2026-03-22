@@ -702,7 +702,7 @@ export default function AdminRequests() {
   return (
     <>
       <Head>
-        <title>PR Requests - InfraGate Admin</title>
+        <title>PR Requests - SetuOps Governance</title>
       </Head>
       <AdminLayout>
         <div className="portal-page">
