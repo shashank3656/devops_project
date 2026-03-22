@@ -1,0 +1,25 @@
+name: Documentation improvement
+description: Suggest a documentation correction or improvement
+title: "[Docs] "
+labels:
+  - documentation
+body:
+  - type: textarea
+    id: location
+    attributes:
+      label: Documentation location
+      description: Which file or section needs improvement?
+      placeholder: README.md, docs/DEPLOYMENT.md, helm/infragate/README.md, etc.
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: What is unclear or incorrect?
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested improvement
+      description: Describe what would make the docs clearer.
