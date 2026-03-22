@@ -173,6 +173,8 @@ interface FilterState {
   actionableOnly: boolean;
 }
 
+type CommandCenterSpotlight = PromotionItem | IncidentItem | DeliveryFailureItem | null;
+
 const DEFAULT_FILTERS: FilterState = {
   projectId: '',
   queueFocus: 'all',
@@ -211,6 +213,27 @@ function includesText(values: Array<string | number | undefined>, searchText: st
   const needle = searchText.trim().toLowerCase();
   if (!needle) return true;
   return values.some((value) => String(value || '').toLowerCase().includes(needle));
+}
+
+function getSpotlightTitle(item: CommandCenterSpotlight): string {
+  if (!item) return 'Operational item';
+  return getString(asRecord(item).project_name, 'Operational item');
+}
+
+function getSpotlightSubtitle(item: CommandCenterSpotlight): string {
+  if (!item) return 'Needs attention';
+  if ('next_environment' in item) {
+    return `${item.environment.toUpperCase()} -> ${item.next_environment.toUpperCase()}`;
+  }
+  if ('severity' in item) {
+    return `${item.severity} severity`;
+  }
+  return item.status || 'Needs attention';
+}
+
+function getSpotlightProjectId(item: CommandCenterSpotlight): number | null {
+  if (!item || typeof item.project_id !== 'number') return null;
+  return item.project_id;
 }
 
 export default function OpsCommandCenterPage() {
@@ -576,6 +599,8 @@ export default function OpsCommandCenterPage() {
     namespaceAlerts: filteredNamespaceAlerts.length,
     activeOverrides: filteredOverrides.length,
   };
+  const commandCenterSpotlight: CommandCenterSpotlight =
+    filteredBlockedPromotions[0] || filteredIncidents[0] || filteredDeliveryFailures[0] || null;
 
   return (
     <DevOpsLayout>
@@ -583,23 +608,67 @@ export default function OpsCommandCenterPage() {
         <title>Ops Command Center - DevOps Portal</title>
       </Head>
       <div className="portal-page">
-        <div className="portal-page__header">
-          <div>
-            <span className="portal-page__eyebrow">Phase 1</span>
-            <h1 className="portal-page__title">Ops Command Center</h1>
-            <p className="portal-page__subtitle">
-              A single operational surface for blocked promotions, unhealthy workloads, expiring assets, active incidents, drift, and delivery failures.
-            </p>
+        <section className="portal-surface ops-center-hero">
+          <div className="ops-center-hero__content">
+            <div>
+              <span className="portal-page__eyebrow">Phase 1</span>
+              <h1 className="portal-page__title">Ops Command Center</h1>
+              <p className="portal-page__subtitle">
+                A single operational surface for blocked promotions, unhealthy workloads, expiring assets, active incidents, drift, and delivery failures.
+              </p>
+            </div>
+            <div className="ops-center-hero__chips">
+              <span className="portal-pill">{queueFocus === 'all' ? 'All queues' : `${queueFocus} focus`}</span>
+              <span className="portal-pill">{savedViews.length} saved view{savedViews.length === 1 ? '' : 's'}</span>
+              {activeViewId ? <span className="portal-pill">Saved view applied</span> : <span className="portal-pill">Live triage mode</span>}
+            </div>
+            <div className="portal-page__actions">
+              <Link href="/environment-drift" className="btn btn-secondary">Environment Drift</Link>
+              <Link href="/promotions" className="btn btn-secondary">Promotions</Link>
+              <button type="button" className="btn btn-secondary" onClick={exportCSV} disabled={!center}>
+                Export CSV
+              </button>
+              <Link href="/incidents" className="btn btn-primary">Incidents</Link>
+            </div>
           </div>
-          <div className="portal-page__actions">
-            <Link href="/environment-drift" className="btn btn-secondary">Environment Drift</Link>
-            <Link href="/promotions" className="btn btn-secondary">Promotions</Link>
-            <button type="button" className="btn btn-secondary" onClick={exportCSV} disabled={!center}>
-              Export CSV
-            </button>
-            <Link href="/incidents" className="btn btn-primary">Incidents</Link>
+          <div className="ops-center-hero__rail">
+            <article className="ops-center-hero__summary-card">
+              <span className="portal-surface__eyebrow">Attention index</span>
+              <strong>{filteredSummary.blockedPromotions + filteredSummary.activeIncidents + filteredSummary.namespaceAlerts}</strong>
+              <p>Combined high-attention items from promotions, incidents, and namespace health.</p>
+              <div className="ops-center-hero__metrics">
+                <div>
+                  <span>Blocked</span>
+                  <strong>{filteredSummary.blockedPromotions}</strong>
+                </div>
+                <div>
+                  <span>Incidents</span>
+                  <strong>{filteredSummary.activeIncidents}</strong>
+                </div>
+                <div>
+                  <span>Expiry</span>
+                  <strong>{filteredSummary.actionableExpiry}</strong>
+                </div>
+              </div>
+            </article>
+            <article className="ops-center-hero__spotlight-card">
+              <span className="portal-surface__eyebrow">Current spotlight</span>
+              {commandCenterSpotlight ? (
+                <>
+                  <strong className="ops-center-hero__spotlight-title">{getSpotlightTitle(commandCenterSpotlight)}</strong>
+                  <p>{getSpotlightSubtitle(commandCenterSpotlight)}</p>
+                  {getSpotlightProjectId(commandCenterSpotlight) ? (
+                    <Link href={`/projects/${getSpotlightProjectId(commandCenterSpotlight)}`} className="btn btn-secondary btn-sm">
+                      Open project
+                    </Link>
+                  ) : null}
+                </>
+              ) : (
+                <p>No operational spotlight item is active in the current scope.</p>
+              )}
+            </article>
           </div>
-        </div>
+        </section>
 
         {loading ? <div className="portal-surface"><div className="empty-state">Loading ops command center...</div></div> : null}
         {error ? <div className="alert alert-error">{error}</div> : null}

@@ -27,7 +27,7 @@ const NOTIFY_POLL_MS = 30000;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'Dashboard',
+  '/dashboard': 'Governance Overview',
   '/approval-center': 'Approval Center',
   '/project-governance': 'Project Governance',
   '/requests': 'Requests',
@@ -318,8 +318,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </button>
           {!sidebarCollapsed && (
             <Link href="/dashboard" className="admin-sidebar-shell__brand">
-              <span className="admin-sidebar-shell__brand-word admin-sidebar-shell__brand-word--primary">Admin</span>
-              <span className="admin-sidebar-shell__brand-word">Portal</span>
+              <span className="admin-sidebar-shell__brand-word admin-sidebar-shell__brand-word--primary">InfraGate</span>
+              <span className="admin-sidebar-shell__brand-word">Governance</span>
             </Link>
           )}
         </div>

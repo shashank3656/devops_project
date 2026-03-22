@@ -750,6 +750,26 @@ export default function History() {
   });
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const latestVisibleRequest = sortedRequests[0] ?? null;
+  const historySummary = {
+    open: sortedRequests.filter((request) => !['completed', 'rejected', 'cancelled'].includes(request.status)).length,
+    drafts: sortedRequests.filter((request) => request.status === 'draft').length,
+    dueSoon: sortedRequests.filter((request) => {
+      if (!request.due_date) return false;
+      const dueAt = new Date(request.due_date).getTime();
+      const now = Date.now();
+      const threeDays = 1000 * 60 * 60 * 24 * 3;
+      return dueAt >= now && dueAt <= now + threeDays;
+    }).length,
+    activeFilters: [
+      filterValue.trim(),
+      projectId,
+      statusFilter,
+      fromDate,
+      toDate,
+      viewMode === 'team' ? 'team' : '',
+    ].filter(Boolean).length,
+  };
 
   // j/k keyboard shortcuts for list navigation (j=down, k=up, Enter=open)
   const sortedRequestsRef = useRef<PRRequest[]>([]);
@@ -795,33 +815,102 @@ export default function History() {
         <title>History - Infrastructure Portal</title>
       </Head>
       <div className="history-page">
-        <div className="history-page__header">
-          <h1 className="page-header__title">PR Request History</h1>
-          {recentIds.length > 0 && (
-            <div className="history-recent" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Recent:</span>
-              {recentIds.map((id) => (
-                <button
-                  key={id}
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => openDetail({ id } as PRRequest)}
-                  title={`Open ticket #${id}`}
-                >
-                  #{id}
-                </button>
-              ))}
+        <section className="history-command-hero">
+          <div className="history-command-hero__content">
+            <span className="portal-page__eyebrow">Request history</span>
+            <h1 className="page-header__title">PR Request History</h1>
+            <p className="portal-page__subtitle">
+              Track every infrastructure request, reopen recent tickets quickly, and keep your operating view aligned across projects, dates, and approval stages.
+            </p>
+            <div className="history-command-hero__chips">
+              <span className="history-command-hero__chip">
+                {viewMode === 'team' ? 'Group tickets' : 'My tickets'}
+              </span>
+              <span className="history-command-hero__chip">
+                {totalCount} request{totalCount === 1 ? '' : 's'} in scope
+              </span>
+              {historySummary.activeFilters > 0 ? (
+                <span className="history-command-hero__chip">
+                  {historySummary.activeFilters} active filter{historySummary.activeFilters === 1 ? '' : 's'}
+                </span>
+              ) : (
+                <span className="history-command-hero__chip">Full request queue</span>
+              )}
             </div>
-          )}
-          <div className="history-page__actions">
-            <button onClick={handleRefresh} className="btn btn-secondary" disabled={loading} title="Refresh">
-              🔄 Refresh
-            </button>
-            <button onClick={exportCSV} className="btn btn-secondary" disabled={loading}>
-              📥 Export CSV
-            </button>
+            <div className="history-command-hero__actions">
+              <button onClick={handleRefresh} className="btn btn-secondary" disabled={loading} title="Refresh">
+                Refresh queue
+              </button>
+              <button onClick={exportCSV} className="btn btn-secondary" disabled={loading}>
+                Export CSV
+              </button>
+            </div>
           </div>
-        </div>
+          <div className="history-command-hero__rail">
+            <article className="history-command-hero__summary">
+              <span className="portal-surface__eyebrow">Queue summary</span>
+              <strong>{totalCount}</strong>
+              <p>
+                Requests currently visible in this workspace. Use the filters below to narrow by project, status, date, or ticket ownership.
+              </p>
+              <div className="history-command-hero__metrics">
+                <div>
+                  <span>Open</span>
+                  <strong>{historySummary.open}</strong>
+                </div>
+                <div>
+                  <span>Drafts</span>
+                  <strong>{historySummary.drafts}</strong>
+                </div>
+                <div>
+                  <span>Due soon</span>
+                  <strong>{historySummary.dueSoon}</strong>
+                </div>
+              </div>
+            </article>
+            <article className="history-command-hero__recent">
+              <div className="history-command-hero__recent-top">
+                <div>
+                  <span className="portal-surface__eyebrow">Quick access</span>
+                  <strong>Recent tickets</strong>
+                </div>
+                {latestVisibleRequest ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => openDetail(latestVisibleRequest)}
+                  >
+                    Open latest
+                  </button>
+                ) : null}
+              </div>
+              {recentIds.length > 0 ? (
+                <div className="history-command-hero__recent-actions">
+                  {recentIds.map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => openDetail({ id } as PRRequest)}
+                      title={`Open ticket #${id}`}
+                    >
+                      #{id}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="history-command-hero__recent-empty">
+                  Open a request once and it will stay pinned here as a quick jump back into the queue.
+                </p>
+              )}
+              {latestVisibleRequest ? (
+                <p className="history-command-hero__recent-note">
+                  Latest visible request: <strong>#{latestVisibleRequest.id}</strong> · {latestVisibleRequest.team} · {latestVisibleRequest.status}
+                </p>
+              ) : null}
+            </article>
+          </div>
+        </section>
 
         {/* Filter Box */}
         <div className="card history-filter-card">

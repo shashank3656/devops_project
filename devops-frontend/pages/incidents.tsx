@@ -222,6 +222,13 @@ export default function DevOpsIncidentsPage() {
   const hasActiveFilters = Boolean(
     activeProjectID || activeRequestID || activeSeverityFilter || activeStatusFilter || activeEnvironmentFilter,
   );
+  const incidentSummary = useMemo(() => ({
+    open: filteredIncidents.filter((incident) => ['open', 'investigating', 'mitigating'].includes(incident.status)).length,
+    critical: filteredIncidents.filter((incident) => incident.severity === 'critical').length,
+    drafts: filteredIncidents.filter((incident) => incident.status === 'draft').length,
+    assigned: filteredIncidents.filter((incident) => Boolean(incident.owner_username)).length,
+  }), [filteredIncidents]);
+  const featuredIncident = filteredIncidents[0] ?? null;
 
   const loadData = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -355,20 +362,87 @@ export default function DevOpsIncidentsPage() {
         <title>Incident Panel - DevOps Portal</title>
       </Head>
       <div className="portal-page">
-        <div className="portal-page__header">
-          <div>
-            <span className="portal-page__eyebrow">Operations Control</span>
-            <h1 className="portal-page__title">Incident / Escalation Panel</h1>
-            <p className="portal-page__subtitle">
-              Link requests to incidents, assign severity and escalation level, and track who owns the operational response.
-            </p>
+        <section className="portal-surface incident-command-hero">
+          <div className="incident-command-hero__content">
+            <div>
+              <span className="portal-page__eyebrow">Operations Control</span>
+              <h1 className="portal-page__title">Incident / Escalation Panel</h1>
+              <p className="portal-page__subtitle">
+                Link requests to incidents, assign severity and escalation level, and track who owns the operational response.
+              </p>
+            </div>
+            <div className="incident-command-hero__chips">
+              <span className="portal-pill">{filteredIncidents.length} incidents in scope</span>
+              <span className="portal-pill">{selectedTeamMembers.length} assignable responders</span>
+              {hasActiveFilters ? <span className="portal-pill">Filtered queue active</span> : <span className="portal-pill">Full response queue</span>}
+            </div>
+            <div className="portal-page__actions">
+              <button type="button" className="btn btn-secondary" onClick={exportIncidents} disabled={filteredIncidents.length === 0}>
+                Export CSV
+              </button>
+            </div>
           </div>
-          <div className="portal-page__actions">
-            <button type="button" className="btn btn-secondary" onClick={exportIncidents} disabled={filteredIncidents.length === 0}>
-              Export CSV
-            </button>
+          <div className="incident-command-hero__rail">
+            <article className="incident-command-hero__summary-card">
+              <span className="portal-surface__eyebrow">Response summary</span>
+              <strong>{incidentSummary.open}</strong>
+              <p>Open incidents currently requiring active coordination or mitigation.</p>
+              <div className="incident-command-hero__metrics">
+                <div>
+                  <span>Critical</span>
+                  <strong>{incidentSummary.critical}</strong>
+                </div>
+                <div>
+                  <span>Drafts</span>
+                  <strong>{incidentSummary.drafts}</strong>
+                </div>
+                <div>
+                  <span>Assigned</span>
+                  <strong>{incidentSummary.assigned}</strong>
+                </div>
+              </div>
+            </article>
+            <article className="incident-command-hero__spotlight-card">
+              <span className="portal-surface__eyebrow">Operator spotlight</span>
+              {featuredIncident ? (
+                <>
+                  <strong className="incident-command-hero__spotlight-title">
+                    {featuredIncident.incident_number || `INC${String(featuredIncident.id).padStart(7, '0')}`}
+                  </strong>
+                  <p>
+                    {featuredIncident.summary || `${featuredIncident.request_service || 'Service'} escalation`} · {featuredIncident.severity} · {featuredIncident.status}
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      const matchedTeam =
+                        featuredIncident.team_id
+                          ? String(featuredIncident.team_id)
+                          : String(
+                              teams.find((team) => team.name === featuredIncident.request_team || team.slug === featuredIncident.request_team)?.id || '',
+                            );
+                      setEditingId(featuredIncident.id);
+                      setCurrentIncidentNumber(featuredIncident.incident_number || `INC${String(featuredIncident.id).padStart(7, '0')}`);
+                      setRequestId(String(featuredIncident.request_id));
+                      setTeamId(matchedTeam);
+                      setSeverity(featuredIncident.severity);
+                      setStatus(featuredIncident.status);
+                      setEscalationLevel(featuredIncident.escalation_level);
+                      setOwnerUserId(featuredIncident.owner_user_id ? String(featuredIncident.owner_user_id) : '');
+                      setSummary(featuredIncident.summary);
+                      setNotes(featuredIncident.notes);
+                    }}
+                  >
+                    Open in editor
+                  </button>
+                </>
+              ) : (
+                <p>No incidents are currently loaded in this response queue.</p>
+              )}
+            </article>
           </div>
-        </div>
+        </section>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
