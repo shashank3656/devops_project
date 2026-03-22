@@ -79,7 +79,7 @@ jobs:
         run: go mod download
 
       - name: Run SonarQube scan
-        uses: SonarSource/sonarqube-scan-action@v4
+        uses: SonarSource/sonarqube-scan-action@v6
         with:
           args: >
             -Dproject.settings=.github/action/sonar-project.properties
