@@ -1,0 +1,39 @@
+commonLabels:
+  environment: prod
+
+imagePullSecrets:
+  - name: ghcr-credentials
+
+backend:
+  replicaCount: 2
+  env:
+    APP_ENV: prod
+    BASE_BRANCH: master
+    OTEL_SERVICE_ENV: prod
+
+frontends:
+  user:
+    replicaCount: 2
+    ingress:
+      host: portal.example.com
+    env:
+      NEXT_PUBLIC_API_URL: https://api.example.com
+  admin:
+    replicaCount: 2
+    ingress:
+      host: admin.example.com
+    env:
+      NEXT_PUBLIC_API_URL: https://api.example.com
+  devops:
+    replicaCount: 2
+    ingress:
+      host: devops.example.com
+    env:
+      NEXT_PUBLIC_API_URL: https://api.example.com
+
+ingress:
+  frontend:
+    className: nginx
+  backend:
+    className: nginx
+    host: api.example.com

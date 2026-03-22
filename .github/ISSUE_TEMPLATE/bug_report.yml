@@ -1,0 +1,73 @@
+name: Bug report
+description: Report a reproducible bug in InfraGate
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please include enough detail for someone else to reproduce and validate it.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is broken?
+      placeholder: A short description of the issue.
+    validations:
+      required: true
+  - type: dropdown
+    id: affected_area
+    attributes:
+      label: Affected area
+      options:
+        - User Portal
+        - Admin Portal
+        - DevOps Portal
+        - Backend API
+        - Helm / Kubernetes
+        - Docker Compose
+        - CI/CD
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the exact steps to reproduce the issue.
+      placeholder: |
+        1. Open ...
+        2. Click ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, screenshots, or error output
+      description: Paste logs or add screenshots when relevant. Do not include secrets.
+      render: shell
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment details
+      description: Include deployment style, browser, OS, or runtime details.
+      placeholder: |
+        - Deployment: Docker Compose / Helm
+        - Browser:
+        - Node/Go version:
+        - Cluster/OS:

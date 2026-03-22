@@ -1,0 +1,71 @@
+{{- range $name, $frontend := .Values.frontends }}
+{{- if $frontend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "infragate.frontend.fullname" (dict "root" $ "name" $name) }}
+  labels:
+    {{- include "infragate.componentLabels" (dict "root" $ "component" $name) | nindent 4 }}
+spec:
+  replicas: {{ $frontend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "infragate.componentSelectorLabels" (dict "root" $ "component" $name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "infragate.componentSelectorLabels" (dict "root" $ "component" $name) | nindent 8 }}
+      {{- with $frontend.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: "{{ $frontend.image.repository }}:{{ $frontend.image.tag }}"
+          imagePullPolicy: {{ $frontend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $frontend.service.targetPort }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "infragate.frontend.fullname" (dict "root" $ "name" $name) }}-config
+            {{- if gt (len $frontend.secretEnv) 0 }}
+            - secretRef:
+                name: {{ include "infragate.frontend.fullname" (dict "root" $ "name" $name) }}-secret
+            {{- end }}
+          {{- with $frontend.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $frontend.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $frontend.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $frontend.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with $frontend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $frontend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $frontend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+{{- end }}
+{{- end }}

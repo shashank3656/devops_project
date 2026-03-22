@@ -1,0 +1,39 @@
+commonLabels:
+  environment: uat
+
+imagePullSecrets:
+  - name: ghcr-credentials
+
+backend:
+  replicaCount: 1
+  env:
+    APP_ENV: uat
+    BASE_BRANCH: uat
+    OTEL_SERVICE_ENV: uat
+
+frontends:
+  user:
+    replicaCount: 1
+    ingress:
+      host: portal-uat.example.com
+    env:
+      NEXT_PUBLIC_API_URL: https://api-uat.example.com
+  admin:
+    replicaCount: 1
+    ingress:
+      host: admin-uat.example.com
+    env:
+      NEXT_PUBLIC_API_URL: https://api-uat.example.com
+  devops:
+    replicaCount: 1
+    ingress:
+      host: devops-uat.example.com
+    env:
+      NEXT_PUBLIC_API_URL: https://api-uat.example.com
+
+ingress:
+  frontend:
+    className: nginx
+  backend:
+    className: nginx
+    host: api-uat.example.com

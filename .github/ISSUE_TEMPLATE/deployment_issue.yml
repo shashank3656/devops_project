@@ -1,0 +1,47 @@
+name: Deployment issue
+description: Report a problem with Docker Compose, Helm, or CI/CD deployment
+title: "[Deployment] "
+labels:
+  - deployment
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For deployment issues, please include the deployment style and the exact failing command or workflow step.
+  - type: dropdown
+    id: deployment_style
+    attributes:
+      label: Deployment style
+      options:
+        - Docker Compose
+        - Helm on Kubernetes
+        - GitHub Actions / CI-CD
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Failing command or workflow
+      description: Include the command, workflow name, or step name that failed.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: error_output
+    attributes:
+      label: Error output
+      description: Paste the exact error message. Remove secrets before submitting.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment details
+      description: Include namespace, ingress hosts, chart values context, or Docker/cluster version as relevant.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Add anything else that would help someone reproduce or debug this.

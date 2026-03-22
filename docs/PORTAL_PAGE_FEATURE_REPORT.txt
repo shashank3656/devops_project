@@ -1,0 +1,933 @@
+InfraGate Portal Page and Feature Report
+Generated: 2026-03-22
+
+Scope
+- This report covers all page files found under:
+  - frontend/pages
+  - admin-frontend/pages
+  - devops-frontend/pages
+- It is intended as a route-by-route feature inventory for product review, release review, and onboarding.
+
+Legend
+- Shell: application bootstrap or document wrapper
+- Entry/Auth: login, redirect, password reset, verification, auth-routing pages
+- Navigation: page is part of a normal portal workflow and is intended for users to visit directly
+- Detail/Action: a feature page focused on a specific record or operation
+- Redirect/Internal: route exists but immediately redirects or acts as an internal runtime endpoint
+
+======================================================================
+1. USER PORTAL
+======================================================================
+
+Portal purpose
+- Self-service request intake
+- Template-based request creation
+- Project/team visibility for end users
+- Assigned incident visibility
+- Request history and notification-driven updates
+
+Primary navigation pages exposed through the user portal shell
+- /home
+- /create-infrastructure
+- /templates
+- /my-projects
+- /history
+- /incidents
+- /my-teams
+- /profile
+
+Route inventory
+
+1. File: frontend/pages/_app.tsx
+   Route: framework shell
+   Type: Shell
+   Features:
+   - global app bootstrap for the user portal
+   - shared providers, theme behavior, and layout-level wiring
+   - shared toast and portal-wide UI behavior
+
+2. File: frontend/pages/_document.tsx
+   Route: framework document
+   Type: Shell
+   Features:
+   - custom HTML document wrapper
+   - top-level document and body structure for the user portal
+
+3. File: frontend/pages/index.tsx
+   Route: /
+   Type: Entry/Auth
+   Features:
+   - checks client auth state
+   - redirects authenticated users to /home
+   - redirects unauthenticated users to /login
+
+4. File: frontend/pages/auth.tsx
+   Route: /auth
+   Type: Redirect/Internal
+   Features:
+   - legacy auth route
+   - currently redirects users to /login
+   - sign-up is intentionally not handled here anymore
+
+5. File: frontend/pages/login.tsx
+   Route: /login
+   Type: Entry/Auth
+   Features:
+   - user sign-in
+   - token/session bootstrap
+   - handles auth response, OTP/testing flows where applicable
+   - redirects into the user portal after successful login
+
+6. File: frontend/pages/signup.tsx
+   Route: /signup
+   Type: Entry/Auth
+   Features:
+   - user account registration
+   - new account onboarding entry for the portal
+   - works with verification flow after account creation
+
+7. File: frontend/pages/forgot-password.tsx
+   Route: /forgot-password
+   Type: Entry/Auth
+   Features:
+   - starts password reset flow
+   - sends reset initiation request to backend
+
+8. File: frontend/pages/reset-password.tsx
+   Route: /reset-password
+   Type: Entry/Auth
+   Features:
+   - completes password reset flow
+   - accepts reset token and new password
+
+9. File: frontend/pages/verify-email.tsx
+   Route: /verify-email
+   Type: Entry/Auth
+   Features:
+   - email verification completion route
+   - validates verification token and confirms the account
+
+10. File: frontend/pages/verify-required.tsx
+    Route: /verify-required
+    Type: Entry/Auth
+    Features:
+    - informs the user that verification is required before continuing
+    - acts as a gated step in the auth lifecycle
+
+11. File: frontend/pages/home.tsx
+    Route: /home
+    Type: Navigation
+    Features:
+    - user dashboard landing page
+    - summary of user-facing actions and recent portal activity
+    - quick entry into request and project workflows
+
+12. File: frontend/pages/create-infrastructure.tsx
+    Route: /create-infrastructure
+    Type: Navigation
+    Features:
+    - landing page for new request creation
+    - lets the user choose request type
+    - branches into IAM versus infrastructure flows
+
+13. File: frontend/pages/create-infrastructure/iam.tsx
+    Route: /create-infrastructure/iam
+    Type: Navigation
+    Features:
+    - cloud selection page for IAM-related requests
+    - sends users into the service selection flow with IAM context
+
+14. File: frontend/pages/create-infrastructure/new.tsx
+    Route: /create-infrastructure/new
+    Type: Navigation
+    Features:
+    - modern “new infrastructure request” starting point
+    - lists saved configs
+    - lists accessible projects
+    - helps the user resume or start a structured request journey
+
+15. File: frontend/pages/select-service.tsx
+    Route: /select-service
+    Type: Navigation
+    Features:
+    - core request creation page for structured requests
+    - project selection
+    - team selection
+    - environment selection
+    - due date selection
+    - service-specific form rendering
+    - cloud and service selection
+    - client name and notes capture
+
+16. File: frontend/pages/custom-json.tsx
+    Route: /custom-json
+    Type: Navigation
+    Features:
+    - advanced request page for raw/custom configuration submission
+    - supports project/team/env/due date inputs
+    - captures free-form JSON request payloads
+    - useful for non-standard or highly custom requests
+
+17. File: frontend/pages/aws.tsx
+    Route: /aws
+    Type: Detail/Action
+    Features:
+    - simpler AWS-specific request page
+    - direct team/env/service request creation for AWS services
+    - appears to support a more compact legacy/new-user path
+
+18. File: frontend/pages/templates.tsx
+    Route: /templates
+    Type: Navigation
+    Features:
+    - list of request templates available to the user
+    - template discovery and quick reuse
+
+19. File: frontend/pages/templates/[id].tsx
+    Route: /templates/[id]
+    Type: Detail/Action
+    Features:
+    - template detail view
+    - inspect template configuration before using it
+    - launch a request from a chosen template
+
+20. File: frontend/pages/my-projects.tsx
+    Route: /my-projects
+    Type: Navigation
+    Features:
+    - list of projects available to the logged-in user
+    - project ownership/access visibility
+
+21. File: frontend/pages/my-projects/[id].tsx
+    Route: /my-projects/[id]
+    Type: Detail/Action
+    Features:
+    - project detail page for an assigned project
+    - project metadata, environments, allowed services, and context
+    - helps the user understand what they can request against that project
+
+22. File: frontend/pages/my-teams.tsx
+    Route: /my-teams
+    Type: Navigation
+    Features:
+    - user’s team memberships
+    - team-level visibility and context for request workflows
+
+23. File: frontend/pages/history.tsx
+    Route: /history
+    Type: Navigation
+    Features:
+    - request history for the logged-in user
+    - request status tracking
+    - detail drill-downs
+    - comments and request lifecycle follow-up
+    - acts as the main destination for notification-related history
+
+24. File: frontend/pages/incidents.tsx
+    Route: /incidents
+    Type: Navigation
+    Features:
+    - assigned incident list for portal users
+    - user-side visibility into incidents linked to them
+    - incident reference display using INC-style numbering
+
+25. File: frontend/pages/profile.tsx
+    Route: /profile
+    Type: Navigation
+    Features:
+    - user profile and account details
+    - personal information and self-visibility controls
+
+26. File: frontend/pages/request-success.tsx
+    Route: /request-success
+    Type: Detail/Action
+    Features:
+    - confirmation screen after successful request creation
+    - summarises that the request was accepted
+
+27. File: frontend/pages/notifications.tsx
+    Route: /notifications
+    Type: Redirect/Internal
+    Features:
+    - legacy/compatibility route
+    - redirects to /history
+    - notifications are now primarily drawer-based, not page-based
+
+======================================================================
+2. ADMIN PORTAL
+======================================================================
+
+Portal purpose
+- Administrative governance
+- User and team management
+- Approval and review workflows
+- Project governance and operational oversight for admins
+
+Primary navigation pages exposed through the admin portal shell
+- /dashboard
+- /approval-center
+- /project-governance
+- /requests
+- /sla
+- /teams
+- /team-ownership
+- /users
+- /projects
+- /access-review
+- /activity
+- /templates
+- /webhooks
+- /profile
+
+Route inventory
+
+1. File: admin-frontend/pages/_app.tsx
+   Route: framework shell
+   Type: Shell
+   Features:
+   - global app bootstrap for the admin portal
+   - shared providers, theme, and shell behavior
+
+2. File: admin-frontend/pages/_document.tsx
+   Route: framework document
+   Type: Shell
+   Features:
+   - custom document wrapper for the admin portal
+
+3. File: admin-frontend/pages/index.tsx
+   Route: /
+   Type: Entry/Auth
+   Features:
+   - redirects logged-in admins to /dashboard
+   - redirects unauthenticated users to /login
+
+4. File: admin-frontend/pages/login.tsx
+   Route: /login
+   Type: Entry/Auth
+   Features:
+   - admin sign-in
+   - admin token/session bootstrap
+   - auth entry into the admin portal
+
+5. File: admin-frontend/pages/forgot-password.tsx
+   Route: /forgot-password
+   Type: Entry/Auth
+   Features:
+   - admin password reset initiation
+
+6. File: admin-frontend/pages/dashboard.tsx
+   Route: /dashboard
+   Type: Navigation
+   Features:
+   - admin summary dashboard
+   - high-level operational/governance visibility
+   - entry point into approval, request, and admin workflows
+
+7. File: admin-frontend/pages/approval-center.tsx
+   Route: /approval-center
+   Type: Navigation
+   Features:
+   - admin approval queue
+   - review and action on pending approvals
+   - governance control over request progression
+
+8. File: admin-frontend/pages/project-governance.tsx
+   Route: /project-governance
+   Type: Navigation
+   Features:
+   - project governance analytics
+   - project status/risk/lead-time style operational views
+   - CSV export for project governance data
+   - top projects, bottlenecks, and risk-oriented visibility
+
+9. File: admin-frontend/pages/requests.tsx
+   Route: /requests
+   Type: Navigation
+   Features:
+   - administrative request list
+   - filtering and review of all requests
+   - status-based governance and action handling
+   - likely the most detailed admin operations page for request management
+
+10. File: admin-frontend/pages/sla.tsx
+    Route: /sla
+    Type: Navigation
+    Features:
+    - SLA dashboard for approvals/requests
+    - timing and responsiveness visibility
+
+11. File: admin-frontend/pages/teams/index.tsx
+    Route: /teams
+    Type: Navigation
+    Features:
+    - team list page
+    - browse and manage teams
+    - navigate to create and detail/edit flows
+
+12. File: admin-frontend/pages/teams/new.tsx
+    Route: /teams/new
+    Type: Detail/Action
+    Features:
+    - create a new team
+    - define team identity and governance-relevant metadata
+
+13. File: admin-frontend/pages/teams/[id].tsx
+    Route: /teams/[id]
+    Type: Detail/Action
+    Features:
+    - team detail page
+    - member management
+    - team role updates
+    - default environment/cloud behavior
+    - add/remove members and manage ownership
+
+14. File: admin-frontend/pages/team-ownership.tsx
+    Route: /team-ownership
+    Type: Navigation
+    Features:
+    - team ownership review dashboard
+    - tracks owners, memberships, templates, request activity, and gaps
+    - helps identify teams needing action
+
+15. File: admin-frontend/pages/users/index.tsx
+    Route: /users
+    Type: Navigation
+    Features:
+    - user list page
+    - browse and manage portal/admin/devops users
+    - entry point for edit/new flows
+
+16. File: admin-frontend/pages/users/new.tsx
+    Route: /users/new
+    Type: Detail/Action
+    Features:
+    - create a new user
+    - standard admin-side user onboarding
+
+17. File: admin-frontend/pages/users/new-devops.tsx
+    Route: /users/new-devops
+    Type: Detail/Action
+    Features:
+    - create a new DevOps user specifically
+    - supports DevOps-role onboarding distinct from generic users
+
+18. File: admin-frontend/pages/users/[id]/edit.tsx
+    Route: /users/[id]/edit
+    Type: Detail/Action
+    Features:
+    - edit an existing user
+    - role, team, verification, profile, and onboarding-related updates
+
+19. File: admin-frontend/pages/projects.tsx
+    Route: /projects
+    Type: Navigation
+    Features:
+    - project catalog list
+    - admin project oversight and navigation into project details
+
+20. File: admin-frontend/pages/projects/[id].tsx
+    Route: /projects/[id]
+    Type: Detail/Action
+    Features:
+    - project detail view
+    - project metadata, team mapping, and admin governance actions
+    - likely used for project-level admin control
+
+21. File: admin-frontend/pages/access-review.tsx
+    Route: /access-review
+    Type: Navigation
+    Features:
+    - cross-user/team/project access review
+    - filter by user type, scope, and project
+    - helps audit who has access to what
+    - removal/review of access assignments
+
+22. File: admin-frontend/pages/activity.tsx
+    Route: /activity
+    Type: Navigation
+    Features:
+    - admin activity/audit timeline
+    - view operational/admin actions over time
+
+23. File: admin-frontend/pages/templates/index.tsx
+    Route: /templates
+    Type: Navigation
+    Features:
+    - template catalog for admins
+    - browse reusable request templates
+
+24. File: admin-frontend/pages/templates/new.tsx
+    Route: /templates/new
+    Type: Detail/Action
+    Features:
+    - create a new template
+    - define reusable request definitions for users and workflows
+
+25. File: admin-frontend/pages/templates/[id]/index.tsx
+    Route: /templates/[id]
+    Type: Detail/Action
+    Features:
+    - template detail page
+    - inspect a specific admin-managed template
+
+26. File: admin-frontend/pages/templates/[id]/edit.tsx
+    Route: /templates/[id]/edit
+    Type: Detail/Action
+    Features:
+    - edit an existing template
+    - update service request defaults and reusable request logic
+
+27. File: admin-frontend/pages/webhooks.tsx
+    Route: /webhooks
+    Type: Navigation
+    Features:
+    - manage or inspect webhook integrations
+    - operational/admin webhook visibility and controls
+
+28. File: admin-frontend/pages/profile.tsx
+    Route: /profile
+    Type: Navigation
+    Features:
+    - admin profile page
+    - personal admin account details
+
+29. File: admin-frontend/pages/notifications.tsx
+    Route: /notifications
+    Type: Redirect/Internal
+    Features:
+    - legacy/compatibility route
+    - redirects to /requests
+    - notifications are now handled primarily in the admin drawer/topbar workflow
+
+======================================================================
+3. DEVOPS PORTAL
+======================================================================
+
+Portal purpose
+- Change safety and release operations
+- Deployment gates and approvals
+- K8s health, drift, expiry, dependency, and risk visibility
+- Incident handling, rollback, and operational control
+
+Primary navigation pages exposed through the DevOps portal shell
+- Always available:
+  - /dashboard
+  - /k8s
+- Manager-oriented navigation (enabled when applicable):
+  - /approval-center
+  - /approval-sla
+  - /change-calendar
+  - /project-operations
+  - /service-heatmap
+  - /change-risk
+  - /environment-drift
+  - /ops-command-center
+  - /project-dependencies
+  - /runbooks
+  - /incidents
+  - /access-overrides
+  - /promotions
+  - /rollback-console
+  - /gate-approvals
+  - /gate-policies
+  - /notification-settings
+  - /approval-notification-analytics
+  - /retry-center
+  - /workload
+  - /tickets
+  - /templates
+  - /projects
+  - /team
+  - /credential-audit
+  - /profile
+
+Route inventory
+
+1. File: devops-frontend/pages/_app.tsx
+   Route: framework shell
+   Type: Shell
+   Features:
+   - global app bootstrap for the DevOps portal
+   - providers, theme, and shared shell behavior
+
+2. File: devops-frontend/pages/_document.tsx
+   Route: framework document
+   Type: Shell
+   Features:
+   - custom document wrapper for the DevOps portal
+
+3. File: devops-frontend/pages/index.tsx
+   Route: /
+   Type: Entry/Auth
+   Features:
+   - redirects authenticated users to /dashboard
+   - redirects unauthenticated users to /login
+
+4. File: devops-frontend/pages/login.tsx
+   Route: /login
+   Type: Entry/Auth
+   Features:
+   - DevOps user sign-in
+   - token/session bootstrap for the DevOps portal
+
+5. File: devops-frontend/pages/forgot-password.tsx
+   Route: /forgot-password
+   Type: Entry/Auth
+   Features:
+   - starts password reset flow for DevOps users
+
+6. File: devops-frontend/pages/reset-password.tsx
+   Route: /reset-password
+   Type: Entry/Auth
+   Features:
+   - completes password reset flow for DevOps users
+
+7. File: devops-frontend/pages/verify-required.tsx
+   Route: /verify-required
+   Type: Entry/Auth
+   Features:
+   - verification gate route for DevOps access
+
+8. File: devops-frontend/pages/dashboard.tsx
+   Route: /dashboard
+   Type: Navigation
+   Features:
+   - DevOps dashboard landing page
+   - operational summary and quick-entry page
+
+9. File: devops-frontend/pages/approval-center.tsx
+   Route: /approval-center
+   Type: Navigation
+   Features:
+   - DevOps approval queue
+   - operational review and action on approvals from a DevOps perspective
+
+10. File: devops-frontend/pages/approval-sla.tsx
+    Route: /approval-sla
+    Type: Navigation
+    Features:
+    - SLA configuration/visibility for approval workflows
+    - timing thresholds and approval response expectations
+
+11. File: devops-frontend/pages/change-calendar.tsx
+    Route: /change-calendar
+    Type: Navigation
+    Features:
+    - change calendar / blackout / scheduling view
+    - release/change timing context
+
+12. File: devops-frontend/pages/project-operations.tsx
+    Route: /project-operations
+    Type: Navigation
+    Features:
+    - project operations analytics
+    - environment, cloud, service, and risk-oriented operational summaries
+    - lead-time and bottleneck style views
+
+13. File: devops-frontend/pages/service-heatmap.tsx
+    Route: /service-heatmap
+    Type: Navigation
+    Features:
+    - service distribution/heatmap analytics across projects
+    - service intensity and pending/request concentration by project
+
+14. File: devops-frontend/pages/change-risk.tsx
+    Route: /change-risk
+    Type: Navigation
+    Features:
+    - deployment/change risk scoring view
+    - helps approvers understand risk before action
+
+15. File: devops-frontend/pages/environment-drift.tsx
+    Route: /environment-drift
+    Type: Navigation
+    Features:
+    - environment drift detection
+    - compares expected versus actual differences across environments
+    - highlights mismatches in services, variables, versions, and secret references
+
+16. File: devops-frontend/pages/ops-command-center.tsx
+    Route: /ops-command-center
+    Type: Navigation
+    Features:
+    - operational command page for urgent work
+    - failed jobs
+    - stuck approvals
+    - unhealthy workloads
+    - expiring secrets/certs
+    - incident-linked projects
+    - retry-required tasks
+    - filters, saved views, and export-oriented review
+
+17. File: devops-frontend/pages/project-dependencies.tsx
+    Route: /project-dependencies
+    Type: Navigation
+    Features:
+    - dependency map across projects and operational units
+    - project/service/cluster/namespace relationship visibility
+    - impact-analysis support before change
+
+18. File: devops-frontend/pages/k8s.tsx
+    Route: /k8s
+    Type: Navigation
+    Features:
+    - K8s dashboard
+    - workload health summary
+    - unhealthy namespace visibility
+    - workload spotlighting
+    - drill-down actions into related operations
+
+19. File: devops-frontend/pages/runbooks.tsx
+    Route: /runbooks
+    Type: Navigation
+    Features:
+    - runbook catalog/workspace
+    - operational guidance and remediation reference for DevOps workflows
+
+20. File: devops-frontend/pages/incidents.tsx
+    Route: /incidents
+    Type: Navigation
+    Features:
+    - incident management list/editor
+    - draft and submit incident flows
+    - team selection
+    - team member assignment
+    - visible incident number in INC-style format
+
+21. File: devops-frontend/pages/incident-workspace.tsx
+    Route: /incident-workspace
+    Type: Navigation
+    Features:
+    - deeper incident workspace
+    - timeline, postmortem, and linked workflow handling
+    - incident review and follow-up coordination
+
+22. File: devops-frontend/pages/access-overrides.tsx
+    Route: /access-overrides
+    Type: Navigation
+    Features:
+    - temporary access override management
+    - elevated access operational review and control
+
+23. File: devops-frontend/pages/promotions.tsx
+    Route: /promotions
+    Type: Navigation
+    Features:
+    - promotion center
+    - release candidate review
+    - deployment gate evaluation
+    - approve gate / revoke gate / promote workflow
+
+24. File: devops-frontend/pages/rollback-console.tsx
+    Route: /rollback-console
+    Type: Navigation
+    Features:
+    - rollback operations console
+    - version selection, reason capture, audit visibility, rollback workflow support
+
+25. File: devops-frontend/pages/gate-approvals.tsx
+    Route: /gate-approvals
+    Type: Navigation
+    Features:
+    - gate approval audit page
+    - approval history
+    - revocations
+    - expiry windows
+    - filtering and export
+
+26. File: devops-frontend/pages/gate-policies.tsx
+    Route: /gate-policies
+    Type: Navigation
+    Features:
+    - gate policy management
+    - operational control of deployment gate rules and policy views
+
+27. File: devops-frontend/pages/notification-settings.tsx
+    Route: /notification-settings
+    Type: Navigation
+    Features:
+    - notification configuration UI
+    - Slack/Teams/webhook/email-related workflow configuration surface
+
+28. File: devops-frontend/pages/approval-notification-analytics.tsx
+    Route: /approval-notification-analytics
+    Type: Navigation
+    Features:
+    - approval and notification analytics dashboard
+    - operational insight into workflow events
+
+29. File: devops-frontend/pages/retry-center.tsx
+    Route: /retry-center
+    Type: Navigation
+    Features:
+    - central place to review and retry failed/recoverable operational tasks
+
+30. File: devops-frontend/pages/workload.tsx
+    Route: /workload
+    Type: Navigation
+    Features:
+    - team/workload operational visibility
+    - assignee-based workload and delivery tracking
+    - status/priority-based work management
+
+31. File: devops-frontend/pages/tickets.tsx
+    Route: /tickets
+    Type: Navigation
+    Features:
+    - detailed ticket/request operations list for DevOps users
+    - filterable status view
+    - request detail and lifecycle tracking
+
+32. File: devops-frontend/pages/projects.tsx
+    Route: /projects
+    Type: Navigation
+    Features:
+    - DevOps-side project catalog
+    - navigate into project operational detail
+
+33. File: devops-frontend/pages/projects/[id].tsx
+    Route: /projects/[id]
+    Type: Detail/Action
+    Features:
+    - project-wise release dashboard
+    - K8s preview
+    - expiry tracker preview
+    - project-level operational drill-downs into promotions, incidents, runbooks, K8s, and expiry views
+
+34. File: devops-frontend/pages/team.tsx
+    Route: /team
+    Type: Navigation
+    Features:
+    - DevOps team membership page
+    - view own teams
+    - add/manage team members for accessible teams
+
+35. File: devops-frontend/pages/templates/index.tsx
+    Route: /templates
+    Type: Navigation
+    Features:
+    - template catalog for DevOps workflows
+
+36. File: devops-frontend/pages/templates/new.tsx
+    Route: /templates/new
+    Type: Detail/Action
+    Features:
+    - create a new template from the DevOps portal
+
+37. File: devops-frontend/pages/templates/[id]/index.tsx
+    Route: /templates/[id]
+    Type: Detail/Action
+    Features:
+    - inspect one template in detail
+
+38. File: devops-frontend/pages/templates/[id]/edit.tsx
+    Route: /templates/[id]/edit
+    Type: Detail/Action
+    Features:
+    - edit a template from the DevOps portal
+
+39. File: devops-frontend/pages/gitops-control.tsx
+    Route: /gitops-control
+    Type: Navigation
+    Features:
+    - GitOps operational control page
+    - repository tree, GitOps workflow control, repo-oriented operations
+
+40. File: devops-frontend/pages/gitops-projects.tsx
+    Route: /gitops-projects
+    Type: Navigation
+    Features:
+    - project-level GitOps visibility
+    - GitOps project mapping/management workflows
+
+41. File: devops-frontend/pages/credential-audit.tsx
+    Route: /credential-audit
+    Type: Navigation
+    Features:
+    - secret and certificate expiry tracker
+    - rotation queue
+    - expiry alert workflow actions
+    - expiry watchlist and credential review windows
+
+42. File: devops-frontend/pages/profile.tsx
+    Route: /profile
+    Type: Navigation
+    Features:
+    - DevOps user profile page
+    - personal operational identity details
+
+43. File: devops-frontend/pages/notifications.tsx
+    Route: /notifications
+    Type: Redirect/Internal
+    Features:
+    - legacy/compatibility route
+    - redirects to /tickets
+    - notifications are handled primarily in the topbar/drawer flow
+
+44. File: devops-frontend/pages/api/config.ts
+    Route: /api/config
+    Type: Redirect/Internal
+    Features:
+    - runtime config endpoint for the DevOps frontend
+    - exposes client-consumable runtime configuration such as API URL behavior
+
+======================================================================
+4. CROSS-PORTAL NOTES
+======================================================================
+
+Notifications
+- The three portals now rely primarily on topbar/drawer notifications.
+- The standalone /notifications routes remain for compatibility but redirect:
+  - user portal -> /history
+  - admin portal -> /requests
+  - DevOps portal -> /tickets
+
+Incident numbering
+- Incident workflows expose ServiceNow-style numbering with INC-prefixed identifiers.
+- This is visible in:
+  - DevOps portal incident pages
+  - user portal incident views
+  - ops command center and incident workspace views
+
+Operational feature concentration
+- The DevOps portal contains most of the advanced operational features:
+  - gates
+  - promotions
+  - K8s health
+  - drift
+  - rollback
+  - risk
+  - command center
+  - notification analytics
+
+Administrative feature concentration
+- The admin portal contains most of the governance and lifecycle administration pages:
+  - users
+  - teams
+  - access review
+  - project governance
+  - requests and approvals
+
+User feature concentration
+- The user portal focuses on request creation and request follow-up:
+  - self-service requests
+  - templates
+  - project/team visibility
+  - history
+  - assigned incidents
+
+======================================================================
+5. SUMMARY
+======================================================================
+
+User Portal page files covered: 27
+Admin Portal page files covered: 29
+DevOps Portal page files covered: 44
+Total page files covered in this report: 100
+
+This report can be used for:
+- release review
+- documentation planning
+- portal rationalization
+- onboarding for contributors
+- feature inventory before public/open-source release
