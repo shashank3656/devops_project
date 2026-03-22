@@ -108,7 +108,7 @@ export default function UsersList() {
   return (
     <>
       <Head>
-        <title>Users - InfraGate Admin</title>
+        <title>Users - SetuOps Governance</title>
       </Head>
       <AdminLayout>
         <div className="portal-page">

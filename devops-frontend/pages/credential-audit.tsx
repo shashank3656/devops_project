@@ -272,7 +272,7 @@ export default function CredentialAuditPage() {
   return (
     <>
       <Head>
-        <title>Credential Audit - InfraGate DevOps</title>
+        <title>Credential Audit - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">

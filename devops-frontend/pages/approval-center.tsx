@@ -81,7 +81,7 @@ export default function DevOpsApprovalCenter() {
   return (
     <>
       <Head>
-        <title>Approval Center - InfraGate DevOps</title>
+        <title>Approval Center - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">

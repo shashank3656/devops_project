@@ -23,7 +23,7 @@ export default function IAMCloudSelect() {
   return (
     <>
       <Head>
-        <title>IAM - Select Cloud - InfraGate</title>
+        <title>IAM - Select Cloud - SetuOps</title>
         <meta name="description" content="Select a cloud for IAM" />
       </Head>
       <div style={{ padding: '40px 20px' }}>

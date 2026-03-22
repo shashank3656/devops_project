@@ -157,7 +157,7 @@ export default function ActivityPage() {
   return (
     <>
       <Head>
-        <title>Activity - InfraGate Admin</title>
+        <title>Activity - SetuOps Governance</title>
       </Head>
       <AdminLayout>
         <div className="portal-page portal-page--narrow">

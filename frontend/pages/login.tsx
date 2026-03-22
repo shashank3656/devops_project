@@ -42,11 +42,6 @@ export default function Login() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    localStorage.setItem('user-portal-theme', 'dark');
-  }, []);
-
-  useEffect(() => {
     fetch(`${apiUrl}/api/public/sso/options?portal=user`)
       .then((res) => (res.ok ? res.json() : null))
       .then((rawData) => {
@@ -200,27 +195,28 @@ export default function Login() {
   return (
     <>
       <Head>
-        <title>Login - {SITE_NAME}</title>
+        <title>Portal Sign-in - {SITE_NAME}</title>
       </Head>
-      <div className="login-page">
-        <div className="login-page__left">
-          <div className="login-page__brand">
-            <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">{SITE_NAME}</h1>
-            <p className="login-page__tagline">
-              Cloud-agnostic infrastructure management. Self-service requests for your team.
-            </p>
-          </div>
-          <div className="login-page__decor">
-            <div className="login-page__blob login-page__blob--1" />
-            <div className="login-page__blob login-page__blob--2" />
-            <div className="login-page__blob login-page__blob--3" />
-          </div>
-        </div>
-        <div className="login-page__right">
-          <div className="login-page__card">
-            <h2 className="login-page__card-title">Welcome back</h2>
-            <p className="login-page__card-subtitle">Sign in to your account</p>
+      <div className="login-page login-page--portal">
+        <div className="login-page__shell">
+          <header className="login-page__masthead">
+            <Link href="/login" className="login-page__wordmark">
+              <img src="/logo.svg" alt="" width={44} height={44} className="login-page__wordmark-logo" />
+              <div className="login-page__wordmark-copy">
+                <span className="login-page__brand-name">{SITE_NAME}</span>
+                <span className="login-page__brand-context">User Portal</span>
+              </div>
+            </Link>
+            <span className="login-page__portal-pill">User access</span>
+          </header>
+
+          <main className="login-page__stage">
+            <div className="login-page__card">
+              <p className="login-page__eyebrow">Portal Sign-in</p>
+              <h1 className="login-page__card-title">Portal Sign-in</h1>
+              <p className="login-page__card-subtitle">
+                Enter your credentials to access the SetuOps ecosystem.
+              </p>
             {error && (
               <div className="alert alert-error" role="alert">
                 {error}
@@ -233,14 +229,14 @@ export default function Login() {
             )}
             {pending2fa ? (
               <form onSubmit={handleVerify2FA}>
-                <p className="login-page__card-subtitle" style={{ marginBottom: '1rem' }}>
+                <p className="login-page__form-copy">
                   Enter the 6-digit code sent to your email
                 </p>
                 <div className="form-group">
-                  <label className="label" htmlFor="otp">Verification code</label>
+                  <label className="login-page__field-label" htmlFor="otp">Verification code</label>
                   <input
                     id="otp"
-                    className="input"
+                    className="input login-page__input"
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
@@ -254,7 +250,7 @@ export default function Login() {
                     placeholder="000000"
                   />
                 </div>
-                <button type="submit" className="btn btn-primary login-page__submit" disabled={loading || otp.length !== 6}>
+                <button type="submit" className="btn btn-primary login-page__submit login-page__submit--primary" disabled={loading || otp.length !== 6}>
                   {loading ? (
                     <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                       <span className="loading" style={{ width: 18, height: 18, borderWidth: 2 }} />
@@ -266,8 +262,7 @@ export default function Login() {
                 </button>
                 <button
                   type="button"
-                  className="btn btn-secondary"
-                  style={{ marginTop: '12px', width: '100%' }}
+                  className="btn btn-secondary login-page__submit login-page__submit--secondary"
                   onClick={() => { setPending2fa(null); setOtp(''); setError(''); }}
                   disabled={loading}
                 >
@@ -278,10 +273,10 @@ export default function Login() {
             <form onSubmit={handleSubmit}>
               {sso.enabled && (
                 <>
-                  <button type="button" className="btn btn-secondary login-page__submit" onClick={handleSSOLogin} disabled={loading}>
+                  <button type="button" className="btn btn-secondary login-page__submit login-page__submit--secondary" onClick={handleSSOLogin} disabled={loading}>
                     Continue with {providerLabel(sso.provider)}
                   </button>
-                  <p className="login-page__hint" style={{ marginTop: 12, marginBottom: 12 }}>
+                  <p className="login-page__form-copy" style={{ marginTop: 12, marginBottom: 12 }}>
                     {sso.mode === 'required' ? 'username/password login is disabled by policy' : 'or sign in with username and password'}
                   </p>
                 </>
@@ -293,10 +288,10 @@ export default function Login() {
               ) : (
                 <>
                   <div className="form-group">
-                    <label className="label" htmlFor="username">Username</label>
+                    <label className="login-page__field-label" htmlFor="username">Portal username</label>
                     <input
                       id="username"
-                      className="input"
+                      className="input login-page__input"
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
@@ -308,10 +303,13 @@ export default function Login() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="label" htmlFor="password">Password</label>
+                    <div className="login-page__field-label-row">
+                      <label className="login-page__field-label" htmlFor="password">Access key</label>
+                      <Link href="/forgot-password" className="login-page__field-link">Forgot password?</Link>
+                    </div>
                     <input
                       id="password"
-                      className="input"
+                      className="input login-page__input"
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -321,29 +319,48 @@ export default function Login() {
                       placeholder="••••••••"
                     />
                   </div>
-                  <button type="submit" className="btn btn-primary login-page__submit" disabled={loading}>
+                  <button type="submit" className="btn btn-primary login-page__submit login-page__submit--primary" disabled={loading}>
                     {loading ? (
                       <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                         <span className="loading" style={{ width: 18, height: 18, borderWidth: 2 }} />
                         Signing in…
                       </span>
                     ) : (
-                      'Sign in'
+                      'Initiate Session'
                     )}
                   </button>
                 </>
               )}
             </form>
             )}
-            {!pending2fa && (
-              <p style={{ marginTop: 12, fontSize: 13 }}>
-                <Link href="/forgot-password" style={{ color: 'var(--primary-color)', textDecoration: 'none' }}>Forgot password?</Link>
-              </p>
+            {!pending2fa && sso.enabled && sso.mode !== 'required' && (
+              <>
+                <div className="login-page__divider"><span>Or continue with identity provider</span></div>
+                <div className="login-page__provider-grid">
+                  <button type="button" className="login-page__provider-card" onClick={handleSSOLogin} disabled={loading}>
+                    <span className="login-page__provider-label">{providerLabel(sso.provider)}</span>
+                    <span className="login-page__provider-copy">Enterprise SSO</span>
+                  </button>
+                </div>
+              </>
             )}
+            <p className="login-page__trust-copy">
+              Trusted by platform teams, reviewers, and operators across shared infrastructure environments.
+            </p>
             <p className="login-page__hint">
               Contact your administrator for access. Sign-up is disabled.
             </p>
-          </div>
+            </div>
+          </main>
+          <footer className="login-page__footer">
+            <span>© {new Date().getFullYear()} SetuOps multi-portal suite.</span>
+            <div className="login-page__footer-links">
+              <span>Privacy</span>
+              <span>Security</span>
+              <span>Status</span>
+              <span>Support</span>
+            </div>
+          </footer>
         </div>
       </div>
     </>

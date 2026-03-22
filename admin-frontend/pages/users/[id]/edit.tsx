@@ -328,7 +328,7 @@ export default function EditUser() {
   return (
     <>
       <Head>
-        <title>Edit user - InfraGate Admin</title>
+        <title>Edit user - SetuOps Governance</title>
       </Head>
       <AdminLayout>
         <div className="container">

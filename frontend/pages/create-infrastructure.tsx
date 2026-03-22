@@ -16,7 +16,7 @@ export default function NewRequestLanding() {
   return (
     <>
       <Head>
-        <title>New Request - InfraGate</title>
+        <title>New Request - SetuOps</title>
         <meta name="description" content="Choose IAM or Create Infrastructure" />
       </Head>
       <div style={{ padding: '40px 20px', minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

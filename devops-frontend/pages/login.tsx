@@ -32,11 +32,6 @@ export default function DevOpsLogin() {
   const [sso, setSso] = useState<PublicSSOState>({ enabled: false, mode: 'disabled', provider: 'none', login_url: '' });
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    localStorage.setItem('infra-portal-theme', 'dark');
-  }, []);
-
-  useEffect(() => {
     fetch(`${apiUrl}/api/public/sso/options?portal=devops`)
       .then((res) => (res.ok ? res.json() : null))
       .then((rawData) => {
@@ -128,41 +123,32 @@ export default function DevOpsLogin() {
   return (
     <>
       <Head>
-        <title>Login - DevOps</title>
+        <title>Portal Sign-in - SetuOps DevOps</title>
       </Head>
-      <div className="login-page">
-        <div className="login-page__left">
-          <div className="login-page__brand">
-            <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">DevOps</h1>
-            <p className="login-page__tagline">
-              Approve and manage infrastructure requests. Users are created from the Admin portal.
+      <div className="login-page login-page--portal">
+        <div className="login-page__shell">
+          <header className="login-page__masthead">
+            <Link href="/login" className="login-page__wordmark">
+              <img src="/logo.svg" alt="" width={44} height={44} className="login-page__wordmark-logo" />
+              <div className="login-page__wordmark-copy">
+                <span className="login-page__brand-name">SetuOps</span>
+                <span className="login-page__brand-context">DevOps Portal</span>
+              </div>
+            </Link>
+            <span className="login-page__portal-pill">Command center</span>
+          </header>
+
+          <main className="login-page__stage">
+            <div className="login-page__card">
+            <p className="login-page__eyebrow">Portal Sign-in</p>
+            <h1 className="login-page__card-title">Portal Sign-in</h1>
+            <p className="login-page__card-subtitle">
+              Enter your credentials to access the SetuOps operational control plane.
             </p>
-          </div>
-          <div className="login-page__decor">
-            <div className="login-page__blob login-page__blob--1" />
-            <div className="login-page__blob login-page__blob--2" />
-            <div className="login-page__blob login-page__blob--3" />
-          </div>
-        </div>
-        <div className="login-page__right">
-          <div className="login-page__card">
-            <h2 className="login-page__card-title">Welcome back</h2>
-            <p className="login-page__card-subtitle">Sign in with your DevOps account</p>
             {error && (
               <div className="alert alert-error" role="alert">{error}</div>
             )}
             <form onSubmit={handleSubmit}>
-              {sso.enabled && (
-                <>
-                  <button type="button" className="btn btn-secondary login-page__submit" onClick={handleSSOLogin} disabled={loading}>
-                    Continue with {providerLabel(sso.provider)}
-                  </button>
-                  <p className="login-page__hint" style={{ marginTop: 12, marginBottom: 12 }}>
-                    {sso.mode === 'required' ? 'username/password login is disabled by policy' : 'or sign in with username and password'}
-                  </p>
-                </>
-              )}
               {sso.mode === 'required' ? (
                 <div className="alert alert-info" role="status" style={{ marginBottom: 12 }}>
                   Use SSO to continue.
@@ -170,10 +156,10 @@ export default function DevOpsLogin() {
               ) : (
                 <>
                   <div className="form-group">
-                    <label className="label" htmlFor="username">Username</label>
+                    <label className="login-page__field-label" htmlFor="username">DevOps username</label>
                     <input
                       id="username"
-                      className="input"
+                      className="input login-page__input"
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
@@ -183,10 +169,13 @@ export default function DevOpsLogin() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="label" htmlFor="password">Password</label>
+                    <div className="login-page__field-label-row">
+                      <label className="login-page__field-label" htmlFor="password">Access key</label>
+                      <Link href="/forgot-password" className="login-page__field-link">Forgot password?</Link>
+                    </div>
                     <input
                       id="password"
-                      className="input"
+                      className="input login-page__input"
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -194,21 +183,42 @@ export default function DevOpsLogin() {
                       placeholder="••••••••"
                     />
                   </div>
-                  <button type="submit" className="btn btn-primary login-page__submit" disabled={loading}>
-                    {loading ? 'Signing in…' : 'Sign in'}
+                  <button type="submit" className="btn btn-primary login-page__submit login-page__submit--primary" disabled={loading}>
+                    {loading ? 'Initiating…' : 'Initiate Session'}
                   </button>
                 </>
               )}
             </form>
-            <p className="login-page__hint" style={{ marginTop: 16 }}>
-              <Link href="/forgot-password" style={{ color: 'var(--color-primary)', textDecoration: 'none' }}>
-                Forgot password?
-              </Link>
+            {sso.enabled && (
+              <>
+                <div className="login-page__divider"><span>Or continue with identity provider</span></div>
+                <div className="login-page__provider-grid">
+                  <button type="button" className="login-page__provider-card" onClick={handleSSOLogin} disabled={loading || !sso.login_url}>
+                    <span className="login-page__provider-label">{providerLabel(sso.provider)}</span>
+                    <span className="login-page__provider-copy">
+                      {sso.mode === 'required' ? 'Required access path' : 'Enterprise SSO'}
+                    </span>
+                  </button>
+                </div>
+              </>
+            )}
+            <p className="login-page__trust-copy">
+              Run releases, triage incidents, and govern platform changes from one connected workspace.
             </p>
             <p className="login-page__hint">
               Users are created from the Admin portal.
             </p>
-          </div>
+            </div>
+          </main>
+          <footer className="login-page__footer">
+            <span>© {new Date().getFullYear()} SetuOps operations suite.</span>
+            <div className="login-page__footer-links">
+              <span>Privacy</span>
+              <span>Security</span>
+              <span>Status</span>
+              <span>Support</span>
+            </div>
+          </footer>
         </div>
       </div>
     </>

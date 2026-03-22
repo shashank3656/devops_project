@@ -327,7 +327,7 @@ export default function DevOpsWorkload() {
   return (
     <>
       <Head>
-        <title>Workload - InfraGate DevOps</title>
+        <title>Workload - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">

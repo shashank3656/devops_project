@@ -93,7 +93,7 @@ export default function AdminApprovalCenter() {
   return (
     <>
       <Head>
-        <title>Approval Center - InfraGate Admin</title>
+        <title>Approval Center - SetuOps Governance</title>
       </Head>
       <AdminLayout>
         <div className="portal-page">
