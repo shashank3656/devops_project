@@ -161,7 +161,7 @@ jobs:
           build-args: ${{ matrix.needs_api_url && format('NEXT_PUBLIC_API_URL={0}', steps.public-api.outputs.url) || '' }}
 
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: ${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}
           format: table
