@@ -211,8 +211,6 @@ export default function AdminDashboard() {
   const topProjectServices = (projectAnalytics?.service_request_distribution || []).slice(0, 5);
   const topProjectClouds = (projectAnalytics?.cloud_request_distribution || []).slice(0, 4);
   const topProjectRisks = projectAnalytics?.risk_distribution || [];
-  const riskSignalCount = quickStats?.at_risk_count || topProjectRisks.reduce((sum, item) => sum + item.count, 0);
-  const unverifiedUsers = quickStats?.unverified_users || 0;
 
   return (
     <>
@@ -221,63 +219,26 @@ export default function AdminDashboard() {
       </Head>
       <AdminLayout>
         <div className="portal-page">
-          <section className="portal-surface governance-hero">
-            <div className="governance-hero__content">
-              <div>
-                <span className="portal-page__eyebrow">Governance Console</span>
-                <h1 className="portal-page__title">Governance Overview</h1>
-                <p className="portal-page__subtitle">
-                  Review policy posture, approval load, project readiness, and admin operating pressure from one clean governance surface.
-                </p>
-                <div className="governance-hero__chips">
-                  <span className="portal-pill">{loading ? 'Syncing control surface' : `${projectSummary.total} projects in scope`}</span>
-                  <span className="portal-pill">{loading ? 'Loading review queue' : `${quickStats?.pending_approval || 0} approvals waiting`}</span>
-                  <span className="portal-pill">{loading ? 'Loading identities' : `${quickStats?.total_users || 0} governed identities`}</span>
-                </div>
-                <div className="portal-page__actions" style={{ marginTop: 18 }}>
-                  <Link href="/project-governance" className="btn btn-secondary">
-                    Project governance
-                  </Link>
-                  <Link href="/team-ownership" className="btn btn-secondary">
-                    Team ownership
-                  </Link>
-                  <Link href="/requests" className="btn btn-primary">
-                    Open requests
-                  </Link>
-                </div>
-              </div>
-
-              <aside className="governance-hero__rail">
-                <div className="governance-hero__summary-card">
-                  <span className="portal-page__eyebrow">Immediate review</span>
-                  <strong>{loading ? '...' : quickStats?.pending_approval || 0}</strong>
-                  <p>Requests still waiting on governance action before delivery can move.</p>
-                  <div className="governance-hero__summary-metrics">
-                    <div>
-                      <span>Unverified users</span>
-                      <strong>{loading ? '...' : unverifiedUsers}</strong>
-                    </div>
-                    <div>
-                      <span>Risk signals</span>
-                      <strong>{loading ? '...' : riskSignalCount}</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="governance-hero__spotlight-card">
-                  <span className="portal-page__eyebrow">Policy posture</span>
-                  <strong className="governance-hero__spotlight-title">
-                    {loading ? 'Loading governance snapshot' : `${projectSummary.ready} request-ready projects`}
-                  </strong>
-                  <p>
-                    {loading
-                      ? 'Collecting project readiness and user verification signals.'
-                      : `${projectSummary.needsSetup} active projects still need setup and ${unverifiedUsers} identities still need verification.`}
-                  </p>
-                </div>
-              </aside>
+          <div className="portal-page__header">
+            <div>
+              <span className="portal-page__eyebrow">Dashboard</span>
+              <h1 className="portal-page__title">Admin Dashboard</h1>
+              <p className="portal-page__subtitle">
+                Monitor request volume, approval pressure, team output, and SLA posture from one operational surface.
+              </p>
             </div>
-          </section>
+            <div className="portal-page__actions">
+              <Link href="/project-governance" className="btn btn-secondary">
+                Project governance
+              </Link>
+              <Link href="/team-ownership" className="btn btn-secondary">
+                Team ownership
+              </Link>
+              <Link href="/requests" className="btn btn-primary">
+                Open requests
+              </Link>
+            </div>
+          </div>
 
           <section className="portal-surface">
             <div className="portal-surface__header">

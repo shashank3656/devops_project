@@ -327,7 +327,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           {!sidebarCollapsed && (
             <Link href="/dashboard" className="admin-sidebar-shell__brand">
               <span className="admin-sidebar-shell__brand-word admin-sidebar-shell__brand-word--primary">SetuOps</span>
-              <span className="admin-sidebar-shell__brand-word">Governance</span>
+              <span className="admin-sidebar-shell__brand-word">Admin Portal</span>
             </Link>
           )}
         </div>

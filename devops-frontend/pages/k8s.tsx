@@ -733,8 +733,6 @@ export default function DevOpsK8sPage() {
     { key: 'service_accounts', label: 'ServiceAccount' },
     { key: 'configmaps', label: 'Configmaps' },
   ];
-  const k8sSpotlight = focusedDashboardView?.workload_spotlights[0] ?? null;
-  const connectedClusters = onboarding.connections.length;
 
   const handleApplyFilters = async () => {
     setHealthFocus('');
@@ -906,67 +904,19 @@ export default function DevOpsK8sPage() {
         <title>K8s - DevOps Portal</title>
       </Head>
       <div className="portal-page">
-        <section className="portal-surface k8s-command-hero">
-          <div className="k8s-command-hero__content">
-            <div>
-              <span className="portal-page__eyebrow">Project Kubernetes</span>
-              <h1 className="portal-page__title">K8s</h1>
-              <p className="portal-page__subtitle">
-                Onboard project-to-cluster mappings, then browse Kubernetes resources with filters for project name, cluster name, namespace, and environment.
-              </p>
-            </div>
-            <div className="k8s-command-hero__chips">
-              <span className="portal-pill">{viewMode === 'dashboard' ? 'Dashboard mode' : 'Onboarding mode'}</span>
-              <span className="portal-pill">{connectedClusters} connected cluster{connectedClusters === 1 ? '' : 's'}</span>
-              <span className="portal-pill">{dataSourceMode.toUpperCase()} · {resolution}</span>
-            </div>
-            <div className="portal-page__actions">
-              <Link href="/projects" className="btn btn-secondary">Projects</Link>
-              <Link href="/project-operations" className="btn btn-secondary">Project operations</Link>
-            </div>
+        <div className="portal-page__header">
+          <div>
+            <span className="portal-page__eyebrow">Project Kubernetes</span>
+            <h1 className="portal-page__title">K8s</h1>
+            <p className="portal-page__subtitle">
+              Onboard project-to-cluster mappings, then browse Kubernetes resources with filters for project name, cluster name, namespace, and environment.
+            </p>
           </div>
-          <div className="k8s-command-hero__rail">
-            <article className="k8s-command-hero__summary-card">
-              <span className="portal-surface__eyebrow">Cluster health</span>
-              <strong>{focusedDashboardView?.summary.deployment_count || 0}</strong>
-              <p>Deployments currently visible in the active K8s workspace.</p>
-              <div className="k8s-command-hero__metrics">
-                <div>
-                  <span>Namespaces</span>
-                  <strong>{focusedDashboardView?.summary.namespace_count || 0}</strong>
-                </div>
-                <div>
-                  <span>Pods</span>
-                  <strong>{focusedDashboardView?.summary.pod_count || 0}</strong>
-                </div>
-                <div>
-                  <span>Warnings</span>
-                  <strong>{focusedDashboardView?.summary.warning_event_count || 0}</strong>
-                </div>
-              </div>
-            </article>
-            <article className="k8s-command-hero__spotlight-card">
-              <span className="portal-surface__eyebrow">Workload spotlight</span>
-              {k8sSpotlight ? (
-                <>
-                  <strong className="k8s-command-hero__spotlight-title">{k8sSpotlight.name}</strong>
-                  <p>
-                    {k8sSpotlight.cluster_name} · {k8sSpotlight.namespace} · {k8sSpotlight.status}
-                  </p>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => void handleWorkloadDrilldown(k8sSpotlight, 'deployments')}
-                  >
-                    Open workload
-                  </button>
-                </>
-              ) : (
-                <p>Pick a project or cluster to surface the highest-priority workload context here.</p>
-              )}
-            </article>
+          <div className="portal-page__actions">
+            <Link href="/projects" className="btn btn-secondary">Projects</Link>
+            <Link href="/project-operations" className="btn btn-secondary">Project operations</Link>
           </div>
-        </section>
+        </div>
 
         <section className="portal-surface" style={{ marginBottom: 24 }}>
           <div className="portal-surface__header">

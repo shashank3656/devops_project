@@ -227,13 +227,6 @@ export default function Home() {
     if (bi >= 0) return 1;
     return a.localeCompare(b);
   });
-  const pendingRequests =
-    (stats?.by_status?.pending_approval || 0) +
-    (stats?.by_status?.pending_user_manager_approval || 0) +
-    (stats?.by_status?.pending_devops_approval || 0);
-  const completedRequests = stats?.by_status?.completed || 0;
-  const activeProjects = projects.filter((project) => project.ready_for_requests).length;
-  const latestRequest = onboardingProgress?.latest_request || null;
 
   const dismissOnboarding = () => {
     setShowOnboarding(false);
@@ -283,10 +276,10 @@ export default function Home() {
         <section className="portal-surface launchpad-hero">
           <div className="launchpad-hero__content">
             <div>
-              <span className="portal-page__eyebrow">User Workspace</span>
-              <h1 className="launchpad-hero__title">Welcome back to your infrastructure workspace</h1>
+              <span className="portal-page__eyebrow">Start Here</span>
+              <h1 className="launchpad-hero__title">Launch infrastructure requests with less guesswork</h1>
               <p className="launchpad-hero__subtitle">
-                Choose a starting path, capture the right delivery details once, and follow the request from approval through provisioning without leaving the portal.
+                Choose a starting path, fill in the right delivery details once, and follow the request from approval through provisioning without leaving the portal.
               </p>
               <div className="launchpad-action-grid" style={{ marginTop: 22 }}>
                 <Link href="/create-infrastructure/new" className="launchpad-action-card">
@@ -312,74 +305,27 @@ export default function Home() {
               </div>
             </div>
 
-            <aside className="launchpad-hero__stack">
-              <div className="launchpad-hero__pulse">
-                <span className="portal-page__eyebrow">Workspace signal</span>
-                <strong>{statsLoading ? '...' : totalRequests}</strong>
-                <p>Requests already tracked in your workspace.</p>
-                <div className="launchpad-hero__pulse-metrics">
-                  <div className="launchpad-hero__pulse-metric">
-                    <span>Pending review</span>
-                    <strong>{statsLoading ? '...' : pendingRequests}</strong>
-                  </div>
-                  <div className="launchpad-hero__pulse-metric">
-                    <span>Completed</span>
-                    <strong>{statsLoading ? '...' : completedRequests}</strong>
-                  </div>
-                  <div className="launchpad-hero__pulse-metric">
-                    <span>Active projects</span>
-                    <strong>{projectsLoading ? '...' : activeProjects}</strong>
-                  </div>
+            <aside className="launchpad-hero__pulse">
+              <span className="portal-page__eyebrow">First-Run Checklist</span>
+              <strong>{statsLoading ? '...' : totalRequests}</strong>
+              <p>Requests already tracked in your workspace.</p>
+              <div className="launchpad-tips" style={{ marginTop: 18 }}>
+                <div className="launchpad-tip">
+                  <strong>Choose the right path</strong>
+                  <p>Guided form for new work, template for standard work, JSON for advanced work.</p>
                 </div>
-              </div>
-
-              <div className="launchpad-hero__brief">
-                <div className="launchpad-hero__brief-top">
-                  <span className="portal-page__eyebrow">Latest request</span>
-                  {latestRequest && <span className="portal-pill">{latestRequest.status.replace(/_/g, ' ')}</span>}
+                <div className="launchpad-tip">
+                  <strong>Add review-ready details</strong>
+                  <p>Team, environment, service, due date, and cloud context reduce approval delays.</p>
                 </div>
-                {latestRequest ? (
-                  <>
-                    <strong className="launchpad-hero__brief-title">
-                      {latestRequest.cloud} · {latestRequest.service}
-                    </strong>
-                    <p className="launchpad-hero__brief-copy">
-                      {latestRequest.team} team in {latestRequest.env}. Updated{' '}
-                      {formatDateTime(latestRequest.updated_at)}.
-                    </p>
-                    <div className="launchpad-hero__brief-actions">
-                      <Link href="/history" className="btn btn-secondary btn-sm">
-                        Open history
-                      </Link>
-                      {latestRequest.pr_url ? (
-                        <a
-                          href={latestRequest.pr_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn btn-primary btn-sm"
-                        >
-                          Open PR
-                        </a>
-                      ) : (
-                        <Link href="/history" className="btn btn-primary btn-sm">
-                          Track request
-                        </Link>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <strong className="launchpad-hero__brief-title">No active request yet</strong>
-                    <p className="launchpad-hero__brief-copy">
-                      Start with the guided request flow and this panel will keep your latest delivery thread visible.
-                    </p>
-                    <div className="launchpad-hero__brief-actions">
-                      <Link href="/create-infrastructure/new" className="btn btn-primary btn-sm">
-                        Create request
-                      </Link>
-                    </div>
-                  </>
-                )}
+                <div className="launchpad-tip">
+                  <strong>Watch the request journey</strong>
+                  <p>Use Request History after submit to follow comments, approvals, and PR activity.</p>
+                </div>
+                <div className="launchpad-tip">
+                  <strong>Reuse before rebuilding</strong>
+                  <p>History already supports clone and resubmit, which is faster for repeat requests.</p>
+                </div>
               </div>
             </aside>
           </div>
