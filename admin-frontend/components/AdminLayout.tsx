@@ -206,7 +206,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     fetch(`${apiUrl}/api/admin/requests?status=pending_any&limit=15`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.requests) setPendingTickets(data.requests);
+        setPendingTickets(Array.isArray(data?.requests) ? data.requests : []);
       })
       .catch(() => setPendingTickets([]))
       .finally(() => setTicketsLoading(false));

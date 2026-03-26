@@ -208,7 +208,7 @@ export default function Home() {
       }
       if (githubRes.ok) {
         const data = await githubRes.json();
-        setGithubLogs(data.logs || []);
+        setGithubLogs(Array.isArray(data?.logs) ? data.logs : []);
       }
     } catch (_) {
       setCloudLogs({});

@@ -55,7 +55,10 @@ export default function DevOpsTeamPage() {
       })
       .then((rawData) => {
         const data = asRecord(rawData);
-        if (!Array.isArray(data.teams)) return;
+        if (!Array.isArray(data.teams)) {
+          setTeams([]);
+          return;
+        }
         const nextTeams = data.teams as Team[];
         setTeams(nextTeams);
         nextTeams.forEach((team) => {
@@ -83,6 +86,8 @@ export default function DevOpsTeamPage() {
         const data = asRecord(rawData);
         if (Array.isArray(data.members)) {
           setMembersByTeam((previous) => ({ ...previous, [teamId]: data.members as Member[] }));
+        } else {
+          setMembersByTeam((previous) => ({ ...previous, [teamId]: [] }));
         }
       })
       .catch(() => {});

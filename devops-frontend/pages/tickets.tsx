@@ -245,6 +245,7 @@ export default function DevOpsTickets() {
       })
       .then((data) => {
         if (Array.isArray(data.requests)) setRequests(data.requests as TicketRow[]);
+        else setRequests([]);
         if (typeof data.total_count === 'number') setTotal(data.total_count);
       })
       .catch(() => {})

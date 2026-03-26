@@ -123,7 +123,7 @@ export default function TeamDetail() {
         return;
       }
       setTeam(data.team);
-      setMembers(data.members || []);
+      setMembers(Array.isArray(data.members) ? data.members : []);
       setDefaultEnv(data.team.default_env || '');
       setDefaultCloud(data.team.default_cloud || '');
     } catch (_) {
@@ -139,7 +139,7 @@ export default function TeamDetail() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json().catch(() => ({}));
-      if (data.users) setUsers(data.users);
+      setUsers(Array.isArray(data.users) ? data.users : []);
     } catch (_) {}
   };
 

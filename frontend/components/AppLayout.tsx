@@ -164,7 +164,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     fetch(`${apiUrl}/api/me/teams`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.json().catch(() => ({})))
       .then((data) => {
-        const teams = data.teams || [];
+        const teams = Array.isArray(data?.teams) ? data.teams : [];
         setTeamCheck(teams.length > 0 ? 'ok' : 'forbidden');
       })
       .catch(() => setTeamCheck('forbidden'));
@@ -176,7 +176,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     fetch(`${apiUrl}/api/me/managed-teams`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        const teams = data?.teams || [];
+        const teams = Array.isArray(data?.teams) ? data.teams : [];
         setHasManagedTeams(teams.length > 0);
       })
       .catch(() => {});

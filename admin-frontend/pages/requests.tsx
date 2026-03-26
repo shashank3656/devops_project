@@ -194,7 +194,7 @@ export default function AdminRequests() {
         return res.json();
       })
       .then((data) => {
-        if (data.requests) setRequests(data.requests);
+        setRequests(Array.isArray(data.requests) ? data.requests : []);
         if (typeof data.total_count === 'number') setTotal(data.total_count);
         if (data.error) setError(data.error);
       })
@@ -256,11 +256,11 @@ export default function AdminRequests() {
         setCommentBody('');
         fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
           .then((r) => r.json())
-          .then((d) => setDetailComments(d.comments || []))
+          .then((d) => setDetailComments(Array.isArray(d?.comments) ? d.comments : []))
           .catch(() => {});
         fetch(`${apiUrl}/api/request/${req.id}/timeline`, { headers: { Authorization: `Bearer ${token}` } })
           .then((r) => (r.ok ? r.json() : null))
-          .then((d) => { if (d?.timeline) setTimeline(d.timeline); })
+          .then((d) => setTimeline(Array.isArray(d?.timeline) ? d.timeline : []))
           .catch(() => setTimeline([]));
         fetch(`${apiUrl}/api/admin/requests/${req.id}`, { headers: { Authorization: `Bearer ${token}` } })
           .then((r) => (r.ok ? r.json() : null))
@@ -437,11 +437,11 @@ export default function AdminRequests() {
     setCommentBody('');
     fetch(`${apiUrl}/api/request/${req.id}/timeline`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d?.timeline) setTimeline(d.timeline); })
+      .then((d) => setTimeline(Array.isArray(d?.timeline) ? d.timeline : []))
       .catch(() => setTimeline([]));
     fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.json())
-      .then((d) => setDetailComments(d.comments || []))
+      .then((d) => setDetailComments(Array.isArray(d?.comments) ? d.comments : []))
       .catch(() => {});
     fetch(`${apiUrl}/api/admin/requests/${req.id}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.ok ? res.json() : null)
@@ -467,10 +467,10 @@ export default function AdminRequests() {
         setCommentBody('');
         const listRes = await fetch(`${apiUrl}/api/request/${detailRequest.id}/comments`, { headers: { Authorization: `Bearer ${token}` } });
         const d = await listRes.json().catch(() => ({}));
-        setDetailComments(d.comments || []);
+        setDetailComments(Array.isArray(d?.comments) ? d.comments : []);
         fetch(`${apiUrl}/api/request/${detailRequest.id}/timeline`, { headers: { Authorization: `Bearer ${token}` } })
           .then((r) => (r.ok ? r.json() : null))
-          .then((td) => { if (td?.timeline) setTimeline(td.timeline); });
+          .then((td) => setTimeline(Array.isArray(td?.timeline) ? td.timeline : []));
       }
     } finally {
       setCommentSubmitting(false);
@@ -636,7 +636,7 @@ export default function AdminRequests() {
       });
       if (res.ok) {
         const d = await res.json();
-        setConfigHistory(d.history || []);
+        setConfigHistory(Array.isArray(d?.history) ? d.history : []);
         setShowConfigHistory(true);
       }
     } catch (_) {
