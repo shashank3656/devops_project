@@ -417,6 +417,9 @@ func devopsPendingApprovalsHandler(w http.ResponseWriter, r *http.Request) {
 		encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
+	if requests == nil {
+		requests = []PRRequest{}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeDevopsJSON(w, map[string]interface{}{"requests": requests, "status": "ok"})
 }

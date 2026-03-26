@@ -154,6 +154,9 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	if requests == nil {
+		requests = []PRRequest{}
+	}
 	response := map[string]interface{}{
 		"status":      "success",
 		"requests":    requests,

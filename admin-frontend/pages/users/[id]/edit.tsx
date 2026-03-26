@@ -150,7 +150,13 @@ export default function EditUser() {
     try {
       const res = await fetch(`${apiUrl}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json().catch(() => ({}));
-      if (data.users) setUsersList(data.users.map((u: { id: number; username: string }) => ({ id: u.id, username: u.username })));
+      if (Array.isArray(data.users)) {
+        setUsersList(
+          data.users.map((u: { id: number; username: string }) => ({ id: u.id, username: u.username })),
+        );
+      } else {
+        setUsersList([]);
+      }
     } catch (_) {}
   };
 

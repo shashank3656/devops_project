@@ -466,6 +466,9 @@ func meTeamsHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to get teams", nil)
 		return
 	}
+	if teams == nil {
+		teams = []Team{}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeAuthJSON(w, map[string]interface{}{
 		"teams":  teams,
@@ -691,6 +694,9 @@ func meManagedTeamsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, err.Error(), err)
 		return
+	}
+	if teams == nil {
+		teams = []Team{}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeAuthJSON(w, map[string]interface{}{"teams": teams, "status": "ok"})

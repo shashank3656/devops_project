@@ -324,8 +324,9 @@ export default function History() {
       }
 
       const data = await response.json();
-      setRequests(data.requests || []);
-      setTotalCount(data.total_count ?? data.requests?.length ?? 0);
+      const requests = Array.isArray(data?.requests) ? data.requests : [];
+      setRequests(requests);
+      setTotalCount(data?.total_count ?? requests.length ?? 0);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch history');
     } finally {
@@ -379,16 +380,16 @@ export default function History() {
       }
       if (commentsRes.ok) {
         const cData = await commentsRes.json();
-        setComments(cData.comments || []);
+        setComments(Array.isArray(cData?.comments) ? cData.comments : []);
       }
       const timelineRes = await fetch(`${apiUrl}/api/request/${req.id}/timeline`, { headers });
       if (timelineRes.ok) {
         const tData = await timelineRes.json();
-        setTimeline(tData.timeline || []);
+        setTimeline(Array.isArray(tData?.timeline) ? tData.timeline : []);
       }
       if (tagsRes.ok) {
         const tData = await tagsRes.json();
-        setTags(tData.tags || []);
+        setTags(Array.isArray(tData?.tags) ? tData.tags : []);
       }
     } catch (_) {
       addRecentRequestId(req.id);
@@ -406,7 +407,7 @@ export default function History() {
       const res = await fetch(`${apiUrl}/api/request/${id}/timeline`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const d = await res.json();
-        setTimeline(d.timeline || []);
+        setTimeline(Array.isArray(d?.timeline) ? d.timeline : []);
       }
     } catch (_) {
       setTimeline([]);
@@ -617,7 +618,7 @@ export default function History() {
         const listRes = await fetch(`${apiUrl}/api/request/${detailRequest.id}/comments`, { headers });
         if (listRes.ok) {
           const d = await listRes.json();
-          setComments(d.comments || []);
+          setComments(Array.isArray(d?.comments) ? d.comments : []);
         }
         fetchTimeline(detailRequest.id);
         toast('Comment added', 'success');
@@ -641,7 +642,7 @@ export default function History() {
       });
       if (res.ok) {
         const d = await res.json();
-        setConfigHistory(d.history || []);
+        setConfigHistory(Array.isArray(d?.history) ? d.history : []);
         setShowConfigHistory(true);
       }
     } catch (_) {
@@ -1639,7 +1640,7 @@ export default function History() {
                                   });
                                   if (res.ok) {
                                     const d = await res.json();
-                                    setTags(d.tags || []);
+                                    setTags(Array.isArray(d?.tags) ? d.tags : []);
                                     setNewTag('');
                                   }
                                 })();
@@ -1663,7 +1664,7 @@ export default function History() {
                               });
                               if (res.ok) {
                                 const d = await res.json();
-                                setTags(d.tags || []);
+                                setTags(Array.isArray(d?.tags) ? d.tags : []);
                                 setNewTag('');
                               }
                             }}
