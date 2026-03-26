@@ -428,7 +428,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           {!sidebarCollapsed && (
             <Link href="/dashboard" className="devops-sidebar-new__brand">
               <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">SetuOps</span>
-              <span className="devops-sidebar-new__brand-word">DevOps</span>
+              <span className="devops-sidebar-new__brand-word">DevOps Portal</span>
             </Link>
           )}
         </div>

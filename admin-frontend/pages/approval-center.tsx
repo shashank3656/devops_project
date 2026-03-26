@@ -88,7 +88,6 @@ export default function AdminApprovalCenter() {
     devops: requests.filter((request) => request.status === 'pending_devops_approval').length,
     final: requests.filter((request) => request.status === 'pending_approval').length,
   }), [requests]);
-  const nextReview = requests[0] ?? null;
 
   return (
     <>
@@ -97,64 +96,15 @@ export default function AdminApprovalCenter() {
       </Head>
       <AdminLayout>
         <div className="portal-page">
-          <section className="portal-surface approval-command-hero">
-            <div className="approval-command-hero__content">
-              <div className="portal-page__header-main">
-                <span className="portal-page__eyebrow">Approval Center</span>
-                <h1 className="portal-page__title">Approval Center</h1>
-                <p className="portal-page__subtitle">
-                  Review every request that is waiting on manager, DevOps, or final approval with project context first.
-                </p>
-              </div>
-              <div className="approval-command-hero__chips">
-                <span className="portal-pill">{projectId ? 'Scoped to one project' : 'All governed projects'}</span>
-                <span className="portal-pill">{summary.total} approvals pending</span>
-                <span className="portal-pill">{summary.manager + summary.devops + summary.final} live decision points</span>
-              </div>
+          <header className="portal-page__header">
+            <div className="portal-page__header-main">
+              <span className="portal-page__eyebrow">Approval Center</span>
+              <h1 className="portal-page__title">Approval Center</h1>
+              <p className="portal-page__subtitle">
+                Review every request that is waiting on manager, DevOps, or final approval with project context first.
+              </p>
             </div>
-            <div className="approval-command-hero__rail">
-              <article className="approval-command-hero__summary-card">
-                <span className="portal-surface__eyebrow">Queue status</span>
-                <strong>{summary.total}</strong>
-                <p>Pending approvals currently routed into the governance queue.</p>
-                <div className="approval-command-hero__summary-metrics">
-                  <div>
-                    <span>Manager</span>
-                    <strong>{summary.manager}</strong>
-                  </div>
-                  <div>
-                    <span>DevOps</span>
-                    <strong>{summary.devops}</strong>
-                  </div>
-                  <div>
-                    <span>Final</span>
-                    <strong>{summary.final}</strong>
-                  </div>
-                </div>
-              </article>
-              <article className="approval-command-hero__spotlight-card">
-                <span className="portal-surface__eyebrow">Next review</span>
-                {nextReview ? (
-                  <>
-                    <strong className="approval-command-hero__spotlight-title">
-                      {nextReview.project_name || `Request #${nextReview.id}`}
-                    </strong>
-                    <p>
-                      {formatStatus(nextReview.status)} · {nextReview.team} · {nextReview.env.toUpperCase()}
-                    </p>
-                    <Link
-                      href={`/requests?id=${nextReview.id}${nextReview.project_id ? `&project_id=${nextReview.project_id}` : ''}`}
-                      className="btn btn-secondary btn-sm"
-                    >
-                      Open next review
-                    </Link>
-                  </>
-                ) : (
-                  <p>No requests are currently waiting for approval in this scope.</p>
-                )}
-              </article>
-            </div>
-          </section>
+          </header>
 
           <section className="portal-stat-grid">
             <article className="portal-stat-card">

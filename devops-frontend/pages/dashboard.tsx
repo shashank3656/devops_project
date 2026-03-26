@@ -467,10 +467,10 @@ export default function DevOpsDashboard() {
         <div className="devops-portal">
           <section className="devops-portal__hero">
             <div className="devops-portal__hero-copy">
-              <span className="devops-portal__eyebrow">Control Plane</span>
-              <h1 className="devops-portal__headline">Command Center</h1>
+              <span className="devops-portal__eyebrow">Dashboard</span>
+              <h1 className="devops-portal__headline">DevOps Dashboard</h1>
               <p className="devops-portal__subhead">
-                Track approvals, active changes, environment health, and release pressure from a single command surface for platform teams.
+                Track approvals, active changes, and release pressure from a single control surface built for platform teams.
               </p>
               <div className="devops-portal__chips">
                 <span className="devops-portal__chip">{loading ? 'Syncing ticket feed' : 'Live queue online'}</span>
@@ -496,62 +496,32 @@ export default function DevOpsDashboard() {
               </div>
             </div>
 
-            <div className="devops-hero-stack">
-              <div className="devops-hero-pulse">
-                <div className="devops-hero-pulse__gauge" style={heroGaugeStyle}>
-                  <div className="devops-hero-pulse__gauge-center">
-                    <strong>{safeCompletionRate}%</strong>
-                    <span>resolved</span>
-                  </div>
-                </div>
-                <div className="devops-hero-pulse__body">
-                  <span className="devops-hero-pulse__label">System pulse</span>
-                  <p className="devops-hero-pulse__copy">
-                    Delivery completion across {formatCompactCount(tickets.length)} tracked requests.
-                  </p>
-                  <div className="devops-hero-pulse__metrics">
-                    <div>
-                      <span>Backlog</span>
-                      <strong>{formatCompactCount(pendingApprovalCount)}</strong>
-                    </div>
-                    <div>
-                      <span>In flight</span>
-                      <strong>{formatCompactCount(inProgressCount)}</strong>
-                    </div>
-                    <div>
-                      <span>Resolved 7d</span>
-                      <strong>{formatCompactCount(resolvedLastWeek)}</strong>
-                    </div>
-                  </div>
+            <div className="devops-hero-pulse">
+              <div className="devops-hero-pulse__gauge" style={heroGaugeStyle}>
+                <div className="devops-hero-pulse__gauge-center">
+                  <strong>{safeCompletionRate}%</strong>
+                  <span>resolved</span>
                 </div>
               </div>
-
-              <div className="devops-hero-watchlist">
-                <div className="devops-hero-watchlist__header">
+              <div className="devops-hero-pulse__body">
+                <span className="devops-hero-pulse__label">System pulse</span>
+                <p className="devops-hero-pulse__copy">
+                  Delivery completion across {formatCompactCount(tickets.length)} tracked requests.
+                </p>
+                <div className="devops-hero-pulse__metrics">
                   <div>
-                    <span className="portal-page__eyebrow">Priority watch</span>
-                    <strong className="devops-hero-watchlist__title">Operator focus queue</strong>
+                    <span>Backlog</span>
+                    <strong>{formatCompactCount(pendingApprovalCount)}</strong>
                   </div>
-                  <span className="portal-pill">{formatCompactCount(highRiskCount)} high risk</span>
+                  <div>
+                    <span>In flight</span>
+                    <strong>{formatCompactCount(inProgressCount)}</strong>
+                  </div>
+                  <div>
+                    <span>Resolved 7d</span>
+                    <strong>{formatCompactCount(resolvedLastWeek)}</strong>
+                  </div>
                 </div>
-                {urgentTickets.length === 0 ? (
-                  <p className="devops-hero-watchlist__empty">No critical or high-priority items are open right now.</p>
-                ) : (
-                  <div className="devops-hero-watchlist__list">
-                    {urgentTickets.slice(0, 3).map((ticket) => (
-                      <div key={`hero-${ticket.id}`} className="devops-hero-watchlist__item">
-                        <div>
-                          <strong>#{ticket.id} · {ticket.service}</strong>
-                          <p>{ticket.team || 'Unassigned'} · {ticket.env} · {formatShortDate(ticket.updated_at)}</p>
-                        </div>
-                        <div className="devops-hero-watchlist__meta">
-                          <span className={getStatusBadgeClass(ticket.status)}>{formatStatus(ticket.status)}</span>
-                          <span className={getPriorityClass(ticket.priority)}>{formatPriority(ticket.priority)}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           </section>
