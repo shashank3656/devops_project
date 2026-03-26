@@ -21,12 +21,17 @@ import {
   IconArrowUpRight,
   IconRefreshCw,
   IconK8s,
+  IconHelpCircle,
+  IconFileText,
 } from './Icons';
+import SupportHub from './SupportHub';
+import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
 const DEVOPS_THEME_KEY = 'infra-portal-theme';
 const SIDEBAR_COLLAPSED_KEY = 'devops-sidebar-collapsed';
+const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@setuops.example';
 
 interface DevopsUser {
   id: number;
@@ -128,6 +133,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [profileInitials, setProfileInitials] = useState('D');
   const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalItem[]>([]);
   const [pendingApprovalsLoading, setPendingApprovalsLoading] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
   const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -280,6 +287,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setNotifyOpen(false);
     setProfileOpen(false);
+    setSupportOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -459,6 +467,36 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             </div>
           )}
           <div className="devops-sidebar-new__footer">
+            <button
+              type="button"
+              className="devops-sidebar-new__link"
+              onClick={() => {
+                setNotifyOpen(false);
+                setProfileOpen(false);
+                setSupportTab('chat');
+                setSupportOpen(true);
+                setMobileMenuOpen(false);
+              }}
+              title="Support"
+            >
+              <IconHelpCircle className="devops-sidebar-new__icon" />
+              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Support</span>}
+            </button>
+            <button
+              type="button"
+              className="devops-sidebar-new__link"
+              onClick={() => {
+                setNotifyOpen(false);
+                setProfileOpen(false);
+                setSupportTab('docs');
+                setSupportOpen(true);
+                setMobileMenuOpen(false);
+              }}
+              title="Documentation"
+            >
+              <IconFileText className="devops-sidebar-new__icon" />
+              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Documentation</span>}
+            </button>
             <button type="button" className="devops-sidebar-new__link" onClick={handleLogout}>
               <IconLogout className="devops-sidebar-new__icon" />
               {!sidebarCollapsed && <span className="devops-sidebar-new__label">Logout</span>}
@@ -492,6 +530,19 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </div>
           <div className="devops-navbar__right">
             <div className="devops-navbar__actions">
+              <button
+                type="button"
+                className="devops-navbar__assist-btn"
+                onClick={() => {
+                  setSupportTab('chat');
+                  setSupportOpen(true);
+                  setNotifyOpen(false);
+                  setProfileOpen(false);
+                }}
+              >
+                <IconHelpCircle />
+                <span>Ask SetuOps</span>
+              </button>
               {user && <span className="devops-navbar__username">{user.username}</span>}
               <span className="devops-navbar__role">{roleLabel}</span>
               {isManager && (
@@ -499,9 +550,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                   <button
                     type="button"
                     className="devops-navbar__icon-btn"
-                    onClick={() => {
+                  onClick={() => {
                       setNotifyOpen((open) => !open);
                       setProfileOpen(false);
+                      setSupportOpen(false);
                     }}
                     title={pendingCount > 0 ? `${pendingCount} pending approvals` : 'Pending approvals'}
                     aria-expanded={notifyOpen}
@@ -570,6 +622,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 onClick={() => {
                   setProfileOpen((o) => !o);
                   setNotifyOpen(false);
+                  setSupportOpen(false);
                 }}
                 aria-expanded={profileOpen}
                 aria-haspopup="true"
@@ -598,6 +651,25 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         </header>
         <main className="devops-main-new">{children}</main>
       </div>
+      <SupportHub
+        open={supportOpen}
+        initialTab={supportTab}
+        onClose={() => setSupportOpen(false)}
+        portalName="DevOps Portal"
+        currentPath={pathname}
+        currentTitle={pageTitle}
+        articles={supportArticles}
+        quickPrompts={supportQuickPrompts}
+        externalDocsHref={process.env.NEXT_PUBLIC_DOCS_URL || ''}
+        escalationActions={[
+          {
+            label: 'Email platform support',
+            externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`SetuOps support: ${pageTitle}`)}`,
+          },
+          { label: 'Open incidents', href: '/incidents' },
+          { label: 'Open command center', href: '/ops-command-center' },
+        ]}
+      />
     </div>
   );
 }

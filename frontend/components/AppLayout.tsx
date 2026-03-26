@@ -16,13 +16,18 @@ import {
   IconChevronRight,
   IconChevronDown,
   IconMenu,
+  IconHelpCircle,
+  IconFileText,
 } from './Icons';
+import SupportHub from './SupportHub';
+import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
 
 const THEME_KEY = 'user-portal-theme';
 const SIDEBAR_COLLAPSED_KEY = 'user-portal-sidebar-collapsed';
 const HISTORY_LAST_SEEN_KEY = 'user_history_last_seen';
 const NOTIFY_POLL_MS = 30000;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@setuops.example';
 
 export function getApiUrl(): string {
   return apiUrl;
@@ -128,6 +133,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [recentNotifications, setRecentNotifications] = useState<UserNotificationItem[]>([]);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
   const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -225,6 +232,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setNotifyOpen(false);
     setProfileOpen(false);
+    setSupportOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -516,6 +524,36 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           )}
 
           <div className="user-sidebar-shell__footer">
+            <button
+              type="button"
+              className="user-sidebar-shell__link"
+              onClick={() => {
+                setNotifyOpen(false);
+                setProfileOpen(false);
+                setSupportTab('chat');
+                setSupportOpen(true);
+                setMobileMenuOpen(false);
+              }}
+              title="Support"
+            >
+              <IconHelpCircle className="user-sidebar-shell__icon" />
+              {!sidebarCollapsed && <span className="user-sidebar-shell__label">Support</span>}
+            </button>
+            <button
+              type="button"
+              className="user-sidebar-shell__link"
+              onClick={() => {
+                setNotifyOpen(false);
+                setProfileOpen(false);
+                setSupportTab('docs');
+                setSupportOpen(true);
+                setMobileMenuOpen(false);
+              }}
+              title="Documentation"
+            >
+              <IconFileText className="user-sidebar-shell__icon" />
+              {!sidebarCollapsed && <span className="user-sidebar-shell__label">Documentation</span>}
+            </button>
             <button type="button" className="user-sidebar-shell__link" onClick={handleLogout}>
               <IconLogout className="user-sidebar-shell__icon" />
               {!sidebarCollapsed && <span className="user-sidebar-shell__label">Logout</span>}
@@ -550,6 +588,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
           <div className="user-topbar__right">
             <div className="user-topbar__actions">
+              <button
+                type="button"
+                className="user-topbar__assist-btn"
+                onClick={() => {
+                  setSupportTab('chat');
+                  setSupportOpen(true);
+                  setNotifyOpen(false);
+                  setProfileOpen(false);
+                }}
+              >
+                <IconHelpCircle />
+                <span>Ask SetuOps</span>
+              </button>
               <span className="user-topbar__workspace">{profileLabel}</span>
               <span className="user-topbar__role">{hasManagedTeams ? 'Lead' : 'Requester'}</span>
               <div className="user-topbar__notify-wrap" ref={notifyRef}>
@@ -559,6 +610,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   onClick={() => {
                     setNotifyOpen((open) => !open);
                     setProfileOpen(false);
+                    setSupportOpen(false);
                   }}
                   title={notifyBadgeCount > 0 ? `${notifyBadgeCount} notifications` : 'Notifications'}
                   aria-expanded={notifyOpen}
@@ -629,6 +681,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 onClick={() => {
                   setProfileOpen((o) => !o);
                   setNotifyOpen(false);
+                  setSupportOpen(false);
                 }}
                 aria-expanded={profileOpen}
                 aria-haspopup="true"
@@ -659,6 +712,25 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
         <main className="user-main-shell__content">{children}</main>
       </div>
+      <SupportHub
+        open={supportOpen}
+        initialTab={supportTab}
+        onClose={() => setSupportOpen(false)}
+        portalName="User Portal"
+        currentPath={pathname}
+        currentTitle={pageTitle}
+        articles={supportArticles}
+        quickPrompts={supportQuickPrompts}
+        externalDocsHref={process.env.NEXT_PUBLIC_DOCS_URL || ''}
+        escalationActions={[
+          {
+            label: 'Email platform support',
+            externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`SetuOps support: ${pageTitle}`)}`,
+          },
+          { label: 'Open incidents', href: '/incidents' },
+          { label: 'Open request history', href: '/history' },
+        ]}
+      />
     </div>
   );
 }
