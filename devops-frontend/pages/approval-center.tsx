@@ -34,6 +34,7 @@ export default function DevOpsApprovalCenter() {
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectId, setProjectId] = useState('');
+  const [activePanel, setActivePanel] = useState<'filters' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -78,6 +79,11 @@ export default function DevOpsApprovalCenter() {
     dueSoon: requests.filter((request) => request.due_status === 'due_soon').length,
   }), [requests]);
 
+  const selectedProject = useMemo(
+    () => projects.find((project) => String(project.id) === projectId) || null,
+    [projects, projectId],
+  );
+
   return (
     <>
       <Head>
@@ -92,6 +98,27 @@ export default function DevOpsApprovalCenter() {
               <p className="portal-page__subtitle">
                 Review every request that is currently waiting on the DevOps gate with project context before opening the full ticket workspace.
               </p>
+            </div>
+            <div className="portal-page__actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setActivePanel((current) => (current === 'filters' ? null : 'filters'))}
+              >
+                {activePanel === 'filters' ? 'Hide filters' : 'Show filters'}
+              </button>
+              {projectId ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setProjectId('');
+                    setActivePanel(null);
+                  }}
+                >
+                  Clear scope
+                </button>
+              ) : null}
             </div>
           </header>
 
@@ -113,43 +140,52 @@ export default function DevOpsApprovalCenter() {
             </article>
           </section>
 
-          <section className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <span className="portal-surface__eyebrow">Filters</span>
-                <h2 className="portal-surface__title">Project scope</h2>
-              </div>
-            </div>
-            <div className="portal-toolbar">
-              <div className="portal-toolbar__group">
-                <div className="portal-toolbar__item">
-                  <label className="label" htmlFor="approval-center-project-filter">Project</label>
-                  <select
-                    id="approval-center-project-filter"
-                    className="input"
-                    value={projectId}
-                    onChange={(event) => setProjectId(event.target.value)}
-                  >
-                    <option value="">All projects</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}{project.code ? ` (${project.code})` : ''}
-                      </option>
-                    ))}
-                  </select>
+          {!activePanel ? (
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Focused view</span>
+                  <h2 className="portal-surface__title">Start from the approval queue</h2>
+                  <p className="portal-surface__subtitle">
+                    Use <strong>Show filters</strong> only when you want to narrow the queue to a specific project. The default view keeps every pending DevOps approval visible.
+                  </p>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
+          ) : null}
 
           {error ? <div className="alert alert-error">{error}</div> : null}
+          {projectId ? (
+            <div className="alert alert-info">
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span>
+                  Showing approvals for{' '}
+                  <strong>
+                    {selectedProject ? `${selectedProject.name}${selectedProject.code ? ` (${selectedProject.code})` : ''}` : `project #${projectId}`}
+                  </strong>.
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setProjectId('');
+                    setActivePanel(null);
+                  }}
+                >
+                  Clear filter
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <section className="portal-surface portal-surface--table">
             <div className="portal-surface__header">
               <div>
                 <span className="portal-surface__eyebrow">Queue</span>
                 <h2 className="portal-surface__title">Requests waiting on DevOps</h2>
-                <p className="portal-surface__subtitle">Open the full ticket workspace directly from here.</p>
+                <p className="portal-surface__subtitle">
+                  Open the full ticket workspace directly from here{selectedProject ? `, scoped to ${selectedProject.name}` : ''}.
+                </p>
               </div>
             </div>
             {loading ? (
@@ -207,6 +243,45 @@ export default function DevOpsApprovalCenter() {
               </div>
             )}
           </section>
+
+          {activePanel === 'filters' ? (
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Filters</span>
+                  <h2 className="portal-surface__title">Project scope</h2>
+                  <p className="portal-surface__subtitle">
+                    Narrow the approval queue to a specific project only when you need a focused review session.
+                  </p>
+                </div>
+                <div className="portal-page__actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => setActivePanel(null)}>
+                    Close
+                  </button>
+                </div>
+              </div>
+              <div className="portal-toolbar">
+                <div className="portal-toolbar__group">
+                  <div className="portal-toolbar__item">
+                    <label className="label" htmlFor="approval-center-project-filter">Project</label>
+                    <select
+                      id="approval-center-project-filter"
+                      className="input"
+                      value={projectId}
+                      onChange={(event) => setProjectId(event.target.value)}
+                    >
+                      <option value="">All projects</option>
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}{project.code ? ` (${project.code})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : null}
         </div>
       </DevOpsLayout>
     </>
