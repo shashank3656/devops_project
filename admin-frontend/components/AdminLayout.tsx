@@ -19,12 +19,17 @@ import {
   IconSearch,
   IconMenu,
   IconTrendingUp,
+  IconHelpCircle,
+  IconFileText,
 } from './Icons';
+import SupportHub from './SupportHub';
+import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
 
 const THEME_KEY = 'infra-portal-theme';
 const SIDEBAR_COLLAPSED_KEY = 'infra-admin-sidebar-collapsed';
 const NOTIFY_POLL_MS = 30000;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@setuops.example';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Governance Overview',
@@ -130,6 +135,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const [ticketsLoading, setTicketsLoading] = useState(false);
   const [profileInitials, setProfileInitials] = useState('A');
   const [profileLabel, setProfileLabel] = useState('Admin Operator');
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -212,6 +219,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setNotifyOpen(false);
     setProfileOpen(false);
+    setSupportOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -360,6 +368,36 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           )}
 
           <div className="admin-sidebar-shell__footer">
+            <button
+              type="button"
+              className="admin-sidebar-shell__link"
+              onClick={() => {
+                setNotifyOpen(false);
+                setProfileOpen(false);
+                setSupportTab('chat');
+                setSupportOpen(true);
+                setMobileMenuOpen(false);
+              }}
+              title="Support"
+            >
+              <IconHelpCircle className="admin-sidebar-shell__icon" />
+              {!sidebarCollapsed && <span className="admin-sidebar-shell__label">Support</span>}
+            </button>
+            <button
+              type="button"
+              className="admin-sidebar-shell__link"
+              onClick={() => {
+                setNotifyOpen(false);
+                setProfileOpen(false);
+                setSupportTab('docs');
+                setSupportOpen(true);
+                setMobileMenuOpen(false);
+              }}
+              title="Documentation"
+            >
+              <IconFileText className="admin-sidebar-shell__icon" />
+              {!sidebarCollapsed && <span className="admin-sidebar-shell__label">Documentation</span>}
+            </button>
             <button type="button" className="admin-sidebar-shell__link" onClick={handleLogout}>
               <IconLogout className="admin-sidebar-shell__icon" />
               {!sidebarCollapsed && <span className="admin-sidebar-shell__label">Logout</span>}
@@ -407,6 +445,19 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </form>
 
             <div className="admin-topbar__actions">
+              <button
+                type="button"
+                className="admin-topbar__assist-btn"
+                onClick={() => {
+                  setSupportTab('chat');
+                  setSupportOpen(true);
+                  setNotifyOpen(false);
+                  setProfileOpen(false);
+                }}
+              >
+                <IconHelpCircle />
+                <span>Ask SetuOps</span>
+              </button>
               <span className="admin-topbar__workspace">{profileLabel}</span>
               <span className="admin-topbar__role">Admin</span>
             </div>
@@ -418,6 +469,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 onClick={() => {
                   setNotifyOpen((o) => !o);
                   setProfileOpen(false);
+                  setSupportOpen(false);
                 }}
                 title={newRequestsCount > 0 ? `${newRequestsCount} new request(s) pending` : 'Notifications'}
                 aria-expanded={notifyOpen}
@@ -476,7 +528,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <button
                 type="button"
                 className="admin-topbar__profile-btn"
-                onClick={() => setProfileOpen((o) => !o)}
+                onClick={() => {
+                  setProfileOpen((o) => !o);
+                  setNotifyOpen(false);
+                  setSupportOpen(false);
+                }}
                 aria-expanded={profileOpen}
                 aria-haspopup="true"
                 title="Profile"
@@ -507,6 +563,25 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
         <main className="admin-main-shell__content">{children}</main>
       </div>
+      <SupportHub
+        open={supportOpen}
+        initialTab={supportTab}
+        onClose={() => setSupportOpen(false)}
+        portalName="Admin Portal"
+        currentPath={pathname}
+        currentTitle={pageTitle}
+        articles={supportArticles}
+        quickPrompts={supportQuickPrompts}
+        externalDocsHref={process.env.NEXT_PUBLIC_DOCS_URL || ''}
+        escalationActions={[
+          {
+            label: 'Email platform support',
+            externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`SetuOps support: ${pageTitle}`)}`,
+          },
+          { label: 'Open approval center', href: '/approval-center' },
+          { label: 'Open activity', href: '/activity' },
+        ]}
+      />
     </div>
   );
 }
