@@ -85,6 +85,7 @@ const CLOUD_BADGES: Record<string, { bg: string; color: string }> = {
 export default function CredentialAuditPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const [activePanel, setActivePanel] = useState<'filters' | 'audit' | null>(null);
   const [entries, setEntries] = useState<CredentialAuditEntry[]>([]);
   const [expiryTracker, setExpiryTracker] = useState<ExpiryTrackerPayload | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -279,12 +280,45 @@ export default function CredentialAuditPage() {
           <header className="portal-page__header">
             <div className="portal-page__header-main">
               <span className="portal-page__eyebrow">Credential Audit</span>
-              <h1 className="portal-page__title">Credential Audit</h1>
+              <h1 className="portal-page__title">Secrets & Certificates</h1>
               <p className="portal-page__subtitle">
-                Existing audit features remain unchanged, but the page now uses a clearer filtering and evidence-review pattern.
+                Track expiry risk first, then open filters or the raw audit log only when you need deeper evidence.
               </p>
             </div>
+            <div className="portal-page__actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setActivePanel((current) => (current === 'filters' ? null : 'filters'))}
+              >
+                {activePanel === 'filters' ? 'Hide filters' : 'Show filters'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setActivePanel((current) => (current === 'audit' ? null : 'audit'))}
+              >
+                {activePanel === 'audit' ? 'Hide audit log' : 'Open audit log'}
+              </button>
+              <button type="button" className="btn btn-primary" onClick={exportCsv}>
+                Export CSV
+              </button>
+            </div>
           </header>
+
+          {!activePanel ? (
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Focused view</span>
+                  <h2 className="portal-surface__title">Start from the rotation watchlist</h2>
+                  <p className="portal-surface__subtitle">
+                    Use <strong>Show filters</strong> when you want to narrow the evidence window, or <strong>Open audit log</strong> when you need the raw credential creation history.
+                  </p>
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           <section className="portal-stat-grid">
             <article className="portal-stat-card">
@@ -316,6 +350,7 @@ export default function CredentialAuditPage() {
             </article>
           </section>
 
+          {activePanel === 'filters' ? (
           <section className="portal-surface">
             <div className="portal-surface__header">
               <div>
@@ -324,6 +359,11 @@ export default function CredentialAuditPage() {
                 <p className="portal-surface__subtitle">
                   Track who created AWS access keys, GCP service account keys, and similar credentials via approved requests.
                 </p>
+              </div>
+              <div className="portal-page__actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setActivePanel(null)}>
+                  Close
+                </button>
               </div>
             </div>
 
@@ -384,12 +424,10 @@ export default function CredentialAuditPage() {
                 <button type="button" className="btn btn-secondary" onClick={fetchEntries}>
                   Refresh
                 </button>
-                <button type="button" className="btn btn-primary" onClick={exportCsv}>
-                  Export CSV
-                </button>
               </div>
             </div>
           </section>
+          ) : null}
 
           {error && <div className="alert alert-error">{error}</div>}
           {notice && <div className="alert alert-success">{notice}</div>}
@@ -566,20 +604,57 @@ export default function CredentialAuditPage() {
             </>
           ) : null}
 
-          {loading ? (
-            <section className="portal-surface">
-              <div className="portal-empty">
-                <p>Loading credential audit...</p>
-              </div>
-            </section>
-          ) : entries.length === 0 ? (
-            <section className="portal-surface">
-              <div className="portal-empty">
-                <p>No credential audit entries yet.</p>
-              </div>
-            </section>
-          ) : (
+          {activePanel === 'audit' ? (
+            loading ? (
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Audit log</span>
+                    <h2 className="portal-surface__title">Credential creation history</h2>
+                  </div>
+                  <div className="portal-page__actions">
+                    <button type="button" className="btn btn-secondary" onClick={() => setActivePanel(null)}>
+                      Close
+                    </button>
+                  </div>
+                </div>
+                <div className="portal-empty">
+                  <p>Loading credential audit...</p>
+                </div>
+              </section>
+            ) : entries.length === 0 ? (
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Audit log</span>
+                    <h2 className="portal-surface__title">Credential creation history</h2>
+                  </div>
+                  <div className="portal-page__actions">
+                    <button type="button" className="btn btn-secondary" onClick={() => setActivePanel(null)}>
+                      Close
+                    </button>
+                  </div>
+                </div>
+                <div className="portal-empty">
+                  <p>No credential audit entries yet.</p>
+                </div>
+              </section>
+            ) : (
             <section className="portal-surface portal-surface--table">
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Audit log</span>
+                  <h2 className="portal-surface__title">Credential creation history</h2>
+                  <p className="portal-surface__subtitle">
+                    Review the raw evidence only when you need to trace who created, approved, and linked a credential request.
+                  </p>
+                </div>
+                <div className="portal-page__actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => setActivePanel(null)}>
+                    Close
+                  </button>
+                </div>
+              </div>
               <div className="table-wrap">
                 <table className="credential-audit-table">
                   <thead>
@@ -643,7 +718,8 @@ export default function CredentialAuditPage() {
                 </table>
               </div>
             </section>
-          )}
+            )
+          ) : null}
         </div>
       </DevOpsLayout>
     </>

@@ -112,6 +112,7 @@ function normalizeCode(value: string): string {
 export default function DevOpsProjectsPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
+  const [activePanel, setActivePanel] = useState<'onboard' | 'bulk-import' | 'bulk-access' | null>(null);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [portalTeams, setPortalTeams] = useState<TeamOption[]>([]);
   const [ownerTeams, setOwnerTeams] = useState<TeamOption[]>([]);
@@ -245,6 +246,15 @@ export default function DevOpsProjectsPage() {
     setForm(createEmptyForm());
     setNotice('');
     setError('');
+    setActivePanel(null);
+  };
+
+  const openCreatePanel = () => {
+    setEditingId(null);
+    setForm(createEmptyForm());
+    setNotice('');
+    setError('');
+    setActivePanel('onboard');
   };
 
   const toggleProjectSelection = (projectID: number) => {
@@ -344,6 +354,7 @@ export default function DevOpsProjectsPage() {
 
   const startEdit = (project: ProjectOption) => {
     setEditingId(project.id);
+    setActivePanel('onboard');
     setForm({
       name: project.name,
       code: project.code,
@@ -417,6 +428,7 @@ export default function DevOpsProjectsPage() {
       }
       setEditingId(null);
       setForm(createEmptyForm());
+      setActivePanel(null);
       setNotice(editingId ? 'Project updated.' : 'Project created.');
       fetchData();
     } catch (err) {
@@ -589,13 +601,50 @@ export default function DevOpsProjectsPage() {
             <button type="button" className="btn btn-secondary" onClick={() => void exportProjects()} disabled={exporting}>
               {exporting ? 'Exporting...' : 'Export CSV'}
             </button>
-            <button type="button" className="btn btn-secondary" onClick={resetForm}>
-              New project
+            <button type="button" className="btn btn-primary" onClick={openCreatePanel}>
+              Onboard project
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setNotice('');
+                setError('');
+                setActivePanel((current) => (current === 'bulk-import' ? null : 'bulk-import'));
+              }}
+            >
+              {activePanel === 'bulk-import' ? 'Hide import' : 'Bulk import'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setNotice('');
+                setError('');
+                setActivePanel((current) => (current === 'bulk-access' ? null : 'bulk-access'));
+              }}
+            >
+              {activePanel === 'bulk-access' ? 'Hide team access' : 'Bulk team access'}
             </button>
           </div>
         </div>
 
-        <section className="portal-surface">
+        {!activePanel && (
+          <section className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Project onboarding</span>
+                <h2 className="portal-surface__title">Start from the project list</h2>
+                <p className="portal-surface__subtitle">
+                  Use <strong>Onboard project</strong> only when you want to create or edit a project. Bulk import and team access updates are available on demand.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activePanel === 'onboard' && (
+          <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
               <span className="portal-surface__eyebrow">{editingId ? 'Edit Project' : 'Create Project'}</span>
@@ -603,6 +652,11 @@ export default function DevOpsProjectsPage() {
               <p className="portal-surface__subtitle">
                 Projects become the first choice in the user portal, and only mapped teams can request the configured services.
               </p>
+            </div>
+            <div className="portal-page__actions">
+              <button type="button" className="btn btn-secondary" onClick={resetForm}>
+                Close
+              </button>
             </div>
           </div>
 
@@ -807,9 +861,11 @@ export default function DevOpsProjectsPage() {
               <span style={{ color: 'var(--text-muted)', alignSelf: 'center' }}>Owner team: {selectedOwnerTeamName}</span>
             </div>
           </form>
-        </section>
+          </section>
+        )}
 
-        <section className="portal-surface">
+        {activePanel === 'bulk-import' && (
+          <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
               <span className="portal-surface__eyebrow">Bulk onboarding</span>
@@ -817,6 +873,11 @@ export default function DevOpsProjectsPage() {
               <p className="portal-surface__subtitle">
                 Paste a JSON array of project definitions to onboard multiple catalogs, environments, clouds, and team mappings in one step.
               </p>
+            </div>
+            <div className="portal-page__actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setActivePanel(null)}>
+                Close
+              </button>
             </div>
           </div>
           <div className="form-group">
@@ -872,9 +933,11 @@ export default function DevOpsProjectsPage() {
               </table>
             </div>
           )}
-        </section>
+          </section>
+        )}
 
-        <section className="portal-surface">
+        {activePanel === 'bulk-access' && (
+          <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
               <span className="portal-surface__eyebrow">Bulk access</span>
@@ -882,6 +945,11 @@ export default function DevOpsProjectsPage() {
               <p className="portal-surface__subtitle">
                 Select multiple projects, choose portal teams, then grant, replace, or revoke environment access in one action.
               </p>
+            </div>
+            <div className="portal-page__actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setActivePanel(null)}>
+                Close
+              </button>
             </div>
           </div>
           <div style={{ display: 'grid', gap: 16 }}>
@@ -924,7 +992,8 @@ export default function DevOpsProjectsPage() {
               </button>
             </div>
           </div>
-        </section>
+          </section>
+        )}
 
         <section className="portal-surface">
           <div className="portal-surface__header">

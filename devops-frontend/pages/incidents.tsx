@@ -137,6 +137,7 @@ function normalizeQueryValue(value: string | string[] | undefined): string {
 export default function DevOpsIncidentsPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const [activePanel, setActivePanel] = useState<'editor' | null>(null);
   const [teams, setTeams] = useState<TeamOption[]>([]);
   const [membersByTeam, setMembersByTeam] = useState<Record<number, TeamMemberOption[]>>({});
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -268,6 +269,23 @@ export default function DevOpsIncidentsPage() {
     setOwnerUserId('');
     setSummary('');
     setNotes('');
+    setActivePanel(null);
+  };
+
+  const openCreatePanel = () => {
+    setEditingId(null);
+    setCurrentIncidentNumber('');
+    setRequestId('');
+    setTeamId('');
+    setSeverity('medium');
+    setStatus('open');
+    setEscalationLevel('monitoring');
+    setOwnerUserId('');
+    setSummary('');
+    setNotes('');
+    setError('');
+    setNotice('');
+    setActivePanel('editor');
   };
 
   useEffect(() => {
@@ -367,6 +385,9 @@ export default function DevOpsIncidentsPage() {
             <button type="button" className="btn btn-secondary" onClick={exportIncidents} disabled={filteredIncidents.length === 0}>
               Export CSV
             </button>
+            <button type="button" className="btn btn-primary" onClick={openCreatePanel}>
+              Create incident
+            </button>
           </div>
         </div>
 
@@ -390,11 +411,31 @@ export default function DevOpsIncidentsPage() {
           </div>
         ) : null}
 
+        {!activePanel ? (
+          <section className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Incident management</span>
+                <h2 className="portal-surface__title">Start from the incident queue</h2>
+                <p className="portal-surface__subtitle">
+                  Use <strong>Create incident</strong> only when you want to raise a new incident. Editing an existing incident will open the same incident editor.
+                </p>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {activePanel === 'editor' ? (
         <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
               <span className="portal-surface__eyebrow">Incident Editor</span>
               <h2 className="portal-surface__title">{editingId ? 'Update incident' : 'Create / link incident'}</h2>
+            </div>
+            <div className="portal-page__actions">
+              <button type="button" className="btn btn-secondary" onClick={resetForm}>
+                Close
+              </button>
             </div>
           </div>
           {displayedIncidentNumber ? (
@@ -495,6 +536,7 @@ export default function DevOpsIncidentsPage() {
             {editingId ? <button type="button" className="btn btn-secondary" onClick={resetForm}>Cancel edit</button> : null}
           </div>
         </section>
+        ) : null}
 
         <section className="portal-surface">
           <div className="portal-surface__header">
@@ -562,6 +604,7 @@ export default function DevOpsIncidentsPage() {
                             setOwnerUserId(incident.owner_user_id ? String(incident.owner_user_id) : '');
                             setSummary(incident.summary);
                             setNotes(incident.notes);
+                            setActivePanel('editor');
                           }}
                         >
                           Edit
