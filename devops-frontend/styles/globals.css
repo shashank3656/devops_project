@@ -267,6 +267,47 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   font-weight: 700;
   line-height: 1;
 }
+.devops-sidebar-new__section {
+  border-top: 1px solid rgba(18, 58, 96, 0.92);
+}
+.devops-sidebar-new__section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 18px 30px;
+  border: 0;
+  background: rgba(1, 9, 20, 0.5);
+  color: #7ea6d1;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: color var(--transition), background var(--transition);
+}
+.devops-sidebar-new__section-toggle:hover,
+.devops-sidebar-new__section-toggle--open {
+  color: #a7daff;
+  background: rgba(8, 31, 56, 0.64);
+}
+.devops-sidebar-new__section-meta {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #4f739b;
+}
+.devops-sidebar-new__section-body {
+  padding-bottom: 8px;
+  background: rgba(1, 9, 20, 0.38);
+}
+.devops-sidebar-new__section-copy {
+  padding: 0 30px 14px;
+  color: #4f739b;
+  font-size: 12px;
+  line-height: 1.6;
+}
 .devops-sidebar-new__status-panel {
   margin-top: auto;
   padding: 28px 28px 30px;
