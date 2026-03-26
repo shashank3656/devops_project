@@ -70,6 +70,59 @@ interface OnboardingProgress {
   completion_percent: number;
 }
 
+function normalizeOnboardingProgress(raw: any): OnboardingProgress | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const latestRequest =
+    raw.latest_request && typeof raw.latest_request === 'object'
+      ? {
+          id: typeof raw.latest_request.id === 'number' ? raw.latest_request.id : 0,
+          team: typeof raw.latest_request.team === 'string' ? raw.latest_request.team : '',
+          env: typeof raw.latest_request.env === 'string' ? raw.latest_request.env : '',
+          cloud: typeof raw.latest_request.cloud === 'string' ? raw.latest_request.cloud : '',
+          service: typeof raw.latest_request.service === 'string' ? raw.latest_request.service : '',
+          status: typeof raw.latest_request.status === 'string' ? raw.latest_request.status : 'unknown',
+          pr_url: typeof raw.latest_request.pr_url === 'string' ? raw.latest_request.pr_url : '',
+          created_at: typeof raw.latest_request.created_at === 'string' ? raw.latest_request.created_at : '',
+          updated_at: typeof raw.latest_request.updated_at === 'string' ? raw.latest_request.updated_at : '',
+        }
+      : null;
+  const milestones = Array.isArray(raw.milestones)
+    ? raw.milestones
+        .filter((item: any) => item && typeof item === 'object')
+        .map(
+          (item: any, index: number): OnboardingMilestone => ({
+            key: typeof item.key === 'string' ? item.key : `step-${index + 1}`,
+            title: typeof item.title === 'string' ? item.title : 'Onboarding step',
+            detail: typeof item.detail === 'string' ? item.detail : '',
+            state:
+              item.state === 'completed' || item.state === 'current' || item.state === 'upcoming' || item.state === 'attention'
+                ? item.state
+                : 'upcoming',
+            timestamp: typeof item.timestamp === 'string' ? item.timestamp : undefined,
+          }),
+        )
+    : [];
+  return {
+    user_id: typeof raw.user_id === 'number' ? raw.user_id : 0,
+    username: typeof raw.username === 'string' ? raw.username : '',
+    email: typeof raw.email === 'string' ? raw.email : '',
+    user_type: typeof raw.user_type === 'string' ? raw.user_type : '',
+    role: typeof raw.role === 'string' ? raw.role : '',
+    verified: Boolean(raw.verified),
+    created_at: typeof raw.created_at === 'string' ? raw.created_at : '',
+    manager_username: typeof raw.manager_username === 'string' ? raw.manager_username : undefined,
+    teams: Array.isArray(raw.teams) ? raw.teams : [],
+    requests_by_status:
+      raw.requests_by_status && typeof raw.requests_by_status === 'object' ? raw.requests_by_status : {},
+    requests_total: typeof raw.requests_total === 'number' ? raw.requests_total : 0,
+    submitted_requests: typeof raw.submitted_requests === 'number' ? raw.submitted_requests : 0,
+    latest_request: latestRequest,
+    milestones,
+    next_action: typeof raw.next_action === 'string' ? raw.next_action : 'Review user onboarding',
+    completion_percent: typeof raw.completion_percent === 'number' ? raw.completion_percent : 0,
+  };
+}
+
 function parsePositiveIntParam(value: unknown): number | null {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== 'string') return null;
@@ -135,7 +188,7 @@ export default function EditUser() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        setOnboardingProgress(data.progress || null);
+        setOnboardingProgress(normalizeOnboardingProgress(data.progress));
       } else {
         setOnboardingProgress(null);
       }
@@ -166,8 +219,12 @@ export default function EditUser() {
       const data = await res.json().catch(() => ({}));
       if (Array.isArray(data.teams)) {
         setAllTeams(data.teams);
+      } else {
+        setAllTeams([]);
       }
-    } catch (_) {}
+    } catch (_) {
+      setAllTeams([]);
+    }
   };
 
   const fetchUser = async (userId: number) => {
@@ -183,20 +240,29 @@ export default function EditUser() {
       }
       const data = await res.json().catch(() => ({}));
       if (data.user) {
-        setUser(data.user);
-        setUsername(data.user.username || '');
-        setEmail(data.user.email || '');
-        setRole((data.user.role || 'viewer') as 'viewer' | 'contributor' | 'admin');
-        setVerified(Boolean(data.user.verified));
-        setUserType(data.user.user_type === 'devops_user' ? 'devops_user' : 'portal_user');
-        setManagerId(data.user.manager_id != null ? String(data.user.manager_id) : '');
-        setIsPortalManager(Boolean(data.user.is_portal_manager));
-        const dp = data.user.devops_profile;
+        const nextUser = {
+          ...data.user,
+          teams: Array.isArray(data.user.teams) ? data.user.teams : [],
+        } as User;
+        setUser(nextUser);
+        setUsername(nextUser.username || '');
+        setEmail(nextUser.email || '');
+        setRole((nextUser.role || 'viewer') as 'viewer' | 'contributor' | 'admin');
+        setVerified(Boolean(nextUser.verified));
+        setUserType(nextUser.user_type === 'devops_user' ? 'devops_user' : 'portal_user');
+        setManagerId(nextUser.manager_id != null ? String(nextUser.manager_id) : '');
+        setIsPortalManager(Boolean((nextUser as any).is_portal_manager));
+        const dp = nextUser.devops_profile;
         if (dp) {
           setIsManager(Boolean(dp.is_manager));
           setPosition(dp.position || '');
           setOnboardDate(dp.onboard_date || '');
           setLevel((dp.level || 'L1') as 'L1' | 'L2' | 'L3' | 'L4');
+        } else {
+          setIsManager(false);
+          setPosition('');
+          setOnboardDate('');
+          setLevel('L1');
         }
       } else {
         setError(data.error || 'User not found');
