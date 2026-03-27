@@ -205,6 +205,7 @@ export default function IncidentWorkspacePage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [incidentId, setIncidentId] = useState('');
   const [form, setForm] = useState<PostmortemFormState>(defaultPostmortemForm);
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -219,6 +220,8 @@ export default function IncidentWorkspacePage() {
   useEffect(() => {
     setForm(buildPostmortemForm(workspace?.detail));
   }, [workspace?.detail]);
+
+  const hasActiveScope = Boolean(projectId || statusFilter || incidentId);
 
   const loadWorkspace = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -344,29 +347,39 @@ export default function IncidentWorkspacePage() {
 
         {!loading && !error && summary ? (
           <>
-            <section className="portal-stat-grid">
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Open incidents</span>
-                <strong className="portal-stat-card__value">{summary.open_incidents}</strong>
-                <p className="portal-stat-card__copy">Incidents still active and likely to influence release or remediation decisions.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Critical incidents</span>
-                <strong className="portal-stat-card__value">{summary.critical_incidents}</strong>
-                <p className="portal-stat-card__copy">Critical incidents requiring focused response and stronger review discipline.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Postmortem drafts</span>
-                <strong className="portal-stat-card__value">{summary.postmortem_drafts}</strong>
-                <p className="portal-stat-card__copy">Incident records with a started but incomplete postmortem workspace.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Completed postmortems</span>
-                <strong className="portal-stat-card__value">{summary.completed_postmortems}</strong>
-                <p className="portal-stat-card__copy">Incidents that already have a completed review narrative and follow-up path.</p>
-              </article>
+            <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="portal-pill-row">
+                  <span className="portal-pill">Open incidents {summary.open_incidents}</span>
+                  <span className="portal-pill">Critical {summary.critical_incidents}</span>
+                  <span className="portal-pill">Postmortem drafts {summary.postmortem_drafts}</span>
+                  <span className="portal-pill">Completed postmortems {summary.completed_postmortems}</span>
+                </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters((current) => !current)}>
+                  {showFilters ? 'Hide scope' : 'Show scope'}
+                </button>
+              </div>
             </section>
 
+            {hasActiveScope ? (
+              <div className="alert alert-info" style={{ marginBottom: 24 }}>
+                Viewing a focused incident workspace slice.
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ marginLeft: 12 }}
+                  onClick={() => {
+                    setProjectId('');
+                    setStatusFilter('');
+                    setIncidentId('');
+                  }}
+                >
+                  Clear scope
+                </button>
+              </div>
+            ) : null}
+
+            {showFilters ? (
             <section className="portal-surface" style={{ marginBottom: 24 }}>
               <div className="portal-surface__header">
                 <div>
@@ -374,6 +387,9 @@ export default function IncidentWorkspacePage() {
                   <h2 className="portal-surface__title">Filter the workspace</h2>
                   <p className="portal-surface__subtitle">Narrow the workspace to a project, incident, or incident status when you need focus.</p>
                 </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters(false)}>
+                  Close
+                </button>
               </div>
               <div className="portal-toolbar">
                 <div className="portal-toolbar__group">
@@ -412,6 +428,7 @@ export default function IncidentWorkspacePage() {
                 </div>
               </div>
             </section>
+            ) : null}
 
             <div className="portal-grid" style={{ alignItems: 'start' }}>
               <section className="portal-surface">

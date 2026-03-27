@@ -183,6 +183,7 @@ export default function GatePoliciesPage() {
       relaxedDevProjects,
     };
   }, [projects]);
+  const [showGuide, setShowGuide] = useState(false);
 
   return (
     <DevOpsLayout>
@@ -205,43 +206,39 @@ export default function GatePoliciesPage() {
           </div>
         </div>
 
-        <section className="portal-stat-grid" style={{ marginBottom: 24 }}>
-          <article className="portal-stat-card">
-            <span className="portal-stat-card__label">Projects</span>
-            <strong className="portal-stat-card__value">{summary.total}</strong>
-            <p className="portal-stat-card__copy">Projects currently visible to the DevOps policy console.</p>
-          </article>
-          <article className="portal-stat-card">
-            <span className="portal-stat-card__label">Prod manager approval</span>
-            <strong className="portal-stat-card__value">{summary.projectsWithProdManager}</strong>
-            <p className="portal-stat-card__copy">Projects enforcing explicit manager review before production promotion.</p>
-          </article>
-          <article className="portal-stat-card">
-            <span className="portal-stat-card__label">Prod DevOps approval</span>
-            <strong className="portal-stat-card__value">{summary.projectsWithProdDevops}</strong>
-            <p className="portal-stat-card__copy">Projects requiring DevOps approval on production promotions.</p>
-          </article>
-          <article className="portal-stat-card">
-            <span className="portal-stat-card__label">Relaxed dev policy</span>
-            <strong className="portal-stat-card__value">{summary.relaxedDevProjects}</strong>
-            <p className="portal-stat-card__copy">Projects where development environments can move without manager review.</p>
-          </article>
+        <section className="portal-surface" style={{ marginBottom: 24 }}>
+          <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="portal-pill-row">
+              <span className="portal-pill">Projects {summary.total}</span>
+              <span className="portal-pill">Prod manager {summary.projectsWithProdManager}</span>
+              <span className="portal-pill">Prod DevOps {summary.projectsWithProdDevops}</span>
+              <span className="portal-pill">Relaxed dev {summary.relaxedDevProjects}</span>
+            </div>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowGuide((current) => !current)}>
+              {showGuide ? 'Hide guide' : 'Show guide'}
+            </button>
+          </div>
         </section>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
 
-        <section className="portal-surface" style={{ marginBottom: 24 }}>
-          <div className="portal-surface__header">
-            <div>
-              <span className="portal-surface__eyebrow">Policy guide</span>
-              <h2 className="portal-surface__title">How the engine uses these settings</h2>
-              <p className="portal-surface__subtitle">
-                These toggles define the baseline approval requirements for each environment. Runtime checks like incidents, temporary access overrides, rollback readiness, and source promotion state are layered on top during promotion decisions.
-              </p>
+        {showGuide ? (
+          <section className="portal-surface" style={{ marginBottom: 24 }}>
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Policy guide</span>
+                <h2 className="portal-surface__title">How the engine uses these settings</h2>
+                <p className="portal-surface__subtitle">
+                  These toggles define the baseline approval requirements for each environment. Runtime checks like incidents, temporary access overrides, rollback readiness, and source promotion state are layered on top during promotion decisions.
+                </p>
+              </div>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowGuide(false)}>
+                Close
+              </button>
             </div>
-          </div>
-        </section>
+          </section>
+        ) : null}
 
         {loading ? (
           <section className="portal-surface">

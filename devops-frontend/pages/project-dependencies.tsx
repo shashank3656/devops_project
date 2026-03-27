@@ -101,6 +101,7 @@ export default function ProjectDependenciesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [projectId, setProjectId] = useState('');
+  const [showScope, setShowScope] = useState(false);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -223,6 +224,8 @@ export default function ProjectDependenciesPage() {
     return Array.from(legendMap.entries());
   }, [visibleEdges]);
 
+  const hasFocusedProject = Boolean(projectId);
+
   return (
     <DevOpsLayout>
       <Head>
@@ -249,34 +252,36 @@ export default function ProjectDependenciesPage() {
 
         {!loading && !error && summary ? (
           <>
-            <section className="portal-stat-grid">
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Projects in scope</span>
-                <strong className="portal-stat-card__value">{summary.node_count}</strong>
-                <p className="portal-stat-card__copy">Projects included in the current dependency graph.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Relationships</span>
-                <strong className="portal-stat-card__value">{summary.edge_count}</strong>
-                <p className="portal-stat-card__copy">Detected dependency edges across service, team, cluster, and cloud overlap.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Shared services</span>
-                <strong className="portal-stat-card__value">{summary.service_edges}</strong>
-                <p className="portal-stat-card__copy">Dependency edges caused by common service usage.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Shared clusters</span>
-                <strong className="portal-stat-card__value">{summary.cluster_edges}</strong>
-                <p className="portal-stat-card__copy">Projects sharing cluster placement and operational blast radius.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Shared teams</span>
-                <strong className="portal-stat-card__value">{summary.team_edges}</strong>
-                <p className="portal-stat-card__copy">Projects coupled through the same ownership or delivery teams.</p>
-              </article>
+            <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="portal-pill-row">
+                  <span className="portal-pill">Projects {summary.node_count}</span>
+                  <span className="portal-pill">Relationships {summary.edge_count}</span>
+                  <span className="portal-pill">Shared services {summary.service_edges}</span>
+                  <span className="portal-pill">Shared clusters {summary.cluster_edges}</span>
+                  <span className="portal-pill">Shared teams {summary.team_edges}</span>
+                </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowScope((current) => !current)}>
+                  {showScope ? 'Hide scope' : 'Show scope'}
+                </button>
+              </div>
             </section>
 
+            {hasFocusedProject ? (
+              <div className="alert alert-info" style={{ marginBottom: 24 }}>
+                Viewing a focused dependency slice.
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ marginLeft: 12 }}
+                  onClick={() => setProjectId('')}
+                >
+                  Clear scope
+                </button>
+              </div>
+            ) : null}
+
+            {showScope ? (
             <section className="portal-surface" style={{ marginBottom: 24 }}>
               <div className="portal-surface__header">
                 <div>
@@ -284,6 +289,9 @@ export default function ProjectDependenciesPage() {
                   <h2 className="portal-surface__title">Focus a project</h2>
                   <p className="portal-surface__subtitle">Use a focused graph view to inspect one project and its closest dependency peers.</p>
                 </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowScope(false)}>
+                  Close
+                </button>
               </div>
               <div className="portal-toolbar">
                 <div className="portal-toolbar__group">
@@ -306,6 +314,7 @@ export default function ProjectDependenciesPage() {
                 </div>
               </div>
             </section>
+            ) : null}
 
             {dependencies?.focus_node ? (
               <section className="portal-surface" style={{ marginBottom: 24 }}>

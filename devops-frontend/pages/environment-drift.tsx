@@ -1,7 +1,7 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { downloadCSV } from '../lib/csv';
@@ -102,6 +102,7 @@ export default function EnvironmentDriftPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [projectId, setProjectId] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -157,6 +158,10 @@ export default function EnvironmentDriftPage() {
   const summary = drift?.summary;
   const items = drift?.items || [];
   const projects = drift?.projects || [];
+  const selectedProject = useMemo(
+    () => projects.find((project) => String(project.id) === projectId) || null,
+    [projectId, projects],
+  );
 
   const exportDriftCSV = () => {
     const rows: unknown[][] = [];
@@ -234,63 +239,64 @@ export default function EnvironmentDriftPage() {
 
         {!loading && !error && summary ? (
           <>
-            <section className="portal-stat-grid">
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Drifted projects</span>
-                <strong className="portal-stat-card__value">{summary.drifted_projects}</strong>
-                <p className="portal-stat-card__copy">Projects with clear drift between configured and observed environment state.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Attention projects</span>
-                <strong className="portal-stat-card__value">{summary.attention_projects}</strong>
-                <p className="portal-stat-card__copy">Projects with environment differences that should be reviewed before the next release.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Missing connections</span>
-                <strong className="portal-stat-card__value">{summary.missing_connection_count}</strong>
-                <p className="portal-stat-card__copy">Environment snapshots missing expected runtime connection coverage.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Version drift</span>
-                <strong className="portal-stat-card__value">{summary.version_drift_count}</strong>
-                <p className="portal-stat-card__copy">Detected version mismatches across service, image, tag, or release markers.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Secret reference drift</span>
-                <strong className="portal-stat-card__value">{summary.secret_reference_drift_count}</strong>
-                <p className="portal-stat-card__copy">Environment config differs in referenced secrets, tokens, or credential inputs.</p>
-              </article>
+            <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="portal-pill-row">
+                  <span className="portal-pill">Drifted {summary.drifted_projects}</span>
+                  <span className="portal-pill">Attention {summary.attention_projects}</span>
+                  <span className="portal-pill">Missing connections {summary.missing_connection_count}</span>
+                  <span className="portal-pill">Version drift {summary.version_drift_count}</span>
+                  <span className="portal-pill">Secret references {summary.secret_reference_drift_count}</span>
+                </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters((current) => !current)}>
+                  {showFilters ? 'Hide filters' : 'Show filters'}
+                </button>
+              </div>
             </section>
 
-            <section className="portal-surface" style={{ marginBottom: 24 }}>
-              <div className="portal-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Scope</span>
-                  <h2 className="portal-surface__title">Focus the drift view</h2>
-                  <p className="portal-surface__subtitle">Use a project filter to drill into a single environment lineage when needed.</p>
-                </div>
+            {projectId ? (
+              <div className="alert alert-info" style={{ marginBottom: 24 }}>
+                Reviewing {selectedProject ? selectedProject.name : `project #${projectId}`}
+                <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: 12 }} onClick={() => setProjectId('')}>
+                  Clear filter
+                </button>
               </div>
-              <div className="portal-toolbar">
-                <div className="portal-toolbar__group">
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label" htmlFor="environment-drift-project-filter">Project</label>
-                    <select
-                      id="environment-drift-project-filter"
-                      className="input"
-                      value={projectId}
-                      onChange={(event) => setProjectId(event.target.value)}
-                    >
-                      <option value="">All projects</option>
-                      {projects.map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.name}{project.code ? ` (${project.code})` : ''}
-                        </option>
-                      ))}
-                    </select>
+            ) : null}
+
+            {showFilters ? (
+              <section className="portal-surface" style={{ marginBottom: 24 }}>
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Filters</span>
+                    <h2 className="portal-surface__title">Focus the drift view</h2>
+                    <p className="portal-surface__subtitle">Only open this when you want to drill into a single project lineage.</p>
+                  </div>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters(false)}>
+                    Close
+                  </button>
+                </div>
+                <div className="portal-toolbar">
+                  <div className="portal-toolbar__group">
+                    <div className="portal-toolbar__item">
+                      <label className="credential-audit-label" htmlFor="environment-drift-project-filter">Project</label>
+                      <select
+                        id="environment-drift-project-filter"
+                        className="input"
+                        value={projectId}
+                        onChange={(event) => setProjectId(event.target.value)}
+                      >
+                        <option value="">All projects</option>
+                        {projects.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.name}{project.code ? ` (${project.code})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </section>
+              </section>
+            ) : null}
 
             <div className="portal-grid" style={{ alignItems: 'start' }}>
               {items.map((item) => {

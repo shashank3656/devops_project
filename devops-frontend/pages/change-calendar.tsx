@@ -120,27 +120,13 @@ export default function DevOpsChangeCalendarPage() {
 
         {!loading && !error && calendar ? (
           <>
-            <section className="portal-stat-grid">
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Upcoming windows</span>
-                <span className="portal-stat-card__value">{calendar.summary.upcoming_count}</span>
-                <p className="portal-stat-card__copy">Changes planned in the upcoming calendar range.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Overdue windows</span>
-                <span className="portal-stat-card__value">{calendar.summary.overdue_count}</span>
-                <p className="portal-stat-card__copy">Requests whose expected change window has already passed.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Production watch</span>
-                <span className="portal-stat-card__value">{calendar.summary.production_watch_count}</span>
-                <p className="portal-stat-card__copy">Production-facing changes needing extra visibility.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">In progress</span>
-                <span className="portal-stat-card__value">{calendar.summary.in_progress_count}</span>
-                <p className="portal-stat-card__copy">Changes already moving inside an active delivery window.</p>
-              </article>
+            <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <div className="portal-pill-row">
+                <span className="portal-pill">Upcoming {calendar.summary.upcoming_count}</span>
+                <span className="portal-pill">Overdue {calendar.summary.overdue_count}</span>
+                <span className="portal-pill">Production watch {calendar.summary.production_watch_count}</span>
+                <span className="portal-pill">In progress {calendar.summary.in_progress_count}</span>
+              </div>
             </section>
 
             <section className="portal-surface">

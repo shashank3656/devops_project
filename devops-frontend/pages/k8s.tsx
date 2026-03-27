@@ -24,6 +24,7 @@ type ResourceTab =
 type DataSourceMode = 'prometheus' | 'kube_state_metrics' | 'loki';
 type ResolutionMode = '15s' | '30s' | '1m' | '5m';
 type K8sHealthFocus = '' | 'restarting_pods' | 'non_running_pods' | 'warning_logs' | 'unhealthy_namespaces' | 'degraded_workloads';
+type K8sPanel = 'filters' | null;
 
 interface ProjectOption {
   id: number;
@@ -394,6 +395,7 @@ export default function DevOpsK8sPage() {
   const [workload, setWorkload] = useState('');
   const [activeTab, setActiveTab] = useState<ResourceTab>('pods');
   const [healthFocus, setHealthFocus] = useState<K8sHealthFocus>('');
+  const [activePanel, setActivePanel] = useState<K8sPanel>(null);
   const [form, setForm] = useState({
     project_id: '',
     cloud: '',
@@ -411,6 +413,17 @@ export default function DevOpsK8sPage() {
 
   const projectClouds = selectedProject?.clouds || [];
   const projectEnvironments = selectedProject?.environments || [];
+  const selectedOverviewProject = useMemo(
+    () => overview?.projects.find((project) => String(project.id) === projectId) || null,
+    [overview?.projects, projectId],
+  );
+  const hasDashboardScope =
+    Boolean(projectId) ||
+    Boolean(clusterName) ||
+    Boolean(namespace) ||
+    Boolean(environment) ||
+    Boolean(workload) ||
+    Boolean(healthFocus);
   const workloadOptions = useMemo(() => {
     const names = (overview?.deployments || []).map((item) => item.name).filter(Boolean);
     return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
@@ -913,27 +926,24 @@ export default function DevOpsK8sPage() {
             </p>
           </div>
           <div className="portal-page__actions">
+            <button
+              type="button"
+              className={`btn ${viewMode === 'dashboard' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setViewMode('dashboard')}
+            >
+              Dashboard
+            </button>
+            <button
+              type="button"
+              className={`btn ${viewMode === 'onboarding' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setViewMode('onboarding')}
+            >
+              Onboarding
+            </button>
             <Link href="/projects" className="btn btn-secondary">Projects</Link>
             <Link href="/project-operations" className="btn btn-secondary">Project operations</Link>
           </div>
         </div>
-
-        <section className="portal-surface" style={{ marginBottom: 24 }}>
-          <div className="portal-surface__header">
-            <div>
-              <span className="portal-surface__eyebrow">Workspace</span>
-              <h2 className="portal-surface__title">K8s modules</h2>
-            </div>
-          </div>
-          <div className="k8s-mode-switch">
-            <button type="button" className={`k8s-mode-switch__button ${viewMode === 'onboarding' ? 'k8s-mode-switch__button--active' : ''}`} onClick={() => setViewMode('onboarding')}>
-              K8s Onboarding
-            </button>
-            <button type="button" className={`k8s-mode-switch__button ${viewMode === 'dashboard' ? 'k8s-mode-switch__button--active' : ''}`} onClick={() => setViewMode('dashboard')}>
-              K8s Dashboard
-            </button>
-          </div>
-        </section>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {success ? <div className="alert alert-success">{success}</div> : null}
@@ -1106,92 +1116,141 @@ export default function DevOpsK8sPage() {
               </section>
             ) : null}
             <section className="portal-surface" style={{ marginBottom: 24 }}>
-              <div className="portal-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Filters</span>
-                  <h2 className="portal-surface__title">Project-wise dashboard</h2>
-                  <p className="portal-surface__subtitle">
-                    Filter the Kubernetes dashboard by project name, cluster name, namespace, and environment.
-                  </p>
+              <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="portal-pill-row">
+                  <span className="portal-pill">Namespaces {dashboardView?.summary.namespace_count || 0}</span>
+                  <span className="portal-pill">Deployments {dashboardView?.summary.deployment_count || 0}</span>
+                  <span className="portal-pill">Pods {dashboardView?.summary.pod_count || 0}</span>
+                  <span className="portal-pill">Warnings {dashboardView?.summary.warning_event_count || 0}</span>
+                  <span className="portal-pill">Restarting {dashboardView?.health_summary.restarting_pods || 0}</span>
+                  <span className="portal-pill">Unhealthy namespaces {dashboardView?.health_summary.unhealthy_namespaces || 0}</span>
                 </div>
-              </div>
-              <div className="k8s-filter-toolbar">
-                <div className="k8s-filter-toolbar__group">
-                  <span className="k8s-filter-toolbar__label">datasource</span>
-                  <select className="k8s-filter-toolbar__select" value={dataSourceMode} onChange={(event) => setDataSourceMode(event.target.value as DataSourceMode)}>
-                    <option value="prometheus">Prometheus</option>
-                    <option value="kube_state_metrics">kube-state-metrics</option>
-                    <option value="loki">Loki</option>
-                  </select>
-                </div>
-                <div className="k8s-filter-toolbar__group">
-                  <span className="k8s-filter-toolbar__label">project</span>
-                  <select className="k8s-filter-toolbar__select" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                    {overview?.projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name} ({project.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="k8s-filter-toolbar__group">
-                  <span className="k8s-filter-toolbar__label">cluster</span>
-                  <select className="k8s-filter-toolbar__select" value={clusterName} onChange={(event) => setClusterName(event.target.value)}>
-                    <option value="">All clusters</option>
-                    {overview?.clusters.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="k8s-filter-toolbar__group">
-                  <span className="k8s-filter-toolbar__label">namespace</span>
-                  <select className="k8s-filter-toolbar__select" value={namespace} onChange={(event) => setNamespace(event.target.value)}>
-                    <option value="">All namespaces</option>
-                    {overview?.namespaces.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="k8s-filter-toolbar__group">
-                  <span className="k8s-filter-toolbar__label">env</span>
-                  <select className="k8s-filter-toolbar__select" value={environment} onChange={(event) => setEnvironment(event.target.value)}>
-                    <option value="">All environments</option>
-                    {overview?.environments.map((item) => (
-                      <option key={item} value={item}>
-                        {item.toUpperCase()}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="k8s-filter-toolbar__group">
-                  <span className="k8s-filter-toolbar__label">workload</span>
-                  <select className="k8s-filter-toolbar__select" value={workload} onChange={(event) => setWorkload(event.target.value)}>
-                    <option value="">All workloads</option>
-                    {workloadOptions.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="k8s-filter-toolbar__group">
-                  <span className="k8s-filter-toolbar__label">resolution</span>
-                  <select className="k8s-filter-toolbar__select" value={resolution} onChange={(event) => setResolution(event.target.value as ResolutionMode)}>
-                    <option value="15s">15s</option>
-                    <option value="30s">30s</option>
-                    <option value="1m">1m</option>
-                    <option value="5m">5m</option>
-                  </select>
-                </div>
-                <button type="button" className="k8s-filter-toolbar__action" onClick={handleApplyFilters} disabled={loading}>
-                  {loading ? 'Loading...' : 'Apply filters'}
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setActivePanel((current) => current === 'filters' ? null : 'filters')}>
+                  {activePanel === 'filters' ? 'Hide filters' : 'Show filters'}
                 </button>
               </div>
             </section>
+
+            {hasDashboardScope ? (
+              <div className="alert alert-info" style={{ marginBottom: 24 }}>
+                Reviewing
+                {selectedOverviewProject ? ` ${selectedOverviewProject.name}` : ' all projects'}
+                {clusterName ? ` · cluster ${clusterName}` : ''}
+                {namespace ? ` · namespace ${namespace}` : ''}
+                {environment ? ` · ${environment.toUpperCase()}` : ''}
+                {workload ? ` · workload ${workload}` : ''}
+                {healthFocus ? ' · focused drilldown' : ''}
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ marginLeft: 12 }}
+                  onClick={() => {
+                    setProjectId('');
+                    setClusterName('');
+                    setNamespace('');
+                    setEnvironment('');
+                    setWorkload('');
+                    setHealthFocus('');
+                    void loadFilteredView('', '', '', '');
+                  }}
+                >
+                  Clear scope
+                </button>
+              </div>
+            ) : null}
+
+            {activePanel === 'filters' ? (
+              <section className="portal-surface" style={{ marginBottom: 24 }}>
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Filters</span>
+                    <h2 className="portal-surface__title">Focus the K8s dashboard</h2>
+                    <p className="portal-surface__subtitle">
+                      Only open this when you need a different project, cluster, namespace, environment, or workload slice.
+                    </p>
+                  </div>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setActivePanel(null)}>
+                    Close
+                  </button>
+                </div>
+                <div className="k8s-filter-toolbar">
+                  <div className="k8s-filter-toolbar__group">
+                    <span className="k8s-filter-toolbar__label">datasource</span>
+                    <select className="k8s-filter-toolbar__select" value={dataSourceMode} onChange={(event) => setDataSourceMode(event.target.value as DataSourceMode)}>
+                      <option value="prometheus">Prometheus</option>
+                      <option value="kube_state_metrics">kube-state-metrics</option>
+                      <option value="loki">Loki</option>
+                    </select>
+                  </div>
+                  <div className="k8s-filter-toolbar__group">
+                    <span className="k8s-filter-toolbar__label">project</span>
+                    <select className="k8s-filter-toolbar__select" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                      {overview?.projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name} ({project.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="k8s-filter-toolbar__group">
+                    <span className="k8s-filter-toolbar__label">cluster</span>
+                    <select className="k8s-filter-toolbar__select" value={clusterName} onChange={(event) => setClusterName(event.target.value)}>
+                      <option value="">All clusters</option>
+                      {overview?.clusters.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="k8s-filter-toolbar__group">
+                    <span className="k8s-filter-toolbar__label">namespace</span>
+                    <select className="k8s-filter-toolbar__select" value={namespace} onChange={(event) => setNamespace(event.target.value)}>
+                      <option value="">All namespaces</option>
+                      {overview?.namespaces.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="k8s-filter-toolbar__group">
+                    <span className="k8s-filter-toolbar__label">env</span>
+                    <select className="k8s-filter-toolbar__select" value={environment} onChange={(event) => setEnvironment(event.target.value)}>
+                      <option value="">All environments</option>
+                      {overview?.environments.map((item) => (
+                        <option key={item} value={item}>
+                          {item.toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="k8s-filter-toolbar__group">
+                    <span className="k8s-filter-toolbar__label">workload</span>
+                    <select className="k8s-filter-toolbar__select" value={workload} onChange={(event) => setWorkload(event.target.value)}>
+                      <option value="">All workloads</option>
+                      {workloadOptions.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="k8s-filter-toolbar__group">
+                    <span className="k8s-filter-toolbar__label">resolution</span>
+                    <select className="k8s-filter-toolbar__select" value={resolution} onChange={(event) => setResolution(event.target.value as ResolutionMode)}>
+                      <option value="15s">15s</option>
+                      <option value="30s">30s</option>
+                      <option value="1m">1m</option>
+                      <option value="5m">5m</option>
+                    </select>
+                  </div>
+                  <button type="button" className="k8s-filter-toolbar__action" onClick={handleApplyFilters} disabled={loading}>
+                    {loading ? 'Loading...' : 'Apply filters'}
+                  </button>
+                </div>
+              </section>
+            ) : null}
 
             <section className="k8s-viz-grid" style={{ marginBottom: 24 }}>
               <article className="k8s-viz-panel">
@@ -1249,48 +1308,27 @@ export default function DevOpsK8sPage() {
               </article>
             </section>
 
-            <section className="portal-grid portal-grid--three" style={{ marginBottom: 24 }}>
-              <article className="portal-surface portal-surface--tight"><span className="portal-surface__eyebrow">Namespaces</span><h3 className="portal-surface__title">{dashboardView?.summary.namespace_count || 0}</h3></article>
-              <article className="portal-surface portal-surface--tight"><span className="portal-surface__eyebrow">Deployments</span><h3 className="portal-surface__title">{dashboardView?.summary.deployment_count || 0}</h3></article>
-              <article className="portal-surface portal-surface--tight"><span className="portal-surface__eyebrow">Pods</span><h3 className="portal-surface__title">{dashboardView?.summary.pod_count || 0}</h3></article>
-              <article className="portal-surface portal-surface--tight"><span className="portal-surface__eyebrow">Services</span><h3 className="portal-surface__title">{dashboardView?.summary.service_count || 0}</h3></article>
-              <article className="portal-surface portal-surface--tight"><span className="portal-surface__eyebrow">Ingress</span><h3 className="portal-surface__title">{dashboardView?.summary.ingress_count || 0}</h3></article>
-              <article className="portal-surface portal-surface--tight"><span className="portal-surface__eyebrow">Warnings</span><h3 className="portal-surface__title">{dashboardView?.summary.warning_event_count || 0}</h3></article>
-            </section>
-
-            <section className="portal-stat-grid" style={{ marginBottom: 24 }}>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Restarting pods</span>
-                <strong className="portal-stat-card__value">{dashboardView?.health_summary.restarting_pods || 0}</strong>
-                <p className="portal-stat-card__copy">Pods with restart activity under the active filter set.</p>
+            <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Health watchlist</span>
+                  <h2 className="portal-surface__title">Jump straight to the noisy areas</h2>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('pods', 'restarting_pods')}>
-                  View pods
+                  Restarting pods ({dashboardView?.health_summary.restarting_pods || 0})
                 </button>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Non-running pods</span>
-                <strong className="portal-stat-card__value">{dashboardView?.health_summary.non_running_pods || 0}</strong>
-                <p className="portal-stat-card__copy">Pods not currently in a stable running state.</p>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('pods', 'non_running_pods')}>
-                  View pods
+                  Non-running pods ({dashboardView?.health_summary.non_running_pods || 0})
                 </button>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Warning logs</span>
-                <strong className="portal-stat-card__value">{dashboardView?.health_summary.warning_logs || 0}</strong>
-                <p className="portal-stat-card__copy">Log events above `info` severity from visible workloads.</p>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('logs', 'warning_logs')}>
-                  View logs
+                  Warning logs ({dashboardView?.health_summary.warning_logs || 0})
                 </button>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Unhealthy namespaces</span>
-                <strong className="portal-stat-card__value">{dashboardView?.health_summary.unhealthy_namespaces || 0}</strong>
-                <p className="portal-stat-card__copy">Namespaces currently showing workload or signal issues.</p>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('namespaces', 'unhealthy_namespaces')}>
-                  View namespaces
+                  Unhealthy namespaces ({dashboardView?.health_summary.unhealthy_namespaces || 0})
                 </button>
-              </article>
+              </div>
             </section>
 
             <section className="portal-grid" style={{ marginBottom: 24, gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>

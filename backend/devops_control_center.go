@@ -58,6 +58,22 @@ func formatIncidentNumber(id int) string {
 	return fmt.Sprintf("INC%07d", id)
 }
 
+func nextRequestIncidentNumber() (string, error) {
+	var nextNumber int
+	err := queryRowContext(`
+		SELECT COALESCE(MAX(CAST(SUBSTRING(incident_number FROM 4) AS INTEGER)), 0) + 1
+		FROM request_incidents
+		WHERE COALESCE(incident_number, '') <> ''
+	`).Scan(&nextNumber)
+	if err != nil {
+		return "", err
+	}
+	if nextNumber <= 0 {
+		nextNumber = 1
+	}
+	return formatIncidentNumber(nextNumber), nil
+}
+
 type projectAccessOverride struct {
 	ID           int        `json:"id"`
 	ProjectID    int        `json:"project_id"`
@@ -1190,6 +1206,19 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case "GET":
+		if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("mode")), "preview") {
+			number, err := nextRequestIncidentNumber()
+			if err != nil {
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to prepare incident number", err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"incident_number": number,
+				"status":          "ok",
+			})
+			return
+		}
 		items, err := listRequestIncidents(strings.TrimSpace(r.URL.Query().Get("status")))
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incidents", err)

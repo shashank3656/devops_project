@@ -153,6 +153,7 @@ export default function ApprovalNotificationAnalyticsPage() {
   const [analytics, setAnalytics] = useState<OpsAnalyticsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showSettingsPosture, setShowSettingsPosture] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -221,32 +222,14 @@ export default function ApprovalNotificationAnalyticsPage() {
 
         {!loading && !error && analytics ? (
           <>
-            <section className="portal-stat-grid">
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Active approvals</span>
-                <strong className="portal-stat-card__value">{summary.active_approvals}</strong>
-                <p className="portal-stat-card__copy">Currently valid promotion gate approvals across all environments.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Approvals expiring soon</span>
-                <strong className="portal-stat-card__value">{summary.approvals_expiring_24h}</strong>
-                <p className="portal-stat-card__copy">Approvals that will expire in the next 24 hours and may block promotion flow.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Notifications this week</span>
-                <strong className="portal-stat-card__value">{summary.notifications_last_7_days}</strong>
-                <p className="portal-stat-card__copy">Ops notifications sent in the last 7 days across all configured channels.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Blocked promotion alerts</span>
-                <strong className="portal-stat-card__value">{summary.blocked_promotion_alerts}</strong>
-                <p className="portal-stat-card__copy">Notifications triggered because promotions were blocked by gate policy.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Expiry tracker alerts</span>
-                <strong className="portal-stat-card__value">{summary.expiry_tracker_alerts}</strong>
-                <p className="portal-stat-card__copy">Reminder traffic created by expiring secrets and certificates.</p>
-              </article>
+            <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <div className="portal-pill-row">
+                <span className="portal-pill">Active approvals {summary.active_approvals}</span>
+                <span className="portal-pill">Expiring soon {summary.approvals_expiring_24h}</span>
+                <span className="portal-pill">Notifications 7d {summary.notifications_last_7_days}</span>
+                <span className="portal-pill">Blocked alerts {summary.blocked_promotion_alerts}</span>
+                <span className="portal-pill">Expiry alerts {summary.expiry_tracker_alerts}</span>
+              </div>
             </section>
 
             <div className="portal-grid" style={{ alignItems: 'start', marginTop: 24 }}>
@@ -323,35 +306,18 @@ export default function ApprovalNotificationAnalyticsPage() {
               <section className="portal-surface">
                 <div className="portal-surface__header">
                   <div>
-                    <span className="portal-surface__eyebrow">Settings posture</span>
-                    <h2 className="portal-surface__title">Current delivery configuration</h2>
-                  </div>
-                  <Link href="/notification-settings" className="btn btn-secondary btn-sm">Edit settings</Link>
-                </div>
-                <div style={{ display: 'grid', gap: 12 }}>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <span className="portal-pill">In-app: {analytics.settings.in_app_enabled ? 'enabled' : 'disabled'}</span>
-                    <span className="portal-pill">Email: {analytics.settings.email_enabled ? 'enabled' : 'disabled'}</span>
-                    <span className="portal-pill">Slack: {analytics.settings.slack_enabled ? 'enabled' : 'disabled'}</span>
-                    <span className="portal-pill">Teams: {analytics.settings.teams_enabled ? 'enabled' : 'disabled'}</span>
-                    <span className="portal-pill">Webhook: {analytics.settings.webhook_enabled ? 'enabled' : 'disabled'}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <span className="portal-pill">Blocked promotions: {analytics.settings.notify_blocked_promotions ? 'on' : 'off'}</span>
-                    <span className="portal-pill">Expiring approvals: {analytics.settings.notify_gate_approval_expiring ? 'on' : 'off'}</span>
-                    <span className="portal-pill">Expiring assets: {analytics.settings.notify_expiring_assets ? 'on' : 'off'}</span>
-                  </div>
-                  <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
-                    Slack configured: {analytics.settings.slack_configured ? 'yes' : 'no'} · Teams configured: {analytics.settings.teams_configured ? 'yes' : 'no'} · Generic webhook configured: {analytics.settings.webhook_configured ? 'yes' : 'no'}
-                  </div>
-                </div>
-              </section>
-
-              <section className="portal-surface">
-                <div className="portal-surface__header">
-                  <div>
                     <span className="portal-surface__eyebrow">Recent activity</span>
                     <h2 className="portal-surface__title">Latest notification events</h2>
+                  </div>
+                  <div className="portal-page__actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setShowSettingsPosture((current) => !current)}
+                    >
+                      {showSettingsPosture ? 'Hide settings posture' : 'Show settings posture'}
+                    </button>
+                    <Link href="/notification-settings" className="btn btn-secondary btn-sm">Edit settings</Link>
                   </div>
                 </div>
                 {analytics.recent_events.length === 0 ? (
@@ -381,6 +347,37 @@ export default function ApprovalNotificationAnalyticsPage() {
                   </div>
                 )}
               </section>
+
+              {showSettingsPosture ? (
+                <section className="portal-surface">
+                  <div className="portal-surface__header">
+                    <div>
+                      <span className="portal-surface__eyebrow">Settings posture</span>
+                      <h2 className="portal-surface__title">Current delivery configuration</h2>
+                    </div>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowSettingsPosture(false)}>
+                      Close
+                    </button>
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <span className="portal-pill">In-app: {analytics.settings.in_app_enabled ? 'enabled' : 'disabled'}</span>
+                      <span className="portal-pill">Email: {analytics.settings.email_enabled ? 'enabled' : 'disabled'}</span>
+                      <span className="portal-pill">Slack: {analytics.settings.slack_enabled ? 'enabled' : 'disabled'}</span>
+                      <span className="portal-pill">Teams: {analytics.settings.teams_enabled ? 'enabled' : 'disabled'}</span>
+                      <span className="portal-pill">Webhook: {analytics.settings.webhook_enabled ? 'enabled' : 'disabled'}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <span className="portal-pill">Blocked promotions: {analytics.settings.notify_blocked_promotions ? 'on' : 'off'}</span>
+                      <span className="portal-pill">Expiring approvals: {analytics.settings.notify_gate_approval_expiring ? 'on' : 'off'}</span>
+                      <span className="portal-pill">Expiring assets: {analytics.settings.notify_expiring_assets ? 'on' : 'off'}</span>
+                    </div>
+                    <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
+                      Slack configured: {analytics.settings.slack_configured ? 'yes' : 'no'} · Teams configured: {analytics.settings.teams_configured ? 'yes' : 'no'} · Generic webhook configured: {analytics.settings.webhook_configured ? 'yes' : 'no'}
+                    </div>
+                  </div>
+                </section>
+              ) : null}
             </div>
           </>
         ) : null}

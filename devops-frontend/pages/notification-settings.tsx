@@ -66,6 +66,8 @@ export default function NotificationSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [showChannels, setShowChannels] = useState(true);
+  const [showCategories, setShowCategories] = useState(false);
 
   const clearSessionAndRedirect = () => {
     localStorage.removeItem(DEVOPS_TOKEN_KEY);
@@ -184,41 +186,35 @@ export default function NotificationSettingsPage() {
 
         {!loading ? (
           <>
-            <section className="portal-stat-grid" style={{ marginBottom: 24 }}>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Slack</span>
-                <strong className="portal-stat-card__value">{settings.slack_enabled ? 'On' : 'Off'}</strong>
-                <p className="portal-stat-card__copy">
-                  {settings.slack_configured ? (settings.slack_using_environment ? 'Using environment fallback' : 'Using saved webhook') : 'No webhook configured'}
-                </p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Teams</span>
-                <strong className="portal-stat-card__value">{settings.teams_enabled ? 'On' : 'Off'}</strong>
-                <p className="portal-stat-card__copy">
-                  {settings.teams_configured ? (settings.teams_using_environment ? 'Using environment fallback' : 'Using saved webhook') : 'No webhook configured'}
-                </p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Generic webhook</span>
-                <strong className="portal-stat-card__value">{settings.webhook_enabled ? 'On' : 'Off'}</strong>
-                <p className="portal-stat-card__copy">
-                  {settings.webhook_configured ? (settings.webhook_using_environment ? 'Using environment fallback' : 'Using saved webhook') : 'No webhook configured'}
-                </p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Updated</span>
-                <strong className="portal-stat-card__value">{settings.updated_by_username || 'Default'}</strong>
-                <p className="portal-stat-card__copy">{formatDateTime(settings.updated_at)}</p>
-              </article>
+            <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="portal-pill-row">
+                  <span className="portal-pill">Slack {settings.slack_enabled ? 'On' : 'Off'}</span>
+                  <span className="portal-pill">Teams {settings.teams_enabled ? 'On' : 'Off'}</span>
+                  <span className="portal-pill">Webhook {settings.webhook_enabled ? 'On' : 'Off'}</span>
+                  <span className="portal-pill">Updated by {settings.updated_by_username || 'Default'}</span>
+                </div>
+                <div className="portal-page__actions">
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowChannels((current) => !current)}>
+                    {showChannels ? 'Hide channels' : 'Show channels'}
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowCategories((current) => !current)}>
+                    {showCategories ? 'Hide alert categories' : 'Show alert categories'}
+                  </button>
+                </div>
+              </div>
             </section>
 
+            {showChannels ? (
             <section className="portal-surface" style={{ marginBottom: 24 }}>
               <div className="portal-surface__header">
                 <div>
                   <span className="portal-surface__eyebrow">Delivery channels</span>
                   <h2 className="portal-surface__title">Choose how ops alerts are delivered</h2>
                 </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowChannels(false)}>
+                  Close
+                </button>
               </div>
               <div className="portal-form-grid">
                 <label className="label">
@@ -256,13 +252,18 @@ export default function NotificationSettingsPage() {
                 </label>
               </div>
             </section>
+            ) : null}
 
+            {showCategories ? (
             <section className="portal-surface">
               <div className="portal-surface__header">
                 <div>
                   <span className="portal-surface__eyebrow">Alert categories</span>
                   <h2 className="portal-surface__title">Control which ops events generate alerts</h2>
                 </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowCategories(false)}>
+                  Close
+                </button>
               </div>
               <div className="portal-form-grid">
                 <label className="label">
@@ -288,6 +289,7 @@ export default function NotificationSettingsPage() {
                 </label>
               </div>
             </section>
+            ) : null}
           </>
         ) : null}
       </div>
