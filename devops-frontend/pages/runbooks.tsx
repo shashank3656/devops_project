@@ -12,6 +12,12 @@ interface ProjectOption {
   id: number;
   name: string;
   code: string;
+  services: ProjectServiceOption[];
+}
+
+interface ProjectServiceOption {
+  cloud: string;
+  service: string;
 }
 
 interface Runbook {
@@ -31,6 +37,17 @@ function normalizeProjects(value: unknown): ProjectOption[] {
       id: typeof item.id === 'number' ? item.id : 0,
       name: typeof item.name === 'string' ? item.name : 'Unknown',
       code: typeof item.code === 'string' ? item.code : 'n/a',
+      services: Array.isArray(item.services)
+        ? item.services
+            .map((service) => {
+              const value = service && typeof service === 'object' ? (service as Record<string, unknown>) : {};
+              return {
+                cloud: typeof value.cloud === 'string' ? value.cloud : '',
+                service: typeof value.service === 'string' ? value.service : '',
+              };
+            })
+            .filter((service) => service.service)
+        : [],
     };
   });
 }
@@ -64,6 +81,7 @@ function normalizeQueryValue(value: string | string[] | undefined): string {
 export default function DevOpsRunbooksPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const [activePanel, setActivePanel] = useState<'editor' | null>(null);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [runbooks, setRunbooks] = useState<Runbook[]>([]);
   const [projectId, setProjectId] = useState('');
@@ -88,6 +106,46 @@ export default function DevOpsRunbooksPage() {
   }, [libraryProjectId, libraryService, runbooks]);
 
   const hasLibraryFilters = Boolean(libraryProjectId || libraryService);
+
+  const availableEditorServices = useMemo(() => {
+    const project = projects.find((item) => String(item.id) === projectId);
+    const values = new Set<string>();
+    project?.services.forEach((entry) => {
+      const nextValue = entry.service.trim();
+      if (nextValue) values.add(nextValue);
+    });
+    runbooks
+      .filter((runbook) => String(runbook.project_id) === projectId)
+      .forEach((runbook) => {
+        const nextValue = runbook.service.trim();
+        if (nextValue) values.add(nextValue);
+      });
+    if (service.trim()) values.add(service.trim());
+    return Array.from(values).sort((left, right) => left.localeCompare(right));
+  }, [projectId, projects, runbooks, service]);
+
+  const availableLibraryServices = useMemo(() => {
+    const values = new Set<string>();
+    const scopedProjectId = libraryProjectId;
+    projects.forEach((project) => {
+      if (scopedProjectId && String(project.id) !== scopedProjectId) return;
+      project.services.forEach((entry) => {
+        const nextValue = entry.service.trim();
+        if (nextValue) values.add(nextValue);
+      });
+    });
+    runbooks.forEach((runbook) => {
+      if (scopedProjectId && String(runbook.project_id) !== scopedProjectId) return;
+      const nextValue = runbook.service.trim();
+      if (nextValue) values.add(nextValue);
+    });
+    return Array.from(values).sort((left, right) => left.localeCompare(right));
+  }, [libraryProjectId, projects, runbooks]);
+
+  const selectedProject = useMemo(
+    () => projects.find((item) => String(item.id) === projectId) ?? null,
+    [projectId, projects],
+  );
 
   const loadData = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -135,7 +193,30 @@ export default function DevOpsRunbooksPage() {
     setTitle('');
     setContent('');
     setLinkUrl('');
+    setActivePanel(null);
   };
+
+  const openCreatePanel = () => {
+    setEditingId(null);
+    setProjectId('');
+    setService('');
+    setTitle('');
+    setContent('');
+    setLinkUrl('');
+    setError('');
+    setNotice('');
+    setActivePanel('editor');
+  };
+
+  useEffect(() => {
+    if (!projectId) {
+      if (!editingId) setService('');
+      return;
+    }
+    if (!service) return;
+    if (availableEditorServices.includes(service)) return;
+    setService('');
+  }, [availableEditorServices, editingId, projectId, service]);
 
   const submit = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -222,6 +303,11 @@ export default function DevOpsRunbooksPage() {
               Attach repeatable recovery and delivery instructions to project services so tickets and projects have a standard operating guide.
             </p>
           </div>
+          <div className="portal-page__actions">
+            <button type="button" className="btn btn-primary" onClick={openCreatePanel}>
+              Create runbook
+            </button>
+          </div>
         </div>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
@@ -249,11 +335,31 @@ export default function DevOpsRunbooksPage() {
           </div>
         ) : null}
 
+        {!activePanel ? (
+          <section className="portal-surface" style={{ marginBottom: 24 }}>
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Runbook management</span>
+                <h2 className="portal-surface__title">Start from the runbook library</h2>
+                <p className="portal-surface__subtitle">
+                  Use <strong>Create runbook</strong> only when you want to add a new entry. Editing an existing runbook will open the same editor.
+                </p>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {activePanel === 'editor' ? (
         <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
               <span className="portal-surface__eyebrow">Runbook Editor</span>
               <h2 className="portal-surface__title">{editingId ? 'Update runbook' : 'Add runbook'}</h2>
+            </div>
+            <div className="portal-page__actions">
+              <button type="button" className="btn btn-secondary" onClick={resetForm}>
+                Close
+              </button>
             </div>
           </div>
           <div className="portal-form-grid">
@@ -268,7 +374,26 @@ export default function DevOpsRunbooksPage() {
             </label>
             <label className="label">
               Service
-              <input className="input" value={service} onChange={(event) => setService(event.target.value)} placeholder="eks, rds, networking" />
+              <select
+                className="input"
+                value={service}
+                onChange={(event) => setService(event.target.value)}
+                disabled={!projectId}
+              >
+                <option value="">{projectId ? 'Select service' : 'Select project first'}</option>
+                {availableEditorServices.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+              {projectId && availableEditorServices.length === 0 ? (
+                <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                  {selectedProject
+                    ? `No catalog services were found for ${selectedProject.name} yet.`
+                    : 'No catalog services were found for this project yet.'}
+                </span>
+              ) : null}
             </label>
             <label className="label">
               Title
@@ -284,7 +409,12 @@ export default function DevOpsRunbooksPage() {
             <textarea className="input" rows={8} value={content} onChange={(event) => setContent(event.target.value)} placeholder="Step-by-step runbook notes..." />
           </label>
           <div className="portal-form-actions">
-            <button type="button" className="btn btn-primary" disabled={saving || !projectId || !title.trim()} onClick={() => void submit()}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={saving || !projectId || !service.trim() || !title.trim()}
+              onClick={() => void submit()}
+            >
               {saving ? 'Saving...' : editingId ? 'Update runbook' : 'Create runbook'}
             </button>
             {editingId ? (
@@ -292,6 +422,7 @@ export default function DevOpsRunbooksPage() {
             ) : null}
           </div>
         </section>
+        ) : null}
 
         <section className="portal-surface">
           <div className="portal-surface__header">
@@ -312,12 +443,14 @@ export default function DevOpsRunbooksPage() {
             </label>
             <label className="label">
               Filter by service
-              <input
-                className="input"
-                value={libraryService}
-                onChange={(event) => setLibraryService(event.target.value)}
-                placeholder="eks, rds, networking"
-              />
+              <select className="input" value={libraryService} onChange={(event) => setLibraryService(event.target.value)}>
+                <option value="">All services</option>
+                {availableLibraryServices.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
           {loading ? (
@@ -359,6 +492,7 @@ export default function DevOpsRunbooksPage() {
                                 setTitle(runbook.title);
                                 setContent(runbook.content);
                                 setLinkUrl(runbook.link_url);
+                                setActivePanel('editor');
                               }}
                             >
                               Edit

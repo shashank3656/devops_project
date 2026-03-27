@@ -601,14 +601,14 @@ export default function OpsCommandCenterPage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Phase 1</span>
+            <span className="portal-page__eyebrow">Operations Control</span>
             <h1 className="portal-page__title">Ops Command Center</h1>
             <p className="portal-page__subtitle">
-              A single operational surface for blocked promotions, unhealthy workloads, expiring assets, active incidents, drift, and delivery failures.
+              A single operational surface for blocked promotions, unhealthy workloads, expiring assets, active incidents, and delivery failures.
             </p>
           </div>
           <div className="portal-page__actions">
-            <Link href="/environment-drift" className="btn btn-secondary">Environment Drift</Link>
+            <Link href="/projects" className="btn btn-secondary">Projects</Link>
             <Link href="/promotions" className="btn btn-secondary">Promotions</Link>
             <button type="button" className="btn btn-secondary" onClick={exportCSV} disabled={!center}>
               Export CSV
@@ -889,10 +889,9 @@ export default function OpsCommandCenterPage() {
                 <section className="portal-surface">
                   <div className="portal-surface__header">
                     <div>
-                      <span className="portal-surface__eyebrow">Drift</span>
-                      <h2 className="portal-surface__title">Projects needing alignment</h2>
+                      <span className="portal-surface__eyebrow">Configuration attention</span>
+                      <h2 className="portal-surface__title">Projects needing attention</h2>
                     </div>
-                    <Link href="/environment-drift" className="btn btn-secondary btn-sm">Open drift view</Link>
                   </div>
                   {filteredDriftedProjects.length === 0 ? (
                     <div className="empty-state">No drifted projects in the current scope.</div>

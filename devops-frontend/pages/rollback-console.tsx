@@ -236,7 +236,7 @@ export default function RollbackConsolePage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Phase 3</span>
+            <span className="portal-page__eyebrow">Recovery Control</span>
             <h1 className="portal-page__title">Rollback Console</h1>
             <p className="portal-page__subtitle">
               Prepare controlled rollback requests from saved configuration snapshots, preserve the approval trail, and keep recovery actions visible inside the delivery workflow.

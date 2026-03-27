@@ -134,6 +134,10 @@ function normalizeQueryValue(value: string | string[] | undefined): string {
   return typeof raw === 'string' ? raw.trim().toLowerCase() : '';
 }
 
+function getIncidentReference(incident: Pick<Incident, 'id' | 'incident_number'>): string {
+  return incident.incident_number || `INC${String(incident.id).padStart(7, '0')}`;
+}
+
 export default function DevOpsIncidentsPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -170,7 +174,6 @@ export default function DevOpsIncidentsPage() {
       `incidents-${new Date().toISOString().slice(0, 10)}.csv`,
       [
         'incident_number',
-        'request_id',
         'project_name',
         'project_code',
         'team_name',
@@ -185,8 +188,7 @@ export default function DevOpsIncidentsPage() {
         'notes',
       ],
       filteredIncidents.map((incident) => [
-        incident.incident_number || `INC${String(incident.id).padStart(7, '0')}`,
-        incident.request_id,
+        getIncidentReference(incident),
         incident.project_name || '',
         incident.project_code || '',
         incident.team_name || incident.request_team || '',
@@ -427,7 +429,7 @@ export default function DevOpsIncidentsPage() {
               <span>
                 Showing incidents
                 {activeProjectID ? ` for project #${activeProjectID}` : ''}
-                {activeRequestID ? ` for request #${activeRequestID}` : ''}
+                {activeRequestID ? ' linked to the selected request' : ''}
                 {activeSeverityFilter ? ` with ${activeSeverityFilter} severity` : ''}
                 {activeStatusFilter ? ` in ${activeStatusFilter} status` : ''}
                 {activeEnvironmentFilter ? ` for ${activeEnvironmentFilter.toUpperCase()}` : ''}.
@@ -471,7 +473,6 @@ export default function DevOpsIncidentsPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span>
                   Incident reference: <strong>{displayedIncidentNumber}</strong>
-                  {requestId.trim() ? <> · Linked request <strong>#{requestId.trim()}</strong></> : null}
                   {status === 'draft' ? ' (draft)' : ''}
                 </span>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={resetForm}>
@@ -482,8 +483,8 @@ export default function DevOpsIncidentsPage() {
           ) : null}
           <div className="portal-form-grid">
             <label className="label">
-              Request ID
-              <input className="input" value={requestId} onChange={(event) => setRequestId(event.target.value)} placeholder="123" />
+              Linked request
+              <input className="input" value={requestId} onChange={(event) => setRequestId(event.target.value)} placeholder="Enter related request number" />
             </label>
             <label className="label">
               Severity
@@ -584,7 +585,7 @@ export default function DevOpsIncidentsPage() {
               <table className="templates-table">
                 <thead>
                   <tr>
-                    <th>Request</th>
+                    <th>Incident reference</th>
                     <th>Project</th>
                     <th>Severity</th>
                     <th>Status</th>
@@ -599,9 +600,11 @@ export default function DevOpsIncidentsPage() {
                     <tr key={incident.id}>
                       <td>
                         <div>
-                          <strong>{incident.incident_number || `INC${String(incident.id).padStart(7, '0')}`}</strong>
+                          <strong>{getIncidentReference(incident)}</strong>
                           <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
-                            Request #{incident.request_id} · {incident.request_service || 'service'}
+                            {[incident.request_service || 'service', incident.request_env || '', incident.request_cloud || '']
+                              .filter(Boolean)
+                              .join(' · ')}
                           </div>
                         </div>
                       </td>
@@ -623,7 +626,7 @@ export default function DevOpsIncidentsPage() {
                                     teams.find((team) => team.name === incident.request_team || team.slug === incident.request_team)?.id || '',
                                   );
                             setEditingId(incident.id);
-                            setCurrentIncidentNumber(incident.incident_number || `INC${String(incident.id).padStart(7, '0')}`);
+                            setCurrentIncidentNumber(getIncidentReference(incident));
                             setRequestId(String(incident.request_id));
                             setTeamId(matchedTeam);
                             setSeverity(incident.severity);

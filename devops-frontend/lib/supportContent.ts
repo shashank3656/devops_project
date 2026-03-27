@@ -19,7 +19,7 @@ export const supportQuickPrompts = [
   'How do promotions and gate approvals work?',
   'Where should I look for Kubernetes issues?',
   'How do incidents and runbooks fit together?',
-  'How should I use command center and drift views?',
+  'How should I use command center and project views?',
 ];
 
 export const supportArticles: SupportArticle[] = [
@@ -63,20 +63,6 @@ export const supportArticles: SupportArticle[] = [
     actions: [
       { label: 'Open incidents', href: '/incidents' },
       { label: 'Open runbooks', href: '/runbooks' },
-    ],
-  },
-  {
-    id: 'drift-risk-dependencies',
-    category: 'Risk and drift',
-    title: 'Drift, risk, and dependencies',
-    summary: 'Use these views to understand what changed, how risky it is, and what else might be impacted.',
-    content:
-      'Environment Drift highlights configuration differences across environments. Change Risk helps prioritize approvals and promotions. Project Dependencies shows blast-radius context so teams can see what upstream or downstream systems might be affected by a change.',
-    keywords: ['drift', 'risk', 'dependencies', 'impact', 'blast radius', 'change risk'],
-    routePrefixes: ['/environment-drift', '/change-risk', '/project-dependencies'],
-    actions: [
-      { label: 'Open environment drift', href: '/environment-drift' },
-      { label: 'Open change risk', href: '/change-risk' },
     ],
   },
   {
