@@ -85,7 +85,7 @@ const CLOUD_BADGES: Record<string, { bg: string; color: string }> = {
 export default function CredentialAuditPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
-  const [activePanel, setActivePanel] = useState<'filters' | 'audit' | null>(null);
+  const [activePanel, setActivePanel] = useState<'audit' | null>(null);
   const [entries, setEntries] = useState<CredentialAuditEntry[]>([]);
   const [expiryTracker, setExpiryTracker] = useState<ExpiryTrackerPayload | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -287,17 +287,10 @@ export default function CredentialAuditPage() {
               <span className="portal-page__eyebrow">Credential Audit</span>
               <h1 className="portal-page__title">Secrets & Certificates</h1>
               <p className="portal-page__subtitle">
-                Track expiry risk first, then open filters or the raw audit log only when you need deeper evidence.
+                Track expiry risk first with compact filters, then open the raw audit log only when you need deeper evidence.
               </p>
             </div>
             <div className="portal-page__actions">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setActivePanel((current) => (current === 'filters' ? null : 'filters'))}
-              >
-                {activePanel === 'filters' ? 'Hide filters' : 'Show filters'}
-              </button>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -311,23 +304,7 @@ export default function CredentialAuditPage() {
             </div>
           </header>
 
-          {activePanel === 'filters' ? (
-          <section className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <span className="portal-surface__eyebrow">Filters</span>
-                <h2 className="portal-surface__title">Scope the evidence</h2>
-                <p className="portal-surface__subtitle">
-                  Track who created AWS access keys, GCP service account keys, and similar credentials via approved requests.
-                </p>
-              </div>
-              <div className="portal-page__actions">
-                <button type="button" className="btn btn-secondary" onClick={() => setActivePanel(null)}>
-                  Close
-                </button>
-              </div>
-            </div>
-
+          <section className="portal-surface portal-surface--tight">
             <div className="portal-toolbar">
               <div className="portal-toolbar__group">
                 <div className="portal-toolbar__item">
@@ -385,10 +362,23 @@ export default function CredentialAuditPage() {
                 <button type="button" className="btn btn-secondary" onClick={fetchEntries}>
                   Refresh
                 </button>
+                {hasActiveScope ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setCloudFilter('');
+                      setProjectId('');
+                      setFromDate('');
+                      setToDate('');
+                    }}
+                  >
+                    Clear
+                  </button>
+                ) : null}
               </div>
             </div>
           </section>
-          ) : null}
 
           {error && <div className="alert alert-error">{error}</div>}
           {notice && <div className="alert alert-success">{notice}</div>}
@@ -409,7 +399,6 @@ export default function CredentialAuditPage() {
                     setProjectId('');
                     setFromDate('');
                     setToDate('');
-                    setActivePanel(null);
                   }}
                 >
                   Clear filters
