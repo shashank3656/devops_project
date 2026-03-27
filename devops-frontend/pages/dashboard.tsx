@@ -481,9 +481,6 @@ export default function DevOpsDashboard() {
                 <Link href="/project-operations" className="btn btn-secondary">
                   Project operations
                 </Link>
-                <Link href="/change-calendar" className="btn btn-secondary">
-                  Change calendar
-                </Link>
                 <Link href="/service-heatmap" className="btn btn-secondary">
                   Service heatmap
                 </Link>

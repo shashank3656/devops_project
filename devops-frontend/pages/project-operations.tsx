@@ -176,7 +176,6 @@ export default function DevOpsProjectOperationsPage() {
           </div>
           <div className="portal-page__actions">
             <Link href="/projects" className="btn btn-secondary">Projects</Link>
-            <Link href="/change-calendar" className="btn btn-secondary">Change calendar</Link>
             <Link href="/service-heatmap" className="btn btn-secondary">Service heatmap</Link>
             <Link href="/incidents" className="btn btn-secondary">Incidents</Link>
             <Link href="/runbooks" className="btn btn-secondary">Runbooks</Link>

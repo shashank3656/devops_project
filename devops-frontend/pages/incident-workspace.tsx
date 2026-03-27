@@ -179,6 +179,11 @@ function formatDateTime(value?: string | null): string {
   return parsed.toLocaleString();
 }
 
+function getIncidentReference(incident?: Pick<IncidentItem, 'id' | 'incident_number'> | null): string {
+  if (!incident) return 'No incident selected';
+  return incident.incident_number || `INC${String(incident.id).padStart(7, '0')}`;
+}
+
 function buildPostmortemForm(detail?: WorkspaceDetail | null): PostmortemFormState {
   if (!detail?.postmortem) return defaultPostmortemForm;
   return {
@@ -328,7 +333,7 @@ export default function IncidentWorkspacePage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Phase 2</span>
+            <span className="portal-page__eyebrow">Incident Response</span>
             <h1 className="portal-page__title">Incident Timeline and Postmortem Workspace</h1>
             <p className="portal-page__subtitle">
               Review incident history, delivery events, gate approvals, and rollback actions in one place, then capture postmortem notes that stay tied to the release record.
@@ -456,7 +461,7 @@ export default function IncidentWorkspacePage() {
                         onClick={() => setIncidentId(String(incident.id))}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
-                          <strong>{incident.incident_number || `INC${String(incident.id).padStart(7, '0')}`} · {incident.summary}</strong>
+                          <strong>{getIncidentReference(incident)} · {incident.summary}</strong>
                           <span className="portal-pill">{incident.severity.toUpperCase()} · {incident.status}</span>
                         </div>
                         <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
@@ -477,7 +482,7 @@ export default function IncidentWorkspacePage() {
                     <span className="portal-surface__eyebrow">Focused incident</span>
                     <h2 className="portal-surface__title">{detail?.incident?.summary || 'Select an incident'}</h2>
                     <p className="portal-surface__subtitle">
-                      {detail?.incident?.incident_number || 'No incident selected'} · {detail?.incident?.project_name ? `${detail.incident.project_name} (${detail.incident.project_code})` : 'No project'} · Request #{detail?.incident?.request_id || '—'}
+                      {getIncidentReference(detail?.incident)} · {detail?.incident?.project_name ? `${detail.incident.project_name} (${detail.incident.project_code})` : 'No project'}{detail?.incident?.request_service ? ` · ${detail.incident.request_service}` : ''}
                     </p>
                   </div>
                 </div>
