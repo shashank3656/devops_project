@@ -431,6 +431,9 @@ export default function SelectService() {
     }
   };
 
+  const canSubmitRequest =
+    loading || !projectId || !team || !env || !cloud || !service || canCreatePR !== true;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     submitRequest(false);
@@ -683,6 +686,12 @@ export default function SelectService() {
                 </div>
               )}
 
+              {!serviceConfig && cloud && service && (
+                <div className="success" style={{ marginBottom: '16px' }}>
+                  No extra configuration fields are required for this service. You can save a draft or submit now.
+                </div>
+              )}
+
               {error && (
                 <div className="error" style={{ marginBottom: '16px' }}>
                   {error}
@@ -710,7 +719,7 @@ export default function SelectService() {
                   onClick={() => submitRequest(true)}
                   className="btn btn-secondary"
                   style={{ flex: 1, minWidth: '140px' }}
-                  disabled={loading || !serviceConfig || canCreatePR !== true}
+                  disabled={canSubmitRequest}
                 >
                   {loading ? <span className="loading"></span> : 'Save as draft'}
                 </button>
@@ -718,7 +727,7 @@ export default function SelectService() {
                   type="submit"
                   className="btn btn-primary"
                   style={{ flex: 1, minWidth: '140px' }}
-                  disabled={loading || !serviceConfig || canCreatePR !== true}
+                  disabled={canSubmitRequest}
                 >
                   {loading ? (
                     <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
