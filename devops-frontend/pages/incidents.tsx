@@ -272,6 +272,33 @@ export default function DevOpsIncidentsPage() {
     setActivePanel(null);
   };
 
+  const loadPreviewIncidentNumber = async () => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      clearSessionAndRedirect();
+      return;
+    }
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/incidents?mode=preview`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401 || response.status === 403) {
+        clearSessionAndRedirect();
+        return;
+      }
+      const data = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok) {
+        return;
+      }
+      const nextNumber = getString(data.incident_number);
+      if (nextNumber) {
+        setCurrentIncidentNumber(nextNumber);
+      }
+    } catch {
+      // Keep the editor usable even if preview generation is temporarily unavailable.
+    }
+  };
+
   const openCreatePanel = () => {
     setEditingId(null);
     setCurrentIncidentNumber('');
@@ -286,6 +313,7 @@ export default function DevOpsIncidentsPage() {
     setError('');
     setNotice('');
     setActivePanel('editor');
+    void loadPreviewIncidentNumber();
   };
 
   useEffect(() => {

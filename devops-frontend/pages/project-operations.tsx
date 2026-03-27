@@ -194,27 +194,13 @@ export default function DevOpsProjectOperationsPage() {
 
         {!loading && !error && analytics && summary ? (
           <>
-            <section className="portal-stat-grid">
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Pending requests</span>
-                <span className="portal-stat-card__value">{summary.pending_request_count}</span>
-                <p className="portal-stat-card__copy">All project-scoped requests still waiting for delivery or approval action.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Needs setup</span>
-                <span className="portal-stat-card__value">{summary.needs_setup_count}</span>
-                <p className="portal-stat-card__copy">Projects missing enough configuration to safely accept steady request flow.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Mapped teams</span>
-                <span className="portal-stat-card__value">{summary.mapped_team_count}</span>
-                <p className="portal-stat-card__copy">Teams currently consuming project-scoped services and environments.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Lead time</span>
-                <span className="portal-stat-card__value">{leadTimeAverage.toFixed(1)}h</span>
-                <p className="portal-stat-card__copy">Average completion time for delivered project requests.</p>
-              </article>
+            <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <div className="portal-pill-row">
+                <span className="portal-pill">Pending requests {summary.pending_request_count}</span>
+                <span className="portal-pill">Needs setup {summary.needs_setup_count}</span>
+                <span className="portal-pill">Mapped teams {summary.mapped_team_count}</span>
+                <span className="portal-pill">Lead time {leadTimeAverage.toFixed(1)}h</span>
+              </div>
             </section>
 
             <div className="portal-grid" style={{ alignItems: 'start' }}>

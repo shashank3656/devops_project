@@ -151,6 +151,8 @@ type QueueFocus =
   | 'namespaces'
   | 'overrides';
 
+type OpsPanel = 'filters' | 'views' | null;
+
 interface SavedView {
   id: string;
   name: string;
@@ -229,6 +231,7 @@ export default function OpsCommandCenterPage() {
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [savedViewName, setSavedViewName] = useState('');
   const [activeViewId, setActiveViewId] = useState('');
+  const [activePanel, setActivePanel] = useState<OpsPanel>(null);
 
   useEffect(() => {
     setSavedViews(loadSavedViews());
@@ -286,6 +289,19 @@ export default function OpsCommandCenterPage() {
   }, [apiUrl, projectId, router]);
 
   const projects = center?.projects || [];
+  const selectedProject = useMemo(
+    () => projects.find((project) => String(project.id) === projectId) || null,
+    [projectId, projects],
+  );
+  const hasActiveScope =
+    Boolean(projectId) ||
+    queueFocus !== DEFAULT_FILTERS.queueFocus ||
+    Boolean(searchText.trim()) ||
+    Boolean(driftState) ||
+    Boolean(incidentSeverity) ||
+    Boolean(expiryWorkflow) ||
+    actionableOnly ||
+    Boolean(activeViewId);
 
   const filteredProjectPulse = useMemo(() => {
     return (center?.project_pulse || []).filter((item) => {
@@ -606,196 +622,220 @@ export default function OpsCommandCenterPage() {
 
         {!loading && !error && center ? (
           <>
-            <section className="portal-stat-grid">
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Blocked promotions</span>
-                <strong className="portal-stat-card__value">{filteredSummary.blockedPromotions}</strong>
-                <p className="portal-stat-card__copy">Promotion candidates currently blocked by deployment gate policy.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Attention promotions</span>
-                <strong className="portal-stat-card__value">{filteredSummary.attentionPromotions}</strong>
-                <p className="portal-stat-card__copy">Candidates waiting on a gate approval or manual review step.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Active incidents</span>
-                <strong className="portal-stat-card__value">{filteredSummary.activeIncidents}</strong>
-                <p className="portal-stat-card__copy">Open incidents that should shape release decisions and response priorities.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Delivery failures</span>
-                <strong className="portal-stat-card__value">{filteredSummary.deliveryFailures}</strong>
-                <p className="portal-stat-card__copy">Recent failed automation or delivery tasks that may need retry or triage.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Actionable expiry</span>
-                <strong className="portal-stat-card__value">{filteredSummary.actionableExpiry}</strong>
-                <p className="portal-stat-card__copy">Secrets and certificates that need acknowledgement, rotation, or owner action.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Namespace alerts</span>
-                <strong className="portal-stat-card__value">{filteredSummary.namespaceAlerts}</strong>
-                <p className="portal-stat-card__copy">Namespaces with workload health issues, restart pressure, or warning logs.</p>
-              </article>
+            <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="portal-pill-row">
+                  <span className="portal-pill">Blocked {filteredSummary.blockedPromotions}</span>
+                  <span className="portal-pill">Attention {filteredSummary.attentionPromotions}</span>
+                  <span className="portal-pill">Incidents {filteredSummary.activeIncidents}</span>
+                  <span className="portal-pill">Failures {filteredSummary.deliveryFailures}</span>
+                  <span className="portal-pill">Expiry {filteredSummary.actionableExpiry}</span>
+                  <span className="portal-pill">Namespaces {filteredSummary.namespaceAlerts}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setActivePanel((current) => current === 'filters' ? null : 'filters')}>
+                    {activePanel === 'filters' ? 'Hide filters' : 'Show filters'}
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setActivePanel((current) => current === 'views' ? null : 'views')}>
+                    {activePanel === 'views' ? 'Hide saved views' : 'Saved views'}
+                  </button>
+                </div>
+              </div>
             </section>
 
-            <section className="portal-surface" style={{ marginBottom: 24 }}>
-              <div className="portal-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Views</span>
-                  <h2 className="portal-surface__title">Filters and saved command views</h2>
-                  <p className="portal-surface__subtitle">Build focused triage views for incidents, promotions, expiry, or namespace health and keep them for reuse.</p>
-                </div>
-              </div>
-              <div className="portal-toolbar">
-                <div className="portal-toolbar__group">
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label" htmlFor="ops-command-project-filter">Project</label>
-                    <select
-                      id="ops-command-project-filter"
-                      className="input"
-                      value={projectId}
-                      onChange={(event) => setProjectId(event.target.value)}
-                    >
-                      <option value="">All projects</option>
-                      {projects.map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.name}{project.code ? ` (${project.code})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label" htmlFor="ops-command-queue-focus">Queue focus</label>
-                    <select
-                      id="ops-command-queue-focus"
-                      className="input"
-                      value={queueFocus}
-                      onChange={(event) => setQueueFocus(event.target.value as QueueFocus)}
-                    >
-                      <option value="all">All queues</option>
-                      <option value="project-pulse">Project pulse</option>
-                      <option value="drift">Drift</option>
-                      <option value="promotions">Promotions</option>
-                      <option value="incidents">Incidents</option>
-                      <option value="failures">Failures</option>
-                      <option value="expiry">Expiry</option>
-                      <option value="namespaces">Namespaces</option>
-                      <option value="overrides">Overrides</option>
-                    </select>
-                  </div>
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label" htmlFor="ops-command-search">Search</label>
-                    <input
-                      id="ops-command-search"
-                      className="input"
-                      value={searchText}
-                      onChange={(event) => setSearchText(event.target.value)}
-                      placeholder="Project, service, incident, namespace, username"
-                    />
-                  </div>
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label" htmlFor="ops-command-drift-state">Drift state</label>
-                    <select
-                      id="ops-command-drift-state"
-                      className="input"
-                      value={driftState}
-                      onChange={(event) => setDriftState(event.target.value)}
-                    >
-                      <option value="">All</option>
-                      <option value="drift">Drift</option>
-                      <option value="attention">Attention</option>
-                      <option value="aligned">Aligned</option>
-                    </select>
-                  </div>
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label" htmlFor="ops-command-incident-severity">Incident severity</label>
-                    <select
-                      id="ops-command-incident-severity"
-                      className="input"
-                      value={incidentSeverity}
-                      onChange={(event) => setIncidentSeverity(event.target.value)}
-                    >
-                      <option value="">All</option>
-                      <option value="critical">Critical</option>
-                      <option value="high">High</option>
-                      <option value="medium">Medium</option>
-                      <option value="low">Low</option>
-                    </select>
-                  </div>
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label" htmlFor="ops-command-expiry-state">Expiry workflow</label>
-                    <select
-                      id="ops-command-expiry-state"
-                      className="input"
-                      value={expiryWorkflow}
-                      onChange={(event) => setExpiryWorkflow(event.target.value)}
-                    >
-                      <option value="">All</option>
-                      <option value="new">New</option>
-                      <option value="acknowledged">Acknowledged</option>
-                      <option value="in_progress">In progress</option>
-                      <option value="resolved">Resolved</option>
-                      <option value="completed">Completed</option>
-                    </select>
-                  </div>
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label" htmlFor="ops-command-actionable-only">Focus</label>
-                    <label className="label" htmlFor="ops-command-actionable-only" style={{ marginBottom: 0 }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                        <input
-                          id="ops-command-actionable-only"
-                          type="checkbox"
-                          checked={actionableOnly}
-                          onChange={(event) => setActionableOnly(event.target.checked)}
-                        />
-                        Actionable only
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 16, alignItems: 'center' }}>
-                <input
-                  className="input"
-                  style={{ maxWidth: 260 }}
-                  value={savedViewName}
-                  onChange={(event) => setSavedViewName(event.target.value)}
-                  placeholder="Name this filtered view"
-                />
-                <button type="button" className="btn btn-secondary btn-sm" onClick={saveCurrentView} disabled={!savedViewName.trim()}>
-                  Save view
-                </button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters}>
+            {hasActiveScope ? (
+              <div className="alert alert-info" style={{ marginBottom: 24 }}>
+                Reviewing
+                {selectedProject ? ` ${selectedProject.name}` : ' all projects'}
+                {queueFocus !== DEFAULT_FILTERS.queueFocus ? ` · ${queueFocus}` : ''}
+                {searchText.trim() ? ` · search "${searchText.trim()}"` : ''}
+                {driftState ? ` · drift ${driftState}` : ''}
+                {incidentSeverity ? ` · severity ${incidentSeverity}` : ''}
+                {expiryWorkflow ? ` · expiry ${expiryWorkflow}` : ''}
+                {actionableOnly ? ' · actionable only' : ''}
+                {activeViewId ? ' · saved view applied' : ''}
+                <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: 12 }} onClick={clearFilters}>
                   Clear filters
                 </button>
-                {activeViewId ? <span className="portal-pill">Active view applied</span> : null}
               </div>
-              {savedViews.length > 0 ? (
-                <div style={{ display: 'grid', gap: 10, marginTop: 18 }}>
-                  {savedViews.map((view) => (
-                    <article key={view.id} className="portal-surface" style={{ padding: 16 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <div>
-                          <strong>{view.name}</strong>
-                          <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
-                            {view.queueFocus} · {view.projectId ? `project #${view.projectId}` : 'all projects'} · {view.actionableOnly ? 'actionable only' : 'full scope'}
+            ) : null}
+
+            {activePanel === 'filters' ? (
+              <section className="portal-surface" style={{ marginBottom: 24 }}>
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Filters</span>
+                    <h2 className="portal-surface__title">Focus the command center</h2>
+                    <p className="portal-surface__subtitle">Only open this when you need a narrower queue or a specific severity/workflow slice.</p>
+                  </div>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setActivePanel(null)}>
+                    Close
+                  </button>
+                </div>
+                <div className="portal-toolbar">
+                  <div className="portal-toolbar__group">
+                    <div className="portal-toolbar__item">
+                      <label className="credential-audit-label" htmlFor="ops-command-project-filter">Project</label>
+                      <select
+                        id="ops-command-project-filter"
+                        className="input"
+                        value={projectId}
+                        onChange={(event) => setProjectId(event.target.value)}
+                      >
+                        <option value="">All projects</option>
+                        {projects.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.name}{project.code ? ` (${project.code})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="portal-toolbar__item">
+                      <label className="credential-audit-label" htmlFor="ops-command-queue-focus">Queue focus</label>
+                      <select
+                        id="ops-command-queue-focus"
+                        className="input"
+                        value={queueFocus}
+                        onChange={(event) => setQueueFocus(event.target.value as QueueFocus)}
+                      >
+                        <option value="all">All queues</option>
+                        <option value="project-pulse">Project pulse</option>
+                        <option value="drift">Drift</option>
+                        <option value="promotions">Promotions</option>
+                        <option value="incidents">Incidents</option>
+                        <option value="failures">Failures</option>
+                        <option value="expiry">Expiry</option>
+                        <option value="namespaces">Namespaces</option>
+                        <option value="overrides">Overrides</option>
+                      </select>
+                    </div>
+                    <div className="portal-toolbar__item">
+                      <label className="credential-audit-label" htmlFor="ops-command-search">Search</label>
+                      <input
+                        id="ops-command-search"
+                        className="input"
+                        value={searchText}
+                        onChange={(event) => setSearchText(event.target.value)}
+                        placeholder="Project, service, incident, namespace, username"
+                      />
+                    </div>
+                    <div className="portal-toolbar__item">
+                      <label className="credential-audit-label" htmlFor="ops-command-drift-state">Drift state</label>
+                      <select
+                        id="ops-command-drift-state"
+                        className="input"
+                        value={driftState}
+                        onChange={(event) => setDriftState(event.target.value)}
+                      >
+                        <option value="">All</option>
+                        <option value="drift">Drift</option>
+                        <option value="attention">Attention</option>
+                        <option value="aligned">Aligned</option>
+                      </select>
+                    </div>
+                    <div className="portal-toolbar__item">
+                      <label className="credential-audit-label" htmlFor="ops-command-incident-severity">Incident severity</label>
+                      <select
+                        id="ops-command-incident-severity"
+                        className="input"
+                        value={incidentSeverity}
+                        onChange={(event) => setIncidentSeverity(event.target.value)}
+                      >
+                        <option value="">All</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                      </select>
+                    </div>
+                    <div className="portal-toolbar__item">
+                      <label className="credential-audit-label" htmlFor="ops-command-expiry-state">Expiry workflow</label>
+                      <select
+                        id="ops-command-expiry-state"
+                        className="input"
+                        value={expiryWorkflow}
+                        onChange={(event) => setExpiryWorkflow(event.target.value)}
+                      >
+                        <option value="">All</option>
+                        <option value="new">New</option>
+                        <option value="acknowledged">Acknowledged</option>
+                        <option value="in_progress">In progress</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                    </div>
+                    <div className="portal-toolbar__item">
+                      <label className="credential-audit-label" htmlFor="ops-command-actionable-only">Focus</label>
+                      <label className="label" htmlFor="ops-command-actionable-only" style={{ marginBottom: 0 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          <input
+                            id="ops-command-actionable-only"
+                            type="checkbox"
+                            checked={actionableOnly}
+                            onChange={(event) => setActionableOnly(event.target.checked)}
+                          />
+                          Actionable only
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
+            {activePanel === 'views' ? (
+              <section className="portal-surface" style={{ marginBottom: 24 }}>
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Saved views</span>
+                    <h2 className="portal-surface__title">Reuse your triage presets</h2>
+                    <p className="portal-surface__subtitle">Save a filter combination only when you know you will come back to the same command view.</p>
+                  </div>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setActivePanel(null)}>
+                    Close
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <input
+                    className="input"
+                    style={{ maxWidth: 260 }}
+                    value={savedViewName}
+                    onChange={(event) => setSavedViewName(event.target.value)}
+                    placeholder="Name this filtered view"
+                  />
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={saveCurrentView} disabled={!savedViewName.trim()}>
+                    Save view
+                  </button>
+                  {activeViewId ? <span className="portal-pill">Active view applied</span> : null}
+                </div>
+                {savedViews.length > 0 ? (
+                  <div style={{ display: 'grid', gap: 10, marginTop: 18 }}>
+                    {savedViews.map((view) => (
+                      <article key={view.id} className="portal-surface" style={{ padding: 16 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <div>
+                            <strong>{view.name}</strong>
+                            <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
+                              {view.queueFocus} · {view.projectId ? `project #${view.projectId}` : 'all projects'} · {view.actionableOnly ? 'actionable only' : 'full scope'}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => applySavedView(view)}>
+                              Apply
+                            </button>
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => deleteSavedView(view.id)}>
+                              Delete
+                            </button>
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => applySavedView(view)}>
-                            Apply
-                          </button>
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => deleteSavedView(view.id)}>
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              ) : null}
-            </section>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state" style={{ marginTop: 16 }}>No saved views yet.</div>
+                )}
+              </section>
+            ) : null}
 
             {shouldShow('project-pulse') ? (
               <section className="portal-surface">

@@ -818,29 +818,15 @@ export default function GitOpsControlPage() {
                   </div>
                 </section>
               )}
-              <section className="portal-stat-grid">
-                <article className="portal-stat-card">
-                  <span className="portal-stat-card__label">Managed Teams</span>
-                  <strong className="portal-stat-card__value">{formatCount(data.teams.length)}</strong>
-                  <p className="portal-stat-card__copy">DevOps teams available for project structure ownership.</p>
-                </article>
-                <article className="portal-stat-card">
-                  <span className="portal-stat-card__label">Projects</span>
-                  <strong className="portal-stat-card__value">{formatCount(data.projects.length)}</strong>
-                  <p className="portal-stat-card__copy">GitOps structures created directly from the DevOps portal.</p>
-                </article>
-                <article className="portal-stat-card">
-                  <span className="portal-stat-card__label">Access Rules</span>
-                  <strong className="portal-stat-card__value">
-                    {formatCount(data.projects.reduce((total, project) => total + project.access.length, 0))}
-                  </strong>
-                  <p className="portal-stat-card__copy">User and environment visibility rules currently enforced by managers.</p>
-                </article>
-                <article className="portal-stat-card">
-                  <span className="portal-stat-card__label">Scope</span>
-                  <strong className="portal-stat-card__value">{formatCount(data.users.length)}</strong>
-                  <p className="portal-stat-card__copy">Assignable DevOps users available for project visibility.</p>
-                </article>
+              <section className="portal-surface" style={{ marginBottom: 24 }}>
+                <div className="portal-pill-row">
+                  <span className="portal-pill">Managed teams {formatCount(data.teams.length)}</span>
+                  <span className="portal-pill">Projects {formatCount(data.projects.length)}</span>
+                  <span className="portal-pill">
+                    Access rules {formatCount(data.projects.reduce((total, project) => total + project.access.length, 0))}
+                  </span>
+                  <span className="portal-pill">Visible users {formatCount(data.users.length)}</span>
+                </div>
               </section>
 
               <section className="portal-grid">

@@ -98,6 +98,7 @@ export default function RollbackConsolePage() {
   const [selectedSnapshotId, setSelectedSnapshotId] = useState('');
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -151,6 +152,8 @@ export default function RollbackConsolePage() {
   const focusCandidate = useMemo(() => {
     return consoleData?.focus_candidate || consoleData?.items?.[0] || null;
   }, [consoleData]);
+
+  const hasActiveScope = Boolean(projectId || focusRequestId);
 
   useEffect(() => {
     if (!focusCandidate) {
@@ -252,34 +255,39 @@ export default function RollbackConsolePage() {
 
         {!loading && !error && summary ? (
           <>
-            <section className="portal-stat-grid">
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Rollback candidates</span>
-                <strong className="portal-stat-card__value">{summary.candidate_count}</strong>
-                <p className="portal-stat-card__copy">Requests with enough history and state to prepare a rollback flow.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Ready now</span>
-                <strong className="portal-stat-card__value">{summary.ready_count}</strong>
-                <p className="portal-stat-card__copy">Candidates that can immediately produce a rollback draft request.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Recent rollback ops</span>
-                <strong className="portal-stat-card__value">{summary.operation_count}</strong>
-                <p className="portal-stat-card__copy">Recent rollback preparations already captured in the audit trail.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Production candidates</span>
-                <strong className="portal-stat-card__value">{summary.production_candidates}</strong>
-                <p className="portal-stat-card__copy">Rollback-eligible production requests that merit extra review care.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Incident-linked</span>
-                <strong className="portal-stat-card__value">{summary.incident_linked_count}</strong>
-                <p className="portal-stat-card__copy">Candidates that are already tied to an active or recent incident workspace.</p>
-              </article>
+            <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="portal-pill-row">
+                  <span className="portal-pill">Candidates {summary.candidate_count}</span>
+                  <span className="portal-pill">Ready now {summary.ready_count}</span>
+                  <span className="portal-pill">Recent ops {summary.operation_count}</span>
+                  <span className="portal-pill">Production {summary.production_candidates}</span>
+                  <span className="portal-pill">Incident-linked {summary.incident_linked_count}</span>
+                </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters((current) => !current)}>
+                  {showFilters ? 'Hide scope' : 'Show scope'}
+                </button>
+              </div>
             </section>
 
+            {hasActiveScope ? (
+              <div className="alert alert-info" style={{ marginBottom: 24 }}>
+                Viewing a focused rollback slice.
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ marginLeft: 12 }}
+                  onClick={() => {
+                    setProjectId('');
+                    setFocusRequestId('');
+                  }}
+                >
+                  Clear scope
+                </button>
+              </div>
+            ) : null}
+
+            {showFilters ? (
             <section className="portal-surface" style={{ marginBottom: 24 }}>
               <div className="portal-surface__header">
                 <div>
@@ -287,6 +295,9 @@ export default function RollbackConsolePage() {
                   <h2 className="portal-surface__title">Filter the rollback queue</h2>
                   <p className="portal-surface__subtitle">Focus on one project or request when you are preparing a specific recovery action.</p>
                 </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters(false)}>
+                  Close
+                </button>
               </div>
               <div className="portal-toolbar">
                 <div className="portal-toolbar__group">
@@ -304,6 +315,7 @@ export default function RollbackConsolePage() {
                 </div>
               </div>
             </section>
+            ) : null}
 
             <div className="portal-grid" style={{ alignItems: 'start' }}>
               <section className="portal-surface">

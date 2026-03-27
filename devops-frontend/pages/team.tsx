@@ -133,29 +133,15 @@ export default function DevOpsTeamPage() {
           </div>
         </header>
 
-        <section className="portal-stat-grid">
-          <article className="portal-stat-card">
-            <span className="portal-stat-card__label">Teams</span>
-            <strong className="portal-stat-card__value">{teams.length}</strong>
-            <p className="portal-stat-card__copy">DevOps teams available to the current manager.</p>
-          </article>
-          <article className="portal-stat-card">
-            <span className="portal-stat-card__label">Members</span>
-            <strong className="portal-stat-card__value">
-              {Object.values(membersByTeam).reduce((total, members) => total + members.length, 0)}
-            </strong>
-            <p className="portal-stat-card__copy">Total visible team members across the current workspace.</p>
-          </article>
-          <article className="portal-stat-card">
-            <span className="portal-stat-card__label">Open forms</span>
-            <strong className="portal-stat-card__value">{addingTeamId ? 1 : 0}</strong>
-            <p className="portal-stat-card__copy">Member onboarding form state inside the redesigned team view.</p>
-          </article>
-          <article className="portal-stat-card">
-            <span className="portal-stat-card__label">State</span>
-            <strong className="portal-stat-card__value">{loading ? 'Syncing' : 'Ready'}</strong>
-            <p className="portal-stat-card__copy">Team membership actions still use the existing API workflow.</p>
-          </article>
+        <section className="portal-surface" style={{ marginBottom: 24 }}>
+          <div className="portal-pill-row">
+            <span className="portal-pill">Teams {teams.length}</span>
+            <span className="portal-pill">
+              Members {Object.values(membersByTeam).reduce((total, members) => total + members.length, 0)}
+            </span>
+            <span className="portal-pill">Open forms {addingTeamId ? 1 : 0}</span>
+            <span className="portal-pill">{loading ? 'Syncing' : 'Ready'}</span>
+          </div>
         </section>
 
         {loading ? (

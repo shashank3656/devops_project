@@ -1,7 +1,7 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -96,6 +96,7 @@ export default function ChangeRiskPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [projectId, setProjectId] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -146,6 +147,10 @@ export default function ChangeRiskPage() {
 
   const projects = risk?.projects || [];
   const summary = risk?.summary;
+  const selectedProject = useMemo(
+    () => projects.find((project) => String(project.id) === projectId) || null,
+    [projectId, projects],
+  );
 
   return (
     <DevOpsLayout>
@@ -173,63 +178,64 @@ export default function ChangeRiskPage() {
 
         {!loading && !error && summary ? (
           <>
-            <section className="portal-stat-grid">
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">High risk projects</span>
-                <strong className="portal-stat-card__value">{summary.high_risk_count}</strong>
-                <p className="portal-stat-card__copy">Projects that need immediate release attention before approvals continue.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Medium risk projects</span>
-                <strong className="portal-stat-card__value">{summary.medium_risk_count}</strong>
-                <p className="portal-stat-card__copy">Projects that need a manual review pass but may still move forward.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Blocked by policy</span>
-                <strong className="portal-stat-card__value">{summary.blocked_projects}</strong>
-                <p className="portal-stat-card__copy">Projects currently blocked by deployment gates or related release controls.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Incident-linked</span>
-                <strong className="portal-stat-card__value">{summary.incident_linked_projects}</strong>
-                <p className="portal-stat-card__copy">Projects carrying active incidents that should inform approval decisions.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Drifted projects</span>
-                <strong className="portal-stat-card__value">{summary.drifted_projects}</strong>
-                <p className="portal-stat-card__copy">Projects where environment drift is actively raising the release risk score.</p>
-              </article>
+            <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="portal-pill-row">
+                  <span className="portal-pill">High risk {summary.high_risk_count}</span>
+                  <span className="portal-pill">Medium risk {summary.medium_risk_count}</span>
+                  <span className="portal-pill">Blocked {summary.blocked_projects}</span>
+                  <span className="portal-pill">Incident-linked {summary.incident_linked_projects}</span>
+                  <span className="portal-pill">Drifted {summary.drifted_projects}</span>
+                </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters((current) => !current)}>
+                  {showFilters ? 'Hide filters' : 'Show filters'}
+                </button>
+              </div>
             </section>
 
-            <section className="portal-surface" style={{ marginBottom: 24 }}>
-              <div className="portal-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Scope</span>
-                  <h2 className="portal-surface__title">Focus a project</h2>
-                  <p className="portal-surface__subtitle">Filter the scorecard to one project when you want a tighter change review.</p>
-                </div>
+            {projectId ? (
+              <div className="alert alert-info" style={{ marginBottom: 24 }}>
+                Reviewing {selectedProject ? selectedProject.name : `project #${projectId}`}
+                <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: 12 }} onClick={() => setProjectId('')}>
+                  Clear filter
+                </button>
               </div>
-              <div className="portal-toolbar">
-                <div className="portal-toolbar__group">
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label" htmlFor="change-risk-project-filter">Project</label>
-                    <select
-                      id="change-risk-project-filter"
-                      className="input"
-                      value={projectId}
-                      onChange={(event) => setProjectId(event.target.value)}
-                    >
-                      <option value="">All projects</option>
-                      {projects.map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.name}{project.code ? ` (${project.code})` : ''}
-                        </option>
-                      ))}
-                    </select>
+            ) : null}
+
+            {showFilters ? (
+              <section className="portal-surface" style={{ marginBottom: 24 }}>
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Filters</span>
+                    <h2 className="portal-surface__title">Focus a project</h2>
+                    <p className="portal-surface__subtitle">Only open this when you want a tighter change review for one project.</p>
+                  </div>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters(false)}>
+                    Close
+                  </button>
+                </div>
+                <div className="portal-toolbar">
+                  <div className="portal-toolbar__group">
+                    <div className="portal-toolbar__item">
+                      <label className="credential-audit-label" htmlFor="change-risk-project-filter">Project</label>
+                      <select
+                        id="change-risk-project-filter"
+                        className="input"
+                        value={projectId}
+                        onChange={(event) => setProjectId(event.target.value)}
+                      >
+                        <option value="">All projects</option>
+                        {projects.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.name}{project.code ? ` (${project.code})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </section>
+              </section>
+            ) : null}
 
             <div className="portal-grid" style={{ alignItems: 'start' }}>
               {(risk?.items || []).map((item) => (

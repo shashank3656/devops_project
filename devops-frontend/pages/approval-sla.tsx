@@ -126,27 +126,13 @@ export default function DevOpsApprovalSLAPage() {
 
         {!loading && !error && sla ? (
           <>
-            <section className="portal-stat-grid">
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Pending approvals</span>
-                <span className="portal-stat-card__value">{sla.summary.pending_count}</span>
-                <p className="portal-stat-card__copy">Requests waiting in manager, DevOps, or final approval queues.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Overdue</span>
-                <span className="portal-stat-card__value">{sla.summary.overdue_count}</span>
-                <p className="portal-stat-card__copy">Pending items whose due date is already past.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Average age</span>
-                <span className="portal-stat-card__value">{sla.summary.avg_age_hours.toFixed(1)}h</span>
-                <p className="portal-stat-card__copy">Average time current approvals have been waiting.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Oldest item</span>
-                <span className="portal-stat-card__value">{sla.summary.oldest_age_hours.toFixed(1)}h</span>
-                <p className="portal-stat-card__copy">Longest-running approval item still open.</p>
-              </article>
+            <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <div className="portal-pill-row">
+                <span className="portal-pill">Pending approvals {sla.summary.pending_count}</span>
+                <span className="portal-pill">Overdue {sla.summary.overdue_count}</span>
+                <span className="portal-pill">Average age {sla.summary.avg_age_hours.toFixed(1)}h</span>
+                <span className="portal-pill">Oldest item {sla.summary.oldest_age_hours.toFixed(1)}h</span>
+              </div>
             </section>
 
             <section className="portal-surface" style={{ marginBottom: 24 }}>

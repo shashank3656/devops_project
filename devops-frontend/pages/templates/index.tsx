@@ -144,27 +144,13 @@ export default function DevOpsTemplatesList() {
             </div>
           </header>
 
-          <section className="portal-stat-grid">
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Templates</span>
-              <strong className="portal-stat-card__value">{templates.length}</strong>
-              <p className="portal-stat-card__copy">Reusable request entry points across the DevOps workflow.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Cloud groups</span>
-              <strong className="portal-stat-card__value">{clouds.length}</strong>
-              <p className="portal-stat-card__copy">Cloud-specific template collections currently available.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Most common</span>
-              <strong className="portal-stat-card__value">{clouds[0]?.toUpperCase() || 'None'}</strong>
-              <p className="portal-stat-card__copy">Top cloud grouping based on the current template inventory.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Catalog state</span>
-              <strong className="portal-stat-card__value">{loading ? 'Syncing' : 'Live'}</strong>
-              <p className="portal-stat-card__copy">Template CRUD remains unchanged while the UI layer is refreshed.</p>
-            </article>
+          <section className="portal-surface" style={{ marginBottom: 24 }}>
+            <div className="portal-pill-row">
+              <span className="portal-pill">Templates {templates.length}</span>
+              <span className="portal-pill">Cloud groups {clouds.length}</span>
+              <span className="portal-pill">Most common {clouds[0]?.toUpperCase() || 'None'}</span>
+              <span className="portal-pill">{loading ? 'Syncing' : 'Catalog live'}</span>
+            </div>
           </section>
 
           {error && (

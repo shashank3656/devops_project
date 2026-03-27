@@ -104,6 +104,7 @@ export default function GateApprovalsPage() {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [expiresWithinDays, setExpiresWithinDays] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   const fetchApprovals = useCallback(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -214,6 +215,10 @@ export default function GateApprovalsPage() {
       .sort((left, right) => left.localeCompare(right));
   }, [approvals]);
 
+  const hasActiveFilters = Boolean(
+    projectId || targetEnvironment || stateFilter || approver.trim() || fromDate || toDate || expiresWithinDays
+  );
+
   return (
     <>
       <Head>
@@ -231,34 +236,44 @@ export default function GateApprovalsPage() {
             </div>
           </header>
 
-          <section className="portal-stat-grid">
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Approvals</span>
-              <strong className="portal-stat-card__value">{summary.total_count}</strong>
-              <p className="portal-stat-card__copy">Deployment gate approval records that match the current filter set.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Active</span>
-              <strong className="portal-stat-card__value">{summary.active_count}</strong>
-              <p className="portal-stat-card__copy">Still-valid approvals that can support promotion actions.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Expired</span>
-              <strong className="portal-stat-card__value">{summary.expired_count}</strong>
-              <p className="portal-stat-card__copy">Approvals that timed out and require a new decision before promotion.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Revoked</span>
-              <strong className="portal-stat-card__value">{summary.revoked_count}</strong>
-              <p className="portal-stat-card__copy">Previously granted approvals that were explicitly withdrawn.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Production scope</span>
-              <strong className="portal-stat-card__value">{summary.production_count}</strong>
-              <p className="portal-stat-card__copy">Records targeting production and subject to higher review expectations.</p>
-            </article>
+          <section className="portal-surface" style={{ marginBottom: 24 }}>
+            <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="portal-pill-row">
+                <span className="portal-pill">Approvals {summary.total_count}</span>
+                <span className="portal-pill">Active {summary.active_count}</span>
+                <span className="portal-pill">Expired {summary.expired_count}</span>
+                <span className="portal-pill">Revoked {summary.revoked_count}</span>
+                <span className="portal-pill">Production {summary.production_count}</span>
+              </div>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters((current) => !current)}>
+                {showFilters ? 'Hide filters' : 'Show filters'}
+              </button>
+            </div>
           </section>
 
+          {hasActiveFilters ? (
+            <div className="alert alert-info" style={{ marginBottom: 24 }}>
+              Viewing a filtered approval audit slice.
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ marginLeft: 12 }}
+                onClick={() => {
+                  setProjectId('');
+                  setTargetEnvironment('');
+                  setStateFilter('');
+                  setApprover('');
+                  setFromDate('');
+                  setToDate('');
+                  setExpiresWithinDays('');
+                }}
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : null}
+
+          {showFilters ? (
           <section className="portal-surface">
             <div className="portal-surface__header">
               <div>
@@ -266,6 +281,9 @@ export default function GateApprovalsPage() {
                 <h2 className="portal-surface__title">Focus the approval history</h2>
                 <p className="portal-surface__subtitle">Slice the audit stream by project, environment, state, approver, and review date.</p>
               </div>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters(false)}>
+                Close
+              </button>
             </div>
 
             <div className="portal-toolbar">
@@ -353,6 +371,7 @@ export default function GateApprovalsPage() {
               </div>
             </div>
           </section>
+          ) : null}
 
           {error ? <div className="alert alert-error">{error}</div> : null}
 
