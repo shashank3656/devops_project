@@ -42,6 +42,10 @@ function formatEnvironmentLabel(value: string): string {
     .join(' ');
 }
 
+function getStringValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 export default function CustomJSON() {
   const router = useRouter();
   const { toast } = useToast();
@@ -211,6 +215,12 @@ export default function CustomJSON() {
         throw new Error('Invalid JSON format');
       }
 
+      const payloadCloud = getStringValue(jsonPayload.cloud).toLowerCase();
+      const payloadService = getStringValue(jsonPayload.service);
+      if (!payloadCloud || !payloadService) {
+        throw new Error('JSON must include both "cloud" and "service" fields');
+      }
+
       const payload = {
         project_id: projectId,
         team,
@@ -220,7 +230,9 @@ export default function CustomJSON() {
         due_date: dueDate || undefined,
         draft: asDraft,
         initial_comment: initialComment.trim() || undefined,
-        ...jsonPayload
+        ...jsonPayload,
+        cloud: payloadCloud,
+        service: payloadService
       };
 
       const token = localStorage.getItem('token');
@@ -271,6 +283,8 @@ export default function CustomJSON() {
     e.preventDefault();
     submitRequest(false);
   };
+
+  const canSubmitRequest = loading || !!jsonError || !projectId || !team || !env || canCreatePR !== true;
 
   const exampleJSON = {
     cloud: 'gcp',
@@ -513,7 +527,7 @@ export default function CustomJSON() {
                   onClick={() => submitRequest(true)}
                   className="btn btn-secondary"
                   style={{ flex: 1, minWidth: '140px' }}
-                  disabled={loading || !!jsonError || canCreatePR !== true}
+                  disabled={canSubmitRequest}
                 >
                   {loading ? <span className="loading"></span> : 'Save as draft'}
                 </button>
@@ -521,7 +535,7 @@ export default function CustomJSON() {
                   type="submit"
                   className="btn btn-primary"
                   style={{ flex: 1, minWidth: '140px' }}
-                  disabled={loading || !!jsonError || canCreatePR !== true}
+                  disabled={canSubmitRequest}
                 >
                   {loading ? (
                     <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
