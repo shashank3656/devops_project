@@ -24,7 +24,6 @@ type ResourceTab =
 type DataSourceMode = 'prometheus' | 'kube_state_metrics' | 'loki';
 type ResolutionMode = '15s' | '30s' | '1m' | '5m';
 type K8sHealthFocus = '' | 'restarting_pods' | 'non_running_pods' | 'warning_logs' | 'unhealthy_namespaces' | 'degraded_workloads';
-type K8sPanel = 'filters' | null;
 
 interface ProjectOption {
   id: number;
@@ -395,7 +394,6 @@ export default function DevOpsK8sPage() {
   const [workload, setWorkload] = useState('');
   const [activeTab, setActiveTab] = useState<ResourceTab>('pods');
   const [healthFocus, setHealthFocus] = useState<K8sHealthFocus>('');
-  const [activePanel, setActivePanel] = useState<K8sPanel>(null);
   const [form, setForm] = useState({
     project_id: '',
     cloud: '',
@@ -1116,18 +1114,92 @@ export default function DevOpsK8sPage() {
               </section>
             ) : null}
             <section className="portal-surface" style={{ marginBottom: 24 }}>
-              <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                <div className="portal-pill-row">
-                  <span className="portal-pill">Namespaces {dashboardView?.summary.namespace_count || 0}</span>
-                  <span className="portal-pill">Deployments {dashboardView?.summary.deployment_count || 0}</span>
-                  <span className="portal-pill">Pods {dashboardView?.summary.pod_count || 0}</span>
-                  <span className="portal-pill">Warnings {dashboardView?.summary.warning_event_count || 0}</span>
-                  <span className="portal-pill">Restarting {dashboardView?.health_summary.restarting_pods || 0}</span>
-                  <span className="portal-pill">Unhealthy namespaces {dashboardView?.health_summary.unhealthy_namespaces || 0}</span>
+              <div className="portal-toolbar">
+                <div className="portal-toolbar__group">
+                  <div className="portal-toolbar__item">
+                    <label className="credential-audit-label">Datasource</label>
+                    <select className="input" value={dataSourceMode} onChange={(event) => setDataSourceMode(event.target.value as DataSourceMode)}>
+                      <option value="prometheus">Prometheus</option>
+                      <option value="kube_state_metrics">kube-state-metrics</option>
+                      <option value="loki">Loki</option>
+                    </select>
+                  </div>
+                  <div className="portal-toolbar__item">
+                    <label className="credential-audit-label">Project</label>
+                    <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                      {overview?.projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name} ({project.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="portal-toolbar__item">
+                    <label className="credential-audit-label">Cluster</label>
+                    <select className="input" value={clusterName} onChange={(event) => setClusterName(event.target.value)}>
+                      <option value="">All clusters</option>
+                      {overview?.clusters.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="portal-toolbar__item">
+                    <label className="credential-audit-label">Namespace</label>
+                    <select className="input" value={namespace} onChange={(event) => setNamespace(event.target.value)}>
+                      <option value="">All namespaces</option>
+                      {overview?.namespaces.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="portal-toolbar__item">
+                    <label className="credential-audit-label">Environment</label>
+                    <select className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)}>
+                      <option value="">All environments</option>
+                      {overview?.environments.map((item) => (
+                        <option key={item} value={item}>
+                          {item.toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="portal-toolbar__item">
+                    <label className="credential-audit-label">Workload</label>
+                    <select className="input" value={workload} onChange={(event) => setWorkload(event.target.value)}>
+                      <option value="">All workloads</option>
+                      {workloadOptions.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="portal-toolbar__item">
+                    <label className="credential-audit-label">Resolution</label>
+                    <select className="input" value={resolution} onChange={(event) => setResolution(event.target.value as ResolutionMode)}>
+                      <option value="15s">15s</option>
+                      <option value="30s">30s</option>
+                      <option value="1m">1m</option>
+                      <option value="5m">5m</option>
+                    </select>
+                  </div>
                 </div>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setActivePanel((current) => current === 'filters' ? null : 'filters')}>
-                  {activePanel === 'filters' ? 'Hide filters' : 'Show filters'}
-                </button>
+                <div className="portal-page__actions">
+                  <div className="portal-pill-row">
+                    <span className="portal-pill">Namespaces {dashboardView?.summary.namespace_count || 0}</span>
+                    <span className="portal-pill">Deployments {dashboardView?.summary.deployment_count || 0}</span>
+                    <span className="portal-pill">Pods {dashboardView?.summary.pod_count || 0}</span>
+                    <span className="portal-pill">Warnings {dashboardView?.summary.warning_event_count || 0}</span>
+                    <span className="portal-pill">Restarting {dashboardView?.health_summary.restarting_pods || 0}</span>
+                  </div>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={handleApplyFilters} disabled={loading}>
+                    {loading ? 'Loading...' : 'Apply'}
+                  </button>
+                </div>
               </div>
             </section>
 
@@ -1157,99 +1229,6 @@ export default function DevOpsK8sPage() {
                   Clear scope
                 </button>
               </div>
-            ) : null}
-
-            {activePanel === 'filters' ? (
-              <section className="portal-surface" style={{ marginBottom: 24 }}>
-                <div className="portal-surface__header">
-                  <div>
-                    <span className="portal-surface__eyebrow">Filters</span>
-                    <h2 className="portal-surface__title">Focus the K8s dashboard</h2>
-                    <p className="portal-surface__subtitle">
-                      Only open this when you need a different project, cluster, namespace, environment, or workload slice.
-                    </p>
-                  </div>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setActivePanel(null)}>
-                    Close
-                  </button>
-                </div>
-                <div className="k8s-filter-toolbar">
-                  <div className="k8s-filter-toolbar__group">
-                    <span className="k8s-filter-toolbar__label">datasource</span>
-                    <select className="k8s-filter-toolbar__select" value={dataSourceMode} onChange={(event) => setDataSourceMode(event.target.value as DataSourceMode)}>
-                      <option value="prometheus">Prometheus</option>
-                      <option value="kube_state_metrics">kube-state-metrics</option>
-                      <option value="loki">Loki</option>
-                    </select>
-                  </div>
-                  <div className="k8s-filter-toolbar__group">
-                    <span className="k8s-filter-toolbar__label">project</span>
-                    <select className="k8s-filter-toolbar__select" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                      {overview?.projects.map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.name} ({project.code})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="k8s-filter-toolbar__group">
-                    <span className="k8s-filter-toolbar__label">cluster</span>
-                    <select className="k8s-filter-toolbar__select" value={clusterName} onChange={(event) => setClusterName(event.target.value)}>
-                      <option value="">All clusters</option>
-                      {overview?.clusters.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="k8s-filter-toolbar__group">
-                    <span className="k8s-filter-toolbar__label">namespace</span>
-                    <select className="k8s-filter-toolbar__select" value={namespace} onChange={(event) => setNamespace(event.target.value)}>
-                      <option value="">All namespaces</option>
-                      {overview?.namespaces.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="k8s-filter-toolbar__group">
-                    <span className="k8s-filter-toolbar__label">env</span>
-                    <select className="k8s-filter-toolbar__select" value={environment} onChange={(event) => setEnvironment(event.target.value)}>
-                      <option value="">All environments</option>
-                      {overview?.environments.map((item) => (
-                        <option key={item} value={item}>
-                          {item.toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="k8s-filter-toolbar__group">
-                    <span className="k8s-filter-toolbar__label">workload</span>
-                    <select className="k8s-filter-toolbar__select" value={workload} onChange={(event) => setWorkload(event.target.value)}>
-                      <option value="">All workloads</option>
-                      {workloadOptions.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="k8s-filter-toolbar__group">
-                    <span className="k8s-filter-toolbar__label">resolution</span>
-                    <select className="k8s-filter-toolbar__select" value={resolution} onChange={(event) => setResolution(event.target.value as ResolutionMode)}>
-                      <option value="15s">15s</option>
-                      <option value="30s">30s</option>
-                      <option value="1m">1m</option>
-                      <option value="5m">5m</option>
-                    </select>
-                  </div>
-                  <button type="button" className="k8s-filter-toolbar__action" onClick={handleApplyFilters} disabled={loading}>
-                    {loading ? 'Loading...' : 'Apply filters'}
-                  </button>
-                </div>
-              </section>
             ) : null}
 
             <section className="k8s-viz-grid" style={{ marginBottom: 24 }}>

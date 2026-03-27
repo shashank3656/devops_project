@@ -112,7 +112,6 @@ export default function DevOpsWorkload() {
   const [bulkActioning, setBulkActioning] = useState(false);
   const [filterUserId, setFilterUserId] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
 
   const userStats = useMemo(() => {
     const byUser: Record<number, { username: string; total: number; byStatus: Record<string, number> }> = {};
@@ -344,17 +343,53 @@ export default function DevOpsWorkload() {
             </div>
           </header>
 
-          <section className="portal-surface" style={{ marginBottom: 24 }}>
-            <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="portal-pill-row">
-                <span className="portal-pill">Pending approvals {pendingApprovals.length}</span>
-                <span className="portal-pill">Tracked workload {workload.length}</span>
-                <span className="portal-pill">Visible users {devopsUsers.length}</span>
-                <span className="portal-pill">{hasActiveFilters ? 'Filters active' : 'All tickets'}</span>
+          <section className="portal-surface portal-surface--tight" style={{ marginBottom: 24 }}>
+            <div className="portal-toolbar">
+              <div className="portal-toolbar__group">
+                <div className="portal-toolbar__item portal-toolbar__item--grow">
+                  <label className="label" htmlFor="workload-user-filter">
+                    DevOps user
+                  </label>
+                  <select id="workload-user-filter" className="input" value={filterUserId} onChange={(event) => setFilterUserId(event.target.value)}>
+                    <option value="">All users ({workload.length})</option>
+                    {workload.some((item) => item.assignee_id === 0) && (
+                      <option value="0">Unassigned ({workload.filter((item) => item.assignee_id === 0).length})</option>
+                    )}
+                    {devopsUsers.map((user) => {
+                      const count = userStats.find((stat) => stat.userId === user.id)?.total ?? 0;
+                      return (
+                        <option key={user.id} value={String(user.id)}>
+                          {user.username} ({count})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <div className="portal-toolbar__item">
+                  <label className="label" htmlFor="workload-status-filter">
+                    Status
+                  </label>
+                  <select id="workload-status-filter" className="input" value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)}>
+                    {STATUS_OPTIONS.map((option) => (
+                      <option key={option.value || 'all'} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters((current) => !current)}>
-                {showFilters ? 'Hide filters' : 'Show filters'}
-              </button>
+              <div className="portal-page__actions">
+                <div className="portal-pill-row">
+                  <span className="portal-pill">Pending {pendingApprovals.length}</span>
+                  <span className="portal-pill">Tracked {workload.length}</span>
+                  <span className="portal-pill">Users {devopsUsers.length}</span>
+                </div>
+                {hasActiveFilters ? (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setFilterUserId(''); setFilterStatus(''); }}>
+                    Clear
+                  </button>
+                ) : null}
+              </div>
             </div>
           </section>
 
@@ -592,64 +627,6 @@ export default function DevOpsWorkload() {
               </article>
             )}
 
-            {showFilters ? (
-            <article className="portal-surface">
-              <div className="portal-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Filters</span>
-                  <h2 className="portal-surface__title">Refine in-flight work</h2>
-                  <p className="portal-surface__subtitle">
-                    Filter by assignee or status only when you need to narrow the queue.
-                  </p>
-                </div>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters(false)}>
-                  Close
-                </button>
-              </div>
-              <div className="portal-stack">
-                <div className="portal-toolbar__group">
-                  <div className="portal-toolbar__item portal-toolbar__item--grow">
-                    <label className="label" htmlFor="workload-user-filter">
-                      DevOps user
-                    </label>
-                    <select id="workload-user-filter" className="input" value={filterUserId} onChange={(event) => setFilterUserId(event.target.value)}>
-                      <option value="">All users ({workload.length})</option>
-                      {workload.some((item) => item.assignee_id === 0) && (
-                        <option value="0">Unassigned ({workload.filter((item) => item.assignee_id === 0).length})</option>
-                      )}
-                      {devopsUsers.map((user) => {
-                        const count = userStats.find((stat) => stat.userId === user.id)?.total ?? 0;
-                        return (
-                          <option key={user.id} value={String(user.id)}>
-                            {user.username} ({count})
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                  <div className="portal-toolbar__item">
-                    <label className="label" htmlFor="workload-status-filter">
-                      Status
-                    </label>
-                    <select id="workload-status-filter" className="input" value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)}>
-                      {STATUS_OPTIONS.map((option) => (
-                        <option key={option.value || 'all'} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                {hasActiveFilters && (
-                  <div className="portal-form-actions">
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setFilterUserId(''); setFilterStatus(''); }}>
-                      Clear filters
-                    </button>
-                  </div>
-                )}
-              </div>
-            </article>
-            ) : null}
           </section>
 
           {error && <div className="alert alert-error">{error}</div>}
