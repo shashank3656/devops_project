@@ -16,9 +16,9 @@ interface RequestTemplate {
   status?: string;
   created_at: string;
   created_by: number | null;
-  teams?: TeamSummary[];
-  projects?: ProjectSummary[];
-  visible_to_all?: boolean;
+  teams: TeamSummary[];
+  projects: ProjectSummary[];
+  visible_to_all: boolean;
 }
 
 interface TeamSummary {
@@ -127,12 +127,12 @@ function formatEnvironmentList(environments: string[]): string {
 }
 
 function formatTeamScope(template: RequestTemplate): string {
-  if (template.visible_to_all || template.teams?.length === 0) return 'All portal teams';
+  if (template.visible_to_all || template.teams.length === 0) return 'All portal teams';
   return template.teams.length === 1 ? template.teams[0].name : `${template.teams.length} teams`;
 }
 
 function formatProjectScope(template: RequestTemplate): string {
-  if (!template.projects?.length) return 'All projects';
+  if (template.projects.length === 0) return 'All projects';
   if (template.projects.length === 1) {
     const project = template.projects[0];
     return project.code ? `${project.name} (${project.code})` : project.name;
