@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { useToast } from '../context/ToastContext';
+import CalendarDateInput from '../components/CalendarDateInput';
 
 import { maskSensitiveJson } from '../lib/maskSensitive';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
@@ -1009,11 +1010,11 @@ export default function History() {
                 </div>
                 <div className="history-filter-field">
                   <label className="history-filter-label">From date</label>
-                  <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setPage(0); }} className="history-filter-input" />
+                  <CalendarDateInput value={fromDate} onChange={(value) => { setFromDate(value); setPage(0); }} />
                 </div>
                 <div className="history-filter-field">
                   <label className="history-filter-label">To date</label>
-                  <input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setPage(0); }} className="history-filter-input" />
+                  <CalendarDateInput value={toDate} onChange={(value) => { setToDate(value); setPage(0); }} />
                 </div>
                 <div className="history-filter-field">
                   <label className="history-filter-label">Sort by</label>

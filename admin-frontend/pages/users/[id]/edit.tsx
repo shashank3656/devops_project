@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import AdminLayout from '../../../components/AdminLayout';
+import CalendarDateInput from '../../../components/CalendarDateInput';
 
 interface DevopsProfile {
   is_manager: boolean;
@@ -703,14 +704,9 @@ export default function EditUser() {
                     </div>
                     <div className="form-group">
                       <label className="label" htmlFor="edit-onboard">Onboard date</label>
-                      <input
-                        id="edit-onboard"
-                        className="input"
-                        type="date"
-                        value={onboardDate}
-                        onChange={(e) => setOnboardDate(e.target.value)}
-                        style={{ maxWidth: 200 }}
-                      />
+                      <div style={{ maxWidth: 220 }}>
+                        <CalendarDateInput id="edit-onboard" value={onboardDate} onChange={setOnboardDate} />
+                      </div>
                     </div>
                     <div className="form-group">
                       <label className="label" htmlFor="edit-level">Level</label>

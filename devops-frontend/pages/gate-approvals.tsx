@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import CalendarDateInput from '../components/CalendarDateInput';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -336,11 +337,11 @@ export default function GateApprovalsPage() {
                 </div>
                 <div className="portal-toolbar__item">
                   <label className="credential-audit-label" htmlFor="gate-audit-from-date">From date</label>
-                  <input id="gate-audit-from-date" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="input" />
+                  <CalendarDateInput id="gate-audit-from-date" value={fromDate} onChange={setFromDate} />
                 </div>
                 <div className="portal-toolbar__item">
                   <label className="credential-audit-label" htmlFor="gate-audit-to-date">To date</label>
-                  <input id="gate-audit-to-date" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="input" />
+                  <CalendarDateInput id="gate-audit-to-date" value={toDate} onChange={setToDate} />
                 </div>
                 <div className="portal-toolbar__item">
                   <label className="credential-audit-label" htmlFor="gate-audit-expiry-window">Expiring within</label>

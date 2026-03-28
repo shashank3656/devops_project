@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
+import CalendarDateInput from '../../components/CalendarDateInput';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { asRecord, getString } from '../../lib/payload';
@@ -207,7 +208,7 @@ export default function NewAccessOverridePage() {
                 </label>
                 <label className="label">
                   Expires at
-                  <input className="input" type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} />
+                  <CalendarDateInput type="datetime-local" value={expiresAt} onChange={setExpiresAt} />
                 </label>
                 <label className="label">
                   Reason

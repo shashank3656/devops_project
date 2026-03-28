@@ -5,6 +5,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import AdminLayout from '../components/AdminLayout';
 import PieChart from '../components/PieChart';
+import CalendarDateInput from '../components/CalendarDateInput';
 
 const DashboardLineChart = dynamic(() => import('../components/DashboardLineChart'), { ssr: false });
 
@@ -261,11 +262,11 @@ export default function AdminDashboard() {
                 <>
                   <div>
                     <label className="label">From</label>
-                    <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="input" />
+                    <CalendarDateInput value={customFrom} onChange={setCustomFrom} />
                   </div>
                   <div>
                     <label className="label">To</label>
-                    <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="input" />
+                    <CalendarDateInput value={customTo} onChange={setCustomTo} />
                   </div>
                 </>
               )}

@@ -3,6 +3,11 @@ name: Deploy Dev
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+  
+
 jobs:
   deploy:
     uses: ./.github/workflows/deploy-reusable.yaml

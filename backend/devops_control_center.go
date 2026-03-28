@@ -745,13 +745,7 @@ func enrichPromotionItemsWithDeploymentGates(items []promotionCenterItem) error 
 
 		gate := findDeploymentGateEnvironment(dashboard.DeploymentGates, targetEnvironment)
 		if gate == nil {
-			items[index].Gate = buildPromotionGateDecision(
-				targetEnvironment,
-				nil,
-				nil,
-				fmt.Sprintf("%s is not configured as a deployment gate target for this project.", strings.ToUpper(strings.TrimSpace(targetEnvironment))),
-				true,
-			)
+			items[index].Gate = buildUngatedPromotionDecision(targetEnvironment)
 			continue
 		}
 		approval, err := getActiveDeploymentGateApproval(items[index].RequestID, targetEnvironment, items[index].UpdatedAt)
@@ -815,13 +809,7 @@ func evaluatePromotionGateForRequest(req *PRRequest) (*promotionGateDecision, er
 	}
 	gate := findDeploymentGateEnvironment(dashboard.DeploymentGates, targetEnvironment)
 	if gate == nil {
-		return buildPromotionGateDecision(
-			targetEnvironment,
-			nil,
-			nil,
-			fmt.Sprintf("%s is not configured as a deployment gate target for this project.", strings.ToUpper(strings.TrimSpace(targetEnvironment))),
-			true,
-		), nil
+		return buildUngatedPromotionDecision(targetEnvironment), nil
 	}
 	approval, err := getActiveDeploymentGateApproval(req.ID, targetEnvironment, req.UpdatedAt)
 	if err != nil {
