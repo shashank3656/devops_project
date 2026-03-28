@@ -512,128 +512,119 @@ export default function DevOpsTickets() {
             </div>
           </div>
 
-          <div className="devops-tickets-filter-card card">
-            <div className="devops-tickets-filter-header">
-              <div>
-                <h2 className="devops-tickets-filter-title">Filter requests</h2>
-                <p className="devops-tickets-filter-summary">
-                  Use request number, project, search, or status first. Open extra filters only when you need a narrower queue.
-                </p>
-              </div>
-              <div className="devops-tickets-filter-toolbar">
-                {activeFilterCount > 0 && <span className="devops-tickets-filter-badge">{activeFilterCount} active</span>}
+          <div className="devops-filter-ribbon card">
+            <div className="devops-filter-ribbon__bar">
+              <label className="devops-filter-ribbon__pill">
+                <span className="devops-filter-ribbon__key">Request #</span>
+                <input
+                  type="text"
+                  placeholder="Any request"
+                  value={idFilter}
+                  onChange={(e) => setIdFilter(e.target.value)}
+                  className="devops-filter-ribbon__control"
+                />
+              </label>
+              <label className="devops-filter-ribbon__pill devops-filter-ribbon__pill--search">
+                <span className="devops-filter-ribbon__key">Search</span>
+                <input
+                  type="text"
+                  placeholder="Project, team, service, or requester"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="devops-filter-ribbon__control"
+                />
+              </label>
+              <label className="devops-filter-ribbon__pill">
+                <span className="devops-filter-ribbon__key">Project</span>
+                <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="devops-filter-ribbon__control">
+                  <option value="">All projects</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+                  ))}
+                </select>
+              </label>
+              <label className="devops-filter-ribbon__pill">
+                <span className="devops-filter-ribbon__key">Status</span>
+                <select value={status} onChange={(e) => setStatus(e.target.value)} className="devops-filter-ribbon__control">
+                  {STATUS_OPTIONS.map((entry) => (
+                    <option key={entry.value || 'all'} value={entry.value}>{entry.label}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="devops-filter-ribbon__actions">
+                {activeFilterCount > 0 && <span className="devops-filter-ribbon__badge">{activeFilterCount} active</span>}
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
                   onClick={() => setFilterExpanded(!filterExpanded)}
                   aria-expanded={filterExpanded}
                 >
-                  {filterExpanded ? 'Hide extra filters' : 'More filters'}
+                  {filterExpanded ? 'Less' : 'More'}
                 </button>
-              </div>
-            </div>
-
-            <div className="devops-tickets-filter-quick">
-              <div className="devops-tickets-filter-group">
-                <label className="devops-tickets-filter-label">Request #</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 123"
-                  value={idFilter}
-                  onChange={(e) => setIdFilter(e.target.value)}
-                  className="input devops-tickets-filter-input"
-                />
-              </div>
-              <div className="devops-tickets-filter-group devops-tickets-filter-group--wide">
-                <label className="devops-tickets-filter-label">Search</label>
-                <input
-                  type="text"
-                  placeholder="Search project, team, service, or requester"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="input devops-tickets-filter-input"
-                />
-              </div>
-              <div className="devops-tickets-filter-group">
-                <label className="devops-tickets-filter-label">Project</label>
-                <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="input devops-tickets-filter-input">
-                  <option value="">All projects</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
-                  ))}
-                </select>
-              </div>
-              <div className="devops-tickets-filter-group">
-                <label className="devops-tickets-filter-label">Status</label>
-                <select value={status} onChange={(e) => setStatus(e.target.value)} className="input devops-tickets-filter-input">
-                  {STATUS_OPTIONS.map((entry) => (
-                    <option key={entry.value || 'all'} value={entry.value}>{entry.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="devops-tickets-filter-actions">
-              <span className="devops-tickets-filter-hint">Results update automatically as you change filters.</span>
-              <div className="devops-tickets-filter-action-buttons">
                 <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters} disabled={!activeFilterCount}>
                   Clear
                 </button>
               </div>
             </div>
 
+            <div className="devops-filter-ribbon__footer">
+              <span className="devops-filter-ribbon__hint">Results update automatically. Open more only when you need a narrower queue.</span>
+            </div>
+
             {filterExpanded && (
-              <div className="devops-tickets-filter-advanced">
-                <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Team</label>
-                  <input
-                    type="text"
-                    placeholder="Team name"
-                    value={team}
-                    onChange={(e) => setTeam(e.target.value)}
-                    className="input devops-tickets-filter-input"
-                  />
-                </div>
-                <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Cloud</label>
-                  <select value={cloud} onChange={(e) => setCloud(e.target.value)} className="input devops-tickets-filter-input">
-                    <option value="">All clouds</option>
-                    {CLOUDS.map((entry) => (
-                      <option key={entry} value={entry}>{entry}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Requester</label>
-                  <input
-                    type="text"
-                    placeholder="Username or user ID"
-                    value={requester}
-                    onChange={(e) => setRequester(e.target.value)}
-                    className="input devops-tickets-filter-input"
-                  />
-                </div>
-                <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Sort by</label>
-                  <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="input devops-tickets-filter-input">
-                    <option value="created_at">Created</option>
-                    <option value="updated_at">Updated</option>
-                    <option value="priority">Priority</option>
-                    <option value="due_date">Due date</option>
-                  </select>
-                </div>
-                <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Order</label>
-                  <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="input devops-tickets-filter-input">
-                    <option value="desc">Newest first</option>
-                    <option value="asc">Oldest first</option>
-                  </select>
-                </div>
-                <div className="devops-tickets-filter-group devops-tickets-filter-group--checkbox">
-                  <label className="devops-tickets-filter-checkbox">
-                    <input type="checkbox" checked={atRisk} onChange={(e) => setAtRisk(e.target.checked)} />
-                    <span>Only requests that need attention now</span>
+              <div className="devops-filter-ribbon__panel">
+                <div className="devops-filter-ribbon__panel-grid">
+                  <label className="devops-tickets-filter-group">
+                    <span className="devops-tickets-filter-label">Team</span>
+                    <input
+                      type="text"
+                      placeholder="Team name"
+                      value={team}
+                      onChange={(e) => setTeam(e.target.value)}
+                      className="input devops-tickets-filter-input"
+                    />
                   </label>
+                  <label className="devops-tickets-filter-group">
+                    <span className="devops-tickets-filter-label">Cloud</span>
+                    <select value={cloud} onChange={(e) => setCloud(e.target.value)} className="input devops-tickets-filter-input">
+                      <option value="">All clouds</option>
+                      {CLOUDS.map((entry) => (
+                        <option key={entry} value={entry}>{entry}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="devops-tickets-filter-group">
+                    <span className="devops-tickets-filter-label">Requester</span>
+                    <input
+                      type="text"
+                      placeholder="Username or user ID"
+                      value={requester}
+                      onChange={(e) => setRequester(e.target.value)}
+                      className="input devops-tickets-filter-input"
+                    />
+                  </label>
+                  <label className="devops-tickets-filter-group">
+                    <span className="devops-tickets-filter-label">Sort by</span>
+                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="input devops-tickets-filter-input">
+                      <option value="created_at">Created</option>
+                      <option value="updated_at">Updated</option>
+                      <option value="priority">Priority</option>
+                      <option value="due_date">Due date</option>
+                    </select>
+                  </label>
+                  <label className="devops-tickets-filter-group">
+                    <span className="devops-tickets-filter-label">Order</span>
+                    <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="input devops-tickets-filter-input">
+                      <option value="desc">Newest first</option>
+                      <option value="asc">Oldest first</option>
+                    </select>
+                  </label>
+                  <div className="devops-tickets-filter-group devops-tickets-filter-group--checkbox">
+                    <label className="devops-tickets-filter-checkbox">
+                      <input type="checkbox" checked={atRisk} onChange={(e) => setAtRisk(e.target.checked)} />
+                      <span>Only requests that need attention now</span>
+                    </label>
+                  </div>
                 </div>
               </div>
             )}
