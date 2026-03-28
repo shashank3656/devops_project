@@ -128,18 +128,18 @@ export default function CreateInfrastructureNew() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Create Infrastructure</span>
-            <h1 className="portal-page__title">Create Infrastructure Request</h1>
+            <span className="portal-page__eyebrow">New Request</span>
+            <h1 className="portal-page__title">Choose where to start</h1>
             <p className="portal-page__subtitle">
-              Start from an assigned project, then continue into the approved clouds and services configured for that project.
+              Start from a project, reuse a saved request, or switch to Advanced JSON if you already know the full payload.
             </p>
           </div>
           <div className="portal-page__actions">
             <Link href="/custom-json" className="btn btn-secondary">
-              Custom JSON
+              Advanced JSON
             </Link>
             <Link href="/history" className="btn btn-secondary">
-              Open request history
+              My Requests
             </Link>
           </div>
         </div>
@@ -148,16 +148,16 @@ export default function CreateInfrastructureNew() {
           <section className="portal-surface">
             <div className="portal-surface__header">
               <div>
-                <span className="portal-surface__eyebrow">Saved Configurations</span>
-                <h2 className="portal-surface__title">Reuse Saved Configurations</h2>
-                <p className="portal-surface__subtitle">Pull forward a saved request and continue from the cloud, environment, and service state you already trust.</p>
+                <span className="portal-surface__eyebrow">Saved Requests</span>
+                <h2 className="portal-surface__title">Reuse something you already trust</h2>
+                <p className="portal-surface__subtitle">Open a saved setup and continue from the last cloud, environment, and service you used.</p>
               </div>
             </div>
 
             {loadingSaved ? (
-              <div className="empty-state">Loading saved configurations...</div>
+              <div className="empty-state">Loading saved requests...</div>
             ) : savedConfigs.length === 0 ? (
-              <div className="empty-state">No saved configurations available yet.</div>
+              <div className="empty-state">No saved requests yet.</div>
             ) : (
               <div className="request-saved-grid">
                 {savedConfigs.map((config) => (
@@ -173,7 +173,7 @@ export default function CreateInfrastructureNew() {
                   >
                     <div>
                       <h3 className="request-saved-card__title">{config.name}</h3>
-                      <p>Resume a request path based on this saved configuration.</p>
+                      <p>Reuse this saved request and continue from there.</p>
                     </div>
                     <div className="request-saved-card__meta">
                       <span className="portal-pill">{config.cloud}</span>
@@ -191,9 +191,9 @@ export default function CreateInfrastructureNew() {
         <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
-              <span className="portal-surface__eyebrow">Assigned Projects</span>
-              <h2 className="portal-surface__title">Choose a project first</h2>
-              <p className="portal-surface__subtitle">Projects control which teams, environments, clouds, and services you can request.</p>
+              <span className="portal-surface__eyebrow">Projects</span>
+              <h2 className="portal-surface__title">Pick a project</h2>
+              <p className="portal-surface__subtitle">Projects decide which teams, environments, clouds, and services you can request.</p>
             </div>
             <div className="portal-page__actions">
               <Link href="/my-projects" className="btn btn-secondary">
@@ -207,7 +207,7 @@ export default function CreateInfrastructureNew() {
           ) : projectsError ? (
             <div className="empty-state">{projectsError}</div>
           ) : projectCards.length === 0 ? (
-            <div className="empty-state">No projects are assigned to your teams yet.</div>
+            <div className="empty-state">No projects are assigned to you yet.</div>
           ) : (
             <div className="request-studio-grid">
               {projectCards.map((project) => (
@@ -236,18 +236,18 @@ export default function CreateInfrastructureNew() {
 
         <section className="portal-grid">
           <article className="request-choice-card">
-            <strong>Need maximum control?</strong>
-            <p>Use Custom JSON when you already have a project-approved payload and want to submit it directly into the review flow.</p>
+            <strong>Need more control?</strong>
+            <p>Use Advanced JSON when you already have the full request body and want to send it directly for review.</p>
             <div className="request-studio-actions">
               <Link href="/custom-json" className="btn btn-primary">
-                Open Custom JSON
+                Open Advanced JSON
               </Link>
             </div>
           </article>
 
           <article className="request-choice-card">
-            <strong>Need project context first?</strong>
-            <p>Open My Projects to review allowed teams, environments, clouds, and services before raising a request.</p>
+            <strong>Need to check access first?</strong>
+            <p>Open My Projects to review the teams, environments, clouds, and services available to you before starting.</p>
             <div className="request-studio-actions">
               <Link href="/my-projects" className="btn btn-secondary">
                 Open My Projects

@@ -113,6 +113,16 @@ function getPreviewSignalClass(severity?: string): string {
   }
 }
 
+function isAccessRequest(req: PRRequest | null | undefined): boolean {
+  if (!req?.config) return false;
+  try {
+    const parsed = JSON.parse(req.config) as { request_type?: unknown };
+    return typeof parsed.request_type === 'string' && parsed.request_type.trim().toLowerCase() === 'iam';
+  } catch {
+    return false;
+  }
+}
+
 const PAGE_SIZE = 10;
 
 export default function History() {
@@ -156,21 +166,22 @@ export default function History() {
   const [presets, setPresets] = useState<FilterPreset[]>([]);
   const [presetName, setPresetName] = useState('');
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const detailRequestIsAccess = isAccessRequest(detailRequest);
 
   const formatTimelineAction = (action: string) => {
     const map: Record<string, string> = {
-      request_create: 'created request',
-      request_submit: 'submitted',
-      request_approved_by_manager: 'approved (manager)',
+      request_create: 'created this request',
+      request_submit: 'sent it for review',
+      request_approved_by_manager: 'approved it as manager',
       request_approve: 'approved',
       request_reject: 'rejected',
-      request_comment: 'commented',
-      request_clone: 'cloned',
-      request_resubmit: 'resubmitted',
-      request_cancel: 'cancelled',
-      request_promote: 'promoted',
-      request_plan_output: 'updated plan output',
-      request_reassign: 'reassigned',
+      request_comment: 'left a comment',
+      request_clone: 'copied this request',
+      request_resubmit: 'created a new draft from this request',
+      request_cancel: 'cancelled this request',
+      request_promote: 'created the next environment request',
+      request_plan_output: 'updated delivery output',
+      request_reassign: 'reassigned this request',
     };
     return map[action] || action.replace(/_/g, ' ');
   };
@@ -590,7 +601,7 @@ export default function History() {
       });
       const d = await res.json().catch(() => ({}));
       if (res.ok) {
-        toast(d?.message || 'Ticket cancelled', 'success');
+        toast(d?.message || 'Request cancelled', 'success');
         setDetailRequest(null);
         fetchHistory();
       } else {
@@ -793,14 +804,19 @@ export default function History() {
   return (
     <>
       <Head>
-        <title>History - Infrastructure Portal</title>
+        <title>My Requests - SetuOps</title>
       </Head>
       <div className="history-page">
         <div className="history-page__header">
-          <h1 className="page-header__title">PR Request History</h1>
+          <div>
+            <h1 className="page-header__title">My Requests</h1>
+            <p style={{ marginTop: 8, color: 'var(--text-secondary)', maxWidth: 720 }}>
+              Check status, open comments, and reuse earlier requests without digging through technical details.
+            </p>
+          </div>
           {recentIds.length > 0 && (
             <div className="history-recent" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Recent:</span>
+              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Recent requests:</span>
               {recentIds.map((id) => (
                 <button
                   key={id}
@@ -816,20 +832,22 @@ export default function History() {
           )}
           <div className="history-page__actions">
             <button onClick={handleRefresh} className="btn btn-secondary" disabled={loading} title="Refresh">
-              🔄 Refresh
+              Refresh list
             </button>
             <button onClick={exportCSV} className="btn btn-secondary" disabled={loading}>
-              📥 Export CSV
+              Download CSV
             </button>
           </div>
         </div>
 
-        {/* Filter Box */}
         <div className="card history-filter-card">
-          <h3 className="history-filter-card__title">Filter Requests</h3>
+          <h3 className="history-filter-card__title">Find a request</h3>
+          <p style={{ marginTop: 8, marginBottom: 16, color: 'var(--text-muted)', fontSize: '0.95rem' }}>
+            Start with one filter. Add more only if you need to narrow the list further.
+          </p>
           <div className="history-filter-card__row">
             <div className="history-filter-field">
-              <label htmlFor="filter-type" className="history-filter-label">Filter By</label>
+              <label htmlFor="filter-type" className="history-filter-label">Search by</label>
               <select
                   id="filter-type"
                   value={filterType}
@@ -840,20 +858,20 @@ export default function History() {
                   className="history-filter-select"
                 >
                   <option value="team">Team</option>
-                  <option value="pr_number">PR Number</option>
+                  <option value="pr_number">Request number</option>
                   <option value="application_id">Application ID</option>
                   <option value="env">Environment</option>
                   <option value="cloud">Cloud</option>
-                  <option value="search">Search (all fields)</option>
+                  <option value="search">Search everything</option>
               </select>
             </div>
             <div className="history-filter-field history-filter-field--grow">
               <label htmlFor="filter-value" className="history-filter-label">
-                  {filterType === 'pr_number' ? 'PR Number' :
+                  {filterType === 'pr_number' ? 'Request number' :
                    filterType === 'search' ? 'Search term' :
-                   filterType === 'team' ? 'Team Name' :
+                   filterType === 'team' ? 'Team name' :
                    filterType === 'application_id' ? 'Application ID' :
-                   filterType === 'env' ? 'Environment' : 'Cloud Provider'}
+                   filterType === 'env' ? 'Environment' : 'Cloud provider'}
               </label>
               <input
                 id="filter-value"
@@ -861,11 +879,11 @@ export default function History() {
                 value={filterValue}
                 onChange={(e) => setFilterValue(e.target.value)}
                 placeholder={
-                  filterType === 'pr_number' ? 'Enter PR number (e.g., 123)' :
-                  filterType === 'search' ? 'Search team, env, cloud, service…' :
+                  filterType === 'pr_number' ? 'Enter request number (for example 123)' :
+                  filterType === 'search' ? 'Search team, project, cloud, or service' :
                   filterType === 'team' ? 'Enter team name' :
                   filterType === 'application_id' ? 'Enter application ID' :
-                  filterType === 'env' ? 'Enter environment (dev, stage, prod)' :
+                  filterType === 'env' ? 'Enter environment (dev, uat, prod)' :
                   'Enter cloud provider (AWS, GCP, Azure)'
                 }
                 className="history-filter-input"
@@ -911,8 +929,8 @@ export default function History() {
                   className="history-filter-select"
                   style={{ minWidth: 120 }}
                 >
-                  <option value="mine">My tickets</option>
-                  <option value="team">Group tickets</option>
+                  <option value="mine">My requests</option>
+                  <option value="team">Team requests</option>
                 </select>
               </div>
               <div className="history-filter-inline">
@@ -924,7 +942,7 @@ export default function History() {
                   style={{ minWidth: 140 }}
                 >
                   <option value="created_at">Created (newest)</option>
-                  <option value="id">Ticket #</option>
+                  <option value="id">Request #</option>
                   <option value="priority">Priority</option>
                   <option value="due_date">Due date</option>
                   <option value="team">Team</option>
@@ -943,19 +961,19 @@ export default function History() {
                 onClick={() => { setFilterValue(''); setProjectId(''); setPage(0); }}
                 className="btn btn-secondary"
               >
-                Clear
+                Clear filters
               </button>
               <div className="history-filter-inline" style={{ marginLeft: 12, gap: 6 }}>
                 <input
                   type="text"
                   value={presetName}
                   onChange={(e) => setPresetName(e.target.value)}
-                  placeholder="Preset name"
+                  placeholder="Saved view name"
                   className="history-filter-input"
                   style={{ width: 100 }}
                 />
                 <button type="button" className="btn btn-secondary btn-sm" onClick={savePreset}>
-                  Save preset
+                  Save view
                 </button>
                 {presets.length > 0 && (
                   <select
@@ -971,7 +989,7 @@ export default function History() {
                       e.target.value = '';
                     }}
                   >
-                    <option value="">Load preset…</option>
+                    <option value="">Open saved view…</option>
                     {presets.map((p) => (
                       <option key={p.name} value={p.name}>{p.name}</option>
                     ))}
@@ -997,11 +1015,11 @@ export default function History() {
               <div className="history-empty">
                 <div className="history-empty__icon">📋</div>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>
-                  {filterValue ? 'No PR requests found matching your filter' : 'No requests yet'}
+                  {filterValue ? 'No requests match this search.' : 'No requests yet.'}
                 </p>
                 {!filterValue && (
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.5rem' }}>
-                    Create your first request from Custom JSON or Select Service.
+                    Start a new request, or use Advanced JSON if you already have a prepared payload.
                   </p>
                 )}
                 {filterValue ? (
@@ -1010,15 +1028,15 @@ export default function History() {
                     className="btn btn-secondary"
                     style={{ marginTop: '1rem' }}
                   >
-                    Clear Filter
+                    Clear filters
                   </button>
                 ) : (
                   <div className="history-empty__actions">
-                    <button onClick={() => router.push('/custom-json')} className="btn btn-primary">
-                      Custom JSON
+                    <button onClick={() => router.push('/select-service')} className="btn btn-primary">
+                      New request
                     </button>
-                    <button onClick={() => router.push('/select-service')} className="btn btn-secondary">
-                      Select Service
+                    <button onClick={() => router.push('/custom-json')} className="btn btn-secondary">
+                      Advanced JSON
                     </button>
                   </div>
                 )}
@@ -1027,16 +1045,13 @@ export default function History() {
               <div style={{ overflowX: 'auto' }}>
                 {viewMode === 'team' && (
                   <p style={{ padding: '12px 16px 0', margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>
-                    Showing tickets raised by you and your team members. Use <strong>Raised by</strong> to see who created each ticket.
+                    Showing requests from you and your team. Use <strong>Raised by</strong> to see who submitted each one.
                   </p>
                 )}
-                <p style={{ padding: '8px 16px 0', margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
-                  Tip: Use <kbd style={{ padding: '2px 6px', background: 'var(--bg-button-secondary)', borderRadius: 4 }}>j</kbd> / <kbd style={{ padding: '2px 6px', background: 'var(--bg-button-secondary)', borderRadius: 4 }}>k</kbd> to move, <kbd style={{ padding: '2px 6px', background: 'var(--bg-button-secondary)', borderRadius: 4 }}>Enter</kbd> to open
-                </p>
                 <table className="history-table">
                   <thead>
                     <tr>
-                      <th>Ticket #</th>
+                      <th>Request #</th>
                       <th>Project</th>
                       <th>Team</th>
                       {viewMode === 'team' && <th>Raised by</th>}
@@ -1045,7 +1060,7 @@ export default function History() {
                       <th>Service</th>
                       <th>Status</th>
                       <th>Created</th>
-                      <th>PR Link</th>
+                      <th>Pull request</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -1121,8 +1136,8 @@ export default function History() {
                           }}>
                             {req.status === 'draft' ? 'Draft' :
                              req.status === 'pending_approval' ? 'Pending approval' :
-                             req.status === 'pending_user_manager_approval' ? 'Pending your approval' :
-                             req.status === 'pending_devops_approval' ? 'Pending DevOps approval' :
+                             req.status === 'pending_user_manager_approval' ? 'Waiting for manager' :
+                             req.status === 'pending_devops_approval' ? 'Waiting for platform team' :
                              req.status === 'in_progress' ? 'In progress' :
                              req.status === 'completed' ? 'Completed' :
                              req.status === 'rejected' ? 'Rejected' : req.status}
@@ -1152,7 +1167,7 @@ export default function History() {
                                 e.currentTarget.style.textDecoration = 'none';
                               }}
                             >
-                              View PR →
+                              Open PR →
                             </a>
                           ) : (
                             <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>—</span>
@@ -1272,7 +1287,9 @@ export default function History() {
                 ) : detailRequest ? (
                   <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                      <h3 style={{ margin: 0 }}>Ticket #{detailRequest.id}</h3>
+                      <h3 style={{ margin: 0 }}>
+                        {detailRequestIsAccess ? `Access request #${detailRequest.id}` : `Request #${detailRequest.id}`}
+                      </h3>
                       <button onClick={() => setDetailRequest(null)} className="btn btn-secondary" style={{ padding: '8px 16px' }}>
                         Close
                       </button>
@@ -1287,12 +1304,12 @@ export default function History() {
                           style={{ marginLeft: 10 }}
                           onClick={() => router.push(`/my-projects/${detailRequest.project_id}`)}
                         >
-                          Open project
+                          View project
                         </button>
                       </div>
                     )}
                     <div style={{ marginBottom: '12px' }}>
-                      <strong>Team:</strong> {detailRequest.team} &nbsp;|&nbsp; <strong>Env:</strong> {detailRequest.env} &nbsp;|&nbsp; <strong>Cloud:</strong> {detailRequest.cloud} &nbsp;|&nbsp; <strong>Service:</strong> {detailRequest.service}
+                      <strong>Team:</strong> {detailRequest.team} &nbsp;|&nbsp; <strong>Environment:</strong> {detailRequest.env} &nbsp;|&nbsp; <strong>Cloud:</strong> {detailRequest.cloud} &nbsp;|&nbsp; <strong>{detailRequestIsAccess ? 'Target' : 'Service'}:</strong> {detailRequest.service}
                       {detailRequest.application_id && (
                         <> &nbsp;|&nbsp; <strong>App ID:</strong> <code style={{ background: 'var(--bg-gray-100)', padding: '2px 6px', borderRadius: 4 }}>{detailRequest.application_id}</code></>
                       )}
@@ -1322,9 +1339,9 @@ export default function History() {
                                detailRequest.status === 'rejected' ? 'var(--error-color)' : 'var(--info-color)'
                       }}>
                         {detailRequest.status === 'draft' ? 'Draft' :
-                         detailRequest.status === 'pending_approval' ? 'Pending approval' :
-                         detailRequest.status === 'pending_user_manager_approval' ? 'Pending your approval' :
-                         detailRequest.status === 'pending_devops_approval' ? 'Pending DevOps approval' :
+                         detailRequest.status === 'pending_approval' ? 'Waiting for review' :
+                         detailRequest.status === 'pending_user_manager_approval' ? 'Waiting for your approval' :
+                         detailRequest.status === 'pending_devops_approval' ? 'Waiting for platform team' :
                          detailRequest.status === 'in_progress' ? 'In progress' :
                          detailRequest.status === 'completed' ? 'Completed' :
                          detailRequest.status === 'rejected' ? 'Rejected' : detailRequest.status}
@@ -1332,7 +1349,7 @@ export default function History() {
                     </div>
                     {detailRequest.status === 'rejected' && detailRequest.reject_reason && (
                       <div style={{ marginBottom: '12px', padding: '12px', background: 'var(--error-bg)', borderRadius: '8px', borderLeft: '4px solid var(--error-color)' }}>
-                        <strong style={{ color: 'var(--error-color)' }}>Rejection reason (from admin):</strong>
+                        <strong style={{ color: 'var(--error-color)' }}>Why it was rejected:</strong>
                         <p style={{ margin: '6px 0 0', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>{detailRequest.reject_reason}</p>
                       </div>
                     )}
@@ -1340,25 +1357,25 @@ export default function History() {
                       <div className="portal-preview-panel" style={{ marginBottom: '12px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
                           <div>
-                            <div className="portal-preview-eyebrow">Cost And Risk</div>
-                            <strong className="portal-preview-value" style={{ fontSize: 18 }}>Manager Review Preview</strong>
+                            <div className="portal-preview-eyebrow">Estimated Cost</div>
+                            <strong className="portal-preview-value" style={{ fontSize: 18 }}>What reviewers may check</strong>
                           </div>
                           <span className={getPreviewRiskClass(detailRequest.cost_risk_preview.risk_level)}>
-                            {detailRequest.cost_risk_preview.risk_level} risk
+                            {detailRequest.cost_risk_preview.risk_level} review attention
                           </span>
                         </div>
 
                         <div className="portal-preview-grid">
                           <div className="portal-preview-card">
-                            <span className="portal-preview-eyebrow">Estimated monthly</span>
+                            <span className="portal-preview-eyebrow">Estimated monthly cost</span>
                             <strong className="portal-preview-value">{detailRequest.cost_risk_preview.estimated_monthly}</strong>
                             <p className="portal-preview-copy">
                               {detailRequest.cost_risk_preview.estimated_band} footprint. {detailRequest.cost_risk_preview.estimate_basis}
                             </p>
                           </div>
                           <div className="portal-preview-card">
-                            <span className="portal-preview-eyebrow">Review summary</span>
-                            <strong className="portal-preview-value">{detailRequest.cost_risk_preview.signals.length} signals</strong>
+                            <span className="portal-preview-eyebrow">Review notes</span>
+                            <strong className="portal-preview-value">{detailRequest.cost_risk_preview.signals.length} checks</strong>
                             <p className="portal-preview-copy">{detailRequest.cost_risk_preview.summary}</p>
                           </div>
                         </div>
@@ -1385,11 +1402,11 @@ export default function History() {
                           ) : (
                             <article className={getPreviewSignalClass('low')}>
                               <div className="portal-preview-signal__top">
-                                <strong className="portal-preview-signal__title">No major heuristic risks</strong>
+                                <strong className="portal-preview-signal__title">No major review concerns</strong>
                                 <span className={getPreviewRiskClass('low')}>low</span>
                               </div>
                               <p className="portal-preview-signal__detail">
-                                The request did not trigger major risk heuristics, but manager approval should still verify ownership, rollout safety, and expected spend.
+                                Nothing major was flagged automatically, but reviewers should still confirm ownership, rollout safety, and expected spend.
                               </p>
                             </article>
                           )}
@@ -1400,8 +1417,8 @@ export default function History() {
                       <div className="portal-preview-panel" style={{ marginBottom: '12px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
                           <div>
-                            <div className="portal-preview-eyebrow">Approval Flow</div>
-                            <strong className="portal-preview-value" style={{ fontSize: 18 }}>Project rule explanation</strong>
+                            <div className="portal-preview-eyebrow">Review Steps</div>
+                            <strong className="portal-preview-value" style={{ fontSize: 18 }}>How this request is reviewed</strong>
                           </div>
                           <span className={getPreviewRiskClass(detailRequest.approval_context.requires_devops_approval ? 'medium' : 'low')}>
                             {detailRequest.approval_context.current_stage}
@@ -1409,28 +1426,28 @@ export default function History() {
                         </div>
                         <div className="portal-preview-grid">
                           <div className="portal-preview-card">
-                            <span className="portal-preview-eyebrow">Current stage</span>
+                            <span className="portal-preview-eyebrow">Current step</span>
                             <strong className="portal-preview-value">{detailRequest.approval_context.current_stage}</strong>
                             <p className="portal-preview-copy">
                               {detailRequest.approval_context.next_stage
-                                ? `Next stage: ${detailRequest.approval_context.next_stage}`
-                                : 'No further approval stage is pending.'}
+                                ? `Next step: ${detailRequest.approval_context.next_stage}`
+                                : 'No more review steps are waiting right now.'}
                             </p>
                           </div>
                           <div className="portal-preview-card">
-                            <span className="portal-preview-eyebrow">Rule source</span>
+                            <span className="portal-preview-eyebrow">Based on</span>
                             <strong className="portal-preview-value">
-                              {detailRequest.approval_context.rule_source === 'project_rule' ? 'Project rule' : 'Default flow'}
+                              {detailRequest.approval_context.rule_source === 'project_rule' ? 'Project setting' : 'Standard flow'}
                             </strong>
                             <p className="portal-preview-copy">{detailRequest.approval_context.summary}</p>
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                           <span className={getPreviewSignalClass(detailRequest.approval_context.requires_manager_approval ? 'medium' : 'low')}>
-                            {detailRequest.approval_context.requires_manager_approval ? 'Manager gate enabled' : 'No manager gate'}
+                            {detailRequest.approval_context.requires_manager_approval ? 'Manager review required' : 'No manager review'}
                           </span>
                           <span className={getPreviewSignalClass(detailRequest.approval_context.requires_devops_approval ? 'medium' : 'low')}>
-                            {detailRequest.approval_context.requires_devops_approval ? 'DevOps gate enabled' : 'No DevOps gate'}
+                            {detailRequest.approval_context.requires_devops_approval ? 'Platform review required' : 'No platform review'}
                           </span>
                         </div>
                       </div>
@@ -1439,7 +1456,7 @@ export default function History() {
                       {detailRequest.status === 'draft' && (
                         <>
                           <button type="button" onClick={() => submitDraft(detailRequest.id)} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '14px' }}>
-                            Submit for approval
+                            Send for review
                           </button>
                           <button type="button" onClick={() => deleteDraft(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }}>
                             Delete draft
@@ -1448,40 +1465,40 @@ export default function History() {
                       )}
                       {detailRequest.status === 'pending_user_manager_approval' && canApproveByManager && (
                         <button type="button" onClick={() => approveByManager(detailRequest.id)} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '14px' }}>
-                          Approve (send to DevOps)
+                          Approve and send on
                         </button>
                       )}
                       {detailRequest.status === 'rejected' && (
                         <button type="button" onClick={() => resubmitRequest(detailRequest.id)} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '14px' }}>
-                          Resubmit as draft
+                          Create a new draft
                         </button>
                       )}
                       {(currentUserId == null || detailRequest.created_by === currentUserId) && (
                         <button type="button" onClick={() => cloneRequest(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }} title="Clone as new draft">
-                          Clone request
+                          Copy request
                         </button>
                       )}
                       {(currentUserId == null || detailRequest.created_by === currentUserId) &&
                        ['completed', 'in_progress'].includes(detailRequest.status) && (
                         <button type="button" onClick={() => promoteRequest(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }} title="Create new request for next environment (dev→stage→prod)">
-                          Promote to next env
+                          Create next environment request
                         </button>
                       )}
                       {(currentUserId == null || detailRequest.created_by === currentUserId) &&
                        ['draft', 'in_progress'].includes(detailRequest.status) && (
                         <button type="button" onClick={() => fetchConfigHistory(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }} title="Restore config from previous snapshot">
-                          Rollback
+                          Open previous versions
                         </button>
                       )}
                       {CANCELLABLE_STATUSES.includes(detailRequest.status) &&
                        (currentUserId == null || detailRequest.created_by === currentUserId) && (
                         <button type="button" onClick={() => cancelRequest(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }}>
-                          Cancel ticket
+                          Cancel request
                         </button>
                       )}
                       {detailRequest.pr_url ? (
                         <a href={detailRequest.pr_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)' }}>
-                          Open PR →
+                          Open pull request →
                         </a>
                       ) : null}
                       <button
@@ -1490,7 +1507,7 @@ export default function History() {
                         className="btn btn-secondary"
                         style={{ padding: '8px 16px', fontSize: '14px' }}
                       >
-                        Use as template
+                        Reuse this request
                       </button>
                       <button
                         type="button"
@@ -1498,12 +1515,12 @@ export default function History() {
                         className="btn btn-secondary"
                         style={{ padding: '8px 16px', fontSize: '14px' }}
                       >
-                        Save as my template
+                        Save as reusable request
                       </button>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <input
                           type="number"
-                          placeholder="Compare with PR #"
+                          placeholder="Compare with request #"
                           value={compareWithId}
                           onChange={(e) => setCompareWithId(e.target.value)}
                           style={{ width: 120, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border-color)' }}
@@ -1531,7 +1548,7 @@ export default function History() {
                         </button>
                         {diffResult && (
                           <button type="button" className="btn btn-secondary" style={{ padding: '6px' }} onClick={() => setDiffResult(null)}>
-                            Clear diff
+                            Clear comparison
                           </button>
                         )}
                       </div>
@@ -1539,20 +1556,20 @@ export default function History() {
                     {showConfigHistory && detailRequest && (
                       <div style={{ marginBottom: 12, padding: 12, background: 'var(--bg-gray-50)', borderRadius: 8 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                          <strong>Config history (rollback)</strong>
+                          <strong>Previous versions</strong>
                           <button type="button" className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setShowConfigHistory(false); setConfigHistory([]); }}>
                             Close
                           </button>
                         </div>
                         {configHistory.length === 0 ? (
-                          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>No config snapshots yet.</p>
+                          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>No earlier versions yet.</p>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 200, overflowY: 'auto' }}>
                             {configHistory.map((h) => (
                               <div key={h.id} style={{ padding: 8, background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border-color)' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                                    #{h.id} · {h.note || 'snapshot'} · {new Date(h.created_at).toLocaleString()}
+                                    #{h.id} · {h.note || 'saved version'} · {new Date(h.created_at).toLocaleString()}
                                   </span>
                                   <button
                                     type="button"
@@ -1560,7 +1577,7 @@ export default function History() {
                                     style={{ padding: '4px 10px', fontSize: 12 }}
                                     onClick={() => rollbackRequest(detailRequest.id, h.id)}
                                   >
-                                    Restore
+                                    Restore this version
                                   </button>
                                 </div>
                                 <pre style={{ margin: 0, fontSize: 11, overflow: 'auto', maxHeight: 60 }}>{String(h.config || '').slice(0, 200)}...</pre>
@@ -1572,7 +1589,7 @@ export default function History() {
                     )}
                     {(diffResult?.changes?.length ?? 0) > 0 && (
                       <div style={{ marginBottom: 12, padding: 12, background: 'var(--bg-gray-50)', borderRadius: 8 }}>
-                        <strong>Diff (this vs #{compareWithId})</strong>
+                        <strong>Comparison with request #{compareWithId}</strong>
                         {diffResult?.changes?.map((c: any) => (
                           <div key={c.field} style={{ marginTop: 8, fontSize: 13 }}>
                             <strong>{c.field}:</strong> <span style={{ color: 'var(--error-color)' }}>− {String(c.base_value || '').slice(0, 80)}</span>
@@ -1584,7 +1601,7 @@ export default function History() {
                     )}
                     {/* Tags */}
                     <div style={{ marginBottom: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-color)' }}>
-                      <strong>Tags</strong>
+                      <strong>Labels</strong>
                       <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
                         {tags.map((t) => (
                           <span
@@ -1624,7 +1641,7 @@ export default function History() {
                         <div style={{ display: 'flex', gap: '6px' }}>
                           <input
                             type="text"
-                            placeholder="Add tag"
+                            placeholder="Add label"
                             value={newTag}
                             onChange={(e) => setNewTag(e.target.value)}
                             onKeyDown={(e) => {
@@ -1669,7 +1686,7 @@ export default function History() {
                               }
                             }}
                           >
-                            Add
+                            Add label
                           </button>
                         </div>
                       </div>
@@ -1677,10 +1694,10 @@ export default function History() {
                     {/* Dependencies */}
                     {(dependsOn.length > 0 || blockedBy.length > 0 || (detailRequest && (currentUserId == null || detailRequest.created_by === currentUserId))) && (
                       <div style={{ marginBottom: 20, padding: '12px 16px', background: 'var(--bg-gray-100)', borderRadius: 8 }}>
-                        <strong>Dependencies</strong>
+                        <strong>Linked requests</strong>
                         {dependsOn.length > 0 && (
                           <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--text-secondary)' }}>
-                            Depends on: {dependsOn.map((id) => {
+                            Waiting on: {dependsOn.map((id) => {
                               const r = requests.find((x) => x.id === id);
                               const canRemove = detailRequest && (currentUserId == null || detailRequest.created_by === currentUserId);
                               return (
@@ -1751,7 +1768,7 @@ export default function History() {
                                 else toast(d.error || 'Failed to add', 'error');
                               } finally { setAddingDep(false); }
                             }}>
-                              {addingDep ? '…' : 'Add dependency'}
+                              {addingDep ? '…' : 'Link request'}
                             </button>
                           </div>
                         )}
@@ -1760,12 +1777,12 @@ export default function History() {
 
                     {/* Audit trail */}
                     <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
-                      <strong>Audit trail</strong>
+                      <strong>Activity</strong>
                       <div style={{ marginTop: '8px', maxHeight: '180px', overflowY: 'auto' }}>
                         {timelineLoading ? (
-                          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Loading…</p>
+                          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Loading activity…</p>
                         ) : timeline.length === 0 ? (
-                          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>No activity yet.</p>
+                          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>No updates yet.</p>
                         ) : (
                           timeline.map((e) => (
                             <div key={`${e.kind}-${e.id}`} style={{ marginBottom: '8px', padding: '6px 10px', background: 'var(--bg-gray-50)', borderRadius: '6px', fontSize: '13px' }}>
@@ -1781,7 +1798,7 @@ export default function History() {
                     </div>
                     {/* Comments */}
                     <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
-                      <strong>Comments</strong>
+                      <strong>Conversation</strong>
                       <div style={{ marginTop: '8px', maxHeight: '200px', overflowY: 'auto' }}>
                         {comments.length === 0 ? (
                           <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>No comments yet.</p>
@@ -1800,7 +1817,7 @@ export default function History() {
                       <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
                         <input
                           type="text"
-                          placeholder="Add a comment..."
+                          placeholder="Write a comment for reviewers or teammates"
                           value={commentBody}
                           onChange={(e) => setCommentBody(e.target.value)}
                           onKeyDown={(e) => {
@@ -1812,15 +1829,15 @@ export default function History() {
                           style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}
                         />
                         <button type="button" onClick={addComment} className="btn btn-primary" disabled={!commentBody.trim() || commentSubmitting} style={{ padding: '8px 16px' }}>
-                          {commentSubmitting ? '...' : 'Post'}
+                          {commentSubmitting ? '...' : 'Send'}
                         </button>
                       </div>
                     </div>
                     {detailRequest.config && (
                       <div>
-                        <strong>Configuration (JSON):</strong>
+                        <strong>Request details (JSON)</strong>
                         <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                          Sensitive and customer data (passwords, tokens, email, name, phone, etc.) are masked. Raw data is not kept in page state.
+                          Sensitive values are hidden in this view. Raw values are not kept in page state.
                         </p>
                         <pre style={{ 
                           background: 'var(--bg-gray-100)', 

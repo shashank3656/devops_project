@@ -106,6 +106,8 @@ export default function SelectService() {
   const [canCreatePR, setCanCreatePR] = useState<boolean | null>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+  const requestType = typeof router.query.type === 'string' ? router.query.type.trim().toLowerCase() : '';
+  const isIamFlow = requestType === 'iam';
 
   // Pre-select cloud, env, service from URL; load template or saved config when present
   useEffect(() => {
@@ -362,7 +364,7 @@ export default function SelectService() {
 
   const submitRequest = async (asDraft: boolean) => {
     if (!projectId || !team || !env || !cloud || !service) {
-      setError('Please fill in all required fields');
+      setError('Choose a project, team, environment, cloud, and service first.');
       return;
     }
 
@@ -388,7 +390,7 @@ export default function SelectService() {
         due_date: dueDate || undefined,
         draft: asDraft,
         initial_comment: initialComment.trim() || undefined,
-        config: formValues
+        config: isIamFlow ? { request_type: 'iam', ...formValues } : formValues
       };
 
       const response = await fetch(`${apiUrl}/api/request`, {
@@ -409,16 +411,17 @@ export default function SelectService() {
 
       const data = await response.json();
       setPrUrl(data.pr_url || '');
-      toast(data.message || (asDraft ? 'Draft saved.' : 'Ticket created successfully.'), 'success');
+      toast(data.message || (asDraft ? 'Draft saved.' : isIamFlow ? 'Access request sent successfully.' : 'Request sent successfully.'), 'success');
       if (asDraft) {
         router.push('/history');
       } else {
         const params = new URLSearchParams({ id: String(data.id || ''), team: team || '' });
+        if (isIamFlow) params.set('type', 'iam');
         router.push(`/request-success?${params.toString()}`);
       }
     } catch (err: any) {
       console.error('Error creating PR:', err);
-      const errorMessage = err.message || 'An error occurred while creating the PR';
+      const errorMessage = err.message || 'Something went wrong while sending the request.';
       if (err.message === 'Failed to fetch' || err.name === 'TypeError' || err.message.includes('NetworkError')) {
         setError(`Cannot connect to backend at ${apiUrl}. Make sure the backend is running.`);
         toast('Cannot connect to backend', 'error');
@@ -441,67 +444,88 @@ export default function SelectService() {
 
   const serviceConfig = getServiceConfig();
   const availableServices = getAvailableServices();
+  const selectedServiceLabel = service ? (serviceConfig?.displayName || service) : 'Not chosen yet';
+  const requiredServiceFieldCount = serviceConfig?.fields.filter((field) => field.required).length ?? 0;
+  const requestReady = !!(projectId && team && env && cloud && service);
+  const pageTitle = isIamFlow ? 'Create an access request' : 'Create a request';
+  const pageSubtitle = isIamFlow
+    ? 'Start with the basics first. Then choose the cloud area related to the access change. The form only asks for the extra details reviewers need.'
+    : 'Start with the basics first. Once the project, team, environment, cloud, and service are selected, the page only asks for the extra details that matter.';
+  const basicsHelpText = isIamFlow
+    ? 'These choices decide what access request you can make and who should review it.'
+    : 'These selections decide what you are allowed to request and who can review it.';
+  const platformStepTitle = isIamFlow ? 'Step 2: Choose the access target' : 'Step 2: Choose the platform options';
+  const platformStepText = isIamFlow
+    ? 'Pick the cloud and the service area related to the access change. The form will adapt if more details are needed.'
+    : 'Pick the cloud and service. The form will adapt based on what you choose.';
+  const detailsStepTitle = isIamFlow ? 'Step 3: Fill in request details' : 'Step 3: Fill in service details';
+  const detailsStepText = isIamFlow
+    ? 'Only the details needed for this access request are shown here.'
+    : 'Only the fields needed for this service are shown here.';
+  const detailsCardTitle = isIamFlow ? 'Extra details for this request' : 'Extra details for this service';
+  const submitStepText = isIamFlow
+    ? 'Add a note so reviewers understand who needs access and why, then save a draft or send the request.'
+    : 'Add a note if reviewers need business context, then save a draft or send the request.';
+  const requestSummaryTitle = isIamFlow ? 'Access request summary' : 'Request summary';
+  const requestSummaryText = isIamFlow
+    ? 'These choices are currently shaping this access request.'
+    : 'These are the choices currently driving this request.';
+  const targetSummaryLabel = isIamFlow ? 'Cloud and request target' : 'Cloud and service';
 
   return (
     <>
       <Head>
-        <title>Select Cloud & Service - Infrastructure Portal</title>
+        <title>{isIamFlow ? 'Access Request - SetuOps' : 'New Request - SetuOps'}</title>
       </Head>
       <div style={{ minHeight: '100vh', padding: '40px 20px' }}>
         <div className="container">
-          <div style={{ marginBottom: '24px' }}>
-            <button 
-              onClick={() => router.push('/home')}
-              className="btn btn-secondary"
-              style={{ marginBottom: '16px' }}
-            >
-              ← Back to Home
-            </button>
-          </div>
-
-          <div className="card">
-            <h2 style={{ 
-              fontSize: '28px', 
-              marginBottom: '8px',
-              color: 'var(--text-primary)',
-              fontWeight: '700'
-            }}>
-              Select Project, Cloud & Service
-            </h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '32px', fontSize: '15px' }}>
-              Start with an assigned project, then continue into the clouds and services allowed for that project
-            </p>
-            {(cloud || service) && (
-              <div style={{ marginBottom: '20px' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const params = new URLSearchParams();
-                    if (cloud) params.set('cloud', cloud);
-                    if (service) params.set('service', service);
-                    if (env) params.set('env', env);
-                    fetch(`${apiUrl}/api/cost-estimate?${params}`)
-                      .then((r) => r.json())
-                      .then((d) => {
-                        if (d.link) window.open(d.link, '_blank', 'noopener,noreferrer');
-                      })
-                      .catch(() => {});
-                  }}
-                  style={{ color: 'var(--primary-color)', fontSize: '14px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
-                >
-                  Estimate cost (opens cloud pricing calculator)
-                </button>
-              </div>
-            )}
+          <div className="request-builder">
+            <div className="request-builder__header">
+              <button
+                onClick={() => router.push('/home')}
+                className="btn btn-secondary request-builder__back"
+              >
+                ← Back to Home
+              </button>
+              <h1 className="request-builder__title">{pageTitle}</h1>
+              <p className="request-builder__subtitle">{pageSubtitle}</p>
+            </div>
 
             {canCreatePR === false && (
-              <div className="error" style={{ marginBottom: '24px' }}>
-                You don&apos;t have permission to create PRs. Verify your email and ensure your account has contributor or admin role in <Link href="/profile" style={{ color: 'inherit', textDecoration: 'underline' }}>Profile</Link>.
+              <div className="error">
+                Your account cannot send requests yet. Verify your email and check your role in <Link href="/profile" style={{ color: 'inherit', textDecoration: 'underline' }}>Profile</Link>.
               </div>
             )}
 
-            <form onSubmit={handleSubmit}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+            {error && (
+              <div className="error">
+                {error}
+              </div>
+            )}
+
+            {prUrl && (
+              <div className="success" style={{ marginBottom: 0, flexDirection: 'column', alignItems: 'flex-start', gap: '12px' }}>
+                <strong>{isIamFlow ? 'Access request sent successfully' : 'Request sent successfully'}</strong>
+                <a
+                  href={prUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="link"
+                  style={{ fontWeight: '600', fontSize: '15px' }}
+                >
+                  Open Pull Request →
+                </a>
+              </div>
+            )}
+
+            <div className="request-builder__layout">
+              <form onSubmit={handleSubmit} className="request-builder__main">
+                <section className="request-builder__section">
+                  <div className="request-builder__section-header">
+                    <h2>Step 1: Choose the basics</h2>
+                    <p>{basicsHelpText}</p>
+                  </div>
+                  <div className="request-builder__grid">
                 <div className="form-group">
                   <label className="label">Project *</label>
                   <select
@@ -523,8 +547,8 @@ export default function SelectService() {
                     ))}
                   </select>
                   {selectedProject && (
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                      {selectedProject.description || `${selectedProject.environments.join(', ')} environments enabled`}
+                    <p className="request-builder__note">
+                      {selectedProject.description || `${selectedProject.environments.join(', ')} environments available`}
                     </p>
                   )}
                 </div>
@@ -553,19 +577,19 @@ export default function SelectService() {
                     ))}
                   </select>
                   {selectedProject && availableTeams.length === 0 && (
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>No assigned team has access to this project.</p>
+                    <p className="request-builder__note">None of your teams can request against this project yet.</p>
                   )}
                   {!selectedProject && teams.length === 0 && (
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Contact your admin to be added to a team.</p>
+                    <p className="request-builder__note">Ask your admin to add you to a team first.</p>
                   )}
                 </div>
 
                 <div className="form-group">
-                  <label className="label">Client Name</label>
+                  <label className="label">Business name or client</label>
                   <input
                     type="text"
                     className="input"
-                    placeholder="Optional client or project name"
+                    placeholder="Optional business, client, or internal project name"
                     value={clientName}
                     onChange={(e) => setClientName(e.target.value)}
                   />
@@ -579,7 +603,7 @@ export default function SelectService() {
                     onChange={(e) => setEnv(e.target.value.trim().toLowerCase())}
                     required
                   >
-                    <option value="">Select Environment</option>
+                    <option value="">Choose environment</option>
                     {availableEnvironmentOptions.map((envOption) => (
                       <option key={envOption.value} value={envOption.value}>
                         {envOption.label}
@@ -589,7 +613,7 @@ export default function SelectService() {
                 </div>
 
                 <div className="form-group">
-                  <label className="label">Priority</label>
+                  <label className="label">Urgency</label>
                   <select
                     className="select"
                     value={priority}
@@ -606,11 +630,37 @@ export default function SelectService() {
                   <label className="label">Due date</label>
                   <CalendarDateInput value={dueDate} onChange={setDueDate} />
                 </div>
-              </div>
+                  </div>
+                </section>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                <section className="request-builder__section">
+                  <div className="request-builder__section-header">
+                    <h2>{platformStepTitle}</h2>
+                    <p>{platformStepText}</p>
+                  </div>
+                  {(cloud || service) && (
+                    <button
+                      type="button"
+                      className="request-builder__inline-link"
+                      onClick={() => {
+                        const params = new URLSearchParams();
+                        if (cloud) params.set('cloud', cloud);
+                        if (service) params.set('service', service);
+                        if (env) params.set('env', env);
+                        fetch(`${apiUrl}/api/cost-estimate?${params}`)
+                          .then((r) => r.json())
+                          .then((d) => {
+                            if (d.link) window.open(d.link, '_blank', 'noopener,noreferrer');
+                          })
+                          .catch(() => {});
+                      }}
+                    >
+                      Check pricing estimate
+                    </button>
+                  )}
+                  <div className="request-builder__grid" style={{ marginTop: cloud || service ? 16 : 0 }}>
                 <div className="form-group">
-                  <label className="label">Cloud Provider *</label>
+                  <label className="label">Cloud provider *</label>
                   <select
                     className="select"
                     value={cloud}
@@ -620,7 +670,7 @@ export default function SelectService() {
                     }}
                     required
                   >
-                    <option value="">Select Cloud</option>
+                    <option value="">Choose cloud</option>
                     {availableCloudOptions.map(cloudOption => (
                       <option key={cloudOption.value} value={cloudOption.value}>
                         {cloudOption.label}
@@ -630,7 +680,7 @@ export default function SelectService() {
                 </div>
 
                 <div className="form-group">
-                  <label className="label">Service *</label>
+                  <label className="label">{isIamFlow ? 'Service or access area *' : 'Service *'}</label>
                   <select
                     className="select"
                     value={service}
@@ -638,7 +688,7 @@ export default function SelectService() {
                     required
                     disabled={!projectId || !cloud || availableServices.length === 0}
                   >
-                    <option value="">Select Service</option>
+                    <option value="">{!projectId ? 'Choose project first' : !cloud ? 'Choose cloud first' : 'Choose service'}</option>
                     {availableServices.map(svc => {
                       const config = cloud === 'aws' ? awsServices[svc] : gcpServices[svc];
                       return (
@@ -648,25 +698,26 @@ export default function SelectService() {
                       );
                     })}
                   </select>
+                  {projectId && cloud && availableServices.length === 0 && (
+                    <p className="request-builder__note">
+                      {isIamFlow
+                        ? 'No request targets are set up for this cloud in the selected project yet. Ask the platform team to add one first.'
+                        : 'No services are set up for this cloud in the selected project yet.'}
+                    </p>
+                  )}
                 </div>
-              </div>
+                  </div>
+                </section>
 
-              <div className="form-group">
-                <label className="label">Comment / notes (optional)</label>
-                <textarea
-                  className="textarea"
-                  placeholder="Add a note or context for this request (visible to admins)"
-                  value={initialComment}
-                  onChange={(e) => setInitialComment(e.target.value)}
-                  rows={2}
-                  style={{ resize: 'vertical' }}
-                />
-              </div>
-
-              {serviceConfig && (
-                <div className="form-section">
+                {serviceConfig && (
+                  <section className="request-builder__section">
+                    <div className="request-builder__section-header">
+                      <h2>{detailsStepTitle}</h2>
+                      <p>{detailsStepText}</p>
+                    </div>
+                    <div className="form-section" style={{ marginTop: 0, background: 'transparent', border: 0, padding: 0 }}>
                   <h3 className="form-section-title">
-                    Service Configuration
+                    {detailsCardTitle}
                     {cloud && (
                       <span className={`cloud-badge ${cloud}`} style={{ marginLeft: '12px', fontSize: '11px' }}>
                         {cloud.toUpperCase()}
@@ -683,63 +734,113 @@ export default function SelectService() {
                       {renderField(field)}
                     </div>
                   ))}
-                </div>
-              )}
+                    </div>
+                  </section>
+                )}
 
-              {!serviceConfig && cloud && service && (
-                <div className="success" style={{ marginBottom: '16px' }}>
-                  No extra configuration fields are required for this service. You can save a draft or submit now.
-                </div>
-              )}
+                <section className="request-builder__section">
+                  <div className="request-builder__section-header">
+                    <h2>Step 4: Add context and send</h2>
+                    <p>{submitStepText}</p>
+                  </div>
+                  {!serviceConfig && cloud && service && (
+                    <div className="success request-builder__status" style={{ marginBottom: '16px' }}>
+                      {isIamFlow
+                        ? 'This request does not need any extra fields. You can save or send it now.'
+                        : 'This service does not need any extra fields. You can save or send the request now.'}
+                    </div>
+                  )}
+                  <div className="form-group">
+                    <label className="label">Comment / notes (optional)</label>
+                    <textarea
+                      className="textarea"
+                      placeholder="Add any useful background for reviewers"
+                      value={initialComment}
+                      onChange={(e) => setInitialComment(e.target.value)}
+                      rows={3}
+                      style={{ resize: 'vertical' }}
+                    />
+                  </div>
 
-              {error && (
-                <div className="error" style={{ marginBottom: '16px' }}>
-                  {error}
-                </div>
-              )}
-
-              {prUrl && (
-                <div className="success" style={{ marginBottom: '16px', flexDirection: 'column', alignItems: 'flex-start', gap: '12px' }}>
-                  <strong>PR Created Successfully!</strong>
-                  <a 
-                    href={prUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="link"
-                    style={{ fontWeight: '600', fontSize: '15px' }}
-                  >
-                    View Pull Request →
-                  </a>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: '12px', marginTop: '16px', flexWrap: 'wrap' }}>
+                  <div className="request-builder__actions">
                 <button
                   type="button"
                   onClick={() => submitRequest(true)}
                   className="btn btn-secondary"
-                  style={{ flex: 1, minWidth: '140px' }}
                   disabled={canSubmitRequest}
                 >
-                  {loading ? <span className="loading"></span> : 'Save as draft'}
+                  {loading ? <span className="loading"></span> : 'Save draft'}
                 </button>
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  style={{ flex: 1, minWidth: '140px' }}
                   disabled={canSubmitRequest}
                 >
                   {loading ? (
                     <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                       <span className="loading"></span>
-                      Submitting...
+                      Sending...
                     </span>
                   ) : (
-                    'Submit for approval'
+                    'Send for review'
                   )}
                 </button>
-              </div>
-            </form>
+                  </div>
+                </section>
+              </form>
+
+              <aside className="request-builder__side">
+                <div className="request-builder__summary">
+                  <h3>{requestSummaryTitle}</h3>
+                  <p>{requestSummaryText}</p>
+                  <div className="request-builder__summary-list">
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-label">Project</span>
+                      <span className="request-builder__summary-value">{selectedProject ? `${selectedProject.name} (${selectedProject.code})` : 'Not chosen yet'}</span>
+                    </div>
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-label">Team</span>
+                      <span className="request-builder__summary-value">{team || 'Not chosen yet'}</span>
+                    </div>
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-label">Environment</span>
+                      <span className="request-builder__summary-value">{env || 'Not chosen yet'}</span>
+                    </div>
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-label">{targetSummaryLabel}</span>
+                      <span className="request-builder__summary-value">{cloud ? `${cloud.toUpperCase()} · ${selectedServiceLabel}` : 'Not chosen yet'}</span>
+                    </div>
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-label">Extra fields</span>
+                      <span className="request-builder__summary-value">{serviceConfig ? `${requiredServiceFieldCount} required field${requiredServiceFieldCount === 1 ? '' : 's'} for this service` : service ? 'No extra fields required' : 'Choose a service to see'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="request-builder__summary">
+                  <h3>Before you send</h3>
+                  <div className="request-builder__summary-list request-builder__summary-list--plain">
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-value">
+                        {isIamFlow
+                          ? 'Choose the project and team that should own the access change.'
+                          : 'Choose a project and team that match the work.'}
+                      </span>
+                    </div>
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-value">
+                        {isIamFlow
+                          ? 'Use the note field to explain who needs access, what they need, and why it is needed.'
+                          : 'Pick the environment and service carefully, because they shape the approval path.'}
+                      </span>
+                    </div>
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-value">{requestReady ? 'The request is ready to save or send.' : 'Finish the required selections to enable save and send.'}</span>
+                    </div>
+                  </div>
+                </div>
+              </aside>
+            </div>
           </div>
         </div>
       </div>

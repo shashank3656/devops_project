@@ -400,15 +400,15 @@ export default function DevOpsIncidentsPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Incident Panel - DevOps Portal</title>
+        <title>Incidents - DevOps Portal</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
             <span className="portal-page__eyebrow">Operations Control</span>
-            <h1 className="portal-page__title">Incident / Escalation Panel</h1>
+            <h1 className="portal-page__title">Incidents</h1>
             <p className="portal-page__subtitle">
-              Link requests to incidents, assign severity and escalation level, and track who owns the operational response.
+              Link requests to incidents, set severity, assign an owner, and track who is handling the response.
             </p>
           </div>
           <div className="portal-page__actions">
@@ -448,7 +448,7 @@ export default function DevOpsIncidentsPage() {
                 <span className="portal-surface__eyebrow">Incident management</span>
                 <h2 className="portal-surface__title">Start from the incident queue</h2>
                 <p className="portal-surface__subtitle">
-                  Use <strong>Create incident</strong> only when you want to raise a new incident. Editing an existing incident will open the same incident editor.
+                  Use <strong>Create incident</strong> when you need to raise a new incident. Editing an existing incident opens the same editor.
                 </p>
               </div>
             </div>
@@ -460,7 +460,7 @@ export default function DevOpsIncidentsPage() {
           <div className="portal-surface__header">
             <div>
               <span className="portal-surface__eyebrow">Incident Editor</span>
-              <h2 className="portal-surface__title">{editingId ? 'Update incident' : 'Create / link incident'}</h2>
+              <h2 className="portal-surface__title">{editingId ? 'Update incident' : 'Create incident'}</h2>
             </div>
             <div className="portal-page__actions">
               <button type="button" className="btn btn-secondary" onClick={resetForm}>
@@ -483,8 +483,8 @@ export default function DevOpsIncidentsPage() {
           ) : null}
           <div className="portal-form-grid">
             <label className="label">
-              Linked request
-              <input className="input" value={requestId} onChange={(event) => setRequestId(event.target.value)} placeholder="Enter related request number" />
+              Related request
+              <input className="input" value={requestId} onChange={(event) => setRequestId(event.target.value)} placeholder="Enter the request number tied to this incident" />
             </label>
             <label className="label">
               Severity
@@ -602,7 +602,11 @@ export default function DevOpsIncidentsPage() {
                         <div>
                           <strong>{getIncidentReference(incident)}</strong>
                           <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
-                            {[incident.request_service || 'service', incident.request_env || '', incident.request_cloud || '']
+                            {[
+                              incident.request_service ? `Target: ${incident.request_service}` : '',
+                              incident.request_env || '',
+                              incident.request_cloud || '',
+                            ]
                               .filter(Boolean)
                               .join(' · ')}
                           </div>

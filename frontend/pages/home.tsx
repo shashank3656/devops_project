@@ -248,20 +248,20 @@ export default function Home() {
             <div className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
               <h3 className="modal-title">Welcome to {SITE_NAME}</h3>
               <p className="modal-body">
-                Start with the guided request form, use templates when you want a faster approved path, and follow every review step from Request History after submission.
+                Use New Request for step-by-step help, choose a template for common work, and check My Requests after you submit.
               </p>
               <div className="onboarding-inline-list">
                 <div className="onboarding-inline-list__item">
-                  <strong>1. Pick a starting path</strong>
-                  <span>Guided form, template, or custom JSON.</span>
+                  <strong>1. Choose how to start</strong>
+                  <span>Guided form, template, or advanced JSON.</span>
                 </div>
                 <div className="onboarding-inline-list__item">
-                  <strong>2. Submit with context</strong>
-                  <span>Cloud, environment, team, and ownership details.</span>
+                  <strong>2. Fill in the basics</strong>
+                  <span>Team, environment, service, and due date.</span>
                 </div>
                 <div className="onboarding-inline-list__item">
-                  <strong>3. Track approvals</strong>
-                  <span>Manager review, DevOps review, PR, and delivery status.</span>
+                  <strong>3. Follow updates</strong>
+                  <span>Reviews, comments, PR activity, and final delivery.</span>
                 </div>
               </div>
               <div className="modal-actions">
@@ -276,55 +276,55 @@ export default function Home() {
         <section className="portal-surface launchpad-hero">
           <div className="launchpad-hero__content">
             <div>
-              <span className="portal-page__eyebrow">Start Here</span>
-              <h1 className="launchpad-hero__title">Launch infrastructure requests with less guesswork</h1>
+              <span className="portal-page__eyebrow">Start a Request</span>
+              <h1 className="launchpad-hero__title">A simpler way to request infrastructure</h1>
               <p className="launchpad-hero__subtitle">
-                Choose a starting path, fill in the right delivery details once, and follow the request from approval through provisioning without leaving the portal.
+                Pick the path that fits your work, fill in the key details once, and follow progress in one place from review to delivery.
               </p>
               <div className="launchpad-action-grid" style={{ marginTop: 22 }}>
                 <Link href="/create-infrastructure/new" className="launchpad-action-card">
-                  <strong>Start guided request</strong>
-                  <p>Best for first-time users who want cloud and environment prompts step by step.</p>
+                  <strong>Start a new request</strong>
+                  <p>Best when you want the form to guide you step by step.</p>
                 </Link>
                 <Link href="/templates" className="launchpad-action-card">
-                  <strong>Use an approved template</strong>
-                  <p>Fastest route when your request fits an existing platform pattern.</p>
+                  <strong>Use a template</strong>
+                  <p>Fastest when your work matches a standard setup already approved by the platform team.</p>
                 </Link>
                 <Link href="/custom-json" className="launchpad-action-card">
-                  <strong>Submit custom JSON</strong>
-                  <p>Bring an existing payload when you already know the exact request contract.</p>
+                  <strong>Advanced JSON request</strong>
+                  <p>Use this only when you already have the full request payload prepared.</p>
                 </Link>
                 <Link href="/history" className="launchpad-action-card">
-                  <strong>Reuse a previous request</strong>
-                  <p>Open Request History to clone or resubmit an earlier request instead of starting from scratch.</p>
+                  <strong>Reuse an earlier request</strong>
+                  <p>Clone something similar instead of starting again from scratch.</p>
                 </Link>
                 <Link href="/history" className="launchpad-action-card">
-                  <strong>Track current requests</strong>
-                  <p>Review approvals, PR links, comments, and provisioning progress in one place.</p>
+                  <strong>Check request progress</strong>
+                  <p>See comments, approvals, PR links, and delivery progress in one place.</p>
                 </Link>
               </div>
             </div>
 
             <aside className="launchpad-hero__pulse">
-              <span className="portal-page__eyebrow">First-Run Checklist</span>
+              <span className="portal-page__eyebrow">Quick Guide</span>
               <strong>{statsLoading ? '...' : totalRequests}</strong>
-              <p>Requests already tracked in your workspace.</p>
+              <p>Requests already visible in your portal.</p>
               <div className="launchpad-tips" style={{ marginTop: 18 }}>
                 <div className="launchpad-tip">
-                  <strong>Choose the right path</strong>
-                  <p>Guided form for new work, template for standard work, JSON for advanced work.</p>
+                  <strong>Pick the easiest path</strong>
+                  <p>Use the guided form first. Switch to templates or JSON only when you need them.</p>
                 </div>
                 <div className="launchpad-tip">
-                  <strong>Add review-ready details</strong>
-                  <p>Team, environment, service, due date, and cloud context reduce approval delays.</p>
+                  <strong>Add the key details</strong>
+                  <p>Team, environment, service, cloud, and due date help reviewers move faster.</p>
                 </div>
                 <div className="launchpad-tip">
-                  <strong>Watch the request journey</strong>
-                  <p>Use Request History after submit to follow comments, approvals, and PR activity.</p>
+                  <strong>Follow the updates</strong>
+                  <p>Open My Requests after you submit to see comments, reviews, and PR activity.</p>
                 </div>
                 <div className="launchpad-tip">
                   <strong>Reuse before rebuilding</strong>
-                  <p>History already supports clone and resubmit, which is faster for repeat requests.</p>
+                  <p>Cloning an older request is often the fastest way to submit repeat work.</p>
                 </div>
               </div>
             </aside>
@@ -334,10 +334,10 @@ export default function Home() {
         <section className="portal-surface onboarding-progress-surface">
           <div className="portal-surface__header">
             <div>
-              <span className="portal-surface__eyebrow">Onboarding Progress Tracker</span>
-              <h2 className="portal-surface__title">See exactly where your onboarding stands</h2>
+              <span className="portal-surface__eyebrow">Setup Progress</span>
+              <h2 className="portal-surface__title">See what is ready and what is still waiting</h2>
               <p className="portal-surface__subtitle">
-                Follow account setup, team assignment, submission, review, and delivery without guessing which step is next.
+                Check account access, team assignment, and first-request progress without guessing what comes next.
               </p>
             </div>
             {onboardingProgress && (
@@ -353,12 +353,12 @@ export default function Home() {
             <>
               <div className="onboarding-progress-grid">
                 <article className="onboarding-progress-card">
-                  <span className="onboarding-progress-card__label">Current step</span>
+                  <span className="onboarding-progress-card__label">What happens next</span>
                   <strong>{onboardingProgress.next_action}</strong>
                   <p>
                     {onboardingProgress.verified
-                      ? 'Account access is active.'
-                      : 'Verification is still pending and may block request work.'}
+                      ? 'Your account is ready to use.'
+                      : 'Email verification is still pending, so some actions may stay blocked.'}
                   </p>
                 </article>
                 <article className="onboarding-progress-card">
@@ -375,7 +375,7 @@ export default function Home() {
                   <strong>{onboardingProgress.submitted_requests}</strong>
                   <p>
                     {onboardingProgress.latest_request
-                      ? `Latest: ${onboardingProgress.latest_request.cloud} ${onboardingProgress.latest_request.service} (${onboardingProgress.latest_request.status.replace(/_/g, ' ')})`
+                      ? `Latest request: ${onboardingProgress.latest_request.cloud} ${onboardingProgress.latest_request.service} (${onboardingProgress.latest_request.status.replace(/_/g, ' ')})`
                       : 'No submitted requests yet'}
                   </p>
                 </article>
@@ -431,9 +431,9 @@ export default function Home() {
         <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
-              <span className="portal-surface__eyebrow">Project Workspace</span>
-              <h2 className="portal-surface__title">Projects you can request against</h2>
-              <p className="portal-surface__subtitle">Each project controls which environments, clouds, and services your teams are allowed to use.</p>
+              <span className="portal-surface__eyebrow">Projects</span>
+              <h2 className="portal-surface__title">Projects available to you</h2>
+              <p className="portal-surface__subtitle">These projects decide which environments, clouds, and services you can use.</p>
             </div>
             <Link href="/my-projects" className="btn btn-secondary btn-sm">
               Open My Projects
@@ -476,26 +476,26 @@ export default function Home() {
           <article className="portal-surface onboarding-surface">
             <div className="portal-surface__header">
               <div>
-                <span className="portal-surface__eyebrow">Onboarding Flow</span>
-                <h2 className="portal-surface__title">What to do first</h2>
-                <p className="portal-surface__subtitle">Follow this order when you are new to the portal or submitting a new request type.</p>
+                <span className="portal-surface__eyebrow">Getting Started</span>
+                <h2 className="portal-surface__title">How to use the portal</h2>
+                <p className="portal-surface__subtitle">Follow this order if you are new here or sending a request for the first time.</p>
               </div>
             </div>
             <div className="onboarding-step-grid">
               <div className="onboarding-step">
                 <span className="onboarding-step__index">01</span>
-                <strong>Pick a request path</strong>
-                <p>Use the guided form for a new build, a template for standard patterns, or custom JSON for advanced payloads.</p>
+                <strong>Choose a request type</strong>
+                <p>Start with the guided form, use a template for standard work, or switch to JSON only for advanced requests.</p>
               </div>
               <div className="onboarding-step">
                 <span className="onboarding-step__index">02</span>
-                <strong>Prepare review context</strong>
-                <p>Include team, environment, cloud, service name, timeline, and any dependencies before submission.</p>
+                <strong>Add the key details</strong>
+                <p>Include team, environment, cloud, service, and timing before you submit.</p>
               </div>
               <div className="onboarding-step">
                 <span className="onboarding-step__index">03</span>
-                <strong>Track after submit</strong>
-                <p>Use Request History to follow manager review, DevOps action, PR progress, and final delivery updates.</p>
+                <strong>Follow updates</strong>
+                <p>Use My Requests to see reviews, PR progress, and final delivery updates.</p>
               </div>
             </div>
           </article>
@@ -503,27 +503,27 @@ export default function Home() {
           <article className="portal-surface onboarding-surface">
             <div className="portal-surface__header">
               <div>
-                <span className="portal-surface__eyebrow">Request Journey</span>
-                <h2 className="portal-surface__title">What happens after you submit</h2>
-                <p className="portal-surface__subtitle">The portal is designed so requesters always know the next review stage.</p>
+                <span className="portal-surface__eyebrow">After You Submit</span>
+                <h2 className="portal-surface__title">What happens next</h2>
+                <p className="portal-surface__subtitle">The portal shows where your request is in the review and delivery process.</p>
               </div>
             </div>
             <div className="onboarding-timeline">
               <div className="onboarding-timeline__item">
-                <strong>Draft and submit</strong>
-                <p>Your request is validated and queued with the context needed for review.</p>
+                <strong>You submit the request</strong>
+                <p>The portal checks the basics and places the request in the right review queue.</p>
               </div>
               <div className="onboarding-timeline__item">
-                <strong>Approval review</strong>
-                <p>Manager and platform reviewers can approve, reject, or comment with follow-up changes.</p>
+                <strong>Review happens</strong>
+                <p>Your manager or platform reviewers can approve, reject, or ask for changes.</p>
               </div>
               <div className="onboarding-timeline__item">
-                <strong>PR and automation</strong>
-                <p>The system opens the change path and records GitHub activity for the request timeline.</p>
+                <strong>Change work starts</strong>
+                <p>The system opens the change path and records PR activity on the request timeline.</p>
               </div>
               <div className="onboarding-timeline__item">
-                <strong>Provision and confirm</strong>
-                <p>Status, activity, and final comments remain visible in History so the request stays traceable.</p>
+                <strong>Delivery is completed</strong>
+                <p>Status, comments, and the final outcome stay visible in My Requests.</p>
               </div>
             </div>
           </article>
@@ -533,12 +533,12 @@ export default function Home() {
           <article className="portal-surface">
             <div className="portal-surface__header">
               <div>
-                <span className="portal-surface__eyebrow">Cloud activity</span>
-                <h2 className="portal-surface__title">Recent platform events</h2>
-                <p className="portal-surface__subtitle">Latest actions emitted by your infrastructure requests.</p>
+                <span className="portal-surface__eyebrow">Recent Activity</span>
+                <h2 className="portal-surface__title">Latest request activity</h2>
+                <p className="portal-surface__subtitle">Recent updates linked to your requests.</p>
               </div>
               <Link href="/history" className="btn btn-secondary btn-sm">
-                Open timeline
+                Open My Requests
               </Link>
             </div>
 

@@ -32,19 +32,19 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@setuops.example';
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'Governance Overview',
-  '/approval-center': 'Approval Center',
-  '/project-governance': 'Project Governance',
+  '/dashboard': 'Overview',
+  '/approval-center': 'Approvals',
+  '/project-governance': 'Project Setup',
   '/requests': 'Requests',
-  '/sla': 'SLA Dashboard',
+  '/sla': 'Service Levels',
   '/teams': 'Teams',
   '/users': 'Users',
   '/projects': 'Projects',
-  '/team-ownership': 'Team Ownership',
-  '/activity': 'Activity',
-  '/templates': 'Templates',
+  '/team-ownership': 'Team Access',
+  '/activity': 'Recent Activity',
+  '/templates': 'Request Templates',
   '/access-review': 'Access Review',
-  '/webhooks': 'Webhooks',
+  '/webhooks': 'Integrations',
   '/profile': 'Profile',
 };
 
@@ -53,7 +53,7 @@ function getPageTitle(pathname: string): string {
   for (const [path, title] of Object.entries(PAGE_TITLES)) {
     if (path !== '/dashboard' && pathname.startsWith(path)) return title;
   }
-  return 'Dashboard';
+  return 'Overview';
 }
 
 function formatTime(iso: string): string {
@@ -97,19 +97,19 @@ const NAV_ITEMS: { href: string; label: string; Icon: ComponentType<{ className?
 ];
 
 function getAdminIdentity(): { initials: string; label: string } {
-  if (typeof window === 'undefined') return { initials: 'A', label: 'Admin Operator' };
+  if (typeof window === 'undefined') return { initials: 'A', label: 'Admin' };
   try {
     const raw = localStorage.getItem('admin_user');
-    if (!raw) return { initials: 'A', label: 'Admin Operator' };
+    if (!raw) return { initials: 'A', label: 'Admin' };
     const user = JSON.parse(raw) as { username?: string; email?: string };
-    const label = user?.username || user?.email || 'Admin Operator';
+    const label = user?.username || user?.email || 'Admin';
     const parts = label.trim().split(/[\s@.]/).filter(Boolean);
     const initials = parts.length >= 2
       ? (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2)
       : label.slice(0, 2).toUpperCase() || 'A';
     return { initials, label };
   } catch {
-    return { initials: 'A', label: 'Admin Operator' };
+    return { initials: 'A', label: 'Admin' };
   }
 }
 
@@ -327,7 +327,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           {!sidebarCollapsed && (
             <Link href="/dashboard" className="admin-sidebar-shell__brand">
               <span className="admin-sidebar-shell__brand-word admin-sidebar-shell__brand-word--primary">SetuOps</span>
-              <span className="admin-sidebar-shell__brand-word">Admin Portal</span>
+              <span className="admin-sidebar-shell__brand-word">SetuOps</span>
             </Link>
           )}
         </div>
@@ -422,7 +422,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <IconMenu />
             </button>
             <div className="admin-topbar__title-wrap">
-              <span className="admin-topbar__kicker">Admin Portal</span>
+              <span className="admin-topbar__kicker">SetuOps</span>
               <h1 className="admin-topbar__title">{pageTitle}</h1>
             </div>
             <span className={`admin-topbar__status-chip ${newRequestsCount > 0 ? 'admin-topbar__status-chip--alert' : ''}`}>
@@ -456,7 +456,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 }}
               >
                 <IconHelpCircle />
-                <span>Ask SetuOps</span>
+                <span>Help</span>
               </button>
               <span className="admin-topbar__workspace">{profileLabel}</span>
               <span className="admin-topbar__role">Admin</span>

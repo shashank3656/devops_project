@@ -103,6 +103,16 @@ function getPreviewSignalClass(severity?: string): string {
   }
 }
 
+function isAccessRequest(req: PRRequest | null | undefined): boolean {
+  if (!req?.config) return false;
+  try {
+    const parsed = JSON.parse(req.config) as { request_type?: unknown };
+    return typeof parsed.request_type === 'string' && parsed.request_type.trim().toLowerCase() === 'iam';
+  } catch {
+    return false;
+  }
+}
+
 export default function AdminRequests() {
   const router = useRouter();
   const [requests, setRequests] = useState<PRRequest[]>([]);
@@ -142,6 +152,7 @@ export default function AdminRequests() {
   const [bulkStatusValue, setBulkStatusValue] = useState('');
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [timeline, setTimeline] = useState<{ id: number; kind: string; action: string; username: string; details: string; body?: string; created_at: string }[]>([]);
+  const detailRequestIsAccess = isAccessRequest(detailRequest);
   const limit = 20;
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -702,16 +713,16 @@ export default function AdminRequests() {
   return (
     <>
       <Head>
-        <title>PR Requests - SetuOps Governance</title>
+        <title>Requests - SetuOps Admin</title>
       </Head>
       <AdminLayout>
         <div className="portal-page">
           <div className="portal-page__header">
             <div>
               <span className="portal-page__eyebrow">Requests</span>
-              <h1 className="portal-page__title">Request Management</h1>
+              <h1 className="portal-page__title">All requests</h1>
               <p className="portal-page__subtitle">
-                Search by team, environment, cloud, or priority, then act on individual requests or in bulk.
+                Search, review, and update requests from one queue.
               </p>
             </div>
             <button
@@ -743,13 +754,13 @@ export default function AdminRequests() {
                   .catch(() => setError('Export failed'));
               }}
             >
-              Export CSV (filtered)
+              Download CSV
             </button>
           </div>
 
           {recentIds.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-              <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Recent:</span>
+              <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Recent requests:</span>
               {recentIds.map((id) => (
                 <button
                   key={id}
@@ -777,7 +788,7 @@ export default function AdminRequests() {
               name="filter-team"
               type="text"
               className="input"
-              placeholder="Team"
+              placeholder="Team name"
               value={team}
               onChange={(e) => setTeam(e.target.value)}
             />
@@ -799,7 +810,7 @@ export default function AdminRequests() {
               name="filter-env"
               type="text"
               className="input"
-              placeholder="Env"
+              placeholder="Environment"
               value={env}
               onChange={(e) => setEnv(e.target.value)}
             />
@@ -817,7 +828,7 @@ export default function AdminRequests() {
               name="filter-search"
               type="text"
               className="input"
-              placeholder="Search (all fields)"
+              placeholder="Search anything"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{ minWidth: 180 }}
@@ -832,9 +843,9 @@ export default function AdminRequests() {
             >
               <option value="">All statuses</option>
               <option value="draft">Draft</option>
-              <option value="pending_user_manager_approval">Pending user manager</option>
-              <option value="pending_devops_approval">Pending DevOps approval</option>
-              <option value="pending_approval">Pending approval</option>
+              <option value="pending_user_manager_approval">Waiting for manager</option>
+              <option value="pending_devops_approval">Waiting for platform team</option>
+              <option value="pending_approval">Waiting for review</option>
               <option value="in_progress">In progress</option>
               <option value="completed">Completed</option>
               <option value="rejected">Rejected</option>
@@ -865,10 +876,10 @@ export default function AdminRequests() {
             </select>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <input type="checkbox" id="filter-at-risk" name="filter-at-risk" checked={atRiskOnly} onChange={(e) => setAtRiskOnly(e.target.checked)} />
-              At risk (overdue / due in 24h)
+              Due soon or overdue
             </label>
             <button type="submit" className="btn btn-primary">
-              Apply filters
+              Search
             </button>
             <button
               type="button"
@@ -884,7 +895,7 @@ export default function AdminRequests() {
               <p className="loading-text">Loading…</p>
             ) : requests.length === 0 ? (
               <div className="empty-state">
-                No PR requests match the filters.
+                No requests match these filters.
               </div>
             ) : (
               <>
@@ -954,7 +965,7 @@ export default function AdminRequests() {
                     <thead>
                       <tr>
                         <th style={{ width: 44 }} title="Select">☐</th>
-                        <th>ID</th>
+                        <th>Request #</th>
                         <th>Project</th>
                         <th>Team</th>
                         <th>Env</th>
@@ -989,7 +1000,12 @@ export default function AdminRequests() {
                           <td>{req.team}</td>
                           <td>{req.env}</td>
                           <td>{req.cloud}</td>
-                          <td>{req.service}</td>
+                          <td>
+                            <div>{req.service}</div>
+                            {isAccessRequest(req) ? (
+                              <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Access request</div>
+                            ) : null}
+                          </td>
                           <td style={{ fontSize: 13 }}>{req.priority || '—'}</td>
                           <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
                             {req.due_date ? new Date(req.due_date).toLocaleDateString() : '—'}
@@ -1141,7 +1157,9 @@ export default function AdminRequests() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3 style={{ margin: 0 }}>Request #{detailRequest.id}</h3>
+                  <h3 style={{ margin: 0 }}>
+                    {detailRequestIsAccess ? `Access request #${detailRequest.id}` : `Request #${detailRequest.id}`}
+                  </h3>
                   <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px' }} onClick={() => setDetailRequest(null)}>
                     Close
                   </button>
@@ -1161,7 +1179,7 @@ export default function AdminRequests() {
                   </p>
                 )}
                 <p style={{ marginBottom: 8, fontSize: 14 }}>
-                  <strong>Team:</strong> {detailRequest.team} · <strong>Env:</strong> {detailRequest.env} · <strong>Cloud:</strong> {detailRequest.cloud} · <strong>Service:</strong> {detailRequest.service}
+                  <strong>Team:</strong> {detailRequest.team} · <strong>Env:</strong> {detailRequest.env} · <strong>Cloud:</strong> {detailRequest.cloud} · <strong>{detailRequestIsAccess ? 'Target' : 'Service'}:</strong> {detailRequest.service}
                 </p>
                 {detailRequest.created_by_username && (
                   <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--color-text-muted)' }}>
@@ -1398,7 +1416,7 @@ export default function AdminRequests() {
                       onClick={() => setDetailConfigOpen((o) => !o)}
                       style={{ background: 'none', border: 'none', padding: 0, fontWeight: 600, cursor: 'pointer', color: 'var(--color-text)' }}
                     >
-                      {detailConfigOpen ? '▼' : '▶'} Configuration (JSON, secrets masked)
+                      {detailConfigOpen ? '▼' : '▶'} {detailRequestIsAccess ? 'Access request details' : 'Request details'} (JSON, secrets masked)
                     </button>
                     {detailConfigOpen && (
                       <pre style={{ marginTop: 8, padding: 12, background: 'var(--color-bg)', borderRadius: 8, overflow: 'auto', fontSize: 12, maxHeight: 280 }}>

@@ -48,12 +48,12 @@ export function setStoredTheme(_theme: 'light' | 'dark') {
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  '/home': 'Workspace',
-  '/create-infrastructure': 'Create Infrastructure',
-  '/templates': 'Templates',
-  '/my-projects': 'My Projects',
-  '/history': 'Request History',
-  '/incidents': 'Incidents',
+  '/home': 'Home',
+  '/create-infrastructure': 'New Request',
+  '/templates': 'Request Templates',
+  '/my-projects': 'Projects',
+  '/history': 'My Requests',
+  '/incidents': 'Help Tickets',
   '/my-teams': 'My Teams',
   '/profile': 'Profile',
 };
@@ -63,20 +63,20 @@ function getPageTitle(pathname: string): string {
   for (const [path, title] of Object.entries(PAGE_TITLES)) {
     if (path !== '/home' && pathname.startsWith(path)) return title;
   }
-  return 'Dashboard';
+  return 'Home';
 }
 
 function getUserIdentity(): { initials: string; label: string } {
   if (typeof window === 'undefined') {
-    return { initials: 'U', label: 'Portal User' };
+    return { initials: 'U', label: 'User' };
   }
 
   try {
     const raw = localStorage.getItem('user');
-    if (!raw) return { initials: 'U', label: 'Portal User' };
+    if (!raw) return { initials: 'U', label: 'User' };
 
     const user = JSON.parse(raw) as { username?: string; email?: string; name?: string };
-    const label = user?.name || user?.username || user?.email || 'Portal User';
+    const label = user?.name || user?.username || user?.email || 'User';
     const parts = label.trim().split(/[\s@.]/).filter(Boolean);
     const initials = parts.length >= 2
       ? (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2)
@@ -84,7 +84,7 @@ function getUserIdentity(): { initials: string; label: string } {
 
     return { initials, label };
   } catch {
-    return { initials: 'U', label: 'Portal User' };
+    return { initials: 'U', label: 'User' };
   }
 }
 
@@ -422,7 +422,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           {!sidebarCollapsed && (
             <Link href="/home" className="user-sidebar-shell__brand">
               <span className="user-sidebar-shell__brand-word user-sidebar-shell__brand-word--primary">SetuOps</span>
-              <span className="user-sidebar-shell__brand-word">User Portal</span>
+              <span className="user-sidebar-shell__brand-word">SetuOps</span>
             </Link>
           )}
         </div>
@@ -578,7 +578,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <IconMenu />
             </button>
             <div className="user-topbar__title-wrap">
-              <span className="user-topbar__kicker">User Portal</span>
+              <span className="user-topbar__kicker">SetuOps</span>
               <h1 className="user-topbar__title">{pageTitle}</h1>
             </div>
             <span className={`user-topbar__status-chip ${pendingManagerApprovalCount > 0 ? 'user-topbar__status-chip--alert' : ''}`}>
@@ -599,7 +599,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 }}
               >
                 <IconHelpCircle />
-                <span>Ask SetuOps</span>
+                <span>Help</span>
               </button>
               <span className="user-topbar__workspace">{profileLabel}</span>
               <span className="user-topbar__role">{hasManagedTeams ? 'Lead' : 'Requester'}</span>

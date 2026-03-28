@@ -17,15 +17,15 @@ export default function NewRequestLanding() {
     <>
       <Head>
         <title>New Request - SetuOps</title>
-        <meta name="description" content="Choose IAM or Create Infrastructure" />
+        <meta name="description" content="Choose how to start a new request" />
       </Head>
       <div style={{ padding: '40px 20px', minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div className="container" style={{ maxWidth: 720 }}>
           <h1 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--color-text)', marginBottom: '8px', textAlign: 'center' }}>
-            New Request
+            How would you like to start?
           </h1>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '16px', marginBottom: '40px', textAlign: 'center' }}>
-            Choose the type of request you want to create
+            Pick the request path that best matches the work you need.
           </p>
           <div style={{
             display: 'grid',
@@ -56,10 +56,10 @@ export default function NewRequestLanding() {
             >
               <div style={{ fontSize: '48px', marginBottom: '16px', lineHeight: 1 }}>🔐</div>
               <h2 style={{ fontSize: '22px', fontWeight: 600, marginBottom: '8px', color: 'var(--color-text)' }}>
-                IAM
+                Access (IAM)
               </h2>
               <p style={{ color: 'var(--color-text-muted)', fontSize: '14px', margin: 0 }}>
-                Identity and access management. Select a cloud to manage IAM.
+                Request identity and access changes for a cloud account.
               </p>
             </Link>
             <Link
@@ -86,10 +86,10 @@ export default function NewRequestLanding() {
             >
               <div style={{ fontSize: '48px', marginBottom: '16px', lineHeight: 1 }}>☁️</div>
               <h2 style={{ fontSize: '22px', fontWeight: 600, marginBottom: '8px', color: 'var(--color-text)' }}>
-                Create Infrastructure
+                Cloud Infrastructure
               </h2>
               <p style={{ color: 'var(--color-text-muted)', fontSize: '14px', margin: 0 }}>
-                Provision cloud resources. Use templates or start from scratch.
+                Request cloud resources, reuse templates, or start from a project.
               </p>
             </Link>
           </div>
