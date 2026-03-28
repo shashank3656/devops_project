@@ -24,6 +24,7 @@ interface RequestTemplate {
   cloud: string;
   env: string;
   service: string;
+  status: string;
   teams: TeamSummary[];
   projects: ProjectSummary[];
   visible_to_all: boolean;
@@ -46,7 +47,7 @@ interface CloudGroup {
 
 interface TemplateDiagnostics {
   reason: string;
-  published_count: number;
+  template_count: number;
   visible_to_all_count: number;
   matching_team_count: number;
   user_portal_team_count: number;
@@ -88,6 +89,7 @@ function normalizeTemplate(value: unknown): RequestTemplate | null {
     cloud: getString(record.cloud, 'other'),
     env: getString(record.env, 'shared'),
     service: getString(record.service, 'service'),
+    status: getString(record.status, 'draft'),
     teams: Array.isArray(record.teams)
       ? record.teams.map(normalizeTeamSummary).filter((item): item is TeamSummary => Boolean(item))
       : [],
@@ -104,7 +106,7 @@ function normalizeDiagnostics(value: unknown): TemplateDiagnostics | null {
   if (!reason) return null;
   return {
     reason,
-    published_count: getNumber(record.published_count, 0),
+    template_count: getNumber(record.template_count, 0),
     visible_to_all_count: getNumber(record.visible_to_all_count, 0),
     matching_team_count: getNumber(record.matching_team_count, 0),
     user_portal_team_count: getNumber(record.user_portal_team_count, 0),
@@ -158,30 +160,30 @@ function formatProjectScope(template: RequestTemplate): string {
 
 function getDiagnosticsMessage(diagnostics: TemplateDiagnostics | null): { title: string; detail: string } {
   switch (diagnostics?.reason) {
-    case 'no_published_templates':
+    case 'no_templates':
       return {
-        title: 'No published templates yet',
-        detail: 'Templates exist only as draft or pending approval. Ask the platform team to publish one for the user portal.',
+        title: 'No templates exist yet',
+        detail: 'Once admin or DevOps creates templates, they will appear here for your team.',
       };
     case 'no_portal_team_membership':
       return {
         title: 'No portal team is linked to your account',
-        detail: 'Published templates can only be shown after your user is added to a portal team.',
+        detail: 'Templates can be shown after your user is added to a portal team.',
       };
     case 'no_team_assigned_templates':
       return {
-        title: 'Published templates exist, but none are assigned to your team',
-        detail: `There are ${diagnostics.published_count} published templates, but none are mapped to your current portal teams.`,
+        title: 'Templates exist, but none are assigned to your team',
+        detail: `There are ${diagnostics.template_count} templates in the shared library, but none are mapped to your current portal teams.`,
       };
     case 'visible_templates_available':
       return {
-        title: 'Published templates should be available',
-        detail: 'At least one published template is marked for broad visibility. If the table is still empty after rebuild, the frontend build is likely stale.',
+        title: 'Templates should be available',
+        detail: 'At least one template is marked for broad visibility. If the list is still empty after rebuild, the frontend build is likely stale.',
       };
     default:
       return {
         title: 'No templates are visible right now',
-        detail: 'Published templates may still need the right team assignment or a refreshed frontend build.',
+        detail: 'Templates may still need the right team assignment or a refreshed frontend build.',
       };
   }
 }
@@ -354,7 +356,7 @@ export default function TemplatesPage() {
             <span className="portal-page__eyebrow">Templates</span>
             <h1 className="portal-page__title">Request Templates</h1>
             <p className="portal-page__subtitle">
-              Browse published templates in one simple list. Open a cloud, then a service, then the exact template you want.
+              Browse the shared template library from admin and DevOps in one simple list. Open a cloud, then a service, then the exact template you want.
             </p>
           </div>
           <div className="portal-page__actions">
@@ -381,7 +383,7 @@ export default function TemplatesPage() {
               <p className="template-browser-empty__detail">{diagnosticsMessage.detail}</p>
               {diagnostics ? (
                 <div className="template-browser-empty__facts">
-                  <span className="portal-pill">Published: {diagnostics.published_count}</span>
+                  <span className="portal-pill">Templates: {diagnostics.template_count}</span>
                   <span className="portal-pill">Your portal teams: {diagnostics.user_portal_team_count}</span>
                   <span className="portal-pill">Visible to all: {diagnostics.visible_to_all_count}</span>
                   <span className="portal-pill">Assigned to your teams: {diagnostics.matching_team_count}</span>
@@ -424,6 +426,7 @@ export default function TemplatesPage() {
                       <th>Name</th>
                       <th>Type</th>
                       <th>Environment</th>
+                      <th>Status</th>
                       <th>Team scope</th>
                       <th>Project scope</th>
                       <th></th>
@@ -453,6 +456,7 @@ export default function TemplatesPage() {
                             <td>—</td>
                             <td>—</td>
                             <td>—</td>
+                            <td>—</td>
                             <td></td>
                           </tr>
 
@@ -478,6 +482,7 @@ export default function TemplatesPage() {
                                       </td>
                                       <td>Service</td>
                                       <td>{formatEnvironmentList(service.environments) || '—'}</td>
+                                      <td>—</td>
                                       <td>{service.teamScopedCount > 0 ? 'Team scoped' : 'All teams'}</td>
                                       <td>{service.projectScopedCount > 0 ? 'Project scoped' : 'All projects'}</td>
                                       <td></td>
@@ -496,6 +501,9 @@ export default function TemplatesPage() {
                                             <td>
                                               <span className="portal-pill">{template.env.toUpperCase()}</span>
                                             </td>
+                                            <td>
+                                              <span className="portal-pill">{template.status.replace(/_/g, ' ')}</span>
+                                            </td>
                                             <td>{formatTeamScope(template)}</td>
                                             <td>{formatProjectScope(template)}</td>
                                             <td>
@@ -503,12 +511,16 @@ export default function TemplatesPage() {
                                                 <Link href={`/templates/${template.id}`} className="btn btn-secondary btn-sm">
                                                   View
                                                 </Link>
-                                                <Link
-                                                  href={`/select-service?cloud=${encodeURIComponent(template.cloud)}&env=${encodeURIComponent(template.env)}&service=${encodeURIComponent(template.service)}&template_id=${template.id}${template.projects.length === 1 ? `&project_id=${template.projects[0].id}` : ''}`}
-                                                  className="btn btn-primary btn-sm"
-                                                >
-                                                  Use
-                                                </Link>
+                                                {template.status === 'published' ? (
+                                                  <Link
+                                                    href={`/select-service?cloud=${encodeURIComponent(template.cloud)}&env=${encodeURIComponent(template.env)}&service=${encodeURIComponent(template.service)}&template_id=${template.id}${template.projects.length === 1 ? `&project_id=${template.projects[0].id}` : ''}`}
+                                                    className="btn btn-primary btn-sm"
+                                                  >
+                                                    Use
+                                                  </Link>
+                                                ) : (
+                                                  <span className="template-tree__meta">View only until published</span>
+                                                )}
                                               </div>
                                             </td>
                                           </tr>
