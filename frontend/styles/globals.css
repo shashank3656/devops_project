@@ -5925,15 +5925,29 @@ body {
 
 .history-filter-card__quick {
   display: grid;
-  grid-template-columns: 160px minmax(260px, 1.5fr) minmax(220px, 1fr) minmax(170px, 0.8fr) auto;
+  grid-template-columns: 160px minmax(260px, 1.5fr) minmax(220px, 1fr) minmax(170px, 0.8fr);
   gap: 12px;
   align-items: end;
 }
 
-.history-filter-card__quick-actions {
+.history-filter-card__actions {
   display: flex;
-  justify-content: flex-end;
-  align-items: end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.history-filter-card__hint {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.history-filter-card__action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .history-filter-card__advanced {
@@ -6116,7 +6130,7 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .history-filter-card__quick-actions {
+  .history-filter-card__actions {
     justify-content: flex-start;
   }
 
@@ -6149,12 +6163,13 @@ body {
 
   .history-filter-card__header-actions,
   .history-filter-card__saved-actions,
-  .history-filter-card__quick-actions {
+  .history-filter-card__actions,
+  .history-filter-card__action-buttons {
     width: 100%;
     justify-content: flex-start;
   }
 
-  .history-filter-card__quick-actions .btn,
+  .history-filter-card__action-buttons .btn,
   .history-filter-card__saved-actions .btn {
     width: 100%;
   }

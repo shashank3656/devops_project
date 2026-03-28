@@ -3575,15 +3575,16 @@ func CreateRequestTemplate(name, description, cloud, env, service, config, statu
 	var publishedByValue sql.NullInt64
 	var publishedAt sql.NullTime
 	status = normalizeTemplateGovernanceStatus(status)
+	publishNow := status == "published"
 	var publishedBy *int
-	if status == "published" {
+	if publishNow {
 		publishedBy = createdBy
 	}
 	err := queryRowContext(
 		`INSERT INTO request_templates (name, description, cloud, env, service, config, status, created_by, published_by, published_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $7 = 'published' THEN CURRENT_TIMESTAMP ELSE NULL END)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $10 THEN CURRENT_TIMESTAMP ELSE NULL END)
 		 RETURNING id, name, description, cloud, env, service, config, status, created_by, published_by, created_at, COALESCE(updated_at, created_at), published_at`,
-		name, description, cloud, env, service, config, status, createdBy, publishedBy,
+		name, description, cloud, env, service, config, status, createdBy, publishedBy, publishNow,
 	).Scan(&t.ID, &t.Name, &t.Description, &t.Cloud, &t.Env, &t.Service, &t.Config, &t.Status, &createdByValue, &publishedByValue, &t.CreatedAt, &t.UpdatedAt, &publishedAt)
 	if err != nil {
 		return nil, err
@@ -3609,6 +3610,7 @@ func UpdateRequestTemplate(id int, name, description, cloud, env, service, confi
 		return fmt.Errorf("database not available")
 	}
 	status = normalizeTemplateGovernanceStatus(status)
+	publishNow := status == "published"
 	_, err := execContext(
 		`UPDATE request_templates
 		 SET name = $1,
@@ -3620,15 +3622,15 @@ func UpdateRequestTemplate(id int, name, description, cloud, env, service, confi
 		     status = $7,
 		     updated_at = CURRENT_TIMESTAMP,
 		     published_by = CASE
-		       WHEN $7 = 'published' AND published_at IS NULL THEN $8
+		       WHEN $10 AND published_at IS NULL THEN $8
 		       ELSE published_by
 		     END,
 		     published_at = CASE
-		       WHEN $7 = 'published' AND published_at IS NULL THEN CURRENT_TIMESTAMP
+		       WHEN $10 AND published_at IS NULL THEN CURRENT_TIMESTAMP
 		       ELSE published_at
 		     END
 		 WHERE id = $9`,
-		name, description, cloud, env, service, config, status, actedBy, id,
+		name, description, cloud, env, service, config, status, actedBy, id, publishNow,
 	)
 	if err == nil {
 		invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam)

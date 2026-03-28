@@ -515,9 +515,9 @@ export default function DevOpsTickets() {
           <div className="devops-tickets-filter-card card">
             <div className="devops-tickets-filter-header">
               <div>
-                <h2 className="devops-tickets-filter-title">Find a request</h2>
+                <h2 className="devops-tickets-filter-title">Filter requests</h2>
                 <p className="devops-tickets-filter-summary">
-                  Start with request number, project, or status. Open extra filters only when you need to narrow the queue further.
+                  Use request number, project, search, or status first. Open extra filters only when you need a narrower queue.
                 </p>
               </div>
               <div className="devops-tickets-filter-toolbar">
@@ -571,7 +571,11 @@ export default function DevOpsTickets() {
                   ))}
                 </select>
               </div>
-              <div className="devops-tickets-filter-actions">
+            </div>
+
+            <div className="devops-tickets-filter-actions">
+              <span className="devops-tickets-filter-hint">Results update automatically as you change filters.</span>
+              <div className="devops-tickets-filter-action-buttons">
                 <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters} disabled={!activeFilterCount}>
                   Clear
                 </button>
