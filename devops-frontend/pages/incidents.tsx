@@ -138,6 +138,19 @@ function getIncidentReference(incident: Pick<Incident, 'id' | 'incident_number'>
   return incident.incident_number || `INC${String(incident.id).padStart(7, '0')}`;
 }
 
+function resolveIncidentReferenceInput(value: string, incidents: Incident[]): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^\d+$/.test(trimmed)) {
+    const parsed = Number(trimmed);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+  const normalized = trimmed.toUpperCase();
+  if (!/^INC\d+$/.test(normalized)) return null;
+  const matched = incidents.find((incident) => getIncidentReference(incident).toUpperCase() === normalized);
+  return matched && matched.request_id > 0 ? matched.request_id : null;
+}
+
 export default function DevOpsIncidentsPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -242,6 +255,7 @@ export default function DevOpsIncidentsPage() {
   const hasActiveFilters = Boolean(
     activeProjectID || activeRequestID || activeSeverityFilter || activeStatusFilter || activeEnvironmentFilter,
   );
+  const resolvedIncidentRequestId = useMemo(() => resolveIncidentReferenceInput(requestId, incidents), [incidents, requestId]);
 
   const visibleIncidentSummary = useMemo(() => {
     const active = filteredIncidents.filter((incident) => ['open', 'investigating', 'mitigating'].includes(incident.status)).length;
@@ -333,7 +347,7 @@ export default function DevOpsIncidentsPage() {
   const openCreatePanel = () => {
     setEditingId(null);
     setCurrentIncidentNumber('');
-    setRequestId('');
+    setRequestId(activeRequestID ? String(activeRequestID) : '');
     setTeamId('');
     setSeverity('medium');
     setStatus('open');
@@ -385,6 +399,10 @@ export default function DevOpsIncidentsPage() {
     setError('');
     setNotice('');
     try {
+      const linkedRequestID = resolveIncidentReferenceInput(requestId, incidents);
+      if (!linkedRequestID) {
+        throw new Error('Enter a valid incident reference');
+      }
       const normalizedStatus = mode === 'draft'
         ? 'draft'
         : status === 'draft'
@@ -399,7 +417,7 @@ export default function DevOpsIncidentsPage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            request_id: Number(requestId),
+            request_id: linkedRequestID,
             team_id: teamId ? Number(teamId) : null,
             severity,
             status: normalizedStatus,
@@ -421,7 +439,7 @@ export default function DevOpsIncidentsPage() {
       const savedIncident = normalizeIncident(data.incident);
       setEditingId(savedIncident.id || editingId);
       setCurrentIncidentNumber(savedIncident.incident_number || `INC${String(savedIncident.id).padStart(7, '0')}`);
-      setRequestId(savedIncident.request_id ? String(savedIncident.request_id) : requestId);
+      setRequestId(savedIncident.id ? getIncidentReference(savedIncident) : requestId);
       setTeamId(savedIncident.team_id ? String(savedIncident.team_id) : teamId);
       setSeverity(savedIncident.severity || severity);
       setStatus(savedIncident.status || normalizedStatus);
@@ -464,7 +482,11 @@ export default function DevOpsIncidentsPage() {
             <button type="button" className="btn btn-secondary" onClick={exportIncidents} disabled={filteredIncidents.length === 0}>
               Export CSV
             </button>
-            <button type="button" className="btn btn-primary" onClick={openCreatePanel}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void router.push(activeRequestID ? `/incidents/new?request_id=${activeRequestID}` : '/incidents/new')}
+            >
               Create incident
             </button>
           </div>
@@ -548,123 +570,14 @@ export default function DevOpsIncidentsPage() {
           </div>
         </section>
 
-        {activePanel === 'editor' ? (
-        <section className="portal-surface">
-          <div className="portal-surface__header">
-            <div>
-              <span className="portal-surface__eyebrow">Incident Editor</span>
-              <h2 className="portal-surface__title">{editingId ? 'Update incident' : 'Create incident'}</h2>
-            </div>
-            <div className="portal-page__actions">
-              <button type="button" className="btn btn-secondary" onClick={resetForm}>
-                Close
-              </button>
-            </div>
-          </div>
-          {displayedIncidentNumber ? (
-            <div className="alert alert-info" style={{ marginBottom: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span>
-                  Incident reference: <strong>{displayedIncidentNumber}</strong>
-                  {status === 'draft' ? ' (draft)' : ''}
-                </span>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={resetForm}>
-                  Start another incident
-                </button>
-              </div>
-            </div>
-          ) : null}
-          <div className="portal-form-grid">
-            <label className="label">
-              Related request
-              <input className="input" value={requestId} onChange={(event) => setRequestId(event.target.value)} placeholder="Enter the request number tied to this incident" />
-            </label>
-            <label className="label">
-              Severity
-              <select className="input" value={severity} onChange={(event) => setSeverity(event.target.value)}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-            </label>
-            <label className="label">
-              Status
-              <select className="input" value={status} onChange={(event) => setStatus(event.target.value)}>
-                <option value="draft">Draft</option>
-                <option value="open">Open</option>
-                <option value="investigating">Investigating</option>
-                <option value="mitigating">Mitigating</option>
-                <option value="resolved">Resolved</option>
-              </select>
-            </label>
-            <label className="label">
-              Incident team
-              <select className="input" value={teamId} onChange={(event) => setTeamId(event.target.value)}>
-                <option value="">Select team</option>
-                {teams.map((team) => (
-                  <option key={team.id} value={team.id}>
-                    {team.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="label">
-              Escalation level
-              <select className="input" value={escalationLevel} onChange={(event) => setEscalationLevel(event.target.value)}>
-                <option value="monitoring">Monitoring</option>
-                <option value="team_lead">Team lead</option>
-                <option value="manager">Manager</option>
-                <option value="executive">Executive</option>
-              </select>
-            </label>
-            <label className="label">
-              Assigned member
-              <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} disabled={!teamId}>
-                <option value="">Unassigned</option>
-                {selectedTeamMembers.map((member) => (
-                  <option key={member.id} value={member.user_id}>
-                    {member.username} ({member.role})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="label">
-              Summary
-              <input className="input" value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Production deployment degraded" />
-            </label>
-          </div>
-          <label className="label">
-            Notes
-            <textarea className="input" rows={6} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Operational notes, mitigations, and update timeline..." />
-          </label>
-          <div className="portal-form-actions">
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={saving || !requestId.trim() || !teamId}
-              onClick={() => void submit('draft')}
-            >
-              {saving ? 'Saving...' : 'Save Draft'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={saving || !requestId.trim() || !teamId || !ownerUserId || !summary.trim()}
-              onClick={() => void submit('submit')}
-            >
-              {saving ? 'Saving...' : editingId && status !== 'draft' ? 'Save Changes' : 'Submit Incident'}
-            </button>
-            {editingId ? <button type="button" className="btn btn-secondary" onClick={resetForm}>Cancel edit</button> : null}
-          </div>
-        </section>
-        ) : null}
-
         <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
               <span className="portal-surface__eyebrow">Incident Queue</span>
               <h2 className="portal-surface__title">Open and recent incidents</h2>
+              <p className="portal-surface__subtitle">
+                Create and edit incidents on dedicated pages so the queue stays easier to scan.
+              </p>
             </div>
           </div>
           {loading ? (
@@ -715,25 +628,7 @@ export default function DevOpsIncidentsPage() {
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
-                          onClick={() => {
-                            const matchedTeam =
-                              incident.team_id
-                                ? String(incident.team_id)
-                                : String(
-                                    teams.find((team) => team.name === incident.request_team || team.slug === incident.request_team)?.id || '',
-                                  );
-                            setEditingId(incident.id);
-                            setCurrentIncidentNumber(getIncidentReference(incident));
-                            setRequestId(String(incident.request_id));
-                            setTeamId(matchedTeam);
-                            setSeverity(incident.severity);
-                            setStatus(incident.status);
-                            setEscalationLevel(incident.escalation_level);
-                            setOwnerUserId(incident.owner_user_id ? String(incident.owner_user_id) : '');
-                            setSummary(incident.summary);
-                            setNotes(incident.notes);
-                            setActivePanel('editor');
-                          }}
+                          onClick={() => void router.push(`/incidents/${incident.id}/edit`)}
                         >
                           Edit
                         </button>

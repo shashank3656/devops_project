@@ -304,7 +304,7 @@ export default function DevOpsRunbooksPage() {
             </p>
           </div>
           <div className="portal-page__actions">
-            <button type="button" className="btn btn-primary" onClick={openCreatePanel}>
+            <button type="button" className="btn btn-primary" onClick={() => void router.push('/runbooks/new')}>
               Create runbook
             </button>
           </div>
@@ -335,100 +335,14 @@ export default function DevOpsRunbooksPage() {
           </div>
         ) : null}
 
-        {!activePanel ? (
-          <section className="portal-surface" style={{ marginBottom: 24 }}>
-            <div className="portal-surface__header">
-              <div>
-                <span className="portal-surface__eyebrow">Runbook management</span>
-                <h2 className="portal-surface__title">Start from the runbook library</h2>
-                <p className="portal-surface__subtitle">
-                  Use <strong>Create runbook</strong> only when you want to add a new entry. Editing an existing runbook will open the same editor.
-                </p>
-              </div>
-            </div>
-          </section>
-        ) : null}
-
-        {activePanel === 'editor' ? (
-        <section className="portal-surface">
-          <div className="portal-surface__header">
-            <div>
-              <span className="portal-surface__eyebrow">Runbook Editor</span>
-              <h2 className="portal-surface__title">{editingId ? 'Update runbook' : 'Add runbook'}</h2>
-            </div>
-            <div className="portal-page__actions">
-              <button type="button" className="btn btn-secondary" onClick={resetForm}>
-                Close
-              </button>
-            </div>
-          </div>
-          <div className="portal-form-grid">
-            <label className="label">
-              Project
-              <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                <option value="">Select project</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
-                ))}
-              </select>
-            </label>
-            <label className="label">
-              Service
-              <select
-                className="input"
-                value={service}
-                onChange={(event) => setService(event.target.value)}
-                disabled={!projectId}
-              >
-                <option value="">{projectId ? 'Select service' : 'Select project first'}</option>
-                {availableEditorServices.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-              {projectId && availableEditorServices.length === 0 ? (
-                <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-                  {selectedProject
-                    ? `No catalog services were found for ${selectedProject.name} yet.`
-                    : 'No catalog services were found for this project yet.'}
-                </span>
-              ) : null}
-            </label>
-            <label className="label">
-              Title
-              <input className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Production rollback" />
-            </label>
-            <label className="label">
-              Reference link
-              <input className="input" value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} placeholder="https://internal/wiki/runbook" />
-            </label>
-          </div>
-          <label className="label">
-            Runbook content
-            <textarea className="input" rows={8} value={content} onChange={(event) => setContent(event.target.value)} placeholder="Step-by-step runbook notes..." />
-          </label>
-          <div className="portal-form-actions">
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={saving || !projectId || !service.trim() || !title.trim()}
-              onClick={() => void submit()}
-            >
-              {saving ? 'Saving...' : editingId ? 'Update runbook' : 'Create runbook'}
-            </button>
-            {editingId ? (
-              <button type="button" className="btn btn-secondary" onClick={resetForm}>Cancel edit</button>
-            ) : null}
-          </div>
-        </section>
-        ) : null}
-
         <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
               <span className="portal-surface__eyebrow">Library</span>
               <h2 className="portal-surface__title">Available runbooks</h2>
+              <p className="portal-surface__subtitle">
+                Create and edit now open on dedicated pages so the library stays focused on browsing and cleanup.
+              </p>
             </div>
           </div>
           <div className="portal-form-grid" style={{ marginBottom: 16 }}>
@@ -485,15 +399,7 @@ export default function DevOpsRunbooksPage() {
                             <button
                               type="button"
                               className="btn btn-secondary btn-sm"
-                              onClick={() => {
-                                setEditingId(runbook.id);
-                                setProjectId(String(runbook.project_id));
-                                setService(runbook.service);
-                                setTitle(runbook.title);
-                                setContent(runbook.content);
-                                setLinkUrl(runbook.link_url);
-                                setActivePanel('editor');
-                              }}
+                              onClick={() => void router.push(`/runbooks/${runbook.id}/edit`)}
                             >
                               Edit
                             </button>

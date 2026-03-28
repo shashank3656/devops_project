@@ -2823,6 +2823,58 @@ tbody tr:hover {
   flex-wrap: wrap;
 }
 
+.template-tree-table__row-link {
+  cursor: pointer;
+}
+
+.template-tree-table__row-link td {
+  transition: background 160ms ease;
+}
+
+.template-tree-table__row-link:hover td,
+.template-tree-table__row-link:focus td,
+.template-tree-table__row-link:focus-visible td {
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.template-browser-filter {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.4fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.template-browser-filter--dense {
+  grid-template-columns: minmax(280px, 1.4fr) repeat(3, minmax(160px, 0.8fr)) auto;
+  align-items: end;
+}
+
+.template-browser-filter__search,
+.template-browser-filter__field {
+  display: grid;
+  gap: 8px;
+}
+
+.template-browser-filter__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.template-browser-filter__input {
+  min-height: 44px;
+}
+
+.template-browser-filter__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .access-review-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) 220px 220px 220px;
@@ -5557,6 +5609,15 @@ body {
   .admin-request-filter__actions .btn,
   .template-tree__actions .btn {
     width: 100%;
+  }
+
+  .template-browser-filter,
+  .template-browser-filter--dense {
+    grid-template-columns: 1fr;
+  }
+
+  .template-browser-filter__actions {
+    justify-content: flex-start;
   }
 
   .filters-bar--requests {
