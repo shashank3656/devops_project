@@ -2888,7 +2888,7 @@ tbody tr td { color: var(--color-text); }
   align-items: end;
 }
 .devops-tickets-filter-quick {
-  grid-template-columns: minmax(140px, 0.8fr) minmax(220px, 1.4fr) minmax(180px, 1fr) minmax(180px, 0.95fr) auto;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(220px, 1.4fr) minmax(180px, 1fr) minmax(180px, 0.95fr);
 }
 .devops-tickets-filter-advanced {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -2924,7 +2924,20 @@ tbody tr td { color: var(--color-text); }
 .devops-tickets-filter-checkbox input { width: 16px; height: 16px; cursor: pointer; }
 .devops-tickets-filter-actions {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.devops-tickets-filter-hint {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+.devops-tickets-filter-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 /* Results summary */
@@ -2956,6 +2969,14 @@ tbody tr td { color: var(--color-text); }
   }
   .devops-tickets-filter-group--wide {
     grid-column: span 1;
+  }
+  .devops-tickets-filter-actions,
+  .devops-tickets-filter-action-buttons {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .devops-tickets-filter-action-buttons .btn {
+    width: 100%;
   }
 }
 

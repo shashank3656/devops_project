@@ -899,9 +899,9 @@ export default function History() {
         <div className="card history-filter-card">
           <div className="history-filter-card__header">
             <div>
-              <h3 className="history-filter-card__title">Find a request</h3>
+              <h3 className="history-filter-card__title">Filter requests</h3>
               <p className="history-filter-card__summary">
-                Start with search, project, or status. Open extra filters only when you need to narrow the list more.
+                Use search, project, or status first. Open extra filters only when you need a narrower list.
               </p>
             </div>
             <div className="history-filter-card__header-actions">
@@ -998,7 +998,11 @@ export default function History() {
               </select>
             </div>
 
-            <div className="history-filter-card__quick-actions">
+          </div>
+
+          <div className="history-filter-card__actions">
+            <span className="history-filter-card__hint">Results update automatically as you change filters.</span>
+            <div className="history-filter-card__action-buttons">
               <button onClick={clearFilters} className="btn btn-secondary">
                 Clear filters
               </button>

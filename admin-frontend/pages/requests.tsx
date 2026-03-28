@@ -806,8 +806,8 @@ export default function AdminRequests() {
           <form onSubmit={handleFilter} className="filters-bar filters-bar--requests">
             <div className="filters-bar__header">
               <div>
-                <strong className="filters-bar__title">Find requests</strong>
-                <p className="filters-bar__summary">Start with team, project, or search. Open extra filters only when you need a narrower queue.</p>
+                <strong className="filters-bar__title">Filter queue</strong>
+                <p className="filters-bar__summary">Start with team, project, search, or status. Open extra filters only when you need a narrower view.</p>
               </div>
               <div className="filters-bar__header-actions">
                 {activeFilterCount > 0 ? <span className="filters-bar__badge">{activeFilterCount} active</span> : null}
@@ -822,53 +822,69 @@ export default function AdminRequests() {
             </div>
 
             <div className="filters-bar__quick">
-              <input
-                id="filter-team"
-                name="filter-team"
-                type="text"
-                className="input"
-                placeholder="Team name"
-                value={team}
-                onChange={(e) => setTeam(e.target.value)}
-              />
-              <select
-                id="filter-project"
-                name="filter-project"
-                className="input"
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-              >
-                <option value="">All projects</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
-                ))}
-              </select>
-              <input
-                id="filter-search"
-                name="filter-search"
-                type="text"
-                className="input"
-                placeholder="Search anything"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <select
-                id="filter-status"
-                name="filter-status"
-                className="input"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="">All statuses</option>
-                <option value="draft">Draft</option>
-                <option value="pending_user_manager_approval">Waiting for manager</option>
-                <option value="pending_devops_approval">Waiting for platform team</option>
-                <option value="pending_approval">Waiting for review</option>
-                <option value="in_progress">In progress</option>
-                <option value="completed">Completed</option>
-                <option value="rejected">Rejected</option>
-              </select>
-              <div className="filters-bar__quick-actions">
+              <label className="filters-bar__field">
+                <span className="filters-bar__field-label">Team</span>
+                <input
+                  id="filter-team"
+                  name="filter-team"
+                  type="text"
+                  className="input"
+                  placeholder="Team name"
+                  value={team}
+                  onChange={(e) => setTeam(e.target.value)}
+                />
+              </label>
+              <label className="filters-bar__field">
+                <span className="filters-bar__field-label">Project</span>
+                <select
+                  id="filter-project"
+                  name="filter-project"
+                  className="input"
+                  value={projectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                >
+                  <option value="">All projects</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+                  ))}
+                </select>
+              </label>
+              <label className="filters-bar__field filters-bar__field--search">
+                <span className="filters-bar__field-label">Search</span>
+                <input
+                  id="filter-search"
+                  name="filter-search"
+                  type="text"
+                  className="input"
+                  placeholder="Requester, team, cloud, service"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </label>
+              <label className="filters-bar__field">
+                <span className="filters-bar__field-label">Status</span>
+                <select
+                  id="filter-status"
+                  name="filter-status"
+                  className="input"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  <option value="">All statuses</option>
+                  <option value="draft">Draft</option>
+                  <option value="pending_user_manager_approval">Waiting for manager</option>
+                  <option value="pending_devops_approval">Waiting for platform team</option>
+                  <option value="pending_approval">Waiting for review</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="filters-bar__actions">
+              <span className="filters-bar__hint">Press Apply after changing filters.</span>
+              <div className="filters-bar__action-buttons">
                 <button type="submit" className="btn btn-primary">
                   Apply
                 </button>
@@ -885,54 +901,69 @@ export default function AdminRequests() {
             {showAdvancedFilters ? (
               <div className="filters-bar__advanced">
                 <div className="filters-bar__advanced-row">
-                  <input
-                    id="filter-env"
-                    name="filter-env"
-                    type="text"
-                    className="input"
-                    placeholder="Environment"
-                    value={env}
-                    onChange={(e) => setEnv(e.target.value)}
-                  />
-                  <input
-                    id="filter-cloud"
-                    name="filter-cloud"
-                    type="text"
-                    className="input"
-                    placeholder="Cloud"
-                    value={cloud}
-                    onChange={(e) => setCloud(e.target.value)}
-                  />
-                  <select
-                    id="filter-priority"
-                    name="filter-priority"
-                    className="input"
-                    value={priorityFilter}
-                    onChange={(e) => setPriorityFilter(e.target.value)}
-                  >
-                    <option value="">All priorities</option>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
-                  </select>
+                  <label className="filters-bar__field">
+                    <span className="filters-bar__field-label">Environment</span>
+                    <input
+                      id="filter-env"
+                      name="filter-env"
+                      type="text"
+                      className="input"
+                      placeholder="Environment"
+                      value={env}
+                      onChange={(e) => setEnv(e.target.value)}
+                    />
+                  </label>
+                  <label className="filters-bar__field">
+                    <span className="filters-bar__field-label">Cloud</span>
+                    <input
+                      id="filter-cloud"
+                      name="filter-cloud"
+                      type="text"
+                      className="input"
+                      placeholder="Cloud"
+                      value={cloud}
+                      onChange={(e) => setCloud(e.target.value)}
+                    />
+                  </label>
+                  <label className="filters-bar__field">
+                    <span className="filters-bar__field-label">Priority</span>
+                    <select
+                      id="filter-priority"
+                      name="filter-priority"
+                      className="input"
+                      value={priorityFilter}
+                      onChange={(e) => setPriorityFilter(e.target.value)}
+                    >
+                      <option value="">All priorities</option>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                  </label>
                   <label className="filters-bar__checkbox">
                     <input type="checkbox" id="filter-at-risk" name="filter-at-risk" checked={atRiskOnly} onChange={(e) => setAtRiskOnly(e.target.checked)} />
-                    <span>Due soon or overdue</span>
+                    <span>Show due soon or overdue only</span>
                   </label>
                 </div>
 
                 <div className="filters-bar__advanced-row filters-bar__advanced-row--sort">
-                  <select id="filter-sort-by" name="filter-sort-by" className="input" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-                    <option value="created_at">Sort: Created</option>
-                    <option value="updated_at">Sort: Updated</option>
-                    <option value="priority">Sort: Priority</option>
-                    <option value="due_date">Sort: Due date</option>
-                  </select>
-                  <select id="filter-sort-order" name="filter-sort-order" className="input" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}>
-                    <option value="desc">Newest first</option>
-                    <option value="asc">Oldest first</option>
-                  </select>
+                  <label className="filters-bar__field">
+                    <span className="filters-bar__field-label">Sort by</span>
+                    <select id="filter-sort-by" name="filter-sort-by" className="input" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                      <option value="created_at">Created</option>
+                      <option value="updated_at">Updated</option>
+                      <option value="priority">Priority</option>
+                      <option value="due_date">Due date</option>
+                    </select>
+                  </label>
+                  <label className="filters-bar__field">
+                    <span className="filters-bar__field-label">Order</span>
+                    <select id="filter-sort-order" name="filter-sort-order" className="input" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}>
+                      <option value="desc">Newest first</option>
+                      <option value="asc">Oldest first</option>
+                    </select>
+                  </label>
                 </div>
               </div>
             ) : null}
