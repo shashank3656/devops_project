@@ -14,6 +14,7 @@ interface RequestTemplate {
   env: string;
   service: string;
   config: string;
+  status: string;
   teams?: TeamSummary[];
   projects?: ProjectSummary[];
   visible_to_all?: boolean;
@@ -67,6 +68,7 @@ function normalizeTemplate(value: unknown): RequestTemplate | null {
     env: getString(record.env, 'shared'),
     service: getString(record.service, 'service'),
     config: getString(record.config, '{}'),
+    status: getString(record.status, 'draft'),
     teams: Array.isArray(record.teams)
       ? record.teams.map(normalizeTeamSummary).filter((item): item is TeamSummary => Boolean(item))
       : [],
@@ -200,11 +202,11 @@ export default function TemplateDetailPage() {
               Review template defaults before launching a new infrastructure request.
             </p>
           </div>
-          <div className="portal-page__actions">
-            <Link href="/templates" className="btn btn-secondary">
-              Back to templates
-            </Link>
-            {template && (
+            <div className="portal-page__actions">
+              <Link href="/templates" className="btn btn-secondary">
+                Back to templates
+              </Link>
+            {template && template.status === 'published' && (
               <Link
                 href={`/select-service?cloud=${encodeURIComponent(template.cloud)}&env=${encodeURIComponent(template.env)}&service=${encodeURIComponent(template.service)}&template_id=${template.id}${template.projects?.length === 1 ? `&project_id=${template.projects[0].id}` : ''}`}
                 className="btn btn-primary"
@@ -239,6 +241,7 @@ export default function TemplateDetailPage() {
                     <span className="portal-pill">{template.cloud.toUpperCase()}</span>
                     <span className="portal-pill">{template.env.toUpperCase()}</span>
                     <span className="portal-pill">{template.service}</span>
+                    <span className="portal-pill">{template.status.replace(/_/g, ' ')}</span>
                     <span className="portal-pill">Template #{template.id}</span>
                   </div>
                 </div>
@@ -255,6 +258,12 @@ export default function TemplateDetailPage() {
                     <span className="template-detail-hero__summary-label">Default payload</span>
                     <strong>{configSummary}</strong>
                   </div>
+                  {template.status !== 'published' ? (
+                    <div className="template-detail-hero__summary-item">
+                      <span className="template-detail-hero__summary-label">Launch readiness</span>
+                      <strong>View only until published</strong>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </section>

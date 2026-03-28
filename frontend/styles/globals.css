@@ -6086,7 +6086,7 @@ body {
 }
 
 .history-filter-card {
-  padding: 14px 16px;
+  padding: 10px 12px;
 }
 
 .history-filter-shell {
@@ -6134,8 +6134,8 @@ body {
 
 .history-filter-bar {
   display: grid;
-  grid-template-columns: minmax(150px, 180px) minmax(260px, 1.35fr) repeat(3, minmax(150px, 0.9fr)) auto;
-  gap: 10px;
+  grid-template-columns: minmax(132px, 156px) minmax(200px, 1.25fr) repeat(2, minmax(136px, 0.82fr)) auto;
+  gap: 8px;
   align-items: stretch;
 }
 
@@ -6151,10 +6151,10 @@ body {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  padding: 0 14px;
-  border-radius: 14px;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.14);
   background: rgba(15, 23, 42, 0.24);
   min-width: 0;
@@ -6168,12 +6168,8 @@ body {
   min-width: 0;
 }
 
-.history-filter-pill--view {
-  min-width: 0;
-}
-
 .history-filter-pill__caption {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -6184,12 +6180,12 @@ body {
 .history-filter-pill__control {
   width: 100%;
   min-width: 0;
-  min-height: 30px;
+  min-height: 24px;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   font-family: inherit;
   outline: none;
 }
@@ -6217,13 +6213,13 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  padding: 0 12px;
+  min-height: 28px;
+  padding: 0 10px;
   border-radius: 999px;
   border: 1px solid rgba(56, 189, 248, 0.22);
   background: rgba(14, 165, 233, 0.08);
   color: #93c5fd;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -6248,17 +6244,17 @@ body {
 }
 
 .history-filter-panel {
-  margin-top: 12px;
-  padding-top: 14px;
+  margin-top: 8px;
+  padding-top: 10px;
   border-top: 1px solid rgba(148, 163, 184, 0.12);
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .history-filter-panel__row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
   align-items: end;
 }
 
@@ -6294,17 +6290,18 @@ body {
 }
 
 .history-filter-label {
-  margin-bottom: 6px;
-  font-size: 11px;
+  margin-bottom: 5px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
 }
 
 .history-filter-input,
 .history-filter-select {
-  min-height: 38px;
-  padding: 0 11px;
-  border-radius: 12px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 13px;
 }
 
 .history-table__row--active td {

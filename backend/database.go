@@ -3486,9 +3486,6 @@ func ListRequestTemplatesForUser(userID int) ([]RequestTemplate, error) {
 	}
 	filtered := make([]RequestTemplate, 0, len(templates))
 	for _, template := range templates {
-		if normalizeTemplateGovernanceStatus(template.Status) != "published" {
-			continue
-		}
 		teamAllowed := len(template.Teams) == 0 || templateAccessibleToPortalTeams(template.Teams, allowedTeams)
 		if teamAllowed {
 			filtered = append(filtered, template)
@@ -3549,7 +3546,7 @@ func GetRequestTemplateForUser(id, userID int) (*RequestTemplate, error) {
 		return nil, err
 	}
 	teamAllowed := len(template.Teams) == 0 || templateAccessibleToPortalTeams(template.Teams, allowedTeams)
-	if teamAllowed && normalizeTemplateGovernanceStatus(template.Status) == "published" {
+	if teamAllowed {
 		return template, nil
 	}
 	return nil, sql.ErrNoRows

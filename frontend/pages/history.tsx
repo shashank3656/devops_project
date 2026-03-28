@@ -975,19 +975,6 @@ export default function History() {
                 </select>
               </label>
 
-              <label className="history-filter-pill history-filter-pill--view">
-                <span className="history-filter-pill__caption">View</span>
-                <select
-                  value={viewMode}
-                  onChange={(e) => { setViewMode(e.target.value as 'mine' | 'team'); setPage(0); }}
-                  className="history-filter-pill__control"
-                  aria-label="View"
-                >
-                  <option value="mine">My requests</option>
-                  <option value="team">Team requests</option>
-                </select>
-              </label>
-
               <div className="history-filter-bar__actions">
                 {activeFilterCount > 0 ? (
                   <span className="history-filter-card__badge">{activeFilterCount} active</span>
@@ -997,10 +984,10 @@ export default function History() {
                   className="btn btn-secondary btn-sm"
                   onClick={() => setShowAdvancedFilters((current) => !current)}
                 >
-                  {showAdvancedFilters ? 'Hide more filters' : 'More filters'}
+                  {showAdvancedFilters ? 'Hide' : 'More'}
                 </button>
                 <button onClick={clearFilters} className="btn btn-secondary btn-sm">
-                  Clear all
+                  Clear
                 </button>
               </div>
             </div>
@@ -1009,6 +996,17 @@ export default function History() {
           {showAdvancedFilters ? (
             <div className="history-filter-panel">
               <div className="history-filter-panel__row">
+                <div className="history-filter-field">
+                  <label className="history-filter-label">View</label>
+                  <select
+                    value={viewMode}
+                    onChange={(e) => { setViewMode(e.target.value as 'mine' | 'team'); setPage(0); }}
+                    className="history-filter-select"
+                  >
+                    <option value="mine">My requests</option>
+                    <option value="team">Team requests</option>
+                  </select>
+                </div>
                 <div className="history-filter-field">
                   <label className="history-filter-label">From date</label>
                   <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setPage(0); }} className="history-filter-input" />

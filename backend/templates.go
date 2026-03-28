@@ -10,7 +10,7 @@ import (
 
 type templateListDiagnostics struct {
 	Reason              string `json:"reason"`
-	PublishedCount      int    `json:"published_count"`
+	TemplateCount       int    `json:"template_count"`
 	VisibleToAllCount   int    `json:"visible_to_all_count"`
 	MatchingTeamCount   int    `json:"matching_team_count"`
 	UserPortalTeamCount int    `json:"user_portal_team_count"`
@@ -34,10 +34,7 @@ func buildTemplateListDiagnostics(userID int) *templateListDiagnostics {
 	}
 
 	for _, template := range templates {
-		if normalizeTemplateGovernanceStatus(template.Status) != "published" {
-			continue
-		}
-		diagnostics.PublishedCount++
+		diagnostics.TemplateCount++
 		if len(template.Teams) == 0 {
 			diagnostics.VisibleToAllCount++
 			continue
@@ -48,8 +45,8 @@ func buildTemplateListDiagnostics(userID int) *templateListDiagnostics {
 	}
 
 	switch {
-	case diagnostics.PublishedCount == 0:
-		diagnostics.Reason = "no_published_templates"
+	case diagnostics.TemplateCount == 0:
+		diagnostics.Reason = "no_templates"
 	case diagnostics.VisibleToAllCount > 0:
 		diagnostics.Reason = "visible_templates_available"
 	case diagnostics.UserPortalTeamCount == 0:
