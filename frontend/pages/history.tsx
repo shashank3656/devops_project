@@ -897,115 +897,118 @@ export default function History() {
         </div>
 
         <div className="card history-filter-card">
-          <div className="history-filter-card__header">
-            <div>
-              <h3 className="history-filter-card__title">Filter requests</h3>
-              <p className="history-filter-card__summary">
-                Use search, project, or status first. Open extra filters only when you need a narrower list.
-              </p>
-            </div>
-            <div className="history-filter-card__header-actions">
-              {activeFilterCount > 0 ? (
-                <span className="history-filter-card__badge">{activeFilterCount} active</span>
-              ) : null}
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setShowAdvancedFilters((current) => !current)}
-              >
-                {showAdvancedFilters ? 'Hide extra filters' : 'More filters'}
-              </button>
-            </div>
-          </div>
+          <div className="history-filter-toolbar">
+            <div className="history-filter-toolbar__row">
+              <div className="history-filter-chip history-filter-chip--compact">
+                <span className="history-filter-chip__label">Search by</span>
+                <select
+                  id="filter-type"
+                  value={filterType}
+                  onChange={(e) => {
+                    setFilterType(e.target.value as 'team' | 'pr_number' | 'env' | 'cloud' | 'search' | 'application_id');
+                    setFilterValue('');
+                  }}
+                  className="history-filter-chip__control"
+                  aria-label="Search by"
+                >
+                  <option value="team">Team</option>
+                  <option value="pr_number">Request #</option>
+                  <option value="application_id">App ID</option>
+                  <option value="env">Environment</option>
+                  <option value="cloud">Cloud</option>
+                  <option value="search">Anything</option>
+                </select>
+              </div>
 
-          <div className="history-filter-card__quick">
-            <div className="history-filter-field">
-              <label htmlFor="filter-type" className="history-filter-label">Search by</label>
-              <select
-                id="filter-type"
-                value={filterType}
-                onChange={(e) => {
-                  setFilterType(e.target.value as 'team' | 'pr_number' | 'env' | 'cloud' | 'search' | 'application_id');
-                  setFilterValue('');
-                }}
-                className="history-filter-select"
-              >
-                <option value="team">Team</option>
-                <option value="pr_number">Request number</option>
-                <option value="application_id">Application ID</option>
-                <option value="env">Environment</option>
-                <option value="cloud">Cloud</option>
-                <option value="search">Search everything</option>
-              </select>
-            </div>
+              <div className="history-filter-chip history-filter-chip--search">
+                <span className="history-filter-chip__label">Search</span>
+                <input
+                  id="filter-value"
+                  type={filterType === 'pr_number' ? 'number' : 'text'}
+                  value={filterValue}
+                  onChange={(e) => setFilterValue(e.target.value)}
+                  placeholder={
+                    filterType === 'pr_number' ? 'Request number'
+                      : filterType === 'search' ? 'Search team, project, cloud, or service'
+                      : filterType === 'team' ? 'Team name'
+                      : filterType === 'application_id' ? 'Application ID'
+                      : filterType === 'env' ? 'Environment'
+                      : 'Cloud provider'
+                  }
+                  className="history-filter-chip__control"
+                  aria-label="Search value"
+                />
+              </div>
 
-            <div className="history-filter-field history-filter-field--grow">
-              <label htmlFor="filter-value" className="history-filter-label">
-                {filterType === 'pr_number' ? 'Request number'
-                  : filterType === 'search' ? 'Search term'
-                  : filterType === 'team' ? 'Team name'
-                  : filterType === 'application_id' ? 'Application ID'
-                  : filterType === 'env' ? 'Environment'
-                  : 'Cloud provider'}
-              </label>
-              <input
-                id="filter-value"
-                type={filterType === 'pr_number' ? 'number' : 'text'}
-                value={filterValue}
-                onChange={(e) => setFilterValue(e.target.value)}
-                placeholder={
-                  filterType === 'pr_number' ? 'Enter request number'
-                    : filterType === 'search' ? 'Search team, project, cloud, or service'
-                    : filterType === 'team' ? 'Enter team name'
-                    : filterType === 'application_id' ? 'Enter application ID'
-                    : filterType === 'env' ? 'Enter environment'
-                    : 'Enter cloud provider'
-                }
-                className="history-filter-input"
-              />
-            </div>
+              <div className="history-filter-chip">
+                <span className="history-filter-chip__label">Project</span>
+                <select
+                  value={projectId}
+                  onChange={(e) => { setProjectId(e.target.value); setPage(0); }}
+                  className="history-filter-chip__control"
+                  aria-label="Project"
+                >
+                  <option value="">All projects</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+                  ))}
+                </select>
+              </div>
 
-            <div className="history-filter-field">
-              <label className="history-filter-label">Project</label>
-              <select
-                value={projectId}
-                onChange={(e) => { setProjectId(e.target.value); setPage(0); }}
-                className="history-filter-select"
-              >
-                <option value="">All assigned projects</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
-                ))}
-              </select>
-            </div>
+              <div className="history-filter-chip">
+                <span className="history-filter-chip__label">Status</span>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
+                  className="history-filter-chip__control"
+                  aria-label="Status"
+                >
+                  <option value="">All statuses</option>
+                  <option value="draft">Draft</option>
+                  <option value="pending_approval">Pending approval</option>
+                  <option value="pending_devops_approval">Pending DevOps</option>
+                  <option value="pending_user_manager_approval">Pending manager</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
 
-            <div className="history-filter-field">
-              <label className="history-filter-label">Status</label>
-              <select
-                value={statusFilter}
-                onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
-                className="history-filter-select"
-              >
-                <option value="">All</option>
-                <option value="draft">Draft</option>
-                <option value="pending_approval">Pending approval</option>
-                <option value="pending_devops_approval">Pending DevOps</option>
-                <option value="pending_user_manager_approval">Pending manager</option>
-                <option value="in_progress">In progress</option>
-                <option value="completed">Completed</option>
-                <option value="rejected">Rejected</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
+              <div className="history-filter-chip">
+                <span className="history-filter-chip__label">View</span>
+                <select
+                  value={viewMode}
+                  onChange={(e) => { setViewMode(e.target.value as 'mine' | 'team'); setPage(0); }}
+                  className="history-filter-chip__control"
+                  aria-label="View"
+                >
+                  <option value="mine">My requests</option>
+                  <option value="team">Team requests</option>
+                </select>
+              </div>
             </div>
 
-          </div>
-
-          <div className="history-filter-card__actions">
-            <span className="history-filter-card__hint">Results update automatically as you change filters.</span>
-            <div className="history-filter-card__action-buttons">
-              <button onClick={clearFilters} className="btn btn-secondary">
-                Clear filters
-              </button>
+            <div className="history-filter-toolbar__footer">
+              <div className="history-filter-toolbar__meta">
+                {activeFilterCount > 0 ? (
+                  <span className="history-filter-card__badge">{activeFilterCount} active</span>
+                ) : (
+                  <span className="history-filter-toolbar__hint">Results update automatically.</span>
+                )}
+              </div>
+              <div className="history-filter-toolbar__actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowAdvancedFilters((current) => !current)}
+                >
+                  {showAdvancedFilters ? 'Hide more' : 'More'}
+                </button>
+                <button onClick={clearFilters} className="btn btn-secondary btn-sm">
+                  Clear
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1167,82 +1170,38 @@ export default function History() {
                       <tr
                         key={req.id}
                         onClick={() => { setSelectedRowIndex(idx); openDetail(req); }}
-                        style={{ background: idx === selectedRowIndex ? 'var(--primary-tint)' : undefined, cursor: 'pointer' }}
+                        className={idx === selectedRowIndex ? 'history-table__row history-table__row--active' : 'history-table__row'}
+                        style={{ cursor: 'pointer' }}
                       >
-                        <td style={{ padding: '16px', fontWeight: '600', color: 'var(--primary-color)' }}>
-                          #{req.id}
+                        <td style={{ padding: '16px' }}>
+                          <span className="history-table__request-id">#{req.id}</span>
                         </td>
                         <td style={{ padding: '16px' }}>
                           {req.project_name ? (
-                            <>
+                            <div className="history-table__primary">
                               <strong>{req.project_name}</strong>
-                              {req.project_code ? <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{req.project_code}</div> : null}
-                            </>
+                              {req.project_code ? <span className="history-table__meta">{req.project_code}</span> : null}
+                            </div>
                           ) : '—'}
                         </td>
                         <td style={{ padding: '16px' }}>{req.team}</td>
                         {viewMode === 'team' && (
-                          <td style={{ padding: '16px', fontSize: '14px' }}>{req.created_by_username || '—'}</td>
+                          <td style={{ padding: '16px' }}><span className="history-table__meta">{req.created_by_username || '—'}</span></td>
                         )}
                         <td style={{ padding: '16px' }}>
-                          <span style={{
-                            padding: '4px 12px',
-                            borderRadius: '12px',
-                            fontSize: '12px',
-                            fontWeight: '500',
-                            background: 'var(--info-bg)',
-                            color: 'var(--info-color)'
-                          }}>
-                            {req.env}
-                          </span>
+                          <span className="history-table__pill history-table__pill--env">{req.env}</span>
                         </td>
                         <td style={{ padding: '16px' }}>
-                          <span style={{
-                            padding: '4px 12px',
-                            borderRadius: '12px',
-                            fontSize: '12px',
-                            fontWeight: '500',
-                            background: req.cloud === 'AWS' ? '#fff4e6' : req.cloud === 'GCP' ? '#e8f0fe' : '#e3f2fd',
-                            color: req.cloud === 'AWS' ? '#ff9900' : req.cloud === 'GCP' ? '#4285f4' : '#0078d4'
-                          }}>
-                            {req.cloud}
-                          </span>
+                          <span className={`history-table__pill history-table__pill--cloud history-table__pill--cloud-${(req.cloud || '').toLowerCase()}`}>{req.cloud}</span>
                         </td>
                         <td style={{ padding: '16px' }}>{req.service}</td>
                         <td style={{ padding: '16px' }}>
-                          <span style={{
-                            padding: '6px 12px',
-                            borderRadius: '6px',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            background: req.status === 'draft' ? 'var(--bg-gray-100)' :
-                                       req.status === 'pending_approval' || req.status === 'pending_user_manager_approval' || req.status === 'pending_devops_approval' ? 'var(--warning-bg)' :
-                                       req.status === 'in_progress' ? 'var(--info-bg)' :
-                                       req.status === 'completed' ? 'var(--success-bg)' :
-                                       req.status === 'rejected' ? 'var(--error-bg)' :
-                                       req.status === 'pending' ? 'var(--warning-bg)' :
-                                       req.status === 'merged' ? 'var(--success-bg)' :
-                                       req.status === 'closed' ? 'var(--error-bg)' : 'var(--info-bg)',
-                            color: req.status === 'draft' ? 'var(--text-secondary)' :
-                                   req.status === 'pending_approval' || req.status === 'pending_user_manager_approval' || req.status === 'pending_devops_approval' ? 'var(--warning-color)' :
-                                   req.status === 'in_progress' ? 'var(--info-color)' :
-                                   req.status === 'completed' ? 'var(--success-color)' :
-                                   req.status === 'rejected' ? 'var(--error-color)' :
-                                   req.status === 'pending' ? 'var(--warning-color)' :
-                                   req.status === 'merged' ? 'var(--success-color)' :
-                                   req.status === 'closed' ? 'var(--error-color)' : 'var(--info-color)'
-                          }}>
-                            {req.status === 'draft' ? 'Draft' :
-                             req.status === 'pending_approval' ? 'Pending approval' :
-                             req.status === 'pending_user_manager_approval' ? 'Waiting for manager' :
-                             req.status === 'pending_devops_approval' ? 'Waiting for platform team' :
-                             req.status === 'in_progress' ? 'In progress' :
-                             req.status === 'completed' ? 'Completed' :
-                             req.status === 'rejected' ? 'Rejected' : req.status}
+                          <span className={`status-badge ${getRequestStatusMeta(req.status).tone}`}>
+                            {getRequestStatusMeta(req.status).label}
                           </span>
                         </td>
-                        <td style={{ padding: '16px', fontSize: '14px', color: 'var(--text-secondary)' }}>
-                          {formatDate(req.created_at)}
+                        <td style={{ padding: '16px' }}>
+                          <span className="history-table__meta">{formatDate(req.created_at)}</span>
                         </td>
                         <td style={{ padding: '16px' }}>
                           {req.pr_url ? (
@@ -1250,14 +1209,7 @@ export default function History() {
                               href={req.pr_url} 
                               target="_blank" 
                               rel="noopener noreferrer"
-                              style={{
-                                color: 'var(--primary-color)',
-                                textDecoration: 'none',
-                                fontWeight: '500',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
+                              className="history-table__link"
                               onMouseEnter={(e) => {
                                 e.currentTarget.style.textDecoration = 'underline';
                               }}
@@ -1318,35 +1270,25 @@ export default function History() {
 
             {/* Pagination */}
             {!loading && !error && totalCount > 0 && (
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center', 
-                padding: '16px 24px',
-                borderTop: '1px solid var(--border-color)',
-                flexWrap: 'wrap',
-                gap: '12px'
-              }}>
-                <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+              <div className="history-pagination">
+                <span className="history-pagination__info">
                   Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount}
                 </span>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div className="history-pagination__actions">
                   <button
                     onClick={() => setPage(p => Math.max(0, p - 1))}
                     disabled={page === 0}
                     className="btn btn-secondary"
-                    style={{ padding: '8px 16px' }}
                   >
                     Previous
                   </button>
-                  <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                  <span className="history-pagination__page">
                     Page {page + 1} of {totalPages}
                   </span>
                   <button
                     onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
                     disabled={page >= totalPages - 1}
                     className="btn btn-secondary"
-                    style={{ padding: '8px 16px' }}
                   >
                     Next
                   </button>

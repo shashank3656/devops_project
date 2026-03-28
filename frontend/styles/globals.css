@@ -5873,37 +5873,167 @@ body {
   }
 }
 
-.history-filter-card {
-  padding: 18px 20px;
+.table-scroll {
+  overflow-x: auto;
 }
 
-.history-filter-card__header {
+.template-browser-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.template-browser-summary__item {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.22);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.template-browser-summary__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.template-browser-summary__value {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.template-browser-clouds {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.template-browser-cloud {
+  display: grid;
+  gap: 4px;
+  min-width: 140px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.16);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+.template-browser-cloud:hover {
+  border-color: rgba(56, 189, 248, 0.3);
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.template-browser-cloud--active {
+  border-color: rgba(56, 189, 248, 0.42);
+  background: rgba(14, 165, 233, 0.14);
+}
+
+.template-browser-cloud__name {
+  font-weight: 700;
+}
+
+.template-browser-cloud__meta {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.template-browser-table__row--active td {
+  background: var(--primary-tint);
+}
+
+.template-browser-table__primary {
+  font-weight: 700;
+}
+
+.template-browser-table__meta {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.template-browser-table__actions {
+  display: flex;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
-.history-filter-card__title {
-  margin: 0;
-  font-size: 18px;
-  letter-spacing: -0.02em;
+.history-filter-card {
+  padding: 14px 16px;
 }
 
-.history-filter-card__summary {
-  margin: 6px 0 0;
+.history-filter-toolbar {
+  display: grid;
+  gap: 12px;
+}
+
+.history-filter-toolbar__row {
+  display: grid;
+  grid-template-columns: 150px minmax(260px, 1.35fr) minmax(190px, 1fr) minmax(170px, 0.85fr) minmax(150px, 0.8fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.history-filter-chip {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.24);
+  min-width: 0;
+}
+
+.history-filter-chip--compact {
+  min-width: 0;
+}
+
+.history-filter-chip--search {
+  min-width: 0;
+}
+
+.history-filter-chip__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--text-muted);
-  font-size: 14px;
-  line-height: 1.5;
-  max-width: 680px;
 }
 
-.history-filter-card__header-actions {
+.history-filter-chip__control {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+
+.history-filter-chip__control::placeholder {
+  color: var(--text-muted);
+}
+
+.history-filter-toolbar__footer {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.history-filter-toolbar__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -5923,36 +6053,27 @@ body {
   text-transform: uppercase;
 }
 
-.history-filter-card__quick {
-  display: grid;
-  grid-template-columns: 160px minmax(260px, 1.5fr) minmax(220px, 1fr) minmax(170px, 0.8fr);
-  gap: 12px;
-  align-items: end;
-}
-
-.history-filter-card__actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.history-filter-card__hint {
-  font-size: 13px;
+.history-filter-toolbar__hint {
+  font-size: 12px;
   color: var(--text-muted);
 }
 
-.history-filter-card__action-buttons {
+.history-filter-toolbar__actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: flex-end;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
+.history-filter-toolbar__actions .btn {
+  min-height: 34px;
+  padding: 0 12px;
+}
+
 .history-filter-card__advanced {
-  margin-top: 16px;
-  padding-top: 16px;
+  margin-top: 12px;
+  padding-top: 14px;
   border-top: 1px solid rgba(148, 163, 184, 0.12);
   display: grid;
   gap: 12px;
@@ -6005,9 +6126,94 @@ body {
 
 .history-filter-input,
 .history-filter-select {
-  min-height: 40px;
-  padding: 0 12px;
+  min-height: 38px;
+  padding: 0 11px;
   border-radius: 12px;
+}
+
+.history-table__row--active td {
+  background: var(--primary-tint);
+}
+
+.history-table__request-id {
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+.history-table__primary {
+  display: grid;
+  gap: 4px;
+}
+
+.history-table__meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.history-table__pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.history-table__pill--env {
+  background: var(--info-bg);
+  color: var(--info-color);
+}
+
+.history-table__pill--cloud {
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--text-primary);
+}
+
+.history-table__pill--cloud-aws {
+  background: #fff4e6;
+  color: #ff9900;
+}
+
+.history-table__pill--cloud-gcp {
+  background: #e8f0fe;
+  color: #4285f4;
+}
+
+.history-table__pill--cloud-azure {
+  background: #e3f2fd;
+  color: #0078d4;
+}
+
+.history-table__link {
+  color: var(--primary-color);
+  text-decoration: none;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.history-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-color);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.history-pagination__info,
+.history-pagination__page {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.history-pagination__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .history-detail-modal {
@@ -6100,6 +6306,27 @@ body {
   text-decoration: none;
 }
 
+@media (max-width: 900px) {
+  .template-browser-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .template-browser-clouds {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 700px) {
+  .template-browser-table__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .template-browser-table__actions .btn {
+    width: 100%;
+  }
+}
+
 .history-detail-modal__link:hover {
   text-decoration: underline;
 }
@@ -6126,12 +6353,8 @@ body {
 }
 
 @media (max-width: 1200px) {
-  .history-filter-card__quick {
+  .history-filter-toolbar__row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .history-filter-card__actions {
-    justify-content: flex-start;
   }
 
   .history-filter-card__advanced-row {
@@ -6156,32 +6379,34 @@ body {
     padding: 20px;
   }
 
-  .history-filter-card__quick,
+  .history-filter-toolbar__row,
   .history-filter-card__advanced-row {
     grid-template-columns: 1fr;
   }
 
-  .history-filter-card__header-actions,
-  .history-filter-card__saved-actions,
-  .history-filter-card__actions,
-  .history-filter-card__action-buttons {
+  .history-filter-toolbar__footer,
+  .history-filter-toolbar__actions,
+  .history-filter-card__saved-actions {
     width: 100%;
     justify-content: flex-start;
   }
 
-  .history-filter-card__action-buttons .btn,
+  .history-filter-toolbar__actions .btn,
   .history-filter-card__saved-actions .btn {
     width: 100%;
   }
 
   .history-detail-modal__header-actions,
   .history-detail-modal__actions,
-  .history-detail-modal__compare {
+  .history-detail-modal__compare,
+  .history-pagination,
+  .history-pagination__actions {
     width: 100%;
   }
 
   .history-detail-modal__actions .btn,
-  .history-detail-modal__compare .btn {
+  .history-detail-modal__compare .btn,
+  .history-pagination__actions .btn {
     width: 100%;
   }
 
