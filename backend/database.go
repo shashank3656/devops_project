@@ -3484,19 +3484,13 @@ func ListRequestTemplatesForUser(userID int) ([]RequestTemplate, error) {
 		log.Printf("warning: failed to resolve template portal teams for user %d: %v", userID, err)
 		allowedTeams = map[int]bool{}
 	}
-	allowedProjects, err := getVisibleProjectIDSetForUser(userID)
-	if err != nil {
-		log.Printf("warning: failed to resolve template projects for user %d: %v", userID, err)
-		allowedProjects = map[int]bool{}
-	}
 	filtered := make([]RequestTemplate, 0, len(templates))
 	for _, template := range templates {
 		if normalizeTemplateGovernanceStatus(template.Status) != "published" {
 			continue
 		}
 		teamAllowed := len(template.Teams) == 0 || templateAccessibleToPortalTeams(template.Teams, allowedTeams)
-		projectAllowed := len(template.Projects) == 0 || templateAccessibleToProjects(template.Projects, allowedProjects)
-		if teamAllowed && projectAllowed {
+		if teamAllowed {
 			filtered = append(filtered, template)
 		}
 	}
@@ -3554,13 +3548,8 @@ func GetRequestTemplateForUser(id, userID int) (*RequestTemplate, error) {
 	if err != nil {
 		return nil, err
 	}
-	allowedProjects, err := getVisibleProjectIDSetForUser(userID)
-	if err != nil {
-		return nil, err
-	}
 	teamAllowed := len(template.Teams) == 0 || templateAccessibleToPortalTeams(template.Teams, allowedTeams)
-	projectAllowed := len(template.Projects) == 0 || templateAccessibleToProjects(template.Projects, allowedProjects)
-	if teamAllowed && projectAllowed && normalizeTemplateGovernanceStatus(template.Status) == "published" {
+	if teamAllowed && normalizeTemplateGovernanceStatus(template.Status) == "published" {
 		return template, nil
 	}
 	return nil, sql.ErrNoRows

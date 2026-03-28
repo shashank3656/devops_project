@@ -897,10 +897,24 @@ export default function History() {
         </div>
 
         <div className="card history-filter-card">
-          <div className="history-filter-toolbar">
-            <div className="history-filter-toolbar__row">
-              <div className="history-filter-chip history-filter-chip--compact">
-                <span className="history-filter-chip__label">Search by</span>
+          <div className="history-filter-shell">
+            <div className="history-filter-shell__top">
+              <div className="history-filter-shell__heading">
+                <h3 className="history-filter-shell__title">Filter requests</h3>
+                <p className="history-filter-shell__subtitle">Use one or two filters first. Results update automatically as you type.</p>
+              </div>
+              <div className="history-filter-shell__status">
+                {activeFilterCount > 0 ? (
+                  <span className="history-filter-card__badge">{activeFilterCount} active</span>
+                ) : (
+                  <span className="history-filter-shell__hint">Showing your latest requests.</span>
+                )}
+              </div>
+            </div>
+
+            <div className="history-filter-bar" role="group" aria-label="Request filters">
+              <label className="history-filter-pill history-filter-pill--type">
+                <span className="history-filter-pill__caption">Filter</span>
                 <select
                   id="filter-type"
                   value={filterType}
@@ -908,8 +922,8 @@ export default function History() {
                     setFilterType(e.target.value as 'team' | 'pr_number' | 'env' | 'cloud' | 'search' | 'application_id');
                     setFilterValue('');
                   }}
-                  className="history-filter-chip__control"
-                  aria-label="Search by"
+                  className="history-filter-pill__control"
+                  aria-label="Filter type"
                 >
                   <option value="team">Team</option>
                   <option value="pr_number">Request #</option>
@@ -918,34 +932,34 @@ export default function History() {
                   <option value="cloud">Cloud</option>
                   <option value="search">Anything</option>
                 </select>
-              </div>
+              </label>
 
-              <div className="history-filter-chip history-filter-chip--search">
-                <span className="history-filter-chip__label">Search</span>
+              <label className="history-filter-pill history-filter-pill--search">
+                <span className="history-filter-pill__caption">Value</span>
                 <input
                   id="filter-value"
                   type={filterType === 'pr_number' ? 'number' : 'text'}
                   value={filterValue}
                   onChange={(e) => setFilterValue(e.target.value)}
                   placeholder={
-                    filterType === 'pr_number' ? 'Request number'
+                    filterType === 'pr_number' ? 'Enter request number'
                       : filterType === 'search' ? 'Search team, project, cloud, or service'
-                      : filterType === 'team' ? 'Team name'
-                      : filterType === 'application_id' ? 'Application ID'
-                      : filterType === 'env' ? 'Environment'
-                      : 'Cloud provider'
+                      : filterType === 'team' ? 'Enter team name'
+                      : filterType === 'application_id' ? 'Enter application ID'
+                      : filterType === 'env' ? 'Enter environment'
+                      : 'Enter cloud provider'
                   }
-                  className="history-filter-chip__control"
-                  aria-label="Search value"
+                  className="history-filter-pill__control"
+                  aria-label="Filter value"
                 />
-              </div>
+              </label>
 
-              <div className="history-filter-chip">
-                <span className="history-filter-chip__label">Project</span>
+              <label className="history-filter-pill">
+                <span className="history-filter-pill__caption">Project</span>
                 <select
                   value={projectId}
                   onChange={(e) => { setProjectId(e.target.value); setPage(0); }}
-                  className="history-filter-chip__control"
+                  className="history-filter-pill__control"
                   aria-label="Project"
                 >
                   <option value="">All projects</option>
@@ -953,14 +967,14 @@ export default function History() {
                     <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
                   ))}
                 </select>
-              </div>
+              </label>
 
-              <div className="history-filter-chip">
-                <span className="history-filter-chip__label">Status</span>
+              <label className="history-filter-pill">
+                <span className="history-filter-pill__caption">Status</span>
                 <select
                   value={statusFilter}
                   onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
-                  className="history-filter-chip__control"
+                  className="history-filter-pill__control"
                   aria-label="Status"
                 >
                   <option value="">All statuses</option>
@@ -973,48 +987,44 @@ export default function History() {
                   <option value="rejected">Rejected</option>
                   <option value="cancelled">Cancelled</option>
                 </select>
-              </div>
+              </label>
 
-              <div className="history-filter-chip">
-                <span className="history-filter-chip__label">View</span>
+              <label className="history-filter-pill history-filter-pill--view">
+                <span className="history-filter-pill__caption">View</span>
                 <select
                   value={viewMode}
                   onChange={(e) => { setViewMode(e.target.value as 'mine' | 'team'); setPage(0); }}
-                  className="history-filter-chip__control"
+                  className="history-filter-pill__control"
                   aria-label="View"
                 >
                   <option value="mine">My requests</option>
                   <option value="team">Team requests</option>
                 </select>
-              </div>
+              </label>
             </div>
 
-            <div className="history-filter-toolbar__footer">
-              <div className="history-filter-toolbar__meta">
-                {activeFilterCount > 0 ? (
-                  <span className="history-filter-card__badge">{activeFilterCount} active</span>
-                ) : (
-                  <span className="history-filter-toolbar__hint">Results update automatically.</span>
-                )}
+            <div className="history-filter-shell__footer">
+              <div className="history-filter-shell__footer-meta">
+                <span className="history-filter-shell__hint">Need date, sort, or saved views? Open more filters.</span>
               </div>
-              <div className="history-filter-toolbar__actions">
+              <div className="history-filter-shell__footer-actions">
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
                   onClick={() => setShowAdvancedFilters((current) => !current)}
                 >
-                  {showAdvancedFilters ? 'Hide more' : 'More'}
+                  {showAdvancedFilters ? 'Hide more filters' : 'More filters'}
                 </button>
                 <button onClick={clearFilters} className="btn btn-secondary btn-sm">
-                  Clear
+                  Clear all
                 </button>
               </div>
             </div>
           </div>
 
           {showAdvancedFilters ? (
-            <div className="history-filter-card__advanced">
-              <div className="history-filter-card__advanced-row">
+            <div className="history-filter-panel">
+              <div className="history-filter-panel__row">
                 <div className="history-filter-field">
                   <label className="history-filter-label">From date</label>
                   <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setPage(0); }} className="history-filter-input" />
@@ -1024,44 +1034,34 @@ export default function History() {
                   <input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setPage(0); }} className="history-filter-input" />
                 </div>
                 <div className="history-filter-field">
-                  <label className="history-filter-label">View</label>
+                  <label className="history-filter-label">Sort by</label>
                   <select
-                    value={viewMode}
-                    onChange={(e) => { setViewMode(e.target.value as 'mine' | 'team'); setPage(0); }}
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
                     className="history-filter-select"
                   >
-                    <option value="mine">My requests</option>
-                    <option value="team">Team requests</option>
+                    <option value="created_at">Created date</option>
+                    <option value="id">Request #</option>
+                    <option value="priority">Priority</option>
+                    <option value="due_date">Due date</option>
+                    <option value="team">Team</option>
+                    <option value="cloud">Cloud</option>
                   </select>
                 </div>
-                <div className="history-filter-field history-filter-field--sort">
-                  <label className="history-filter-label">Sort by</label>
-                  <div className="history-filter-sort">
-                    <select
-                      value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                      className="history-filter-select"
-                    >
-                      <option value="created_at">Created (newest)</option>
-                      <option value="id">Request #</option>
-                      <option value="priority">Priority</option>
-                      <option value="due_date">Due date</option>
-                      <option value="team">Team</option>
-                      <option value="cloud">Cloud</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setSortDesc((d) => !d)}
-                      className="btn btn-secondary btn-sm"
-                      title={sortDesc ? 'Descending' : 'Ascending'}
-                    >
-                      {sortDesc ? '↓' : '↑'}
-                    </button>
-                  </div>
+                <div className="history-filter-field">
+                  <label className="history-filter-label">Order</label>
+                  <select
+                    value={sortDesc ? 'desc' : 'asc'}
+                    onChange={(e) => setSortDesc(e.target.value === 'desc')}
+                    className="history-filter-select"
+                  >
+                    <option value="desc">Newest first</option>
+                    <option value="asc">Oldest first</option>
+                  </select>
                 </div>
               </div>
 
-              <div className="history-filter-card__advanced-row history-filter-card__advanced-row--saved">
+              <div className="history-filter-panel__row history-filter-panel__row--saved">
                 <div className="history-filter-field history-filter-field--saved-name">
                   <label className="history-filter-label">Save current view</label>
                   <input
@@ -1072,7 +1072,7 @@ export default function History() {
                     className="history-filter-input"
                   />
                 </div>
-                <div className="history-filter-card__saved-actions">
+                <div className="history-filter-panel__saved-actions">
                   <button type="button" className="btn btn-secondary btn-sm" onClick={savePreset}>
                     Save view
                   </button>
