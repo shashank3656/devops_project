@@ -1,4 +1,5 @@
 import Head from 'next/head';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -86,14 +87,7 @@ export default function DevOpsAccessOverridesPage() {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [overrides, setOverrides] = useState<OverrideItem[]>([]);
-  const [projectId, setProjectId] = useState('');
-  const [userId, setUserId] = useState('');
-  const [environments, setEnvironments] = useState('dev');
-  const [permission, setPermission] = useState('write');
-  const [reason, setReason] = useState('');
-  const [expiresAt, setExpiresAt] = useState('');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -130,55 +124,6 @@ export default function DevOpsAccessOverridesPage() {
   useEffect(() => {
     void loadData();
   }, [apiUrl]);
-
-  const createOverride = async () => {
-    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token) {
-      clearSessionAndRedirect();
-      return;
-    }
-    setSaving(true);
-    setError('');
-    setNotice('');
-    try {
-      const expiryValue = expiresAt ? new Date(expiresAt).toISOString() : '';
-      const response = await fetch(`${apiUrl}/api/devops/access-overrides`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          project_id: Number(projectId),
-          user_id: Number(userId),
-          environments: environments.split(',').map((item) => item.trim()).filter(Boolean),
-          permission,
-          reason,
-          expires_at: expiryValue,
-        }),
-      });
-      if (response.status === 401 || response.status === 403) {
-        clearSessionAndRedirect();
-        return;
-      }
-      const data = asRecord(await response.json().catch(() => ({})));
-      if (!response.ok) {
-        throw new Error(getString(data.error, 'Failed to create override'));
-      }
-      setNotice('Access override created.');
-      setProjectId('');
-      setUserId('');
-      setEnvironments('dev');
-      setPermission('write');
-      setReason('');
-      setExpiresAt('');
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create override');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const revokeOverride = async (id: number) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -220,6 +165,11 @@ export default function DevOpsAccessOverridesPage() {
               Grant temporary project/environment access for emergency windows without changing the long-term project-to-team mapping.
             </p>
           </div>
+          <div className="portal-page__actions">
+            <Link href="/access-overrides/new" className="btn btn-primary">
+              Create override
+            </Link>
+          </div>
         </div>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
@@ -228,61 +178,11 @@ export default function DevOpsAccessOverridesPage() {
         <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
-              <span className="portal-surface__eyebrow">Temporary Grant</span>
-              <h2 className="portal-surface__title">Create override</h2>
-            </div>
-          </div>
-          <div className="portal-form-grid">
-            <label className="label">
-              Project
-              <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                <option value="">Select project</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
-                ))}
-              </select>
-            </label>
-            <label className="label">
-              User
-              <select className="input" value={userId} onChange={(event) => setUserId(event.target.value)}>
-                <option value="">Select user</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>{user.username}</option>
-                ))}
-              </select>
-            </label>
-            <label className="label">
-              Environments
-              <input className="input" value={environments} onChange={(event) => setEnvironments(event.target.value)} placeholder="dev,uat" />
-            </label>
-            <label className="label">
-              Permission
-              <select className="input" value={permission} onChange={(event) => setPermission(event.target.value)}>
-                <option value="read">Read</option>
-                <option value="write">Write</option>
-              </select>
-            </label>
-            <label className="label">
-              Expires at
-              <input className="input" type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} />
-            </label>
-            <label className="label">
-              Reason
-              <input className="input" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Emergency release support" />
-            </label>
-          </div>
-          <div className="portal-form-actions">
-            <button type="button" className="btn btn-primary" disabled={saving || !projectId || !userId || !expiresAt} onClick={() => void createOverride()}>
-              {saving ? 'Creating...' : 'Create override'}
-            </button>
-          </div>
-        </section>
-
-        <section className="portal-surface">
-          <div className="portal-surface__header">
-            <div>
               <span className="portal-surface__eyebrow">Active Window</span>
               <h2 className="portal-surface__title">Current overrides</h2>
+              <p className="portal-surface__subtitle">
+                Create overrides on a dedicated page so this view stays focused on active windows and revoke actions.
+              </p>
             </div>
           </div>
           {loading ? (

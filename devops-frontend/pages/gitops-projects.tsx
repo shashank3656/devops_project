@@ -165,11 +165,11 @@ export default function GitOpsProjectsPage() {
   const [previewError, setPreviewError] = useState('');
 
   const openBuilder = () => {
-    void router.push('/gitops-control?view=builder');
+    void router.push('/gitops-control/new');
   };
 
   const openProjectInfra = (projectId?: number) => {
-    const target = projectId ? `/gitops-control?project=${projectId}` : '/gitops-control?view=builder';
+    const target = projectId ? `/gitops-control/${projectId}/edit` : '/gitops-control/new';
     void router.push(target);
   };
 

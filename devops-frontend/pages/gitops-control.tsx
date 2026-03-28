@@ -756,9 +756,7 @@ export default function GitOpsControlPage() {
   };
 
   const openProjectEditor = (project: ManagedProject) => {
-    selectProject(project);
-    loadProjectIntoForm(project);
-    setActiveRail(project.can_manage ? 'builder' : 'explorer');
+    void router.push(`/gitops-control/${project.id}/edit`);
   };
 
   return (
@@ -777,6 +775,9 @@ export default function GitOpsControlPage() {
               </p>
             </div>
             <div className="portal-page__actions">
+              <Link href="/gitops-control/new" className="btn btn-primary">
+                New GitOps project
+              </Link>
               <Link href="/gitops-projects" className="btn btn-secondary">
                 Open GitOps Projects
               </Link>

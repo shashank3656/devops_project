@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -24,6 +24,10 @@ export default function DevOpsTemplateCloudPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [search, setSearch] = useState('');
+  const [serviceFilter, setServiceFilter] = useState('');
+  const [environmentFilter, setEnvironmentFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   const cloudParam = Array.isArray(router.query.cloud) ? router.query.cloud[0] : router.query.cloud;
   const cloudKey = typeof cloudParam === 'string' ? cloudParam.trim().toLowerCase() : '';
@@ -76,6 +80,48 @@ export default function DevOpsTemplateCloudPage() {
 
   const cloudGroups = useMemo(() => buildCloudGroups(templates), [templates]);
   const selectedCloud = cloudGroups.find((group) => group.key === cloudKey) || null;
+  const tableRows = useMemo(() => {
+    if (!selectedCloud) return [];
+    return selectedCloud.services.flatMap((service) =>
+      service.templates.map((template) => ({
+        serviceKey: service.key,
+        serviceLabel: service.label,
+        template,
+      })),
+    );
+  }, [selectedCloud]);
+
+  const visibleRows = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return tableRows.filter(({ serviceKey, serviceLabel, template }) => {
+      if (serviceFilter && serviceKey !== serviceFilter) return false;
+      if (environmentFilter && template.env.trim().toLowerCase() !== environmentFilter) return false;
+      if (statusFilter && (template.status || 'draft').trim().toLowerCase() !== statusFilter) return false;
+      if (!query) return true;
+      const haystack = [
+        serviceLabel,
+        template.service,
+        template.name,
+        template.description,
+        template.env,
+        template.status || 'draft',
+        formatTeamScope(template),
+        formatProjectScope(template),
+      ]
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [environmentFilter, search, serviceFilter, statusFilter, tableRows]);
+
+  const serviceOptions = useMemo(() => {
+    if (!selectedCloud) return [];
+    return selectedCloud.services.map((service) => ({ key: service.key, label: service.label }));
+  }, [selectedCloud]);
+
+  const statusOptions = useMemo(() => {
+    return Array.from(new Set(tableRows.map(({ template }) => (template.status || 'draft').trim().toLowerCase()).filter(Boolean))).sort();
+  }, [tableRows]);
 
   const handleDelete = async (template: RequestTemplate) => {
     if (!confirm(`Delete template "${template.name}"?`)) return;
@@ -161,12 +207,86 @@ export default function DevOpsTemplateCloudPage() {
                 </div>
               </div>
 
+              <div className="template-browser-filter template-browser-filter--dense">
+                <label className="template-browser-filter__search">
+                  <span className="template-browser-filter__label">Search</span>
+                  <input
+                    className="input template-browser-filter__input"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search service, template, environment, or status"
+                  />
+                </label>
+                <label className="template-browser-filter__field">
+                  <span className="template-browser-filter__label">Service</span>
+                  <select
+                    className="input template-browser-filter__input"
+                    value={serviceFilter}
+                    onChange={(event) => setServiceFilter(event.target.value)}
+                  >
+                    <option value="">All services</option>
+                    {serviceOptions.map((service) => (
+                      <option key={service.key} value={service.key}>
+                        {service.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="template-browser-filter__field">
+                  <span className="template-browser-filter__label">Environment</span>
+                  <select
+                    className="input template-browser-filter__input"
+                    value={environmentFilter}
+                    onChange={(event) => setEnvironmentFilter(event.target.value)}
+                  >
+                    <option value="">All environments</option>
+                    {selectedCloud.environments.map((environment) => (
+                      <option key={environment} value={environment}>
+                        {environment.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="template-browser-filter__field">
+                  <span className="template-browser-filter__label">Status</span>
+                  <select
+                    className="input template-browser-filter__input"
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value)}
+                  >
+                    <option value="">All status</option>
+                    {statusOptions.map((status) => (
+                      <option key={status} value={status}>
+                        {status.replace(/_/g, ' ')}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="template-browser-filter__actions">
+                  <span className="portal-pill">{visibleRows.length} visible</span>
+                  {(search || serviceFilter || environmentFilter || statusFilter) ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        setSearch('');
+                        setServiceFilter('');
+                        setEnvironmentFilter('');
+                        setStatusFilter('');
+                      }}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
               <div className="table-scroll">
                 <table className="templates-table template-tree-table">
                   <thead>
                     <tr>
-                      <th>Name</th>
-                      <th>Type</th>
+                      <th>Service</th>
+                      <th>Template</th>
                       <th>Environment</th>
                       <th>Team scope</th>
                       <th>Project scope</th>
@@ -175,58 +295,51 @@ export default function DevOpsTemplateCloudPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedCloud.services.map((service) => (
-                      <Fragment key={service.key}>
-                        <tr className="template-tree__row template-tree__row--service">
-                          <td>
-                            <div className="template-tree__label">{service.label}</div>
-                            <div className="template-tree__meta">
-                              {service.templates.length} templates · {formatEnvironmentList(service.environments) || 'Shared'}
-                            </div>
-                          </td>
-                          <td>Service</td>
-                          <td>{formatEnvironmentList(service.environments) || '—'}</td>
-                          <td>—</td>
-                          <td>—</td>
-                          <td>—</td>
-                          <td></td>
-                        </tr>
-
-                        {service.templates.map((template) => (
-                          <tr key={template.id} className="template-tree__row template-tree__row--template">
-                            <td>
-                              <div className="template-tree__template-name">{template.name}</div>
-                              <div className="template-tree__meta">
-                                {template.description || 'Reusable request defaults for repeatable work.'}
-                              </div>
-                            </td>
-                            <td>Template</td>
-                            <td><span className="portal-pill">{template.env.toUpperCase()}</span></td>
-                            <td>{formatTeamScope(template)}</td>
-                            <td>{formatProjectScope(template)}</td>
-                            <td><span className="portal-pill">{(template.status || 'draft').replace(/_/g, ' ')}</span></td>
-                            <td>
-                              <div className="template-tree__actions">
-                                <Link href={`/templates/${template.id}`} className="btn btn-secondary btn-sm">
-                                  View
-                                </Link>
-                                <Link href={`/templates/${template.id}/edit`} className="btn btn-secondary btn-sm">
-                                  Edit
-                                </Link>
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-sm"
-                                  disabled={deletingId === template.id}
-                                  onClick={() => handleDelete(template)}
-                                >
-                                  {deletingId === template.id ? 'Deleting...' : 'Delete'}
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </Fragment>
+                    {visibleRows.map(({ serviceLabel, template }) => (
+                      <tr key={template.id} className="template-tree__row template-tree__row--template">
+                        <td>
+                          <div className="template-tree__template-name">{serviceLabel}</div>
+                          <div className="template-tree__meta">{template.cloud.toUpperCase()}</div>
+                        </td>
+                        <td>
+                          <div className="template-tree__template-name">{template.name}</div>
+                          <div className="template-tree__meta">
+                            {template.description || 'Reusable request defaults for repeatable work.'}
+                          </div>
+                        </td>
+                        <td><span className="portal-pill">{template.env.toUpperCase()}</span></td>
+                        <td>{formatTeamScope(template)}</td>
+                        <td>{formatProjectScope(template)}</td>
+                        <td><span className="portal-pill">{(template.status || 'draft').replace(/_/g, ' ')}</span></td>
+                        <td>
+                          <div className="template-tree__actions">
+                            <Link href={`/templates/${template.id}`} className="btn btn-secondary btn-sm">
+                              View
+                            </Link>
+                            <Link href={`/templates/${template.id}/edit`} className="btn btn-secondary btn-sm">
+                              Edit
+                            </Link>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              disabled={deletingId === template.id}
+                              onClick={() => handleDelete(template)}
+                            >
+                              {deletingId === template.id ? 'Deleting...' : 'Delete'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
                     ))}
+                    {visibleRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={7}>
+                          <div className="portal-empty">
+                            <p>No templates match the current filters.</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
                   </tbody>
                 </table>
               </div>
