@@ -978,10 +978,10 @@ export default function AdminRequests() {
               </div>
             ) : (
               <>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div className="admin-requests-bulk-bar">
                   {pendingIds.length > 0 && (
                     <>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                    <label className="admin-requests-bulk-bar__toggle">
                       <input
                         type="checkbox"
                         checked={selectedIds.size === pendingIds.length && pendingIds.length > 0}
@@ -992,7 +992,6 @@ export default function AdminRequests() {
                     <button
                       type="button"
                       className="btn btn-primary"
-                      style={{ padding: '6px 14px', fontSize: 13 }}
                       disabled={selectedIds.size === 0 || bulkActioning}
                       onClick={handleBulkApprove}
                     >
@@ -1001,7 +1000,6 @@ export default function AdminRequests() {
                     <button
                       type="button"
                       className="btn btn-danger"
-                      style={{ padding: '6px 14px', fontSize: 13 }}
                       disabled={selectedIds.size === 0 || bulkActioning}
                       onClick={handleBulkReject}
                     >
@@ -1009,7 +1007,7 @@ export default function AdminRequests() {
                     </button>
                     </>
                   )}
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <label className="admin-requests-bulk-bar__toggle">
                     <input
                       type="checkbox"
                       checked={selectedIds.size === requests.length && requests.length > 0}
@@ -1017,11 +1015,11 @@ export default function AdminRequests() {
                     />
                     Select all ({requests.length})
                   </label>
-                  <span style={{ marginLeft: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span className="admin-requests-bulk-bar__status">
                     <select
                       value={bulkStatusValue}
                       onChange={(e) => setBulkStatusValue(e.target.value)}
-                      style={{ padding: '6px 10px', borderRadius: 6, fontSize: 13 }}
+                      className="input"
                     >
                       <option value="">Bulk status…</option>
                       <option value="in_progress">In progress</option>
@@ -1031,7 +1029,6 @@ export default function AdminRequests() {
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      style={{ padding: '6px 14px', fontSize: 13 }}
                       disabled={selectedIds.size === 0 || !bulkStatusValue || bulkActioning}
                       onClick={handleBulkStatus}
                     >
@@ -1059,7 +1056,7 @@ export default function AdminRequests() {
                     </thead>
                     <tbody>
                       {requests.map((req) => (
-                        <tr key={req.id} style={{ cursor: 'pointer' }} onClick={() => openDetail(req)}>
+                        <tr key={req.id} className="admin-requests-table__row" style={{ cursor: 'pointer' }} onClick={() => openDetail(req)}>
                           <td onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
@@ -1067,67 +1064,53 @@ export default function AdminRequests() {
                               onChange={() => toggleSelect(req.id)}
                             />
                           </td>
-                          <td>{req.id}</td>
+                          <td><span className="admin-requests-table__request-id">#{req.id}</span></td>
                           <td>
                             {req.project_name ? (
-                              <>
+                              <div className="admin-requests-table__primary">
                                 <strong>{req.project_name}</strong>
-                                {req.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{req.project_code}</div> : null}
-                              </>
+                                {req.project_code ? <span className="admin-requests-table__meta">{req.project_code}</span> : null}
+                              </div>
                             ) : '—'}
                           </td>
                           <td>{req.team}</td>
-                          <td>{req.env}</td>
-                          <td>{req.cloud}</td>
+                          <td><span className="admin-requests-table__pill admin-requests-table__pill--env">{req.env}</span></td>
+                          <td><span className={`admin-requests-table__pill admin-requests-table__pill--cloud admin-requests-table__pill--cloud-${(req.cloud || '').toLowerCase()}`}>{req.cloud}</span></td>
                           <td>
-                            <div>{req.service}</div>
+                            <div className="admin-requests-table__primary">
+                              <strong>{req.service}</strong>
                             {isAccessRequest(req) ? (
-                              <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Access request</div>
+                              <span className="admin-requests-table__meta">Access request</span>
                             ) : null}
+                            </div>
                           </td>
-                          <td style={{ fontSize: 13 }}>{req.priority || '—'}</td>
-                          <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
-                            {req.due_date ? new Date(req.due_date).toLocaleDateString() : '—'}
+                          <td><span className={`admin-requests-table__pill admin-requests-table__pill--priority admin-requests-table__pill--priority-${(req.priority || 'medium').toLowerCase()}`}>{req.priority || '—'}</span></td>
+                          <td>
+                            <div className="admin-requests-table__due">
+                              <span className="admin-requests-table__meta">{req.due_date ? new Date(req.due_date).toLocaleDateString() : '—'}</span>
                             {req.due_status === 'overdue' && (
-                              <span style={{ marginLeft: 6, padding: '2px 6px', borderRadius: 4, fontSize: 11, background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>Overdue</span>
+                              <span className="admin-requests-table__due-badge admin-requests-table__due-badge--overdue">Overdue</span>
                             )}
                             {req.due_status === 'due_soon' && (
-                              <span style={{ marginLeft: 6, padding: '2px 6px', borderRadius: 4, fontSize: 11, background: 'var(--color-warning-bg)', color: 'var(--color-warning)' }}>Due in 24h</span>
+                              <span className="admin-requests-table__due-badge admin-requests-table__due-badge--soon">Due in 24h</span>
                             )}
+                            </div>
                           </td>
                           <td>
-                            <span
-                              style={{
-                                padding: '4px 10px',
-                                borderRadius: 6,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                background: req.status === 'draft' ? '#f1f5f9' :
-                                           canApproveOrReject(req.status) ? 'var(--color-warning-bg)' :
-                                           req.status === 'in_progress' ? 'var(--color-primary-light)' :
-                                           req.status === 'completed' ? 'var(--color-success-bg)' :
-                                           req.status === 'rejected' ? 'var(--color-danger-bg)' : '#f1f5f9',
-                                color: req.status === 'draft' ? 'var(--color-text-muted)' :
-                                       canApproveOrReject(req.status) ? 'var(--color-warning)' :
-                                       req.status === 'in_progress' ? 'var(--color-primary)' :
-                                       req.status === 'completed' ? 'var(--color-success)' :
-                                       req.status === 'rejected' ? 'var(--color-danger)' : 'var(--color-text-muted)'
-                              }}
-                            >
+                            <span className="status-badge" data-status={req.status}>
                               {statusLabel(req.status)}
                             </span>
                           </td>
-                          <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
-                            {new Date(req.created_at).toLocaleString()}
+                          <td>
+                            <span className="admin-requests-table__meta">{new Date(req.created_at).toLocaleString()}</span>
                           </td>
                           <td onClick={(e) => e.stopPropagation()}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                            <div className="admin-requests-table__actions">
                               {req.status === 'pending_approval' && (
                                 <>
                                   <button
                                     type="button"
                                     className="btn btn-primary"
-                                    style={{ padding: '6px 12px', fontSize: 13 }}
                                     disabled={actioningId !== null}
                                     onClick={() => handleApprove(req.id)}
                                   >
@@ -1136,7 +1119,6 @@ export default function AdminRequests() {
                                   <button
                                     type="button"
                                     className="btn btn-danger"
-                                    style={{ padding: '6px 12px', fontSize: 13 }}
                                     disabled={actioningId !== null}
                                     onClick={() => handleReject(req.id)}
                                   >
@@ -1148,7 +1130,6 @@ export default function AdminRequests() {
                                 <button
                                   type="button"
                                   className="btn btn-secondary"
-                                  style={{ padding: '6px 12px', fontSize: 13 }}
                                   disabled={actioningId !== null}
                                   onClick={() => handleSetStatus(req.id, 'completed')}
                                 >
@@ -1158,7 +1139,6 @@ export default function AdminRequests() {
                               <button
                                 type="button"
                                 className="btn btn-secondary"
-                                style={{ padding: '6px 12px', fontSize: 13 }}
                                 disabled={actioningId !== null || cloningId !== null}
                                 onClick={(e) => { e.stopPropagation(); handleClone(req.id); }}
                                 title="Clone as new draft"
@@ -1169,7 +1149,6 @@ export default function AdminRequests() {
                                 <button
                                   type="button"
                                   className="btn btn-secondary"
-                                  style={{ padding: '6px 12px', fontSize: 13 }}
                                   disabled={promotingId !== null}
                                   onClick={(e) => { e.stopPropagation(); handlePromote(req.id); }}
                                   title="Promote to next environment"
@@ -1178,7 +1157,7 @@ export default function AdminRequests() {
                                 </button>
                               )}
                               {req.pr_url ? (
-                                <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
+                                <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">
                                   Open PR
                                 </a>
                               ) : null}
@@ -1189,26 +1168,28 @@ export default function AdminRequests() {
                     </tbody>
                   </table>
                 </div>
-                <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                  <span style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>
+                <div className="admin-requests-pagination">
+                  <span className="admin-requests-pagination__info">
                     Page {currentPage} of {totalPages} ({total} total)
                   </span>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    disabled={offset === 0}
-                    onClick={() => setOffset((o) => Math.max(0, o - limit))}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    disabled={offset + limit >= total}
-                    onClick={() => setOffset((o) => o + limit)}
-                  >
-                    Next
-                  </button>
+                  <div className="admin-requests-pagination__actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={offset === 0}
+                      onClick={() => setOffset((o) => Math.max(0, o - limit))}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={offset + limit >= total}
+                      onClick={() => setOffset((o) => o + limit)}
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               </>
             )}

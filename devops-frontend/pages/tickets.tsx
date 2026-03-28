@@ -689,10 +689,10 @@ export default function DevOpsTickets() {
                             <td><code className="devops-ticket-id">#{req.id}</code></td>
                             <td>
                               {req.project_name ? (
-                                <>
+                                <div className="devops-ticket-primary">
                                   <strong>{req.project_name}</strong>
-                                  {req.project_code ? <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{req.project_code}</div> : null}
-                                </>
+                                  {req.project_code ? <span className="devops-ticket-meta">{req.project_code}</span> : null}
+                                </div>
                               ) : (
                                 <span style={{ color: 'var(--text-muted)' }}>Not set</span>
                               )}
@@ -701,12 +701,14 @@ export default function DevOpsTickets() {
                             <td><span className="devops-ticket-env">{req.env}</span></td>
                             <td><span className={`devops-ticket-cloud devops-ticket-cloud--${(req.cloud || '').toLowerCase()}`}>{req.cloud}</span></td>
                             <td>
-                              <div>{req.service}</div>
+                              <div className="devops-ticket-primary">
+                                <strong>{req.service}</strong>
                               {isAccessRequest(req) ? (
-                                <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Access request</div>
+                                <span className="devops-ticket-meta">Access request</span>
                               ) : null}
+                              </div>
                             </td>
-                            <td>{req.created_by_username || 'Not available'}</td>
+                            <td><span className="devops-ticket-meta">{req.created_by_username || 'Not available'}</span></td>
                             <td><span className={`devops-ticket-priority devops-ticket-priority--${(req.priority || 'medium').toLowerCase()}`}>{req.priority || 'medium'}</span></td>
                             <td>
                               <span className="devops-ticket-due">
@@ -727,9 +729,9 @@ export default function DevOpsTickets() {
                                 >
                                   View PR
                                 </a>
-                              ) : 'Pending'}
+                              ) : <span className="devops-ticket-meta">Pending</span>}
                             </td>
-                            <td className="devops-ticket-updated">{formatDateTime(req.updated_at)}</td>
+                            <td className="devops-ticket-updated"><span className="devops-ticket-meta">{formatDateTime(req.updated_at)}</span></td>
                           </tr>
                         ))}
                       </tbody>
@@ -739,15 +741,17 @@ export default function DevOpsTickets() {
               </div>
               {requests.length > 0 && total > limit && (
                 <div className="devops-tickets-pagination">
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => setOffset((value) => Math.max(0, value - limit))}>
-                    Previous
-                  </button>
                   <span className="devops-tickets-pagination-info">
                     Page {Math.floor(offset / limit) + 1} of {Math.ceil(total / limit)}
                   </span>
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={offset + limit >= total} onClick={() => setOffset((value) => value + limit)}>
-                    Next
-                  </button>
+                  <div className="devops-tickets-pagination__actions">
+                    <button type="button" className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => setOffset((value) => Math.max(0, value - limit))}>
+                      Previous
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" disabled={offset + limit >= total} onClick={() => setOffset((value) => value + limit)}>
+                      Next
+                    </button>
+                  </div>
                 </div>
               )}
             </>

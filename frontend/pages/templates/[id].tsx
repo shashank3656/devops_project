@@ -30,6 +30,53 @@ interface ProjectSummary {
   code: string;
 }
 
+function getNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function normalizeTeamSummary(value: unknown): TeamSummary | null {
+  const record = asRecord(value);
+  const id = getNumber(record.id, 0);
+  if (id <= 0) return null;
+  return {
+    id,
+    name: getString(record.name, `Team ${id}`),
+  };
+}
+
+function normalizeProjectSummary(value: unknown): ProjectSummary | null {
+  const record = asRecord(value);
+  const id = getNumber(record.id, 0);
+  if (id <= 0) return null;
+  return {
+    id,
+    name: getString(record.name, `Project ${id}`),
+    code: getString(record.code, ''),
+  };
+}
+
+function normalizeTemplate(value: unknown): RequestTemplate | null {
+  const record = asRecord(value);
+  const id = getNumber(record.id, 0);
+  if (id <= 0) return null;
+  return {
+    id,
+    name: getString(record.name, `Template ${id}`),
+    description: getString(record.description, ''),
+    cloud: getString(record.cloud, 'other'),
+    env: getString(record.env, 'shared'),
+    service: getString(record.service, 'service'),
+    config: getString(record.config, '{}'),
+    teams: Array.isArray(record.teams)
+      ? record.teams.map(normalizeTeamSummary).filter((item): item is TeamSummary => Boolean(item))
+      : [],
+    projects: Array.isArray(record.projects)
+      ? record.projects.map(normalizeProjectSummary).filter((item): item is ProjectSummary => Boolean(item))
+      : [],
+    visible_to_all: Boolean(record.visible_to_all),
+  };
+}
+
 function parsePositiveIntParam(value: unknown): number | null {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== 'string') return null;
@@ -85,7 +132,7 @@ export default function TemplateDetailPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${apiUrl}/api/templates`, {
+      const res = await fetch(`${apiUrl}/api/templates/${templateId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401 || res.status === 403) {
@@ -93,8 +140,7 @@ export default function TemplateDetailPage() {
         return;
       }
       const data = asRecord(await res.json().catch(() => ({})));
-      const templates = Array.isArray(data.templates) ? data.templates : [];
-      const matchedTemplate = templates.find((item: { id?: unknown }) => Number(item?.id) === templateId) as RequestTemplate | undefined;
+      const matchedTemplate = normalizeTemplate(data.template);
       if (res.ok && matchedTemplate) {
         setTemplate(matchedTemplate);
         return;

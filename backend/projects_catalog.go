@@ -1549,7 +1549,8 @@ func getVisibleProjectsForUser(userID int) ([]ProjectCatalog, error) {
 	var teamIDs []int
 	teamSet := map[int]struct{}{}
 	for _, team := range userTeams {
-		if team.TeamType != "portal" {
+		teamType := strings.TrimSpace(strings.ToLower(team.TeamType))
+		if teamType != "" && teamType != "portal" {
 			continue
 		}
 		teamIDs = append(teamIDs, team.ID)

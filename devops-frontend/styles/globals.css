@@ -2978,6 +2978,14 @@ tbody tr td { color: var(--color-text); }
   .devops-tickets-filter-action-buttons .btn {
     width: 100%;
   }
+  .devops-tickets-pagination,
+  .devops-tickets-pagination__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .devops-tickets-pagination__actions .btn {
+    width: 100%;
+  }
 }
 
 /* Table card */
@@ -3014,6 +3022,14 @@ tbody tr td { color: var(--color-text); }
   color: var(--color-primary);
   background: transparent;
   padding: 0;
+}
+.devops-ticket-primary {
+  display: grid;
+  gap: 4px;
+}
+.devops-ticket-meta {
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 .devops-ticket-env {
   padding: 4px 10px;
@@ -3108,6 +3124,12 @@ tbody tr td { color: var(--color-text); }
   gap: var(--space-3);
 }
 .devops-tickets-pagination-info { font-size: 0.875rem; color: var(--color-text-muted); }
+.devops-tickets-pagination__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 
 .devops-tickets-filter {
   display: flex;
