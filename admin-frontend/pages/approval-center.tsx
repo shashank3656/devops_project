@@ -99,6 +99,7 @@ export default function AdminApprovalCenter() {
     devops: requests.filter((request) => request.status === 'pending_devops_approval').length,
     final: requests.filter((request) => request.status === 'pending_approval').length,
   }), [requests]);
+  const activeFilterCount = projectId ? 1 : 0;
 
   return (
     <>
@@ -117,49 +118,47 @@ export default function AdminApprovalCenter() {
             </div>
           </header>
 
-          <section className="portal-stat-grid">
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Pending approvals</span>
-              <strong className="portal-stat-card__value">{summary.total}</strong>
-              <p className="portal-stat-card__copy">All currently open approval gates.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Manager stage</span>
-              <strong className="portal-stat-card__value">{summary.manager}</strong>
-              <p className="portal-stat-card__copy">Requests waiting on user-manager review.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">DevOps stage</span>
-              <strong className="portal-stat-card__value">{summary.devops}</strong>
-              <p className="portal-stat-card__copy">Requests waiting on DevOps review.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Final stage</span>
-              <strong className="portal-stat-card__value">{summary.final}</strong>
-              <p className="portal-stat-card__copy">Requests at the last approval handoff.</p>
-            </article>
+          <section className="approval-summary-strip">
+            <div className="approval-summary-pill">
+              <span className="approval-summary-pill__label">Pending approvals</span>
+              <strong className="approval-summary-pill__value">{summary.total}</strong>
+            </div>
+            <div className="approval-summary-pill">
+              <span className="approval-summary-pill__label">Manager stage</span>
+              <strong className="approval-summary-pill__value">{summary.manager}</strong>
+            </div>
+            <div className="approval-summary-pill">
+              <span className="approval-summary-pill__label">DevOps stage</span>
+              <strong className="approval-summary-pill__value">{summary.devops}</strong>
+            </div>
+            <div className="approval-summary-pill">
+              <span className="approval-summary-pill__label">Final stage</span>
+              <strong className="approval-summary-pill__value">{summary.final}</strong>
+            </div>
           </section>
 
-          <section className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <span className="portal-surface__eyebrow">Filters</span>
-                <h2 className="portal-surface__title">Project scope</h2>
+          <section className="portal-surface approval-filter-surface">
+            <div className="approval-filter-bar">
+              <div className="approval-filter-bar__copy">
+                <span className="portal-surface__eyebrow">Scope</span>
+                <h2 className="portal-surface__title">Filter the approval queue</h2>
+                <p className="portal-surface__subtitle">Use project scope only when you want to review one project at a time.</p>
               </div>
-            </div>
-            <div className="portal-toolbar">
-              <div className="portal-toolbar__group">
-                <div className="portal-toolbar__item">
-                  <label className="label">Project</label>
-                  <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                    <option value="">All projects</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}{project.code ? ` (${project.code})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div className="approval-filter-bar__controls">
+                {activeFilterCount > 0 ? <span className="approval-filter-bar__badge">{activeFilterCount} active</span> : null}
+                <select className="input approval-filter-bar__select" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                  <option value="">All projects</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}{project.code ? ` (${project.code})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {projectId ? (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setProjectId('')}>
+                    Clear
+                  </button>
+                ) : null}
               </div>
             </div>
           </section>

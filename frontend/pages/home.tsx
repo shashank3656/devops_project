@@ -277,54 +277,50 @@ export default function Home() {
           <div className="launchpad-hero__content">
             <div>
               <span className="portal-page__eyebrow">Start a Request</span>
-              <h1 className="launchpad-hero__title">A simpler way to request infrastructure</h1>
+              <h1 className="launchpad-hero__title">Start your next request</h1>
               <p className="launchpad-hero__subtitle">
-                Pick the path that fits your work, fill in the key details once, and follow progress in one place from review to delivery.
+                Choose the easiest path, send the request once, and follow it from review to delivery in one place.
               </p>
               <div className="launchpad-action-grid" style={{ marginTop: 22 }}>
                 <Link href="/create-infrastructure/new" className="launchpad-action-card">
                   <strong>Start a new request</strong>
-                  <p>Best when you want the form to guide you step by step.</p>
+                  <p>Use the guided form when you want the safest starting point.</p>
                 </Link>
                 <Link href="/templates" className="launchpad-action-card">
                   <strong>Use a template</strong>
-                  <p>Fastest when your work matches a standard setup already approved by the platform team.</p>
-                </Link>
-                <Link href="/custom-json" className="launchpad-action-card">
-                  <strong>Advanced JSON request</strong>
-                  <p>Use this only when you already have the full request payload prepared.</p>
-                </Link>
-                <Link href="/history" className="launchpad-action-card">
-                  <strong>Reuse an earlier request</strong>
-                  <p>Clone something similar instead of starting again from scratch.</p>
+                  <p>Choose this when your work matches a standard setup.</p>
                 </Link>
                 <Link href="/history" className="launchpad-action-card">
                   <strong>Check request progress</strong>
-                  <p>See comments, approvals, PR links, and delivery progress in one place.</p>
+                  <p>See reviews, comments, PR links, and delivery updates.</p>
+                </Link>
+                <Link href="/custom-json" className="launchpad-action-card">
+                  <strong>Advanced JSON</strong>
+                  <p>Use this only when you already have the full request payload prepared.</p>
                 </Link>
               </div>
             </div>
 
             <aside className="launchpad-hero__pulse">
-              <span className="portal-page__eyebrow">Quick Guide</span>
-              <strong>{statsLoading ? '...' : totalRequests}</strong>
-              <p>Requests already visible in your portal.</p>
-              <div className="launchpad-tips" style={{ marginTop: 18 }}>
-                <div className="launchpad-tip">
-                  <strong>Pick the easiest path</strong>
-                  <p>Use the guided form first. Switch to templates or JSON only when you need them.</p>
+              <span className="portal-page__eyebrow">Today</span>
+              <strong>{onboardingProgress?.next_action || 'Start with a new request'}</strong>
+              <p>
+                {onboardingProgress?.latest_request
+                  ? `Latest request: ${onboardingProgress.latest_request.cloud} ${onboardingProgress.latest_request.service}`
+                  : 'You can start with the guided form or a template.'}
+              </p>
+              <div className="launchpad-hero__metrics" style={{ marginTop: 18 }}>
+                <div className="launchpad-hero__metric">
+                  <span>Requests</span>
+                  <strong>{statsLoading ? '...' : totalRequests}</strong>
                 </div>
-                <div className="launchpad-tip">
-                  <strong>Add the key details</strong>
-                  <p>Team, environment, service, cloud, and due date help reviewers move faster.</p>
+                <div className="launchpad-hero__metric">
+                  <span>Teams</span>
+                  <strong>{onboardingProgress?.teams.length ?? 0}</strong>
                 </div>
-                <div className="launchpad-tip">
-                  <strong>Follow the updates</strong>
-                  <p>Open My Requests after you submit to see comments, reviews, and PR activity.</p>
-                </div>
-                <div className="launchpad-tip">
-                  <strong>Reuse before rebuilding</strong>
-                  <p>Cloning an older request is often the fastest way to submit repeat work.</p>
+                <div className="launchpad-hero__metric">
+                  <span>Submitted</span>
+                  <strong>{onboardingProgress?.submitted_requests ?? 0}</strong>
                 </div>
               </div>
             </aside>
@@ -411,23 +407,6 @@ export default function Home() {
           )}
         </section>
 
-        {!statsLoading && stats && (
-          <section className="portal-stat-grid">
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Total requests</span>
-              <span className="portal-stat-card__value">{stats.total_requests}</span>
-              <p className="portal-stat-card__copy">All requests in your accessible scope.</p>
-            </article>
-            {Object.entries(stats.by_cloud || {}).slice(0, 3).map(([cloud, count]) => (
-              <article key={cloud} className="portal-stat-card">
-                <span className="portal-stat-card__label">{cloud}</span>
-                <span className="portal-stat-card__value">{count}</span>
-                <p className="portal-stat-card__copy">Requests routed through {cloud}.</p>
-              </article>
-            ))}
-          </section>
-        )}
-
         <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
@@ -445,7 +424,7 @@ export default function Home() {
             <div className="empty-state">No projects are assigned to your teams yet.</div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
-              {projects.slice(0, 4).map((project) => (
+              {projects.slice(0, 3).map((project) => (
                 <article key={project.id} className="request-choice-card">
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
                     <div>
@@ -470,63 +449,6 @@ export default function Home() {
               ))}
             </div>
           )}
-        </section>
-
-        <section className="portal-grid">
-          <article className="portal-surface onboarding-surface">
-            <div className="portal-surface__header">
-              <div>
-                <span className="portal-surface__eyebrow">Getting Started</span>
-                <h2 className="portal-surface__title">How to use the portal</h2>
-                <p className="portal-surface__subtitle">Follow this order if you are new here or sending a request for the first time.</p>
-              </div>
-            </div>
-            <div className="onboarding-step-grid">
-              <div className="onboarding-step">
-                <span className="onboarding-step__index">01</span>
-                <strong>Choose a request type</strong>
-                <p>Start with the guided form, use a template for standard work, or switch to JSON only for advanced requests.</p>
-              </div>
-              <div className="onboarding-step">
-                <span className="onboarding-step__index">02</span>
-                <strong>Add the key details</strong>
-                <p>Include team, environment, cloud, service, and timing before you submit.</p>
-              </div>
-              <div className="onboarding-step">
-                <span className="onboarding-step__index">03</span>
-                <strong>Follow updates</strong>
-                <p>Use My Requests to see reviews, PR progress, and final delivery updates.</p>
-              </div>
-            </div>
-          </article>
-
-          <article className="portal-surface onboarding-surface">
-            <div className="portal-surface__header">
-              <div>
-                <span className="portal-surface__eyebrow">After You Submit</span>
-                <h2 className="portal-surface__title">What happens next</h2>
-                <p className="portal-surface__subtitle">The portal shows where your request is in the review and delivery process.</p>
-              </div>
-            </div>
-            <div className="onboarding-timeline">
-              <div className="onboarding-timeline__item">
-                <strong>You submit the request</strong>
-                <p>The portal checks the basics and places the request in the right review queue.</p>
-              </div>
-              <div className="onboarding-timeline__item">
-                <strong>Review happens</strong>
-                <p>Your manager or platform reviewers can approve, reject, or ask for changes.</p>
-              </div>
-              <div className="onboarding-timeline__item">
-                <strong>Change work starts</strong>
-                <p>The system opens the change path and records PR activity on the request timeline.</p>
-              </div>
-              <div className="onboarding-timeline__item">
-                <strong>Delivery is completed</strong>
-                <p>Status, comments, and the final outcome stay visible in My Requests.</p>
-              </div>
-            </div>
-          </article>
         </section>
 
         <section className="portal-grid">

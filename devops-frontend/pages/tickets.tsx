@@ -211,7 +211,7 @@ export default function DevOpsTickets() {
   const [sortOrder, setSortOrder] = useState('desc');
   const [atRisk, setAtRisk] = useState(false);
   const [offset, setOffset] = useState(0);
-  const [filterExpanded, setFilterExpanded] = useState(true);
+  const [filterExpanded, setFilterExpanded] = useState(false);
   const [recentIds, setRecentIds] = useState<number[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -232,6 +232,18 @@ export default function DevOpsTickets() {
   const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
 
   const hasActiveFilters = Boolean(idFilter || team || projectId || cloud || status || search || requester || atRisk);
+  const activeFilterCount = [
+    idFilter.trim(),
+    team.trim(),
+    projectId,
+    cloud,
+    status,
+    search.trim(),
+    requester.trim(),
+    atRisk ? 'at-risk' : '',
+    sortBy !== 'created_at' ? sortBy : '',
+    sortOrder !== 'desc' ? sortOrder : '',
+  ].filter(Boolean).length;
   const canActOnDetail = detailRequest?.status === 'pending_devops_approval';
 
   const fetchTickets = () => {
@@ -412,6 +424,12 @@ export default function DevOpsTickets() {
   }, [apiUrl, token]);
 
   useEffect(() => {
+    if (team || cloud || requester || atRisk || sortBy !== 'created_at' || sortOrder !== 'desc') {
+      setFilterExpanded(true);
+    }
+  }, [team, cloud, requester, atRisk, sortBy, sortOrder]);
+
+  useEffect(() => {
     setRecentIds(getRecentRequestIds());
   }, []);
 
@@ -454,8 +472,11 @@ export default function DevOpsTickets() {
     setStatus('');
     setSearch('');
     setRequester('');
+    setSortBy('created_at');
+    setSortOrder('desc');
     setAtRisk(false);
     setOffset(0);
+    setFilterExpanded(false);
   };
 
   return (
@@ -492,28 +513,73 @@ export default function DevOpsTickets() {
           </div>
 
           <div className="devops-tickets-filter-card card">
-            <button
-              type="button"
-              className="devops-tickets-filter-toggle"
-              onClick={() => setFilterExpanded(!filterExpanded)}
-              aria-expanded={filterExpanded}
-            >
-              <span className="devops-tickets-filter-toggle__icon">{filterExpanded ? '▼' : '▶'}</span>
-              <span>Filters</span>
-              {hasActiveFilters && <span className="devops-tickets-filter-badge">{[idFilter, team, projectId, cloud, status, search, requester, atRisk].filter(Boolean).length}</span>}
-            </button>
+            <div className="devops-tickets-filter-header">
+              <div>
+                <h2 className="devops-tickets-filter-title">Find a request</h2>
+                <p className="devops-tickets-filter-summary">
+                  Start with request number, project, or status. Open extra filters only when you need to narrow the queue further.
+                </p>
+              </div>
+              <div className="devops-tickets-filter-toolbar">
+                {activeFilterCount > 0 && <span className="devops-tickets-filter-badge">{activeFilterCount} active</span>}
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setFilterExpanded(!filterExpanded)}
+                  aria-expanded={filterExpanded}
+                >
+                  {filterExpanded ? 'Hide extra filters' : 'More filters'}
+                </button>
+              </div>
+            </div>
+
+            <div className="devops-tickets-filter-quick">
+              <div className="devops-tickets-filter-group">
+                <label className="devops-tickets-filter-label">Request #</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 123"
+                  value={idFilter}
+                  onChange={(e) => setIdFilter(e.target.value)}
+                  className="input devops-tickets-filter-input"
+                />
+              </div>
+              <div className="devops-tickets-filter-group devops-tickets-filter-group--wide">
+                <label className="devops-tickets-filter-label">Search</label>
+                <input
+                  type="text"
+                  placeholder="Search project, team, service, or requester"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="input devops-tickets-filter-input"
+                />
+              </div>
+              <div className="devops-tickets-filter-group">
+                <label className="devops-tickets-filter-label">Project</label>
+                <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="input devops-tickets-filter-input">
+                  <option value="">All projects</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="devops-tickets-filter-group">
+                <label className="devops-tickets-filter-label">Status</label>
+                <select value={status} onChange={(e) => setStatus(e.target.value)} className="input devops-tickets-filter-input">
+                  {STATUS_OPTIONS.map((entry) => (
+                    <option key={entry.value || 'all'} value={entry.value}>{entry.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="devops-tickets-filter-actions">
+                <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters} disabled={!activeFilterCount}>
+                  Clear
+                </button>
+              </div>
+            </div>
+
             {filterExpanded && (
-              <div className="devops-tickets-filter-grid">
-                <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Request #</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 123"
-                    value={idFilter}
-                    onChange={(e) => setIdFilter(e.target.value)}
-                    className="input devops-tickets-filter-input"
-                  />
-                </div>
+              <div className="devops-tickets-filter-advanced">
                 <div className="devops-tickets-filter-group">
                   <label className="devops-tickets-filter-label">Team</label>
                   <input
@@ -525,15 +591,6 @@ export default function DevOpsTickets() {
                   />
                 </div>
                 <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Project</label>
-                  <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="input devops-tickets-filter-input">
-                    <option value="">All projects</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="devops-tickets-filter-group">
                   <label className="devops-tickets-filter-label">Cloud</label>
                   <select value={cloud} onChange={(e) => setCloud(e.target.value)} className="input devops-tickets-filter-input">
                     <option value="">All clouds</option>
@@ -543,30 +600,12 @@ export default function DevOpsTickets() {
                   </select>
                 </div>
                 <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Status</label>
-                  <select value={status} onChange={(e) => setStatus(e.target.value)} className="input devops-tickets-filter-input">
-                    {STATUS_OPTIONS.map((entry) => (
-                      <option key={entry.value || 'all'} value={entry.value}>{entry.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="devops-tickets-filter-group">
                   <label className="devops-tickets-filter-label">Requester</label>
                   <input
                     type="text"
-                    placeholder="User ID"
+                    placeholder="Username or user ID"
                     value={requester}
                     onChange={(e) => setRequester(e.target.value)}
-                    className="input devops-tickets-filter-input"
-                  />
-                </div>
-                <div className="devops-tickets-filter-group devops-tickets-filter-group--wide">
-                  <label className="devops-tickets-filter-label">Search</label>
-                  <input
-                    type="text"
-                    placeholder="Search across fields"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
                     className="input devops-tickets-filter-input"
                   />
                 </div>
@@ -589,13 +628,8 @@ export default function DevOpsTickets() {
                 <div className="devops-tickets-filter-group devops-tickets-filter-group--checkbox">
                   <label className="devops-tickets-filter-checkbox">
                     <input type="checkbox" checked={atRisk} onChange={(e) => setAtRisk(e.target.checked)} />
-                    <span>At risk (overdue or due in 24h)</span>
+                    <span>Only requests that need attention now</span>
                   </label>
-                </div>
-                <div className="devops-tickets-filter-actions">
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters} disabled={!hasActiveFilters}>
-                    Clear
-                  </button>
                 </div>
               </div>
             )}

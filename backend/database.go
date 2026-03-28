@@ -3276,8 +3276,13 @@ func GetTeamsForUserWithDetails(userID int) ([]Team, error) {
 	var out []Team
 	for rows.Next() {
 		var t Team
-		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.ApplicationID, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy); err != nil {
+		var createdBy sql.NullInt64
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.ApplicationID, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &createdBy); err != nil {
 			return nil, err
+		}
+		if createdBy.Valid && createdBy.Int64 > 0 {
+			value := int(createdBy.Int64)
+			t.CreatedBy = &value
 		}
 		out = append(out, t)
 	}
@@ -3462,9 +3467,7 @@ func ListRequestTemplates() ([]RequestTemplate, error) {
 		t.VisibleToAll = true
 		out = append(out, t)
 	}
-	if err := hydrateRequestTemplatesWithScope(out); err != nil {
-		return nil, err
-	}
+	hydrateRequestTemplatesWithScope(out)
 	return out, nil
 }
 
@@ -3478,11 +3481,13 @@ func ListRequestTemplatesForUser(userID int) ([]RequestTemplate, error) {
 	}
 	allowedTeams, err := getPortalTeamIDSetForUser(userID)
 	if err != nil {
-		return nil, err
+		log.Printf("warning: failed to resolve template portal teams for user %d: %v", userID, err)
+		allowedTeams = map[int]bool{}
 	}
 	allowedProjects, err := getVisibleProjectIDSetForUser(userID)
 	if err != nil {
-		return nil, err
+		log.Printf("warning: failed to resolve template projects for user %d: %v", userID, err)
+		allowedProjects = map[int]bool{}
 	}
 	filtered := make([]RequestTemplate, 0, len(templates))
 	for _, template := range templates {
@@ -3536,9 +3541,7 @@ func GetRequestTemplateByID(id int) (*RequestTemplate, error) {
 		t.PublishedAt = &publishedAtValue
 	}
 	t.VisibleToAll = true
-	if err := hydrateRequestTemplateWithScope(&t); err != nil {
-		return nil, err
-	}
+	hydrateRequestTemplateWithScope(&t)
 	return &t, nil
 }
 
@@ -3820,39 +3823,42 @@ func GetRequestTemplateTeams(templateID int) ([]Team, error) {
 	out := make([]Team, 0)
 	for rows.Next() {
 		var team Team
-		if err := rows.Scan(&team.ID, &team.Name, &team.Slug, &team.ApplicationID, &team.TeamType, &team.DefaultEnv, &team.DefaultCloud, &team.CreatedAt, &team.CreatedBy); err != nil {
+		var createdBy sql.NullInt64
+		if err := rows.Scan(&team.ID, &team.Name, &team.Slug, &team.ApplicationID, &team.TeamType, &team.DefaultEnv, &team.DefaultCloud, &team.CreatedAt, &createdBy); err != nil {
 			return nil, err
+		}
+		if createdBy.Valid && createdBy.Int64 > 0 {
+			value := int(createdBy.Int64)
+			team.CreatedBy = &value
 		}
 		out = append(out, team)
 	}
 	return out, nil
 }
 
-func hydrateRequestTemplateWithScope(template *RequestTemplate) error {
+func hydrateRequestTemplateWithScope(template *RequestTemplate) {
 	if template == nil {
-		return nil
+		return
 	}
 	teams, err := GetRequestTemplateTeams(template.ID)
 	if err != nil {
-		return err
+		log.Printf("warning: failed to hydrate template %d teams: %v", template.ID, err)
+		teams = []Team{}
 	}
 	projects, err := GetRequestTemplateProjects(template.ID)
 	if err != nil {
-		return err
+		log.Printf("warning: failed to hydrate template %d projects: %v", template.ID, err)
+		projects = []ProjectSummary{}
 	}
 	template.Teams = teams
 	template.Projects = projects
 	template.VisibleToAll = len(teams) == 0 && len(projects) == 0
-	return nil
 }
 
-func hydrateRequestTemplatesWithScope(templates []RequestTemplate) error {
+func hydrateRequestTemplatesWithScope(templates []RequestTemplate) {
 	for i := range templates {
-		if err := hydrateRequestTemplateWithScope(&templates[i]); err != nil {
-			return err
-		}
+		hydrateRequestTemplateWithScope(&templates[i])
 	}
-	return nil
 }
 
 func getPortalTeamIDSetForUser(userID int) (map[int]bool, error) {

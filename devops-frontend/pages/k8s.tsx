@@ -1113,7 +1113,23 @@ export default function DevOpsK8sPage() {
                 </div>
               </section>
             ) : null}
-            <section className="portal-surface" style={{ marginBottom: 24 }}>
+            <section className="k8s-console-surface" style={{ marginBottom: 24 }}>
+              <div className="k8s-console-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Cluster view</span>
+                  <h2 className="portal-surface__title">Keep the Kubernetes view focused</h2>
+                  <p className="portal-surface__subtitle">
+                    Filter by project, cluster, namespace, or workload, then move straight into the resource tabs below.
+                  </p>
+                </div>
+                <div className="k8s-console-pills">
+                  <span className="portal-pill">Namespaces {dashboardView?.summary.namespace_count || 0}</span>
+                  <span className="portal-pill">Deployments {dashboardView?.summary.deployment_count || 0}</span>
+                  <span className="portal-pill">Pods {dashboardView?.summary.pod_count || 0}</span>
+                  <span className="portal-pill">Warnings {dashboardView?.summary.warning_event_count || 0}</span>
+                  <span className="portal-pill">Restarting {dashboardView?.health_summary.restarting_pods || 0}</span>
+                </div>
+              </div>
               <div className="portal-toolbar">
                 <div className="portal-toolbar__group">
                   <div className="portal-toolbar__item">
@@ -1189,13 +1205,6 @@ export default function DevOpsK8sPage() {
                   </div>
                 </div>
                 <div className="portal-page__actions">
-                  <div className="portal-pill-row">
-                    <span className="portal-pill">Namespaces {dashboardView?.summary.namespace_count || 0}</span>
-                    <span className="portal-pill">Deployments {dashboardView?.summary.deployment_count || 0}</span>
-                    <span className="portal-pill">Pods {dashboardView?.summary.pod_count || 0}</span>
-                    <span className="portal-pill">Warnings {dashboardView?.summary.warning_event_count || 0}</span>
-                    <span className="portal-pill">Restarting {dashboardView?.health_summary.restarting_pods || 0}</span>
-                  </div>
                   <button type="button" className="btn btn-secondary btn-sm" onClick={handleApplyFilters} disabled={loading}>
                     {loading ? 'Loading...' : 'Apply'}
                   </button>
@@ -1287,28 +1296,21 @@ export default function DevOpsK8sPage() {
               </article>
             </section>
 
-            <section className="portal-surface" style={{ marginBottom: 24 }}>
-              <div className="portal-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Health watchlist</span>
-                  <h2 className="portal-surface__title">Jump straight to the noisy areas</h2>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('pods', 'restarting_pods')}>
-                  Restarting pods ({dashboardView?.health_summary.restarting_pods || 0})
-                </button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('pods', 'non_running_pods')}>
-                  Non-running pods ({dashboardView?.health_summary.non_running_pods || 0})
-                </button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('logs', 'warning_logs')}>
-                  Warning logs ({dashboardView?.health_summary.warning_logs || 0})
-                </button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('namespaces', 'unhealthy_namespaces')}>
-                  Unhealthy namespaces ({dashboardView?.health_summary.unhealthy_namespaces || 0})
-                </button>
-              </div>
-            </section>
+            <div className="k8s-watch-actions" style={{ marginBottom: 24 }}>
+              <span className="k8s-watch-actions__label">Jump to noisy areas</span>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('pods', 'restarting_pods')}>
+                Restarting pods ({dashboardView?.health_summary.restarting_pods || 0})
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('pods', 'non_running_pods')}>
+                Non-running pods ({dashboardView?.health_summary.non_running_pods || 0})
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('logs', 'warning_logs')}>
+                Warning logs ({dashboardView?.health_summary.warning_logs || 0})
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('namespaces', 'unhealthy_namespaces')}>
+                Unhealthy namespaces ({dashboardView?.health_summary.unhealthy_namespaces || 0})
+              </button>
+            </div>
 
             <section className="portal-grid" style={{ marginBottom: 24, gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
               <article className="portal-surface">
