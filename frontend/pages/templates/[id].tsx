@@ -116,6 +116,21 @@ function getConfigSummary(config: string): string {
   return 'Template defaults ready for reuse.';
 }
 
+function formatTeamScope(template: RequestTemplate): string {
+  if (template.visible_to_all || !template.teams?.length) return 'All portal teams';
+  if (template.teams.length === 1) return template.teams[0].name;
+  return `${template.teams.length} teams`;
+}
+
+function formatProjectScope(template: RequestTemplate): string {
+  if (!template.projects?.length) return 'All assigned projects';
+  if (template.projects.length === 1) {
+    const project = template.projects[0];
+    return project.code ? `${project.name} (${project.code})` : project.name;
+  }
+  return `${template.projects.length} projects`;
+}
+
 export default function TemplateDetailPage() {
   const router = useRouter();
   const [template, setTemplate] = useState<RequestTemplate | null>(null);
@@ -173,7 +188,7 @@ export default function TemplateDetailPage() {
   return (
     <>
       <Head>
-        <title>View template - Infrastructure Portal</title>
+        <title>View template - SetuOps User</title>
       </Head>
 
       <div className="portal-page portal-page--narrow">
@@ -213,100 +228,89 @@ export default function TemplateDetailPage() {
         ) : template ? (
           <>
             <section className="portal-surface">
-              <div className="portal-surface__header">
-                <div>
+              <div className="template-detail-hero">
+                <div className="template-detail-hero__main">
                   <span className="portal-surface__eyebrow">Template details</span>
                   <h2 className="portal-surface__title">{template.name}</h2>
                   <p className="portal-surface__subtitle">
                     {template.description || 'Reusable template for repeatable infrastructure requests.'}
                   </p>
+                  <div className="portal-pill-row">
+                    <span className="portal-pill">{template.cloud.toUpperCase()}</span>
+                    <span className="portal-pill">{template.env.toUpperCase()}</span>
+                    <span className="portal-pill">{template.service}</span>
+                    <span className="portal-pill">Template #{template.id}</span>
+                  </div>
                 </div>
-                <div className="portal-pill-row">
-                  <span className="portal-pill">ID {template.id}</span>
-                  <span className="portal-pill">{template.cloud}</span>
+                <div className="template-detail-hero__summary">
+                  <div className="template-detail-hero__summary-item">
+                    <span className="template-detail-hero__summary-label">Who can use it</span>
+                    <strong>{formatTeamScope(template)}</strong>
+                  </div>
+                  <div className="template-detail-hero__summary-item">
+                    <span className="template-detail-hero__summary-label">Project scope</span>
+                    <strong>{formatProjectScope(template)}</strong>
+                  </div>
+                  <div className="template-detail-hero__summary-item">
+                    <span className="template-detail-hero__summary-label">Default payload</span>
+                    <strong>{configSummary}</strong>
+                  </div>
                 </div>
-              </div>
-
-              <div className="portal-detail-grid">
-                <article className="portal-detail-card">
-                  <span className="portal-kv__label">Cloud</span>
-                  <strong className="portal-detail-card__value">{template.cloud.toUpperCase()}</strong>
-                </article>
-                <article className="portal-detail-card">
-                  <span className="portal-kv__label">Environment</span>
-                  <strong className="portal-detail-card__value">{template.env}</strong>
-                </article>
-                <article className="portal-detail-card">
-                  <span className="portal-kv__label">Service</span>
-                  <strong className="portal-detail-card__value">{template.service}</strong>
-                </article>
-                <article className="portal-detail-card">
-                  <span className="portal-kv__label">Availability</span>
-                  <strong className="portal-detail-card__value">
-                    {template.visible_to_all || !template.teams?.length ? 'All portal teams' : `${template.teams.length} team${template.teams.length === 1 ? '' : 's'} assigned`}
-                  </strong>
-                </article>
-                <article className="portal-detail-card">
-                  <span className="portal-kv__label">Projects</span>
-                  <strong className="portal-detail-card__value">
-                    {template.projects?.length ? `${template.projects.length} scoped project${template.projects.length === 1 ? '' : 's'}` : 'All assigned projects'}
-                  </strong>
-                </article>
               </div>
             </section>
 
+            <div className="template-detail-layout">
               <section className="portal-surface">
                 <div className="portal-surface__header">
                   <div>
-                    <span className="portal-surface__eyebrow">Availability</span>
-                    <h2 className="portal-surface__title">Team scope</h2>
+                    <span className="portal-surface__eyebrow">Access</span>
+                    <h2 className="portal-surface__title">Where this template is available</h2>
                     <p className="portal-surface__subtitle">
-                      This template is visible based on your portal team membership.
+                      Check team and project scope before you launch a request from this template.
                     </p>
                   </div>
                 </div>
-                <div className="portal-pill-row">
-                  {template.visible_to_all || !template.teams?.length ? (
-                    <span className="portal-pill">All portal teams</span>
-                  ) : (
-                    template.teams.map((team) => (
-                      <span key={team.id} className="portal-pill">{team.name}</span>
-                    ))
-                  )}
+
+                <div className="template-detail-scope">
+                  <div className="template-detail-scope__block">
+                    <span className="template-detail-scope__label">Portal teams</span>
+                    <div className="portal-pill-row">
+                      {template.visible_to_all || !template.teams?.length ? (
+                        <span className="portal-pill">All portal teams</span>
+                      ) : (
+                        template.teams.map((team) => (
+                          <span key={team.id} className="portal-pill">{team.name}</span>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="template-detail-scope__block">
+                    <span className="template-detail-scope__label">Projects</span>
+                    <div className="portal-pill-row">
+                      {template.projects?.length ? (
+                        template.projects.map((project) => (
+                          <span key={project.id} className="portal-pill">{project.name} ({project.code})</span>
+                        ))
+                      ) : (
+                        <span className="portal-pill">All assigned projects</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </section>
 
               <section className="portal-surface">
                 <div className="portal-surface__header">
                   <div>
-                    <span className="portal-surface__eyebrow">Projects</span>
-                    <h2 className="portal-surface__title">Project scope</h2>
-                    <p className="portal-surface__subtitle">
-                      Some templates are limited to specific onboarded projects and their allowed service catalogs.
-                    </p>
-                  </div>
-                </div>
-                <div className="portal-pill-row">
-                  {template.projects?.length ? (
-                    template.projects.map((project) => (
-                      <span key={project.id} className="portal-pill">{project.name} ({project.code})</span>
-                    ))
-                  ) : (
-                    <span className="portal-pill">All assigned projects</span>
-                  )}
-                </div>
-              </section>
-
-              <section className="portal-surface">
-                <div className="portal-surface__header">
-                  <div>
-                    <span className="portal-surface__eyebrow">Config</span>
+                    <span className="portal-surface__eyebrow">Payload</span>
                     <h2 className="portal-surface__title">Default request payload</h2>
                     <p className="portal-surface__subtitle">{configSummary}</p>
                   </div>
                 </div>
                 <pre className="portal-code-block">{formattedConfig}</pre>
               </section>
+            </div>
           </>
         ) : (
           <section className="portal-surface">

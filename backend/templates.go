@@ -2,10 +2,66 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 )
+
+type templateListDiagnostics struct {
+	Reason              string `json:"reason"`
+	PublishedCount      int    `json:"published_count"`
+	VisibleToAllCount   int    `json:"visible_to_all_count"`
+	MatchingTeamCount   int    `json:"matching_team_count"`
+	UserPortalTeamCount int    `json:"user_portal_team_count"`
+}
+
+func buildTemplateListDiagnostics(userID int) *templateListDiagnostics {
+	templates, err := ListRequestTemplates()
+	if err != nil {
+		log.Printf("warning: failed to build template diagnostics for user %d: %v", userID, err)
+		return nil
+	}
+
+	allowedTeams, err := getPortalTeamIDSetForUser(userID)
+	if err != nil {
+		log.Printf("warning: failed to resolve template team diagnostics for user %d: %v", userID, err)
+		allowedTeams = map[int]bool{}
+	}
+
+	diagnostics := &templateListDiagnostics{
+		UserPortalTeamCount: len(allowedTeams),
+	}
+
+	for _, template := range templates {
+		if normalizeTemplateGovernanceStatus(template.Status) != "published" {
+			continue
+		}
+		diagnostics.PublishedCount++
+		if len(template.Teams) == 0 {
+			diagnostics.VisibleToAllCount++
+			continue
+		}
+		if templateAccessibleToPortalTeams(template.Teams, allowedTeams) {
+			diagnostics.MatchingTeamCount++
+		}
+	}
+
+	switch {
+	case diagnostics.PublishedCount == 0:
+		diagnostics.Reason = "no_published_templates"
+	case diagnostics.VisibleToAllCount > 0:
+		diagnostics.Reason = "visible_templates_available"
+	case diagnostics.UserPortalTeamCount == 0:
+		diagnostics.Reason = "no_portal_team_membership"
+	case diagnostics.MatchingTeamCount == 0:
+		diagnostics.Reason = "no_team_assigned_templates"
+	default:
+		diagnostics.Reason = "no_visible_templates"
+	}
+
+	return diagnostics
+}
 
 // templatesListHandler GET /api/templates - list admin-defined templates (auth required)
 func templatesListHandler(w http.ResponseWriter, r *http.Request) {
@@ -24,7 +80,7 @@ func templatesListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if DB == nil {
 		w.Header().Set("Content-Type", "application/json")
-		encodeJSON(w, map[string]interface{}{"templates": []interface{}{}, "status": "ok"})
+		encodeJSON(w, map[string]interface{}{"templates": []interface{}{}, "diagnostics": &templateListDiagnostics{Reason: "database_unavailable"}, "status": "ok"})
 		return
 	}
 	list, err := ListRequestTemplatesForUser(userID)
@@ -32,8 +88,9 @@ func templatesListHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to list templates", nil)
 		return
 	}
+	diagnostics := buildTemplateListDiagnostics(userID)
 	w.Header().Set("Content-Type", "application/json")
-	encodeJSON(w, map[string]interface{}{"templates": list, "status": "ok"})
+	encodeJSON(w, map[string]interface{}{"templates": list, "diagnostics": diagnostics, "status": "ok"})
 }
 
 // templatesDetailHandler GET /api/templates/:id - get one template (auth required)
