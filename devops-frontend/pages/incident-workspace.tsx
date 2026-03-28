@@ -328,25 +328,25 @@ export default function IncidentWorkspacePage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Incident Workspace - DevOps Portal</title>
+        <title>Incident Review - DevOps Portal</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
             <span className="portal-page__eyebrow">Incident Response</span>
-            <h1 className="portal-page__title">Incident Timeline and Postmortem Workspace</h1>
+            <h1 className="portal-page__title">Incident Review</h1>
             <p className="portal-page__subtitle">
-              Review incident history, delivery events, gate approvals, and rollback actions in one place, then capture postmortem notes that stay tied to the release record.
+              Review the incident history, linked delivery events, approvals, and rollback activity in one place, then save the follow-up notes with the same record.
             </p>
           </div>
           <div className="portal-page__actions">
-            <Link href="/incidents" className="btn btn-secondary">Incident Panel</Link>
+            <Link href="/incidents" className="btn btn-secondary">Incidents</Link>
             <Link href="/promotions" className="btn btn-secondary">Promotion Center</Link>
             <Link href="/rollback-console" className="btn btn-primary">Rollback Console</Link>
           </div>
         </div>
 
-        {loading ? <div className="portal-surface"><div className="empty-state">Loading incident workspace...</div></div> : null}
+        {loading ? <div className="portal-surface"><div className="empty-state">Loading incident review...</div></div> : null}
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
 
@@ -357,8 +357,8 @@ export default function IncidentWorkspacePage() {
                 <div className="portal-pill-row">
                   <span className="portal-pill">Open incidents {summary.open_incidents}</span>
                   <span className="portal-pill">Critical {summary.critical_incidents}</span>
-                  <span className="portal-pill">Postmortem drafts {summary.postmortem_drafts}</span>
-                  <span className="portal-pill">Completed postmortems {summary.completed_postmortems}</span>
+                  <span className="portal-pill">Draft follow-ups {summary.postmortem_drafts}</span>
+                  <span className="portal-pill">Completed follow-ups {summary.completed_postmortems}</span>
                 </div>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters((current) => !current)}>
                   {showFilters ? 'Hide scope' : 'Show scope'}
@@ -368,7 +368,7 @@ export default function IncidentWorkspacePage() {
 
             {hasActiveScope ? (
               <div className="alert alert-info" style={{ marginBottom: 24 }}>
-                Viewing a focused incident workspace slice.
+                You are viewing a filtered incident list.
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
@@ -389,8 +389,8 @@ export default function IncidentWorkspacePage() {
               <div className="portal-surface__header">
                 <div>
                   <span className="portal-surface__eyebrow">Scope</span>
-                  <h2 className="portal-surface__title">Filter the workspace</h2>
-                  <p className="portal-surface__subtitle">Narrow the workspace to a project, incident, or incident status when you need focus.</p>
+                  <h2 className="portal-surface__title">Filter incidents</h2>
+                  <p className="portal-surface__subtitle">Limit the view to a project, one incident, or a status when you need to focus.</p>
                 </div>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters(false)}>
                   Close
@@ -440,7 +440,7 @@ export default function IncidentWorkspacePage() {
                 <div className="portal-surface__header">
                   <div>
                     <span className="portal-surface__eyebrow">Incident list</span>
-                    <h2 className="portal-surface__title">Active workspace items</h2>
+                    <h2 className="portal-surface__title">Matching incidents</h2>
                   </div>
                 </div>
                 <div style={{ display: 'grid', gap: 12 }}>
@@ -465,7 +465,7 @@ export default function IncidentWorkspacePage() {
                           <span className="portal-pill">{incident.severity.toUpperCase()} · {incident.status}</span>
                         </div>
                         <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
-                          {incident.project_name ? `${incident.project_name} (${incident.project_code})` : 'No project'} · {incident.request_env}/{incident.request_service}
+                          {incident.project_name ? `${incident.project_name} (${incident.project_code})` : 'No project'} · {incident.request_env || 'No environment'} · {incident.request_service ? `Target: ${incident.request_service}` : 'No target'}
                         </div>
                         <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 6 }}>
                           Owner: {incident.owner_username || 'Unassigned'} · Updated {formatDateTime(incident.updated_at)}
@@ -482,7 +482,7 @@ export default function IncidentWorkspacePage() {
                     <span className="portal-surface__eyebrow">Focused incident</span>
                     <h2 className="portal-surface__title">{detail?.incident?.summary || 'Select an incident'}</h2>
                     <p className="portal-surface__subtitle">
-                      {getIncidentReference(detail?.incident)} · {detail?.incident?.project_name ? `${detail.incident.project_name} (${detail.incident.project_code})` : 'No project'}{detail?.incident?.request_service ? ` · ${detail.incident.request_service}` : ''}
+                      {getIncidentReference(detail?.incident)} · {detail?.incident?.project_name ? `${detail.incident.project_name} (${detail.incident.project_code})` : 'No project'}{detail?.incident?.request_service ? ` · Target: ${detail.incident.request_service}` : ''}
                     </p>
                   </div>
                 </div>
@@ -498,10 +498,10 @@ export default function IncidentWorkspacePage() {
 
                     <div className="portal-grid" style={{ alignItems: 'start' }}>
                       <div className="portal-surface" style={{ padding: 16 }}>
-                        <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Timeline</h3>
+                        <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Incident history</h3>
                         <div style={{ display: 'grid', gap: 12 }}>
                           {detail.timeline.length === 0 ? (
-                            <div className="empty-state" style={{ padding: 0 }}>No incident timeline events yet.</div>
+                            <div className="empty-state" style={{ padding: 0 }}>No updates recorded yet.</div>
                           ) : (
                             detail.timeline.map((event) => (
                               <article key={event.key} style={{ borderLeft: '2px solid var(--color-border)', paddingLeft: 12 }}>
@@ -520,7 +520,7 @@ export default function IncidentWorkspacePage() {
                       </div>
 
                       <div className="portal-surface" style={{ padding: 16 }}>
-                        <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Postmortem workspace</h3>
+                        <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Post-incident notes</h3>
                         <div style={{ display: 'grid', gap: 12 }}>
                           <div>
                             <label className="credential-audit-label" htmlFor="postmortem-status">Status</label>
@@ -531,23 +531,23 @@ export default function IncidentWorkspacePage() {
                             </select>
                           </div>
                           <div>
-                            <label className="credential-audit-label" htmlFor="postmortem-impact">Impact summary</label>
+                            <label className="credential-audit-label" htmlFor="postmortem-impact">Impact</label>
                             <textarea id="postmortem-impact" className="input" rows={3} value={form.impact_summary} onChange={(event) => setForm((current) => ({ ...current, impact_summary: event.target.value }))} />
                           </div>
                           <div>
-                            <label className="credential-audit-label" htmlFor="postmortem-root-cause">Root cause</label>
+                            <label className="credential-audit-label" htmlFor="postmortem-root-cause">Why it happened</label>
                             <textarea id="postmortem-root-cause" className="input" rows={3} value={form.root_cause} onChange={(event) => setForm((current) => ({ ...current, root_cause: event.target.value }))} />
                           </div>
                           <div>
-                            <label className="credential-audit-label" htmlFor="postmortem-detection">Detection summary</label>
+                            <label className="credential-audit-label" htmlFor="postmortem-detection">How it was detected</label>
                             <textarea id="postmortem-detection" className="input" rows={3} value={form.detection_summary} onChange={(event) => setForm((current) => ({ ...current, detection_summary: event.target.value }))} />
                           </div>
                           <div>
-                            <label className="credential-audit-label" htmlFor="postmortem-mitigation">Mitigation summary</label>
+                            <label className="credential-audit-label" htmlFor="postmortem-mitigation">What we did</label>
                             <textarea id="postmortem-mitigation" className="input" rows={3} value={form.mitigation_summary} onChange={(event) => setForm((current) => ({ ...current, mitigation_summary: event.target.value }))} />
                           </div>
                           <div>
-                            <label className="credential-audit-label" htmlFor="postmortem-actions">Corrective actions</label>
+                            <label className="credential-audit-label" htmlFor="postmortem-actions">Follow-up actions</label>
                             <textarea id="postmortem-actions" className="input" rows={4} value={form.corrective_actions} onChange={(event) => setForm((current) => ({ ...current, corrective_actions: event.target.value }))} />
                           </div>
                           <div>
@@ -567,7 +567,7 @@ export default function IncidentWorkspacePage() {
                           </div>
                           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                             <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void savePostmortem()}>
-                              {saving ? 'Saving...' : 'Save postmortem'}
+                              {saving ? 'Saving...' : 'Save notes'}
                             </button>
                             {detail.postmortem?.updated_at ? (
                               <span style={{ color: 'var(--color-text-muted)', fontSize: 12, alignSelf: 'center' }}>
@@ -581,7 +581,7 @@ export default function IncidentWorkspacePage() {
 
                     <div className="portal-grid" style={{ alignItems: 'start' }}>
                       <div className="portal-surface" style={{ padding: 16 }}>
-                        <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Runbooks</h3>
+                        <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Helpful runbooks</h3>
                         {detail.runbooks.length === 0 ? (
                           <div className="empty-state" style={{ padding: 0 }}>No runbooks linked to this project yet.</div>
                         ) : (
@@ -604,10 +604,10 @@ export default function IncidentWorkspacePage() {
                       </div>
 
                       <div className="portal-surface" style={{ padding: 16 }}>
-                        <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Gate and rollback activity</h3>
+                        <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Approvals and recovery</h3>
                         <div style={{ display: 'grid', gap: 12 }}>
                           <div>
-                            <strong style={{ display: 'block', marginBottom: 8 }}>Gate approvals</strong>
+                            <strong style={{ display: 'block', marginBottom: 8 }}>Approval records</strong>
                             {detail.gate_approvals.length === 0 ? (
                               <div className="empty-state" style={{ padding: 0 }}>No gate approvals linked to this incident.</div>
                             ) : (
@@ -626,9 +626,9 @@ export default function IncidentWorkspacePage() {
                             )}
                           </div>
                           <div>
-                            <strong style={{ display: 'block', marginBottom: 8 }}>Rollback operations</strong>
+                            <strong style={{ display: 'block', marginBottom: 8 }}>Rollback history</strong>
                             {detail.rollback_operations.length === 0 ? (
-                              <div className="empty-state" style={{ padding: 0 }}>No rollback operations recorded for this request.</div>
+                              <div className="empty-state" style={{ padding: 0 }}>No rollback activity recorded for the linked request.</div>
                             ) : (
                               detail.rollback_operations.map((operation) => (
                                 <article key={operation.id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12, marginBottom: 10 }}>
@@ -647,7 +647,7 @@ export default function IncidentWorkspacePage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="empty-state">Select an incident to open the timeline and postmortem workspace.</div>
+                  <div className="empty-state">Select an incident to review its history and follow-up notes.</div>
                 )}
               </section>
             </div>

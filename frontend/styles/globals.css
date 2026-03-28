@@ -5571,3 +5571,225 @@ body {
 .launchpad-hero::before {
   opacity: 0.4;
 }
+
+.request-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.request-builder__header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.request-builder__back {
+  align-self: flex-start;
+}
+
+.request-builder__title {
+  margin: 0;
+  font-size: clamp(28px, 3vw, 38px);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+  color: #f8fafc;
+}
+
+.request-builder__subtitle {
+  margin: 0;
+  max-width: 760px;
+  color: #94a3b8;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.request-builder__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 20px;
+  align-items: start;
+}
+
+.request-builder__main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.request-builder__section {
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  box-shadow: 0 20px 40px rgba(2, 6, 23, 0.16);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  padding: 22px;
+}
+
+.request-builder__section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.request-builder__section-header h2 {
+  margin: 0;
+  font-size: 19px;
+  color: #f8fafc;
+}
+
+.request-builder__section-header p {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.request-builder__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 20px;
+}
+
+.request-builder__note {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.request-builder__inline-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--primary-color);
+  cursor: pointer;
+  font-size: 14px;
+  text-decoration: underline;
+}
+
+.request-builder__status {
+  margin: 0;
+}
+
+.request-builder__actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.request-builder__actions .btn {
+  flex: 1;
+  min-width: 180px;
+}
+
+.request-builder__side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 108px;
+}
+
+.request-builder__summary {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 18px 32px rgba(2, 6, 23, 0.14);
+}
+
+.request-builder__summary h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  color: #f8fafc;
+}
+
+.request-builder__summary p {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.request-builder__summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.request-builder__summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.28);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.request-builder__summary-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.request-builder__summary-value {
+  font-size: 14px;
+  color: #e2e8f0;
+  line-height: 1.5;
+}
+
+.request-builder__summary-list--plain .request-builder__summary-item {
+  background: transparent;
+  padding: 0;
+  border: 0;
+}
+
+.request-builder__summary-list--plain .request-builder__summary-value {
+  color: #94a3b8;
+}
+
+.request-builder__example {
+  margin-top: 0;
+}
+
+.request-builder__example pre {
+  margin: 12px 0 0;
+  padding: 14px;
+  background: rgba(2, 6, 23, 0.34);
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  overflow: auto;
+  font-size: 12px;
+}
+
+@media (max-width: 1120px) {
+  .request-builder__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .request-builder__side {
+    position: static;
+    order: -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .request-builder__section {
+    padding: 18px;
+  }
+
+  .request-builder__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .request-builder__actions .btn {
+    min-width: 100%;
+  }
+}

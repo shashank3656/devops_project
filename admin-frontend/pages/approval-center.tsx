@@ -19,9 +19,20 @@ interface ApprovalRequest {
   env: string;
   cloud: string;
   service: string;
+  config?: string;
   status: string;
   created_at: string;
   created_by_username?: string;
+}
+
+function isAccessRequest(request: ApprovalRequest | null | undefined): boolean {
+  if (!request?.config) return false;
+  try {
+    const parsed = JSON.parse(request.config) as { request_type?: unknown };
+    return typeof parsed.request_type === 'string' && parsed.request_type.trim().toLowerCase() === 'iam';
+  } catch {
+    return false;
+  }
 }
 
 function formatStatus(status: string): string {
@@ -101,7 +112,7 @@ export default function AdminApprovalCenter() {
               <span className="portal-page__eyebrow">Approval Center</span>
               <h1 className="portal-page__title">Approval Center</h1>
               <p className="portal-page__subtitle">
-                Review every request that is waiting on manager, DevOps, or final approval with project context first.
+                Review every request that is waiting on manager, DevOps, or final approval with clear project context first.
               </p>
             </div>
           </header>
@@ -176,7 +187,7 @@ export default function AdminApprovalCenter() {
                       <th>Project</th>
                       <th>Team</th>
                       <th>Env</th>
-                      <th>Cloud / Service</th>
+                      <th>Cloud / Target</th>
                       <th>Stage</th>
                       <th>Requester</th>
                       <th>Created</th>
@@ -201,7 +212,12 @@ export default function AdminApprovalCenter() {
                           </td>
                           <td>{request.team}</td>
                           <td>{request.env}</td>
-                          <td>{request.cloud} / {request.service}</td>
+                          <td>
+                            <div>{request.cloud} / {request.service}</div>
+                            {isAccessRequest(request) ? (
+                              <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Access request</div>
+                            ) : null}
+                          </td>
                           <td>{formatStatus(request.status)}</td>
                           <td>{request.created_by_username || '-'}</td>
                           <td>{new Date(request.created_at).toLocaleString()}</td>

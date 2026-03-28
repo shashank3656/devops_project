@@ -85,6 +85,7 @@ interface TicketRow {
   created_at: string;
   updated_at: string;
   created_by_username?: string;
+  config?: string;
 }
 
 interface BlockedByItem {
@@ -183,6 +184,16 @@ function getPreviewSignalClass(severity?: string): string {
   }
 }
 
+function isAccessRequest(request: Pick<TicketRow, 'config'> | null | undefined): boolean {
+  if (!request?.config) return false;
+  try {
+    const parsed = JSON.parse(request.config) as { request_type?: unknown };
+    return typeof parsed.request_type === 'string' && parsed.request_type.trim().toLowerCase() === 'iam';
+  } catch {
+    return false;
+  }
+}
+
 export default function DevOpsTickets() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -215,6 +226,7 @@ export default function DevOpsTickets() {
   const [rejectReason, setRejectReason] = useState('');
   const [actioning, setActioning] = useState<'approve' | 'reject' | null>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const detailRequestIsAccess = isAccessRequest(detailRequest);
   const limit = 20;
 
   const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
@@ -276,7 +288,7 @@ export default function DevOpsTickets() {
 
       if (!detailRes.ok) {
         const data = asRecord(await detailRes.json().catch(() => ({})));
-        throw new Error(getString(data.error, 'Failed to load ticket'));
+        throw new Error(getString(data.error, 'Failed to load request'));
       }
 
       const detailData = asRecord(await detailRes.json());
@@ -301,7 +313,7 @@ export default function DevOpsTickets() {
         workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 0);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load ticket';
+      const message = error instanceof Error ? error.message : 'Failed to load request';
       setDetailError(message);
       setDetailRequest(null);
       setDetailComments([]);
@@ -449,13 +461,13 @@ export default function DevOpsTickets() {
   return (
     <>
       <Head>
-        <title>Tickets - SetuOps DevOps</title>
+        <title>Requests - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="devops-tickets-page">
           <div className="devops-tickets-header">
             <div>
-              <h1 className="devops-tickets-title">Tickets</h1>
+              <h1 className="devops-tickets-title">Requests</h1>
               {recentIds.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Recent:</span>
@@ -466,7 +478,7 @@ export default function DevOpsTickets() {
                       className="btn btn-secondary"
                       style={{ padding: '6px 12px', fontSize: 13 }}
                       onClick={() => goToRecent(id)}
-                      title={`Open ticket #${id}`}
+                      title={`Open request #${id}`}
                     >
                       #{id}
                     </button>
@@ -474,7 +486,7 @@ export default function DevOpsTickets() {
                 </div>
               )}
               <p className="devops-tickets-subtitle">
-                Search by ticket, team, cloud, status, or requester. Click a row to open the approval workspace, review context, comment, and decide.
+                Search by request number, team, cloud, status, or requester. Click a row to open the review workspace, check the context, comment, and decide.
               </p>
             </div>
           </div>
@@ -493,7 +505,7 @@ export default function DevOpsTickets() {
             {filterExpanded && (
               <div className="devops-tickets-filter-grid">
                 <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Ticket #</label>
+                  <label className="devops-tickets-filter-label">Request #</label>
                   <input
                     type="text"
                     placeholder="e.g. 123"
@@ -592,19 +604,19 @@ export default function DevOpsTickets() {
           {loading ? (
             <div className="devops-tickets-loading">
               <div className="devops-tickets-spinner" />
-              <p>Loading tickets...</p>
+              <p>Loading requests...</p>
             </div>
           ) : (
             <>
               <div className="devops-tickets-summary">
-                <span>Showing {requests.length} of {total} tickets</span>
+                <span>Showing {requests.length} of {total} requests</span>
                 <span>Open a row to work the request without leaving this page.</span>
               </div>
               <div className="devops-tickets-table-card card">
                 {requests.length === 0 ? (
                   <div className="devops-tickets-empty">
                     <div className="devops-tickets-empty__icon">[]</div>
-                    <p>No tickets match your filters.</p>
+                    <p>No requests match your filters.</p>
                     <button type="button" className="btn btn-secondary" onClick={clearFilters}>
                       Clear filters
                     </button>
@@ -614,12 +626,12 @@ export default function DevOpsTickets() {
                     <table className="devops-tickets-table">
                       <thead>
                         <tr>
-                          <th>ID</th>
+                          <th>Request #</th>
                           <th>Project</th>
                           <th>Team</th>
                           <th>Env</th>
                           <th>Cloud</th>
-                          <th>Service</th>
+                          <th>Service / target</th>
                           <th>Requester</th>
                           <th>Priority</th>
                           <th>Due</th>
@@ -650,7 +662,12 @@ export default function DevOpsTickets() {
                             <td>{req.team}</td>
                             <td><span className="devops-ticket-env">{req.env}</span></td>
                             <td><span className={`devops-ticket-cloud devops-ticket-cloud--${(req.cloud || '').toLowerCase()}`}>{req.cloud}</span></td>
-                            <td>{req.service}</td>
+                            <td>
+                              <div>{req.service}</div>
+                              {isAccessRequest(req) ? (
+                                <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Access request</div>
+                              ) : null}
+                            </td>
                             <td>{req.created_by_username || 'Not available'}</td>
                             <td><span className={`devops-ticket-priority devops-ticket-priority--${(req.priority || 'medium').toLowerCase()}`}>{req.priority || 'medium'}</span></td>
                             <td>
@@ -704,10 +721,10 @@ export default function DevOpsTickets() {
                 <div>
                   <span className="portal-surface__eyebrow">Approval Workspace</span>
                   <h2 className="portal-surface__title">
-                    {detailRequest ? `Ticket #${detailRequest.id}` : 'Loading ticket'}
+                    {detailRequest ? (detailRequestIsAccess ? `Access request #${detailRequest.id}` : `Request #${detailRequest.id}`) : 'Loading request'}
                   </h2>
                   <p className="portal-surface__subtitle">
-                    Review request context, dependency pressure, comments, and timeline without leaving the tickets queue.
+                    Review request context, dependency pressure, comments, and timeline without leaving the requests queue.
                   </p>
                 </div>
                 <div className="portal-page__actions">
@@ -758,7 +775,7 @@ export default function DevOpsTickets() {
                             <strong>{detailRequest.cloud}</strong>
                           </div>
                           <div className="devops-approval-workspace__meta-item">
-                            <span className="devops-approval-workspace__meta-label">Service</span>
+                            <span className="devops-approval-workspace__meta-label">{detailRequestIsAccess ? 'Target' : 'Service'}</span>
                             <strong>{detailRequest.service}</strong>
                           </div>
                           <div className="devops-approval-workspace__meta-item">
@@ -925,7 +942,7 @@ export default function DevOpsTickets() {
                         )}
 
                         <details className="devops-approval-workspace__details" open>
-                          <summary>Request configuration</summary>
+                          <summary>{detailRequestIsAccess ? 'Access request details' : 'Request details'}</summary>
                           <pre className="devops-approval-workspace__code">{detailRequest.config || '{}'}</pre>
                         </details>
 

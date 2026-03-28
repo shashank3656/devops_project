@@ -92,10 +92,10 @@ export default function DevOpsApprovalCenter() {
         <div className="portal-page">
           <header className="portal-page__header">
             <div className="portal-page__header-main">
-              <span className="portal-page__eyebrow">Approval Center</span>
-              <h1 className="portal-page__title">Approval Center</h1>
+              <span className="portal-page__eyebrow">Review Queue</span>
+              <h1 className="portal-page__title">Requests waiting for review</h1>
               <p className="portal-page__subtitle">
-                Review every request that is currently waiting on the DevOps gate with project context before opening the full ticket workspace.
+                Open requests that are waiting for platform review and check the project before you act.
               </p>
             </div>
             <div className="portal-page__actions">
@@ -107,7 +107,7 @@ export default function DevOpsApprovalCenter() {
                     setProjectId('');
                   }}
                 >
-                  Clear scope
+                  Clear project
                 </button>
               ) : null}
             </div>
@@ -146,7 +146,7 @@ export default function DevOpsApprovalCenter() {
             <div className="alert alert-info">
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span>
-                  Showing approvals for{' '}
+                  Showing requests for{' '}
                   <strong>
                     {selectedProject ? `${selectedProject.name}${selectedProject.code ? ` (${selectedProject.code})` : ''}` : `project #${projectId}`}
                   </strong>.
@@ -168,22 +168,22 @@ export default function DevOpsApprovalCenter() {
             <div className="portal-surface__header">
               <div>
                 <span className="portal-surface__eyebrow">Queue</span>
-                <h2 className="portal-surface__title">Requests waiting on DevOps</h2>
+                <h2 className="portal-surface__title">Requests waiting for platform review</h2>
                 <p className="portal-surface__subtitle">
-                  Open the full ticket workspace directly from here{selectedProject ? `, scoped to ${selectedProject.name}` : ''}.
+                  Open request details from here{selectedProject ? `, filtered to ${selectedProject.name}` : ''}.
                 </p>
               </div>
             </div>
             {loading ? (
-              <div className="portal-empty"><p>Loading approval queue...</p></div>
+              <div className="portal-empty"><p>Loading requests...</p></div>
             ) : requests.length === 0 ? (
-              <div className="portal-empty"><p>No DevOps approvals in this scope.</p></div>
+              <div className="portal-empty"><p>No requests are waiting in this view.</p></div>
             ) : (
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th>ID</th>
+                      <th>Request #</th>
                       <th>Project</th>
                       <th>Team</th>
                       <th>Env</th>
@@ -207,7 +207,7 @@ export default function DevOpsApprovalCenter() {
                                 {request.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{request.project_code}</div> : null}
                               </div>
                             ) : (
-                              'Unscoped'
+                              'No project'
                             )}
                           </td>
                           <td>{request.team}</td>
@@ -218,7 +218,7 @@ export default function DevOpsApprovalCenter() {
                           <td>{request.due_status ? (request.due_status === 'overdue' ? 'Overdue' : 'Due soon') : 'On track'}</td>
                           <td>
                             <Link href={href} className="btn btn-secondary btn-sm">
-                              Open
+                              View details
                             </Link>
                           </td>
                         </tr>

@@ -58,28 +58,28 @@ function getProfileInitials(): string {
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Overview',
   '/approval-center': 'Approvals',
-  '/approval-sla': 'Approval SLA',
-  '/project-operations': 'Project Operations',
-  '/service-heatmap': 'Service Heatmap',
+  '/approval-sla': 'Approval Timing',
+  '/project-operations': 'Project Work',
+  '/service-heatmap': 'Service Health',
   '/ops-command-center': 'Operations',
-  '/k8s': 'Kubernetes',
-  '/runbooks': 'Runbooks',
+  '/k8s': 'Clusters',
+  '/runbooks': 'Guides',
   '/incidents': 'Incidents',
-  '/incident-workspace': 'Incident Workspace',
-  '/access-overrides': 'Access Overrides',
+  '/incident-workspace': 'Incident Notes',
+  '/access-overrides': 'Access Exceptions',
   '/promotions': 'Promotions',
-  '/rollback-console': 'Rollbacks',
-  '/gate-approvals': 'Gate Audit',
-  '/gate-policies': 'Gate Policies',
-  '/notification-settings': 'Notification Settings',
+  '/rollback-console': 'Rollback',
+  '/gate-approvals': 'Approval History',
+  '/gate-policies': 'Approval Rules',
+  '/notification-settings': 'Alert Settings',
   '/approval-notification-analytics': 'Analytics',
-  '/retry-center': 'Retry Center',
+  '/retry-center': 'Delivery Retries',
   '/workload': 'Workload',
   '/tickets': 'Requests',
-  '/templates': 'Templates',
+  '/templates': 'Request Templates',
   '/projects': 'Projects',
-  '/team': 'Teams',
-  '/credential-audit': 'Secrets & Certificates',
+  '/team': 'Team',
+  '/credential-audit': 'Secrets',
   '/profile': 'Profile',
 };
 
@@ -347,12 +347,12 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     router.replace('/login');
   };
 
-  const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
+const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
     { href: '/dashboard', label: 'Overview', Icon: IconTickets },
     { href: '/tickets', label: 'Requests', Icon: IconTickets },
-    { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
-    { href: '/templates', label: 'Templates', Icon: IconTemplates },
-    { href: '/credential-audit', label: 'Secrets & Certs', Icon: IconShield },
+    { href: '/k8s', label: 'Clusters', Icon: IconK8s },
+    { href: '/templates', label: 'Request Templates', Icon: IconTemplates },
+    { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
   ];
   if (isManager) {
     primaryNavItems.splice(1, 0, { href: '/approval-center', label: 'Approvals', Icon: IconShield });
@@ -364,15 +364,15 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
 
   const advancedNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = isManager
     ? [
-        { href: '/approval-sla', label: 'Approval SLA', Icon: IconShield },
+        { href: '/approval-sla', label: 'Approval Timing', Icon: IconShield },
         { href: '/ops-command-center', label: 'Operations', Icon: IconAlertTriangle },
-        { href: '/runbooks', label: 'Runbooks', Icon: IconBookOpen },
-        { href: '/access-overrides', label: 'Access Overrides', Icon: IconKey },
-        { href: '/rollback-console', label: 'Rollbacks', Icon: IconRefreshCw },
-        { href: '/gate-approvals', label: 'Gate Audit', Icon: IconShield },
-        { href: '/gate-policies', label: 'Gate Policies', Icon: IconShield },
-        { href: '/notification-settings', label: 'Notification Settings', Icon: IconBell },
-        { href: '/retry-center', label: 'Retry Center', Icon: IconRefreshCw },
+        { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
+        { href: '/access-overrides', label: 'Access Exceptions', Icon: IconKey },
+        { href: '/rollback-console', label: 'Rollback', Icon: IconRefreshCw },
+        { href: '/gate-approvals', label: 'Approval History', Icon: IconShield },
+        { href: '/gate-policies', label: 'Approval Rules', Icon: IconShield },
+        { href: '/notification-settings', label: 'Alert Settings', Icon: IconBell },
+        { href: '/retry-center', label: 'Delivery Retries', Icon: IconRefreshCw },
       ]
     : [];
   const advancedNavActive = advancedNavItems.some(
@@ -426,7 +426,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           {!sidebarCollapsed && (
             <Link href="/dashboard" className="devops-sidebar-new__brand">
               <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">SetuOps</span>
-              <span className="devops-sidebar-new__brand-word">DevOps Portal</span>
+              <span className="devops-sidebar-new__brand-word">SetuOps</span>
             </Link>
           )}
         </div>
@@ -463,7 +463,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 {advancedNavOpen && (
                   <div className="devops-sidebar-new__section-body">
                     <p className="devops-sidebar-new__section-copy">
-                      Advanced operational views stay here so the main navigation stays focused.
+                      Extra tools stay here so the main menu stays simple.
                     </p>
                     {advancedNavItems.map(({ href, label, Icon }) => {
                       const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
@@ -553,7 +553,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               <IconMenu />
             </button>
             <div className="devops-navbar__title-wrap">
-              <span className="devops-navbar__kicker">DevOps Portal</span>
+              <span className="devops-navbar__kicker">SetuOps</span>
               <h1 className="devops-navbar__title">{pageTitle}</h1>
             </div>
             <span className={`devops-navbar__status-chip ${isManager && pendingCount > 0 ? 'devops-navbar__status-chip--alert' : ''}`}>
@@ -573,7 +573,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 }}
               >
                 <IconHelpCircle />
-                <span>Ask SetuOps</span>
+                <span>Help</span>
               </button>
               {user && <span className="devops-navbar__username">{user.username}</span>}
               <span className="devops-navbar__role">{roleLabel}</span>
