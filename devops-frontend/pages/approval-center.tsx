@@ -130,38 +130,41 @@ export default function DevOpsApprovalCenter() {
           </section>
 
           <section className="portal-surface portal-surface--tight devops-approval-filter-surface">
-            <div className="devops-approval-filter-bar">
-              <div className="devops-approval-filter-bar__copy">
-                <span className="portal-surface__eyebrow">Scope</span>
-                <h2 className="portal-surface__title">Filter the review queue</h2>
-                <p className="portal-surface__subtitle">Use project scope only when you want to focus on one project at a time.</p>
-              </div>
-              <div className="devops-approval-filter-bar__controls">
-                {activeFilterCount > 0 ? <span className="devops-approval-filter-bar__badge">{activeFilterCount} active</span> : null}
-                <select
-                  id="approval-center-project-filter"
-                  className="input devops-approval-filter-bar__select"
-                  value={projectId}
-                  onChange={(event) => setProjectId(event.target.value)}
-                >
-                  <option value="">All projects</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}{project.code ? ` (${project.code})` : ''}
-                    </option>
-                  ))}
-                </select>
-                {projectId ? (
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => {
-                      setProjectId('');
-                    }}
+            <div className="devops-filter-ribbon devops-filter-ribbon--compact">
+              <div className="devops-filter-ribbon__bar">
+                <label className="devops-filter-ribbon__pill">
+                  <span className="devops-filter-ribbon__key">Project</span>
+                  <select
+                    id="approval-center-project-filter"
+                    className="devops-filter-ribbon__control"
+                    value={projectId}
+                    onChange={(event) => setProjectId(event.target.value)}
                   >
-                    Clear
-                  </button>
-                ) : null}
+                    <option value="">All projects</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}{project.code ? ` (${project.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="devops-filter-ribbon__actions">
+                  {activeFilterCount > 0 ? <span className="devops-filter-ribbon__badge">{activeFilterCount} active</span> : null}
+                  {projectId ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        setProjectId('');
+                      }}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="devops-filter-ribbon__footer">
+                <span className="devops-filter-ribbon__hint">Use project scope only when you want to focus on one project at a time.</span>
               </div>
             </div>
           </section>

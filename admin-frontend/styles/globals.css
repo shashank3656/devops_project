@@ -2731,6 +2731,10 @@ tbody tr:hover {
   color: var(--color-text);
 }
 
+.table-scroll {
+  overflow-x: auto;
+}
+
 .portal-template-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2770,6 +2774,53 @@ tbody tr:hover {
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 16px;
+}
+
+.template-tree-table .template-tree__row--cloud td {
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.template-tree-table .template-tree__row--service td {
+  background: rgba(15, 23, 42, 0.2);
+}
+
+.template-tree__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.template-tree__toggle--nested {
+  padding-left: 18px;
+}
+
+.template-tree__chevron {
+  width: 14px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.template-tree__label,
+.template-tree__template-name {
+  font-weight: 700;
+}
+
+.template-tree__meta {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.template-tree__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .access-review-toolbar {
@@ -5106,6 +5157,111 @@ body {
   text-transform: uppercase;
 }
 
+.admin-request-filter {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.34);
+}
+
+.admin-request-filter__bar {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.9fr) minmax(220px, 1fr) minmax(280px, 1.25fr) minmax(180px, 0.9fr) auto;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.admin-request-filter__pill {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.3);
+  min-width: 0;
+}
+
+.admin-request-filter__pill--search {
+  min-width: 0;
+}
+
+.admin-request-filter__key {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.admin-request-filter__control {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+
+.admin-request-filter__control::placeholder {
+  color: var(--color-text-muted);
+}
+
+.admin-request-filter__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-request-filter__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-request-filter__footer-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-request-filter__hint {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.admin-request-filter__panel {
+  padding-top: 14px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  display: grid;
+  gap: 10px;
+}
+
+.admin-request-filter__panel-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  align-items: center;
+}
+
+.admin-request-filter__panel-grid--short {
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 220px);
+}
+
 .filters-bar__quick {
   display: grid;
   grid-template-columns: minmax(180px, 0.9fr) minmax(220px, 1fr) minmax(260px, 1.2fr) minmax(180px, 0.85fr);
@@ -5348,6 +5504,22 @@ body {
 }
 
 @media (max-width: 1220px) {
+  .admin-request-filter__bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-request-filter__actions {
+    justify-content: flex-start;
+  }
+
+  .admin-request-filter__panel-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-request-filter__panel-grid--short {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .filters-bar__quick {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -5366,6 +5538,27 @@ body {
 }
 
 @media (max-width: 760px) {
+  .admin-request-filter {
+    padding: 14px;
+  }
+
+  .admin-request-filter__bar,
+  .admin-request-filter__panel-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-request-filter__footer,
+  .admin-request-filter__actions,
+  .template-tree__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .admin-request-filter__actions .btn,
+  .template-tree__actions .btn {
+    width: 100%;
+  }
+
   .filters-bar--requests {
     padding: 14px;
   }

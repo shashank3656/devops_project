@@ -138,27 +138,33 @@ export default function AdminApprovalCenter() {
           </section>
 
           <section className="portal-surface approval-filter-surface">
-            <div className="approval-filter-bar">
-              <div className="approval-filter-bar__copy">
-                <span className="portal-surface__eyebrow">Scope</span>
-                <h2 className="portal-surface__title">Filter the approval queue</h2>
-                <p className="portal-surface__subtitle">Use project scope only when you want to review one project at a time.</p>
+            <div className="admin-request-filter admin-request-filter--compact">
+              <div className="admin-request-filter__bar">
+                <label className="admin-request-filter__pill">
+                  <span className="admin-request-filter__key">Project</span>
+                  <select className="admin-request-filter__control" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                    <option value="">All projects</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}{project.code ? ` (${project.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="admin-request-filter__actions">
+                  {activeFilterCount > 0 ? <span className="filters-bar__badge">{activeFilterCount} active</span> : null}
+                  {projectId ? (
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setProjectId('')}>
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
               </div>
-              <div className="approval-filter-bar__controls">
-                {activeFilterCount > 0 ? <span className="approval-filter-bar__badge">{activeFilterCount} active</span> : null}
-                <select className="input approval-filter-bar__select" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                  <option value="">All projects</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}{project.code ? ` (${project.code})` : ''}
-                    </option>
-                  ))}
-                </select>
-                {projectId ? (
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setProjectId('')}>
-                    Clear
-                  </button>
-                ) : null}
+              <div className="admin-request-filter__footer">
+                <div className="admin-request-filter__footer-meta">
+                  <span className="admin-request-filter__hint">Use project scope only when you want to review one project at a time.</span>
+                </div>
               </div>
             </div>
           </section>

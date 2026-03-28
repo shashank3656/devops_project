@@ -803,43 +803,27 @@ export default function AdminRequests() {
             </div>
           )}
 
-          <form onSubmit={handleFilter} className="filters-bar filters-bar--requests">
-            <div className="filters-bar__header">
-              <div>
-                <strong className="filters-bar__title">Filter queue</strong>
-                <p className="filters-bar__summary">Start with team, project, search, or status. Open extra filters only when you need a narrower view.</p>
-              </div>
-              <div className="filters-bar__header-actions">
-                {activeFilterCount > 0 ? <span className="filters-bar__badge">{activeFilterCount} active</span> : null}
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setShowAdvancedFilters((current) => !current)}
-                >
-                  {showAdvancedFilters ? 'Hide extra filters' : 'More filters'}
-                </button>
-              </div>
-            </div>
-
-            <div className="filters-bar__quick">
-              <label className="filters-bar__field">
-                <span className="filters-bar__field-label">Team</span>
+          <form onSubmit={handleFilter} className="admin-request-filter">
+            <div className="admin-request-filter__bar">
+              <label className="admin-request-filter__pill">
+                <span className="admin-request-filter__key">Team</span>
                 <input
                   id="filter-team"
                   name="filter-team"
                   type="text"
-                  className="input"
-                  placeholder="Team name"
+                  className="admin-request-filter__control"
+                  placeholder="Any team"
                   value={team}
                   onChange={(e) => setTeam(e.target.value)}
                 />
               </label>
-              <label className="filters-bar__field">
-                <span className="filters-bar__field-label">Project</span>
+
+              <label className="admin-request-filter__pill">
+                <span className="admin-request-filter__key">Project</span>
                 <select
                   id="filter-project"
                   name="filter-project"
-                  className="input"
+                  className="admin-request-filter__control"
                   value={projectId}
                   onChange={(e) => setProjectId(e.target.value)}
                 >
@@ -849,24 +833,26 @@ export default function AdminRequests() {
                   ))}
                 </select>
               </label>
-              <label className="filters-bar__field filters-bar__field--search">
-                <span className="filters-bar__field-label">Search</span>
+
+              <label className="admin-request-filter__pill admin-request-filter__pill--search">
+                <span className="admin-request-filter__key">Search</span>
                 <input
                   id="filter-search"
                   name="filter-search"
                   type="text"
-                  className="input"
-                  placeholder="Requester, team, cloud, service"
+                  className="admin-request-filter__control"
+                  placeholder="Requester, team, cloud, or service"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </label>
-              <label className="filters-bar__field">
-                <span className="filters-bar__field-label">Status</span>
+
+              <label className="admin-request-filter__pill">
+                <span className="admin-request-filter__key">Status</span>
                 <select
                   id="filter-status"
                   name="filter-status"
-                  className="input"
+                  className="admin-request-filter__control"
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
                 >
@@ -880,17 +866,21 @@ export default function AdminRequests() {
                   <option value="rejected">Rejected</option>
                 </select>
               </label>
-            </div>
 
-            <div className="filters-bar__actions">
-              <span className="filters-bar__hint">Press Apply after changing filters.</span>
-              <div className="filters-bar__action-buttons">
-                <button type="submit" className="btn btn-primary">
+              <div className="admin-request-filter__actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowAdvancedFilters((current) => !current)}
+                >
+                  {showAdvancedFilters ? 'Less' : 'More'}
+                </button>
+                <button type="submit" className="btn btn-primary btn-sm">
                   Apply
                 </button>
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className="btn btn-secondary btn-sm"
                   onClick={handleClearFilters}
                 >
                   Clear
@@ -898,9 +888,19 @@ export default function AdminRequests() {
               </div>
             </div>
 
+            <div className="admin-request-filter__footer">
+              <div className="admin-request-filter__footer-meta">
+                {activeFilterCount > 0 ? (
+                  <span className="filters-bar__badge">{activeFilterCount} active</span>
+                ) : (
+                  <span className="admin-request-filter__hint">Start with one filter. Open more only if you need to narrow the queue.</span>
+                )}
+              </div>
+            </div>
+
             {showAdvancedFilters ? (
-              <div className="filters-bar__advanced">
-                <div className="filters-bar__advanced-row">
+              <div className="admin-request-filter__panel">
+                <div className="admin-request-filter__panel-grid">
                   <label className="filters-bar__field">
                     <span className="filters-bar__field-label">Environment</span>
                     <input
@@ -943,11 +943,11 @@ export default function AdminRequests() {
                   </label>
                   <label className="filters-bar__checkbox">
                     <input type="checkbox" id="filter-at-risk" name="filter-at-risk" checked={atRiskOnly} onChange={(e) => setAtRiskOnly(e.target.checked)} />
-                    <span>Show due soon or overdue only</span>
+                    <span>Due soon or overdue only</span>
                   </label>
                 </div>
 
-                <div className="filters-bar__advanced-row filters-bar__advanced-row--sort">
+                <div className="admin-request-filter__panel-grid admin-request-filter__panel-grid--short">
                   <label className="filters-bar__field">
                     <span className="filters-bar__field-label">Sort by</span>
                     <select id="filter-sort-by" name="filter-sort-by" className="input" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>

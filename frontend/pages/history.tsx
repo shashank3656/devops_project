@@ -897,21 +897,7 @@ export default function History() {
         </div>
 
         <div className="card history-filter-card">
-          <div className="history-filter-shell">
-            <div className="history-filter-shell__top">
-              <div className="history-filter-shell__heading">
-                <h3 className="history-filter-shell__title">Filter requests</h3>
-                <p className="history-filter-shell__subtitle">Use one or two filters first. Results update automatically as you type.</p>
-              </div>
-              <div className="history-filter-shell__status">
-                {activeFilterCount > 0 ? (
-                  <span className="history-filter-card__badge">{activeFilterCount} active</span>
-                ) : (
-                  <span className="history-filter-shell__hint">Showing your latest requests.</span>
-                )}
-              </div>
-            </div>
-
+          <div className="history-filter-shell history-filter-shell--compact">
             <div className="history-filter-bar" role="group" aria-label="Request filters">
               <label className="history-filter-pill history-filter-pill--type">
                 <span className="history-filter-pill__caption">Filter</span>
@@ -1001,13 +987,11 @@ export default function History() {
                   <option value="team">Team requests</option>
                 </select>
               </label>
-            </div>
 
-            <div className="history-filter-shell__footer">
-              <div className="history-filter-shell__footer-meta">
-                <span className="history-filter-shell__hint">Need date, sort, or saved views? Open more filters.</span>
-              </div>
-              <div className="history-filter-shell__footer-actions">
+              <div className="history-filter-bar__actions">
+                {activeFilterCount > 0 ? (
+                  <span className="history-filter-card__badge">{activeFilterCount} active</span>
+                ) : null}
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"

@@ -492,56 +492,63 @@ export default function DevOpsIncidentsPage() {
         </section>
 
         <section className="devops-incident-filter-surface">
-          <div className="devops-incident-filter-bar">
-            <div className="devops-incident-filter-bar__copy">
-              <span className="portal-surface__eyebrow">Queue filters</span>
-              <h2 className="portal-surface__title">Keep the incident queue focused</h2>
-              <p className="portal-surface__subtitle">
-                Filter by severity, response status, or environment. Open the editor only when you need to raise or update an incident.
-              </p>
+          <div className="devops-filter-ribbon devops-filter-ribbon--compact">
+            <div className="devops-filter-ribbon__bar">
+              <label className="devops-filter-ribbon__pill">
+                <span className="devops-filter-ribbon__key">Severity</span>
+                <select
+                  className="devops-filter-ribbon__control"
+                  value={activeSeverityFilter}
+                  onChange={(event) => updateQueueFilters({ severity: event.target.value })}
+                >
+                  <option value="">All severity</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </label>
+              <label className="devops-filter-ribbon__pill">
+                <span className="devops-filter-ribbon__key">Status</span>
+                <select
+                  className="devops-filter-ribbon__control"
+                  value={activeStatusFilter}
+                  onChange={(event) => updateQueueFilters({ status: event.target.value })}
+                >
+                  <option value="">All status</option>
+                  <option value="draft">Draft</option>
+                  <option value="open">Open</option>
+                  <option value="investigating">Investigating</option>
+                  <option value="mitigating">Mitigating</option>
+                  <option value="resolved">Resolved</option>
+                </select>
+              </label>
+              <label className="devops-filter-ribbon__pill">
+                <span className="devops-filter-ribbon__key">Environment</span>
+                <select
+                  className="devops-filter-ribbon__control"
+                  value={activeEnvironmentFilter}
+                  onChange={(event) => updateQueueFilters({ environment: event.target.value })}
+                >
+                  <option value="">All environments</option>
+                  {environmentOptions.map((environment) => (
+                    <option key={environment} value={environment}>
+                      {environment.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="devops-filter-ribbon__actions">
+                {activeFilterCount > 0 ? <span className="devops-filter-ribbon__badge">{activeFilterCount} active</span> : null}
+                {hasActiveFilters ? (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={clearQueueFilters}>
+                    Clear
+                  </button>
+                ) : null}
+              </div>
             </div>
-            <div className="devops-incident-filter-bar__controls">
-              {activeFilterCount > 0 ? <span className="devops-incident-filter-bar__badge">{activeFilterCount} active</span> : null}
-              <select
-                className="input devops-incident-filter-bar__select"
-                value={activeSeverityFilter}
-                onChange={(event) => updateQueueFilters({ severity: event.target.value })}
-              >
-                <option value="">All severity</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-              <select
-                className="input devops-incident-filter-bar__select"
-                value={activeStatusFilter}
-                onChange={(event) => updateQueueFilters({ status: event.target.value })}
-              >
-                <option value="">All status</option>
-                <option value="draft">Draft</option>
-                <option value="open">Open</option>
-                <option value="investigating">Investigating</option>
-                <option value="mitigating">Mitigating</option>
-                <option value="resolved">Resolved</option>
-              </select>
-              <select
-                className="input devops-incident-filter-bar__select"
-                value={activeEnvironmentFilter}
-                onChange={(event) => updateQueueFilters({ environment: event.target.value })}
-              >
-                <option value="">All environments</option>
-                {environmentOptions.map((environment) => (
-                  <option key={environment} value={environment}>
-                    {environment.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-              {hasActiveFilters ? (
-                <button type="button" className="btn btn-secondary btn-sm" onClick={clearQueueFilters}>
-                  Clear
-                </button>
-              ) : null}
+            <div className="devops-filter-ribbon__footer">
+              <span className="devops-filter-ribbon__hint">Filter by severity, response status, or environment. Open the editor only when you need to raise or update an incident.</span>
             </div>
           </div>
         </section>

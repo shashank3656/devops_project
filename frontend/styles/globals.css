@@ -6094,6 +6094,10 @@ body {
   gap: 12px;
 }
 
+.history-filter-shell--compact {
+  gap: 10px;
+}
+
 .history-filter-shell__top {
   display: flex;
   align-items: flex-start;
@@ -6130,9 +6134,17 @@ body {
 
 .history-filter-bar {
   display: grid;
-  grid-template-columns: minmax(150px, 180px) minmax(260px, 1.35fr) repeat(3, minmax(150px, 0.9fr));
+  grid-template-columns: minmax(150px, 180px) minmax(260px, 1.35fr) repeat(3, minmax(150px, 0.9fr)) auto;
   gap: 10px;
   align-items: stretch;
+}
+
+.history-filter-bar__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .history-filter-pill {
@@ -6534,6 +6546,10 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .history-filter-bar__actions {
+    justify-content: flex-start;
+  }
+
   .history-filter-panel__row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -6561,6 +6577,7 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .history-filter-bar__actions,
   .history-filter-shell__top,
   .history-filter-shell__footer,
   .history-filter-shell__footer-actions,
