@@ -150,7 +150,9 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 				writeAPIError(w, r, http.StatusInternalServerError, "failed to map template projects", err)
 				return
 			}
-			t, _ = GetRequestTemplateByID(t.ID)
+			if refreshed, err := GetRequestTemplateByID(t.ID); err == nil && refreshed != nil {
+				t = refreshed
+			}
 			AppendAuditLog(adminIDPtr, "template_create", "request_template", strconv.Itoa(t.ID), name)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
@@ -241,7 +243,10 @@ func adminTemplatesRouter(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		AppendAuditLog(adminIDPtr, "template_update", "request_template", strconv.Itoa(id), name)
-		updated, _ := GetRequestTemplateByID(id)
+		updated := t
+		if refreshed, err := GetRequestTemplateByID(id); err == nil && refreshed != nil {
+			updated = refreshed
+		}
 		encodeJSON(w, map[string]interface{}{"template": updated, "status": "ok"})
 		return
 	case "DELETE":

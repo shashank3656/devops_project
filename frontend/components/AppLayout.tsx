@@ -422,7 +422,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           {!sidebarCollapsed && (
             <Link href="/home" className="user-sidebar-shell__brand">
               <span className="user-sidebar-shell__brand-word user-sidebar-shell__brand-word--primary">SetuOps</span>
-              <span className="user-sidebar-shell__brand-word">SetuOps</span>
+              <span className="user-sidebar-shell__brand-word">User</span>
             </Link>
           )}
         </div>

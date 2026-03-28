@@ -426,7 +426,7 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
           {!sidebarCollapsed && (
             <Link href="/dashboard" className="devops-sidebar-new__brand">
               <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">SetuOps</span>
-              <span className="devops-sidebar-new__brand-word">SetuOps</span>
+              <span className="devops-sidebar-new__brand-word">DevOps</span>
             </Link>
           )}
         </div>

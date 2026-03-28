@@ -582,6 +582,19 @@ export default function DevOpsProjectsPage() {
   };
 
   const selectedOwnerTeamName = ownerTeams.find((team) => String(team.id) === form.owner_team_id)?.name || 'Not set';
+  const projectSummary = useMemo(() => {
+    const active = projects.filter((project) => project.status === 'active').length;
+    const ready = projects.filter((project) => project.ready_for_requests).length;
+    const onboarding = projects.filter((project) => (project.onboarding_stage || '').trim().toLowerCase() !== 'configured').length;
+    const mappedTeams = projects.reduce((count, project) => count + project.team_access.length, 0);
+    return {
+      total: projects.length,
+      active,
+      ready,
+      onboarding,
+      mappedTeams,
+    };
+  }, [projects]);
 
   return (
     <DevOpsLayout>
@@ -629,19 +642,28 @@ export default function DevOpsProjectsPage() {
           </div>
         </div>
 
-        {!activePanel && (
-          <section className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <span className="portal-surface__eyebrow">Project onboarding</span>
-                <h2 className="portal-surface__title">Start from the project list</h2>
-                <p className="portal-surface__subtitle">
-                  Use <strong>Onboard project</strong> only when you want to create or edit a project. Bulk import and team access updates are available on demand.
-                </p>
-              </div>
-            </div>
-          </section>
-        )}
+        <section className="devops-project-strip">
+          <div className="devops-project-pill">
+            <span className="devops-project-pill__label">Managed projects</span>
+            <strong className="devops-project-pill__value">{projectSummary.total}</strong>
+          </div>
+          <div className="devops-project-pill">
+            <span className="devops-project-pill__label">Active</span>
+            <strong className="devops-project-pill__value">{projectSummary.active}</strong>
+          </div>
+          <div className="devops-project-pill">
+            <span className="devops-project-pill__label">Ready for requests</span>
+            <strong className="devops-project-pill__value">{projectSummary.ready}</strong>
+          </div>
+          <div className="devops-project-pill">
+            <span className="devops-project-pill__label">Still onboarding</span>
+            <strong className="devops-project-pill__value">{projectSummary.onboarding}</strong>
+          </div>
+          <div className="devops-project-pill">
+            <span className="devops-project-pill__label">Team mappings</span>
+            <strong className="devops-project-pill__value">{projectSummary.mappedTeams}</strong>
+          </div>
+        </section>
 
         {activePanel === 'onboard' && (
           <section className="portal-surface">

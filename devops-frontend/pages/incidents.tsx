@@ -210,6 +210,23 @@ export default function DevOpsIncidentsPage() {
   const activeSeverityFilter = useMemo(() => normalizeQueryValue(router.query.severity), [router.query.severity]);
   const activeStatusFilter = useMemo(() => normalizeQueryValue(router.query.status), [router.query.status]);
   const activeEnvironmentFilter = useMemo(() => normalizeQueryValue(router.query.environment), [router.query.environment]);
+  const activeFilterCount = [
+    activeProjectID ? String(activeProjectID) : '',
+    activeRequestID ? String(activeRequestID) : '',
+    activeSeverityFilter,
+    activeStatusFilter,
+    activeEnvironmentFilter,
+  ].filter(Boolean).length;
+
+  const environmentOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        incidents
+          .map((incident) => incident.request_env?.trim().toLowerCase())
+          .filter((value): value is string => Boolean(value)),
+      ),
+    ).sort();
+  }, [incidents]);
 
   const filteredIncidents = useMemo(() => {
     return incidents.filter((incident) => {
@@ -225,6 +242,18 @@ export default function DevOpsIncidentsPage() {
   const hasActiveFilters = Boolean(
     activeProjectID || activeRequestID || activeSeverityFilter || activeStatusFilter || activeEnvironmentFilter,
   );
+
+  const visibleIncidentSummary = useMemo(() => {
+    const active = filteredIncidents.filter((incident) => ['open', 'investigating', 'mitigating'].includes(incident.status)).length;
+    const urgent = filteredIncidents.filter((incident) => ['high', 'critical'].includes(incident.severity)).length;
+    const assigned = filteredIncidents.filter((incident) => Boolean(incident.owner_user_id || incident.owner_username)).length;
+    return {
+      total: filteredIncidents.length,
+      active,
+      urgent,
+      assigned,
+    };
+  }, [filteredIncidents]);
 
   const loadData = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -316,6 +345,26 @@ export default function DevOpsIncidentsPage() {
     setNotice('');
     setActivePanel('editor');
     void loadPreviewIncidentNumber();
+  };
+
+  const updateQueueFilters = (next: Partial<Record<'severity' | 'status' | 'environment', string>>) => {
+    const query: Record<string, string> = {};
+    if (activeProjectID) query.project_id = String(activeProjectID);
+    if (activeRequestID) query.request_id = String(activeRequestID);
+    const nextSeverity = next.severity ?? activeSeverityFilter;
+    const nextStatus = next.status ?? activeStatusFilter;
+    const nextEnvironment = next.environment ?? activeEnvironmentFilter;
+    if (nextSeverity) query.severity = nextSeverity;
+    if (nextStatus) query.status = nextStatus;
+    if (nextEnvironment) query.environment = nextEnvironment;
+    void router.push({ pathname: '/incidents', query }, undefined, { shallow: true });
+  };
+
+  const clearQueueFilters = () => {
+    const query: Record<string, string> = {};
+    if (activeProjectID) query.project_id = String(activeProjectID);
+    if (activeRequestID) query.request_id = String(activeRequestID);
+    void router.push({ pathname: '/incidents', query }, undefined, { shallow: true });
   };
 
   useEffect(() => {
@@ -423,37 +472,79 @@ export default function DevOpsIncidentsPage() {
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
-        {hasActiveFilters ? (
-          <div className="alert alert-info">
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span>
-                Showing incidents
-                {activeProjectID ? ` for project #${activeProjectID}` : ''}
-                {activeRequestID ? ' linked to the selected request' : ''}
-                {activeSeverityFilter ? ` with ${activeSeverityFilter} severity` : ''}
-                {activeStatusFilter ? ` in ${activeStatusFilter} status` : ''}
-                {activeEnvironmentFilter ? ` for ${activeEnvironmentFilter.toUpperCase()}` : ''}.
-              </span>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void router.push('/incidents')}>
-                Clear filters
-              </button>
+        <section className="devops-incident-strip">
+          <div className="devops-incident-pill">
+            <span className="devops-incident-pill__label">Visible incidents</span>
+            <strong className="devops-incident-pill__value">{visibleIncidentSummary.total}</strong>
+          </div>
+          <div className="devops-incident-pill">
+            <span className="devops-incident-pill__label">Active response</span>
+            <strong className="devops-incident-pill__value">{visibleIncidentSummary.active}</strong>
+          </div>
+          <div className="devops-incident-pill">
+            <span className="devops-incident-pill__label">High priority</span>
+            <strong className="devops-incident-pill__value">{visibleIncidentSummary.urgent}</strong>
+          </div>
+          <div className="devops-incident-pill">
+            <span className="devops-incident-pill__label">Assigned owner</span>
+            <strong className="devops-incident-pill__value">{visibleIncidentSummary.assigned}</strong>
+          </div>
+        </section>
+
+        <section className="devops-incident-filter-surface">
+          <div className="devops-incident-filter-bar">
+            <div className="devops-incident-filter-bar__copy">
+              <span className="portal-surface__eyebrow">Queue filters</span>
+              <h2 className="portal-surface__title">Keep the incident queue focused</h2>
+              <p className="portal-surface__subtitle">
+                Filter by severity, response status, or environment. Open the editor only when you need to raise or update an incident.
+              </p>
+            </div>
+            <div className="devops-incident-filter-bar__controls">
+              {activeFilterCount > 0 ? <span className="devops-incident-filter-bar__badge">{activeFilterCount} active</span> : null}
+              <select
+                className="input devops-incident-filter-bar__select"
+                value={activeSeverityFilter}
+                onChange={(event) => updateQueueFilters({ severity: event.target.value })}
+              >
+                <option value="">All severity</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
+              <select
+                className="input devops-incident-filter-bar__select"
+                value={activeStatusFilter}
+                onChange={(event) => updateQueueFilters({ status: event.target.value })}
+              >
+                <option value="">All status</option>
+                <option value="draft">Draft</option>
+                <option value="open">Open</option>
+                <option value="investigating">Investigating</option>
+                <option value="mitigating">Mitigating</option>
+                <option value="resolved">Resolved</option>
+              </select>
+              <select
+                className="input devops-incident-filter-bar__select"
+                value={activeEnvironmentFilter}
+                onChange={(event) => updateQueueFilters({ environment: event.target.value })}
+              >
+                <option value="">All environments</option>
+                {environmentOptions.map((environment) => (
+                  <option key={environment} value={environment}>
+                    {environment.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+              {hasActiveFilters ? (
+                <button type="button" className="btn btn-secondary btn-sm" onClick={clearQueueFilters}>
+                  Clear
+                </button>
+              ) : null}
             </div>
           </div>
-        ) : null}
-
-        {!activePanel ? (
-          <section className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <span className="portal-surface__eyebrow">Incident management</span>
-                <h2 className="portal-surface__title">Start from the incident queue</h2>
-                <p className="portal-surface__subtitle">
-                  Use <strong>Create incident</strong> when you need to raise a new incident. Editing an existing incident opens the same editor.
-                </p>
-              </div>
-            </div>
-          </section>
-        ) : null}
+        </section>
 
         {activePanel === 'editor' ? (
         <section className="portal-surface">

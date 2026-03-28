@@ -82,6 +82,7 @@ export default function DevOpsApprovalCenter() {
     () => projects.find((project) => String(project.id) === projectId) || null,
     [projects, projectId],
   );
+  const activeFilterCount = projectId ? 1 : 0;
 
   return (
     <>
@@ -113,30 +114,54 @@ export default function DevOpsApprovalCenter() {
             </div>
           </header>
 
-          <section className="portal-surface portal-surface--tight">
-            <div className="portal-toolbar">
-              <div className="portal-toolbar__group">
-                <div className="portal-toolbar__item">
-                  <label className="label" htmlFor="approval-center-project-filter">Project</label>
-                  <select
-                    id="approval-center-project-filter"
-                    className="input"
-                    value={projectId}
-                    onChange={(event) => setProjectId(event.target.value)}
-                  >
-                    <option value="">All projects</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}{project.code ? ` (${project.code})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+          <section className="devops-approval-strip">
+            <div className="devops-approval-pill">
+              <span className="devops-approval-pill__label">Pending</span>
+              <strong className="devops-approval-pill__value">{summary.total}</strong>
+            </div>
+            <div className="devops-approval-pill">
+              <span className="devops-approval-pill__label">Overdue</span>
+              <strong className="devops-approval-pill__value">{summary.overdue}</strong>
+            </div>
+            <div className="devops-approval-pill">
+              <span className="devops-approval-pill__label">Due soon</span>
+              <strong className="devops-approval-pill__value">{summary.dueSoon}</strong>
+            </div>
+          </section>
+
+          <section className="portal-surface portal-surface--tight devops-approval-filter-surface">
+            <div className="devops-approval-filter-bar">
+              <div className="devops-approval-filter-bar__copy">
+                <span className="portal-surface__eyebrow">Scope</span>
+                <h2 className="portal-surface__title">Filter the review queue</h2>
+                <p className="portal-surface__subtitle">Use project scope only when you want to focus on one project at a time.</p>
               </div>
-              <div className="portal-pill-row">
-                <span className="portal-pill">Pending {summary.total}</span>
-                <span className="portal-pill">Overdue {summary.overdue}</span>
-                <span className="portal-pill">Due soon {summary.dueSoon}</span>
+              <div className="devops-approval-filter-bar__controls">
+                {activeFilterCount > 0 ? <span className="devops-approval-filter-bar__badge">{activeFilterCount} active</span> : null}
+                <select
+                  id="approval-center-project-filter"
+                  className="input devops-approval-filter-bar__select"
+                  value={projectId}
+                  onChange={(event) => setProjectId(event.target.value)}
+                >
+                  <option value="">All projects</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}{project.code ? ` (${project.code})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {projectId ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setProjectId('');
+                    }}
+                  >
+                    Clear
+                  </button>
+                ) : null}
               </div>
             </div>
           </section>
