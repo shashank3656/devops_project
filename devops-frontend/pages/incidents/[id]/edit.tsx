@@ -111,19 +111,6 @@ function parseIncidentId(value: string | string[] | undefined): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function resolveIncidentReferenceInput(value: string, incidents: Incident[]): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (/^\d+$/.test(trimmed)) {
-    const parsed = Number(trimmed);
-    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-  }
-  const normalized = trimmed.toUpperCase();
-  if (!/^INC\d+$/.test(normalized)) return null;
-  const matched = incidents.find((incident) => getIncidentReference(incident).toUpperCase() === normalized);
-  return matched && matched.request_id > 0 ? matched.request_id : null;
-}
-
 export default function EditIncidentPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -151,8 +138,6 @@ export default function EditIncidentPage() {
     if (!Number.isFinite(parsedTeamID) || parsedTeamID <= 0) return [];
     return membersByTeam[parsedTeamID] || [];
   }, [membersByTeam, teamId]);
-
-  const resolvedIncidentRequestId = useMemo(() => resolveIncidentReferenceInput(requestId, incidents), [incidents, requestId]);
 
   const loadData = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -186,7 +171,7 @@ export default function EditIncidentPage() {
           throw new Error('Incident not found');
         }
         setCurrentIncidentNumber(getIncidentReference(matched));
-        setRequestId(getIncidentReference(matched));
+        setRequestId(matched.request_id > 0 ? String(matched.request_id) : '');
         setTeamId(matched.team_id ? String(matched.team_id) : '');
         setSeverity(matched.severity);
         setStatus(matched.status);
@@ -260,7 +245,7 @@ export default function EditIncidentPage() {
       }
       const savedIncident = normalizeIncident(data.incident);
       setCurrentIncidentNumber(getIncidentReference(savedIncident));
-      setRequestId(getIncidentReference(savedIncident));
+      setRequestId(savedIncident.request_id > 0 ? String(savedIncident.request_id) : requestId);
       setNotice('Incident updated.');
       void loadData();
     } catch (err) {
@@ -314,12 +299,11 @@ export default function EditIncidentPage() {
               <div className="portal-form-grid">
                 <label className="label">
                   Incident reference
-                  <input
-                    className="input"
-                    value={requestId}
-                    onChange={(event) => setRequestId(event.target.value)}
-                    placeholder="Enter an incident reference or request number"
-                  />
+                  <input className="input" value={currentIncidentNumber} readOnly />
+                </label>
+                <label className="label">
+                  Linked request
+                  <input className="input" value={requestId ? `#${requestId}` : 'Not linked'} readOnly />
                 </label>
                 <label className="label">
                   Severity
@@ -386,7 +370,7 @@ export default function EditIncidentPage() {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={saving || !resolvedIncidentRequestId || !teamId || !ownerUserId || !summary.trim()}
+                  disabled={saving || !teamId || (status !== 'draft' && (!ownerUserId || !summary.trim()))}
                   onClick={() => void submit()}
                 >
                   {saving ? 'Saving...' : 'Save Changes'}

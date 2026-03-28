@@ -6,9 +6,11 @@ interface CalendarDateInputProps {
   onChange: (value: string) => void;
   id?: string;
   min?: string;
+  max?: string;
+  type?: 'date' | 'datetime-local';
 }
 
-export default function CalendarDateInput({ value, onChange, id, min }: CalendarDateInputProps) {
+export default function CalendarDateInput({ value, onChange, id, min, max, type = 'date' }: CalendarDateInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const openPicker = () => {
@@ -31,10 +33,11 @@ export default function CalendarDateInput({ value, onChange, id, min }: Calendar
       <input
         ref={inputRef}
         id={id}
-        type="date"
+        type={type}
         className="input date-input-wrap__input"
         value={value}
         min={min}
+        max={max}
         onChange={(event) => onChange(event.target.value)}
       />
       <button

@@ -146,7 +146,10 @@ export default function NewIncidentPage() {
     return membersByTeam[parsedTeamID] || [];
   }, [membersByTeam, teamId]);
 
-  const resolvedIncidentRequestId = useMemo(() => resolveIncidentReferenceInput(requestId, incidents), [incidents, requestId]);
+  const resolvedLinkedRequestId = useMemo(() => {
+    if (requestedRequestId) return requestedRequestId;
+    return resolveIncidentReferenceInput(requestId, incidents);
+  }, [incidents, requestId, requestedRequestId]);
 
   const loadData = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -224,9 +227,9 @@ export default function NewIncidentPage() {
     setError('');
     setNotice('');
     try {
-      const linkedRequestID = resolveIncidentReferenceInput(requestId, incidents);
+      const linkedRequestID = requestedRequestId || resolveIncidentReferenceInput(requestId, incidents);
       if (!linkedRequestID) {
-        throw new Error('Enter a valid incident reference');
+        throw new Error('Enter a valid request number before saving this incident');
       }
       const normalizedStatus = mode === 'draft' ? 'draft' : status === 'draft' ? 'open' : status;
       const response = await fetch(`${apiUrl}/api/devops/incidents`, {
@@ -256,7 +259,9 @@ export default function NewIncidentPage() {
       }
       const savedIncident = normalizeIncident(data.incident);
       setCurrentIncidentNumber(savedIncident.incident_number || `INC${String(savedIncident.id).padStart(7, '0')}`);
-      setRequestId(savedIncident.id ? getIncidentReference(savedIncident) : requestId);
+      if (!requestedRequestId && savedIncident.request_id > 0) {
+        setRequestId(String(savedIncident.request_id));
+      }
       setNotice(mode === 'draft' ? 'Incident draft created.' : 'Incident submitted.');
       void loadData();
     } catch (err) {
@@ -311,13 +316,24 @@ export default function NewIncidentPage() {
               <div className="portal-form-grid">
                 <label className="label">
                   Incident reference
-                  <input
-                    className="input"
-                    value={requestId}
-                    onChange={(event) => setRequestId(event.target.value)}
-                    placeholder="Enter an incident reference or request number"
-                  />
+                  <input className="input" value={currentIncidentNumber || 'Will be generated when you save'} readOnly />
                 </label>
+                {requestedRequestId ? (
+                  <label className="label">
+                    Linked request
+                    <input className="input" value={`#${requestedRequestId}`} readOnly />
+                  </label>
+                ) : (
+                  <label className="label">
+                    Request number
+                    <input
+                      className="input"
+                      value={requestId}
+                      onChange={(event) => setRequestId(event.target.value)}
+                      placeholder="Enter the request number for this incident"
+                    />
+                  </label>
+                )}
                 <label className="label">
                   Severity
                   <select className="input" value={severity} onChange={(event) => setSeverity(event.target.value)}>
@@ -383,7 +399,7 @@ export default function NewIncidentPage() {
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  disabled={saving || !resolvedIncidentRequestId || !teamId}
+                  disabled={saving || !resolvedLinkedRequestId || !teamId}
                   onClick={() => void submit('draft')}
                 >
                   {saving ? 'Saving...' : 'Save Draft'}
@@ -391,7 +407,7 @@ export default function NewIncidentPage() {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={saving || !resolvedIncidentRequestId || !teamId || !ownerUserId || !summary.trim()}
+                  disabled={saving || !resolvedLinkedRequestId || !teamId || !ownerUserId || !summary.trim()}
                   onClick={() => void submit('submit')}
                 >
                   {saving ? 'Saving...' : 'Submit Incident'}

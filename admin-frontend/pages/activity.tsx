@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import AdminLayout from '../components/AdminLayout';
+import CalendarDateInput from '../components/CalendarDateInput';
 
 interface AuditEntry {
   id: number;
@@ -231,23 +232,21 @@ export default function ActivityPage() {
                     ))}
                   </select>
                   <label className="label" htmlFor="activity-from-date">From</label>
-                  <input
-                    id="activity-from-date"
-                    type="date"
-                    value={fromDate}
-                    onChange={(e) => { setFromDate(e.target.value); setOffset(0); }}
-                    className="input"
-                    style={{ width: 140 }}
-                  />
+                  <div style={{ width: 180 }}>
+                    <CalendarDateInput
+                      id="activity-from-date"
+                      value={fromDate}
+                      onChange={(value) => { setFromDate(value); setOffset(0); }}
+                    />
+                  </div>
                   <label className="label" htmlFor="activity-to-date">To</label>
-                  <input
-                    id="activity-to-date"
-                    type="date"
-                    value={toDate}
-                    onChange={(e) => { setToDate(e.target.value); setOffset(0); }}
-                    className="input"
-                    style={{ width: 140 }}
-                  />
+                  <div style={{ width: 180 }}>
+                    <CalendarDateInput
+                      id="activity-to-date"
+                      value={toDate}
+                      onChange={(value) => { setToDate(value); setOffset(0); }}
+                    />
+                  </div>
                 </div>
                 <button
                   type="button"

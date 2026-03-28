@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import CalendarDateInput from '../components/CalendarDateInput';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -339,23 +340,11 @@ export default function CredentialAuditPage() {
                 </div>
                 <div className="portal-toolbar__item">
                   <label className="credential-audit-label" htmlFor="credential-audit-from-date">From date</label>
-                  <input
-                    id="credential-audit-from-date"
-                    type="date"
-                    value={fromDate}
-                    onChange={(event) => setFromDate(event.target.value)}
-                    className="input"
-                  />
+                  <CalendarDateInput id="credential-audit-from-date" value={fromDate} onChange={setFromDate} />
                 </div>
                 <div className="portal-toolbar__item">
                   <label className="credential-audit-label" htmlFor="credential-audit-to-date">To date</label>
-                  <input
-                    id="credential-audit-to-date"
-                    type="date"
-                    value={toDate}
-                    onChange={(event) => setToDate(event.target.value)}
-                    className="input"
-                  />
+                  <CalendarDateInput id="credential-audit-to-date" value={toDate} onChange={setToDate} />
                 </div>
               </div>
               <div className="portal-page__actions">
