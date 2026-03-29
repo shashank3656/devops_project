@@ -108,10 +108,10 @@ func GenerateTeamApplicationID() (string, error) {
 	})
 }
 
-func normalizeTeamSlug(value string) string {
+func normalizePathSegment(value, fallback string) string {
 	value = strings.TrimSpace(strings.ToLower(value))
 	if value == "" {
-		return "team"
+		return fallback
 	}
 	var b strings.Builder
 	lastDash := false
@@ -128,9 +128,13 @@ func normalizeTeamSlug(value string) string {
 	}
 	normalized := strings.Trim(b.String(), "-")
 	if normalized == "" {
-		return "team"
+		return fallback
 	}
 	return normalized
+}
+
+func normalizeTeamSlug(value string) string {
+	return normalizePathSegment(value, "team")
 }
 
 func ResolveTeamPathKey(teamNameOrSlug string) string {
@@ -151,10 +155,44 @@ func ResolveTeamPathKey(teamNameOrSlug string) string {
 	return normalizeTeamSlug(trimmed)
 }
 
-func BuildRequestGitArtifacts(teamNameOrSlug, env, requestApplicationID string) (filePath string, branchName string) {
-	teamPathKey := ResolveTeamPathKey(teamNameOrSlug)
-	filePath = fmt.Sprintf("%s/envs/%s/request.json", teamPathKey, env)
-	branchName = fmt.Sprintf("%s/%s/%s", teamPathKey, env, requestApplicationID)
+func ResolveTeamSlugKey(teamNameOrSlug string) string {
+	trimmed := strings.TrimSpace(teamNameOrSlug)
+	if trimmed == "" {
+		return "team"
+	}
+	if DB != nil {
+		if team, err := GetTeamByNameOrSlug(trimmed); err == nil && team != nil {
+			if team.Slug != "" {
+				return normalizeTeamSlug(team.Slug)
+			}
+		}
+	}
+	return normalizeTeamSlug(trimmed)
+}
+
+func ResolveProjectPathKey(projectID *int) string {
+	if projectID != nil && *projectID > 0 {
+		if project, err := getProjectCatalogByID(*projectID); err == nil && project != nil {
+			if code := normalizePathSegment(project.Code, ""); code != "" {
+				return code
+			}
+			if name := normalizePathSegment(project.Name, ""); name != "" {
+				return name
+			}
+		}
+	}
+	return "general"
+}
+
+func BuildRequestGitArtifacts(projectID *int, teamNameOrSlug, cloud, env, service, requestApplicationID string) (filePath string, branchName string) {
+	projectPathKey := ResolveProjectPathKey(projectID)
+	teamPathKey := ResolveTeamSlugKey(teamNameOrSlug)
+	cloudPathKey := normalizePathSegment(cloud, "cloud")
+	envPathKey := normalizePathSegment(env, "env")
+	servicePathKey := normalizePathSegment(service, "service")
+	requestKey := normalizePathSegment(requestApplicationID, "request")
+	filePath = fmt.Sprintf("project/%s/%s/%s/envs/%s/%s/request.json", projectPathKey, teamPathKey, cloudPathKey, envPathKey, servicePathKey)
+	branchName = fmt.Sprintf("project/%s/%s/%s/%s/%s/%s", projectPathKey, teamPathKey, cloudPathKey, envPathKey, servicePathKey, requestKey)
 	return filePath, branchName
 }
 

@@ -942,7 +942,7 @@ func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, *promotionGa
 	if err != nil {
 		return nil, nil, err
 	}
-	filePath, branchName := BuildRequestGitArtifacts(req.Team, nextEnvironment, appID)
+	filePath, branchName := BuildRequestGitArtifacts(req.ProjectID, req.Team, req.Cloud, nextEnvironment, req.Service, appID)
 	createdBy := req.CreatedBy
 	if createdBy == nil && userID > 0 {
 		createdBy = &userID

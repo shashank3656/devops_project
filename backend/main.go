@@ -220,7 +220,13 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to generate application id", nil)
 		return
 	}
-	filePath, branchName := BuildRequestGitArtifacts(team, env, appID)
+	filePath, branchName := BuildRequestGitArtifacts(func() *int {
+		if projectID > 0 {
+			id := projectID
+			return &id
+		}
+		return nil
+	}(), team, cloud, env, service, appID)
 
 	prURL, err := CreateGitHubPR(branchName, filePath, content, appID)
 	if err != nil {
@@ -379,7 +385,13 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to generate application id", nil)
 		return
 	}
-	filePath, branchName := BuildRequestGitArtifacts(team, env, appID)
+	filePath, branchName := BuildRequestGitArtifacts(func() *int {
+		if projectID > 0 {
+			id := projectID
+			return &id
+		}
+		return nil
+	}(), team, cloud, env, service, appID)
 	content, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "error processing request", nil)

@@ -59,7 +59,7 @@ func handleRequestPromote(w http.ResponseWriter, r *http.Request, id int, req *P
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	filePath, branchName := BuildRequestGitArtifacts(req.Team, nextEnvironment, appID)
+	filePath, branchName := BuildRequestGitArtifacts(req.ProjectID, req.Team, req.Cloud, nextEnvironment, req.Service, appID)
 	createdBy := req.CreatedBy
 	if createdBy == nil && userID > 0 {
 		createdBy = &userID

@@ -833,12 +833,14 @@ export default function DevOpsTickets() {
                             <strong>{detailRequest.application_id || 'Not set'}</strong>
                           </div>
                           <div className="devops-approval-workspace__meta-item">
-                            <span className="devops-approval-workspace__meta-label">Branch</span>
+                            <span className="devops-approval-workspace__meta-label">Request branch</span>
                             <strong>{detailRequest.branch || 'Not set'}</strong>
+                            <small>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/&lt;env&gt;/&lt;service&gt;/&lt;request-id&gt;</small>
                           </div>
                           <div className="devops-approval-workspace__meta-item">
-                            <span className="devops-approval-workspace__meta-label">File path</span>
+                            <span className="devops-approval-workspace__meta-label">Config path</span>
                             <strong>{detailRequest.file_path || 'Not set'}</strong>
+                            <small>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/envs/&lt;env&gt;/&lt;service&gt;/request.json</small>
                           </div>
                           <div className="devops-approval-workspace__meta-item">
                             <span className="devops-approval-workspace__meta-label">Created</span>

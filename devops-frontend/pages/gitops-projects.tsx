@@ -407,7 +407,7 @@ export default function GitOpsProjectsPage() {
                   <div>
                     <span className="portal-surface__eyebrow">Projects</span>
                     <h2 className="portal-surface__title">Select a GitOps project</h2>
-                    <p className="portal-surface__subtitle">Each project maps to a folder root and carries its own environment manifests, branch shape, and recent delivery history.</p>
+                    <p className="portal-surface__subtitle">Each project maps to a folder root and now uses the shared request branch and config-path layout for live delivery updates.</p>
                   </div>
                 </div>
                 <div className="gitops-project-grid">
@@ -447,11 +447,11 @@ export default function GitOpsProjectsPage() {
                             <strong>{project.manifest_path_pattern}</strong>
                           </div>
                           <div className="gitops-project-card__metric">
-                            <span>Live Request Path</span>
+                            <span>Current request config path</span>
                             <strong>{project.live_request_path_pattern}</strong>
                           </div>
                           <div className="gitops-project-card__metric">
-                            <span>Branch Pattern</span>
+                            <span>Request branch pattern</span>
                             <strong>{project.branch_pattern}</strong>
                           </div>
                         </div>
@@ -537,10 +537,8 @@ export default function GitOpsProjectsPage() {
                                 <strong>
                                   #{change.request_id} · {change.service || change.cloud || 'Infrastructure'}
                                 </strong>
-                                <p>
-                                  {change.environment} · {change.branch}
-                                </p>
-                                <p>{change.file_path}</p>
+                                <p>{change.environment} · Branch: {change.branch}</p>
+                                <p>Config path: {change.file_path}</p>
                               </div>
                               <div className="gitops-change-list__meta">
                                 <span className={`portal-badge portal-badge--${getStatusTone(change.status)}`}>{change.status.replace(/_/g, ' ')}</span>
@@ -559,7 +557,7 @@ export default function GitOpsProjectsPage() {
                         <div>
                           <span className="portal-surface__eyebrow">Preview</span>
                           <h2 className="portal-surface__title">Selected manifest path</h2>
-                          <p className="portal-surface__subtitle">This preview shows the target GitOps layout while keeping the current request file path visible for the existing live workflow.</p>
+                          <p className="portal-surface__subtitle">This preview shows where the current live request file lands and what branch shape the request uses in Git.</p>
                         </div>
                       </div>
 
@@ -587,11 +585,11 @@ export default function GitOpsProjectsPage() {
                               <strong className="portal-detail-card__value">{preview.manifest_path}</strong>
                             </div>
                             <div className="portal-detail-card">
-                              <span className="portal-surface__eyebrow">Live Request Path</span>
+                              <span className="portal-surface__eyebrow">Current request config path</span>
                               <strong className="portal-detail-card__value">{preview.live_request_path}</strong>
                             </div>
                             <div className="portal-detail-card">
-                              <span className="portal-surface__eyebrow">Branch Example</span>
+                              <span className="portal-surface__eyebrow">Example request branch</span>
                               <strong className="portal-detail-card__value">{preview.branch_example}</strong>
                             </div>
                             <div className="portal-detail-card">
