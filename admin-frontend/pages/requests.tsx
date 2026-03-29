@@ -1248,12 +1248,16 @@ export default function AdminRequests() {
                 )}
                 {detailRequest.branch && (
                   <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--color-text-muted)' }}>
-                    <strong>Branch:</strong> <code style={{ fontSize: 12 }}>{detailRequest.branch}</code>
+                    <strong>Request branch:</strong> <code style={{ fontSize: 12 }}>{detailRequest.branch}</code>
                   </p>
                 )}
                 {detailRequest.file_path && (
                   <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--color-text-muted)' }}>
-                    <strong>File path:</strong> <code style={{ fontSize: 12 }}>{detailRequest.file_path}</code>
+                    <strong>Config path:</strong> <code style={{ fontSize: 12 }}>{detailRequest.file_path}</code>
+                    <br />
+                    <span style={{ fontSize: 12, color: 'var(--color-text-subtle)' }}>
+                      Current layout: <code style={{ fontSize: 11 }}>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/envs/&lt;env&gt;/&lt;service&gt;/request.json</code>
+                    </span>
                   </p>
                 )}
                 <p style={{ marginBottom: 8, fontSize: 13, color: 'var(--color-text-muted)' }}>

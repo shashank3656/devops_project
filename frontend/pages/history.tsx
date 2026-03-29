@@ -1368,7 +1368,27 @@ export default function History() {
                           <strong className="portal-detail-card__value">{detailRequest.application_id}</strong>
                         </article>
                       ) : null}
+                      {detailRequest.branch ? (
+                        <article className="portal-detail-card">
+                          <span className="history-detail-modal__summary-label">Request branch</span>
+                          <strong className="portal-detail-card__value">{detailRequest.branch}</strong>
+                        </article>
+                      ) : null}
+                      {detailRequest.file_path ? (
+                        <article className="portal-detail-card">
+                          <span className="history-detail-modal__summary-label">Config path</span>
+                          <strong className="portal-detail-card__value">{detailRequest.file_path}</strong>
+                        </article>
+                      ) : null}
                     </div>
+                    {(detailRequest.branch || detailRequest.file_path) && (
+                      <div className="history-detail-modal__notice" style={{ marginBottom: '12px' }}>
+                        <strong style={{ color: 'var(--text-primary)' }}>Current repo layout</strong>
+                        <p style={{ margin: '6px 0 0', color: 'var(--text-secondary)' }}>
+                          Requests now write to <code>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/envs/&lt;env&gt;/&lt;service&gt;/request.json</code> and use a matching <code>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/&lt;env&gt;/&lt;service&gt;/&lt;request-id&gt;</code> branch.
+                        </p>
+                      </div>
+                    )}
                     {detailRequest.status === 'rejected' && detailRequest.reject_reason && (
                       <div className="history-detail-modal__notice history-detail-modal__notice--error">
                         <strong style={{ color: 'var(--error-color)' }}>Why it was rejected:</strong>
