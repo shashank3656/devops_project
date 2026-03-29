@@ -5760,11 +5760,14 @@ body {
 .date-input-wrap {
   position: relative;
   width: 100%;
+  min-height: 40px;
 }
 
 .date-input-wrap__input {
   margin-bottom: 0;
-  padding-right: 56px;
+  width: 100%;
+  min-height: 40px;
+  padding-right: 42px;
 }
 
 .date-input-wrap__button {
@@ -5772,29 +5775,28 @@ body {
   top: 50%;
   right: 10px;
   transform: translateY(-50%);
-  width: 36px;
-  height: 36px;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  border: 1px solid rgba(34, 211, 238, 0.16);
-  background: rgba(7, 24, 48, 0.72);
-  color: var(--color-primary);
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
   cursor: pointer;
-  transition: background var(--transition-ui), border-color var(--transition-ui), color var(--transition-ui);
+  transition: background var(--transition), color var(--transition);
   z-index: 1;
 }
 
 .date-input-wrap__button:hover {
-  background: rgba(12, 33, 61, 0.9);
-  border-color: rgba(34, 211, 238, 0.32);
+  background: rgba(15, 23, 42, 0.64);
   color: #fff;
 }
 
 .date-input-wrap__button svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .date-input-wrap__input::-webkit-calendar-picker-indicator {

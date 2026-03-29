@@ -424,6 +424,377 @@ function expiryWorkflowLabel(state?: string): string {
   }
 }
 
+function normalizeStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [];
+}
+
+function normalizeProjectServices(value: unknown): ProjectServiceOption[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => asRecord(item))
+    .map((item) => ({
+      cloud: getString(item.cloud),
+      service: getString(item.service),
+    }))
+    .filter((item) => item.cloud && item.service);
+}
+
+function normalizeProjectTeamAccess(value: unknown): ProjectTeamAccess[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const row = asRecord(item);
+    return {
+      team_id: Number(row.team_id) || 0,
+      team_name: getString(row.team_name) || undefined,
+      team_slug: getString(row.team_slug) || undefined,
+      environments: normalizeStringArray(row.environments),
+    };
+  });
+}
+
+function normalizeProjectApprovalRules(value: unknown): ProjectApprovalRule[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const row = asRecord(item);
+    return {
+      environment: getString(row.environment),
+      require_manager_approval: Boolean(row.require_manager_approval),
+      require_devops_approval: Boolean(row.require_devops_approval),
+    };
+  }).filter((item) => item.environment);
+}
+
+function normalizeReadinessChecks(value: unknown): ProjectReadinessCheck[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const row = asRecord(item);
+    return {
+      key: getString(row.key),
+      label: getString(row.label),
+      complete: Boolean(row.complete),
+      detail: getString(row.detail),
+    };
+  }).filter((item) => item.key || item.label || item.detail);
+}
+
+function normalizeLifecycleActions(value: unknown): ProjectLifecycleAction[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const row = asRecord(item);
+    return {
+      action: getString(row.action),
+      label: getString(row.label),
+      description: getString(row.description),
+      enabled: Boolean(row.enabled),
+    };
+  }).filter((item) => item.action && item.label);
+}
+
+function normalizeCostRiskSummary(value: unknown): ProjectCostRiskSummary | null {
+  const row = asRecord(value);
+  if (!Object.keys(row).length) return null;
+  const signals = Array.isArray(row.signals)
+    ? row.signals.map((item) => {
+        const signal = asRecord(item);
+        return {
+          severity: (getString(signal.severity) as 'low' | 'medium' | 'high') || 'low',
+          category: getString(signal.category),
+          title: getString(signal.title),
+          detail: getString(signal.detail),
+        };
+      }).filter((item) => item.title || item.detail)
+    : [];
+  return {
+    overall_risk: (getString(row.overall_risk) as 'low' | 'medium' | 'high') || 'low',
+    estimated_band: getString(row.estimated_band),
+    estimated_monthly: getString(row.estimated_monthly),
+    estimate_basis: getString(row.estimate_basis),
+    summary: getString(row.summary),
+    request_count: Number(row.request_count) || 0,
+    pending_review_count: Number(row.pending_review_count) || 0,
+    high_risk_count: Number(row.high_risk_count) || 0,
+    medium_risk_count: Number(row.medium_risk_count) || 0,
+    signals,
+  };
+}
+
+function normalizeProject(rawValue: unknown): ProjectOption | null {
+  const raw = asRecord(rawValue);
+  if (!Object.keys(raw).length) return null;
+  return {
+    id: Number(raw.id) || 0,
+    name: getString(raw.name),
+    code: getString(raw.code),
+    description: getString(raw.description),
+    status: getString(raw.status),
+    onboarding_stage: getString(raw.onboarding_stage) || undefined,
+    ready_for_requests: raw.ready_for_requests == null ? undefined : Boolean(raw.ready_for_requests),
+    service_count: raw.service_count == null ? undefined : Number(raw.service_count) || 0,
+    team_count: raw.team_count == null ? undefined : Number(raw.team_count) || 0,
+    owner_team: getString(raw.owner_team) || undefined,
+    next_action: getString(raw.next_action) || undefined,
+    readiness_checks: normalizeReadinessChecks(raw.readiness_checks),
+    lifecycle_actions: normalizeLifecycleActions(raw.lifecycle_actions),
+    cost_risk_summary: normalizeCostRiskSummary(raw.cost_risk_summary),
+    environments: normalizeStringArray(raw.environments),
+    clouds: normalizeStringArray(raw.clouds),
+    services: normalizeProjectServices(raw.services),
+    team_access: normalizeProjectTeamAccess(raw.team_access),
+    approval_rules: normalizeProjectApprovalRules(raw.approval_rules),
+  };
+}
+
+function normalizeReleaseDashboard(rawValue: unknown): ProjectReleaseDashboard | null {
+  const raw = asRecord(rawValue);
+  if (!Object.keys(raw).length) return null;
+  const summaryRaw = asRecord(raw.summary);
+  const k8sRaw = asRecord(raw.k8s_preview);
+  const expiryRaw = asRecord(raw.expiry_preview);
+  const gatesRaw = asRecord(raw.deployment_gates);
+
+  return {
+    summary: {
+      total_requests: Number(summaryRaw.total_requests) || 0,
+      completed_requests: Number(summaryRaw.completed_requests) || 0,
+      pending_requests: Number(summaryRaw.pending_requests) || 0,
+      in_progress_requests: Number(summaryRaw.in_progress_requests) || 0,
+      promotion_ready_count: Number(summaryRaw.promotion_ready_count) || 0,
+      open_incident_count: Number(summaryRaw.open_incident_count) || 0,
+      runbook_count: Number(summaryRaw.runbook_count) || 0,
+      active_override_count: Number(summaryRaw.active_override_count) || 0,
+      last_release_at: getString(summaryRaw.last_release_at) || undefined,
+    },
+    environment_statuses: Array.isArray(raw.environment_statuses)
+      ? raw.environment_statuses.map((item) => {
+          const row = asRecord(item);
+          return {
+            environment: getString(row.environment),
+            latest_request_id: row.latest_request_id == null ? undefined : Number(row.latest_request_id) || undefined,
+            latest_status: getString(row.latest_status) || undefined,
+            latest_service: getString(row.latest_service) || undefined,
+            latest_cloud: getString(row.latest_cloud) || undefined,
+            latest_updated_at: getString(row.latest_updated_at) || undefined,
+            pending_count: Number(row.pending_count) || 0,
+            completed_count: Number(row.completed_count) || 0,
+            incident_count: Number(row.incident_count) || 0,
+            health: getString(row.health),
+          };
+        }).filter((item) => item.environment)
+      : [],
+    recent_activity: Array.isArray(raw.recent_activity)
+      ? raw.recent_activity.map((item) => {
+          const row = asRecord(item);
+          return {
+            request_id: Number(row.request_id) || 0,
+            team: getString(row.team),
+            environment: getString(row.environment),
+            cloud: getString(row.cloud),
+            service: getString(row.service),
+            status: getString(row.status),
+            priority: getString(row.priority),
+            client_name: getString(row.client_name),
+            updated_at: getString(row.updated_at),
+            due_date: getString(row.due_date) || undefined,
+            pr_url: getString(row.pr_url) || undefined,
+          };
+        }).filter((item) => item.request_id > 0)
+      : [],
+    release_trend: Array.isArray(raw.release_trend)
+      ? raw.release_trend.map((item) => {
+          const row = asRecord(item);
+          return {
+            label: getString(row.label),
+            count: Number(row.count) || 0,
+          };
+        }).filter((item) => item.label)
+      : [],
+    promotion_queue: Array.isArray(raw.promotion_queue)
+      ? raw.promotion_queue.map((item) => {
+          const row = asRecord(item);
+          return {
+            request_id: Number(row.request_id) || 0,
+            environment: getString(row.environment),
+            next_environment: getString(row.next_environment),
+            cloud: getString(row.cloud),
+            service: getString(row.service),
+            status: getString(row.status),
+            client_name: getString(row.client_name),
+            updated_at: getString(row.updated_at),
+          };
+        }).filter((item) => item.request_id > 0)
+      : [],
+    incidents: Array.isArray(raw.incidents)
+      ? raw.incidents.map((item) => {
+          const row = asRecord(item);
+          return {
+            id: Number(row.id) || 0,
+            request_id: Number(row.request_id) || 0,
+            severity: getString(row.severity),
+            status: getString(row.status),
+            summary: getString(row.summary),
+            owner_username: getString(row.owner_username) || undefined,
+            updated_at: getString(row.updated_at),
+            request_env: getString(row.request_env) || undefined,
+            request_service: getString(row.request_service) || undefined,
+          };
+        }).filter((item) => item.id > 0)
+      : [],
+    runbooks: Array.isArray(raw.runbooks)
+      ? raw.runbooks.map((item) => {
+          const row = asRecord(item);
+          return {
+            id: Number(row.id) || 0,
+            service: getString(row.service),
+            title: getString(row.title),
+            link_url: getString(row.link_url),
+            updated_at: getString(row.updated_at),
+          };
+        }).filter((item) => item.id > 0)
+      : [],
+    active_overrides: Array.isArray(raw.active_overrides)
+      ? raw.active_overrides.map((item) => {
+          const row = asRecord(item);
+          return {
+            id: Number(row.id) || 0,
+            username: getString(row.username),
+            environments: normalizeStringArray(row.environments),
+            permission: getString(row.permission),
+            reason: getString(row.reason),
+            expires_at: getString(row.expires_at),
+          };
+        }).filter((item) => item.id > 0)
+      : [],
+    deployment_gates: Object.keys(gatesRaw).length
+      ? {
+          summary: {
+            ready_environments: Number(asRecord(gatesRaw.summary).ready_environments) || 0,
+            attention_environments: Number(asRecord(gatesRaw.summary).attention_environments) || 0,
+            blocked_environments: Number(asRecord(gatesRaw.summary).blocked_environments) || 0,
+          },
+          environments: Array.isArray(gatesRaw.environments)
+            ? gatesRaw.environments.map((item) => {
+                const row = asRecord(item);
+                return {
+                  environment: getString(row.environment),
+                  status: getString(row.status),
+                  summary: getString(row.summary),
+                  requires_manager_approval: Boolean(row.requires_manager_approval),
+                  requires_devops_approval: Boolean(row.requires_devops_approval),
+                  promotion_candidate_count: Number(row.promotion_candidate_count) || 0,
+                  incident_count: Number(row.incident_count) || 0,
+                  active_override_count: Number(row.active_override_count) || 0,
+                  checks: Array.isArray(row.checks)
+                    ? row.checks.map((check) => {
+                        const checkRow = asRecord(check);
+                        return {
+                          key: getString(checkRow.key),
+                          label: getString(checkRow.label),
+                          status: getString(checkRow.status),
+                          detail: getString(checkRow.detail),
+                        };
+                      }).filter((check) => check.key || check.label || check.detail)
+                    : [],
+                };
+              }).filter((item) => item.environment)
+            : [],
+        }
+      : null,
+    k8s_preview: Object.keys(k8sRaw).length
+      ? {
+          connection_count: Number(k8sRaw.connection_count) || 0,
+          cluster_count: Number(k8sRaw.cluster_count) || 0,
+          namespace_count: Number(k8sRaw.namespace_count) || 0,
+          health_summary: {
+            healthy_deployments: Number(asRecord(k8sRaw.health_summary).healthy_deployments) || 0,
+            degraded_deployments: Number(asRecord(k8sRaw.health_summary).degraded_deployments) || 0,
+            blocked_deployments: Number(asRecord(k8sRaw.health_summary).blocked_deployments) || 0,
+            scaled_down_deployments: Number(asRecord(k8sRaw.health_summary).scaled_down_deployments) || 0,
+            restarting_pods: Number(asRecord(k8sRaw.health_summary).restarting_pods) || 0,
+            non_running_pods: Number(asRecord(k8sRaw.health_summary).non_running_pods) || 0,
+            warning_logs: Number(asRecord(k8sRaw.health_summary).warning_logs) || 0,
+            unhealthy_namespaces: Number(asRecord(k8sRaw.health_summary).unhealthy_namespaces) || 0,
+          },
+          namespace_watchlist: Array.isArray(k8sRaw.namespace_watchlist)
+            ? k8sRaw.namespace_watchlist.map((item) => {
+                const row = asRecord(item);
+                return {
+                  namespace: getString(row.namespace),
+                  cluster_name: getString(row.cluster_name),
+                  status: getString(row.status),
+                  issue_count: Number(row.issue_count) || 0,
+                  restarting_pods: Number(row.restarting_pods) || 0,
+                  warning_logs: Number(row.warning_logs) || 0,
+                  affected_deployments: Number(row.affected_deployments) || 0,
+                };
+              }).filter((item) => item.namespace || item.cluster_name)
+            : [],
+          workload_spotlights: Array.isArray(k8sRaw.workload_spotlights)
+            ? k8sRaw.workload_spotlights.map((item) => {
+                const row = asRecord(item);
+                return {
+                  name: getString(row.name),
+                  namespace: getString(row.namespace),
+                  cluster_name: getString(row.cluster_name),
+                  status: getString(row.status),
+                  ready_replicas: Number(row.ready_replicas) || 0,
+                  replicas: Number(row.replicas) || 0,
+                  restart_count: Number(row.restart_count) || 0,
+                  warning_count: Number(row.warning_count) || 0,
+                };
+              }).filter((item) => item.name)
+            : [],
+        }
+      : null,
+    expiry_preview: Object.keys(expiryRaw).length
+      ? {
+          summary: {
+            total_items: Number(asRecord(expiryRaw.summary).total_items) || 0,
+            credential_items: Number(asRecord(expiryRaw.summary).credential_items) || 0,
+            secret_items: Number(asRecord(expiryRaw.summary).secret_items) || 0,
+            certificate_items: Number(asRecord(expiryRaw.summary).certificate_items) || 0,
+            expired_count: Number(asRecord(expiryRaw.summary).expired_count) || 0,
+            expiring_within_30_days: Number(asRecord(expiryRaw.summary).expiring_within_30_days) || 0,
+            expiring_within_60_days: Number(asRecord(expiryRaw.summary).expiring_within_60_days) || 0,
+            healthy_count: Number(asRecord(expiryRaw.summary).healthy_count) || 0,
+            actionable_count: Number(asRecord(expiryRaw.summary).actionable_count) || 0,
+            acknowledged_count: Number(asRecord(expiryRaw.summary).acknowledged_count) || 0,
+            in_progress_count: Number(asRecord(expiryRaw.summary).in_progress_count) || 0,
+            rotated_count: Number(asRecord(expiryRaw.summary).rotated_count) || 0,
+          },
+          priority_items: Array.isArray(expiryRaw.priority_items)
+            ? expiryRaw.priority_items.map((item) => {
+                const row = asRecord(item);
+                return {
+                  item_key: getString(row.item_key),
+                  category: getString(row.category),
+                  source: getString(row.source),
+                  project_id: row.project_id == null ? undefined : Number(row.project_id) || undefined,
+                  project_name: getString(row.project_name) || undefined,
+                  project_code: getString(row.project_code) || undefined,
+                  cloud: getString(row.cloud) || undefined,
+                  environment: getString(row.environment) || undefined,
+                  cluster_name: getString(row.cluster_name) || undefined,
+                  namespace: getString(row.namespace) || undefined,
+                  resource_name: getString(row.resource_name),
+                  resource_type: getString(row.resource_type),
+                  owner: getString(row.owner) || undefined,
+                  created_at: getString(row.created_at) || undefined,
+                  expires_at: getString(row.expires_at) || undefined,
+                  days_remaining: Number(row.days_remaining) || 0,
+                  status: getString(row.status),
+                  recommendation: getString(row.recommendation),
+                  workflow_state: getString(row.workflow_state),
+                  workflow_note: getString(row.workflow_note) || undefined,
+                  workflow_updated_at: getString(row.workflow_updated_at) || undefined,
+                  workflow_updated_by_username: getString(row.workflow_updated_by_username) || undefined,
+                };
+              }).filter((item) => item.item_key || item.resource_name)
+            : [],
+        }
+      : null,
+  };
+}
+
 export default function DevOpsProjectDetailPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -460,8 +831,8 @@ export default function DevOpsProjectDetailPage() {
         if (!data.project) {
           throw new Error('Project not found');
         }
-        setProject(data.project as ProjectOption);
-        setReleaseDashboard((data.release_dashboard as ProjectReleaseDashboard | null) || null);
+        setProject(normalizeProject(data.project));
+        setReleaseDashboard(normalizeReleaseDashboard(data.release_dashboard));
       })
       .catch((err: Error) => {
         setProject(null);
@@ -505,7 +876,7 @@ export default function DevOpsProjectDetailPage() {
       if (!res.ok) {
         throw new Error(getString(data.error, `Failed to ${action.action} project`));
       }
-      setProject((data.project as ProjectOption | null) || null);
+      setProject(normalizeProject(data.project));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to update project lifecycle');
     } finally {
