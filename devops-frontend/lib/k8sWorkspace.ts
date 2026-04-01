@@ -66,6 +66,10 @@ export interface DeploymentItem {
   ready_replicas: number;
   updated_replicas: number;
   status: string;
+  cpu_utilization_pct: number;
+  cpu_hours: number;
+  memory_utilization_gb: number;
+  memory_hours: number;
 }
 
 export interface VolumeItem {
@@ -76,6 +80,9 @@ export interface VolumeItem {
   claim: string;
   status: string;
   mounted_by: string;
+  storage_class: string;
+  capacity: string;
+  access_mode: string;
 }
 
 export interface ServiceItem {
@@ -87,6 +94,8 @@ export interface ServiceItem {
   ports: string;
   selector: string;
   exposure: string;
+  external_ip: string;
+  ingress_host: string;
 }
 
 export interface ConfigMapItem {
@@ -95,6 +104,8 @@ export interface ConfigMapItem {
   cluster_name: string;
   data_keys: number;
   mounted_by: string;
+  resource_version: string;
+  age: string;
 }
 
 export interface K8sOverviewData {
@@ -149,6 +160,62 @@ export interface K8sClusterCatalogItem {
   configmap_count: number;
   storage_count: number;
   updated_at: string;
+}
+
+export interface K8sResourceMeta {
+  projects: ProjectOption[];
+  selected_project_id: number;
+  selected_cluster: string;
+  selected_namespace: string;
+  selected_environment: string;
+  clusters: string[];
+  namespaces: string[];
+  environments: string[];
+  connections?: K8sConnection[];
+}
+
+export interface K8sClusterListItem {
+  project_id: number;
+  project_name: string;
+  project_code: string;
+  cloud: string;
+  cluster_name: string;
+  cluster_endpoint: string;
+  environment: string;
+  auth_mode: string;
+  has_auth_credential: boolean;
+  namespace_count: number;
+  workload_count: number;
+  service_count: number;
+  configmap_count: number;
+  storage_count: number;
+  node_pool: string;
+  node_count: number;
+  kubernetes_version: string;
+  location: string;
+  health_status: string;
+  updated_at: string;
+}
+
+export interface K8sClustersData extends K8sResourceMeta {
+  items: K8sClusterListItem[];
+}
+
+export interface K8sWorkloadsData extends K8sResourceMeta {
+  health_summary: WorkloadHealthSummary;
+  items: DeploymentItem[];
+}
+
+export interface K8sServicesData extends K8sResourceMeta {
+  items: ServiceItem[];
+}
+
+export interface K8sConfigMapsData extends K8sResourceMeta {
+  items: ConfigMapItem[];
+}
+
+export interface K8sStorageData extends K8sResourceMeta {
+  items: VolumeItem[];
 }
 
 export interface K8sWorkspaceFilters {
@@ -294,6 +361,10 @@ function normalizeDeploymentItems(value: unknown): DeploymentItem[] {
       ready_replicas: Number(row.ready_replicas) || 0,
       updated_replicas: Number(row.updated_replicas) || 0,
       status: getString(row.status),
+      cpu_utilization_pct: Number(row.cpu_utilization_pct) || 0,
+      cpu_hours: Number(row.cpu_hours) || 0,
+      memory_utilization_gb: Number(row.memory_utilization_gb) || 0,
+      memory_hours: Number(row.memory_hours) || 0,
     };
   }).filter((item) => item.name);
 }
@@ -310,6 +381,9 @@ function normalizeVolumeItems(value: unknown): VolumeItem[] {
       claim: getString(row.claim),
       status: getString(row.status),
       mounted_by: getString(row.mounted_by),
+      storage_class: getString(row.storage_class),
+      capacity: getString(row.capacity),
+      access_mode: getString(row.access_mode),
     };
   }).filter((item) => item.name);
 }
@@ -327,6 +401,8 @@ function normalizeServiceItems(value: unknown): ServiceItem[] {
       ports: getString(row.ports),
       selector: getString(row.selector),
       exposure: getString(row.exposure),
+      external_ip: getString(row.external_ip),
+      ingress_host: getString(row.ingress_host),
     };
   }).filter((item) => item.name);
 }
@@ -341,8 +417,56 @@ function normalizeConfigMapItems(value: unknown): ConfigMapItem[] {
       cluster_name: getString(row.cluster_name),
       data_keys: Number(row.data_keys) || 0,
       mounted_by: getString(row.mounted_by),
+      resource_version: getString(row.resource_version),
+      age: getString(row.age),
     };
   }).filter((item) => item.name);
+}
+
+function normalizeResourceMeta(value: unknown): K8sResourceMeta {
+  const data = asRecord(value);
+  return {
+    projects: normalizeProjects(data.projects),
+    selected_project_id: Number(data.selected_project_id) || 0,
+    selected_cluster: getString(data.selected_cluster),
+    selected_namespace: getString(data.selected_namespace),
+    selected_environment: getString(data.selected_environment),
+    clusters: normalizeStringArray(data.clusters),
+    namespaces: normalizeStringArray(data.namespaces),
+    environments: normalizeStringArray(data.environments),
+    connections: normalizeConnections(data.connections),
+  };
+}
+
+function normalizeClusterItems(value: unknown): K8sClusterListItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      const row = asRecord(item);
+      return {
+        project_id: Number(row.project_id) || 0,
+        project_name: getString(row.project_name) || 'Unknown',
+        project_code: getString(row.project_code) || 'n/a',
+        cloud: getString(row.cloud),
+        cluster_name: getString(row.cluster_name),
+        cluster_endpoint: getString(row.cluster_endpoint),
+        environment: getString(row.environment),
+        auth_mode: getString(row.auth_mode),
+        has_auth_credential: Boolean(row.has_auth_credential),
+        namespace_count: Number(row.namespace_count) || 0,
+        workload_count: Number(row.workload_count) || 0,
+        service_count: Number(row.service_count) || 0,
+        configmap_count: Number(row.configmap_count) || 0,
+        storage_count: Number(row.storage_count) || 0,
+        node_pool: getString(row.node_pool),
+        node_count: Number(row.node_count) || 0,
+        kubernetes_version: getString(row.kubernetes_version),
+        location: getString(row.location),
+        health_status: getString(row.health_status),
+        updated_at: getString(row.updated_at),
+      };
+    })
+    .filter((item) => item.cluster_name);
 }
 
 function normalizeOverviewData(value: unknown): K8sOverviewData {
@@ -382,6 +506,62 @@ function normalizeOverviewData(value: unknown): K8sOverviewData {
     volumes: normalizeVolumeItems(data.volumes),
     services: normalizeServiceItems(data.services),
     configmaps: normalizeConfigMapItems(data.configmaps),
+  };
+}
+
+function normalizeClustersData(value: unknown): K8sClustersData {
+  const meta = normalizeResourceMeta(value);
+  const data = asRecord(value);
+  return {
+    ...meta,
+    items: normalizeClusterItems(data.items),
+  };
+}
+
+function normalizeWorkloadsData(value: unknown): K8sWorkloadsData {
+  const meta = normalizeResourceMeta(value);
+  const data = asRecord(value);
+  const healthSummary = asRecord(data.health_summary);
+  return {
+    ...meta,
+    health_summary: {
+      healthy_deployments: Number(healthSummary.healthy_deployments) || 0,
+      degraded_deployments: Number(healthSummary.degraded_deployments) || 0,
+      blocked_deployments: Number(healthSummary.blocked_deployments) || 0,
+      scaled_down_deployments: Number(healthSummary.scaled_down_deployments) || 0,
+      restarting_pods: Number(healthSummary.restarting_pods) || 0,
+      non_running_pods: Number(healthSummary.non_running_pods) || 0,
+      warning_logs: Number(healthSummary.warning_logs) || 0,
+      unhealthy_namespaces: Number(healthSummary.unhealthy_namespaces) || 0,
+    },
+    items: normalizeDeploymentItems(data.items),
+  };
+}
+
+function normalizeServicesData(value: unknown): K8sServicesData {
+  const meta = normalizeResourceMeta(value);
+  const data = asRecord(value);
+  return {
+    ...meta,
+    items: normalizeServiceItems(data.items),
+  };
+}
+
+function normalizeConfigMapsData(value: unknown): K8sConfigMapsData {
+  const meta = normalizeResourceMeta(value);
+  const data = asRecord(value);
+  return {
+    ...meta,
+    items: normalizeConfigMapItems(data.items),
+  };
+}
+
+function normalizeStorageData(value: unknown): K8sStorageData {
+  const meta = normalizeResourceMeta(value);
+  const data = asRecord(value);
+  return {
+    ...meta,
+    items: normalizeVolumeItems(data.items),
   };
 }
 
@@ -426,6 +606,45 @@ export async function fetchK8sOverview(apiUrl: string, filters: K8sWorkspaceFilt
   if (filters.environment) params.set('environment', filters.environment);
   const payload = await fetchAuthorizedJson(apiUrl, `/api/devops/k8s-overview?${params.toString()}`);
   return normalizeOverviewData(payload.data);
+}
+
+function buildK8sFilterParams(filters: K8sWorkspaceFilters = {}): string {
+  const params = new URLSearchParams();
+  if (filters.project_id) params.set('project_id', filters.project_id);
+  if (filters.cluster_name) params.set('cluster_name', filters.cluster_name);
+  if (filters.namespace) params.set('namespace', filters.namespace);
+  if (filters.environment) params.set('environment', filters.environment);
+  return params.toString();
+}
+
+export async function fetchK8sClusters(apiUrl: string, filters: K8sWorkspaceFilters = {}): Promise<K8sClustersData> {
+  const query = buildK8sFilterParams(filters);
+  const payload = await fetchAuthorizedJson(apiUrl, `/api/devops/k8s-clusters${query ? `?${query}` : ''}`);
+  return normalizeClustersData(payload.data);
+}
+
+export async function fetchK8sWorkloads(apiUrl: string, filters: K8sWorkspaceFilters = {}): Promise<K8sWorkloadsData> {
+  const query = buildK8sFilterParams(filters);
+  const payload = await fetchAuthorizedJson(apiUrl, `/api/devops/k8s-workloads${query ? `?${query}` : ''}`);
+  return normalizeWorkloadsData(payload.data);
+}
+
+export async function fetchK8sServices(apiUrl: string, filters: K8sWorkspaceFilters = {}): Promise<K8sServicesData> {
+  const query = buildK8sFilterParams(filters);
+  const payload = await fetchAuthorizedJson(apiUrl, `/api/devops/k8s-services${query ? `?${query}` : ''}`);
+  return normalizeServicesData(payload.data);
+}
+
+export async function fetchK8sConfigMaps(apiUrl: string, filters: K8sWorkspaceFilters = {}): Promise<K8sConfigMapsData> {
+  const query = buildK8sFilterParams(filters);
+  const payload = await fetchAuthorizedJson(apiUrl, `/api/devops/k8s-configmaps${query ? `?${query}` : ''}`);
+  return normalizeConfigMapsData(payload.data);
+}
+
+export async function fetchK8sStorage(apiUrl: string, filters: K8sWorkspaceFilters = {}): Promise<K8sStorageData> {
+  const query = buildK8sFilterParams(filters);
+  const payload = await fetchAuthorizedJson(apiUrl, `/api/devops/k8s-storage${query ? `?${query}` : ''}`);
+  return normalizeStorageData(payload.data);
 }
 
 export async function fetchK8sConnections(apiUrl: string): Promise<K8sOnboardingData> {

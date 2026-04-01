@@ -4,12 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { fetchK8sOverview, K8sOverviewData, readQueryString } from '../../lib/k8sWorkspace';
+import { fetchK8sServices, K8sServicesData, readQueryString } from '../../lib/k8sWorkspace';
 
 export default function DevOpsK8sServicesPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
-  const [overview, setOverview] = useState<K8sOverviewData | null>(null);
+  const [overview, setOverview] = useState<K8sServicesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -39,7 +39,7 @@ export default function DevOpsK8sServicesPage() {
     setLoading(true);
     setError('');
 
-    fetchK8sOverview(apiUrl, {
+    fetchK8sServices(apiUrl, {
       project_id: projectId || undefined,
       cluster_name: clusterName || undefined,
       namespace: namespace || undefined,
@@ -65,7 +65,7 @@ export default function DevOpsK8sServicesPage() {
 
   const visibleRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const rows = overview?.services || [];
+    const rows = overview?.items || [];
     if (!query) return rows;
     return rows.filter((item) =>
       [item.name, item.namespace, item.cluster_name, item.type, item.ports, item.exposure, item.selector]
@@ -73,7 +73,7 @@ export default function DevOpsK8sServicesPage() {
         .toLowerCase()
         .includes(query),
     );
-  }, [overview?.services, search]);
+  }, [overview?.items, search]);
 
   const summary = useMemo(
     () => ({
@@ -219,12 +219,14 @@ export default function DevOpsK8sServicesPage() {
                 <thead>
                   <tr>
                     <th>Service</th>
-                    <th>Cluster</th>
                     <th>Namespace</th>
                     <th>Type</th>
                     <th>Cluster IP</th>
+                    <th>External IP</th>
+                    <th>Ingress</th>
                     <th>Ports</th>
                     <th>Exposure</th>
+                    <th>Cluster</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -234,17 +236,19 @@ export default function DevOpsK8sServicesPage() {
                         <div className="k8s-link-cell__title">{item.name}</div>
                         <div className="k8s-link-cell__meta">{item.selector || 'No selector'}</div>
                       </td>
-                      <td>{item.cluster_name}</td>
                       <td>{item.namespace}</td>
                       <td>{item.type || '—'}</td>
                       <td>{item.cluster_ip || '—'}</td>
+                      <td>{item.external_ip || '—'}</td>
+                      <td>{item.ingress_host || '—'}</td>
                       <td>{item.ports || '—'}</td>
                       <td><span className="portal-pill">{item.exposure || 'internal'}</span></td>
+                      <td>{item.cluster_name}</td>
                     </tr>
                   ))}
                   {!loading && visibleRows.length === 0 ? (
                     <tr>
-                      <td colSpan={7}>
+                      <td colSpan={9}>
                         <div className="portal-empty">
                           <p>No services match the current filters.</p>
                         </div>

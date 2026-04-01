@@ -447,7 +447,7 @@ func buildProjectReleaseDashboard(project ProjectCatalog) (*projectReleaseDashbo
 }
 
 func buildProjectK8sPreview(project ProjectCatalog) (*projectK8sPreview, error) {
-	overview, err := buildK8sDashboard(project.ID, "", "", "")
+	overview, err := buildK8sDashboard(project.ID, "", "", "", true)
 	if err != nil {
 		return nil, err
 	}

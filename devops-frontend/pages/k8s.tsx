@@ -6,16 +6,15 @@ import DevOpsLayout from '../components/DevOpsLayout';
 import K8sWorkspaceShell from '../components/K8sWorkspaceShell';
 import { useApiUrl } from '../context/ApiUrlContext';
 import {
-  buildClusterCatalog,
   buildK8sHref,
-  fetchK8sOverview,
+  fetchK8sClusters,
   formatDateTime,
-  K8sClusterCatalogItem,
-  K8sOverviewData,
+  K8sClusterListItem,
+  K8sClustersData,
   readQueryString,
 } from '../lib/k8sWorkspace';
 
-function matchesClusterSearch(item: K8sClusterCatalogItem, query: string) {
+function matchesClusterSearch(item: K8sClusterListItem, query: string) {
   if (!query) return true;
   const haystack = [
     item.cluster_name,
@@ -25,6 +24,10 @@ function matchesClusterSearch(item: K8sClusterCatalogItem, query: string) {
     item.cloud,
     item.environment,
     item.auth_mode,
+    item.node_pool,
+    item.kubernetes_version,
+    item.location,
+    item.health_status,
   ]
     .join(' ')
     .toLowerCase();
@@ -34,7 +37,7 @@ function matchesClusterSearch(item: K8sClusterCatalogItem, query: string) {
 export default function DevOpsK8sClustersPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
-  const [overview, setOverview] = useState<K8sOverviewData | null>(null);
+  const [catalog, setCatalog] = useState<K8sClustersData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -55,17 +58,17 @@ export default function DevOpsK8sClustersPage() {
     setLoading(true);
     setError('');
 
-    fetchK8sOverview(apiUrl, {
+    fetchK8sClusters(apiUrl, {
       project_id: projectId || undefined,
       environment: environment || undefined,
     })
       .then((data) => {
         if (!active) return;
-        setOverview(data);
+        setCatalog(data);
       })
       .catch((err) => {
         if (!active) return;
-        setOverview(null);
+        setCatalog(null);
         setError(err instanceof Error ? err.message : 'Failed to load K8s clusters');
       })
       .finally(() => {
@@ -77,10 +80,14 @@ export default function DevOpsK8sClustersPage() {
     };
   }, [apiUrl, environment, projectId, refreshKey, router.isReady]);
 
-  const clusterCatalog = useMemo(() => (overview ? buildClusterCatalog(overview) : []), [overview]);
-  const projectOptions = overview?.projects || [];
+  const clusterCatalog = catalog?.items || [];
+  const projectOptions = catalog?.projects || [];
   const cloudOptions = useMemo(
     () => Array.from(new Set(clusterCatalog.map((item) => item.cloud).filter(Boolean))).sort(),
+    [clusterCatalog],
+  );
+  const environmentOptions = useMemo(
+    () => Array.from(new Set(clusterCatalog.map((item) => item.environment).filter(Boolean))).sort(),
     [clusterCatalog],
   );
   const visibleClusters = useMemo(() => {
@@ -208,7 +215,7 @@ export default function DevOpsK8sClustersPage() {
                   onChange={(event) => setEnvironment(event.target.value)}
                 >
                   <option value="">All environments</option>
-                  {(overview?.environments || []).map((item) => (
+                  {environmentOptions.map((item) => (
                     <option key={item} value={item}>
                       {item.toUpperCase()}
                     </option>
@@ -243,16 +250,21 @@ export default function DevOpsK8sClustersPage() {
                     <th>Project</th>
                     <th>Cloud</th>
                     <th>Environment</th>
+                    <th>Health</th>
+                    <th>Version</th>
+                    <th>Node pool</th>
+                    <th>Nodes</th>
                     <th>Namespaces</th>
                     <th>Workloads</th>
                     <th>Services</th>
+                    <th>ConfigMaps</th>
                     <th>Storage</th>
                     <th>Updated</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visibleClusters.map((cluster) => (
-                    <tr key={cluster.key}>
+                    <tr key={`${cluster.project_id}-${cluster.cloud}-${cluster.cluster_name}-${cluster.environment}`}>
                       <td>
                         <Link
                           href={buildK8sHref('/k8s/workloads', {
@@ -274,16 +286,21 @@ export default function DevOpsK8sClustersPage() {
                       </td>
                       <td>{cluster.cloud.toUpperCase()}</td>
                       <td><span className="portal-pill">{cluster.environment.toUpperCase()}</span></td>
+                      <td><span className="portal-pill">{cluster.health_status || 'Healthy'}</span></td>
+                      <td>{cluster.kubernetes_version || '—'}</td>
+                      <td>{cluster.node_pool || '—'}</td>
+                      <td>{cluster.node_count}</td>
                       <td>{cluster.namespace_count}</td>
                       <td>{cluster.workload_count}</td>
                       <td>{cluster.service_count}</td>
+                      <td>{cluster.configmap_count}</td>
                       <td>{cluster.storage_count}</td>
                       <td>{formatDateTime(cluster.updated_at)}</td>
                     </tr>
                   ))}
                   {!loading && visibleClusters.length === 0 ? (
                     <tr>
-                      <td colSpan={9}>
+                      <td colSpan={14}>
                         <div className="portal-empty">
                           <p>No K8s clusters match the current filters.</p>
                         </div>

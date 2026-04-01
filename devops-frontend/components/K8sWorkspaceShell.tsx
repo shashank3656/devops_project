@@ -59,6 +59,12 @@ export default function K8sWorkspaceShell({
     environment: readQueryString(router.query.environment),
   };
   const query = queryState || defaultQueryState;
+  const scopePills = [
+    query.cluster_name ? { label: 'Cluster', value: query.cluster_name } : null,
+    query.namespace ? { label: 'Namespace', value: query.namespace } : null,
+    query.environment ? { label: 'Environment', value: query.environment.toUpperCase() } : null,
+    query.project_id ? { label: 'Project', value: `#${query.project_id}` } : null,
+  ].filter(Boolean) as Array<{ label: string; value: string }>;
 
   const getNavHref = (href: string) => {
     if (href === '/k8s') {
@@ -90,7 +96,6 @@ export default function K8sWorkspaceShell({
           <h1 className="portal-page__title">{title}</h1>
           <p className="portal-page__subtitle">{subtitle}</p>
         </div>
-        {actions ? <div className="portal-page__actions">{actions}</div> : null}
       </div>
 
       <div className="k8s-workspace">
@@ -99,7 +104,7 @@ export default function K8sWorkspaceShell({
             <span className="k8s-workspace__eyebrow">Workspace</span>
             <h2 className="k8s-workspace__title">Kubernetes Engine</h2>
             <p className="k8s-workspace__copy">
-              Use the same cluster-first flow across the DevOps portal: start with the cluster, then move into the resource view you need.
+              Start with the cluster, then move into workloads, services, ConfigMaps, or storage without leaving the workspace.
             </p>
           </div>
 
@@ -124,7 +129,43 @@ export default function K8sWorkspaceShell({
           </Link>
         </aside>
 
-        <div className="k8s-workspace__content">{children}</div>
+        <div className="k8s-workspace__content">
+          <div className="k8s-workspace__utility">
+            <div className="k8s-workspace__utility-main">
+              <div>
+                <span className="k8s-workspace__utility-eyebrow">K8s workspace</span>
+                <h2 className="k8s-workspace__utility-title">{title}</h2>
+              </div>
+              <div className="k8s-workspace__utility-side">
+                {scopePills.length ? (
+                  <div className="k8s-workspace__scope-pills" aria-label="Current K8s scope">
+                    {scopePills.map((item) => (
+                      <span key={`${item.label}-${item.value}`} className="k8s-workspace__scope-pill">
+                        <span className="k8s-workspace__scope-label">{item.label}</span>
+                        <strong className="k8s-workspace__scope-value">{item.value}</strong>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {actions ? <div className="k8s-workspace__utility-actions">{actions}</div> : null}
+              </div>
+            </div>
+
+            <div className="k8s-workspace__tabbar" role="tablist" aria-label="K8s workspace sections">
+              {NAV_ITEMS.map((item) => (
+                <Link
+                  key={`tab-${item.href}`}
+                  href={getNavHref(item.href)}
+                  className={`k8s-workspace__tab ${isActive(item.href) ? 'k8s-workspace__tab--active' : ''}`}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {children}
+        </div>
       </div>
     </div>
   );

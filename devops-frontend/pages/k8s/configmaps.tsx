@@ -4,12 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { fetchK8sOverview, K8sOverviewData, readQueryString } from '../../lib/k8sWorkspace';
+import { fetchK8sConfigMaps, K8sConfigMapsData, readQueryString } from '../../lib/k8sWorkspace';
 
 export default function DevOpsK8sConfigMapsPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
-  const [overview, setOverview] = useState<K8sOverviewData | null>(null);
+  const [overview, setOverview] = useState<K8sConfigMapsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -39,7 +39,7 @@ export default function DevOpsK8sConfigMapsPage() {
     setLoading(true);
     setError('');
 
-    fetchK8sOverview(apiUrl, {
+    fetchK8sConfigMaps(apiUrl, {
       project_id: projectId || undefined,
       cluster_name: clusterName || undefined,
       namespace: namespace || undefined,
@@ -65,7 +65,7 @@ export default function DevOpsK8sConfigMapsPage() {
 
   const visibleRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const rows = overview?.configmaps || [];
+    const rows = overview?.items || [];
     if (!query) return rows;
     return rows.filter((item) =>
       [item.name, item.namespace, item.cluster_name, item.mounted_by, String(item.data_keys)]
@@ -73,7 +73,7 @@ export default function DevOpsK8sConfigMapsPage() {
         .toLowerCase()
         .includes(query),
     );
-  }, [overview?.configmaps, search]);
+  }, [overview?.items, search]);
 
   const summary = useMemo(
     () => ({
@@ -219,10 +219,12 @@ export default function DevOpsK8sConfigMapsPage() {
                 <thead>
                   <tr>
                     <th>ConfigMap</th>
-                    <th>Cluster</th>
                     <th>Namespace</th>
                     <th>Data keys</th>
+                    <th>Version</th>
+                    <th>Age</th>
                     <th>Mounted by</th>
+                    <th>Cluster</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -232,15 +234,17 @@ export default function DevOpsK8sConfigMapsPage() {
                         <div className="k8s-link-cell__title">{item.name}</div>
                         <div className="k8s-link-cell__meta">{item.data_keys} keys</div>
                       </td>
-                      <td>{item.cluster_name}</td>
                       <td>{item.namespace}</td>
                       <td>{item.data_keys}</td>
+                      <td>{item.resource_version || '—'}</td>
+                      <td>{item.age || '—'}</td>
                       <td>{item.mounted_by || 'Not mounted'}</td>
+                      <td>{item.cluster_name}</td>
                     </tr>
                   ))}
                   {!loading && visibleRows.length === 0 ? (
                     <tr>
-                      <td colSpan={5}>
+                      <td colSpan={7}>
                         <div className="portal-empty">
                           <p>No ConfigMaps match the current filters.</p>
                         </div>
