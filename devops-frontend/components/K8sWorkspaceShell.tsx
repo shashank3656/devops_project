@@ -19,7 +19,7 @@ interface K8sWorkspaceShellProps {
 const NAV_ITEMS = [
   {
     href: '/k8s',
-    label: 'K8s Clusters',
+    label: 'K8s Cluster',
     copy: 'Browse onboarded clusters and jump into a selected cluster.',
   },
   {
