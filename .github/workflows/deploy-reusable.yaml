@@ -39,8 +39,6 @@ on:
         required: true
       DB_PASSWORD:
         required: true
-      GITHUB_TOKEN:
-        required: true
       ADMIN_SECRET:
         required: true
       DEFAULT_ADMIN_PASSWORD:
@@ -319,7 +317,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
           DEFAULT_ADMIN_PASSWORD: ${{ secrets.DEFAULT_ADMIN_PASSWORD }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
