@@ -4,12 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { fetchK8sOverview, K8sOverviewData, readQueryString } from '../../lib/k8sWorkspace';
+import { fetchK8sWorkloads, K8sWorkloadsData, readQueryString } from '../../lib/k8sWorkspace';
 
 export default function DevOpsK8sWorkloadsPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
-  const [overview, setOverview] = useState<K8sOverviewData | null>(null);
+  const [overview, setOverview] = useState<K8sWorkloadsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -39,7 +39,7 @@ export default function DevOpsK8sWorkloadsPage() {
     setLoading(true);
     setError('');
 
-    fetchK8sOverview(apiUrl, {
+    fetchK8sWorkloads(apiUrl, {
       project_id: projectId || undefined,
       cluster_name: clusterName || undefined,
       namespace: namespace || undefined,
@@ -65,12 +65,12 @@ export default function DevOpsK8sWorkloadsPage() {
 
   const visibleRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const rows = overview?.deployments || [];
+    const rows = overview?.items || [];
     if (!query) return rows;
     return rows.filter((item) =>
       [item.name, item.namespace, item.cluster_name, item.image, item.status].join(' ').toLowerCase().includes(query),
     );
-  }, [overview?.deployments, search]);
+  }, [overview?.items, search]);
 
   const summary = useMemo(
     () => ({
@@ -216,11 +216,13 @@ export default function DevOpsK8sWorkloadsPage() {
                 <thead>
                   <tr>
                     <th>Workload</th>
-                    <th>Cluster</th>
                     <th>Namespace</th>
-                    <th>Image</th>
+                    <th>CPU util.</th>
+                    <th>CPU hours</th>
+                    <th>Memory (GB)</th>
+                    <th>Memory hours</th>
                     <th>Ready</th>
-                    <th>Replicas</th>
+                    <th>Cluster</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -231,17 +233,19 @@ export default function DevOpsK8sWorkloadsPage() {
                         <div className="k8s-link-cell__title">{item.name}</div>
                         <div className="k8s-link-cell__meta">{item.image || 'No image detail'}</div>
                       </td>
-                      <td>{item.cluster_name}</td>
                       <td>{item.namespace}</td>
-                      <td>{item.image || '—'}</td>
+                      <td>{item.cpu_utilization_pct}%</td>
+                      <td>{item.cpu_hours}</td>
+                      <td>{item.memory_utilization_gb}</td>
+                      <td>{item.memory_hours}</td>
                       <td>{item.ready_replicas}/{item.updated_replicas}</td>
-                      <td>{item.replicas}</td>
+                      <td>{item.cluster_name}</td>
                       <td><span className="portal-pill">{item.status}</span></td>
                     </tr>
                   ))}
                   {!loading && visibleRows.length === 0 ? (
                     <tr>
-                      <td colSpan={7}>
+                      <td colSpan={9}>
                         <div className="portal-empty">
                           <p>No workloads match the current filters.</p>
                         </div>

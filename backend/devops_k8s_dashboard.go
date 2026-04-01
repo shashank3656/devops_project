@@ -72,6 +72,10 @@ type k8sDeploymentItem struct {
 	ReadyReplicas   int    `json:"ready_replicas"`
 	UpdatedReplicas int    `json:"updated_replicas"`
 	Status          string `json:"status"`
+	CPUUtilization  int    `json:"cpu_utilization_pct"`
+	CPUHours        int    `json:"cpu_hours"`
+	MemoryUsageGB   int    `json:"memory_utilization_gb"`
+	MemoryHours     int    `json:"memory_hours"`
 }
 
 type k8sPodItem struct {
@@ -106,13 +110,16 @@ type k8sReplicaSetItem struct {
 }
 
 type k8sVolumeItem struct {
-	Name        string `json:"name"`
-	Namespace   string `json:"namespace"`
-	ClusterName string `json:"cluster_name"`
-	Type        string `json:"type"`
-	Claim       string `json:"claim"`
-	Status      string `json:"status"`
-	MountedBy   string `json:"mounted_by"`
+	Name         string `json:"name"`
+	Namespace    string `json:"namespace"`
+	ClusterName  string `json:"cluster_name"`
+	Type         string `json:"type"`
+	Claim        string `json:"claim"`
+	Status       string `json:"status"`
+	MountedBy    string `json:"mounted_by"`
+	StorageClass string `json:"storage_class"`
+	Capacity     string `json:"capacity"`
+	AccessMode   string `json:"access_mode"`
 }
 
 type k8sServiceItem struct {
@@ -124,6 +131,8 @@ type k8sServiceItem struct {
 	Ports       string `json:"ports"`
 	Selector    string `json:"selector"`
 	Exposure    string `json:"exposure"`
+	ExternalIP  string `json:"external_ip"`
+	IngressHost string `json:"ingress_host"`
 }
 
 type k8sIngressItem struct {
@@ -154,11 +163,74 @@ type k8sServiceAccountItem struct {
 }
 
 type k8sConfigMapItem struct {
-	Name        string `json:"name"`
-	Namespace   string `json:"namespace"`
-	ClusterName string `json:"cluster_name"`
-	DataKeys    int    `json:"data_keys"`
-	MountedBy   string `json:"mounted_by"`
+	Name            string `json:"name"`
+	Namespace       string `json:"namespace"`
+	ClusterName     string `json:"cluster_name"`
+	DataKeys        int    `json:"data_keys"`
+	MountedBy       string `json:"mounted_by"`
+	ResourceVersion string `json:"resource_version"`
+	Age             string `json:"age"`
+}
+
+type k8sClusterListItem struct {
+	ProjectID         int       `json:"project_id"`
+	ProjectName       string    `json:"project_name"`
+	ProjectCode       string    `json:"project_code"`
+	Cloud             string    `json:"cloud"`
+	ClusterName       string    `json:"cluster_name"`
+	ClusterEndpoint   string    `json:"cluster_endpoint"`
+	Environment       string    `json:"environment"`
+	AuthMode          string    `json:"auth_mode"`
+	HasAuthCredential bool      `json:"has_auth_credential"`
+	NamespaceCount    int       `json:"namespace_count"`
+	WorkloadCount     int       `json:"workload_count"`
+	ServiceCount      int       `json:"service_count"`
+	ConfigMapCount    int       `json:"configmap_count"`
+	StorageCount      int       `json:"storage_count"`
+	NodePool          string    `json:"node_pool"`
+	NodeCount         int       `json:"node_count"`
+	KubernetesVersion string    `json:"kubernetes_version"`
+	Location          string    `json:"location"`
+	HealthStatus      string    `json:"health_status"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+type k8sResourceMeta struct {
+	Projects            []k8sProjectOption    `json:"projects"`
+	SelectedProjectID   int                   `json:"selected_project_id"`
+	SelectedCluster     string                `json:"selected_cluster"`
+	SelectedNamespace   string                `json:"selected_namespace"`
+	SelectedEnvironment string                `json:"selected_environment"`
+	Clusters            []string              `json:"clusters"`
+	Namespaces          []string              `json:"namespaces"`
+	Environments        []string              `json:"environments"`
+	Connections         []k8sConnectionRecord `json:"connections,omitempty"`
+}
+
+type k8sClustersResponse struct {
+	k8sResourceMeta
+	Items []k8sClusterListItem `json:"items"`
+}
+
+type k8sWorkloadsResponse struct {
+	k8sResourceMeta
+	HealthSummary k8sWorkloadHealthSummary `json:"health_summary"`
+	Items         []k8sDeploymentItem      `json:"items"`
+}
+
+type k8sServicesResponse struct {
+	k8sResourceMeta
+	Items []k8sServiceItem `json:"items"`
+}
+
+type k8sConfigMapsResponse struct {
+	k8sResourceMeta
+	Items []k8sConfigMapItem `json:"items"`
+}
+
+type k8sStorageResponse struct {
+	k8sResourceMeta
+	Items []k8sVolumeItem `json:"items"`
 }
 
 type k8sDashboardResponse struct {
@@ -434,7 +506,234 @@ func uniqueSortedNonEmpty(values []string) []string {
 	return out
 }
 
-func buildK8sDashboard(projectID int, clusterName, namespaceFilter, environmentFilter string) (*k8sDashboardResponse, error) {
+func k8sVersionForCloud(cloud string) string {
+	switch strings.ToLower(strings.TrimSpace(cloud)) {
+	case "gcp":
+		return "1.29.8-gke.1093000"
+	case "aws":
+		return "1.29.7-eks"
+	case "azure":
+		return "1.29.6-aks"
+	default:
+		return "1.29.6"
+	}
+}
+
+func k8sLocationForCloud(cloud, environment string) string {
+	env := strings.ToLower(strings.TrimSpace(environment))
+	switch strings.ToLower(strings.TrimSpace(cloud)) {
+	case "gcp":
+		if env == "prod" {
+			return "asia-south1"
+		}
+		return "asia-south1-b"
+	case "aws":
+		if env == "prod" {
+			return "ap-south-1"
+		}
+		return "ap-south-1a"
+	case "azure":
+		if env == "prod" {
+			return "centralindia"
+		}
+		return "centralindia-1"
+	default:
+		return "regional"
+	}
+}
+
+func k8sNodePoolName(clusterName, environment string) string {
+	token := k8sSafeToken(clusterName)
+	env := k8sSafeToken(environment)
+	return fmt.Sprintf("%s-%s-pool", token, env)
+}
+
+func buildK8sResourceMeta(payload *k8sDashboardResponse, includeConnections bool) k8sResourceMeta {
+	meta := k8sResourceMeta{
+		Projects:            append([]k8sProjectOption(nil), payload.Projects...),
+		SelectedProjectID:   payload.SelectedProjectID,
+		SelectedCluster:     payload.SelectedCluster,
+		SelectedNamespace:   payload.SelectedNamespace,
+		SelectedEnvironment: payload.SelectedEnvironment,
+		Clusters:            append([]string(nil), payload.Clusters...),
+		Namespaces:          append([]string(nil), payload.Namespaces...),
+		Environments:        append([]string(nil), payload.Environments...),
+	}
+	if includeConnections {
+		meta.Connections = append([]k8sConnectionRecord(nil), payload.Connections...)
+	}
+	return meta
+}
+
+func buildK8sClusterItems(payload *k8sDashboardResponse) []k8sClusterListItem {
+	rows := make(map[string]*k8sClusterListItem)
+
+	for _, connection := range payload.Connections {
+		key := fmt.Sprintf("%d:%s:%s:%s", connection.ProjectID, connection.Cloud, connection.ClusterName, connection.Environment)
+		rows[key] = &k8sClusterListItem{
+			ProjectID:         connection.ProjectID,
+			ProjectName:       connection.ProjectName,
+			ProjectCode:       connection.ProjectCode,
+			Cloud:             connection.Cloud,
+			ClusterName:       connection.ClusterName,
+			ClusterEndpoint:   connection.ClusterEndpoint,
+			Environment:       connection.Environment,
+			AuthMode:          connection.AuthMode,
+			HasAuthCredential: connection.HasAuthCredential,
+			NodePool:          k8sNodePoolName(connection.ClusterName, connection.Environment),
+			NodeCount:         3 + ((connection.ProjectID + len(connection.ClusterName)) % 4),
+			KubernetesVersion: k8sVersionForCloud(connection.Cloud),
+			Location:          k8sLocationForCloud(connection.Cloud, connection.Environment),
+			HealthStatus:      "Healthy",
+			UpdatedAt:         connection.UpdatedAt,
+		}
+	}
+
+	clusterKeys := func(clusterName, environment string) []string {
+		out := make([]string, 0, len(rows))
+		for key, row := range rows {
+			if row.ClusterName != clusterName {
+				continue
+			}
+			if environment != "" && row.Environment != environment {
+				continue
+			}
+			out = append(out, key)
+		}
+		return out
+	}
+
+	for _, item := range payload.NamespaceItems {
+		for _, key := range clusterKeys(item.ClusterName, item.Environment) {
+			rows[key].NamespaceCount++
+		}
+	}
+	for _, item := range payload.Deployments {
+		for _, key := range clusterKeys(item.ClusterName, "") {
+			row := rows[key]
+			row.WorkloadCount++
+			switch strings.ToLower(item.Status) {
+			case "blocked":
+				row.HealthStatus = "Blocked"
+			case "degraded":
+				if row.HealthStatus != "Blocked" {
+					row.HealthStatus = "Needs attention"
+				}
+			}
+		}
+	}
+	for _, item := range payload.Services {
+		for _, key := range clusterKeys(item.ClusterName, "") {
+			rows[key].ServiceCount++
+		}
+	}
+	for _, item := range payload.ConfigMaps {
+		for _, key := range clusterKeys(item.ClusterName, "") {
+			rows[key].ConfigMapCount++
+		}
+	}
+	for _, item := range payload.Volumes {
+		for _, key := range clusterKeys(item.ClusterName, "") {
+			rows[key].StorageCount++
+		}
+	}
+
+	items := make([]k8sClusterListItem, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, *row)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].ProjectName != items[j].ProjectName {
+			return items[i].ProjectName < items[j].ProjectName
+		}
+		if items[i].ClusterName != items[j].ClusterName {
+			return items[i].ClusterName < items[j].ClusterName
+		}
+		return items[i].Environment < items[j].Environment
+	})
+	return items
+}
+
+func buildK8sClustersResponse(projectID int, clusterName, environment string) (k8sClustersResponse, error) {
+	if projectID > 0 {
+		payload, err := buildK8sDashboard(projectID, clusterName, "", environment, false)
+		if err != nil {
+			return k8sClustersResponse{}, err
+		}
+		return k8sClustersResponse{
+			k8sResourceMeta: buildK8sResourceMeta(payload, true),
+			Items:           buildK8sClusterItems(payload),
+		}, nil
+	}
+
+	projects, err := listProjectCatalogs()
+	if err != nil {
+		return k8sClustersResponse{}, err
+	}
+	connections, err := listK8sConnections()
+	if err != nil {
+		return k8sClustersResponse{}, err
+	}
+
+	items := make([]k8sClusterListItem, 0)
+	seen := make(map[string]struct{})
+	for _, project := range projects {
+		payload, err := buildK8sDashboard(project.ID, clusterName, "", environment, false)
+		if err != nil {
+			return k8sClustersResponse{}, err
+		}
+		for _, item := range buildK8sClusterItems(payload) {
+			key := fmt.Sprintf("%d:%s:%s:%s", item.ProjectID, item.Cloud, item.ClusterName, item.Environment)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			items = append(items, item)
+		}
+	}
+
+	filteredConnections := make([]k8sConnectionRecord, 0, len(connections))
+	clusterOptions := make([]string, 0, len(connections))
+	environmentOptions := make([]string, 0, len(connections))
+	for _, item := range connections {
+		if clusterName != "" && item.ClusterName != clusterName {
+			continue
+		}
+		if environment != "" && item.Environment != environment {
+			continue
+		}
+		filteredConnections = append(filteredConnections, item)
+		clusterOptions = append(clusterOptions, item.ClusterName)
+		environmentOptions = append(environmentOptions, item.Environment)
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].ProjectName != items[j].ProjectName {
+			return items[i].ProjectName < items[j].ProjectName
+		}
+		if items[i].ClusterName != items[j].ClusterName {
+			return items[i].ClusterName < items[j].ClusterName
+		}
+		return items[i].Environment < items[j].Environment
+	})
+
+	return k8sClustersResponse{
+		k8sResourceMeta: k8sResourceMeta{
+			Projects:            buildK8sProjectOptions(projects),
+			SelectedProjectID:   0,
+			SelectedCluster:     clusterName,
+			SelectedNamespace:   "",
+			SelectedEnvironment: environment,
+			Clusters:            uniqueSortedNonEmpty(clusterOptions),
+			Namespaces:          []string{},
+			Environments:        uniqueSortedNonEmpty(environmentOptions),
+			Connections:         filteredConnections,
+		},
+		Items: items,
+	}, nil
+}
+
+func buildK8sDashboard(projectID int, clusterName, namespaceFilter, environmentFilter string, applyDefaults bool) (*k8sDashboardResponse, error) {
 	projects, err := listProjectCatalogs()
 	if err != nil {
 		return nil, err
@@ -489,15 +788,15 @@ func buildK8sDashboard(projectID int, clusterName, namespaceFilter, environmentF
 	response.Environments = uniqueSortedNonEmpty(environmentOptions)
 
 	selectedCluster := strings.TrimSpace(clusterName)
-	if selectedCluster == "" && len(response.Clusters) > 0 {
+	if applyDefaults && selectedCluster == "" && len(response.Clusters) > 0 {
 		selectedCluster = response.Clusters[0]
 	}
 	selectedEnvironment := strings.TrimSpace(environmentFilter)
-	if selectedEnvironment == "" && len(response.Environments) > 0 {
+	if applyDefaults && selectedEnvironment == "" && len(response.Environments) > 0 {
 		selectedEnvironment = response.Environments[0]
 	}
 	selectedNamespace := strings.TrimSpace(namespaceFilter)
-	if selectedNamespace == "" && len(response.Namespaces) > 0 {
+	if applyDefaults && selectedNamespace == "" && len(response.Namespaces) > 0 {
 		selectedNamespace = response.Namespaces[0]
 	}
 	response.SelectedCluster = selectedCluster
@@ -607,6 +906,10 @@ func buildK8sDashboard(projectID int, clusterName, namespaceFilter, environmentF
 				ReadyReplicas:   ready,
 				UpdatedReplicas: replicas,
 				Status:          deploymentStatus(ready, replicas),
+				CPUUtilization:  28 + ((index + len(connection.ClusterName)) % 47),
+				CPUHours:        3 + index,
+				MemoryUsageGB:   4 + ((index * 3) % 13),
+				MemoryHours:     2 + ((index + 1) % 6),
 			})
 			replicaSets = append(replicaSets, k8sReplicaSetItem{
 				Name:            fmt.Sprintf("%s-rs-%d", deploymentName, index+1),
@@ -638,6 +941,8 @@ func buildK8sDashboard(projectID int, clusterName, namespaceFilter, environmentF
 				Ports:       "80/TCP, 443/TCP",
 				Selector:    fmt.Sprintf("app=%s", deploymentName),
 				Exposure:    strings.ToUpper(connection.Cloud),
+				ExternalIP:  fmt.Sprintf("34.%d.%d.%d", 100+(index%40), 10+(index%50), 20+(index%100)),
+				IngressHost: fmt.Sprintf("%s.%s.internal.example.com", deploymentName, k8sSafeToken(selectedProject.Code)),
 			})
 			ingresses = append(ingresses, k8sIngressItem{
 				Name:        fmt.Sprintf("%s-ing", deploymentName),
@@ -649,13 +954,16 @@ func buildK8sDashboard(projectID int, clusterName, namespaceFilter, environmentF
 				Status:      map[bool]string{true: "ready", false: "warning"}[ready == replicas],
 			})
 			volumes = append(volumes, k8sVolumeItem{
-				Name:        fmt.Sprintf("%s-data", deploymentName),
-				Namespace:   connection.Namespace,
-				ClusterName: connection.ClusterName,
-				Type:        "PersistentVolumeClaim",
-				Claim:       fmt.Sprintf("pvc-%s", deploymentName),
-				Status:      "Bound",
-				MountedBy:   deploymentName,
+				Name:         fmt.Sprintf("%s-data", deploymentName),
+				Namespace:    connection.Namespace,
+				ClusterName:  connection.ClusterName,
+				Type:         "PersistentVolumeClaim",
+				Claim:        fmt.Sprintf("pvc-%s", deploymentName),
+				Status:       "Bound",
+				MountedBy:    deploymentName,
+				StorageClass: fmt.Sprintf("%s-standard", k8sSafeToken(connection.Cloud)),
+				Capacity:     fmt.Sprintf("%dGi", 20+(index*10)),
+				AccessMode:   "ReadWriteOnce",
 			})
 			secrets = append(secrets, k8sSecretItem{
 				Name:        fmt.Sprintf("%s-secrets", deploymentName),
@@ -673,11 +981,13 @@ func buildK8sDashboard(projectID int, clusterName, namespaceFilter, environmentF
 				TokenCount:  1,
 			})
 			configMaps = append(configMaps, k8sConfigMapItem{
-				Name:        fmt.Sprintf("%s-config", deploymentName),
-				Namespace:   connection.Namespace,
-				ClusterName: connection.ClusterName,
-				DataKeys:    4 + index,
-				MountedBy:   deploymentName,
+				Name:            fmt.Sprintf("%s-config", deploymentName),
+				Namespace:       connection.Namespace,
+				ClusterName:     connection.ClusterName,
+				DataKeys:        4 + index,
+				MountedBy:       deploymentName,
+				ResourceVersion: fmt.Sprintf("%d", 2000+(index*37)),
+				Age:             fmt.Sprintf("%dd", 4+(index*2)),
 			})
 			logs = append(logs, k8sLogItem{
 				Name:        deploymentName,
@@ -794,6 +1104,177 @@ func devopsK8sConnectionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func devopsK8sQuerySelection(r *http.Request) (int, string, string, string) {
+	projectID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("project_id")))
+	clusterName := strings.TrimSpace(r.URL.Query().Get("cluster_name"))
+	namespace := strings.TrimSpace(r.URL.Query().Get("namespace"))
+	environment := strings.TrimSpace(r.URL.Query().Get("environment"))
+	return projectID, clusterName, namespace, environment
+}
+
+func devopsK8sClustersHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	if _, ok := requireDevopsUser(w, r); !ok {
+		return
+	}
+
+	projectID, clusterName, _, environment := devopsK8sQuerySelection(r)
+	response, err := buildK8sClustersResponse(projectID, clusterName, environment)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status": "ok",
+		"data":   response,
+	})
+}
+
+func devopsK8sWorkloadsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	if _, ok := requireDevopsUser(w, r); !ok {
+		return
+	}
+
+	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
+	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status": "ok",
+		"data": k8sWorkloadsResponse{
+			k8sResourceMeta: buildK8sResourceMeta(payload, false),
+			HealthSummary:   payload.HealthSummary,
+			Items:           payload.Deployments,
+		},
+	})
+}
+
+func devopsK8sServicesHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	if _, ok := requireDevopsUser(w, r); !ok {
+		return
+	}
+
+	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
+	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status": "ok",
+		"data": k8sServicesResponse{
+			k8sResourceMeta: buildK8sResourceMeta(payload, false),
+			Items:           payload.Services,
+		},
+	})
+}
+
+func devopsK8sConfigMapsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	if _, ok := requireDevopsUser(w, r); !ok {
+		return
+	}
+
+	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
+	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status": "ok",
+		"data": k8sConfigMapsResponse{
+			k8sResourceMeta: buildK8sResourceMeta(payload, false),
+			Items:           payload.ConfigMaps,
+		},
+	})
+}
+
+func devopsK8sStorageHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	if _, ok := requireDevopsUser(w, r); !ok {
+		return
+	}
+
+	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
+	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status": "ok",
+		"data": k8sStorageResponse{
+			k8sResourceMeta: buildK8sResourceMeta(payload, false),
+			Items:           payload.Volumes,
+		},
+	})
+}
+
 func devopsK8sOverviewHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
@@ -808,11 +1289,8 @@ func devopsK8sOverviewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("project_id")))
-	clusterName := strings.TrimSpace(r.URL.Query().Get("cluster_name"))
-	namespace := strings.TrimSpace(r.URL.Query().Get("namespace"))
-	environment := strings.TrimSpace(r.URL.Query().Get("environment"))
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment)
+	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
+	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, true)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
