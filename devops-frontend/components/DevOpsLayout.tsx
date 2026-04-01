@@ -62,7 +62,12 @@ const PAGE_TITLES: Record<string, string> = {
   '/project-operations': 'Project Work',
   '/service-heatmap': 'Service Health',
   '/ops-command-center': 'Operations',
-  '/k8s': 'Clusters',
+  '/k8s/onboard': 'Onboard Cluster',
+  '/k8s/workloads': 'Workloads',
+  '/k8s/services': 'Services',
+  '/k8s/configmaps': 'ConfigMaps',
+  '/k8s/storage': 'Storage',
+  '/k8s': 'K8s Clusters',
   '/runbooks': 'Guides',
   '/incidents': 'Incidents',
   '/incident-workspace': 'Incident Notes',
@@ -350,7 +355,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
 const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
     { href: '/dashboard', label: 'Overview', Icon: IconTickets },
     { href: '/tickets', label: 'Requests', Icon: IconTickets },
-    { href: '/k8s', label: 'Clusters', Icon: IconK8s },
+    { href: '/k8s', label: 'K8s Clusters', Icon: IconK8s },
     { href: '/templates', label: 'Request Templates', Icon: IconTemplates },
     { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
   ];

@@ -1,1419 +1,301 @@
 import Head from 'next/head';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
+import K8sWorkspaceShell from '../components/K8sWorkspaceShell';
 import { useApiUrl } from '../context/ApiUrlContext';
-import { asRecord, getString } from '../lib/payload';
+import {
+  buildClusterCatalog,
+  buildK8sHref,
+  fetchK8sOverview,
+  formatDateTime,
+  K8sClusterCatalogItem,
+  K8sOverviewData,
+  readQueryString,
+} from '../lib/k8sWorkspace';
 
-const DEVOPS_TOKEN_KEY = 'devops_token';
-const DEVOPS_USER_KEY = 'devops_user';
-
-type K8sViewMode = 'onboarding' | 'dashboard';
-type ResourceTab =
-  | 'pods'
-  | 'deployments'
-  | 'logs'
-  | 'replicasets'
-  | 'namespaces'
-  | 'volumes'
-  | 'services'
-  | 'ingresses'
-  | 'secrets'
-  | 'service_accounts'
-  | 'configmaps';
-type DataSourceMode = 'prometheus' | 'kube_state_metrics' | 'loki';
-type ResolutionMode = '15s' | '30s' | '1m' | '5m';
-type K8sHealthFocus = '' | 'restarting_pods' | 'non_running_pods' | 'warning_logs' | 'unhealthy_namespaces' | 'degraded_workloads';
-
-interface ProjectOption {
-  id: number;
-  name: string;
-  code: string;
-  clouds: string[];
-  environments: string[];
+function matchesClusterSearch(item: K8sClusterCatalogItem, query: string) {
+  if (!query) return true;
+  const haystack = [
+    item.cluster_name,
+    item.cluster_endpoint,
+    item.project_name,
+    item.project_code,
+    item.cloud,
+    item.environment,
+    item.auth_mode,
+  ]
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(query);
 }
 
-interface K8sConnection {
-  id: number;
-  project_id: number;
-  project_name: string;
-  project_code: string;
-  cloud: string;
-  cluster_name: string;
-  cluster_endpoint: string;
-  environment: string;
-  namespace: string;
-  auth_mode: string;
-  has_auth_credential: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-interface Summary {
-  namespace_count: number;
-  deployment_count: number;
-  pod_count: number;
-  service_count: number;
-  ingress_count: number;
-  warning_event_count: number;
-}
-
-interface WorkloadHealthSummary {
-  healthy_deployments: number;
-  degraded_deployments: number;
-  blocked_deployments: number;
-  scaled_down_deployments: number;
-  restarting_pods: number;
-  non_running_pods: number;
-  warning_logs: number;
-  unhealthy_namespaces: number;
-}
-
-interface NamespaceHealthItem {
-  namespace: string;
-  cluster_name: string;
-  status: string;
-  issue_count: number;
-  restarting_pods: number;
-  warning_logs: number;
-  affected_deployments: number;
-}
-
-interface WorkloadSpotlightItem {
-  name: string;
-  namespace: string;
-  cluster_name: string;
-  status: string;
-  ready_replicas: number;
-  replicas: number;
-  restart_count: number;
-  warning_count: number;
-}
-
-interface NamespaceItem {
-  name: string;
-  status: string;
-  environment: string;
-  cluster_name: string;
-  pod_count: number;
-  service_count: number;
-  last_activity: string;
-}
-
-interface DeploymentItem {
-  name: string;
-  namespace: string;
-  cluster_name: string;
-  image: string;
-  replicas: number;
-  ready_replicas: number;
-  updated_replicas: number;
-  status: string;
-}
-
-interface PodItem {
-  name: string;
-  namespace: string;
-  cluster_name: string;
-  status: string;
-  restarts: number;
-  node: string;
-  age: string;
-  deployment: string;
-}
-
-interface LogItem {
-  name: string;
-  namespace: string;
-  cluster_name: string;
-  container: string;
-  level: string;
-  message: string;
-  timestamp: string;
-}
-
-interface ReplicaSetItem {
-  name: string;
-  namespace: string;
-  cluster_name: string;
-  desired_replicas: number;
-  ready_replicas: number;
-  age: string;
-  deployment: string;
-}
-
-interface VolumeItem {
-  name: string;
-  namespace: string;
-  cluster_name: string;
-  type: string;
-  claim: string;
-  status: string;
-  mounted_by: string;
-}
-
-interface ServiceItem {
-  name: string;
-  namespace: string;
-  cluster_name: string;
-  type: string;
-  cluster_ip: string;
-  ports: string;
-  selector: string;
-  exposure: string;
-}
-
-interface IngressItem {
-  name: string;
-  namespace: string;
-  cluster_name: string;
-  host: string;
-  paths: string;
-  exposure: string;
-  status: string;
-}
-
-interface SecretItem {
-  name: string;
-  namespace: string;
-  cluster_name: string;
-  type: string;
-  managed_by: string;
-  age: string;
-}
-
-interface ServiceAccountItem {
-  name: string;
-  namespace: string;
-  cluster_name: string;
-  automount: boolean;
-  token_count: number;
-}
-
-interface ConfigMapItem {
-  name: string;
-  namespace: string;
-  cluster_name: string;
-  data_keys: number;
-  mounted_by: string;
-}
-
-interface K8sOverviewData {
-  projects: ProjectOption[];
-  connections: K8sConnection[];
-  selected_project_id: number;
-  selected_cluster: string;
-  selected_namespace: string;
-  selected_environment: string;
-  clusters: string[];
-  namespaces: string[];
-  environments: string[];
-  summary: Summary;
-  health_summary: WorkloadHealthSummary;
-  namespace_items: NamespaceItem[];
-  namespace_health: NamespaceHealthItem[];
-  deployments: DeploymentItem[];
-  workload_spotlights: WorkloadSpotlightItem[];
-  pods: PodItem[];
-  logs: LogItem[];
-  replicasets: ReplicaSetItem[];
-  volumes: VolumeItem[];
-  services: ServiceItem[];
-  ingresses: IngressItem[];
-  secrets: SecretItem[];
-  service_accounts: ServiceAccountItem[];
-  configmaps: ConfigMapItem[];
-}
-
-interface K8sOnboardingData {
-  projects: ProjectOption[];
-  connections: K8sConnection[];
-  auth_modes: string[];
-}
-
-function clearSessionAndRedirect() {
-  localStorage.removeItem(DEVOPS_TOKEN_KEY);
-  localStorage.removeItem(DEVOPS_USER_KEY);
-  window.location.assign('/login');
-}
-
-function normalizeProjects(value: unknown): ProjectOption[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((project) => {
-    const item = project && typeof project === 'object' ? (project as Record<string, unknown>) : {};
-    return {
-      id: typeof item.id === 'number' ? item.id : 0,
-      name: typeof item.name === 'string' ? item.name : 'Unknown',
-      code: typeof item.code === 'string' ? item.code : 'n/a',
-      clouds: Array.isArray(item.clouds) ? item.clouds.filter((entry: unknown): entry is string => typeof entry === 'string') : [],
-      environments: Array.isArray(item.environments)
-        ? item.environments.filter((entry: unknown): entry is string => typeof entry === 'string')
-        : [],
-    };
-  });
-}
-
-function normalizeConnections(value: unknown): K8sConnection[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((connection) => {
-    const item = connection && typeof connection === 'object' ? (connection as Record<string, unknown>) : {};
-    return {
-      id: typeof item.id === 'number' ? item.id : 0,
-      project_id: typeof item.project_id === 'number' ? item.project_id : 0,
-      project_name: typeof item.project_name === 'string' ? item.project_name : 'Unknown',
-      project_code: typeof item.project_code === 'string' ? item.project_code : 'n/a',
-      cloud: typeof item.cloud === 'string' ? item.cloud : '',
-      cluster_name: typeof item.cluster_name === 'string' ? item.cluster_name : '',
-      cluster_endpoint: typeof item.cluster_endpoint === 'string' ? item.cluster_endpoint : '',
-      environment: typeof item.environment === 'string' ? item.environment : '',
-      namespace: typeof item.namespace === 'string' ? item.namespace : '',
-      auth_mode: typeof item.auth_mode === 'string' ? item.auth_mode : '',
-      has_auth_credential: item.has_auth_credential === true,
-      created_at: typeof item.created_at === 'string' ? item.created_at : '',
-      updated_at: typeof item.updated_at === 'string' ? item.updated_at : '',
-    };
-  });
-}
-
-function authModeRequiresCredential(mode: string): boolean {
-  return mode !== 'in_cluster';
-}
-
-function authModeCredentialLabel(mode: string): string {
-  switch (mode) {
-    case 'kubeconfig':
-      return 'Kubeconfig content';
-    case 'service_account':
-      return 'Service account token';
-    case 'token':
-      return 'Bearer token';
-    case 'oidc':
-      return 'OIDC token';
-    default:
-      return 'Auth credential';
-  }
-}
-
-function authModeCredentialPlaceholder(mode: string): string {
-  switch (mode) {
-    case 'kubeconfig':
-      return 'Paste kubeconfig content here';
-    case 'service_account':
-      return 'Paste service account token';
-    case 'token':
-      return 'Paste cluster access token';
-    case 'oidc':
-      return 'Paste OIDC token';
-    default:
-      return 'Paste authentication credential';
-  }
-}
-
-function normalizeOverviewData(value: Partial<K8sOverviewData> | null | undefined): K8sOverviewData | null {
-  if (!value) return null;
-  return {
-    projects: normalizeProjects(value.projects),
-    connections: normalizeConnections(value.connections),
-    selected_project_id: typeof value.selected_project_id === 'number' ? value.selected_project_id : 0,
-    selected_cluster: typeof value.selected_cluster === 'string' ? value.selected_cluster : '',
-    selected_namespace: typeof value.selected_namespace === 'string' ? value.selected_namespace : '',
-    selected_environment: typeof value.selected_environment === 'string' ? value.selected_environment : '',
-    clusters: Array.isArray(value.clusters)
-      ? value.clusters.filter((item: unknown): item is string => typeof item === 'string')
-      : [],
-    namespaces: Array.isArray(value.namespaces)
-      ? value.namespaces.filter((item: unknown): item is string => typeof item === 'string')
-      : [],
-    environments: Array.isArray(value.environments)
-      ? value.environments.filter((item: unknown): item is string => typeof item === 'string')
-      : [],
-    summary: {
-      namespace_count: typeof value.summary?.namespace_count === 'number' ? value.summary.namespace_count : 0,
-      deployment_count: typeof value.summary?.deployment_count === 'number' ? value.summary.deployment_count : 0,
-      pod_count: typeof value.summary?.pod_count === 'number' ? value.summary.pod_count : 0,
-      service_count: typeof value.summary?.service_count === 'number' ? value.summary.service_count : 0,
-      ingress_count: typeof value.summary?.ingress_count === 'number' ? value.summary.ingress_count : 0,
-      warning_event_count: typeof value.summary?.warning_event_count === 'number' ? value.summary.warning_event_count : 0,
-    },
-    health_summary: {
-      healthy_deployments: typeof value.health_summary?.healthy_deployments === 'number' ? value.health_summary.healthy_deployments : 0,
-      degraded_deployments: typeof value.health_summary?.degraded_deployments === 'number' ? value.health_summary.degraded_deployments : 0,
-      blocked_deployments: typeof value.health_summary?.blocked_deployments === 'number' ? value.health_summary.blocked_deployments : 0,
-      scaled_down_deployments: typeof value.health_summary?.scaled_down_deployments === 'number' ? value.health_summary.scaled_down_deployments : 0,
-      restarting_pods: typeof value.health_summary?.restarting_pods === 'number' ? value.health_summary.restarting_pods : 0,
-      non_running_pods: typeof value.health_summary?.non_running_pods === 'number' ? value.health_summary.non_running_pods : 0,
-      warning_logs: typeof value.health_summary?.warning_logs === 'number' ? value.health_summary.warning_logs : 0,
-      unhealthy_namespaces: typeof value.health_summary?.unhealthy_namespaces === 'number' ? value.health_summary.unhealthy_namespaces : 0,
-    },
-    namespace_items: Array.isArray(value.namespace_items) ? value.namespace_items as NamespaceItem[] : [],
-    namespace_health: Array.isArray(value.namespace_health) ? value.namespace_health as NamespaceHealthItem[] : [],
-    deployments: Array.isArray(value.deployments) ? value.deployments as DeploymentItem[] : [],
-    workload_spotlights: Array.isArray(value.workload_spotlights) ? value.workload_spotlights as WorkloadSpotlightItem[] : [],
-    pods: Array.isArray(value.pods) ? value.pods as PodItem[] : [],
-    logs: Array.isArray(value.logs) ? value.logs as LogItem[] : [],
-    replicasets: Array.isArray(value.replicasets) ? value.replicasets as ReplicaSetItem[] : [],
-    volumes: Array.isArray(value.volumes) ? value.volumes as VolumeItem[] : [],
-    services: Array.isArray(value.services) ? value.services as ServiceItem[] : [],
-    ingresses: Array.isArray(value.ingresses) ? value.ingresses as IngressItem[] : [],
-    secrets: Array.isArray(value.secrets) ? value.secrets as SecretItem[] : [],
-    service_accounts: Array.isArray(value.service_accounts) ? value.service_accounts as ServiceAccountItem[] : [],
-    configmaps: Array.isArray(value.configmaps) ? value.configmaps as ConfigMapItem[] : [],
-  };
-}
-
-function normalizeOnboardingData(value: Partial<K8sOnboardingData> | null | undefined): K8sOnboardingData {
-  return {
-    projects: normalizeProjects(value?.projects),
-    connections: normalizeConnections(value?.connections),
-    auth_modes: Array.isArray(value?.auth_modes)
-      ? value.auth_modes.filter((item: unknown): item is string => typeof item === 'string')
-      : [],
-  };
-}
-
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString();
-}
-
-export default function DevOpsK8sPage() {
+export default function DevOpsK8sClustersPage() {
   const apiUrl = useApiUrl();
-  const [viewMode, setViewMode] = useState<K8sViewMode>('dashboard');
+  const router = useRouter();
   const [overview, setOverview] = useState<K8sOverviewData | null>(null);
-  const [onboarding, setOnboarding] = useState<K8sOnboardingData>({ projects: [], connections: [], auth_modes: [] });
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
   const [projectId, setProjectId] = useState('');
-  const [clusterName, setClusterName] = useState('');
-  const [namespace, setNamespace] = useState('');
+  const [cloud, setCloud] = useState('');
   const [environment, setEnvironment] = useState('');
-  const [dataSourceMode, setDataSourceMode] = useState<DataSourceMode>('prometheus');
-  const [resolution, setResolution] = useState<ResolutionMode>('30s');
-  const [workload, setWorkload] = useState('');
-  const [activeTab, setActiveTab] = useState<ResourceTab>('pods');
-  const [healthFocus, setHealthFocus] = useState<K8sHealthFocus>('');
-  const [form, setForm] = useState({
-    project_id: '',
-    cloud: '',
-    cluster_name: '',
-    cluster_endpoint: '',
-    environment: '',
-    auth_mode: 'service_account',
-    auth_credential: '',
-  });
+  const [search, setSearch] = useState('');
 
-  const selectedProject = useMemo(
-    () => onboarding.projects.find((project) => String(project.id) === form.project_id) || null,
-    [onboarding.projects, form.project_id]
-  );
+  useEffect(() => {
+    if (!router.isReady) return;
+    setProjectId(readQueryString(router.query.project_id));
+    setEnvironment(readQueryString(router.query.environment));
+  }, [router.isReady, router.query.environment, router.query.project_id]);
 
-  const projectClouds = selectedProject?.clouds || [];
-  const projectEnvironments = selectedProject?.environments || [];
-  const selectedOverviewProject = useMemo(
-    () => overview?.projects.find((project) => String(project.id) === projectId) || null,
-    [overview?.projects, projectId],
-  );
-  const hasDashboardScope =
-    Boolean(projectId) ||
-    Boolean(clusterName) ||
-    Boolean(namespace) ||
-    Boolean(environment) ||
-    Boolean(workload) ||
-    Boolean(healthFocus);
-  const workloadOptions = useMemo(() => {
-    const names = (overview?.deployments || []).map((item) => item.name).filter(Boolean);
-    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
-  }, [overview]);
-
-  const loadOnboarding = async () => {
-    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token) {
-      clearSessionAndRedirect();
-      return;
-    }
-    const response = await fetch(`${apiUrl}/api/devops/k8s-connections`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (response.status === 401 || response.status === 403) {
-      clearSessionAndRedirect();
-      return;
-    }
-    const payload = asRecord(await response.json().catch(() => ({})));
-    if (!response.ok) {
-      throw new Error(getString(payload.error, 'Failed to load K8s onboarding'));
-    }
-    const nextData = normalizeOnboardingData(
-      payload.data && typeof payload.data === 'object' ? (payload.data as Partial<K8sOnboardingData>) : undefined
-    );
-    setOnboarding(nextData);
-    if (!form.project_id && nextData.projects[0]?.id) {
-      setForm((current) => ({
-        ...current,
-        project_id: String(nextData.projects[0].id),
-        cloud: current.cloud || nextData.projects[0].clouds[0] || '',
-          environment: current.environment || nextData.projects[0].environments[0] || '',
-          auth_mode: current.auth_mode || nextData.auth_modes[0] || 'service_account',
-          auth_credential: current.auth_credential || '',
-        }));
-    }
-  };
-
-  const loadOverview = async (nextProjectId?: string, nextClusterName?: string, nextNamespace?: string, nextEnvironment?: string) => {
-    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token) {
-      clearSessionAndRedirect();
-      return;
-    }
-    const params = new URLSearchParams();
-    const projectValue = (nextProjectId ?? projectId).trim();
-    const clusterValue = (nextClusterName ?? clusterName).trim();
-    const namespaceValue = (nextNamespace ?? namespace).trim();
-    const environmentValue = (nextEnvironment ?? environment).trim();
-    if (projectValue) params.set('project_id', projectValue);
-    if (clusterValue) params.set('cluster_name', clusterValue);
-    if (namespaceValue) params.set('namespace', namespaceValue);
-    if (environmentValue) params.set('environment', environmentValue);
-
-    const response = await fetch(`${apiUrl}/api/devops/k8s-overview?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (response.status === 401 || response.status === 403) {
-      clearSessionAndRedirect();
-      return;
-    }
-    const payload = asRecord(await response.json().catch(() => ({})));
-    if (!response.ok) {
-      throw new Error(getString(payload.error, 'Failed to load K8s dashboard'));
-    }
-    const nextData = normalizeOverviewData(
-      payload.data && typeof payload.data === 'object' ? (payload.data as Partial<K8sOverviewData>) : undefined
-    );
-    if (nextData) {
-      setOverview(nextData);
-      setProjectId(String(nextData.selected_project_id || ''));
-      setClusterName(nextData.selected_cluster || '');
-      setNamespace(nextData.selected_namespace || '');
-      setEnvironment(nextData.selected_environment || '');
-    }
-  };
-
-  const loadFilteredView = async (nextProjectId = projectId, nextClusterName = clusterName, nextNamespace = namespace, nextEnvironment = environment) => {
+  useEffect(() => {
+    if (!router.isReady) return;
+    let active = true;
     setLoading(true);
     setError('');
-    try {
-      await loadOverview(nextProjectId, nextClusterName, nextNamespace, nextEnvironment);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load K8s dashboard');
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  useEffect(() => {
-    const loadAll = async () => {
-      setLoading(true);
-      setError('');
-      try {
-        await Promise.all([loadOnboarding(), loadOverview()]);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load K8s workspace');
-      } finally {
-        setLoading(false);
-      }
-    };
-    void loadAll();
-  }, [apiUrl]);
-
-  useEffect(() => {
-    if (!selectedProject) return;
-    setForm((current) => ({
-      ...current,
-      cloud: projectClouds.includes(current.cloud) ? current.cloud : (projectClouds[0] || ''),
-      environment: projectEnvironments.includes(current.environment) ? current.environment : (projectEnvironments[0] || ''),
-    }));
-  }, [selectedProject, projectClouds, projectEnvironments]);
-
-  const dashboardView = useMemo(() => {
-    if (!overview) return null;
-    const workloadToken = workload.trim().toLowerCase();
-    if (!workloadToken) return overview;
-
-    const hasWorkload = (value: string) => value.toLowerCase().includes(workloadToken);
-    const deployments = overview.deployments.filter((item) => hasWorkload(item.name));
-    const pods = overview.pods.filter((item) => hasWorkload(item.name) || hasWorkload(item.deployment));
-    const logs = overview.logs.filter((item) => hasWorkload(item.name));
-    const replicasets = overview.replicasets.filter((item) => hasWorkload(item.name) || hasWorkload(item.deployment));
-    const volumes = overview.volumes.filter((item) => hasWorkload(item.name) || hasWorkload(item.mounted_by));
-    const services = overview.services.filter((item) => hasWorkload(item.name));
-    const ingresses = overview.ingresses.filter((item) => hasWorkload(item.name));
-    const secrets = overview.secrets.filter((item) => hasWorkload(item.name));
-    const serviceAccounts = overview.service_accounts.filter((item) => hasWorkload(item.name));
-    const configmaps = overview.configmaps.filter((item) => hasWorkload(item.name));
-    const visibleNamespaces = new Set<string>();
-    pods.forEach((item) => visibleNamespaces.add(item.namespace));
-    deployments.forEach((item) => visibleNamespaces.add(item.namespace));
-    const namespaceItems = overview.namespace_items.filter((item) => visibleNamespaces.has(item.name));
-    const namespaceHealth = overview.namespace_health.filter((item) => visibleNamespaces.has(item.namespace));
-    const workloadSpotlights = overview.workload_spotlights.filter((item) => hasWorkload(item.name));
-    const healthSummary = {
-      healthy_deployments: deployments.filter((item) => item.status.toLowerCase() === 'healthy').length,
-      degraded_deployments: deployments.filter((item) => item.status.toLowerCase() === 'degraded').length,
-      blocked_deployments: deployments.filter((item) => item.status.toLowerCase() === 'blocked').length,
-      scaled_down_deployments: deployments.filter((item) => item.status.toLowerCase() === 'scaled-down').length,
-      restarting_pods: pods.filter((item) => item.restarts > 0).length,
-      non_running_pods: pods.filter((item) => {
-        const status = item.status.toLowerCase();
-        return status !== 'running' && status !== 'completed' && status !== 'succeeded';
-      }).length,
-      warning_logs: logs.filter((item) => item.level.toLowerCase() !== 'info').length,
-      unhealthy_namespaces: namespaceHealth.length,
-    };
-
-    return {
-      ...overview,
-      health_summary: healthSummary,
-      deployments,
-      pods,
-      logs,
-      replicasets,
-      volumes,
-      services,
-      ingresses,
-      secrets,
-      service_accounts: serviceAccounts,
-      configmaps,
-      namespace_items: namespaceItems,
-      namespace_health: namespaceHealth,
-      workload_spotlights: workloadSpotlights,
-      summary: {
-        ...overview.summary,
-        namespace_count: namespaceItems.length,
-        deployment_count: deployments.length,
-        pod_count: pods.length,
-        service_count: services.length,
-        ingress_count: ingresses.length,
-        warning_event_count: logs.filter((item) => item.level.toLowerCase() !== 'info').length,
-      },
-    };
-  }, [overview, workload]);
-
-  const focusedDashboardView = useMemo(() => {
-    if (!dashboardView || !healthFocus) return dashboardView;
-
-    const nextView = {
-      ...dashboardView,
-      deployments: [...dashboardView.deployments],
-      pods: [...dashboardView.pods],
-      logs: [...dashboardView.logs],
-      replicasets: [...dashboardView.replicasets],
-      volumes: [...dashboardView.volumes],
-      services: [...dashboardView.services],
-      ingresses: [...dashboardView.ingresses],
-      secrets: [...dashboardView.secrets],
-      service_accounts: [...dashboardView.service_accounts],
-      configmaps: [...dashboardView.configmaps],
-      namespace_items: [...dashboardView.namespace_items],
-      namespace_health: [...dashboardView.namespace_health],
-      workload_spotlights: [...dashboardView.workload_spotlights],
-      summary: { ...dashboardView.summary },
-      health_summary: { ...dashboardView.health_summary },
-    };
-
-    if (healthFocus === 'restarting_pods') {
-      nextView.pods = nextView.pods.filter((item) => item.restarts > 0);
-    } else if (healthFocus === 'non_running_pods') {
-      nextView.pods = nextView.pods.filter((item) => {
-        const status = item.status.toLowerCase();
-        return status !== 'running' && status !== 'completed' && status !== 'succeeded';
+    fetchK8sOverview(apiUrl, {
+      project_id: projectId || undefined,
+      environment: environment || undefined,
+    })
+      .then((data) => {
+        if (!active) return;
+        setOverview(data);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setOverview(null);
+        setError(err instanceof Error ? err.message : 'Failed to load K8s clusters');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
-    } else if (healthFocus === 'warning_logs') {
-      nextView.logs = nextView.logs.filter((item) => item.level.toLowerCase() !== 'info');
-    } else if (healthFocus === 'unhealthy_namespaces') {
-      const affectedNamespaces = new Set(
-        nextView.namespace_health
-          .filter((item) => item.issue_count > 0 || item.status.toLowerCase() !== 'healthy')
-          .map((item) => `${item.cluster_name}::${item.namespace}`)
-      );
-      nextView.namespace_health = nextView.namespace_health.filter((item) => affectedNamespaces.has(`${item.cluster_name}::${item.namespace}`));
-      nextView.namespace_items = nextView.namespace_items.filter((item) => affectedNamespaces.has(`${item.cluster_name}::${item.name}`));
-      nextView.pods = nextView.pods.filter((item) => affectedNamespaces.has(`${item.cluster_name}::${item.namespace}`));
-      nextView.deployments = nextView.deployments.filter((item) => affectedNamespaces.has(`${item.cluster_name}::${item.namespace}`));
-      nextView.logs = nextView.logs.filter((item) => affectedNamespaces.has(`${item.cluster_name}::${item.namespace}`));
-    } else if (healthFocus === 'degraded_workloads') {
-      const spotlightNames = new Set(
-        nextView.workload_spotlights
-          .filter((item) => item.status.toLowerCase() !== 'healthy' || item.warning_count > 0 || item.restart_count > 0)
-          .map((item) => `${item.cluster_name}::${item.namespace}::${item.name}`)
-      );
-      nextView.deployments = nextView.deployments.filter((item) => {
-        const status = item.status.toLowerCase();
-        return status !== 'healthy' || spotlightNames.has(`${item.cluster_name}::${item.namespace}::${item.name}`);
-      });
-      nextView.workload_spotlights = nextView.workload_spotlights.filter((item) => spotlightNames.has(`${item.cluster_name}::${item.namespace}::${item.name}`));
-      nextView.pods = nextView.pods.filter((item) => spotlightNames.has(`${item.cluster_name}::${item.namespace}::${item.deployment}`));
-      nextView.logs = nextView.logs.filter((item) => spotlightNames.has(`${item.cluster_name}::${item.namespace}::${item.name}`));
-    }
 
-    nextView.summary = {
-      ...nextView.summary,
-      namespace_count: nextView.namespace_items.length,
-      deployment_count: nextView.deployments.length,
-      pod_count: nextView.pods.length,
-      service_count: nextView.services.length,
-      ingress_count: nextView.ingresses.length,
-      warning_event_count: nextView.logs.filter((item) => item.level.toLowerCase() !== 'info').length,
+    return () => {
+      active = false;
     };
-    nextView.health_summary = {
-      healthy_deployments: nextView.deployments.filter((item) => item.status.toLowerCase() === 'healthy').length,
-      degraded_deployments: nextView.deployments.filter((item) => item.status.toLowerCase() === 'degraded').length,
-      blocked_deployments: nextView.deployments.filter((item) => item.status.toLowerCase() === 'blocked').length,
-      scaled_down_deployments: nextView.deployments.filter((item) => item.status.toLowerCase() === 'scaled-down').length,
-      restarting_pods: nextView.pods.filter((item) => item.restarts > 0).length,
-      non_running_pods: nextView.pods.filter((item) => {
-        const status = item.status.toLowerCase();
-        return status !== 'running' && status !== 'completed' && status !== 'succeeded';
-      }).length,
-      warning_logs: nextView.logs.filter((item) => item.level.toLowerCase() !== 'info').length,
-      unhealthy_namespaces: nextView.namespace_health.filter((item) => item.issue_count > 0 || item.status.toLowerCase() !== 'healthy').length,
-    };
+  }, [apiUrl, environment, projectId, refreshKey, router.isReady]);
 
-    return nextView;
-  }, [dashboardView, healthFocus]);
-
-  const deploymentHealth = useMemo(() => {
-    const health = { healthy: 0, degraded: 0, blocked: 0, scaledDown: 0 };
-    for (const item of focusedDashboardView?.deployments || []) {
-      const status = (item.status || '').toLowerCase();
-      if (status === 'healthy') health.healthy += 1;
-      else if (status === 'degraded') health.degraded += 1;
-      else if (status === 'blocked') health.blocked += 1;
-      else if (status === 'scaled-down') health.scaledDown += 1;
-    }
-    return health;
-  }, [focusedDashboardView]);
-
-  const namespaceLoad = useMemo(() => {
-    const source = focusedDashboardView?.namespace_items || [];
-    return source
-      .map((item) => ({
-        namespace: item.name,
-        cluster: item.cluster_name,
-        pods: item.pod_count,
-      }))
-      .sort((a, b) => b.pods - a.pods)
-      .slice(0, 6);
-  }, [focusedDashboardView]);
-
-  const warningTimeline = useMemo(() => {
-    const baseWarnings = focusedDashboardView?.summary.warning_event_count || 0;
-    const multiplier = resolution === '15s' ? 0.8 : resolution === '30s' ? 1 : resolution === '1m' ? 1.2 : 1.5;
-    return Array.from({ length: 12 }, (_, index) => {
-      const wave = Math.sin((index / 11) * Math.PI * 2) * 1.5;
-      const drift = (index % 3) - 1;
-      const value = Math.max(0, Math.round((baseWarnings + wave + drift) * multiplier));
-      return { bucket: index + 1, value };
+  const clusterCatalog = useMemo(() => (overview ? buildClusterCatalog(overview) : []), [overview]);
+  const projectOptions = overview?.projects || [];
+  const cloudOptions = useMemo(
+    () => Array.from(new Set(clusterCatalog.map((item) => item.cloud).filter(Boolean))).sort(),
+    [clusterCatalog],
+  );
+  const visibleClusters = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return clusterCatalog.filter((item) => {
+      if (projectId && String(item.project_id) !== projectId) return false;
+      if (cloud && item.cloud !== cloud) return false;
+      if (environment && item.environment !== environment) return false;
+      return matchesClusterSearch(item, query);
     });
-  }, [focusedDashboardView, resolution]);
+  }, [cloud, clusterCatalog, environment, projectId, search]);
 
-  const tabCounts = useMemo(() => ({
-    pods: focusedDashboardView?.pods.length || 0,
-    deployments: focusedDashboardView?.deployments.length || 0,
-    logs: focusedDashboardView?.logs.length || 0,
-    replicasets: focusedDashboardView?.replicasets.length || 0,
-    namespaces: focusedDashboardView?.namespace_items.length || 0,
-    volumes: focusedDashboardView?.volumes.length || 0,
-    services: focusedDashboardView?.services.length || 0,
-    ingresses: focusedDashboardView?.ingresses.length || 0,
-    secrets: focusedDashboardView?.secrets.length || 0,
-    service_accounts: focusedDashboardView?.service_accounts.length || 0,
-    configmaps: focusedDashboardView?.configmaps.length || 0,
-  }), [focusedDashboardView]);
-
-  const tabItems: { key: ResourceTab; label: string }[] = [
-    { key: 'pods', label: 'Pods' },
-    { key: 'deployments', label: 'Deployments' },
-    { key: 'logs', label: 'Logs' },
-    { key: 'replicasets', label: 'ReplicaSet' },
-    { key: 'namespaces', label: 'Namespaces' },
-    { key: 'volumes', label: 'Volumes' },
-    { key: 'services', label: 'Services' },
-    { key: 'ingresses', label: 'Ingress' },
-    { key: 'secrets', label: 'Secret' },
-    { key: 'service_accounts', label: 'ServiceAccount' },
-    { key: 'configmaps', label: 'Configmaps' },
-  ];
-
-  const handleApplyFilters = async () => {
-    setHealthFocus('');
-    await loadFilteredView();
-  };
-
-  const handleHealthDrilldown = (nextTab: ResourceTab, nextFocus: K8sHealthFocus) => {
-    setActiveTab(nextTab);
-    setHealthFocus(nextFocus);
-  };
-
-  const handleNamespaceDrilldown = async (item: NamespaceHealthItem) => {
-    setClusterName(item.cluster_name);
-    setNamespace(item.namespace);
-    setActiveTab('pods');
-    setHealthFocus('unhealthy_namespaces');
-    await loadFilteredView(projectId, item.cluster_name, item.namespace, environment);
-  };
-
-  const handleWorkloadDrilldown = async (item: WorkloadSpotlightItem, nextTab: ResourceTab) => {
-    setClusterName(item.cluster_name);
-    setNamespace(item.namespace);
-    setWorkload(item.name);
-    setActiveTab(nextTab);
-    setHealthFocus('degraded_workloads');
-    await loadFilteredView(projectId, item.cluster_name, item.namespace, environment);
-  };
-
-  const handleOnboardingSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token) {
-      clearSessionAndRedirect();
-      return;
-    }
-    setSaving(true);
-    setError('');
-    setSuccess('');
-    try {
-      const response = await fetch(`${apiUrl}/api/devops/k8s-connections`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          project_id: Number(form.project_id),
-          cloud: form.cloud,
-          cluster_name: form.cluster_name,
-          cluster_endpoint: form.cluster_endpoint,
-          environment: form.environment,
-          auth_mode: form.auth_mode,
-          auth_credential: form.auth_credential,
-        }),
-      });
-      if (response.status === 401 || response.status === 403) {
-        clearSessionAndRedirect();
-        return;
-      }
-      const payload = asRecord(await response.json().catch(() => ({})));
-      if (!response.ok) {
-        throw new Error(getString(payload.error, 'Failed to save K8s onboarding'));
-      }
-      setSuccess(getString(payload.message, 'K8s onboarding saved'));
-      await Promise.all([
-        loadOnboarding(),
-        loadOverview(String(form.project_id), form.cluster_name, '', form.environment),
-      ]);
-      setProjectId(form.project_id);
-      setClusterName(form.cluster_name);
-      setNamespace('');
-      setEnvironment(form.environment);
-      setViewMode('dashboard');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save K8s onboarding');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const renderDashboardTable = () => {
-    if (!focusedDashboardView) return null;
-    switch (activeTab) {
-      case 'pods':
-        return (
-          <table className="k8s-resource-table">
-            <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Status</th><th>Restarts</th><th>Node</th><th>Deployment</th></tr></thead>
-            <tbody>{focusedDashboardView.pods.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.status}</td><td>{item.restarts}</td><td>{item.node}</td><td>{item.deployment}</td></tr>)}</tbody>
-          </table>
-        );
-      case 'deployments':
-        return (
-          <table className="k8s-resource-table">
-            <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Image</th><th>Ready</th><th>Replicas</th><th>Status</th></tr></thead>
-            <tbody>{focusedDashboardView.deployments.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.image}</td><td>{item.ready_replicas}/{item.updated_replicas}</td><td>{item.replicas}</td><td>{item.status}</td></tr>)}</tbody>
-          </table>
-        );
-      case 'logs':
-        return (
-          <table className="k8s-resource-table">
-            <thead><tr><th>Timestamp</th><th>Workload</th><th>Cluster</th><th>Namespace</th><th>Level</th><th>Message</th></tr></thead>
-            <tbody>{focusedDashboardView.logs.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}-${item.container}-${item.timestamp}-${item.message}`}><td>{formatDateTime(item.timestamp)}</td><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.level}</td><td>{item.message}</td></tr>)}</tbody>
-          </table>
-        );
-      case 'replicasets':
-        return (
-          <table className="k8s-resource-table">
-            <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Deployment</th><th>Ready</th><th>Age</th></tr></thead>
-            <tbody>{focusedDashboardView.replicasets.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.deployment}</td><td>{item.ready_replicas}/{item.desired_replicas}</td><td>{item.age}</td></tr>)}</tbody>
-          </table>
-        );
-      case 'namespaces':
-        return (
-          <table className="k8s-resource-table">
-            <thead><tr><th>Name</th><th>Cluster</th><th>Environment</th><th>Pods</th><th>Services</th><th>Last activity</th></tr></thead>
-            <tbody>{focusedDashboardView.namespace_items.map((item) => <tr key={`${item.cluster_name}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.environment}</td><td>{item.pod_count}</td><td>{item.service_count}</td><td>{formatDateTime(item.last_activity)}</td></tr>)}</tbody>
-          </table>
-        );
-      case 'volumes':
-        return (
-          <table className="k8s-resource-table">
-            <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Type</th><th>Claim</th><th>Status</th><th>Mounted by</th></tr></thead>
-            <tbody>{focusedDashboardView.volumes.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.type}</td><td>{item.claim}</td><td>{item.status}</td><td>{item.mounted_by}</td></tr>)}</tbody>
-          </table>
-        );
-      case 'services':
-        return (
-          <table className="k8s-resource-table">
-            <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Type</th><th>Cluster IP</th><th>Ports</th><th>Exposure</th></tr></thead>
-            <tbody>{focusedDashboardView.services.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.type}</td><td>{item.cluster_ip}</td><td>{item.ports}</td><td>{item.exposure}</td></tr>)}</tbody>
-          </table>
-        );
-      case 'ingresses':
-        return (
-          <table className="k8s-resource-table">
-            <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Host</th><th>Paths</th><th>Status</th></tr></thead>
-            <tbody>{focusedDashboardView.ingresses.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.host}</td><td>{item.paths}</td><td>{item.status}</td></tr>)}</tbody>
-          </table>
-        );
-      case 'secrets':
-        return (
-          <table className="k8s-resource-table">
-            <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Type</th><th>Managed by</th><th>Age</th></tr></thead>
-            <tbody>{focusedDashboardView.secrets.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.type}</td><td>{item.managed_by}</td><td>{item.age}</td></tr>)}</tbody>
-          </table>
-        );
-      case 'service_accounts':
-        return (
-          <table className="k8s-resource-table">
-            <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Automount</th><th>Tokens</th></tr></thead>
-            <tbody>{focusedDashboardView.service_accounts.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.automount ? 'Yes' : 'No'}</td><td>{item.token_count}</td></tr>)}</tbody>
-          </table>
-        );
-      case 'configmaps':
-        return (
-          <table className="k8s-resource-table">
-            <thead><tr><th>Name</th><th>Cluster</th><th>Namespace</th><th>Data keys</th><th>Mounted by</th></tr></thead>
-            <tbody>{focusedDashboardView.configmaps.map((item) => <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}><td>{item.name}</td><td>{item.cluster_name}</td><td>{item.namespace}</td><td>{item.data_keys}</td><td>{item.mounted_by}</td></tr>)}</tbody>
-          </table>
-        );
-      default:
-        return null;
-    }
-  };
+  const summary = useMemo(
+    () => ({
+      clusters: visibleClusters.length,
+      namespaces: visibleClusters.reduce((sum, item) => sum + item.namespace_count, 0),
+      workloads: visibleClusters.reduce((sum, item) => sum + item.workload_count, 0),
+      services: visibleClusters.reduce((sum, item) => sum + item.service_count, 0),
+      storage: visibleClusters.reduce((sum, item) => sum + item.storage_count, 0),
+    }),
+    [visibleClusters],
+  );
 
   return (
-    <DevOpsLayout>
+    <>
       <Head>
-        <title>K8s - DevOps Portal</title>
+        <title>K8s Clusters - DevOps</title>
       </Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
-          <div>
-            <span className="portal-page__eyebrow">Project Kubernetes</span>
-            <h1 className="portal-page__title">K8s</h1>
-            <p className="portal-page__subtitle">
-              Onboard project-to-cluster mappings, then browse Kubernetes resources with filters for project name, cluster name, namespace, and environment.
-            </p>
-          </div>
-          <div className="portal-page__actions">
-            <button
-              type="button"
-              className={`btn ${viewMode === 'dashboard' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setViewMode('dashboard')}
-            >
-              Dashboard
-            </button>
-            <button
-              type="button"
-              className={`btn ${viewMode === 'onboarding' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setViewMode('onboarding')}
-            >
-              Onboarding
-            </button>
-            <Link href="/projects" className="btn btn-secondary">Projects</Link>
-            <Link href="/project-operations" className="btn btn-secondary">Project operations</Link>
-          </div>
-        </div>
-
-        {error ? <div className="alert alert-error">{error}</div> : null}
-        {success ? <div className="alert alert-success">{success}</div> : null}
-
-        {viewMode === 'onboarding' ? (
-          <>
-            <section className="portal-surface" style={{ marginBottom: 24 }}>
-              <div className="portal-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Onboarding</span>
-                  <h2 className="portal-surface__title">Register a project cluster</h2>
-                  <p className="portal-surface__subtitle">
-                    Configure the project name, cloud, cluster name, endpoint, environment, and auth mode that the DevOps portal will use for this project-wise Kubernetes view.
-                  </p>
-                </div>
-              </div>
-              <form onSubmit={handleOnboardingSubmit}>
-                <div className="portal-form-grid">
-                  <label className="label">
-                    Project name
-                    <select className="input" value={form.project_id} onChange={(event) => setForm((current) => ({ ...current, project_id: event.target.value }))} required>
-                      {onboarding.projects.map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.name} ({project.code})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="label">
-                    Cloud
-                    <select className="input" value={form.cloud} onChange={(event) => setForm((current) => ({ ...current, cloud: event.target.value }))} required>
-                      {projectClouds.map((cloud) => (
-                        <option key={cloud} value={cloud}>
-                          {cloud.toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="label">
-                    Cluster name
-                    <input className="input" value={form.cluster_name} onChange={(event) => setForm((current) => ({ ...current, cluster_name: event.target.value }))} placeholder="payments-eks-prod" required />
-                  </label>
-                  <label className="label">
-                    Cluster endpoint
-                    <input className="input" value={form.cluster_endpoint} onChange={(event) => setForm((current) => ({ ...current, cluster_endpoint: event.target.value }))} placeholder="https://cluster.example.com" required />
-                  </label>
-                  <label className="label">
-                    Environment
-                    <select className="input" value={form.environment} onChange={(event) => setForm((current) => ({ ...current, environment: event.target.value }))} required>
-                      {projectEnvironments.map((env) => (
-                        <option key={env} value={env}>
-                          {env.toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="label">
-                    Auth mode
-                    <select className="input" value={form.auth_mode} onChange={(event) => setForm((current) => ({ ...current, auth_mode: event.target.value }))} required>
-                      {onboarding.auth_modes.map((mode) => (
-                        <option key={mode} value={mode}>
-                          {mode}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {authModeRequiresCredential(form.auth_mode) ? (
-                    <label className="label portal-form-grid__span-2">
-                      {authModeCredentialLabel(form.auth_mode)}
-                      {form.auth_mode === 'kubeconfig' ? (
-                        <textarea
-                          className="input"
-                          value={form.auth_credential}
-                          onChange={(event) => setForm((current) => ({ ...current, auth_credential: event.target.value }))}
-                          placeholder={authModeCredentialPlaceholder(form.auth_mode)}
-                          rows={6}
-                          required
-                        />
-                      ) : (
-                        <input
-                          className="input"
-                          type="password"
-                          value={form.auth_credential}
-                          onChange={(event) => setForm((current) => ({ ...current, auth_credential: event.target.value }))}
-                          placeholder={authModeCredentialPlaceholder(form.auth_mode)}
-                          required
-                        />
-                      )}
-                    </label>
-                  ) : (
-                    <div className="portal-note">
-                      In-cluster mode does not require a manually pasted credential. The backend is expected to run with cluster-native access.
-                    </div>
-                  )}
-                </div>
-                <div className="portal-form-actions" style={{ marginTop: 18 }}>
-                  <button type="submit" className="btn btn-primary" disabled={saving}>
-                    {saving ? 'Saving...' : 'Save K8s onboarding'}
-                  </button>
-                </div>
-              </form>
-            </section>
-
-            <section className="portal-surface">
-              <div className="portal-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Connections</span>
-                  <h2 className="portal-surface__title">Registered project clusters</h2>
-                </div>
-              </div>
-              <div className="k8s-table-wrap">
-                <table className="k8s-resource-table">
-                  <thead>
-                    <tr>
-                      <th>Project</th>
-                      <th>Cloud</th>
-                      <th>Cluster</th>
-                      <th>Endpoint</th>
-                      <th>Environment</th>
-                      <th>Namespace</th>
-                      <th>Auth mode</th>
-                      <th>Credential</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {onboarding.connections.map((item) => (
-                      <tr key={item.id}>
-                        <td>{item.project_name}</td>
-                        <td>{item.cloud.toUpperCase()}</td>
-                        <td>{item.cluster_name}</td>
-                        <td>{item.cluster_endpoint}</td>
-                        <td>{item.environment}</td>
-                        <td>{item.namespace}</td>
-                        <td>{item.auth_mode}</td>
-                        <td>{item.has_auth_credential ? 'Configured' : 'Missing'}</td>
-                      </tr>
-                    ))}
-                    {onboarding.connections.length === 0 ? (
-                      <tr>
-                        <td colSpan={8}>No K8s onboarding records yet.</td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          </>
-        ) : (
-          <>
-            {healthFocus ? (
-              <section className="portal-surface" style={{ marginBottom: 24 }}>
-                <div className="portal-page__actions" style={{ justifyContent: 'space-between' }}>
-                  <div>
-                    <span className="portal-surface__eyebrow">Focused view</span>
-                    <h2 className="portal-surface__title">
-                      {healthFocus === 'restarting_pods' ? 'Restarting pods' :
-                        healthFocus === 'non_running_pods' ? 'Non-running pods' :
-                          healthFocus === 'warning_logs' ? 'Warning logs' :
-                            healthFocus === 'unhealthy_namespaces' ? 'Unhealthy namespaces' :
-                              'Degraded workloads'}
-                    </h2>
-                    <p className="portal-surface__subtitle">
-                      The resource tables below are narrowed to the selected operational issue so the team can move quickly from summary to action.
-                    </p>
-                  </div>
-                  <button type="button" className="btn btn-secondary" onClick={() => setHealthFocus('')}>
-                    Clear focus
-                  </button>
-                </div>
-              </section>
-            ) : null}
-            <section className="k8s-console-surface" style={{ marginBottom: 24 }}>
-              <div className="k8s-console-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Cluster view</span>
-                  <h2 className="portal-surface__title">Keep the Kubernetes view focused</h2>
-                  <p className="portal-surface__subtitle">
-                    Filter by project, cluster, namespace, or workload, then move straight into the resource tabs below.
-                  </p>
-                </div>
-                <div className="k8s-console-pills">
-                  <span className="portal-pill">Namespaces {dashboardView?.summary.namespace_count || 0}</span>
-                  <span className="portal-pill">Deployments {dashboardView?.summary.deployment_count || 0}</span>
-                  <span className="portal-pill">Pods {dashboardView?.summary.pod_count || 0}</span>
-                  <span className="portal-pill">Warnings {dashboardView?.summary.warning_event_count || 0}</span>
-                  <span className="portal-pill">Restarting {dashboardView?.health_summary.restarting_pods || 0}</span>
-                </div>
-              </div>
-              <div className="portal-toolbar">
-                <div className="portal-toolbar__group">
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label">Datasource</label>
-                    <select className="input" value={dataSourceMode} onChange={(event) => setDataSourceMode(event.target.value as DataSourceMode)}>
-                      <option value="prometheus">Prometheus</option>
-                      <option value="kube_state_metrics">kube-state-metrics</option>
-                      <option value="loki">Loki</option>
-                    </select>
-                  </div>
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label">Project</label>
-                    <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                      {overview?.projects.map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.name} ({project.code})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label">Cluster</label>
-                    <select className="input" value={clusterName} onChange={(event) => setClusterName(event.target.value)}>
-                      <option value="">All clusters</option>
-                      {overview?.clusters.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label">Namespace</label>
-                    <select className="input" value={namespace} onChange={(event) => setNamespace(event.target.value)}>
-                      <option value="">All namespaces</option>
-                      {overview?.namespaces.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label">Environment</label>
-                    <select className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)}>
-                      <option value="">All environments</option>
-                      {overview?.environments.map((item) => (
-                        <option key={item} value={item}>
-                          {item.toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label">Workload</label>
-                    <select className="input" value={workload} onChange={(event) => setWorkload(event.target.value)}>
-                      <option value="">All workloads</option>
-                      {workloadOptions.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="portal-toolbar__item">
-                    <label className="credential-audit-label">Resolution</label>
-                    <select className="input" value={resolution} onChange={(event) => setResolution(event.target.value as ResolutionMode)}>
-                      <option value="15s">15s</option>
-                      <option value="30s">30s</option>
-                      <option value="1m">1m</option>
-                      <option value="5m">5m</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="portal-page__actions">
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={handleApplyFilters} disabled={loading}>
-                    {loading ? 'Loading...' : 'Apply'}
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            {hasDashboardScope ? (
-              <div className="alert alert-info" style={{ marginBottom: 24 }}>
-                Reviewing
-                {selectedOverviewProject ? ` ${selectedOverviewProject.name}` : ' all projects'}
-                {clusterName ? ` · cluster ${clusterName}` : ''}
-                {namespace ? ` · namespace ${namespace}` : ''}
-                {environment ? ` · ${environment.toUpperCase()}` : ''}
-                {workload ? ` · workload ${workload}` : ''}
-                {healthFocus ? ' · focused drilldown' : ''}
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  style={{ marginLeft: 12 }}
-                  onClick={() => {
-                    setProjectId('');
-                    setClusterName('');
-                    setNamespace('');
-                    setEnvironment('');
-                    setWorkload('');
-                    setHealthFocus('');
-                    void loadFilteredView('', '', '', '');
-                  }}
-                >
-                  Clear scope
-                </button>
-              </div>
-            ) : null}
-
-            <section className="k8s-viz-grid" style={{ marginBottom: 24 }}>
-              <article className="k8s-viz-panel">
-                <header className="k8s-viz-panel__header">
-                  <h3>Deployment health</h3>
-                  <span>{dataSourceMode.replace(/_/g, ' ')}</span>
-                </header>
-                <div className="k8s-health-pills">
-                  <span className="k8s-health-pill k8s-health-pill--healthy">Healthy {deploymentHealth.healthy}</span>
-                  <span className="k8s-health-pill k8s-health-pill--degraded">Degraded {deploymentHealth.degraded}</span>
-                  <span className="k8s-health-pill k8s-health-pill--blocked">Blocked {deploymentHealth.blocked}</span>
-                  <span className="k8s-health-pill k8s-health-pill--scaled">Scaled-down {deploymentHealth.scaledDown}</span>
-                </div>
-                <div className="k8s-health-bar">
-                  <span style={{ width: `${Math.max(6, deploymentHealth.healthy * 18)}px` }} className="k8s-health-bar__segment k8s-health-bar__segment--healthy" />
-                  <span style={{ width: `${Math.max(6, deploymentHealth.degraded * 18)}px` }} className="k8s-health-bar__segment k8s-health-bar__segment--degraded" />
-                  <span style={{ width: `${Math.max(6, deploymentHealth.blocked * 18)}px` }} className="k8s-health-bar__segment k8s-health-bar__segment--blocked" />
-                  <span style={{ width: `${Math.max(6, deploymentHealth.scaledDown * 18)}px` }} className="k8s-health-bar__segment k8s-health-bar__segment--scaled" />
-                </div>
-              </article>
-
-              <article className="k8s-viz-panel">
-                <header className="k8s-viz-panel__header">
-                  <h3>Namespace pod load</h3>
-                  <span>{resolution}</span>
-                </header>
-                <div className="k8s-namespace-bars">
-                  {namespaceLoad.length > 0 ? namespaceLoad.map((item) => (
-                    <div key={`${item.cluster}-${item.namespace}`} className="k8s-namespace-bars__row">
-                      <div className="k8s-namespace-bars__meta">
-                        <strong>{item.namespace}</strong>
-                        <small>{item.cluster}</small>
-                      </div>
-                      <div className="k8s-namespace-bars__track">
-                        <span style={{ width: `${Math.min(100, item.pods * 7)}%` }} />
-                      </div>
-                      <span className="k8s-namespace-bars__value">{item.pods}</span>
-                    </div>
-                  )) : <p className="k8s-viz-empty">No namespace metrics for current filters.</p>}
-                </div>
-              </article>
-
-              <article className="k8s-viz-panel">
-                <header className="k8s-viz-panel__header">
-                  <h3>Warning timeline</h3>
-                  <span>last 12 windows</span>
-                </header>
-                <div className="k8s-warning-timeline">
-                  {warningTimeline.map((point) => (
-                    <div key={point.bucket} className="k8s-warning-timeline__bar-wrap" title={`Window ${point.bucket}: ${point.value}`}>
-                      <span style={{ height: `${Math.max(8, point.value * 8)}px` }} className="k8s-warning-timeline__bar" />
-                    </div>
-                  ))}
-                </div>
-              </article>
-            </section>
-
-            <div className="k8s-watch-actions" style={{ marginBottom: 24 }}>
-              <span className="k8s-watch-actions__label">Jump to noisy areas</span>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('pods', 'restarting_pods')}>
-                Restarting pods ({dashboardView?.health_summary.restarting_pods || 0})
+      <DevOpsLayout>
+        <K8sWorkspaceShell
+          title="K8s Clusters"
+          subtitle="Browse onboarded Kubernetes clusters, filter the list quickly, and move straight into workloads, services, configmaps, or storage."
+          queryState={{ project_id: projectId, environment }}
+          actions={
+            <>
+              <button type="button" className="btn btn-secondary" onClick={() => setRefreshKey((value) => value + 1)}>
+                {loading ? 'Refreshing...' : 'Refresh'}
               </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('pods', 'non_running_pods')}>
-                Non-running pods ({dashboardView?.health_summary.non_running_pods || 0})
-              </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('logs', 'warning_logs')}>
-                Warning logs ({dashboardView?.health_summary.warning_logs || 0})
-              </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleHealthDrilldown('namespaces', 'unhealthy_namespaces')}>
-                Unhealthy namespaces ({dashboardView?.health_summary.unhealthy_namespaces || 0})
-              </button>
+              <Link href={buildK8sHref('/k8s/onboard', { project_id: projectId, environment })} className="btn btn-primary">
+                Onboard cluster
+              </Link>
+            </>
+          }
+        >
+          {error ? (
+            <div className="alert alert-error" role="alert">
+              {error}
+            </div>
+          ) : null}
+
+          <section className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Cluster inventory</span>
+                <h2 className="portal-surface__title">Onboarded K8s clusters</h2>
+                <p className="portal-surface__subtitle">
+                  Select a cluster to open its workload view. Filters stay compact so the cluster table remains the main focus.
+                </p>
+              </div>
             </div>
 
-            <section className="portal-grid" style={{ marginBottom: 24, gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
-              <article className="portal-surface">
-                <div className="portal-surface__header">
-                  <div>
-                    <span className="portal-surface__eyebrow">Namespace Watchlist</span>
-                    <h2 className="portal-surface__title">Cluster pressure by namespace</h2>
-                  </div>
-                </div>
-                {dashboardView?.namespace_health.length ? (
-                  <div style={{ display: 'grid', gap: 12 }}>
-                    {dashboardView.namespace_health.map((item) => (
-                      <div key={`${item.cluster_name}-${item.namespace}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-                          <strong>{item.namespace}</strong>
-                          <span>{item.status}</span>
-                        </div>
-                        <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
-                          {item.cluster_name} · Issues {item.issue_count} · Deployments {item.affected_deployments}
-                        </p>
-                        <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
-                          Restarts {item.restarting_pods} · Warning logs {item.warning_logs}
-                        </p>
-                        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void handleNamespaceDrilldown(item)}>
-                            View pods
-                          </button>
-                          <Link
-                            href={`/incidents?project_id=${encodeURIComponent(projectId || String(overview?.selected_project_id || ''))}&environment=${encodeURIComponent(environment || '')}&status=open`}
-                            className="btn btn-secondary btn-sm"
-                          >
-                            Open incidents
-                          </Link>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : <div className="empty-state">No unhealthy namespaces for the current filter set.</div>}
-              </article>
-
-              <article className="portal-surface">
-                <div className="portal-surface__header">
-                  <div>
-                    <span className="portal-surface__eyebrow">Workload Spotlight</span>
-                    <h2 className="portal-surface__title">Degraded workloads</h2>
-                  </div>
-                </div>
-                {dashboardView?.workload_spotlights.length ? (
-                  <div style={{ display: 'grid', gap: 12 }}>
-                    {dashboardView.workload_spotlights.map((item) => (
-                      <div key={`${item.cluster_name}-${item.namespace}-${item.name}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-                          <strong>{item.name}</strong>
-                          <span>{item.status}</span>
-                        </div>
-                        <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
-                          {item.cluster_name} · {item.namespace} · Ready {item.ready_replicas}/{item.replicas}
-                        </p>
-                        <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
-                          Restarts {item.restart_count} · Warning logs {item.warning_count}
-                        </p>
-                        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void handleWorkloadDrilldown(item, 'deployments')}>
-                            View deployment
-                          </button>
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void handleWorkloadDrilldown(item, 'logs')}>
-                            View logs
-                          </button>
-                          <Link
-                            href={`/runbooks?project_id=${encodeURIComponent(projectId || String(overview?.selected_project_id || ''))}&service=${encodeURIComponent(item.name)}`}
-                            className="btn btn-secondary btn-sm"
-                          >
-                            Runbooks
-                          </Link>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : <div className="empty-state">No degraded workloads for the current filter set.</div>}
-              </article>
-            </section>
-
-            <section className="portal-surface">
-              <div className="portal-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Components</span>
-                  <h2 className="portal-surface__title">Kubernetes resources</h2>
-                </div>
+            <div className="k8s-summary-strip">
+              <div className="k8s-summary-card">
+                <span className="k8s-summary-card__label">Clusters</span>
+                <strong className="k8s-summary-card__value">{summary.clusters}</strong>
               </div>
-              <div className="k8s-tab-strip">
-                {tabItems.map((item) => (
-                  <button key={item.key} type="button" className={`k8s-tab-strip__tab ${activeTab === item.key ? 'k8s-tab-strip__tab--active' : ''}`} onClick={() => setActiveTab(item.key)}>
-                    {item.label} <span>{tabCounts[item.key]}</span>
+              <div className="k8s-summary-card">
+                <span className="k8s-summary-card__label">Namespaces</span>
+                <strong className="k8s-summary-card__value">{summary.namespaces}</strong>
+              </div>
+              <div className="k8s-summary-card">
+                <span className="k8s-summary-card__label">Workloads</span>
+                <strong className="k8s-summary-card__value">{summary.workloads}</strong>
+              </div>
+              <div className="k8s-summary-card">
+                <span className="k8s-summary-card__label">Services</span>
+                <strong className="k8s-summary-card__value">{summary.services}</strong>
+              </div>
+              <div className="k8s-summary-card">
+                <span className="k8s-summary-card__label">Storage</span>
+                <strong className="k8s-summary-card__value">{summary.storage}</strong>
+              </div>
+            </div>
+
+            <div className="k8s-filterbar">
+              <label className="k8s-filterbar__field k8s-filterbar__field--search">
+                <span className="k8s-filterbar__label">Search</span>
+                <input
+                  className="input k8s-filterbar__input"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search cluster, endpoint, or project"
+                />
+              </label>
+
+              <label className="k8s-filterbar__field">
+                <span className="k8s-filterbar__label">Project</span>
+                <select className="input k8s-filterbar__input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                  <option value="">All projects</option>
+                  {projectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name} ({project.code})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="k8s-filterbar__field">
+                <span className="k8s-filterbar__label">Cloud</span>
+                <select className="input k8s-filterbar__input" value={cloud} onChange={(event) => setCloud(event.target.value)}>
+                  <option value="">All clouds</option>
+                  {cloudOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {item.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="k8s-filterbar__field">
+                <span className="k8s-filterbar__label">Environment</span>
+                <select
+                  className="input k8s-filterbar__input"
+                  value={environment}
+                  onChange={(event) => setEnvironment(event.target.value)}
+                >
+                  <option value="">All environments</option>
+                  {(overview?.environments || []).map((item) => (
+                    <option key={item} value={item}>
+                      {item.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="k8s-filterbar__actions">
+                <span className="portal-pill">{visibleClusters.length} visible</span>
+                {(search || projectId || cloud || environment) ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setSearch('');
+                      setProjectId('');
+                      setCloud('');
+                      setEnvironment('');
+                    }}
+                  >
+                    Clear
                   </button>
-                ))}
+                ) : null}
               </div>
-              <div className="k8s-table-wrap">
-                {renderDashboardTable()}
-              </div>
-            </section>
-          </>
-        )}
-      </div>
-    </DevOpsLayout>
+            </div>
+
+            <div className="table-scroll">
+              <table className="templates-table k8s-data-table">
+                <thead>
+                  <tr>
+                    <th>K8s cluster</th>
+                    <th>Project</th>
+                    <th>Cloud</th>
+                    <th>Environment</th>
+                    <th>Namespaces</th>
+                    <th>Workloads</th>
+                    <th>Services</th>
+                    <th>Storage</th>
+                    <th>Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleClusters.map((cluster) => (
+                    <tr key={cluster.key}>
+                      <td>
+                        <Link
+                          href={buildK8sHref('/k8s/workloads', {
+                            project_id: cluster.project_id,
+                            cluster_name: cluster.cluster_name,
+                            environment: cluster.environment,
+                          })}
+                          className="k8s-link-cell"
+                        >
+                          <span className="k8s-link-cell__title">{cluster.cluster_name}</span>
+                          <span className="k8s-link-cell__meta">
+                            {cluster.cluster_endpoint || `${cluster.project_code}/${cluster.cloud}/${cluster.environment}`}
+                          </span>
+                        </Link>
+                      </td>
+                      <td>
+                        <div className="k8s-link-cell__title">{cluster.project_name}</div>
+                        <div className="k8s-link-cell__meta">{cluster.project_code}</div>
+                      </td>
+                      <td>{cluster.cloud.toUpperCase()}</td>
+                      <td><span className="portal-pill">{cluster.environment.toUpperCase()}</span></td>
+                      <td>{cluster.namespace_count}</td>
+                      <td>{cluster.workload_count}</td>
+                      <td>{cluster.service_count}</td>
+                      <td>{cluster.storage_count}</td>
+                      <td>{formatDateTime(cluster.updated_at)}</td>
+                    </tr>
+                  ))}
+                  {!loading && visibleClusters.length === 0 ? (
+                    <tr>
+                      <td colSpan={9}>
+                        <div className="portal-empty">
+                          <p>No K8s clusters match the current filters.</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </K8sWorkspaceShell>
+      </DevOpsLayout>
+    </>
   );
 }
