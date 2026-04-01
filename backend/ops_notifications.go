@@ -202,8 +202,17 @@ func parseOpsNotificationFilters(rawLimit, rawOffset, rawProjectID, rawKind stri
 	if parsed, err := strconv.Atoi(strings.TrimSpace(rawProjectID)); err == nil && parsed > 0 {
 		projectID = parsed
 	}
-	kind := strings.TrimSpace(strings.ToLower(rawKind))
-	if kind == "" {
+	var kind string
+	switch strings.TrimSpace(strings.ToLower(rawKind)) {
+	case "", "all":
+		kind = "all"
+	case "pending_request":
+		kind = "pending_request"
+	case "pending_approval":
+		kind = "pending_approval"
+	case "project_event":
+		kind = "project_event"
+	default:
 		kind = "all"
 	}
 	return limit, offset, projectID, kind
