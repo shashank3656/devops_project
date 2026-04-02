@@ -21,6 +21,8 @@ import {
   IconK8s,
   IconHelpCircle,
   IconFileText,
+  IconChevronRight,
+  IconChevronDown,
 } from './Icons';
 import SupportHub from './SupportHub';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
@@ -135,6 +137,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
   const [advancedNavOpen, setAdvancedNavOpen] = useState(false);
+  const [k8sNavOpen, setK8sNavOpen] = useState(pathname.startsWith('/k8s'));
   const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -354,7 +357,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
 
 const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
     { href: '/dashboard', label: 'Overview', Icon: IconTickets },
-    { href: '/k8s', label: 'K8s Cluster', Icon: IconK8s },
     { href: '/tickets', label: 'Requests', Icon: IconTickets },
     { href: '/templates', label: 'Request Templates', Icon: IconTemplates },
     { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
@@ -383,10 +385,23 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
   const advancedNavActive = advancedNavItems.some(
     ({ href }) => pathname === href || (href !== '/dashboard' && pathname.startsWith(href)),
   );
+  const k8sNavActive = pathname === '/k8s' || pathname.startsWith('/k8s/');
+  const k8sNavItems = [
+    { href: '/k8s', label: 'K8s Cluster' },
+    { href: '/k8s/workloads', label: 'Workloads' },
+    { href: '/k8s/services', label: 'Services' },
+    { href: '/k8s/configmaps', label: 'ConfigMaps' },
+    { href: '/k8s/storage', label: 'Storage' },
+    { href: '/k8s/onboard', label: 'Onboard Cluster' },
+  ];
 
   useEffect(() => {
     if (advancedNavActive) setAdvancedNavOpen(true);
   }, [advancedNavActive]);
+
+  useEffect(() => {
+    if (k8sNavActive) setK8sNavOpen(true);
+  }, [k8sNavActive]);
 
   const pageTitle = getPageTitle(pathname);
   const roleLabel = isManager ? 'Manager' : 'Contributor';
@@ -454,6 +469,47 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
                 </Link>
               );
             })}
+            {!sidebarCollapsed && (
+              <div className="devops-sidebar-new__expandable">
+                <button
+                  type="button"
+                  className={`devops-sidebar-new__link devops-sidebar-new__expandable-trigger ${k8sNavActive ? 'devops-sidebar-new__link--active' : ''}`}
+                  onClick={() => setK8sNavOpen((open) => !open)}
+                  aria-expanded={k8sNavOpen}
+                >
+                  <IconK8s className="devops-sidebar-new__icon" />
+                  <span className="devops-sidebar-new__label">K8s Cluster</span>
+                  <span className="devops-sidebar-new__chevron">
+                    {k8sNavOpen ? <IconChevronDown /> : <IconChevronRight />}
+                  </span>
+                </button>
+
+                {k8sNavOpen && (
+                  <div className="devops-sidebar-new__sub">
+                    {k8sNavItems.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`devops-sidebar-new__sublink ${pathname === item.href || pathname.startsWith(`${item.href}/`) ? 'devops-sidebar-new__sublink--active' : ''}`}
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {sidebarCollapsed && (
+              <Link
+                href="/k8s"
+                className={`devops-sidebar-new__link ${k8sNavActive ? 'devops-sidebar-new__link--active' : ''}`}
+                onClick={() => setMobileMenuOpen(false)}
+                title="K8s Cluster"
+              >
+                <IconK8s className="devops-sidebar-new__icon" />
+              </Link>
+            )}
             {!sidebarCollapsed && advancedNavItems.length > 0 && (
               <div className="devops-sidebar-new__section">
                 <button
