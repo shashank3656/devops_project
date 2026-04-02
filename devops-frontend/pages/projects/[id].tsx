@@ -953,12 +953,12 @@ export default function DevOpsProjectDetailPage() {
                   <h2 className="portal-surface__title">Project Contract</h2>
                   <p className="portal-surface__subtitle">{project.description || 'This project is managed by the DevOps catalog.'}</p>
                 </div>
-                <span style={{ ...stageStyle, padding: '8px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700, textTransform: 'uppercase' }}>
+                <span className="project-detail__stage-chip" style={stageStyle}>
                   {project.onboarding_stage || 'configured'}
                 </span>
               </div>
 
-              <div className="portal-detail-grid">
+              <div className="portal-detail-grid project-detail__summary-grid">
                 <article className="portal-detail-card">
                   <span className="portal-surface__eyebrow">Status</span>
                   <div className="portal-detail-card__value">{project.status}</div>
@@ -984,9 +984,9 @@ export default function DevOpsProjectDetailPage() {
                   <span className="portal-surface__eyebrow">Readiness Workflow</span>
                   <h2 className="portal-surface__title">Lifecycle and Checklist</h2>
                   <p className="portal-surface__subtitle">{project.next_action || 'Use lifecycle actions to control whether this catalog can accept new requests.'}</p>
-                </div>
-                <div className="portal-page__actions">
-                  {(project.lifecycle_actions || []).map((action) => (
+                  </div>
+                  <div className="portal-page__actions">
+                    {(project.lifecycle_actions || []).map((action) => (
                     <button
                       key={action.action}
                       type="button"
@@ -997,9 +997,9 @@ export default function DevOpsProjectDetailPage() {
                       {lifecycleAction === action.action ? `${action.label}...` : action.label}
                     </button>
                   ))}
+                  </div>
                 </div>
-              </div>
-              <div className="portal-preview-signals" style={{ marginTop: 0 }}>
+              <div className="portal-preview-signals project-detail__signals project-detail__signals--flush">
                 {(project.readiness_checks || []).map((check) => (
                   <article key={`${project.id}-${check.key}`} className={check.complete ? 'portal-preview-signal portal-preview-signal--low' : 'portal-preview-signal portal-preview-signal--medium'}>
                     <div className="portal-preview-signal__top">
@@ -1024,7 +1024,7 @@ export default function DevOpsProjectDetailPage() {
                     {project.cost_risk_summary.overall_risk} risk
                   </span>
                 </div>
-                <div className="portal-preview-grid" style={{ marginTop: 0 }}>
+                <div className="portal-preview-grid project-detail__preview-grid project-detail__preview-grid--flush">
                   <article className="portal-detail-card">
                     <span className="portal-preview-eyebrow">Estimated monthly</span>
                     <strong className="portal-preview-value">{project.cost_risk_summary.estimated_monthly}</strong>
@@ -1043,7 +1043,7 @@ export default function DevOpsProjectDetailPage() {
                     <p className="portal-preview-copy">High risk: {project.cost_risk_summary.high_risk_count} · Medium risk: {project.cost_risk_summary.medium_risk_count}</p>
                   </article>
                 </div>
-                <div className="portal-preview-signals" style={{ marginTop: 16 }}>
+                <div className="portal-preview-signals project-detail__signals">
                   {project.cost_risk_summary.signals.map((signal) => (
                     <article key={`${signal.category}-${signal.title}`} className={getPreviewSignalClass(signal.severity)}>
                       <div className="portal-preview-signal__top">
@@ -1165,25 +1165,25 @@ export default function DevOpsProjectDetailPage() {
                         <p className="portal-stat-card__copy">Deployments with no ready path forward until remediation.</p>
                       </article>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 18 }}>
+                    <div className="project-detail__watch-grid">
                       <article className="portal-detail-card">
                         <span className="portal-surface__eyebrow">Namespace Watchlist</span>
-                        <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                        <div className="project-detail__watch-stack">
                           {releaseDashboard.k8s_preview.namespace_watchlist.length > 0 ? (
                             releaseDashboard.k8s_preview.namespace_watchlist.map((item) => {
                               const tone = releaseHealthTone(item.status);
                               return (
-                                <div key={`${item.cluster_name}-${item.namespace}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                                <div key={`${item.cluster_name}-${item.namespace}`} className="project-detail__watch-card">
+                                  <div className="project-detail__watch-head">
                                     <strong>{item.namespace}</strong>
-                                    <span style={{ ...tone, padding: '4px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                                    <span className="project-detail__tone-chip project-detail__tone-chip--sm" style={tone}>
                                       {item.status}
                                     </span>
                                   </div>
-                                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                                  <p className="project-detail__watch-meta">
                                     {item.cluster_name} · Issues {item.issue_count} · Deployments {item.affected_deployments}
                                   </p>
-                                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                  <p className="project-detail__watch-meta project-detail__watch-meta--secondary">
                                     Restarts {item.restarting_pods} · Warning logs {item.warning_logs}
                                   </p>
                                 </div>
@@ -1196,22 +1196,22 @@ export default function DevOpsProjectDetailPage() {
                       </article>
                       <article className="portal-detail-card">
                         <span className="portal-surface__eyebrow">Workload Spotlight</span>
-                        <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                        <div className="project-detail__watch-stack">
                           {releaseDashboard.k8s_preview.workload_spotlights.length > 0 ? (
                             releaseDashboard.k8s_preview.workload_spotlights.map((item) => {
                               const tone = releaseHealthTone(item.status);
                               return (
-                                <div key={`${item.cluster_name}-${item.namespace}-${item.name}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                                <div key={`${item.cluster_name}-${item.namespace}-${item.name}`} className="project-detail__watch-card">
+                                  <div className="project-detail__watch-head">
                                     <strong>{item.name}</strong>
-                                    <span style={{ ...tone, padding: '4px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                                    <span className="project-detail__tone-chip project-detail__tone-chip--sm" style={tone}>
                                       {item.status}
                                     </span>
                                   </div>
-                                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                                  <p className="project-detail__watch-meta">
                                     {item.cluster_name} · {item.namespace} · Ready {item.ready_replicas}/{item.replicas}
                                   </p>
-                                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                  <p className="project-detail__watch-meta project-detail__watch-meta--secondary">
                                     Restarts {item.restart_count} · Warning logs {item.warning_count}
                                   </p>
                                 </div>
@@ -1267,42 +1267,42 @@ export default function DevOpsProjectDetailPage() {
                         <p className="portal-stat-card__copy">Non-healthy items still waiting for completion.</p>
                       </article>
                     </div>
-                    <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
+                    <div className="project-detail__priority-list">
                       {releaseDashboard.expiry_preview.priority_items.length > 0 ? (
                         releaseDashboard.expiry_preview.priority_items.map((item) => {
                           const statusTone = expiryStatusTone(item.status);
                           const workflowTone = expiryWorkflowTone(item.workflow_state);
                           return (
-                            <article key={item.item_key} className="portal-detail-card">
-                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                            <article key={item.item_key} className="portal-detail-card project-detail__priority-card">
+                              <div className="project-detail__priority-head">
                                 <div>
                                   <strong>{item.resource_name}</strong>
-                                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                                  <p className="project-detail__priority-copy">
                                     {item.category} · {item.resource_type}
                                   </p>
-                                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                  <p className="project-detail__priority-copy project-detail__priority-copy--minor">
                                     {[item.cloud, item.environment, item.namespace || item.cluster_name].filter(Boolean).join(' · ') || 'General scope'}
                                   </p>
                                 </div>
-                                <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
-                                  <span style={{ ...statusTone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+                                <div className="project-detail__priority-badges">
+                                  <span className="project-detail__tone-chip" style={statusTone}>
                                     {item.status}
                                   </span>
-                                  <span style={{ ...workflowTone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+                                  <span className="project-detail__tone-chip" style={workflowTone}>
                                     {expiryWorkflowLabel(item.workflow_state)}
                                   </span>
                                 </div>
                               </div>
-                              <p style={{ margin: '12px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                              <p className="project-detail__priority-copy project-detail__priority-copy--body">
                                 {item.recommendation}
                               </p>
-                              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 12, color: 'var(--color-text-muted)', fontSize: 12 }}>
+                              <div className="project-detail__priority-meta">
                                 <span>Days left: {item.days_remaining}</span>
                                 <span>Expires: {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : '—'}</span>
                                 <span>Owner: {item.owner || 'Unassigned'}</span>
                               </div>
                               {item.workflow_note ? (
-                                <p style={{ margin: '10px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                <p className="project-detail__priority-copy project-detail__priority-copy--minor">
                                   Note: {item.workflow_note}
                                 </p>
                               ) : null}
@@ -1344,35 +1344,35 @@ export default function DevOpsProjectDetailPage() {
                         <p className="portal-stat-card__copy">Promotion is currently gated by incidents or missing rollback coverage.</p>
                       </article>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginTop: 18 }}>
+                    <div className="project-detail__gate-grid">
                       {releaseDashboard.deployment_gates.environments.map((gate) => {
                         const tone = deploymentGateTone(gate.status);
                         return (
-                          <article key={`${project.id}-${gate.environment}-gate`} className="portal-detail-card">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                          <article key={`${project.id}-${gate.environment}-gate`} className="portal-detail-card project-detail__gate-card">
+                            <div className="project-detail__gate-head">
                               <strong>{gate.environment.toUpperCase()}</strong>
-                              <span style={{ ...tone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, textTransform: 'uppercase' }}>
+                              <span className="project-detail__tone-chip" style={tone}>
                                 {gate.status}
                               </span>
                             </div>
-                            <p style={{ margin: '10px 0 14px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>{gate.summary}</p>
-                            <div style={{ display: 'grid', gap: 10 }}>
+                            <p className="project-detail__gate-summary">{gate.summary}</p>
+                            <div className="project-detail__gate-checks">
                               {gate.checks.map((check) => {
                                 const checkTone = deploymentGateTone(check.status);
                                 return (
-                                  <div key={`${gate.environment}-${check.key}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                                      <strong style={{ fontSize: 13 }}>{check.label}</strong>
-                                      <span style={{ ...checkTone, padding: '4px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                                  <div key={`${gate.environment}-${check.key}`} className="project-detail__gate-check">
+                                    <div className="project-detail__gate-check-head">
+                                      <strong className="project-detail__gate-check-title">{check.label}</strong>
+                                      <span className="project-detail__tone-chip project-detail__tone-chip--sm" style={checkTone}>
                                         {check.status}
                                       </span>
                                     </div>
-                                    <p style={{ margin: '8px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>{check.detail}</p>
+                                    <p className="project-detail__watch-meta project-detail__watch-meta--secondary">{check.detail}</p>
                                   </div>
                                 );
                               })}
                             </div>
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+                            <div className="project-detail__gate-actions">
                               <Link
                                 href={buildPortalHref('/promotions', { project_id: project.id, next_environment: gate.environment })}
                                 className="btn btn-secondary btn-sm"
@@ -1403,7 +1403,7 @@ export default function DevOpsProjectDetailPage() {
                       <h2 className="portal-surface__title">Release posture by environment</h2>
                     </div>
                   </div>
-                  <div style={{ overflowX: 'auto' }}>
+                  <div className="project-detail__table-wrap">
                     <table className="templates-table">
                       <thead>
                         <tr>
@@ -1424,7 +1424,7 @@ export default function DevOpsProjectDetailPage() {
                             <tr key={`${project.id}-${item.environment}`}>
                               <td>{item.environment.toUpperCase()}</td>
                               <td>
-                                <span style={{ ...tone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, textTransform: 'uppercase' }}>
+                                <span className="project-detail__tone-chip" style={tone}>
                                   {item.health}
                                 </span>
                               </td>
@@ -1449,26 +1449,25 @@ export default function DevOpsProjectDetailPage() {
                       <h2 className="portal-surface__title">Recent release activity and support queue</h2>
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+                  <div className="project-detail__activity-grid">
                     <article className="portal-detail-card">
                       <span className="portal-surface__eyebrow">Recent activity</span>
-                      <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                      <div className="project-detail__activity-stack">
                         {releaseDashboard.recent_activity.length > 0 ? releaseDashboard.recent_activity.slice(0, 5).map((item) => (
-                          <div key={item.request_id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                          <div key={item.request_id} className="project-detail__activity-card">
+                            <div className="project-detail__activity-head">
                               <strong>#{item.request_id} · {item.service}</strong>
-                              <span>{item.status}</span>
+                              <span className="project-detail__activity-status">{item.status}</span>
                             </div>
-                            <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                            <p className="project-detail__activity-meta">
                               {item.environment.toUpperCase()} · {item.cloud} · {item.team || item.client_name || 'Unassigned'}
                             </p>
-                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                            <p className="project-detail__activity-meta project-detail__activity-meta--minor">
                               Updated {formatDateTime(item.updated_at)}
                             </p>
                             <Link
                               href={buildPortalHref('/promotions', { project_id: project.id, request_id: item.request_id })}
                               className="btn btn-secondary btn-sm"
-                              style={{ marginTop: 10 }}
                             >
                               Open request context
                             </Link>
@@ -1479,17 +1478,16 @@ export default function DevOpsProjectDetailPage() {
 
                     <article className="portal-detail-card">
                       <span className="portal-surface__eyebrow">Promotion queue</span>
-                      <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                      <div className="project-detail__activity-stack">
                         {releaseDashboard.promotion_queue.length > 0 ? releaseDashboard.promotion_queue.map((item) => (
-                          <div key={item.request_id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                          <div key={item.request_id} className="project-detail__activity-card">
                             <strong>#{item.request_id} · {item.environment.toUpperCase()} to {item.next_environment.toUpperCase()}</strong>
-                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                            <p className="project-detail__activity-meta">
                               {item.service} · {item.cloud} · {item.status}
                             </p>
                             <Link
                               href={buildPortalHref('/promotions', { project_id: project.id, request_id: item.request_id, next_environment: item.next_environment })}
                               className="btn btn-secondary btn-sm"
-                              style={{ marginTop: 10 }}
                             >
                               Open promotion
                             </Link>
@@ -1500,30 +1498,28 @@ export default function DevOpsProjectDetailPage() {
 
                     <article className="portal-detail-card">
                       <span className="portal-surface__eyebrow">Incidents and runbooks</span>
-                      <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                      <div className="project-detail__activity-stack">
                         {releaseDashboard.incidents.length > 0 ? releaseDashboard.incidents.slice(0, 3).map((item) => (
-                          <div key={item.id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                          <div key={item.id} className="project-detail__activity-card">
                             <strong>Incident #{item.request_id} · {item.severity}</strong>
-                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>{item.summary}</p>
+                            <p className="project-detail__activity-meta">{item.summary}</p>
                             <Link
                               href={buildPortalHref('/incidents', { project_id: project.id, request_id: item.request_id, severity: item.severity })}
                               className="btn btn-secondary btn-sm"
-                              style={{ marginTop: 10 }}
                             >
                               Open incident
                             </Link>
                           </div>
                         )) : <div className="empty-state">No linked incidents right now.</div>}
                         {releaseDashboard.runbooks.length > 0 ? releaseDashboard.runbooks.slice(0, 3).map((item) => (
-                          <div key={item.id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                          <div key={item.id} className="project-detail__activity-card">
                             <strong>{item.title}</strong>
-                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                            <p className="project-detail__activity-meta">
                               {item.service || 'General'} · {item.link_url ? 'Linked' : 'Inline'}
                             </p>
                             <Link
                               href={buildPortalHref('/runbooks', { project_id: project.id, service: item.service || undefined })}
                               className="btn btn-secondary btn-sm"
-                              style={{ marginTop: 10 }}
                             >
                               Open runbook
                             </Link>
@@ -1534,11 +1530,11 @@ export default function DevOpsProjectDetailPage() {
 
                     <article className="portal-detail-card">
                       <span className="portal-surface__eyebrow">Active overrides</span>
-                      <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                      <div className="project-detail__activity-stack">
                         {releaseDashboard.active_overrides.length > 0 ? releaseDashboard.active_overrides.map((item) => (
-                          <div key={item.id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                          <div key={item.id} className="project-detail__activity-card">
                             <strong>{item.username} · {item.permission}</strong>
-                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                            <p className="project-detail__activity-meta">
                               {item.environments.join(', ') || 'all envs'} · Expires {formatDateTime(item.expires_at)}
                             </p>
                           </div>
@@ -1547,22 +1543,17 @@ export default function DevOpsProjectDetailPage() {
                     </article>
                   </div>
 
-                  <div style={{ marginTop: 18 }}>
+                  <div className="project-detail__trend">
                     <span className="portal-surface__eyebrow">Release trend</span>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, marginTop: 12, minHeight: 120 }}>
+                    <div className="project-detail__trend-chart">
                       {releaseDashboard.release_trend.map((point) => (
-                        <div key={point.label} style={{ display: 'grid', justifyItems: 'center', gap: 8, flex: 1 }}>
-                          <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{point.count}</span>
+                        <div key={point.label} className="project-detail__trend-point">
+                          <span className="project-detail__trend-value">{point.count}</span>
                           <span
-                            style={{
-                              width: '100%',
-                              maxWidth: 48,
-                              height: `${Math.max(12, point.count * 18)}px`,
-                              borderRadius: 12,
-                              background: 'linear-gradient(180deg, rgba(34, 211, 238, 0.92), rgba(14, 165, 233, 0.4))',
-                            }}
+                            className="project-detail__trend-bar"
+                            style={{ height: `${Math.max(12, point.count * 18)}px` }}
                           />
-                          <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{point.label}</span>
+                          <span className="project-detail__trend-label">{point.label}</span>
                         </div>
                       ))}
                     </div>
@@ -1579,11 +1570,11 @@ export default function DevOpsProjectDetailPage() {
                   <p className="portal-surface__subtitle">Users only see these services after they select this project in the request flow.</p>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+              <div className="project-detail__catalog-grid">
                 {servicesByCloud.map((entry) => (
                   <article key={`${project.id}-${entry.cloud}`} className="request-choice-card">
                     <strong>{entry.cloud.toUpperCase()}</strong>
-                    <p style={{ marginTop: 8 }}>{entry.services.join(', ') || 'No services configured'}</p>
+                    <p className="project-detail__catalog-copy">{entry.services.join(', ') || 'No services configured'}</p>
                   </article>
                 ))}
               </div>

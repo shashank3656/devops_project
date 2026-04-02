@@ -453,7 +453,7 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
         <div className="devops-sidebar-new__body">
           <nav className="devops-sidebar-new__nav">
             {!sidebarCollapsed && <span className="devops-sidebar-new__nav-title">Modules</span>}
-            {primaryNavItems.map(({ href, label, Icon }) => {
+            {primaryNavItems.filter((item) => item.href === '/dashboard').map(({ href, label, Icon }) => {
               const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
               const badge = getSidebarBadge(href);
               return (
@@ -500,6 +500,22 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
                 )}
               </div>
             )}
+            {primaryNavItems.filter((item) => item.href !== '/dashboard').map(({ href, label, Icon }) => {
+              const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+              const badge = getSidebarBadge(href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`devops-sidebar-new__link ${isActive ? 'devops-sidebar-new__link--active' : ''}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Icon className="devops-sidebar-new__icon" />
+                  {!sidebarCollapsed && <span className="devops-sidebar-new__label">{label}</span>}
+                  {!sidebarCollapsed && badge && <span className="devops-sidebar-new__badge">{badge}</span>}
+                </Link>
+              );
+            })}
             {sidebarCollapsed && (
               <Link
                 href="/k8s"
