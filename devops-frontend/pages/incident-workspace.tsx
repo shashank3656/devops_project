@@ -352,8 +352,8 @@ export default function IncidentWorkspacePage() {
 
         {!loading && !error && summary ? (
           <>
-            <section className="portal-surface" style={{ marginBottom: 24 }}>
-              <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <section className="portal-surface incident-workspace__surface-gap">
+              <div className="portal-page__actions incident-workspace__summary-actions">
                 <div className="portal-pill-row">
                   <span className="portal-pill">Open incidents {summary.open_incidents}</span>
                   <span className="portal-pill">Critical {summary.critical_incidents}</span>
@@ -367,12 +367,11 @@ export default function IncidentWorkspacePage() {
             </section>
 
             {hasActiveScope ? (
-              <div className="alert alert-info" style={{ marginBottom: 24 }}>
+              <div className="alert alert-info incident-workspace__scope-alert">
                 You are viewing a filtered incident list.
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  style={{ marginLeft: 12 }}
                   onClick={() => {
                     setProjectId('');
                     setStatusFilter('');
@@ -385,7 +384,7 @@ export default function IncidentWorkspacePage() {
             ) : null}
 
             {showFilters ? (
-            <section className="portal-surface" style={{ marginBottom: 24 }}>
+            <section className="portal-surface incident-workspace__surface-gap">
               <div className="portal-surface__header">
                 <div>
                   <span className="portal-surface__eyebrow">Scope</span>
@@ -435,7 +434,7 @@ export default function IncidentWorkspacePage() {
             </section>
             ) : null}
 
-            <div className="portal-grid" style={{ alignItems: 'start' }}>
+            <div className="portal-grid incident-workspace__grid">
               <section className="portal-surface">
                 <div className="portal-surface__header">
                   <div>
@@ -443,7 +442,7 @@ export default function IncidentWorkspacePage() {
                     <h2 className="portal-surface__title">Matching incidents</h2>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gap: 12 }}>
+                <div className="incident-workspace__list">
                   {incidents.length === 0 ? (
                     <div className="empty-state">No incidents match the current workspace filters.</div>
                   ) : (
@@ -451,23 +450,19 @@ export default function IncidentWorkspacePage() {
                       <button
                         key={`incident-${incident.id}`}
                         type="button"
-                        className="portal-surface"
-                        style={{
-                          padding: 16,
-                          textAlign: 'left',
-                          borderColor: String(workspace?.focus_incident_id) === String(incident.id) ? 'var(--color-primary)' : 'var(--color-border)',
-                          background: String(workspace?.focus_incident_id) === String(incident.id) ? 'rgba(59, 130, 246, 0.08)' : 'var(--color-surface)',
-                        }}
+                        className={`portal-surface incident-workspace__incident-card${
+                          String(workspace?.focus_incident_id) === String(incident.id) ? ' incident-workspace__incident-card--active' : ''
+                        }`}
                         onClick={() => setIncidentId(String(incident.id))}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+                        <div className="incident-workspace__incident-card-head">
                           <strong>{getIncidentReference(incident)} · {incident.summary}</strong>
                           <span className="portal-pill">{incident.severity.toUpperCase()} · {incident.status}</span>
                         </div>
-                        <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
+                        <div className="incident-workspace__incident-card-meta">
                           {incident.project_name ? `${incident.project_name} (${incident.project_code})` : 'No project'} · {incident.request_env || 'No environment'} · {incident.request_service ? `Target: ${incident.request_service}` : 'No target'}
                         </div>
-                        <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 6 }}>
+                        <div className="incident-workspace__incident-card-meta incident-workspace__incident-card-meta--minor">
                           Owner: {incident.owner_username || 'Unassigned'} · Updated {formatDateTime(incident.updated_at)}
                         </div>
                       </button>
@@ -488,29 +483,29 @@ export default function IncidentWorkspacePage() {
                 </div>
 
                 {detail ? (
-                  <div style={{ display: 'grid', gap: 24 }}>
-                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <div className="incident-workspace__detail-stack">
+                    <div className="incident-workspace__focus-pills">
                       <span className="portal-pill">Severity: {detail.incident.severity}</span>
                       <span className="portal-pill">Status: {detail.incident.status}</span>
                       <span className="portal-pill">Escalation: {detail.incident.escalation_level}</span>
                       <span className="portal-pill">Owner: {detail.incident.owner_username || 'Unassigned'}</span>
                     </div>
 
-                    <div className="portal-grid" style={{ alignItems: 'start' }}>
-                      <div className="portal-surface" style={{ padding: 16 }}>
-                        <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Incident history</h3>
-                        <div style={{ display: 'grid', gap: 12 }}>
+                    <div className="portal-grid incident-workspace__grid">
+                      <div className="portal-surface incident-workspace__subsurface">
+                        <h3 className="portal-surface__title incident-workspace__section-title">Incident history</h3>
+                        <div className="incident-workspace__timeline">
                           {detail.timeline.length === 0 ? (
-                            <div className="empty-state" style={{ padding: 0 }}>No updates recorded yet.</div>
+                            <div className="empty-state incident-workspace__empty-inline">No updates recorded yet.</div>
                           ) : (
                             detail.timeline.map((event) => (
-                              <article key={event.key} style={{ borderLeft: '2px solid var(--color-border)', paddingLeft: 12 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                              <article key={event.key} className="incident-workspace__timeline-item">
+                                <div className="incident-workspace__timeline-head">
                                   <strong>{event.title}</strong>
-                                  <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{formatDateTime(event.timestamp)}</span>
+                                  <span className="incident-workspace__timeline-time">{formatDateTime(event.timestamp)}</span>
                                 </div>
-                                <div style={{ color: 'var(--color-text-muted)', fontSize: 13, marginTop: 4 }}>{event.detail}</div>
-                                <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 4 }}>
+                                <div className="incident-workspace__timeline-meta">{event.detail}</div>
+                                <div className="incident-workspace__timeline-meta incident-workspace__timeline-meta--minor">
                                   {event.kind}{event.actor ? ` · ${event.actor}` : ''}
                                 </div>
                               </article>
@@ -519,9 +514,9 @@ export default function IncidentWorkspacePage() {
                         </div>
                       </div>
 
-                      <div className="portal-surface" style={{ padding: 16 }}>
-                        <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Post-incident notes</h3>
-                        <div style={{ display: 'grid', gap: 12 }}>
+                      <div className="portal-surface incident-workspace__subsurface">
+                        <h3 className="portal-surface__title incident-workspace__section-title">Post-incident notes</h3>
+                        <div className="incident-workspace__form">
                           <div>
                             <label className="credential-audit-label" htmlFor="postmortem-status">Status</label>
                             <select id="postmortem-status" className="input" value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}>
@@ -565,12 +560,12 @@ export default function IncidentWorkspacePage() {
                             <label className="credential-audit-label" htmlFor="postmortem-review-notes">Review notes</label>
                             <textarea id="postmortem-review-notes" className="input" rows={3} value={form.review_notes} onChange={(event) => setForm((current) => ({ ...current, review_notes: event.target.value }))} />
                           </div>
-                          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                          <div className="incident-workspace__save-row">
                             <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void savePostmortem()}>
                               {saving ? 'Saving...' : 'Save notes'}
                             </button>
                             {detail.postmortem?.updated_at ? (
-                              <span style={{ color: 'var(--color-text-muted)', fontSize: 12, alignSelf: 'center' }}>
+                              <span className="incident-workspace__updated">
                                 Last updated {formatDateTime(detail.postmortem.updated_at)} by {detail.postmortem.updated_by_username || 'reviewer'}
                               </span>
                             ) : null}
@@ -579,19 +574,19 @@ export default function IncidentWorkspacePage() {
                       </div>
                     </div>
 
-                    <div className="portal-grid" style={{ alignItems: 'start' }}>
-                      <div className="portal-surface" style={{ padding: 16 }}>
-                        <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Helpful runbooks</h3>
+                    <div className="portal-grid incident-workspace__grid">
+                      <div className="portal-surface incident-workspace__subsurface">
+                        <h3 className="portal-surface__title incident-workspace__section-title">Helpful runbooks</h3>
                         {detail.runbooks.length === 0 ? (
-                          <div className="empty-state" style={{ padding: 0 }}>No runbooks linked to this project yet.</div>
+                          <div className="empty-state incident-workspace__empty-inline">No runbooks linked to this project yet.</div>
                         ) : (
-                          <div style={{ display: 'grid', gap: 12 }}>
+                          <div className="incident-workspace__resource-list">
                             {detail.runbooks.map((runbook) => (
-                              <article key={runbook.id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 14 }}>
+                              <article key={runbook.id} className="incident-workspace__resource-card">
                                 <strong>{runbook.title}</strong>
-                                <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 4 }}>{runbook.service || 'General'} runbook</div>
+                                <div className="incident-workspace__resource-meta">{runbook.service || 'General'} runbook</div>
                                 {runbook.link_url ? (
-                                  <div style={{ marginTop: 8 }}>
+                                  <div className="incident-workspace__resource-actions">
                                     <a href={runbook.link_url} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">
                                       Open link
                                     </a>
@@ -603,22 +598,22 @@ export default function IncidentWorkspacePage() {
                         )}
                       </div>
 
-                      <div className="portal-surface" style={{ padding: 16 }}>
-                        <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Approvals and recovery</h3>
-                        <div style={{ display: 'grid', gap: 12 }}>
+                      <div className="portal-surface incident-workspace__subsurface">
+                        <h3 className="portal-surface__title incident-workspace__section-title">Approvals and recovery</h3>
+                        <div className="incident-workspace__recovery-stack">
                           <div>
-                            <strong style={{ display: 'block', marginBottom: 8 }}>Approval records</strong>
+                            <strong className="incident-workspace__subheading">Approval records</strong>
                             {detail.gate_approvals.length === 0 ? (
-                              <div className="empty-state" style={{ padding: 0 }}>No gate approvals linked to this incident.</div>
+                              <div className="empty-state incident-workspace__empty-inline">No gate approvals linked to this incident.</div>
                             ) : (
                               detail.gate_approvals.map((approval) => (
-                                <article key={approval.id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12, marginBottom: 10 }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                                <article key={approval.id} className="incident-workspace__recovery-card">
+                                  <div className="incident-workspace__recovery-head">
                                     <strong>{approval.source_environment} → {approval.target_environment}</strong>
                                     <span className="portal-pill">{approval.state}</span>
                                   </div>
-                                  <div style={{ color: 'var(--color-text-muted)', fontSize: 13, marginTop: 4 }}>{approval.summary}</div>
-                                  <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 4 }}>
+                                  <div className="incident-workspace__recovery-meta">{approval.summary}</div>
+                                  <div className="incident-workspace__recovery-meta incident-workspace__recovery-meta--minor">
                                     {approval.approved_by_username} · {formatDateTime(approval.approved_at)}
                                   </div>
                                 </article>
@@ -626,18 +621,18 @@ export default function IncidentWorkspacePage() {
                             )}
                           </div>
                           <div>
-                            <strong style={{ display: 'block', marginBottom: 8 }}>Rollback history</strong>
+                            <strong className="incident-workspace__subheading">Rollback history</strong>
                             {detail.rollback_operations.length === 0 ? (
-                              <div className="empty-state" style={{ padding: 0 }}>No rollback activity recorded for the linked request.</div>
+                              <div className="empty-state incident-workspace__empty-inline">No rollback activity recorded for the linked request.</div>
                             ) : (
                               detail.rollback_operations.map((operation) => (
-                                <article key={operation.id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12, marginBottom: 10 }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                                <article key={operation.id} className="incident-workspace__recovery-card">
+                                  <div className="incident-workspace__recovery-head">
                                     <strong>Rollback draft #{operation.rollback_request_id}</strong>
-                                    <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{formatDateTime(operation.created_at)}</span>
+                                    <span className="incident-workspace__timeline-time">{formatDateTime(operation.created_at)}</span>
                                   </div>
-                                  <div style={{ color: 'var(--color-text-muted)', fontSize: 13, marginTop: 4 }}>{operation.reason}</div>
-                                  {operation.notes ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 4 }}>Notes: {operation.notes}</div> : null}
+                                  <div className="incident-workspace__recovery-meta">{operation.reason}</div>
+                                  {operation.notes ? <div className="incident-workspace__recovery-meta incident-workspace__recovery-meta--minor">Notes: {operation.notes}</div> : null}
                                 </article>
                               ))
                             )}

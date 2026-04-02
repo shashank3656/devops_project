@@ -200,6 +200,7 @@ export default function DevOpsTickets() {
   const [requests, setRequests] = useState<TicketRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState('');
   const [idFilter, setIdFilter] = useState('');
   const [team, setTeam] = useState('');
   const [projectId, setProjectId] = useState('');
@@ -249,6 +250,7 @@ export default function DevOpsTickets() {
   const fetchTickets = () => {
     if (!token) return;
     setLoading(true);
+    setListError('');
     const params = new URLSearchParams();
     if (idFilter.trim()) params.set('id', idFilter.trim());
     if (team) params.set('team', team);
@@ -272,7 +274,11 @@ export default function DevOpsTickets() {
         else setRequests([]);
         if (typeof data.total_count === 'number') setTotal(data.total_count);
       })
-      .catch(() => {})
+      .catch(() => {
+        setRequests([]);
+        setTotal(0);
+        setListError('We couldn’t load the request queue right now.');
+      })
       .finally(() => setLoading(false));
   };
 
@@ -631,9 +637,21 @@ export default function DevOpsTickets() {
           </div>
 
           {loading ? (
-            <div className="devops-tickets-loading">
+            <div className="portal-table-state portal-table-state--loading">
               <div className="devops-tickets-spinner" />
-              <p>Loading requests...</p>
+              <h3 className="portal-table-state__title">Loading requests</h3>
+              <p className="portal-table-state__copy">We’re refreshing the DevOps queue for you now.</p>
+            </div>
+          ) : listError ? (
+            <div className="portal-table-state portal-table-state--error">
+              <div className="portal-table-state__icon" aria-hidden>!</div>
+              <h3 className="portal-table-state__title">We couldn’t load this queue</h3>
+              <p className="portal-table-state__copy">{listError}</p>
+              <div className="portal-table-state__actions">
+                <button type="button" className="btn btn-secondary" onClick={fetchTickets}>
+                  Try again
+                </button>
+              </div>
             </div>
           ) : (
             <>
@@ -643,12 +661,17 @@ export default function DevOpsTickets() {
               </div>
               <div className="devops-tickets-table-card card">
                 {requests.length === 0 ? (
-                  <div className="devops-tickets-empty">
-                    <div className="devops-tickets-empty__icon">[]</div>
-                    <p>No requests match your filters.</p>
-                    <button type="button" className="btn btn-secondary" onClick={clearFilters}>
-                      Clear filters
-                    </button>
+                  <div className="portal-table-state portal-table-state--empty">
+                    <div className="portal-table-state__icon" aria-hidden>⋯</div>
+                    <h3 className="portal-table-state__title">No requests match these filters</h3>
+                    <p className="portal-table-state__copy">
+                      Clear one or two filters to bring the request queue back into view.
+                    </p>
+                    <div className="portal-table-state__actions">
+                      <button type="button" className="btn btn-secondary" onClick={clearFilters}>
+                        Clear filters
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="devops-tickets-table-wrap">
@@ -675,7 +698,6 @@ export default function DevOpsTickets() {
                             key={req.id}
                             className={detailId === req.id ? 'devops-tickets-table__row--active' : ''}
                             onClick={() => loadDetail(req.id)}
-                            style={{ cursor: 'pointer' }}
                           >
                             <td><code className="devops-ticket-id">#{req.id}</code></td>
                             <td>
@@ -703,7 +725,7 @@ export default function DevOpsTickets() {
                             <td><span className={`devops-ticket-priority devops-ticket-priority--${(req.priority || 'medium').toLowerCase()}`}>{req.priority || 'medium'}</span></td>
                             <td>
                               <span className="devops-ticket-due">
-                                {formatDateOnly(req.due_date)}
+                                <span className="devops-ticket-meta">{formatDateOnly(req.due_date)}</span>
                                 {req.due_status === 'overdue' && <span className="devops-ticket-due-badge devops-ticket-due-badge--overdue">Overdue</span>}
                                 {req.due_status === 'due_soon' && <span className="devops-ticket-due-badge devops-ticket-due-badge--soon">Due in 24h</span>}
                               </span>
@@ -750,9 +772,9 @@ export default function DevOpsTickets() {
 
           {(detailId || detailLoading || detailRequest) && (
             <section ref={workspaceRef} className="portal-surface devops-approval-workspace">
-              <div className="portal-surface__header">
+              <div className="portal-surface__header devops-approval-workspace__header">
                 <div>
-                  <span className="portal-surface__eyebrow">Approval Workspace</span>
+                  <span className="portal-surface__eyebrow">Request Workspace</span>
                   <h2 className="portal-surface__title">
                     {detailRequest ? (detailRequestIsAccess ? `Access request #${detailRequest.id}` : `Request #${detailRequest.id}`) : 'Loading request'}
                   </h2>
@@ -760,7 +782,7 @@ export default function DevOpsTickets() {
                     Review request context, dependency pressure, comments, and timeline without leaving the requests queue.
                   </p>
                 </div>
-                <div className="portal-page__actions">
+                <div className="portal-page__actions devops-approval-workspace__top-actions">
                   <button type="button" className="btn btn-secondary btn-sm" onClick={refreshDetail} disabled={detailLoading}>
                     Refresh
                   </button>
@@ -779,13 +801,13 @@ export default function DevOpsTickets() {
 
                   {detailRequest && (
                     <div className="devops-approval-workspace__grid">
-                      <section className="portal-surface portal-surface--tight">
+                      <section className="portal-surface portal-surface--tight devops-approval-workspace__summary-surface">
                         <div className="portal-surface__header">
                           <div>
                             <span className="portal-surface__eyebrow">Request Summary</span>
                             <h3 className="portal-surface__title">Execution Context</h3>
                           </div>
-                          <span className={`ticket-status ${getStatusBadgeClass(detailRequest.status)}`}>
+                          <span className={`ticket-status ${getStatusBadgeClass(detailRequest.status)} devops-approval-workspace__summary-status`}>
                             {formatStatus(detailRequest.status)}
                           </span>
                         </div>
@@ -958,7 +980,7 @@ export default function DevOpsTickets() {
                                 <p className="portal-preview-copy">{detailRequest.approval_context.summary}</p>
                               </div>
                             </div>
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <div className="devops-approval-workspace__signal-row">
                               <span className={getPreviewSignalClass(detailRequest.approval_context.requires_manager_approval ? 'medium' : 'low')}>
                                 {detailRequest.approval_context.requires_manager_approval ? 'Manager gate enabled' : 'No manager gate'}
                               </span>
@@ -989,7 +1011,7 @@ export default function DevOpsTickets() {
                         )}
                       </section>
 
-                      <section className="portal-surface portal-surface--tight">
+                      <section className="portal-surface portal-surface--tight devops-approval-workspace__decision-surface">
                         <div className="portal-surface__header">
                           <div>
                             <span className="portal-surface__eyebrow">Decision Panel</span>

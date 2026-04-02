@@ -132,12 +132,6 @@ export default function DevOpsK8sClustersPage() {
             </>
           }
         >
-          {error ? (
-            <div className="alert alert-error" role="alert">
-              {error}
-            </div>
-          ) : null}
-
           <section className="portal-surface">
             <div className="portal-surface__header">
               <div>
@@ -242,74 +236,105 @@ export default function DevOpsK8sClustersPage() {
               </div>
             </div>
 
-            <div className="table-scroll">
-              <table className="templates-table k8s-data-table">
-                <thead>
-                  <tr>
-                    <th>K8s cluster</th>
-                    <th>Project</th>
-                    <th>Cloud</th>
-                    <th>Environment</th>
-                    <th>Health</th>
-                    <th>Version</th>
-                    <th>Node pool</th>
-                    <th>Nodes</th>
-                    <th>Namespaces</th>
-                    <th>Workloads</th>
-                    <th>Services</th>
-                    <th>ConfigMaps</th>
-                    <th>Storage</th>
-                    <th>Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleClusters.map((cluster) => (
-                    <tr key={`${cluster.project_id}-${cluster.cloud}-${cluster.cluster_name}-${cluster.environment}`}>
-                      <td>
-                        <Link
-                          href={buildK8sHref('/k8s/workloads', {
-                            project_id: cluster.project_id,
-                            cluster_name: cluster.cluster_name,
-                            environment: cluster.environment,
-                          })}
-                          className="k8s-link-cell"
-                        >
-                          <span className="k8s-link-cell__title">{cluster.cluster_name}</span>
-                          <span className="k8s-link-cell__meta">
-                            {cluster.cluster_endpoint || `${cluster.project_code}/${cluster.cloud}/${cluster.environment}`}
-                          </span>
-                        </Link>
-                      </td>
-                      <td>
-                        <div className="k8s-link-cell__title">{cluster.project_name}</div>
-                        <div className="k8s-link-cell__meta">{cluster.project_code}</div>
-                      </td>
-                      <td>{cluster.cloud.toUpperCase()}</td>
-                      <td><span className="portal-pill">{cluster.environment.toUpperCase()}</span></td>
-                      <td><span className="portal-pill">{cluster.health_status || 'Healthy'}</span></td>
-                      <td>{cluster.kubernetes_version || '—'}</td>
-                      <td>{cluster.node_pool || '—'}</td>
-                      <td>{cluster.node_count}</td>
-                      <td>{cluster.namespace_count}</td>
-                      <td>{cluster.workload_count}</td>
-                      <td>{cluster.service_count}</td>
-                      <td>{cluster.configmap_count}</td>
-                      <td>{cluster.storage_count}</td>
-                      <td>{formatDateTime(cluster.updated_at)}</td>
-                    </tr>
-                  ))}
-                  {!loading && visibleClusters.length === 0 ? (
+            {error ? (
+              <div className="portal-table-state portal-table-state--error">
+                <div className="portal-table-state__icon" aria-hidden>!</div>
+                <h3 className="portal-table-state__title">We couldn’t load K8s clusters</h3>
+                <p className="portal-table-state__copy">{error}</p>
+                <div className="portal-table-state__actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => setRefreshKey((value) => value + 1)}>
+                    Try again
+                  </button>
+                </div>
+              </div>
+            ) : visibleClusters.length === 0 ? (
+              <div className="portal-table-state portal-table-state--empty">
+                <div className="portal-table-state__icon" aria-hidden>⋯</div>
+                <h3 className="portal-table-state__title">No K8s clusters match the current filters</h3>
+                <p className="portal-table-state__copy">
+                  Clear the current filters or onboard a new cluster to start building this workspace.
+                </p>
+                <div className="portal-table-state__actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setSearch('');
+                      setProjectId('');
+                      setCloud('');
+                      setEnvironment('');
+                    }}
+                  >
+                    Clear filters
+                  </button>
+                  <Link href={buildK8sHref('/k8s/onboard', { project_id: projectId, environment })} className="btn btn-primary">
+                    Onboard cluster
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="table-scroll">
+                <table className="templates-table k8s-data-table">
+                  <thead>
                     <tr>
-                      <td colSpan={14}>
-                        <div className="portal-empty">
-                          <p>No K8s clusters match the current filters.</p>
-                        </div>
-                      </td>
+                      <th>K8s cluster</th>
+                      <th>Project</th>
+                      <th>Cloud</th>
+                      <th>Environment</th>
+                      <th>Health</th>
+                      <th>Version</th>
+                      <th>Node pool</th>
+                      <th>Nodes</th>
+                      <th>Namespaces</th>
+                      <th>Workloads</th>
+                      <th>Services</th>
+                      <th>ConfigMaps</th>
+                      <th>Storage</th>
+                      <th>Updated</th>
                     </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {visibleClusters.map((cluster) => (
+                      <tr key={`${cluster.project_id}-${cluster.cloud}-${cluster.cluster_name}-${cluster.environment}`}>
+                        <td>
+                          <Link
+                            href={buildK8sHref('/k8s/workloads', {
+                              project_id: cluster.project_id,
+                              cluster_name: cluster.cluster_name,
+                              environment: cluster.environment,
+                            })}
+                            className="k8s-link-cell"
+                          >
+                            <span className="k8s-link-cell__title">{cluster.cluster_name}</span>
+                            <span className="k8s-link-cell__meta">
+                              {cluster.cluster_endpoint || `${cluster.project_code}/${cluster.cloud}/${cluster.environment}`}
+                            </span>
+                          </Link>
+                        </td>
+                        <td>
+                          <div className="k8s-link-cell">
+                            <span className="k8s-link-cell__title">{cluster.project_name}</span>
+                            <span className="k8s-link-cell__meta">{cluster.project_code}</span>
+                          </div>
+                        </td>
+                        <td><span className="k8s-data-pill">{cluster.cloud.toUpperCase()}</span></td>
+                        <td><span className="portal-pill k8s-data-pill k8s-data-pill--env">{cluster.environment.toUpperCase()}</span></td>
+                        <td><span className="portal-pill k8s-data-pill">{cluster.health_status || 'Healthy'}</span></td>
+                        <td>{cluster.kubernetes_version || '—'}</td>
+                        <td>{cluster.node_pool || '—'}</td>
+                        <td>{cluster.node_count}</td>
+                        <td>{cluster.namespace_count}</td>
+                        <td>{cluster.workload_count}</td>
+                        <td>{cluster.service_count}</td>
+                        <td>{cluster.configmap_count}</td>
+                        <td>{cluster.storage_count}</td>
+                        <td>{formatDateTime(cluster.updated_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         </K8sWorkspaceShell>
       </DevOpsLayout>
