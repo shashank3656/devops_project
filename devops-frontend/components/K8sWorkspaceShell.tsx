@@ -19,7 +19,7 @@ interface K8sWorkspaceShellProps {
 const NAV_ITEMS = [
   {
     href: '/k8s',
-    label: 'K8s Cluster',
+    label: 'Clusters',
     copy: 'Browse onboarded clusters and jump into a selected cluster.',
   },
   {
@@ -101,11 +101,13 @@ export default function K8sWorkspaceShell({
       <div className="k8s-workspace">
         <aside className="k8s-workspace__aside">
           <div className="k8s-workspace__intro">
-            <span className="k8s-workspace__eyebrow">Workspace</span>
-            <h2 className="k8s-workspace__title">Kubernetes Engine</h2>
-            <p className="k8s-workspace__copy">
-              Start with the cluster, then move into workloads, services, ConfigMaps, or storage without leaving the workspace.
-            </p>
+            <span className="k8s-workspace__eyebrow">K8s Cluster</span>
+            <h2 className="k8s-workspace__title">Workspace</h2>
+            <p className="k8s-workspace__copy">Move between clusters, workloads, services, ConfigMaps, and storage from one clean rail.</p>
+          </div>
+
+          <div className="k8s-workspace__section">
+            <span className="k8s-workspace__section-label">Sections</span>
           </div>
 
           <nav className="k8s-workspace__nav" aria-label="Kubernetes workspace">
@@ -116,17 +118,18 @@ export default function K8sWorkspaceShell({
                 className={`k8s-workspace__nav-link ${isActive(item.href) ? 'k8s-workspace__nav-link--active' : ''}`}
               >
                 <span className="k8s-workspace__nav-title">{item.label}</span>
-                <span className="k8s-workspace__nav-copy">{item.copy}</span>
               </Link>
             ))}
           </nav>
 
-          <Link
-            href={getNavHref('/k8s/onboard')}
-            className={`k8s-workspace__primary-action ${onboardActive ? 'k8s-workspace__primary-action--active' : ''}`}
-          >
-            Onboard cluster
-          </Link>
+          <div className="k8s-workspace__aside-footer">
+            <Link
+              href={getNavHref('/k8s/onboard')}
+              className={`k8s-workspace__primary-action ${onboardActive ? 'k8s-workspace__primary-action--active' : ''}`}
+            >
+              Onboard cluster
+            </Link>
+          </div>
         </aside>
 
         <div className="k8s-workspace__content">
@@ -149,18 +152,6 @@ export default function K8sWorkspaceShell({
                 ) : null}
                 {actions ? <div className="k8s-workspace__utility-actions">{actions}</div> : null}
               </div>
-            </div>
-
-            <div className="k8s-workspace__tabbar" role="tablist" aria-label="K8s workspace sections">
-              {NAV_ITEMS.map((item) => (
-                <Link
-                  key={`tab-${item.href}`}
-                  href={getNavHref(item.href)}
-                  className={`k8s-workspace__tab ${isActive(item.href) ? 'k8s-workspace__tab--active' : ''}`}
-                >
-                  {item.label}
-                </Link>
-              ))}
             </div>
           </div>
 
