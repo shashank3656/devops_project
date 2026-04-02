@@ -2,6 +2,14 @@ name: Deploy Prod
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - master
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
     inputs:
       release_notes:
         description: Release notes for this production deployment
