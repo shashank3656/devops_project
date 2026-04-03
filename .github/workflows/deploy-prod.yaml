@@ -24,7 +24,7 @@ jobs:
       packages: write
       id-token: write
       pull-requests: write
-    uses: ./.github/actions/deploy-reusable.yml
+    uses: ./.github/workflows/deploy-reusable.yaml
     with:
       environment_name: prod
       public_api_url: ${{ vars.NEXT_PUBLIC_API_URL_PROD || vars.NEXT_PUBLIC_API_URL }}
