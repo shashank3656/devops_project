@@ -23,7 +23,7 @@ jobs:
       packages: write
       id-token: write
       pull-requests: write
-    uses: ./.github/actions/deploy-reusable.yaml
+    uses: ./.github/action/deploy-reusable/action.yml
     secrets: inherit
     with:
       environment_name: dev
