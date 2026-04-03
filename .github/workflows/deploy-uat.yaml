@@ -5,7 +5,6 @@ on:
   pull_request:
     branches:
       - uat
-      - feature/**
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
@@ -13,6 +12,9 @@ permissions:
   packages: write
   id-token: write
   pull-requests: write
+
+env:
+  NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL_UAT || vars.NEXT_PUBLIC_API_URL }}
 
 jobs:
   deploy:
@@ -25,7 +27,5 @@ jobs:
     uses: ./.github/workflows/deploy-reusable.yaml
     with:
       environment_name: uat
-      values_file: ./helm/infragate/values-uat.yaml
-      release_name: infragate-uat
-      namespace: infragate-uat
+      public_api_url: ${{ env.NEXT_PUBLIC_API_URL }}
     secrets: inherit
