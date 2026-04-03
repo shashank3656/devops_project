@@ -87,6 +87,113 @@ jobs:
           echo "image_uri=$image_uri" >> "$GITHUB_OUTPUT"
           echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare Slack notification payloads
+        id: notify-meta
+        shell: bash
+        env:
+          SERVICE_NAME: ${{ matrix.service }}
+          ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          IMAGE_URI: ${{ steps.image-meta.outputs.image_uri }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          NEEDS_API_URL: ${{ matrix.needs_api_url }}
+          PUBLIC_API_URL: ${{ env.NEXT_PUBLIC_API_URL }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          REPOSITORY: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          SERVER_URL: ${{ github.server_url }}
+          SHA_VALUE: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+        run: |
+          set -euo pipefail
+          python3 <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+
+          env_name = os.environ["ENVIRONMENT_NAME"]
+          service = os.environ["SERVICE_NAME"]
+          image = f'{os.environ["IMAGE_URI"]}:{os.environ["IMAGE_TAG"]}'
+          release_notes = os.environ.get("RELEASE_NOTES", "").strip() or "Not provided"
+          ref_name = os.environ.get("HEAD_REF", "").strip() or os.environ.get("REF_NAME", "").strip()
+          short_sha = os.environ["SHA_VALUE"][:7]
+          run_url = f'{os.environ["SERVER_URL"]}/{os.environ["REPOSITORY"]}/actions/runs/{os.environ["RUN_ID"]}'
+          public_api_url = os.environ.get("PUBLIC_API_URL", "").strip() if os.environ.get("NEEDS_API_URL") == "true" else "not-required"
+
+          def build_payload(color: str, title: str) -> dict:
+              fields = [
+                  {"type": "mrkdwn", "text": f"*Environment:*\n{env_name}"},
+                  {"type": "mrkdwn", "text": f"*Service:*\n{service}"},
+                  {"type": "mrkdwn", "text": f"*Repository:*\n{os.environ['REPOSITORY']}"},
+                  {"type": "mrkdwn", "text": f"*Triggered by:*\n{os.environ['ACTOR']}"},
+                  {"type": "mrkdwn", "text": f"*Ref:*\n{ref_name}"},
+                  {"type": "mrkdwn", "text": f"*Commit:*\n{short_sha}"},
+                  {"type": "mrkdwn", "text": f"*Image:*\n{image}"},
+                  {"type": "mrkdwn", "text": f"*NEXT_PUBLIC_API_URL:*\n{public_api_url}"},
+              ]
+              return {
+                  "attachments": [
+                      {
+                          "color": color,
+                          "blocks": [
+                              {
+                                  "type": "header",
+                                  "text": {
+                                      "type": "plain_text",
+                                      "text": title,
+                                  },
+                              },
+                              {
+                                  "type": "section",
+                                  "fields": fields,
+                              },
+                              {
+                                  "type": "section",
+                                  "text": {
+                                      "type": "mrkdwn",
+                                      "text": f"*Release notes:*\n{release_notes}",
+                                  },
+                              },
+                              {
+                                  "type": "context",
+                                  "elements": [
+                                      {
+                                          "type": "mrkdwn",
+                                          "text": f'Workflow: {os.environ["WORKFLOW_NAME"]} | Run #{os.environ["RUN_NUMBER"]}',
+                                      }
+                                  ],
+                              },
+                              {
+                                  "type": "actions",
+                                  "elements": [
+                                      {
+                                          "type": "button",
+                                          "text": {
+                                              "type": "plain_text",
+                                              "text": "Open workflow run",
+                                          },
+                                          "url": run_url,
+                                      }
+                                  ],
+                              },
+                          ],
+                      }
+                  ]
+              }
+
+          success_payload = build_payload("#16a34a", f"Deploy succeeded - {env_name} - {service}")
+          failure_payload = build_payload("#dc2626", f"Deploy failed - {env_name} - {service}")
+
+          print("success_payload<<__JSON__")
+          print(json.dumps(success_payload))
+          print("__JSON__")
+          print("failure_payload<<__JSON__")
+          print(json.dumps(failure_payload))
+          print("__JSON__")
+          PY
+
       - name: Validate public API URL
         if: matrix.needs_api_url
         shell: bash
@@ -137,40 +244,7 @@ jobs:
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
-          payload: |
-            {
-              "attachments": [
-                {
-                  "color": "#16a34a",
-                  "blocks": [
-                    {
-                      "type": "header",
-                      "text": {
-                        "type": "plain_text",
-                        "text": "Deploy Pipeline Succeeded"
-                      }
-                    },
-                    {
-                      "type": "section",
-                      "fields": [
-                        { "type": "mrkdwn", "text": "*Environment:*\n${{ inputs.environment_name }}" },
-                        { "type": "mrkdwn", "text": "*Service:*\n${{ matrix.service }}" },
-                        { "type": "mrkdwn", "text": "*Commit:*\n${{ github.sha }}" },
-                        { "type": "mrkdwn", "text": "*Image:*\n${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}" },
-                        { "type": "mrkdwn", "text": "*NEXT_PUBLIC_API_URL:*\n${{ matrix.needs_api_url && env.NEXT_PUBLIC_API_URL || 'not-required' }}" },
-                        { "type": "mrkdwn", "text": "*Release Notes:*\n${{ inputs.release_notes != '' && inputs.release_notes || 'Not provided' }}" }
-                      ]
-                    },
-                    {
-                      "type": "context",
-                      "elements": [
-                        { "type": "mrkdwn", "text": "Workflow: ${{ github.workflow }} | Run #${{ github.run_number }}" }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            }
+          payload: ${{ steps.notify-meta.outputs.success_payload }}
 
       - name: Notify Slack on failure
         if: failure() && env.HAS_SLACK_WEBHOOK_URL == 'true'
@@ -178,37 +252,4 @@ jobs:
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
-          payload: |
-            {
-              "attachments": [
-                {
-                  "color": "#dc2626",
-                  "blocks": [
-                    {
-                      "type": "header",
-                      "text": {
-                        "type": "plain_text",
-                        "text": "Deploy Pipeline Failed"
-                      }
-                    },
-                    {
-                      "type": "section",
-                      "fields": [
-                        { "type": "mrkdwn", "text": "*Environment:*\n${{ inputs.environment_name }}" },
-                        { "type": "mrkdwn", "text": "*Service:*\n${{ matrix.service }}" },
-                        { "type": "mrkdwn", "text": "*Commit:*\n${{ github.sha }}" },
-                        { "type": "mrkdwn", "text": "*Image:*\n${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}" },
-                        { "type": "mrkdwn", "text": "*NEXT_PUBLIC_API_URL:*\n${{ matrix.needs_api_url && env.NEXT_PUBLIC_API_URL || 'not-required' }}" },
-                        { "type": "mrkdwn", "text": "*Release Notes:*\n${{ inputs.release_notes != '' && inputs.release_notes || 'Not provided' }}" }
-                      ]
-                    },
-                    {
-                      "type": "context",
-                      "elements": [
-                        { "type": "mrkdwn", "text": "Workflow: ${{ github.workflow }} | Run #${{ github.run_number }}" }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            }
+          payload: ${{ steps.notify-meta.outputs.failure_payload }}
