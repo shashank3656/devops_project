@@ -2,9 +2,10 @@ name: Deploy UAT
 
 on:
   workflow_dispatch:
-  push:
-    branches:s
+  pull_request:
+    branches:
       - uat
+      - feature/**
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
