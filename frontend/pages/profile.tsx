@@ -521,12 +521,11 @@ export default function Profile() {
                   <span className="portal-selection-bar__count">New key created. Copy it now because it will not be shown again.</span>
                   <input
                     type="text"
-                    className="input"
+                    className="input profile-page__key-value"
                     readOnly
                     value={createdKeyValue}
                     onClick={(e) => (e.target as HTMLInputElement).select()}
                     aria-label="New API key"
-                    className="profile-page__key-value"
                   />
                   <button type="button" className="btn btn-secondary" onClick={() => copyKey(createdKeyValue)}>
                     Copy
