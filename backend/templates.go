@@ -19,13 +19,13 @@ type templateListDiagnostics struct {
 func buildTemplateListDiagnostics(userID int) *templateListDiagnostics {
 	templates, err := ListRequestTemplates()
 	if err != nil {
-		log.Printf("warning: failed to build template diagnostics for user %d: %v", userID, err)
+		log.Printf("warning: failed to build template diagnostics for user %d", userID)
 		return nil
 	}
 
 	allowedTeams, err := getPortalTeamIDSetForUser(userID)
 	if err != nil {
-		log.Printf("warning: failed to resolve template team diagnostics for user %d: %v", userID, err)
+		log.Printf("warning: failed to resolve template team diagnostics for user %d", userID)
 		allowedTeams = map[int]bool{}
 	}
 
