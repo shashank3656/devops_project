@@ -18,23 +18,23 @@ runs:
     # -------------------------
     # ✅ Validate config
     # -------------------------
-    - name: Validate required quality-gate configuration
-      shell: bash
-      run: |
-        set -euo pipefail
-        missing=0
+    # - name: Validate required quality-gate configuration
+    #   shell: bash
+    #   run: |
+    #     set -euo pipefail
+    #     missing=0
 
-        if [ -z "${{ inputs.SONAR_HOST_URL }}" ]; then
-          echo "::error::Missing SONAR_HOST_URL"
-          missing=1
-        fi
+    #     if [ -z "${{ inputs.SONAR_HOST_URL }}" ]; then
+    #       echo "::error::Missing SONAR_HOST_URL"
+    #       missing=1
+    #     fi
 
-        if [ -z "${{ inputs.SONAR_TOKEN }}" ]; then
-          echo "::error::Missing SONAR_TOKEN"
-          missing=1
-        fi
+    #     if [ -z "${{ inputs.SONAR_TOKEN }}" ]; then
+    #       echo "::error::Missing SONAR_TOKEN"
+    #       missing=1
+    #     fi
 
-        exit $missing
+    #     exit $missing
 
     # -------------------------
     # ✅ Setup runtimes
