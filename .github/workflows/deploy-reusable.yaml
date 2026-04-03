@@ -35,7 +35,7 @@ env:
 
 jobs:
   quality-gates:
-    uses: ngsops/devops_project/.github/actions/quality-gates-reusable/action.yml@v1.9
+    uses: ngsops/devops_project/.github/actions/quality-gates-reusable/action.yml@main
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
