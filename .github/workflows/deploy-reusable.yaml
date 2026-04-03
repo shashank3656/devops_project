@@ -42,7 +42,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run quality gates
-        uses: ./.github/actions/quality-gates
+        uses: ./.github/actions/quality-gates-reusable
         with:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
