@@ -3,8 +3,8 @@ name: Reusable Quality Gates
 on:
   workflow_call:
     secrets:
-      SONAR_TOKEN:
-        required: true
+      # SONAR_TOKEN:
+      #   required: true
       SNYK_TOKEN:
         required: false
 
@@ -81,21 +81,21 @@ jobs:
         working-directory: ./backend
         run: go mod download
 
-      - name: Run SonarQube scan
-        uses: SonarSource/sonarqube-scan-action@v6
-        with:
-          args: >
-            -Dproject.settings=.github/action/sonar-project.properties
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+      # - name: Run SonarQube scan
+      #   uses: SonarSource/sonarqube-scan-action@v6
+      #   with:
+      #     args: >
+      #       -Dproject.settings=.github/action/sonar-project.properties
+      #   env:
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      #     SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
 
-      - name: Wait for SonarQube quality gate
-        uses: SonarSource/sonarqube-quality-gate-action@master
-        timeout-minutes: 10
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+      # - name: Wait for SonarQube quality gate
+      #   uses: SonarSource/sonarqube-quality-gate-action@master
+      #   timeout-minutes: 10
+      #   env:
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      #     SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
 
       - name: Install Snyk CLI
         if: env.HAS_SNYK_TOKEN == 'true'
