@@ -1,112 +1,127 @@
-name: Reusable Quality Gates
+name: Quality Gates
+description: Run quality checks (Node, Go, Snyk, optional Sonar validation)
 
-on:
-  workflow_call:
-    secrets:
-      # SONAR_TOKEN:
-      #   required: true
-      SNYK_TOKEN:
-        required: false
+inputs:
+  SONAR_TOKEN:
+    description: Sonar token
+    required: false
+  SONAR_HOST_URL:
+    description: Sonar host URL
+    required: false
+  SNYK_TOKEN:
+    description: Snyk token
+    required: false
 
-permissions:
-  contents: read
+runs:
+  using: "composite"
+  steps:
+    # ✅ Checkout (required in composite)
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-env:
-  HAS_SNYK_TOKEN: ${{ secrets.SNYK_TOKEN != '' }}
+    # -------------------------
+    # ✅ Validate config
+    # -------------------------
+    - name: Validate required quality-gate configuration
+      shell: bash
+      run: |
+        set -euo pipefail
+        missing=0
 
-jobs:
-  quality-gates:
-    name: Quality Gates
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        if [ -z "${{ inputs.SONAR_HOST_URL }}" ]; then
+          echo "::error::Missing SONAR_HOST_URL"
+          missing=1
+        fi
 
-      - name: Validate required quality-gate configuration
-        env:
-          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          set -euo pipefail
-          missing=0
-          for key in SONAR_HOST_URL SONAR_TOKEN; do
-            if [ -z "${!key:-}" ]; then
-              echo "::error::Missing required quality-gate variable or secret: $key"
-              missing=1
-            fi
-          done
-          exit $missing
+        if [ -z "${{ inputs.SONAR_TOKEN }}" ]; then
+          echo "::error::Missing SONAR_TOKEN"
+          missing=1
+        fi
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+        exit $missing
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-          cache-dependency-path: backend/go.sum
+    # -------------------------
+    # ✅ Setup runtimes
+    # -------------------------
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
 
-      - name: Install user portal dependencies
-        working-directory: ./frontend
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install --no-audit --no-fund
-          fi
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: "1.25"
+        cache-dependency-path: backend/go.sum
 
-      - name: Install admin portal dependencies
-        working-directory: ./admin-frontend
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install --no-audit --no-fund
-          fi
+    # -------------------------
+    # ✅ Install dependencies
+    # -------------------------
+    - name: Install user portal dependencies
+      shell: bash
+      working-directory: ./frontend
+      run: |
+        if [ -f package-lock.json ]; then
+          npm ci
+        else
+          npm install --no-audit --no-fund
+        fi
 
-      - name: Install DevOps portal dependencies
-        working-directory: ./devops-frontend
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install --no-audit --no-fund
-          fi
+    - name: Install admin portal dependencies
+      shell: bash
+      working-directory: ./admin-frontend
+      run: |
+        if [ -f package-lock.json ]; then
+          npm ci
+        else
+          npm install --no-audit --no-fund
+        fi
 
-      - name: Download Go modules
-        working-directory: ./backend
-        run: go mod download
+    - name: Install DevOps portal dependencies
+      shell: bash
+      working-directory: ./devops-frontend
+      run: |
+        if [ -f package-lock.json ]; then
+          npm ci
+        else
+          npm install --no-audit --no-fund
+        fi
 
-      # - name: Run SonarQube scan
-      #   uses: SonarSource/sonarqube-scan-action@v6
-      #   with:
-      #     args: >
-      #       -Dproject.settings=.github/action/sonar-project.properties
-      #   env:
-      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      #     SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+    - name: Download Go modules
+      shell: bash
+      working-directory: ./backend
+      run: go mod download
 
-      # - name: Wait for SonarQube quality gate
-      #   uses: SonarSource/sonarqube-quality-gate-action@master
-      #   timeout-minutes: 10
-      #   env:
-      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      #     SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+    # -------------------------
+    # 🚫 Sonar (still optional - enable if needed)
+    # -------------------------
+    # - name: Run SonarQube scan
+    #   uses: SonarSource/sonarqube-scan-action@v6
+    #   with:
+    #     args: >
+    #       -Dproject.settings=.github/action/sonar-project.properties
+    #   env:
+    #     SONAR_TOKEN: ${{ inputs.SONAR_TOKEN }}
+    #     SONAR_HOST_URL: ${{ inputs.SONAR_HOST_URL }}
 
-      - name: Install Snyk CLI
-        if: env.HAS_SNYK_TOKEN == 'true'
-        run: npm install --global snyk
+    # -------------------------
+    # ✅ Snyk
+    # -------------------------
+    - name: Install Snyk CLI
+      if: ${{ inputs.SNYK_TOKEN != '' }}
+      shell: bash
+      run: npm install --global snyk
 
-      - name: Run Snyk dependency scan
-        if: env.HAS_SNYK_TOKEN == 'true'
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        run: snyk test --all-projects --detection-depth=4 --severity-threshold=high
+    - name: Run Snyk dependency scan
+      if: ${{ inputs.SNYK_TOKEN != '' }}
+      shell: bash
+      env:
+        SNYK_TOKEN: ${{ inputs.SNYK_TOKEN }}
+      run: snyk test --all-projects --detection-depth=4 --severity-threshold=high
 
-      - name: Skip optional Snyk scan
-        if: env.HAS_SNYK_TOKEN != 'true'
-        run: echo "Snyk token not configured; skipping optional dependency scan."
+    - name: Skip optional Snyk scan
+      if: ${{ inputs.SNYK_TOKEN == '' }}
+      shell: bash
+      run: echo "Snyk token not configured; skipping optional dependency scan."
