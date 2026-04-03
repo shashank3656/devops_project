@@ -2,12 +2,6 @@ name: Quality Gates
 description: Run quality checks (Node, Go, Snyk, optional Sonar validation)
 
 inputs:
-  SONAR_TOKEN:
-    description: Sonar token
-    required: false
-  SONAR_HOST_URL:
-    description: Sonar host URL
-    required: false
   SNYK_TOKEN:
     description: Snyk token
     required: false
