@@ -135,7 +135,7 @@ func handleRequestClone(w http.ResponseWriter, r *http.Request, id int, req *PRR
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	filePath, branchName := BuildRequestGitArtifacts(req.Team, req.Env, appID)
+	filePath, branchName := BuildRequestGitArtifacts(req.ProjectID, req.Team, req.Cloud, req.Env, req.Service, appID)
 	createdBy := req.CreatedBy
 	if createdBy == nil && userID > 0 {
 		createdBy = &userID
@@ -189,7 +189,7 @@ func handleRequestResubmit(w http.ResponseWriter, r *http.Request, id int, req *
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	filePath, branchName := BuildRequestGitArtifacts(req.Team, req.Env, appID)
+	filePath, branchName := BuildRequestGitArtifacts(req.ProjectID, req.Team, req.Cloud, req.Env, req.Service, appID)
 	newReq := &PRRequest{
 		ProjectID:     req.ProjectID,
 		Team:          req.Team,

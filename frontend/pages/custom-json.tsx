@@ -42,6 +42,10 @@ function formatEnvironmentLabel(value: string): string {
     .join(' ');
 }
 
+function getStringValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 export default function CustomJSON() {
   const router = useRouter();
   const { toast } = useToast();
@@ -123,7 +127,7 @@ export default function CustomJSON() {
   const validateJSON = (jsonString: string): boolean => {
     try {
       if (!jsonString.trim()) {
-        setJsonError('JSON cannot be empty');
+        setJsonError('Add a JSON request body first.');
         return false;
       }
       JSON.parse(jsonString);
@@ -131,7 +135,7 @@ export default function CustomJSON() {
       return true;
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Unknown error';
-      setJsonError(`Invalid JSON: ${message}`);
+      setJsonError(`JSON format issue: ${message}`);
       return false;
     }
   };
@@ -181,12 +185,12 @@ export default function CustomJSON() {
 
   const submitRequest = async (asDraft: boolean) => {
     if (!projectId || !team || !env) {
-      setError('Please fill in Project, Team Name and Environment');
+      setError('Choose a project, team, and environment first.');
       return;
     }
 
     if (!validateJSON(json)) {
-      setError('Please fix JSON errors before submitting');
+      setError('Fix the JSON issues before sending the request.');
       return;
     }
 
@@ -201,14 +205,20 @@ export default function CustomJSON() {
       try {
         const parsed: unknown = JSON.parse(json);
         if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-          throw new Error('JSON must be an object');
+          throw new Error('The JSON body must be an object.');
         }
         jsonPayload = parsed as Record<string, unknown>;
       } catch (parseErr) {
-        if (parseErr instanceof Error && parseErr.message === 'JSON must be an object') {
+        if (parseErr instanceof Error && parseErr.message === 'The JSON body must be an object.') {
           throw parseErr;
         }
-        throw new Error('Invalid JSON format');
+        throw new Error('The JSON format is not valid.');
+      }
+
+      const payloadCloud = getStringValue(jsonPayload.cloud).toLowerCase();
+      const payloadService = getStringValue(jsonPayload.service);
+      if (!payloadCloud || !payloadService) {
+        throw new Error('The JSON must include both "cloud" and "service".');
       }
 
       const payload = {
@@ -220,7 +230,9 @@ export default function CustomJSON() {
         due_date: dueDate || undefined,
         draft: asDraft,
         initial_comment: initialComment.trim() || undefined,
-        ...jsonPayload
+        ...jsonPayload,
+        cloud: payloadCloud,
+        service: payloadService
       };
 
       const token = localStorage.getItem('token');
@@ -245,7 +257,7 @@ export default function CustomJSON() {
 
       const data = await response.json();
       setPrUrl(data.pr_url || '');
-      toast(data.message || (asDraft ? 'Draft saved.' : 'Ticket created successfully.'), 'success');
+      toast(data.message || (asDraft ? 'Draft saved.' : 'Request sent successfully.'), 'success');
       if (asDraft) {
         router.push('/history');
       } else {
@@ -254,7 +266,7 @@ export default function CustomJSON() {
       }
     } catch (err: any) {
       console.error('Error creating PR:', err);
-      const errorMessage = err.message || 'An error occurred while creating the PR';
+      const errorMessage = err.message || 'Something went wrong while sending the request.';
       if (err.message === 'Failed to fetch' || err.name === 'TypeError' || err.message.includes('NetworkError')) {
         setError(`Cannot connect to backend at ${apiUrl}. Make sure the backend is running.`);
         toast('Cannot connect to backend', 'error');
@@ -271,6 +283,9 @@ export default function CustomJSON() {
     e.preventDefault();
     submitRequest(false);
   };
+
+  const canSubmitRequest = loading || !!jsonError || !projectId || !team || !env || canCreatePR !== true;
+  const requestReady = !!(projectId && team && env && !jsonError && json.trim());
 
   const exampleJSON = {
     cloud: 'gcp',
@@ -309,40 +324,59 @@ export default function CustomJSON() {
   return (
     <>
       <Head>
-        <title>Custom JSON - Infrastructure Portal</title>
+        <title>Advanced JSON Request - SetuOps</title>
       </Head>
       <div style={{ minHeight: '100vh', padding: '40px 20px' }}>
         <div className="container">
-          <div style={{ marginBottom: '24px' }}>
-            <button 
-              onClick={() => router.push('/home')}
-              className="btn btn-secondary"
-              style={{ marginBottom: '16px' }}
-            >
-              ← Back to Home
-            </button>
-          </div>
-
-          <div className="card">
-            <h2 style={{ 
-              fontSize: '28px', 
-              marginBottom: '8px',
-              color: '#333'
-            }}>
-              Custom JSON Configuration
-            </h2>
-            <p style={{ color: '#666', marginBottom: '32px' }}>
-              Provide your infrastructure configuration as a JSON payload
-            </p>
+          <div className="request-builder">
+            <div className="request-builder__header">
+              <button
+                onClick={() => router.push('/home')}
+                className="btn btn-secondary request-builder__back"
+              >
+                ← Back to Home
+              </button>
+              <h1 className="request-builder__title">Advanced JSON request</h1>
+              <p className="request-builder__subtitle">
+                Use this path only when you already know the full request body. The JSON must include at least <code>cloud</code> and <code>service</code>.
+              </p>
+            </div>
 
             {canCreatePR === false && (
-              <div className="error" style={{ marginBottom: '24px' }}>
-                You don&apos;t have permission to create PRs. Verify your email and ensure your account has contributor or admin role in <Link href="/profile" style={{ color: 'inherit', textDecoration: 'underline' }}>Profile</Link>.
+              <div className="error">
+                Your account cannot send requests yet. Verify your email and check your role in <Link href="/profile" style={{ color: 'inherit', textDecoration: 'underline' }}>Profile</Link>.
               </div>
             )}
 
-            <form onSubmit={handleSubmit}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+            {error && (
+              <div className="error">
+                {error}
+              </div>
+            )}
+
+            {prUrl && (
+              <div className="success" style={{ marginBottom: 0, flexDirection: 'column', alignItems: 'flex-start', gap: '12px' }}>
+                <strong>Request sent successfully</strong>
+                <a
+                  href={prUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="link"
+                  style={{ fontWeight: '600', fontSize: '15px' }}
+                >
+                  Open Pull Request →
+                </a>
+              </div>
+            )}
+
+            <div className="request-builder__layout">
+              <form onSubmit={handleSubmit} className="request-builder__main">
+                <section className="request-builder__section">
+                  <div className="request-builder__section-header">
+                    <h2>Step 1: Choose the basics</h2>
+                    <p>Set the project, team, and environment so the request routes to the right reviewers.</p>
+                  </div>
+                  <div className="request-builder__grid">
                 <div className="form-group">
                   <label className="label">Project *</label>
                   <select
@@ -361,6 +395,9 @@ export default function CustomJSON() {
                       <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
                     ))}
                   </select>
+                  {selectedProject && (
+                    <p className="request-builder__note">{selectedProject.name} controls which teams and environments are allowed.</p>
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -385,16 +422,16 @@ export default function CustomJSON() {
                     ))}
                   </select>
                   {teams.length === 0 && (
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Contact your admin to be added to a team.</p>
+                    <p className="request-builder__note">Ask your admin to add you to a team first.</p>
                   )}
                 </div>
 
                 <div className="form-group">
-                  <label className="label">Client Name</label>
+                  <label className="label">Business name or client</label>
                   <input
                     type="text"
                     className="input"
-                    placeholder="Optional client or project name"
+                    placeholder="Optional business, client, or internal project name"
                     value={clientName}
                     onChange={(e) => setClientName(e.target.value)}
                   />
@@ -408,7 +445,7 @@ export default function CustomJSON() {
                     onChange={(e) => setEnv(e.target.value.trim().toLowerCase())}
                     required
                   >
-                    <option value="">Select Environment</option>
+                    <option value="">Choose environment</option>
                     {availableEnvironmentOptions.map((envOption) => (
                       <option key={envOption.value} value={envOption.value}>
                         {envOption.label}
@@ -418,7 +455,7 @@ export default function CustomJSON() {
                 </div>
 
                 <div className="form-group">
-                  <label className="label">Priority</label>
+                  <label className="label">Urgency</label>
                   <select
                     className="select"
                     value={priority}
@@ -435,24 +472,18 @@ export default function CustomJSON() {
                   <label className="label">Due date</label>
                   <CalendarDateInput value={dueDate} onChange={setDueDate} />
                 </div>
-              </div>
+                  </div>
+                </section>
 
-              <div className="form-group">
-                <label className="label">Comment / notes (optional)</label>
-                <textarea
-                  className="textarea"
-                  placeholder="Add a note or context for this request (visible to admins)"
-                  value={initialComment}
-                  onChange={(e) => setInitialComment(e.target.value)}
-                  rows={2}
-                  style={{ resize: 'vertical' }}
-                />
-              </div>
-
-              <div className="form-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <label className="label">JSON Configuration *</label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                <section className="request-builder__section">
+                  <div className="request-builder__section-header">
+                    <h2>Step 2: Paste the JSON body</h2>
+                    <p>Paste or load the request body below, then format it before you send.</p>
+                  </div>
+                  <div className="form-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: 12, flexWrap: 'wrap' }}>
+                      <label className="label">JSON request body *</label>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       onClick={formatJSON}
@@ -467,89 +498,117 @@ export default function CustomJSON() {
                       className="btn btn-secondary"
                       style={{ padding: '8px 16px', fontSize: '14px' }}
                     >
-                      Load Example
+                      Load example
                     </button>
+                      </div>
+                    </div>
+                    <textarea
+                      className="textarea"
+                      placeholder='{"cloud":"gcp","service":"gke","config":{...}}'
+                      value={json}
+                      onChange={(e) => handleJsonChange(e.target.value)}
+                      required
+                      rows={16}
+                    />
+                    {jsonError && (
+                      <div className="error">{jsonError}</div>
+                    )}
+                    {!jsonError && json && (
+                      <div className="success">JSON looks valid</div>
+                    )}
                   </div>
-                </div>
-                <textarea
-                  className="textarea"
-                  placeholder='{"cloud": "gcp", "service": "gke", "config": {...}}'
-                  value={json}
-                  onChange={(e) => handleJsonChange(e.target.value)}
-                  required
-                />
-                {jsonError && (
-                  <div className="error">{jsonError}</div>
-                )}
-                {!jsonError && json && (
-                  <div className="success">Valid JSON</div>
-                )}
-              </div>
+                </section>
 
-              {error && (
-                <div className="error" style={{ marginBottom: '16px' }}>
-                  {error}
-                </div>
-              )}
+                <section className="request-builder__section">
+                  <div className="request-builder__section-header">
+                    <h2>Step 3: Add context and send</h2>
+                    <p>Add a note only if reviewers need extra business context.</p>
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Comment / notes (optional)</label>
+                    <textarea
+                      className="textarea"
+                      placeholder="Add any useful background for reviewers"
+                      value={initialComment}
+                      onChange={(e) => setInitialComment(e.target.value)}
+                      rows={3}
+                      style={{ resize: 'vertical' }}
+                    />
+                  </div>
 
-              {prUrl && (
-                <div className="success" style={{ marginBottom: '16px', flexDirection: 'column', alignItems: 'flex-start', gap: '12px' }}>
-                  <strong>PR Created Successfully!</strong>
-                  <a 
-                    href={prUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="link"
-                    style={{ fontWeight: '600', fontSize: '15px' }}
-                  >
-                    View Pull Request →
-                  </a>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: '12px', marginTop: '16px', flexWrap: 'wrap' }}>
+                  <div className="request-builder__actions">
                 <button
                   type="button"
                   onClick={() => submitRequest(true)}
                   className="btn btn-secondary"
-                  style={{ flex: 1, minWidth: '140px' }}
-                  disabled={loading || !!jsonError || canCreatePR !== true}
+                  disabled={canSubmitRequest}
                 >
-                  {loading ? <span className="loading"></span> : 'Save as draft'}
+                  {loading ? <span className="loading"></span> : 'Save draft'}
                 </button>
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  style={{ flex: 1, minWidth: '140px' }}
-                  disabled={loading || !!jsonError || canCreatePR !== true}
+                  disabled={canSubmitRequest}
                 >
                   {loading ? (
                     <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                       <span className="loading"></span>
-                      Submitting...
+                      Sending...
                     </span>
                   ) : (
-                    'Submit for approval'
+                    'Send for review'
                   )}
                 </button>
-              </div>
-            </form>
+                  </div>
+                </section>
+              </form>
 
-            <div className="form-section" style={{ 
-              marginTop: '32px', 
-              fontSize: '14px'
-            }}>
-              <strong>JSON Structure:</strong>
-              <pre style={{ 
-                marginTop: '12px', 
-                padding: '12px', 
-                background: 'white', 
-                borderRadius: '4px',
-                overflow: 'auto',
-                fontSize: '12px'
-              }}>
+              <aside className="request-builder__side">
+                <div className="request-builder__summary">
+                  <h3>Request summary</h3>
+                  <p>This is the context currently attached to the JSON request.</p>
+                  <div className="request-builder__summary-list">
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-label">Project</span>
+                      <span className="request-builder__summary-value">{selectedProject ? `${selectedProject.name} (${selectedProject.code})` : 'Not chosen yet'}</span>
+                    </div>
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-label">Team</span>
+                      <span className="request-builder__summary-value">{team || 'Not chosen yet'}</span>
+                    </div>
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-label">Environment</span>
+                      <span className="request-builder__summary-value">{env || 'Not chosen yet'}</span>
+                    </div>
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-label">JSON status</span>
+                      <span className="request-builder__summary-value">{jsonError ? 'Needs fixes' : json.trim() ? 'Ready to review' : 'Waiting for JSON body'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="request-builder__summary">
+                  <h3>What the JSON must include</h3>
+                  <div className="request-builder__summary-list request-builder__summary-list--plain">
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-value"><code>cloud</code> and <code>service</code> are required.</span>
+                    </div>
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-value">The body must be a JSON object, not a list.</span>
+                    </div>
+                    <div className="request-builder__summary-item">
+                      <span className="request-builder__summary-value">{requestReady ? 'This request is ready to save or send.' : 'Finish the required fields and fix any JSON issues first.'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="request-builder__summary request-builder__example">
+                  <h3>Example request body</h3>
+                  <pre>
 {JSON.stringify(exampleJSON, null, 2)}
-              </pre>
+                  </pre>
+                </div>
+              </aside>
             </div>
           </div>
         </div>

@@ -12,6 +12,12 @@ interface ProjectOption {
   id: number;
   name: string;
   code: string;
+  services: ProjectServiceOption[];
+}
+
+interface ProjectServiceOption {
+  cloud: string;
+  service: string;
 }
 
 interface Runbook {
@@ -31,6 +37,17 @@ function normalizeProjects(value: unknown): ProjectOption[] {
       id: typeof item.id === 'number' ? item.id : 0,
       name: typeof item.name === 'string' ? item.name : 'Unknown',
       code: typeof item.code === 'string' ? item.code : 'n/a',
+      services: Array.isArray(item.services)
+        ? item.services
+            .map((service) => {
+              const value = service && typeof service === 'object' ? (service as Record<string, unknown>) : {};
+              return {
+                cloud: typeof value.cloud === 'string' ? value.cloud : '',
+                service: typeof value.service === 'string' ? value.service : '',
+              };
+            })
+            .filter((service) => service.service)
+        : [],
     };
   });
 }
@@ -64,6 +81,7 @@ function normalizeQueryValue(value: string | string[] | undefined): string {
 export default function DevOpsRunbooksPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const [activePanel, setActivePanel] = useState<'editor' | null>(null);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [runbooks, setRunbooks] = useState<Runbook[]>([]);
   const [projectId, setProjectId] = useState('');
@@ -88,6 +106,46 @@ export default function DevOpsRunbooksPage() {
   }, [libraryProjectId, libraryService, runbooks]);
 
   const hasLibraryFilters = Boolean(libraryProjectId || libraryService);
+
+  const availableEditorServices = useMemo(() => {
+    const project = projects.find((item) => String(item.id) === projectId);
+    const values = new Set<string>();
+    project?.services.forEach((entry) => {
+      const nextValue = entry.service.trim();
+      if (nextValue) values.add(nextValue);
+    });
+    runbooks
+      .filter((runbook) => String(runbook.project_id) === projectId)
+      .forEach((runbook) => {
+        const nextValue = runbook.service.trim();
+        if (nextValue) values.add(nextValue);
+      });
+    if (service.trim()) values.add(service.trim());
+    return Array.from(values).sort((left, right) => left.localeCompare(right));
+  }, [projectId, projects, runbooks, service]);
+
+  const availableLibraryServices = useMemo(() => {
+    const values = new Set<string>();
+    const scopedProjectId = libraryProjectId;
+    projects.forEach((project) => {
+      if (scopedProjectId && String(project.id) !== scopedProjectId) return;
+      project.services.forEach((entry) => {
+        const nextValue = entry.service.trim();
+        if (nextValue) values.add(nextValue);
+      });
+    });
+    runbooks.forEach((runbook) => {
+      if (scopedProjectId && String(runbook.project_id) !== scopedProjectId) return;
+      const nextValue = runbook.service.trim();
+      if (nextValue) values.add(nextValue);
+    });
+    return Array.from(values).sort((left, right) => left.localeCompare(right));
+  }, [libraryProjectId, projects, runbooks]);
+
+  const selectedProject = useMemo(
+    () => projects.find((item) => String(item.id) === projectId) ?? null,
+    [projectId, projects],
+  );
 
   const loadData = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -135,7 +193,30 @@ export default function DevOpsRunbooksPage() {
     setTitle('');
     setContent('');
     setLinkUrl('');
+    setActivePanel(null);
   };
+
+  const openCreatePanel = () => {
+    setEditingId(null);
+    setProjectId('');
+    setService('');
+    setTitle('');
+    setContent('');
+    setLinkUrl('');
+    setError('');
+    setNotice('');
+    setActivePanel('editor');
+  };
+
+  useEffect(() => {
+    if (!projectId) {
+      if (!editingId) setService('');
+      return;
+    }
+    if (!service) return;
+    if (availableEditorServices.includes(service)) return;
+    setService('');
+  }, [availableEditorServices, editingId, projectId, service]);
 
   const submit = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -222,13 +303,18 @@ export default function DevOpsRunbooksPage() {
               Attach repeatable recovery and delivery instructions to project services so tickets and projects have a standard operating guide.
             </p>
           </div>
+          <div className="portal-page__actions">
+            <button type="button" className="btn btn-primary" onClick={() => void router.push('/runbooks/new')}>
+              Create runbook
+            </button>
+          </div>
         </div>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
         {hasLibraryFilters ? (
-          <div className="alert alert-info">
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="alert alert-info runbooks__scope-alert">
+            <div className="runbooks__scope-row">
               <span>
                 Showing runbooks
                 {libraryProjectId ? ` for project #${libraryProjectId}` : ''}
@@ -252,55 +338,14 @@ export default function DevOpsRunbooksPage() {
         <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
-              <span className="portal-surface__eyebrow">Runbook Editor</span>
-              <h2 className="portal-surface__title">{editingId ? 'Update runbook' : 'Add runbook'}</h2>
-            </div>
-          </div>
-          <div className="portal-form-grid">
-            <label className="label">
-              Project
-              <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                <option value="">Select project</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
-                ))}
-              </select>
-            </label>
-            <label className="label">
-              Service
-              <input className="input" value={service} onChange={(event) => setService(event.target.value)} placeholder="eks, rds, networking" />
-            </label>
-            <label className="label">
-              Title
-              <input className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Production rollback" />
-            </label>
-            <label className="label">
-              Reference link
-              <input className="input" value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} placeholder="https://internal/wiki/runbook" />
-            </label>
-          </div>
-          <label className="label">
-            Runbook content
-            <textarea className="input" rows={8} value={content} onChange={(event) => setContent(event.target.value)} placeholder="Step-by-step runbook notes..." />
-          </label>
-          <div className="portal-form-actions">
-            <button type="button" className="btn btn-primary" disabled={saving || !projectId || !title.trim()} onClick={() => void submit()}>
-              {saving ? 'Saving...' : editingId ? 'Update runbook' : 'Create runbook'}
-            </button>
-            {editingId ? (
-              <button type="button" className="btn btn-secondary" onClick={resetForm}>Cancel edit</button>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="portal-surface">
-          <div className="portal-surface__header">
-            <div>
               <span className="portal-surface__eyebrow">Library</span>
               <h2 className="portal-surface__title">Available runbooks</h2>
+              <p className="portal-surface__subtitle">
+                Create and edit now open on dedicated pages so the library stays focused on browsing and cleanup.
+              </p>
             </div>
           </div>
-          <div className="portal-form-grid" style={{ marginBottom: 16 }}>
+          <div className="portal-form-grid runbooks__filters">
             <label className="label">
               Filter by project
               <select className="input" value={libraryProjectId} onChange={(event) => setLibraryProjectId(event.target.value)}>
@@ -312,12 +357,14 @@ export default function DevOpsRunbooksPage() {
             </label>
             <label className="label">
               Filter by service
-              <input
-                className="input"
-                value={libraryService}
-                onChange={(event) => setLibraryService(event.target.value)}
-                placeholder="eks, rds, networking"
-              />
+              <select className="input" value={libraryService} onChange={(event) => setLibraryService(event.target.value)}>
+                <option value="">All services</option>
+                {availableLibraryServices.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
           {loading ? (
@@ -327,7 +374,7 @@ export default function DevOpsRunbooksPage() {
               {hasLibraryFilters ? 'No runbooks match the current filters.' : 'No runbooks yet.'}
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div className="runbooks__table-wrap">
               <table className="templates-table">
                 <thead>
                   <tr>
@@ -348,18 +395,11 @@ export default function DevOpsRunbooksPage() {
                         <td>{runbook.title}</td>
                         <td>{runbook.link_url ? <a href={runbook.link_url} target="_blank" rel="noreferrer">Open link</a> : 'Inline only'}</td>
                         <td>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <div className="runbooks__action-row">
                             <button
                               type="button"
                               className="btn btn-secondary btn-sm"
-                              onClick={() => {
-                                setEditingId(runbook.id);
-                                setProjectId(String(runbook.project_id));
-                                setService(runbook.service);
-                                setTitle(runbook.title);
-                                setContent(runbook.content);
-                                setLinkUrl(runbook.link_url);
-                              }}
+                              onClick={() => void router.push(`/runbooks/${runbook.id}/edit`)}
                             >
                               Edit
                             </button>

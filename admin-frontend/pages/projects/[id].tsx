@@ -230,7 +230,7 @@ export default function AdminProjectDetailPage() {
                     <h2 className="portal-surface__title">Project Overview</h2>
                     <p className="portal-surface__subtitle">{project.description || 'Project contract configured by DevOps.'}</p>
                   </div>
-                  <span style={{ ...stageStyle, padding: '8px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700, textTransform: 'uppercase' }}>
+                  <span className="admin-project-detail__stage-chip" style={stageStyle}>
                     {project.onboarding_stage || 'configured'}
                   </span>
                 </div>
@@ -263,7 +263,7 @@ export default function AdminProjectDetailPage() {
                     <p className="portal-surface__subtitle">{project.next_action || 'This checklist shows whether the project is ready for governed request traffic.'}</p>
                   </div>
                 </div>
-                <div className="portal-preview-signals" style={{ marginTop: 0 }}>
+                <div className="portal-preview-signals admin-project-detail__signals admin-project-detail__signals--flush">
                   {(project.readiness_checks || []).map((check) => (
                     <article key={`${project.id}-${check.key}`} className={check.complete ? 'portal-preview-signal portal-preview-signal--low' : 'portal-preview-signal portal-preview-signal--medium'}>
                       <div className="portal-preview-signal__top">
@@ -288,7 +288,7 @@ export default function AdminProjectDetailPage() {
                       {project.cost_risk_summary.overall_risk} risk
                     </span>
                   </div>
-                  <div className="portal-preview-grid" style={{ marginTop: 0 }}>
+                  <div className="portal-preview-grid admin-project-detail__preview-grid admin-project-detail__preview-grid--flush">
                     <article className="portal-detail-card">
                       <span className="portal-preview-eyebrow">Estimated monthly</span>
                       <strong className="portal-preview-value">{project.cost_risk_summary.estimated_monthly}</strong>
@@ -307,7 +307,7 @@ export default function AdminProjectDetailPage() {
                       <p className="portal-preview-copy">High risk: {project.cost_risk_summary.high_risk_count} · Medium risk: {project.cost_risk_summary.medium_risk_count}</p>
                     </article>
                   </div>
-                  <div className="portal-preview-signals" style={{ marginTop: 16 }}>
+                  <div className="portal-preview-signals admin-project-detail__signals">
                     {project.cost_risk_summary.signals.map((signal) => (
                       <article key={`${signal.category}-${signal.title}`} className={getPreviewSignalClass(signal.severity)}>
                         <div className="portal-preview-signal__top">
@@ -329,11 +329,11 @@ export default function AdminProjectDetailPage() {
                     <p className="portal-surface__subtitle">This is the service inventory that user requests can target once a team is mapped into the project.</p>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+                <div className="admin-project-detail__catalog-grid">
                   {servicesByCloud.map((entry) => (
-                    <article key={`${project.id}-${entry.cloud}`} className="request-choice-card">
+                    <article key={`${project.id}-${entry.cloud}`} className="request-choice-card admin-project-detail__catalog-card">
                       <strong>{entry.cloud.toUpperCase()}</strong>
-                      <p style={{ marginTop: 8 }}>{entry.services.join(', ') || 'No services configured'}</p>
+                      <p className="admin-project-detail__catalog-copy">{entry.services.join(', ') || 'No services configured'}</p>
                     </article>
                   ))}
                 </div>
@@ -350,7 +350,7 @@ export default function AdminProjectDetailPage() {
                 {project.team_access.length === 0 ? (
                   <div className="empty-state">No portal teams are mapped to this project yet.</div>
                 ) : (
-                  <div style={{ overflowX: 'auto' }}>
+                  <div className="admin-project-detail__table-wrap">
                     <table className="templates-table">
                       <thead>
                         <tr>
@@ -381,7 +381,7 @@ export default function AdminProjectDetailPage() {
                     <p className="portal-surface__subtitle">Oversight view for how project rules affect manager and DevOps approvals per environment.</p>
                   </div>
                 </div>
-                <div style={{ overflowX: 'auto' }}>
+                <div className="admin-project-detail__table-wrap">
                   <table className="templates-table">
                     <thead>
                       <tr>

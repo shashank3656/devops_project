@@ -78,55 +78,65 @@ export default function DevOpsApprovalCenter() {
     dueSoon: requests.filter((request) => request.due_status === 'due_soon').length,
   }), [requests]);
 
+  const selectedProject = useMemo(
+    () => projects.find((project) => String(project.id) === projectId) || null,
+    [projects, projectId],
+  );
+  const activeFilterCount = projectId ? 1 : 0;
+
   return (
     <>
       <Head>
-        <title>Approval Center - InfraGate DevOps</title>
+        <title>Approval Center - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">
           <header className="portal-page__header">
             <div className="portal-page__header-main">
-              <span className="portal-page__eyebrow">Approval Center</span>
-              <h1 className="portal-page__title">Approval Center</h1>
+              <span className="portal-page__eyebrow">Review Queue</span>
+              <h1 className="portal-page__title">Requests waiting for review</h1>
               <p className="portal-page__subtitle">
-                Review every request that is currently waiting on the DevOps gate with project context before opening the full ticket workspace.
+                Open requests that are waiting for platform review and check the project before you act.
               </p>
+            </div>
+            <div className="portal-page__actions">
+              {projectId ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setProjectId('');
+                  }}
+                >
+                  Clear project
+                </button>
+              ) : null}
             </div>
           </header>
 
-          <section className="portal-stat-grid">
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Pending DevOps approvals</span>
-              <strong className="portal-stat-card__value">{summary.total}</strong>
-              <p className="portal-stat-card__copy">Requests actively waiting on the DevOps gate.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Overdue</span>
-              <strong className="portal-stat-card__value">{summary.overdue}</strong>
-              <p className="portal-stat-card__copy">Requests whose due date is already behind.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Due soon</span>
-              <strong className="portal-stat-card__value">{summary.dueSoon}</strong>
-              <p className="portal-stat-card__copy">Requests due in the next 24 hours.</p>
-            </article>
+          <section className="devops-approval-strip">
+            <div className="devops-approval-pill">
+              <span className="devops-approval-pill__label">Pending</span>
+              <strong className="devops-approval-pill__value">{summary.total}</strong>
+            </div>
+            <div className="devops-approval-pill">
+              <span className="devops-approval-pill__label">Overdue</span>
+              <strong className="devops-approval-pill__value">{summary.overdue}</strong>
+            </div>
+            <div className="devops-approval-pill">
+              <span className="devops-approval-pill__label">Due soon</span>
+              <strong className="devops-approval-pill__value">{summary.dueSoon}</strong>
+            </div>
           </section>
 
-          <section className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <span className="portal-surface__eyebrow">Filters</span>
-                <h2 className="portal-surface__title">Project scope</h2>
-              </div>
-            </div>
-            <div className="portal-toolbar">
-              <div className="portal-toolbar__group">
-                <div className="portal-toolbar__item">
-                  <label className="label" htmlFor="approval-center-project-filter">Project</label>
+          <section className="portal-surface portal-surface--tight devops-approval-filter-surface">
+            <div className="devops-filter-ribbon devops-filter-ribbon--compact">
+              <div className="devops-filter-ribbon__bar">
+                <label className="devops-filter-ribbon__pill">
+                  <span className="devops-filter-ribbon__key">Project</span>
                   <select
                     id="approval-center-project-filter"
-                    className="input"
+                    className="devops-filter-ribbon__control"
                     value={projectId}
                     onChange={(event) => setProjectId(event.target.value)}
                   >
@@ -137,31 +147,71 @@ export default function DevOpsApprovalCenter() {
                       </option>
                     ))}
                   </select>
+                </label>
+                <div className="devops-filter-ribbon__actions">
+                  {activeFilterCount > 0 ? <span className="devops-filter-ribbon__badge">{activeFilterCount} active</span> : null}
+                  {projectId ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        setProjectId('');
+                      }}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
                 </div>
+              </div>
+              <div className="devops-filter-ribbon__footer">
+                <span className="devops-filter-ribbon__hint">Use project scope only when you want to focus on one project at a time.</span>
               </div>
             </div>
           </section>
 
           {error ? <div className="alert alert-error">{error}</div> : null}
+          {projectId ? (
+            <div className="alert alert-info">
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span>
+                  Showing requests for{' '}
+                  <strong>
+                    {selectedProject ? `${selectedProject.name}${selectedProject.code ? ` (${selectedProject.code})` : ''}` : `project #${projectId}`}
+                  </strong>.
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setProjectId('');
+                  }}
+                >
+                  Clear filter
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <section className="portal-surface portal-surface--table">
             <div className="portal-surface__header">
               <div>
                 <span className="portal-surface__eyebrow">Queue</span>
-                <h2 className="portal-surface__title">Requests waiting on DevOps</h2>
-                <p className="portal-surface__subtitle">Open the full ticket workspace directly from here.</p>
+                <h2 className="portal-surface__title">Requests waiting for platform review</h2>
+                <p className="portal-surface__subtitle">
+                  Open request details from here{selectedProject ? `, filtered to ${selectedProject.name}` : ''}.
+                </p>
               </div>
             </div>
             {loading ? (
-              <div className="portal-empty"><p>Loading approval queue...</p></div>
+              <div className="portal-empty"><p>Loading requests...</p></div>
             ) : requests.length === 0 ? (
-              <div className="portal-empty"><p>No DevOps approvals in this scope.</p></div>
+              <div className="portal-empty"><p>No requests are waiting in this view.</p></div>
             ) : (
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th>ID</th>
+                      <th>Request #</th>
                       <th>Project</th>
                       <th>Team</th>
                       <th>Env</th>
@@ -185,7 +235,7 @@ export default function DevOpsApprovalCenter() {
                                 {request.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{request.project_code}</div> : null}
                               </div>
                             ) : (
-                              'Unscoped'
+                              'No project'
                             )}
                           </td>
                           <td>{request.team}</td>
@@ -196,7 +246,7 @@ export default function DevOpsApprovalCenter() {
                           <td>{request.due_status ? (request.due_status === 'overdue' ? 'Overdue' : 'Due soon') : 'On track'}</td>
                           <td>
                             <Link href={href} className="btn btn-secondary btn-sm">
-                              Open
+                              View details
                             </Link>
                           </td>
                         </tr>
@@ -207,6 +257,7 @@ export default function DevOpsApprovalCenter() {
               </div>
             )}
           </section>
+
         </div>
       </DevOpsLayout>
     </>

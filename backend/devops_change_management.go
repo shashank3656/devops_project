@@ -1190,7 +1190,7 @@ func createRollbackConsoleRequest(managerID, sourceRequestID, historyID int, rea
 	if err != nil {
 		return nil, nil, err
 	}
-	filePath, branchName := BuildRequestGitArtifacts(sourceRequest.Team, sourceRequest.Env, appID)
+	filePath, branchName := BuildRequestGitArtifacts(sourceRequest.ProjectID, sourceRequest.Team, sourceRequest.Cloud, sourceRequest.Env, sourceRequest.Service, appID)
 	newRequest := &PRRequest{
 		ProjectID:     sourceRequest.ProjectID,
 		Team:          sourceRequest.Team,

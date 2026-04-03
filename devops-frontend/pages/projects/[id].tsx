@@ -424,6 +424,377 @@ function expiryWorkflowLabel(state?: string): string {
   }
 }
 
+function normalizeStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [];
+}
+
+function normalizeProjectServices(value: unknown): ProjectServiceOption[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => asRecord(item))
+    .map((item) => ({
+      cloud: getString(item.cloud),
+      service: getString(item.service),
+    }))
+    .filter((item) => item.cloud && item.service);
+}
+
+function normalizeProjectTeamAccess(value: unknown): ProjectTeamAccess[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const row = asRecord(item);
+    return {
+      team_id: Number(row.team_id) || 0,
+      team_name: getString(row.team_name) || undefined,
+      team_slug: getString(row.team_slug) || undefined,
+      environments: normalizeStringArray(row.environments),
+    };
+  });
+}
+
+function normalizeProjectApprovalRules(value: unknown): ProjectApprovalRule[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const row = asRecord(item);
+    return {
+      environment: getString(row.environment),
+      require_manager_approval: Boolean(row.require_manager_approval),
+      require_devops_approval: Boolean(row.require_devops_approval),
+    };
+  }).filter((item) => item.environment);
+}
+
+function normalizeReadinessChecks(value: unknown): ProjectReadinessCheck[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const row = asRecord(item);
+    return {
+      key: getString(row.key),
+      label: getString(row.label),
+      complete: Boolean(row.complete),
+      detail: getString(row.detail),
+    };
+  }).filter((item) => item.key || item.label || item.detail);
+}
+
+function normalizeLifecycleActions(value: unknown): ProjectLifecycleAction[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const row = asRecord(item);
+    return {
+      action: getString(row.action),
+      label: getString(row.label),
+      description: getString(row.description),
+      enabled: Boolean(row.enabled),
+    };
+  }).filter((item) => item.action && item.label);
+}
+
+function normalizeCostRiskSummary(value: unknown): ProjectCostRiskSummary | null {
+  const row = asRecord(value);
+  if (!Object.keys(row).length) return null;
+  const signals = Array.isArray(row.signals)
+    ? row.signals.map((item) => {
+        const signal = asRecord(item);
+        return {
+          severity: (getString(signal.severity) as 'low' | 'medium' | 'high') || 'low',
+          category: getString(signal.category),
+          title: getString(signal.title),
+          detail: getString(signal.detail),
+        };
+      }).filter((item) => item.title || item.detail)
+    : [];
+  return {
+    overall_risk: (getString(row.overall_risk) as 'low' | 'medium' | 'high') || 'low',
+    estimated_band: getString(row.estimated_band),
+    estimated_monthly: getString(row.estimated_monthly),
+    estimate_basis: getString(row.estimate_basis),
+    summary: getString(row.summary),
+    request_count: Number(row.request_count) || 0,
+    pending_review_count: Number(row.pending_review_count) || 0,
+    high_risk_count: Number(row.high_risk_count) || 0,
+    medium_risk_count: Number(row.medium_risk_count) || 0,
+    signals,
+  };
+}
+
+function normalizeProject(rawValue: unknown): ProjectOption | null {
+  const raw = asRecord(rawValue);
+  if (!Object.keys(raw).length) return null;
+  return {
+    id: Number(raw.id) || 0,
+    name: getString(raw.name),
+    code: getString(raw.code),
+    description: getString(raw.description),
+    status: getString(raw.status),
+    onboarding_stage: getString(raw.onboarding_stage) || undefined,
+    ready_for_requests: raw.ready_for_requests == null ? undefined : Boolean(raw.ready_for_requests),
+    service_count: raw.service_count == null ? undefined : Number(raw.service_count) || 0,
+    team_count: raw.team_count == null ? undefined : Number(raw.team_count) || 0,
+    owner_team: getString(raw.owner_team) || undefined,
+    next_action: getString(raw.next_action) || undefined,
+    readiness_checks: normalizeReadinessChecks(raw.readiness_checks),
+    lifecycle_actions: normalizeLifecycleActions(raw.lifecycle_actions),
+    cost_risk_summary: normalizeCostRiskSummary(raw.cost_risk_summary),
+    environments: normalizeStringArray(raw.environments),
+    clouds: normalizeStringArray(raw.clouds),
+    services: normalizeProjectServices(raw.services),
+    team_access: normalizeProjectTeamAccess(raw.team_access),
+    approval_rules: normalizeProjectApprovalRules(raw.approval_rules),
+  };
+}
+
+function normalizeReleaseDashboard(rawValue: unknown): ProjectReleaseDashboard | null {
+  const raw = asRecord(rawValue);
+  if (!Object.keys(raw).length) return null;
+  const summaryRaw = asRecord(raw.summary);
+  const k8sRaw = asRecord(raw.k8s_preview);
+  const expiryRaw = asRecord(raw.expiry_preview);
+  const gatesRaw = asRecord(raw.deployment_gates);
+
+  return {
+    summary: {
+      total_requests: Number(summaryRaw.total_requests) || 0,
+      completed_requests: Number(summaryRaw.completed_requests) || 0,
+      pending_requests: Number(summaryRaw.pending_requests) || 0,
+      in_progress_requests: Number(summaryRaw.in_progress_requests) || 0,
+      promotion_ready_count: Number(summaryRaw.promotion_ready_count) || 0,
+      open_incident_count: Number(summaryRaw.open_incident_count) || 0,
+      runbook_count: Number(summaryRaw.runbook_count) || 0,
+      active_override_count: Number(summaryRaw.active_override_count) || 0,
+      last_release_at: getString(summaryRaw.last_release_at) || undefined,
+    },
+    environment_statuses: Array.isArray(raw.environment_statuses)
+      ? raw.environment_statuses.map((item) => {
+          const row = asRecord(item);
+          return {
+            environment: getString(row.environment),
+            latest_request_id: row.latest_request_id == null ? undefined : Number(row.latest_request_id) || undefined,
+            latest_status: getString(row.latest_status) || undefined,
+            latest_service: getString(row.latest_service) || undefined,
+            latest_cloud: getString(row.latest_cloud) || undefined,
+            latest_updated_at: getString(row.latest_updated_at) || undefined,
+            pending_count: Number(row.pending_count) || 0,
+            completed_count: Number(row.completed_count) || 0,
+            incident_count: Number(row.incident_count) || 0,
+            health: getString(row.health),
+          };
+        }).filter((item) => item.environment)
+      : [],
+    recent_activity: Array.isArray(raw.recent_activity)
+      ? raw.recent_activity.map((item) => {
+          const row = asRecord(item);
+          return {
+            request_id: Number(row.request_id) || 0,
+            team: getString(row.team),
+            environment: getString(row.environment),
+            cloud: getString(row.cloud),
+            service: getString(row.service),
+            status: getString(row.status),
+            priority: getString(row.priority),
+            client_name: getString(row.client_name),
+            updated_at: getString(row.updated_at),
+            due_date: getString(row.due_date) || undefined,
+            pr_url: getString(row.pr_url) || undefined,
+          };
+        }).filter((item) => item.request_id > 0)
+      : [],
+    release_trend: Array.isArray(raw.release_trend)
+      ? raw.release_trend.map((item) => {
+          const row = asRecord(item);
+          return {
+            label: getString(row.label),
+            count: Number(row.count) || 0,
+          };
+        }).filter((item) => item.label)
+      : [],
+    promotion_queue: Array.isArray(raw.promotion_queue)
+      ? raw.promotion_queue.map((item) => {
+          const row = asRecord(item);
+          return {
+            request_id: Number(row.request_id) || 0,
+            environment: getString(row.environment),
+            next_environment: getString(row.next_environment),
+            cloud: getString(row.cloud),
+            service: getString(row.service),
+            status: getString(row.status),
+            client_name: getString(row.client_name),
+            updated_at: getString(row.updated_at),
+          };
+        }).filter((item) => item.request_id > 0)
+      : [],
+    incidents: Array.isArray(raw.incidents)
+      ? raw.incidents.map((item) => {
+          const row = asRecord(item);
+          return {
+            id: Number(row.id) || 0,
+            request_id: Number(row.request_id) || 0,
+            severity: getString(row.severity),
+            status: getString(row.status),
+            summary: getString(row.summary),
+            owner_username: getString(row.owner_username) || undefined,
+            updated_at: getString(row.updated_at),
+            request_env: getString(row.request_env) || undefined,
+            request_service: getString(row.request_service) || undefined,
+          };
+        }).filter((item) => item.id > 0)
+      : [],
+    runbooks: Array.isArray(raw.runbooks)
+      ? raw.runbooks.map((item) => {
+          const row = asRecord(item);
+          return {
+            id: Number(row.id) || 0,
+            service: getString(row.service),
+            title: getString(row.title),
+            link_url: getString(row.link_url),
+            updated_at: getString(row.updated_at),
+          };
+        }).filter((item) => item.id > 0)
+      : [],
+    active_overrides: Array.isArray(raw.active_overrides)
+      ? raw.active_overrides.map((item) => {
+          const row = asRecord(item);
+          return {
+            id: Number(row.id) || 0,
+            username: getString(row.username),
+            environments: normalizeStringArray(row.environments),
+            permission: getString(row.permission),
+            reason: getString(row.reason),
+            expires_at: getString(row.expires_at),
+          };
+        }).filter((item) => item.id > 0)
+      : [],
+    deployment_gates: Object.keys(gatesRaw).length
+      ? {
+          summary: {
+            ready_environments: Number(asRecord(gatesRaw.summary).ready_environments) || 0,
+            attention_environments: Number(asRecord(gatesRaw.summary).attention_environments) || 0,
+            blocked_environments: Number(asRecord(gatesRaw.summary).blocked_environments) || 0,
+          },
+          environments: Array.isArray(gatesRaw.environments)
+            ? gatesRaw.environments.map((item) => {
+                const row = asRecord(item);
+                return {
+                  environment: getString(row.environment),
+                  status: getString(row.status),
+                  summary: getString(row.summary),
+                  requires_manager_approval: Boolean(row.requires_manager_approval),
+                  requires_devops_approval: Boolean(row.requires_devops_approval),
+                  promotion_candidate_count: Number(row.promotion_candidate_count) || 0,
+                  incident_count: Number(row.incident_count) || 0,
+                  active_override_count: Number(row.active_override_count) || 0,
+                  checks: Array.isArray(row.checks)
+                    ? row.checks.map((check) => {
+                        const checkRow = asRecord(check);
+                        return {
+                          key: getString(checkRow.key),
+                          label: getString(checkRow.label),
+                          status: getString(checkRow.status),
+                          detail: getString(checkRow.detail),
+                        };
+                      }).filter((check) => check.key || check.label || check.detail)
+                    : [],
+                };
+              }).filter((item) => item.environment)
+            : [],
+        }
+      : null,
+    k8s_preview: Object.keys(k8sRaw).length
+      ? {
+          connection_count: Number(k8sRaw.connection_count) || 0,
+          cluster_count: Number(k8sRaw.cluster_count) || 0,
+          namespace_count: Number(k8sRaw.namespace_count) || 0,
+          health_summary: {
+            healthy_deployments: Number(asRecord(k8sRaw.health_summary).healthy_deployments) || 0,
+            degraded_deployments: Number(asRecord(k8sRaw.health_summary).degraded_deployments) || 0,
+            blocked_deployments: Number(asRecord(k8sRaw.health_summary).blocked_deployments) || 0,
+            scaled_down_deployments: Number(asRecord(k8sRaw.health_summary).scaled_down_deployments) || 0,
+            restarting_pods: Number(asRecord(k8sRaw.health_summary).restarting_pods) || 0,
+            non_running_pods: Number(asRecord(k8sRaw.health_summary).non_running_pods) || 0,
+            warning_logs: Number(asRecord(k8sRaw.health_summary).warning_logs) || 0,
+            unhealthy_namespaces: Number(asRecord(k8sRaw.health_summary).unhealthy_namespaces) || 0,
+          },
+          namespace_watchlist: Array.isArray(k8sRaw.namespace_watchlist)
+            ? k8sRaw.namespace_watchlist.map((item) => {
+                const row = asRecord(item);
+                return {
+                  namespace: getString(row.namespace),
+                  cluster_name: getString(row.cluster_name),
+                  status: getString(row.status),
+                  issue_count: Number(row.issue_count) || 0,
+                  restarting_pods: Number(row.restarting_pods) || 0,
+                  warning_logs: Number(row.warning_logs) || 0,
+                  affected_deployments: Number(row.affected_deployments) || 0,
+                };
+              }).filter((item) => item.namespace || item.cluster_name)
+            : [],
+          workload_spotlights: Array.isArray(k8sRaw.workload_spotlights)
+            ? k8sRaw.workload_spotlights.map((item) => {
+                const row = asRecord(item);
+                return {
+                  name: getString(row.name),
+                  namespace: getString(row.namespace),
+                  cluster_name: getString(row.cluster_name),
+                  status: getString(row.status),
+                  ready_replicas: Number(row.ready_replicas) || 0,
+                  replicas: Number(row.replicas) || 0,
+                  restart_count: Number(row.restart_count) || 0,
+                  warning_count: Number(row.warning_count) || 0,
+                };
+              }).filter((item) => item.name)
+            : [],
+        }
+      : null,
+    expiry_preview: Object.keys(expiryRaw).length
+      ? {
+          summary: {
+            total_items: Number(asRecord(expiryRaw.summary).total_items) || 0,
+            credential_items: Number(asRecord(expiryRaw.summary).credential_items) || 0,
+            secret_items: Number(asRecord(expiryRaw.summary).secret_items) || 0,
+            certificate_items: Number(asRecord(expiryRaw.summary).certificate_items) || 0,
+            expired_count: Number(asRecord(expiryRaw.summary).expired_count) || 0,
+            expiring_within_30_days: Number(asRecord(expiryRaw.summary).expiring_within_30_days) || 0,
+            expiring_within_60_days: Number(asRecord(expiryRaw.summary).expiring_within_60_days) || 0,
+            healthy_count: Number(asRecord(expiryRaw.summary).healthy_count) || 0,
+            actionable_count: Number(asRecord(expiryRaw.summary).actionable_count) || 0,
+            acknowledged_count: Number(asRecord(expiryRaw.summary).acknowledged_count) || 0,
+            in_progress_count: Number(asRecord(expiryRaw.summary).in_progress_count) || 0,
+            rotated_count: Number(asRecord(expiryRaw.summary).rotated_count) || 0,
+          },
+          priority_items: Array.isArray(expiryRaw.priority_items)
+            ? expiryRaw.priority_items.map((item) => {
+                const row = asRecord(item);
+                return {
+                  item_key: getString(row.item_key),
+                  category: getString(row.category),
+                  source: getString(row.source),
+                  project_id: row.project_id == null ? undefined : Number(row.project_id) || undefined,
+                  project_name: getString(row.project_name) || undefined,
+                  project_code: getString(row.project_code) || undefined,
+                  cloud: getString(row.cloud) || undefined,
+                  environment: getString(row.environment) || undefined,
+                  cluster_name: getString(row.cluster_name) || undefined,
+                  namespace: getString(row.namespace) || undefined,
+                  resource_name: getString(row.resource_name),
+                  resource_type: getString(row.resource_type),
+                  owner: getString(row.owner) || undefined,
+                  created_at: getString(row.created_at) || undefined,
+                  expires_at: getString(row.expires_at) || undefined,
+                  days_remaining: Number(row.days_remaining) || 0,
+                  status: getString(row.status),
+                  recommendation: getString(row.recommendation),
+                  workflow_state: getString(row.workflow_state),
+                  workflow_note: getString(row.workflow_note) || undefined,
+                  workflow_updated_at: getString(row.workflow_updated_at) || undefined,
+                  workflow_updated_by_username: getString(row.workflow_updated_by_username) || undefined,
+                };
+              }).filter((item) => item.item_key || item.resource_name)
+            : [],
+        }
+      : null,
+  };
+}
+
 export default function DevOpsProjectDetailPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -460,8 +831,8 @@ export default function DevOpsProjectDetailPage() {
         if (!data.project) {
           throw new Error('Project not found');
         }
-        setProject(data.project as ProjectOption);
-        setReleaseDashboard((data.release_dashboard as ProjectReleaseDashboard | null) || null);
+        setProject(normalizeProject(data.project));
+        setReleaseDashboard(normalizeReleaseDashboard(data.release_dashboard));
       })
       .catch((err: Error) => {
         setProject(null);
@@ -505,7 +876,7 @@ export default function DevOpsProjectDetailPage() {
       if (!res.ok) {
         throw new Error(getString(data.error, `Failed to ${action.action} project`));
       }
-      setProject((data.project as ProjectOption | null) || null);
+      setProject(normalizeProject(data.project));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to update project lifecycle');
     } finally {
@@ -582,12 +953,12 @@ export default function DevOpsProjectDetailPage() {
                   <h2 className="portal-surface__title">Project Contract</h2>
                   <p className="portal-surface__subtitle">{project.description || 'This project is managed by the DevOps catalog.'}</p>
                 </div>
-                <span style={{ ...stageStyle, padding: '8px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700, textTransform: 'uppercase' }}>
+                <span className="project-detail__stage-chip" style={stageStyle}>
                   {project.onboarding_stage || 'configured'}
                 </span>
               </div>
 
-              <div className="portal-detail-grid">
+              <div className="portal-detail-grid project-detail__summary-grid">
                 <article className="portal-detail-card">
                   <span className="portal-surface__eyebrow">Status</span>
                   <div className="portal-detail-card__value">{project.status}</div>
@@ -613,9 +984,9 @@ export default function DevOpsProjectDetailPage() {
                   <span className="portal-surface__eyebrow">Readiness Workflow</span>
                   <h2 className="portal-surface__title">Lifecycle and Checklist</h2>
                   <p className="portal-surface__subtitle">{project.next_action || 'Use lifecycle actions to control whether this catalog can accept new requests.'}</p>
-                </div>
-                <div className="portal-page__actions">
-                  {(project.lifecycle_actions || []).map((action) => (
+                  </div>
+                  <div className="portal-page__actions">
+                    {(project.lifecycle_actions || []).map((action) => (
                     <button
                       key={action.action}
                       type="button"
@@ -626,9 +997,9 @@ export default function DevOpsProjectDetailPage() {
                       {lifecycleAction === action.action ? `${action.label}...` : action.label}
                     </button>
                   ))}
+                  </div>
                 </div>
-              </div>
-              <div className="portal-preview-signals" style={{ marginTop: 0 }}>
+              <div className="portal-preview-signals project-detail__signals project-detail__signals--flush">
                 {(project.readiness_checks || []).map((check) => (
                   <article key={`${project.id}-${check.key}`} className={check.complete ? 'portal-preview-signal portal-preview-signal--low' : 'portal-preview-signal portal-preview-signal--medium'}>
                     <div className="portal-preview-signal__top">
@@ -653,7 +1024,7 @@ export default function DevOpsProjectDetailPage() {
                     {project.cost_risk_summary.overall_risk} risk
                   </span>
                 </div>
-                <div className="portal-preview-grid" style={{ marginTop: 0 }}>
+                <div className="portal-preview-grid project-detail__preview-grid project-detail__preview-grid--flush">
                   <article className="portal-detail-card">
                     <span className="portal-preview-eyebrow">Estimated monthly</span>
                     <strong className="portal-preview-value">{project.cost_risk_summary.estimated_monthly}</strong>
@@ -672,7 +1043,7 @@ export default function DevOpsProjectDetailPage() {
                     <p className="portal-preview-copy">High risk: {project.cost_risk_summary.high_risk_count} · Medium risk: {project.cost_risk_summary.medium_risk_count}</p>
                   </article>
                 </div>
-                <div className="portal-preview-signals" style={{ marginTop: 16 }}>
+                <div className="portal-preview-signals project-detail__signals">
                   {project.cost_risk_summary.signals.map((signal) => (
                     <article key={`${signal.category}-${signal.title}`} className={getPreviewSignalClass(signal.severity)}>
                       <div className="portal-preview-signal__top">
@@ -794,25 +1165,25 @@ export default function DevOpsProjectDetailPage() {
                         <p className="portal-stat-card__copy">Deployments with no ready path forward until remediation.</p>
                       </article>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 18 }}>
+                    <div className="project-detail__watch-grid">
                       <article className="portal-detail-card">
                         <span className="portal-surface__eyebrow">Namespace Watchlist</span>
-                        <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                        <div className="project-detail__watch-stack">
                           {releaseDashboard.k8s_preview.namespace_watchlist.length > 0 ? (
                             releaseDashboard.k8s_preview.namespace_watchlist.map((item) => {
                               const tone = releaseHealthTone(item.status);
                               return (
-                                <div key={`${item.cluster_name}-${item.namespace}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                                <div key={`${item.cluster_name}-${item.namespace}`} className="project-detail__watch-card">
+                                  <div className="project-detail__watch-head">
                                     <strong>{item.namespace}</strong>
-                                    <span style={{ ...tone, padding: '4px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                                    <span className="project-detail__tone-chip project-detail__tone-chip--sm" style={tone}>
                                       {item.status}
                                     </span>
                                   </div>
-                                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                                  <p className="project-detail__watch-meta">
                                     {item.cluster_name} · Issues {item.issue_count} · Deployments {item.affected_deployments}
                                   </p>
-                                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                  <p className="project-detail__watch-meta project-detail__watch-meta--secondary">
                                     Restarts {item.restarting_pods} · Warning logs {item.warning_logs}
                                   </p>
                                 </div>
@@ -825,22 +1196,22 @@ export default function DevOpsProjectDetailPage() {
                       </article>
                       <article className="portal-detail-card">
                         <span className="portal-surface__eyebrow">Workload Spotlight</span>
-                        <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                        <div className="project-detail__watch-stack">
                           {releaseDashboard.k8s_preview.workload_spotlights.length > 0 ? (
                             releaseDashboard.k8s_preview.workload_spotlights.map((item) => {
                               const tone = releaseHealthTone(item.status);
                               return (
-                                <div key={`${item.cluster_name}-${item.namespace}-${item.name}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                                <div key={`${item.cluster_name}-${item.namespace}-${item.name}`} className="project-detail__watch-card">
+                                  <div className="project-detail__watch-head">
                                     <strong>{item.name}</strong>
-                                    <span style={{ ...tone, padding: '4px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                                    <span className="project-detail__tone-chip project-detail__tone-chip--sm" style={tone}>
                                       {item.status}
                                     </span>
                                   </div>
-                                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                                  <p className="project-detail__watch-meta">
                                     {item.cluster_name} · {item.namespace} · Ready {item.ready_replicas}/{item.replicas}
                                   </p>
-                                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                  <p className="project-detail__watch-meta project-detail__watch-meta--secondary">
                                     Restarts {item.restart_count} · Warning logs {item.warning_count}
                                   </p>
                                 </div>
@@ -896,42 +1267,42 @@ export default function DevOpsProjectDetailPage() {
                         <p className="portal-stat-card__copy">Non-healthy items still waiting for completion.</p>
                       </article>
                     </div>
-                    <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
+                    <div className="project-detail__priority-list">
                       {releaseDashboard.expiry_preview.priority_items.length > 0 ? (
                         releaseDashboard.expiry_preview.priority_items.map((item) => {
                           const statusTone = expiryStatusTone(item.status);
                           const workflowTone = expiryWorkflowTone(item.workflow_state);
                           return (
-                            <article key={item.item_key} className="portal-detail-card">
-                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                            <article key={item.item_key} className="portal-detail-card project-detail__priority-card">
+                              <div className="project-detail__priority-head">
                                 <div>
                                   <strong>{item.resource_name}</strong>
-                                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                                  <p className="project-detail__priority-copy">
                                     {item.category} · {item.resource_type}
                                   </p>
-                                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                  <p className="project-detail__priority-copy project-detail__priority-copy--minor">
                                     {[item.cloud, item.environment, item.namespace || item.cluster_name].filter(Boolean).join(' · ') || 'General scope'}
                                   </p>
                                 </div>
-                                <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
-                                  <span style={{ ...statusTone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+                                <div className="project-detail__priority-badges">
+                                  <span className="project-detail__tone-chip" style={statusTone}>
                                     {item.status}
                                   </span>
-                                  <span style={{ ...workflowTone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+                                  <span className="project-detail__tone-chip" style={workflowTone}>
                                     {expiryWorkflowLabel(item.workflow_state)}
                                   </span>
                                 </div>
                               </div>
-                              <p style={{ margin: '12px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                              <p className="project-detail__priority-copy project-detail__priority-copy--body">
                                 {item.recommendation}
                               </p>
-                              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 12, color: 'var(--color-text-muted)', fontSize: 12 }}>
+                              <div className="project-detail__priority-meta">
                                 <span>Days left: {item.days_remaining}</span>
                                 <span>Expires: {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : '—'}</span>
                                 <span>Owner: {item.owner || 'Unassigned'}</span>
                               </div>
                               {item.workflow_note ? (
-                                <p style={{ margin: '10px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                <p className="project-detail__priority-copy project-detail__priority-copy--minor">
                                   Note: {item.workflow_note}
                                 </p>
                               ) : null}
@@ -973,35 +1344,35 @@ export default function DevOpsProjectDetailPage() {
                         <p className="portal-stat-card__copy">Promotion is currently gated by incidents or missing rollback coverage.</p>
                       </article>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginTop: 18 }}>
+                    <div className="project-detail__gate-grid">
                       {releaseDashboard.deployment_gates.environments.map((gate) => {
                         const tone = deploymentGateTone(gate.status);
                         return (
-                          <article key={`${project.id}-${gate.environment}-gate`} className="portal-detail-card">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                          <article key={`${project.id}-${gate.environment}-gate`} className="portal-detail-card project-detail__gate-card">
+                            <div className="project-detail__gate-head">
                               <strong>{gate.environment.toUpperCase()}</strong>
-                              <span style={{ ...tone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, textTransform: 'uppercase' }}>
+                              <span className="project-detail__tone-chip" style={tone}>
                                 {gate.status}
                               </span>
                             </div>
-                            <p style={{ margin: '10px 0 14px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>{gate.summary}</p>
-                            <div style={{ display: 'grid', gap: 10 }}>
+                            <p className="project-detail__gate-summary">{gate.summary}</p>
+                            <div className="project-detail__gate-checks">
                               {gate.checks.map((check) => {
                                 const checkTone = deploymentGateTone(check.status);
                                 return (
-                                  <div key={`${gate.environment}-${check.key}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                                      <strong style={{ fontSize: 13 }}>{check.label}</strong>
-                                      <span style={{ ...checkTone, padding: '4px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                                  <div key={`${gate.environment}-${check.key}`} className="project-detail__gate-check">
+                                    <div className="project-detail__gate-check-head">
+                                      <strong className="project-detail__gate-check-title">{check.label}</strong>
+                                      <span className="project-detail__tone-chip project-detail__tone-chip--sm" style={checkTone}>
                                         {check.status}
                                       </span>
                                     </div>
-                                    <p style={{ margin: '8px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>{check.detail}</p>
+                                    <p className="project-detail__watch-meta project-detail__watch-meta--secondary">{check.detail}</p>
                                   </div>
                                 );
                               })}
                             </div>
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+                            <div className="project-detail__gate-actions">
                               <Link
                                 href={buildPortalHref('/promotions', { project_id: project.id, next_environment: gate.environment })}
                                 className="btn btn-secondary btn-sm"
@@ -1032,7 +1403,7 @@ export default function DevOpsProjectDetailPage() {
                       <h2 className="portal-surface__title">Release posture by environment</h2>
                     </div>
                   </div>
-                  <div style={{ overflowX: 'auto' }}>
+                  <div className="project-detail__table-wrap">
                     <table className="templates-table">
                       <thead>
                         <tr>
@@ -1053,7 +1424,7 @@ export default function DevOpsProjectDetailPage() {
                             <tr key={`${project.id}-${item.environment}`}>
                               <td>{item.environment.toUpperCase()}</td>
                               <td>
-                                <span style={{ ...tone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, textTransform: 'uppercase' }}>
+                                <span className="project-detail__tone-chip" style={tone}>
                                   {item.health}
                                 </span>
                               </td>
@@ -1078,26 +1449,25 @@ export default function DevOpsProjectDetailPage() {
                       <h2 className="portal-surface__title">Recent release activity and support queue</h2>
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+                  <div className="project-detail__activity-grid">
                     <article className="portal-detail-card">
                       <span className="portal-surface__eyebrow">Recent activity</span>
-                      <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                      <div className="project-detail__activity-stack">
                         {releaseDashboard.recent_activity.length > 0 ? releaseDashboard.recent_activity.slice(0, 5).map((item) => (
-                          <div key={item.request_id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                          <div key={item.request_id} className="project-detail__activity-card">
+                            <div className="project-detail__activity-head">
                               <strong>#{item.request_id} · {item.service}</strong>
-                              <span>{item.status}</span>
+                              <span className="project-detail__activity-status">{item.status}</span>
                             </div>
-                            <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                            <p className="project-detail__activity-meta">
                               {item.environment.toUpperCase()} · {item.cloud} · {item.team || item.client_name || 'Unassigned'}
                             </p>
-                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                            <p className="project-detail__activity-meta project-detail__activity-meta--minor">
                               Updated {formatDateTime(item.updated_at)}
                             </p>
                             <Link
                               href={buildPortalHref('/promotions', { project_id: project.id, request_id: item.request_id })}
                               className="btn btn-secondary btn-sm"
-                              style={{ marginTop: 10 }}
                             >
                               Open request context
                             </Link>
@@ -1108,17 +1478,16 @@ export default function DevOpsProjectDetailPage() {
 
                     <article className="portal-detail-card">
                       <span className="portal-surface__eyebrow">Promotion queue</span>
-                      <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                      <div className="project-detail__activity-stack">
                         {releaseDashboard.promotion_queue.length > 0 ? releaseDashboard.promotion_queue.map((item) => (
-                          <div key={item.request_id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                          <div key={item.request_id} className="project-detail__activity-card">
                             <strong>#{item.request_id} · {item.environment.toUpperCase()} to {item.next_environment.toUpperCase()}</strong>
-                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                            <p className="project-detail__activity-meta">
                               {item.service} · {item.cloud} · {item.status}
                             </p>
                             <Link
                               href={buildPortalHref('/promotions', { project_id: project.id, request_id: item.request_id, next_environment: item.next_environment })}
                               className="btn btn-secondary btn-sm"
-                              style={{ marginTop: 10 }}
                             >
                               Open promotion
                             </Link>
@@ -1129,30 +1498,28 @@ export default function DevOpsProjectDetailPage() {
 
                     <article className="portal-detail-card">
                       <span className="portal-surface__eyebrow">Incidents and runbooks</span>
-                      <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                      <div className="project-detail__activity-stack">
                         {releaseDashboard.incidents.length > 0 ? releaseDashboard.incidents.slice(0, 3).map((item) => (
-                          <div key={item.id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                          <div key={item.id} className="project-detail__activity-card">
                             <strong>Incident #{item.request_id} · {item.severity}</strong>
-                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>{item.summary}</p>
+                            <p className="project-detail__activity-meta">{item.summary}</p>
                             <Link
                               href={buildPortalHref('/incidents', { project_id: project.id, request_id: item.request_id, severity: item.severity })}
                               className="btn btn-secondary btn-sm"
-                              style={{ marginTop: 10 }}
                             >
                               Open incident
                             </Link>
                           </div>
                         )) : <div className="empty-state">No linked incidents right now.</div>}
                         {releaseDashboard.runbooks.length > 0 ? releaseDashboard.runbooks.slice(0, 3).map((item) => (
-                          <div key={item.id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                          <div key={item.id} className="project-detail__activity-card">
                             <strong>{item.title}</strong>
-                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                            <p className="project-detail__activity-meta">
                               {item.service || 'General'} · {item.link_url ? 'Linked' : 'Inline'}
                             </p>
                             <Link
                               href={buildPortalHref('/runbooks', { project_id: project.id, service: item.service || undefined })}
                               className="btn btn-secondary btn-sm"
-                              style={{ marginTop: 10 }}
                             >
                               Open runbook
                             </Link>
@@ -1163,11 +1530,11 @@ export default function DevOpsProjectDetailPage() {
 
                     <article className="portal-detail-card">
                       <span className="portal-surface__eyebrow">Active overrides</span>
-                      <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                      <div className="project-detail__activity-stack">
                         {releaseDashboard.active_overrides.length > 0 ? releaseDashboard.active_overrides.map((item) => (
-                          <div key={item.id} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 12 }}>
+                          <div key={item.id} className="project-detail__activity-card">
                             <strong>{item.username} · {item.permission}</strong>
-                            <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                            <p className="project-detail__activity-meta">
                               {item.environments.join(', ') || 'all envs'} · Expires {formatDateTime(item.expires_at)}
                             </p>
                           </div>
@@ -1176,22 +1543,17 @@ export default function DevOpsProjectDetailPage() {
                     </article>
                   </div>
 
-                  <div style={{ marginTop: 18 }}>
+                  <div className="project-detail__trend">
                     <span className="portal-surface__eyebrow">Release trend</span>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, marginTop: 12, minHeight: 120 }}>
+                    <div className="project-detail__trend-chart">
                       {releaseDashboard.release_trend.map((point) => (
-                        <div key={point.label} style={{ display: 'grid', justifyItems: 'center', gap: 8, flex: 1 }}>
-                          <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{point.count}</span>
+                        <div key={point.label} className="project-detail__trend-point">
+                          <span className="project-detail__trend-value">{point.count}</span>
                           <span
-                            style={{
-                              width: '100%',
-                              maxWidth: 48,
-                              height: `${Math.max(12, point.count * 18)}px`,
-                              borderRadius: 12,
-                              background: 'linear-gradient(180deg, rgba(34, 211, 238, 0.92), rgba(14, 165, 233, 0.4))',
-                            }}
+                            className="project-detail__trend-bar"
+                            style={{ height: `${Math.max(12, point.count * 18)}px` }}
                           />
-                          <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{point.label}</span>
+                          <span className="project-detail__trend-label">{point.label}</span>
                         </div>
                       ))}
                     </div>
@@ -1208,11 +1570,11 @@ export default function DevOpsProjectDetailPage() {
                   <p className="portal-surface__subtitle">Users only see these services after they select this project in the request flow.</p>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+              <div className="project-detail__catalog-grid">
                 {servicesByCloud.map((entry) => (
                   <article key={`${project.id}-${entry.cloud}`} className="request-choice-card">
                     <strong>{entry.cloud.toUpperCase()}</strong>
-                    <p style={{ marginTop: 8 }}>{entry.services.join(', ') || 'No services configured'}</p>
+                    <p className="project-detail__catalog-copy">{entry.services.join(', ') || 'No services configured'}</p>
                   </article>
                 ))}
               </div>

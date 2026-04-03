@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import AdminLayout from '../components/AdminLayout';
+import { asRecord, getString } from '../lib/payload';
 
 interface DevopsProfile {
   is_manager: boolean;
@@ -58,6 +59,94 @@ interface Summary {
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
+function getNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function getBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function getStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function normalizeDevopsProfile(value: unknown): DevopsProfile | undefined {
+  const data = asRecord(value);
+  if (Object.keys(data).length === 0) return undefined;
+  return {
+    is_manager: getBoolean(data.is_manager),
+    position: getString(data.position),
+    onboard_date: typeof data.onboard_date === 'string' ? data.onboard_date : null,
+    level: getString(data.level),
+  };
+}
+
+function normalizeProjectScope(value: unknown): ProjectScope {
+  const data = asRecord(value);
+  return {
+    project_id: getNumber(data.project_id),
+    project_name: getString(data.project_name),
+    project_code: getString(data.project_code),
+    project_status: getString(data.project_status),
+    environments: getStringArray(data.environments),
+  };
+}
+
+function normalizeAccessMembership(value: unknown): AccessMembership {
+  const data = asRecord(value);
+  const rawProjectScopes = Array.isArray(data.project_scopes) ? data.project_scopes : [];
+  return {
+    team_id: getNumber(data.team_id),
+    team_name: getString(data.team_name),
+    team_slug: getString(data.team_slug),
+    application_id: getString(data.application_id),
+    team_type: getString(data.team_type),
+    role: getString(data.role),
+    project_scopes: rawProjectScopes.map((item) => normalizeProjectScope(item)),
+  };
+}
+
+function normalizeAccessReviewUser(value: unknown): AccessReviewUser {
+  const data = asRecord(value);
+  const rawMemberships = Array.isArray(data.memberships) ? data.memberships : [];
+  const rawUserType = getString(data.user_type, 'portal_user');
+  return {
+    id: getNumber(data.id),
+    username: getString(data.username),
+    email: getString(data.email),
+    role: getString(data.role, 'viewer'),
+    verified: getBoolean(data.verified),
+    user_type: rawUserType === 'devops_user' ? 'devops_user' : 'portal_user',
+    is_portal_manager: getBoolean(data.is_portal_manager),
+    devops_profile: normalizeDevopsProfile(data.devops_profile),
+    memberships: rawMemberships.map((item) => normalizeAccessMembership(item)),
+  };
+}
+
+function normalizeProjectOption(value: unknown): ProjectOption {
+  const data = asRecord(value);
+  return {
+    id: getNumber(data.id),
+    name: getString(data.name),
+    code: getString(data.code),
+    status: getString(data.status),
+  };
+}
+
+function normalizeSummary(value: unknown): Summary | null {
+  const data = asRecord(value);
+  if (Object.keys(data).length === 0) return null;
+  return {
+    total_users: getNumber(data.total_users),
+    total_memberships: getNumber(data.total_memberships),
+    total_project_scopes: getNumber(data.total_project_scopes),
+    users_without_teams: getNumber(data.users_without_teams),
+    portal_managers: getNumber(data.portal_managers),
+    devops_managers: getNumber(data.devops_managers),
+  };
+}
+
 export default function AccessReviewPage() {
   const router = useRouter();
   const [users, setUsers] = useState<AccessReviewUser[]>([]);
@@ -100,13 +189,15 @@ export default function AccessReviewPage() {
         window.location.href = '/login';
         return;
       }
-      const data = await res.json().catch(() => ({}));
+      const payload = asRecord(await res.json().catch(() => ({})));
       if (res.ok) {
-        setUsers(Array.isArray(data.users) ? data.users : []);
-        setProjects(Array.isArray(data.projects) ? data.projects : []);
-        setSummary(data.summary || null);
+        const rawUsers = Array.isArray(payload.users) ? payload.users : [];
+        const rawProjects = Array.isArray(payload.projects) ? payload.projects : [];
+        setUsers(rawUsers.map((item) => normalizeAccessReviewUser(item)));
+        setProjects(rawProjects.map((item) => normalizeProjectOption(item)));
+        setSummary(normalizeSummary(payload.summary));
       } else {
-        setError(data.error || 'Failed to load access review');
+        setError(getString(payload.error, 'Failed to load access review'));
       }
     } catch {
       setError('Failed to load access review');

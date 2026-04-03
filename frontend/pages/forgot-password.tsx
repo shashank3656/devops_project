@@ -50,13 +50,13 @@ export default function ForgotPassword() {
   return (
     <>
       <Head>
-        <title>Forgot Password - InfraGate</title>
+        <title>Forgot Password - SetuOps</title>
       </Head>
       <div className="login-page">
         <div className="login-page__left">
           <div className="login-page__brand">
             <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">InfraGate</h1>
+            <h1 className="login-page__title">SetuOps</h1>
             <p className="login-page__tagline">
               Cloud-agnostic infrastructure management. Self-service requests for your team.
             </p>
@@ -69,13 +69,13 @@ export default function ForgotPassword() {
               Enter your email and we&apos;ll send you a link to reset your password.
             </p>
             {sent ? (
-              <p style={{ color: 'var(--success-color)', marginBottom: 16 }}>
+              <p className="login-page__message login-page__message--success">
                 Check your email for a reset link. It may take a few minutes to arrive.
               </p>
             ) : (
               <form onSubmit={handleSubmit}>
                 {error && (
-                  <p style={{ color: 'var(--error-color, #dc2626)', marginBottom: 16 }}>
+                  <p className="login-page__message login-page__message--error">
                     {error}
                   </p>
                 )}
@@ -98,8 +98,8 @@ export default function ForgotPassword() {
                 </button>
               </form>
             )}
-            <p style={{ marginTop: 16 }}>
-              <Link href="/login" style={{ color: 'var(--primary-color)', textDecoration: 'none' }}>
+            <p className="login-page__link-row">
+              <Link href="/login" className="login-page__inline-link">
                 ← Back to login
               </Link>
             </p>

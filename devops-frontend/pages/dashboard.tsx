@@ -134,10 +134,10 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_DESCRIPTIONS: Record<string, string> = {
-  approval_queue: 'Requests waiting on human sign-off before engineering work starts.',
-  pending_devops_approval: 'Requests ready for platform triage and intake.',
-  in_progress: 'Changes actively moving through implementation and validation.',
-  completed: 'Delivered requests with the latest successful outcome.',
+  approval_queue: 'Requests waiting for approval before work can begin.',
+  pending_devops_approval: 'Requests waiting for the platform team to review.',
+  in_progress: 'Work currently in progress.',
+  completed: 'Requests finished successfully.',
 };
 
 function formatStatus(status: string): string {
@@ -428,29 +428,29 @@ export default function DevOpsDashboard() {
   const quickActions = [
     {
       href: '/tickets',
-      label: 'Open tickets',
-      description: 'Move straight into assigned requests, comments, and approval context.',
+      label: 'Open requests',
+      description: 'Go straight to the live request queue and recent comments.',
     },
     {
       href: '/templates',
-      label: 'Template library',
-      description: 'Browse reusable delivery flows and approved infrastructure starting points.',
+      label: 'Templates',
+      description: 'Reuse standard request patterns instead of starting from scratch.',
     },
     pendingApprovalCount > 0
       ? {
           href: '/tickets',
-          label: 'Review backlog',
-          description: `${formatCompactCount(pendingApprovalCount)} approvals need attention.`,
+          label: 'Review waiting items',
+          description: `${formatCompactCount(pendingApprovalCount)} requests are waiting for review.`,
         }
       : {
           href: '/workload',
           label: 'Check workload',
-          description: 'Balance active delivery, team ownership, and queue pressure.',
+          description: 'See where teams are busy and where help is needed.',
         },
     {
       href: '/team',
-      label: 'Team directory',
-      description: 'Review operators, assignments, and current team coverage.',
+      label: 'Team coverage',
+      description: 'See who is assigned and where coverage may be thin.',
     },
   ];
 
@@ -461,37 +461,34 @@ export default function DevOpsDashboard() {
   return (
     <>
       <Head>
-        <title>Dashboard - InfraGate DevOps</title>
+        <title>Dashboard - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="devops-portal">
           <section className="devops-portal__hero">
             <div className="devops-portal__hero-copy">
-              <span className="devops-portal__eyebrow">Dashboard</span>
-              <h1 className="devops-portal__headline">DevOps Dashboard</h1>
+              <span className="devops-portal__eyebrow">Overview</span>
+              <h1 className="devops-portal__headline">What needs attention today</h1>
               <p className="devops-portal__subhead">
-                Track approvals, active changes, and release pressure from a single control surface built for platform teams.
+                See waiting requests, work in progress, and team load in one place.
               </p>
               <div className="devops-portal__chips">
-                <span className="devops-portal__chip">{loading ? 'Syncing ticket feed' : 'Live queue online'}</span>
-                <span className="devops-portal__chip">{formatCompactCount(openCount)} open threads</span>
-                <span className="devops-portal__chip">{formatCompactCount(Math.max(activeTeamCount, teams.length))} teams in view</span>
+                <span className="devops-portal__chip">{loading ? 'Updating live data' : 'Queue is live'}</span>
+                <span className="devops-portal__chip">{formatCompactCount(openCount)} open requests</span>
+                <span className="devops-portal__chip">{formatCompactCount(Math.max(activeTeamCount, teams.length))} teams</span>
               </div>
               <div className="portal-page__actions" style={{ marginTop: 18 }}>
                 <Link href="/project-operations" className="btn btn-secondary">
-                  Project operations
-                </Link>
-                <Link href="/change-calendar" className="btn btn-secondary">
-                  Change calendar
+                  Project work
                 </Link>
                 <Link href="/service-heatmap" className="btn btn-secondary">
-                  Service heatmap
+                  Service health
                 </Link>
                 <Link href="/approval-sla" className="btn btn-secondary">
-                  Approval SLA
+                  Approval timing
                 </Link>
                 <Link href="/approval-center" className="btn btn-primary">
-                  Approval center
+                  Open approvals
                 </Link>
               </div>
             </div>
@@ -504,21 +501,21 @@ export default function DevOpsDashboard() {
                 </div>
               </div>
               <div className="devops-hero-pulse__body">
-                <span className="devops-hero-pulse__label">System pulse</span>
+                <span className="devops-hero-pulse__label">Queue progress</span>
                 <p className="devops-hero-pulse__copy">
-                  Delivery completion across {formatCompactCount(tickets.length)} tracked requests.
+                  Completed work across {formatCompactCount(tickets.length)} tracked requests.
                 </p>
                 <div className="devops-hero-pulse__metrics">
                   <div>
-                    <span>Backlog</span>
+                    <span>Waiting</span>
                     <strong>{formatCompactCount(pendingApprovalCount)}</strong>
                   </div>
                   <div>
-                    <span>In flight</span>
+                    <span>In progress</span>
                     <strong>{formatCompactCount(inProgressCount)}</strong>
                   </div>
                   <div>
-                    <span>Resolved 7d</span>
+                    <span>Completed 7d</span>
                     <strong>{formatCompactCount(resolvedLastWeek)}</strong>
                   </div>
                 </div>
@@ -530,24 +527,24 @@ export default function DevOpsDashboard() {
 
           <section className="devops-kpi-grid">
             <article className="devops-kpi-card devops-kpi-card--primary">
-              <span className="devops-kpi-card__label">Open queue</span>
+              <span className="devops-kpi-card__label">Open requests</span>
               <strong className="devops-kpi-card__value">{formatCompactCount(openCount)}</strong>
-              <p className="devops-kpi-card__detail">Requests that still need action before closure.</p>
+              <p className="devops-kpi-card__detail">Requests that still need work before they can close.</p>
             </article>
             <article className="devops-kpi-card devops-kpi-card--amber">
-              <span className="devops-kpi-card__label">Awaiting approval</span>
+              <span className="devops-kpi-card__label">Waiting for approval</span>
               <strong className="devops-kpi-card__value">{formatCompactCount(pendingApprovalCount)}</strong>
-              <p className="devops-kpi-card__detail">Human approval stages holding the delivery queue.</p>
+              <p className="devops-kpi-card__detail">Requests paused until someone reviews them.</p>
             </article>
             <article className="devops-kpi-card devops-kpi-card--teal">
-              <span className="devops-kpi-card__label">Updated in 24h</span>
+              <span className="devops-kpi-card__label">Updated today</span>
               <strong className="devops-kpi-card__value">{formatCompactCount(updatedLast24Hours)}</strong>
-              <p className="devops-kpi-card__detail">Recently touched tickets across your assigned teams.</p>
+              <p className="devops-kpi-card__detail">Requests touched recently across your teams.</p>
             </article>
             <article className="devops-kpi-card devops-kpi-card--rose">
-              <span className="devops-kpi-card__label">High-risk items</span>
+              <span className="devops-kpi-card__label">High-priority requests</span>
               <strong className="devops-kpi-card__value">{formatCompactCount(highRiskCount)}</strong>
-              <p className="devops-kpi-card__detail">Open critical and high-priority changes requiring focus.</p>
+              <p className="devops-kpi-card__detail">Urgent requests that likely need attention first.</p>
             </article>
           </section>
 
@@ -555,11 +552,11 @@ export default function DevOpsDashboard() {
             <section className="devops-panel" style={{ marginBottom: 24 }}>
               <div className="devops-panel__header">
                 <div>
-                  <span className="devops-panel__eyebrow">Project Catalog</span>
-                  <h2 className="devops-panel__title">Project onboarding pulse</h2>
+                  <span className="devops-panel__eyebrow">Projects</span>
+                  <h2 className="devops-panel__title">Project setup status</h2>
                 </div>
                 <Link href="/projects" className="btn btn-secondary btn-sm">
-                  Open projects
+                  View projects
                 </Link>
               </div>
               <div className="devops-kpi-grid" style={{ marginBottom: 20 }}>
@@ -618,7 +615,7 @@ export default function DevOpsDashboard() {
               <div className="devops-panel__header">
                 <div>
                   <span className="devops-panel__eyebrow">Operations</span>
-                  <h2 className="devops-panel__title">Project operations dashboard</h2>
+                  <h2 className="devops-panel__title">Project activity</h2>
                 </div>
                 <Link href="/projects" className="btn btn-secondary btn-sm">
                   Manage projects
@@ -687,7 +684,7 @@ export default function DevOpsDashboard() {
                   <div className="devops-team-card__top">
                     <div>
                       <strong className="devops-team-card__name">Risk mix</strong>
-                      <p className="devops-team-card__copy">Project risk posture across the catalog.</p>
+                      <p className="devops-team-card__copy">Which projects look calm and which ones may need closer review.</p>
                     </div>
                   </div>
                   <div className="devops-team-card__stats" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
@@ -708,8 +705,8 @@ export default function DevOpsDashboard() {
             <article className="devops-panel">
               <div className="devops-panel__header">
                 <div>
-                  <span className="devops-panel__eyebrow">Workflow board</span>
-                  <h2 className="devops-panel__title">Where the queue is moving</h2>
+                  <span className="devops-panel__eyebrow">Request flow</span>
+                  <h2 className="devops-panel__title">Where work is moving</h2>
                 </div>
               </div>
               <div className="devops-workflow-grid">
@@ -749,7 +746,7 @@ export default function DevOpsDashboard() {
             <article className="devops-panel">
               <div className="devops-panel__header">
                 <div>
-                  <span className="devops-panel__eyebrow">Operator radar</span>
+                  <span className="devops-panel__eyebrow">Next actions</span>
                   <h2 className="devops-panel__title">What needs attention next</h2>
                 </div>
               </div>

@@ -19,9 +19,20 @@ interface ApprovalRequest {
   env: string;
   cloud: string;
   service: string;
+  config?: string;
   status: string;
   created_at: string;
   created_by_username?: string;
+}
+
+function isAccessRequest(request: ApprovalRequest | null | undefined): boolean {
+  if (!request?.config) return false;
+  try {
+    const parsed = JSON.parse(request.config) as { request_type?: unknown };
+    return typeof parsed.request_type === 'string' && parsed.request_type.trim().toLowerCase() === 'iam';
+  } catch {
+    return false;
+  }
 }
 
 function formatStatus(status: string): string {
@@ -88,11 +99,12 @@ export default function AdminApprovalCenter() {
     devops: requests.filter((request) => request.status === 'pending_devops_approval').length,
     final: requests.filter((request) => request.status === 'pending_approval').length,
   }), [requests]);
+  const activeFilterCount = projectId ? 1 : 0;
 
   return (
     <>
       <Head>
-        <title>Approval Center - InfraGate Admin</title>
+        <title>Approval Center - SetuOps Governance</title>
       </Head>
       <AdminLayout>
         <div className="portal-page">
@@ -101,46 +113,36 @@ export default function AdminApprovalCenter() {
               <span className="portal-page__eyebrow">Approval Center</span>
               <h1 className="portal-page__title">Approval Center</h1>
               <p className="portal-page__subtitle">
-                Review every request that is waiting on manager, DevOps, or final approval with project context first.
+                Review every request that is waiting on manager, DevOps, or final approval with clear project context first.
               </p>
             </div>
           </header>
 
-          <section className="portal-stat-grid">
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Pending approvals</span>
-              <strong className="portal-stat-card__value">{summary.total}</strong>
-              <p className="portal-stat-card__copy">All currently open approval gates.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Manager stage</span>
-              <strong className="portal-stat-card__value">{summary.manager}</strong>
-              <p className="portal-stat-card__copy">Requests waiting on user-manager review.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">DevOps stage</span>
-              <strong className="portal-stat-card__value">{summary.devops}</strong>
-              <p className="portal-stat-card__copy">Requests waiting on DevOps review.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Final stage</span>
-              <strong className="portal-stat-card__value">{summary.final}</strong>
-              <p className="portal-stat-card__copy">Requests at the last approval handoff.</p>
-            </article>
+          <section className="approval-summary-strip">
+            <div className="approval-summary-pill">
+              <span className="approval-summary-pill__label">Pending approvals</span>
+              <strong className="approval-summary-pill__value">{summary.total}</strong>
+            </div>
+            <div className="approval-summary-pill">
+              <span className="approval-summary-pill__label">Manager stage</span>
+              <strong className="approval-summary-pill__value">{summary.manager}</strong>
+            </div>
+            <div className="approval-summary-pill">
+              <span className="approval-summary-pill__label">DevOps stage</span>
+              <strong className="approval-summary-pill__value">{summary.devops}</strong>
+            </div>
+            <div className="approval-summary-pill">
+              <span className="approval-summary-pill__label">Final stage</span>
+              <strong className="approval-summary-pill__value">{summary.final}</strong>
+            </div>
           </section>
 
-          <section className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <span className="portal-surface__eyebrow">Filters</span>
-                <h2 className="portal-surface__title">Project scope</h2>
-              </div>
-            </div>
-            <div className="portal-toolbar">
-              <div className="portal-toolbar__group">
-                <div className="portal-toolbar__item">
-                  <label className="label">Project</label>
-                  <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+          <section className="portal-surface approval-filter-surface">
+            <div className="admin-request-filter admin-request-filter--compact">
+              <div className="admin-request-filter__bar">
+                <label className="admin-request-filter__pill">
+                  <span className="admin-request-filter__key">Project</span>
+                  <select className="admin-request-filter__control" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
                     <option value="">All projects</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>
@@ -148,6 +150,20 @@ export default function AdminApprovalCenter() {
                       </option>
                     ))}
                   </select>
+                </label>
+
+                <div className="admin-request-filter__actions">
+                  {activeFilterCount > 0 ? <span className="filters-bar__badge">{activeFilterCount} active</span> : null}
+                  {projectId ? (
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setProjectId('')}>
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="admin-request-filter__footer">
+                <div className="admin-request-filter__footer-meta">
+                  <span className="admin-request-filter__hint">Use project scope only when you want to review one project at a time.</span>
                 </div>
               </div>
             </div>
@@ -176,7 +192,7 @@ export default function AdminApprovalCenter() {
                       <th>Project</th>
                       <th>Team</th>
                       <th>Env</th>
-                      <th>Cloud / Service</th>
+                      <th>Cloud / Target</th>
                       <th>Stage</th>
                       <th>Requester</th>
                       <th>Created</th>
@@ -201,7 +217,12 @@ export default function AdminApprovalCenter() {
                           </td>
                           <td>{request.team}</td>
                           <td>{request.env}</td>
-                          <td>{request.cloud} / {request.service}</td>
+                          <td>
+                            <div>{request.cloud} / {request.service}</div>
+                            {isAccessRequest(request) ? (
+                              <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Access request</div>
+                            ) : null}
+                          </td>
                           <td>{formatStatus(request.status)}</td>
                           <td>{request.created_by_username || '-'}</td>
                           <td>{new Date(request.created_at).toLocaleString()}</td>

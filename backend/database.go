@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -19,7 +20,7 @@ import (
 )
 
 const (
-	defaultDBHost                = "postgres"
+	defaultDBHost                = "localhost"
 	defaultDBPort                = "5432"
 	defaultDBName                = "infra_portal"
 	defaultDBSSLMode             = "disable"
@@ -108,10 +109,10 @@ func GenerateTeamApplicationID() (string, error) {
 	})
 }
 
-func normalizeTeamSlug(value string) string {
+func normalizePathSegment(value, fallback string) string {
 	value = strings.TrimSpace(strings.ToLower(value))
 	if value == "" {
-		return "team"
+		return fallback
 	}
 	var b strings.Builder
 	lastDash := false
@@ -128,9 +129,13 @@ func normalizeTeamSlug(value string) string {
 	}
 	normalized := strings.Trim(b.String(), "-")
 	if normalized == "" {
-		return "team"
+		return fallback
 	}
 	return normalized
+}
+
+func normalizeTeamSlug(value string) string {
+	return normalizePathSegment(value, "team")
 }
 
 func ResolveTeamPathKey(teamNameOrSlug string) string {
@@ -151,10 +156,44 @@ func ResolveTeamPathKey(teamNameOrSlug string) string {
 	return normalizeTeamSlug(trimmed)
 }
 
-func BuildRequestGitArtifacts(teamNameOrSlug, env, requestApplicationID string) (filePath string, branchName string) {
-	teamPathKey := ResolveTeamPathKey(teamNameOrSlug)
-	filePath = fmt.Sprintf("%s/envs/%s/request.json", teamPathKey, env)
-	branchName = fmt.Sprintf("%s/%s/%s", teamPathKey, env, requestApplicationID)
+func ResolveTeamSlugKey(teamNameOrSlug string) string {
+	trimmed := strings.TrimSpace(teamNameOrSlug)
+	if trimmed == "" {
+		return "team"
+	}
+	if DB != nil {
+		if team, err := GetTeamByNameOrSlug(trimmed); err == nil && team != nil {
+			if team.Slug != "" {
+				return normalizeTeamSlug(team.Slug)
+			}
+		}
+	}
+	return normalizeTeamSlug(trimmed)
+}
+
+func ResolveProjectPathKey(projectID *int) string {
+	if projectID != nil && *projectID > 0 {
+		if project, err := getProjectCatalogByID(*projectID); err == nil && project != nil {
+			if code := normalizePathSegment(project.Code, ""); code != "" {
+				return code
+			}
+			if name := normalizePathSegment(project.Name, ""); name != "" {
+				return name
+			}
+		}
+	}
+	return "general"
+}
+
+func BuildRequestGitArtifacts(projectID *int, teamNameOrSlug, cloud, env, service, requestApplicationID string) (filePath string, branchName string) {
+	projectPathKey := ResolveProjectPathKey(projectID)
+	teamPathKey := ResolveTeamSlugKey(teamNameOrSlug)
+	cloudPathKey := normalizePathSegment(cloud, "cloud")
+	envPathKey := normalizePathSegment(env, "env")
+	servicePathKey := normalizePathSegment(service, "service")
+	requestKey := normalizePathSegment(requestApplicationID, "request")
+	filePath = fmt.Sprintf("project/%s/%s/%s/envs/%s/%s/request.json", projectPathKey, teamPathKey, cloudPathKey, envPathKey, servicePathKey)
+	branchName = fmt.Sprintf("project/%s/%s/%s/%s/%s/%s", projectPathKey, teamPathKey, cloudPathKey, envPathKey, servicePathKey, requestKey)
 	return filePath, branchName
 }
 
@@ -183,9 +222,15 @@ func getEnvIntOrDefault(key string, fallback int) int {
 
 func buildDatabaseDSN() (dsn string, redacted string, err error) {
 	if databaseURL := getEnvTrimmed("DATABASE_URL"); databaseURL != "" {
-		return databaseURL, "DATABASE_URL", nil
+		withCert, certSuffix := attachSSLRootCert(databaseURL, getEnvTrimmed("DB_SSLROOTCERT"))
+		if certSuffix != "" {
+			return withCert, "DATABASE_URL " + certSuffix, nil
+		}
+		return withCert, "DATABASE_URL", nil
 	}
 
+	// Keep legacy POSTGRES_* fallbacks for older deployments, but prefer
+	// DATABASE_URL or DB_* for Supabase / managed Postgres setups.
 	dbHost := getEnvTrimmed("DB_HOST")
 	if dbHost == "" {
 		dbHost = getEnvTrimmed("POSTGRES_HOST")
@@ -220,13 +265,14 @@ func buildDatabaseDSN() (dsn string, redacted string, err error) {
 		dbName = defaultDBName
 	}
 	dbSSLMode := getEnvOrDefault("DB_SSLMODE", defaultDBSSLMode)
+	dbSSLRootCert := getEnvTrimmed("DB_SSLROOTCERT")
 	connectTimeout := getEnvIntOrDefault("DB_CONNECT_TIMEOUT_SECONDS", defaultDBPingTimeoutSeconds)
 
 	if dbUser == "" {
-		return "", "", fmt.Errorf("DB_USER or POSTGRES_USER is required when DATABASE_URL is not set")
+		return "", "", fmt.Errorf("DATABASE_URL is preferred; when it is not set, DB_USER is required")
 	}
 	if strings.TrimSpace(dbPassword) == "" {
-		return "", "", fmt.Errorf("DB_PASSWORD or POSTGRES_PASSWORD is required when DATABASE_URL is not set")
+		return "", "", fmt.Errorf("DATABASE_URL is preferred; when it is not set, DB_PASSWORD is required")
 	}
 
 	dsn = fmt.Sprintf(
@@ -237,7 +283,32 @@ func buildDatabaseDSN() (dsn string, redacted string, err error) {
 		"host=%s port=%s user=%s dbname=%s sslmode=%s",
 		dbHost, dbPort, dbUser, dbName, dbSSLMode,
 	)
+	if dbSSLRootCert != "" {
+		dsn = fmt.Sprintf("%s sslrootcert=%s", dsn, dbSSLRootCert)
+		redacted = fmt.Sprintf("%s sslrootcert=%s", redacted, dbSSLRootCert)
+	}
 	return dsn, redacted, nil
+}
+
+func attachSSLRootCert(dsn string, sslRootCert string) (string, string) {
+	sslRootCert = strings.TrimSpace(sslRootCert)
+	if sslRootCert == "" || strings.Contains(dsn, "sslrootcert=") {
+		return dsn, ""
+	}
+
+	trimmed := strings.TrimSpace(dsn)
+	if strings.HasPrefix(trimmed, "postgres://") || strings.HasPrefix(trimmed, "postgresql://") {
+		parsed, err := url.Parse(trimmed)
+		if err != nil {
+			return dsn, ""
+		}
+		query := parsed.Query()
+		query.Set("sslrootcert", sslRootCert)
+		parsed.RawQuery = query.Encode()
+		return parsed.String(), "sslrootcert=" + sslRootCert
+	}
+
+	return dsn + " sslrootcert=" + sslRootCert, "sslrootcert=" + sslRootCert
 }
 
 var DB *sql.DB
@@ -3276,8 +3347,13 @@ func GetTeamsForUserWithDetails(userID int) ([]Team, error) {
 	var out []Team
 	for rows.Next() {
 		var t Team
-		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.ApplicationID, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &t.CreatedBy); err != nil {
+		var createdBy sql.NullInt64
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.ApplicationID, &t.TeamType, &t.DefaultEnv, &t.DefaultCloud, &t.CreatedAt, &createdBy); err != nil {
 			return nil, err
+		}
+		if createdBy.Valid && createdBy.Int64 > 0 {
+			value := int(createdBy.Int64)
+			t.CreatedBy = &value
 		}
 		out = append(out, t)
 	}
@@ -3462,9 +3538,7 @@ func ListRequestTemplates() ([]RequestTemplate, error) {
 		t.VisibleToAll = true
 		out = append(out, t)
 	}
-	if err := hydrateRequestTemplatesWithScope(out); err != nil {
-		return nil, err
-	}
+	hydrateRequestTemplatesWithScope(out)
 	return out, nil
 }
 
@@ -3478,20 +3552,13 @@ func ListRequestTemplatesForUser(userID int) ([]RequestTemplate, error) {
 	}
 	allowedTeams, err := getPortalTeamIDSetForUser(userID)
 	if err != nil {
-		return nil, err
-	}
-	allowedProjects, err := getVisibleProjectIDSetForUser(userID)
-	if err != nil {
-		return nil, err
+		log.Printf("warning: failed to resolve template portal teams")
+		allowedTeams = map[int]bool{}
 	}
 	filtered := make([]RequestTemplate, 0, len(templates))
 	for _, template := range templates {
-		if normalizeTemplateGovernanceStatus(template.Status) != "published" {
-			continue
-		}
 		teamAllowed := len(template.Teams) == 0 || templateAccessibleToPortalTeams(template.Teams, allowedTeams)
-		projectAllowed := len(template.Projects) == 0 || templateAccessibleToProjects(template.Projects, allowedProjects)
-		if teamAllowed && projectAllowed {
+		if teamAllowed {
 			filtered = append(filtered, template)
 		}
 	}
@@ -3536,9 +3603,7 @@ func GetRequestTemplateByID(id int) (*RequestTemplate, error) {
 		t.PublishedAt = &publishedAtValue
 	}
 	t.VisibleToAll = true
-	if err := hydrateRequestTemplateWithScope(&t); err != nil {
-		return nil, err
-	}
+	hydrateRequestTemplateWithScope(&t)
 	return &t, nil
 }
 
@@ -3551,13 +3616,8 @@ func GetRequestTemplateForUser(id, userID int) (*RequestTemplate, error) {
 	if err != nil {
 		return nil, err
 	}
-	allowedProjects, err := getVisibleProjectIDSetForUser(userID)
-	if err != nil {
-		return nil, err
-	}
 	teamAllowed := len(template.Teams) == 0 || templateAccessibleToPortalTeams(template.Teams, allowedTeams)
-	projectAllowed := len(template.Projects) == 0 || templateAccessibleToProjects(template.Projects, allowedProjects)
-	if teamAllowed && projectAllowed && normalizeTemplateGovernanceStatus(template.Status) == "published" {
+	if teamAllowed {
 		return template, nil
 	}
 	return nil, sql.ErrNoRows
@@ -3572,15 +3632,16 @@ func CreateRequestTemplate(name, description, cloud, env, service, config, statu
 	var publishedByValue sql.NullInt64
 	var publishedAt sql.NullTime
 	status = normalizeTemplateGovernanceStatus(status)
+	publishNow := status == "published"
 	var publishedBy *int
-	if status == "published" {
+	if publishNow {
 		publishedBy = createdBy
 	}
 	err := queryRowContext(
 		`INSERT INTO request_templates (name, description, cloud, env, service, config, status, created_by, published_by, published_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $7 = 'published' THEN CURRENT_TIMESTAMP ELSE NULL END)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $10 THEN CURRENT_TIMESTAMP ELSE NULL END)
 		 RETURNING id, name, description, cloud, env, service, config, status, created_by, published_by, created_at, COALESCE(updated_at, created_at), published_at`,
-		name, description, cloud, env, service, config, status, createdBy, publishedBy,
+		name, description, cloud, env, service, config, status, createdBy, publishedBy, publishNow,
 	).Scan(&t.ID, &t.Name, &t.Description, &t.Cloud, &t.Env, &t.Service, &t.Config, &t.Status, &createdByValue, &publishedByValue, &t.CreatedAt, &t.UpdatedAt, &publishedAt)
 	if err != nil {
 		return nil, err
@@ -3606,6 +3667,7 @@ func UpdateRequestTemplate(id int, name, description, cloud, env, service, confi
 		return fmt.Errorf("database not available")
 	}
 	status = normalizeTemplateGovernanceStatus(status)
+	publishNow := status == "published"
 	_, err := execContext(
 		`UPDATE request_templates
 		 SET name = $1,
@@ -3617,15 +3679,15 @@ func UpdateRequestTemplate(id int, name, description, cloud, env, service, confi
 		     status = $7,
 		     updated_at = CURRENT_TIMESTAMP,
 		     published_by = CASE
-		       WHEN $7 = 'published' AND published_at IS NULL THEN $8
+		       WHEN $10 AND published_at IS NULL THEN $8
 		       ELSE published_by
 		     END,
 		     published_at = CASE
-		       WHEN $7 = 'published' AND published_at IS NULL THEN CURRENT_TIMESTAMP
+		       WHEN $10 AND published_at IS NULL THEN CURRENT_TIMESTAMP
 		       ELSE published_at
 		     END
 		 WHERE id = $9`,
-		name, description, cloud, env, service, config, status, actedBy, id,
+		name, description, cloud, env, service, config, status, actedBy, id, publishNow,
 	)
 	if err == nil {
 		invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam)
@@ -3820,39 +3882,42 @@ func GetRequestTemplateTeams(templateID int) ([]Team, error) {
 	out := make([]Team, 0)
 	for rows.Next() {
 		var team Team
-		if err := rows.Scan(&team.ID, &team.Name, &team.Slug, &team.ApplicationID, &team.TeamType, &team.DefaultEnv, &team.DefaultCloud, &team.CreatedAt, &team.CreatedBy); err != nil {
+		var createdBy sql.NullInt64
+		if err := rows.Scan(&team.ID, &team.Name, &team.Slug, &team.ApplicationID, &team.TeamType, &team.DefaultEnv, &team.DefaultCloud, &team.CreatedAt, &createdBy); err != nil {
 			return nil, err
+		}
+		if createdBy.Valid && createdBy.Int64 > 0 {
+			value := int(createdBy.Int64)
+			team.CreatedBy = &value
 		}
 		out = append(out, team)
 	}
 	return out, nil
 }
 
-func hydrateRequestTemplateWithScope(template *RequestTemplate) error {
+func hydrateRequestTemplateWithScope(template *RequestTemplate) {
 	if template == nil {
-		return nil
+		return
 	}
 	teams, err := GetRequestTemplateTeams(template.ID)
 	if err != nil {
-		return err
+		log.Printf("warning: failed to hydrate template %d teams: %v", template.ID, err)
+		teams = []Team{}
 	}
 	projects, err := GetRequestTemplateProjects(template.ID)
 	if err != nil {
-		return err
+		log.Printf("warning: failed to hydrate template %d projects: %v", template.ID, err)
+		projects = []ProjectSummary{}
 	}
 	template.Teams = teams
 	template.Projects = projects
 	template.VisibleToAll = len(teams) == 0 && len(projects) == 0
-	return nil
 }
 
-func hydrateRequestTemplatesWithScope(templates []RequestTemplate) error {
+func hydrateRequestTemplatesWithScope(templates []RequestTemplate) {
 	for i := range templates {
-		if err := hydrateRequestTemplateWithScope(&templates[i]); err != nil {
-			return err
-		}
+		hydrateRequestTemplateWithScope(&templates[i])
 	}
-	return nil
 }
 
 func getPortalTeamIDSetForUser(userID int) (map[int]bool, error) {

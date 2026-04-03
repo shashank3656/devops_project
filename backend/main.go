@@ -220,7 +220,13 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to generate application id", nil)
 		return
 	}
-	filePath, branchName := BuildRequestGitArtifacts(team, env, appID)
+	filePath, branchName := BuildRequestGitArtifacts(func() *int {
+		if projectID > 0 {
+			id := projectID
+			return &id
+		}
+		return nil
+	}(), team, cloud, env, service, appID)
 
 	prURL, err := CreateGitHubPR(branchName, filePath, content, appID)
 	if err != nil {
@@ -379,7 +385,13 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to generate application id", nil)
 		return
 	}
-	filePath, branchName := BuildRequestGitArtifacts(team, env, appID)
+	filePath, branchName := BuildRequestGitArtifacts(func() *int {
+		if projectID > 0 {
+			id := projectID
+			return &id
+		}
+		return nil
+	}(), team, cloud, env, service, appID)
 	content, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "error processing request", nil)
@@ -602,6 +614,11 @@ func main() {
 	http.HandleFunc("/api/devops/project-dependencies", devopsProjectDependenciesHandler)
 	http.HandleFunc("/api/devops/k8s-connections", devopsK8sConnectionsHandler)
 	http.HandleFunc("/api/devops/k8s-overview", devopsK8sOverviewHandler)
+	http.HandleFunc("/api/devops/k8s-clusters", devopsK8sClustersHandler)
+	http.HandleFunc("/api/devops/k8s-workloads", devopsK8sWorkloadsHandler)
+	http.HandleFunc("/api/devops/k8s-services", devopsK8sServicesHandler)
+	http.HandleFunc("/api/devops/k8s-configmaps", devopsK8sConfigMapsHandler)
+	http.HandleFunc("/api/devops/k8s-storage", devopsK8sStorageHandler)
 	http.HandleFunc("/api/devops/runbooks", devopsRunbooksHandler)
 	http.HandleFunc("/api/devops/runbooks/", devopsRunbookDetailHandler)
 	http.HandleFunc("/api/devops/incidents", devopsIncidentsHandler)

@@ -44,23 +44,7 @@ while IFS= read -r line || [ -n "$line" ]; do
     fi
 done < "$CONFIG_ENV"
 
-# Mirror DB_* into POSTGRES_* for docker-compose postgres service when explicit
-# POSTGRES_* values are not present in config/.env. This keeps backend and
-# postgres aligned from a single source of truth.
-db_user="$(grep -E '^DB_USER=' "$ROOT_ENV" | tail -n1 | cut -d'=' -f2-)"
-db_password="$(grep -E '^DB_PASSWORD=' "$ROOT_ENV" | tail -n1 | cut -d'=' -f2-)"
-db_name="$(grep -E '^DB_NAME=' "$ROOT_ENV" | tail -n1 | cut -d'=' -f2-)"
-
-if ! grep -q '^POSTGRES_USER=' "$ROOT_ENV" && [ -n "$db_user" ]; then
-    echo "POSTGRES_USER=$db_user" >> "$ROOT_ENV"
-fi
-if ! grep -q '^POSTGRES_PASSWORD=' "$ROOT_ENV" && [ -n "$db_password" ]; then
-    echo "POSTGRES_PASSWORD=$db_password" >> "$ROOT_ENV"
-fi
-if ! grep -q '^POSTGRES_DB=' "$ROOT_ENV" && [ -n "$db_name" ]; then
-    echo "POSTGRES_DB=$db_name" >> "$ROOT_ENV"
-fi
-
 echo "✓ Synced environment variables to $ROOT_ENV"
 echo ""
 echo "You can now run: docker-compose up -d"
+echo "Use DATABASE_URL (recommended for Supabase / managed Postgres) or DB_* values."

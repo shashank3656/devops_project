@@ -315,7 +315,8 @@ func buildGitOpsProjectSummary(project GitOpsCatalogProject, requests []PRReques
 	if defaultCloud == "" {
 		defaultCloud = "aws"
 	}
-	projectKey := fmt.Sprintf("%s/%s", ResolveTeamPathKey(project.TeamName), project.Slug)
+	projectCodeKey := normalizePathSegment(project.Slug, "general")
+	teamSlugKey := ResolveTeamSlugKey(project.TeamName)
 
 	return GitOpsProjectSummary{
 		ProjectID:              project.ID,
@@ -323,11 +324,11 @@ func buildGitOpsProjectSummary(project GitOpsCatalogProject, requests []PRReques
 		ProjectName:            project.Name,
 		ProjectSlug:            project.Slug,
 		GroupID:                project.GroupID,
-		ProjectKey:             projectKey,
+		ProjectKey:             fmt.Sprintf("project/%s/%s", projectCodeKey, teamSlugKey),
 		RepoRoot:               project.RepoRoot,
-		LiveRequestPathPattern: fmt.Sprintf("%s/envs/<env>/request.json", ResolveTeamPathKey(project.TeamName)),
+		LiveRequestPathPattern: fmt.Sprintf("project/%s/%s/<cloud>/envs/<env>/<service>/request.json", projectCodeKey, teamSlugKey),
 		ManifestPathPattern:    fmt.Sprintf("%s/<env>/<component>.json", project.RepoRoot),
-		BranchPattern:          fmt.Sprintf("%s/<env>/<request-id>", projectKey),
+		BranchPattern:          fmt.Sprintf("project/%s/%s/<cloud>/<env>/<service>/<request-id>", projectCodeKey, teamSlugKey),
 		DefaultEnvironment:     defaultEnv,
 		DefaultCloud:           defaultCloud,
 		CurrentPermission:      project.CurrentPermission,

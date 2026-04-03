@@ -39,9 +39,11 @@ export default function NewUser() {
       .then((data) => {
         if (Array.isArray(data.teams)) {
           setTeams(data.teams);
+        } else {
+          setTeams([]);
         }
       })
-      .catch(() => {});
+      .catch(() => setTeams([]));
   }, [apiUrl, router]);
 
   const toggleTeam = (teamId: number) => {

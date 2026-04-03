@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import AdminLayout from '../components/AdminLayout';
 
 interface Webhook {
@@ -17,33 +18,6 @@ export default function WebhooksPage() {
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [newUrl, setNewUrl] = useState('');
-  const [newSecret, setNewSecret] = useState('');
-  const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set(EVENT_OPTIONS));
-  const [eventsDropdownOpen, setEventsDropdownOpen] = useState(false);
-  const eventsDropdownRef = React.useRef<HTMLDivElement>(null);
-
-  const toggleEvent = (event: string) => {
-    setSelectedEvents((prev) => {
-      const next = new Set(prev);
-      if (next.has(event)) next.delete(event);
-      else next.add(event);
-      return next;
-    });
-  };
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (eventsDropdownRef.current && !eventsDropdownRef.current.contains(e.target as Node)) {
-        setEventsDropdownOpen(false);
-      }
-    };
-    if (eventsDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [eventsDropdownOpen]);
-  const [creating, setCreating] = useState(false);
   const [toggleLoading, setToggleLoading] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
 
@@ -74,43 +48,6 @@ export default function WebhooksPage() {
     if (!token) return;
     fetchWebhooks();
   }, [token, apiUrl]);
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUrl.trim()) {
-      setError('URL is required');
-      return;
-    }
-    setCreating(true);
-    setError('');
-    try {
-      const res = await fetch(`${apiUrl}/api/admin/webhooks`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          url: newUrl.trim(),
-          secret: newSecret.trim() || undefined,
-          events: selectedEvents.size > 0 ? Array.from(selectedEvents).join(',') : 'approved,pr_created,rejected,assigned',
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setNewUrl('');
-        setNewSecret('');
-        setSelectedEvents(new Set(EVENT_OPTIONS));
-        fetchWebhooks();
-      } else {
-        setError(data.error || 'Failed to create webhook');
-      }
-    } catch (_) {
-      setError('Failed to create webhook');
-    } finally {
-      setCreating(false);
-    }
-  };
 
   const handleToggle = async (w: Webhook) => {
     setToggleLoading(w.id);
@@ -174,6 +111,11 @@ export default function WebhooksPage() {
                 Outbound webhooks fire when request status changes. Payloads include the event, request id, and request fields, with optional HMAC signing.
               </p>
             </div>
+            <div className="portal-page__actions">
+              <Link href="/webhooks/new" className="btn btn-primary">
+                Add webhook
+              </Link>
+            </div>
           </div>
 
           {error && (
@@ -185,80 +127,14 @@ export default function WebhooksPage() {
             </div>
           )}
 
-          <div className="portal-grid">
-          <div className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <span className="portal-surface__eyebrow">Create route</span>
-                <h2 className="portal-surface__title">Add webhook</h2>
-              </div>
-            </div>
-            <form onSubmit={handleCreate}>
-              <div className="form-group">
-                <label className="label" htmlFor="webhook-url">URL *</label>
-                <input
-                  id="webhook-url"
-                  type="url"
-                  className="input"
-                  placeholder="https://your-server.com/webhook"
-                  value={newUrl}
-                  onChange={(e) => setNewUrl(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label className="label" htmlFor="webhook-secret">Secret (optional, for signature)</label>
-                <input
-                  id="webhook-secret"
-                  type="password"
-                  className="input"
-                  placeholder="Leave blank to skip HMAC signature"
-                  value={newSecret}
-                  onChange={(e) => setNewSecret(e.target.value)}
-                />
-              </div>
-              <div className="form-group" ref={eventsDropdownRef}>
-                <label className="label" htmlFor="webhook-events-trigger">Events</label>
-                <div className="webhook-events-dropdown">
-                  <button
-                    id="webhook-events-trigger"
-                    type="button"
-                    className="webhook-events-dropdown__trigger input"
-                    onClick={() => setEventsDropdownOpen((o) => !o)}
-                    aria-haspopup="listbox"
-                    aria-expanded={eventsDropdownOpen}
-                  >
-                    {selectedEvents.size === 0
-                      ? 'Select events'
-                      : Array.from(selectedEvents).sort().join(', ')}
-                  </button>
-                  {eventsDropdownOpen && (
-                    <div className="webhook-events-dropdown__panel" role="listbox">
-                      {EVENT_OPTIONS.map((ev) => (
-                        <label key={ev} className="webhook-events-dropdown__option">
-                          <input
-                            type="checkbox"
-                            checked={selectedEvents.has(ev)}
-                            onChange={() => toggleEvent(ev)}
-                          />
-                          <span>{ev}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <button type="submit" className="btn btn-primary" disabled={creating}>
-                {creating ? 'Adding...' : 'Add webhook'}
-              </button>
-            </form>
-          </div>
-
           <div className="portal-surface">
             <div className="portal-surface__header">
               <div>
                 <span className="portal-surface__eyebrow">Current routes</span>
                 <h2 className="portal-surface__title">Webhooks</h2>
+                <p className="portal-surface__subtitle">
+                  Create now opens on a dedicated page so this screen stays focused on browsing and lifecycle actions.
+                </p>
               </div>
             </div>
             {loading ? (
@@ -319,7 +195,6 @@ export default function WebhooksPage() {
                 </table>
               </div>
             ) : null}
-          </div>
           </div>
         </div>
       </AdminLayout>

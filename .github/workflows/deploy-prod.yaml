@@ -2,14 +2,33 @@ name: Deploy Prod
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - master
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
     inputs:
       release_notes:
         description: Release notes for this production deployment
         required: true
         type: string
 
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  pull-requests: write
+
 jobs:
   deploy:
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      pull-requests: write
     uses: ./.github/workflows/deploy-reusable.yaml
     with:
       environment_name: prod

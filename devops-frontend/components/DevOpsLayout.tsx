@@ -13,20 +13,25 @@ import {
   IconUsers,
   IconMenu,
   IconShield,
-  IconCalendar,
-  IconHeatmap,
   IconBookOpen,
   IconAlertTriangle,
   IconKey,
   IconArrowUpRight,
   IconRefreshCw,
   IconK8s,
+  IconHelpCircle,
+  IconFileText,
+  IconChevronRight,
+  IconChevronDown,
 } from './Icons';
+import SupportHub from './SupportHub';
+import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
 const DEVOPS_THEME_KEY = 'infra-portal-theme';
 const SIDEBAR_COLLAPSED_KEY = 'devops-sidebar-collapsed';
+const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@setuops.example';
 
 interface DevopsUser {
   id: number;
@@ -53,34 +58,35 @@ function getProfileInitials(): string {
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/approval-center': 'Approval Center',
-  '/approval-sla': 'Approval SLA',
-  '/change-calendar': 'Change Calendar',
-  '/project-operations': 'Project Operations',
-  '/service-heatmap': 'Service Heatmap',
-  '/change-risk': 'Change Risk',
-  '/environment-drift': 'Environment Drift',
-  '/ops-command-center': 'Ops Command Center',
-  '/project-dependencies': 'Project Dependencies',
-  '/k8s': 'K8s Dashboard',
-  '/runbooks': 'Project Runbooks',
-  '/incidents': 'Incident Panel',
-  '/incident-workspace': 'Incident Workspace',
-  '/access-overrides': 'Access Overrides',
-  '/promotions': 'Promotion Center',
-  '/rollback-console': 'Rollback Console',
-  '/gate-approvals': 'Gate Approval Audit',
-  '/gate-policies': 'Gate Policies',
-  '/notification-settings': 'Notification Settings',
-  '/approval-notification-analytics': 'Approval & Notification Analytics',
-  '/retry-center': 'Retry Center',
+  '/dashboard': 'Overview',
+  '/approval-center': 'Approvals',
+  '/approval-sla': 'Approval Timing',
+  '/project-operations': 'Project Work',
+  '/service-heatmap': 'Service Health',
+  '/ops-command-center': 'Operations',
+  '/k8s/onboard': 'Onboard Cluster',
+  '/k8s/workloads': 'Workloads',
+  '/k8s/services': 'Services',
+  '/k8s/configmaps': 'ConfigMaps',
+  '/k8s/storage': 'Storage',
+  '/k8s': 'K8s Cluster',
+  '/runbooks': 'Guides',
+  '/incidents': 'Incidents',
+  '/incident-workspace': 'Incident Notes',
+  '/access-overrides': 'Access Exceptions',
+  '/promotions': 'Promotions',
+  '/rollback-console': 'Rollback',
+  '/gate-approvals': 'Approval History',
+  '/gate-policies': 'Approval Rules',
+  '/notification-settings': 'Alert Settings',
+  '/approval-notification-analytics': 'Analytics',
+  '/retry-center': 'Delivery Retries',
   '/workload': 'Workload',
-  '/tickets': 'Tickets',
-  '/templates': 'Templates',
+  '/tickets': 'Requests',
+  '/templates': 'Request Templates',
   '/projects': 'Projects',
-  '/team': 'Teams',
-  '/credential-audit': 'Credential Audit',
+  '/team': 'Team',
+  '/credential-audit': 'Secrets',
   '/profile': 'Profile',
 };
 
@@ -128,6 +134,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [profileInitials, setProfileInitials] = useState('D');
   const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalItem[]>([]);
   const [pendingApprovalsLoading, setPendingApprovalsLoading] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
+  const [advancedNavOpen, setAdvancedNavOpen] = useState(false);
+  const [k8sNavOpen, setK8sNavOpen] = useState(pathname.startsWith('/k8s'));
   const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -280,6 +290,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setNotifyOpen(false);
     setProfileOpen(false);
+    setSupportOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -309,8 +320,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
         e.preventDefault();
         const msg = isManager
-          ? 'Shortcuts: ? help, g then d = Dashboard, g then t = Tickets, g then w = Workload'
-          : 'Shortcuts: ? help, g then d = Dashboard';
+          ? 'Shortcuts: ? help, g then d = Overview, g then t = Requests, g then a = Approvals'
+          : 'Shortcuts: ? help, g then d = Overview';
         alert(msg);
         return;
       }
@@ -325,9 +336,9 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         } else if (e.key === 't' && isManager) {
           e.preventDefault();
           router.push('/tickets');
-        } else if (e.key === 'w' && isManager) {
+        } else if (e.key === 'a' && isManager) {
           e.preventDefault();
-          router.push('/workload');
+          router.push('/approval-center');
         }
         gPressedAt = 0;
       } else {
@@ -344,38 +355,53 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     router.replace('/login');
   };
 
-  const baseNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
-    { href: '/dashboard', label: 'Dashboard', Icon: IconTickets },
-    { href: '/k8s', label: 'K8s', Icon: IconK8s },
+const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
+    { href: '/dashboard', label: 'Overview', Icon: IconTickets },
+    { href: '/tickets', label: 'Requests', Icon: IconTickets },
+    { href: '/templates', label: 'Request Templates', Icon: IconTemplates },
+    { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
   ];
   if (isManager) {
-    baseNavItems.push({ href: '/approval-center', label: 'Approval Center', Icon: IconShield });
-    baseNavItems.push({ href: '/approval-sla', label: 'Approval SLA', Icon: IconShield });
-    baseNavItems.push({ href: '/change-calendar', label: 'Change Calendar', Icon: IconCalendar });
-    baseNavItems.push({ href: '/project-operations', label: 'Project Operations', Icon: IconWorkload });
-    baseNavItems.push({ href: '/service-heatmap', label: 'Service Heatmap', Icon: IconHeatmap });
-    baseNavItems.push({ href: '/change-risk', label: 'Change Risk', Icon: IconAlertTriangle });
-    baseNavItems.push({ href: '/environment-drift', label: 'Environment Drift', Icon: IconRefreshCw });
-    baseNavItems.push({ href: '/ops-command-center', label: 'Ops Command Center', Icon: IconAlertTriangle });
-    baseNavItems.push({ href: '/project-dependencies', label: 'Project Dependencies', Icon: IconHeatmap });
-    baseNavItems.push({ href: '/runbooks', label: 'Runbooks', Icon: IconBookOpen });
-    baseNavItems.push({ href: '/incidents', label: 'Incidents', Icon: IconAlertTriangle });
-    baseNavItems.push({ href: '/incident-workspace', label: 'Incident Workspace', Icon: IconBookOpen });
-    baseNavItems.push({ href: '/access-overrides', label: 'Access Overrides', Icon: IconKey });
-    baseNavItems.push({ href: '/promotions', label: 'Promotion Center', Icon: IconArrowUpRight });
-    baseNavItems.push({ href: '/rollback-console', label: 'Rollback Console', Icon: IconRefreshCw });
-    baseNavItems.push({ href: '/gate-approvals', label: 'Gate Audit', Icon: IconShield });
-    baseNavItems.push({ href: '/gate-policies', label: 'Gate Policies', Icon: IconShield });
-    baseNavItems.push({ href: '/notification-settings', label: 'Notification Settings', Icon: IconBell });
-    baseNavItems.push({ href: '/approval-notification-analytics', label: 'Ops Analytics', Icon: IconHeatmap });
-    baseNavItems.push({ href: '/retry-center', label: 'Retry Center', Icon: IconRefreshCw });
-    baseNavItems.push({ href: '/workload', label: 'Workload', Icon: IconWorkload });
-    baseNavItems.push({ href: '/tickets', label: 'Tickets', Icon: IconTickets });
-    baseNavItems.push({ href: '/projects', label: 'Projects', Icon: IconProjects });
+    primaryNavItems.splice(1, 0, { href: '/approval-center', label: 'Approvals', Icon: IconShield });
+    primaryNavItems.splice(2, 0, { href: '/promotions', label: 'Promotions', Icon: IconArrowUpRight });
+    primaryNavItems.splice(3, 0, { href: '/incidents', label: 'Incidents', Icon: IconAlertTriangle });
+    primaryNavItems.push({ href: '/projects', label: 'Projects', Icon: IconProjects });
+    primaryNavItems.push({ href: '/team', label: 'Teams', Icon: IconUsers });
   }
-  baseNavItems.push({ href: '/templates', label: 'Templates', Icon: IconTemplates });
-  baseNavItems.push({ href: '/credential-audit', label: 'Credential Audit', Icon: IconShield });
-  if (isManager) baseNavItems.push({ href: '/team', label: 'Teams', Icon: IconUsers });
+
+  const advancedNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = isManager
+    ? [
+        { href: '/approval-sla', label: 'Approval Timing', Icon: IconShield },
+        { href: '/ops-command-center', label: 'Operations', Icon: IconAlertTriangle },
+        { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
+        { href: '/access-overrides', label: 'Access Exceptions', Icon: IconKey },
+        { href: '/rollback-console', label: 'Rollback', Icon: IconRefreshCw },
+        { href: '/gate-approvals', label: 'Approval History', Icon: IconShield },
+        { href: '/gate-policies', label: 'Approval Rules', Icon: IconShield },
+        { href: '/notification-settings', label: 'Alert Settings', Icon: IconBell },
+        { href: '/retry-center', label: 'Delivery Retries', Icon: IconRefreshCw },
+      ]
+    : [];
+  const advancedNavActive = advancedNavItems.some(
+    ({ href }) => pathname === href || (href !== '/dashboard' && pathname.startsWith(href)),
+  );
+  const k8sNavActive = pathname === '/k8s' || pathname.startsWith('/k8s/');
+  const k8sNavItems = [
+    { href: '/k8s', label: 'K8s Cluster' },
+    { href: '/k8s/workloads', label: 'Workloads' },
+    { href: '/k8s/services', label: 'Services' },
+    { href: '/k8s/configmaps', label: 'ConfigMaps' },
+    { href: '/k8s/storage', label: 'Storage' },
+    { href: '/k8s/onboard', label: 'Onboard Cluster' },
+  ];
+
+  useEffect(() => {
+    if (advancedNavActive) setAdvancedNavOpen(true);
+  }, [advancedNavActive]);
+
+  useEffect(() => {
+    if (k8sNavActive) setK8sNavOpen(true);
+  }, [k8sNavActive]);
 
   const pageTitle = getPageTitle(pathname);
   const roleLabel = isManager ? 'Manager' : 'Contributor';
@@ -419,15 +445,15 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </button>
           {!sidebarCollapsed && (
             <Link href="/dashboard" className="devops-sidebar-new__brand">
-              <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">DevOps</span>
-              <span className="devops-sidebar-new__brand-word">Portal</span>
+              <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">SetuOps</span>
+              <span className="devops-sidebar-new__brand-word">DevOps</span>
             </Link>
           )}
         </div>
         <div className="devops-sidebar-new__body">
           <nav className="devops-sidebar-new__nav">
             {!sidebarCollapsed && <span className="devops-sidebar-new__nav-title">Modules</span>}
-            {baseNavItems.map(({ href, label, Icon }) => {
+            {primaryNavItems.filter((item) => item.href === '/dashboard').map(({ href, label, Icon }) => {
               const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
               const badge = getSidebarBadge(href);
               return (
@@ -443,6 +469,97 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 </Link>
               );
             })}
+            {!sidebarCollapsed && (
+              <div className="devops-sidebar-new__expandable">
+                <button
+                  type="button"
+                  className={`devops-sidebar-new__link devops-sidebar-new__expandable-trigger ${k8sNavActive ? 'devops-sidebar-new__link--active' : ''}`}
+                  onClick={() => setK8sNavOpen((open) => !open)}
+                  aria-expanded={k8sNavOpen}
+                >
+                  <IconK8s className="devops-sidebar-new__icon" />
+                  <span className="devops-sidebar-new__label">K8s Cluster</span>
+                  <span className="devops-sidebar-new__chevron">
+                    {k8sNavOpen ? <IconChevronDown /> : <IconChevronRight />}
+                  </span>
+                </button>
+
+                {k8sNavOpen && (
+                  <div className="devops-sidebar-new__sub">
+                    {k8sNavItems.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`devops-sidebar-new__sublink ${pathname === item.href || pathname.startsWith(`${item.href}/`) ? 'devops-sidebar-new__sublink--active' : ''}`}
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {primaryNavItems.filter((item) => item.href !== '/dashboard').map(({ href, label, Icon }) => {
+              const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+              const badge = getSidebarBadge(href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`devops-sidebar-new__link ${isActive ? 'devops-sidebar-new__link--active' : ''}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Icon className="devops-sidebar-new__icon" />
+                  {!sidebarCollapsed && <span className="devops-sidebar-new__label">{label}</span>}
+                  {!sidebarCollapsed && badge && <span className="devops-sidebar-new__badge">{badge}</span>}
+                </Link>
+              );
+            })}
+            {sidebarCollapsed && (
+              <Link
+                href="/k8s"
+                className={`devops-sidebar-new__link ${k8sNavActive ? 'devops-sidebar-new__link--active' : ''}`}
+                onClick={() => setMobileMenuOpen(false)}
+                title="K8s Cluster"
+              >
+                <IconK8s className="devops-sidebar-new__icon" />
+              </Link>
+            )}
+            {!sidebarCollapsed && advancedNavItems.length > 0 && (
+              <div className="devops-sidebar-new__section">
+                <button
+                  type="button"
+                  className={`devops-sidebar-new__section-toggle ${advancedNavOpen ? 'devops-sidebar-new__section-toggle--open' : ''}`}
+                  onClick={() => setAdvancedNavOpen((open) => !open)}
+                  aria-expanded={advancedNavOpen}
+                >
+                  <span>More tools</span>
+                  <span className="devops-sidebar-new__section-meta">{advancedNavOpen ? 'Hide' : 'Show'}</span>
+                </button>
+                {advancedNavOpen && (
+                  <div className="devops-sidebar-new__section-body">
+                    <p className="devops-sidebar-new__section-copy">
+                      Extra tools stay here so the main menu stays simple.
+                    </p>
+                    {advancedNavItems.map(({ href, label, Icon }) => {
+                      const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+                      return (
+                        <Link
+                          key={href}
+                          href={href}
+                          className={`devops-sidebar-new__link ${isActive ? 'devops-sidebar-new__link--active' : ''}`}
+                          onClick={() => setMobileMenuOpen(false)}
+                        >
+                          <Icon className="devops-sidebar-new__icon" />
+                          <span className="devops-sidebar-new__label">{label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </nav>
           {!sidebarCollapsed && (
             <div className="devops-sidebar-new__status-panel">
@@ -459,6 +576,36 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             </div>
           )}
           <div className="devops-sidebar-new__footer">
+            <button
+              type="button"
+              className="devops-sidebar-new__link"
+              onClick={() => {
+                setNotifyOpen(false);
+                setProfileOpen(false);
+                setSupportTab('chat');
+                setSupportOpen(true);
+                setMobileMenuOpen(false);
+              }}
+              title="Support"
+            >
+              <IconHelpCircle className="devops-sidebar-new__icon" />
+              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Support</span>}
+            </button>
+            <button
+              type="button"
+              className="devops-sidebar-new__link"
+              onClick={() => {
+                setNotifyOpen(false);
+                setProfileOpen(false);
+                setSupportTab('docs');
+                setSupportOpen(true);
+                setMobileMenuOpen(false);
+              }}
+              title="Documentation"
+            >
+              <IconFileText className="devops-sidebar-new__icon" />
+              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Documentation</span>}
+            </button>
             <button type="button" className="devops-sidebar-new__link" onClick={handleLogout}>
               <IconLogout className="devops-sidebar-new__icon" />
               {!sidebarCollapsed && <span className="devops-sidebar-new__label">Logout</span>}
@@ -483,7 +630,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               <IconMenu />
             </button>
             <div className="devops-navbar__title-wrap">
-              <span className="devops-navbar__kicker">DevOps Portal</span>
+              <span className="devops-navbar__kicker">SetuOps</span>
               <h1 className="devops-navbar__title">{pageTitle}</h1>
             </div>
             <span className={`devops-navbar__status-chip ${isManager && pendingCount > 0 ? 'devops-navbar__status-chip--alert' : ''}`}>
@@ -492,6 +639,19 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </div>
           <div className="devops-navbar__right">
             <div className="devops-navbar__actions">
+              <button
+                type="button"
+                className="devops-navbar__assist-btn"
+                onClick={() => {
+                  setSupportTab('chat');
+                  setSupportOpen(true);
+                  setNotifyOpen(false);
+                  setProfileOpen(false);
+                }}
+              >
+                <IconHelpCircle />
+                <span>Help</span>
+              </button>
               {user && <span className="devops-navbar__username">{user.username}</span>}
               <span className="devops-navbar__role">{roleLabel}</span>
               {isManager && (
@@ -499,9 +659,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                   <button
                     type="button"
                     className="devops-navbar__icon-btn"
-                    onClick={() => {
+                  onClick={() => {
                       setNotifyOpen((open) => !open);
                       setProfileOpen(false);
+                      setSupportOpen(false);
                     }}
                     title={pendingCount > 0 ? `${pendingCount} pending approvals` : 'Pending approvals'}
                     aria-expanded={notifyOpen}
@@ -570,6 +731,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 onClick={() => {
                   setProfileOpen((o) => !o);
                   setNotifyOpen(false);
+                  setSupportOpen(false);
                 }}
                 aria-expanded={profileOpen}
                 aria-haspopup="true"
@@ -598,6 +760,25 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         </header>
         <main className="devops-main-new">{children}</main>
       </div>
+      <SupportHub
+        open={supportOpen}
+        initialTab={supportTab}
+        onClose={() => setSupportOpen(false)}
+        portalName="DevOps Portal"
+        currentPath={pathname}
+        currentTitle={pageTitle}
+        articles={supportArticles}
+        quickPrompts={supportQuickPrompts}
+        externalDocsHref={process.env.NEXT_PUBLIC_DOCS_URL || ''}
+        escalationActions={[
+          {
+            label: 'Email platform support',
+            externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`SetuOps support: ${pageTitle}`)}`,
+          },
+          { label: 'Open incidents', href: '/incidents' },
+          { label: 'Open command center', href: '/ops-command-center' },
+        ]}
+      />
     </div>
   );
 }

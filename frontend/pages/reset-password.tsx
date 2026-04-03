@@ -62,20 +62,20 @@ export default function ResetPassword() {
     return (
       <>
         <Head>
-          <title>Reset Password - InfraGate</title>
+          <title>Reset Password - SetuOps</title>
         </Head>
         <div className="login-page">
-          <div className="login-page__right" style={{ margin: 'auto' }}>
-            <div className="login-page__card">
+          <div className="login-page__right login-page__right--centered">
+            <div className="login-page__card login-page__card--compact">
               <h2 className="login-page__card-title">Invalid link</h2>
               <p className="login-page__card-subtitle">
                 This reset link is invalid or has expired. Request a new one from the login page.
               </p>
-              <Link href="/forgot-password" className="btn btn-primary" style={{ marginTop: 16, display: 'inline-block', textDecoration: 'none' }}>
+              <Link href="/forgot-password" className="btn btn-primary login-page__cta-link">
                 Request new link
               </Link>
-              <p style={{ marginTop: 16 }}>
-                <Link href="/login" style={{ color: 'var(--primary-color)', textDecoration: 'none' }}>
+              <p className="login-page__link-row">
+                <Link href="/login" className="login-page__inline-link">
                   ← Back to login
                 </Link>
               </p>
@@ -89,13 +89,13 @@ export default function ResetPassword() {
   return (
     <>
       <Head>
-        <title>Reset Password - InfraGate</title>
+        <title>Reset Password - SetuOps</title>
       </Head>
       <div className="login-page">
         <div className="login-page__left">
           <div className="login-page__brand">
             <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">InfraGate</h1>
+            <h1 className="login-page__title">SetuOps</h1>
             <p className="login-page__tagline">
               Cloud-agnostic infrastructure management. Self-service requests for your team.
             </p>
@@ -108,7 +108,9 @@ export default function ResetPassword() {
               Enter your new password below.
             </p>
             {success ? (
-              <p style={{ color: 'var(--success-color)' }}>Password updated. Redirecting to login…</p>
+              <p className="login-page__message login-page__message--success">
+                Password updated. Redirecting to login…
+              </p>
             ) : (
               <form onSubmit={handleSubmit}>
                 <div className="form-group">
@@ -146,8 +148,8 @@ export default function ResetPassword() {
                 </button>
               </form>
             )}
-            <p style={{ marginTop: 16 }}>
-              <Link href="/login" style={{ color: 'var(--primary-color)', textDecoration: 'none' }}>
+            <p className="login-page__link-row">
+              <Link href="/login" className="login-page__inline-link">
                 ← Back to login
               </Link>
             </p>

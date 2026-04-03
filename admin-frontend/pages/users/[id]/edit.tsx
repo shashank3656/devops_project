@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import AdminLayout from '../../../components/AdminLayout';
+import CalendarDateInput from '../../../components/CalendarDateInput';
 
 interface DevopsProfile {
   is_manager: boolean;
@@ -70,6 +71,59 @@ interface OnboardingProgress {
   completion_percent: number;
 }
 
+function normalizeOnboardingProgress(raw: any): OnboardingProgress | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const latestRequest =
+    raw.latest_request && typeof raw.latest_request === 'object'
+      ? {
+          id: typeof raw.latest_request.id === 'number' ? raw.latest_request.id : 0,
+          team: typeof raw.latest_request.team === 'string' ? raw.latest_request.team : '',
+          env: typeof raw.latest_request.env === 'string' ? raw.latest_request.env : '',
+          cloud: typeof raw.latest_request.cloud === 'string' ? raw.latest_request.cloud : '',
+          service: typeof raw.latest_request.service === 'string' ? raw.latest_request.service : '',
+          status: typeof raw.latest_request.status === 'string' ? raw.latest_request.status : 'unknown',
+          pr_url: typeof raw.latest_request.pr_url === 'string' ? raw.latest_request.pr_url : '',
+          created_at: typeof raw.latest_request.created_at === 'string' ? raw.latest_request.created_at : '',
+          updated_at: typeof raw.latest_request.updated_at === 'string' ? raw.latest_request.updated_at : '',
+        }
+      : null;
+  const milestones = Array.isArray(raw.milestones)
+    ? raw.milestones
+        .filter((item: any) => item && typeof item === 'object')
+        .map(
+          (item: any, index: number): OnboardingMilestone => ({
+            key: typeof item.key === 'string' ? item.key : `step-${index + 1}`,
+            title: typeof item.title === 'string' ? item.title : 'Onboarding step',
+            detail: typeof item.detail === 'string' ? item.detail : '',
+            state:
+              item.state === 'completed' || item.state === 'current' || item.state === 'upcoming' || item.state === 'attention'
+                ? item.state
+                : 'upcoming',
+            timestamp: typeof item.timestamp === 'string' ? item.timestamp : undefined,
+          }),
+        )
+    : [];
+  return {
+    user_id: typeof raw.user_id === 'number' ? raw.user_id : 0,
+    username: typeof raw.username === 'string' ? raw.username : '',
+    email: typeof raw.email === 'string' ? raw.email : '',
+    user_type: typeof raw.user_type === 'string' ? raw.user_type : '',
+    role: typeof raw.role === 'string' ? raw.role : '',
+    verified: Boolean(raw.verified),
+    created_at: typeof raw.created_at === 'string' ? raw.created_at : '',
+    manager_username: typeof raw.manager_username === 'string' ? raw.manager_username : undefined,
+    teams: Array.isArray(raw.teams) ? raw.teams : [],
+    requests_by_status:
+      raw.requests_by_status && typeof raw.requests_by_status === 'object' ? raw.requests_by_status : {},
+    requests_total: typeof raw.requests_total === 'number' ? raw.requests_total : 0,
+    submitted_requests: typeof raw.submitted_requests === 'number' ? raw.submitted_requests : 0,
+    latest_request: latestRequest,
+    milestones,
+    next_action: typeof raw.next_action === 'string' ? raw.next_action : 'Review user onboarding',
+    completion_percent: typeof raw.completion_percent === 'number' ? raw.completion_percent : 0,
+  };
+}
+
 function parsePositiveIntParam(value: unknown): number | null {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== 'string') return null;
@@ -135,7 +189,7 @@ export default function EditUser() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        setOnboardingProgress(data.progress || null);
+        setOnboardingProgress(normalizeOnboardingProgress(data.progress));
       } else {
         setOnboardingProgress(null);
       }
@@ -150,7 +204,13 @@ export default function EditUser() {
     try {
       const res = await fetch(`${apiUrl}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json().catch(() => ({}));
-      if (data.users) setUsersList(data.users.map((u: { id: number; username: string }) => ({ id: u.id, username: u.username })));
+      if (Array.isArray(data.users)) {
+        setUsersList(
+          data.users.map((u: { id: number; username: string }) => ({ id: u.id, username: u.username })),
+        );
+      } else {
+        setUsersList([]);
+      }
     } catch (_) {}
   };
 
@@ -160,8 +220,12 @@ export default function EditUser() {
       const data = await res.json().catch(() => ({}));
       if (Array.isArray(data.teams)) {
         setAllTeams(data.teams);
+      } else {
+        setAllTeams([]);
       }
-    } catch (_) {}
+    } catch (_) {
+      setAllTeams([]);
+    }
   };
 
   const fetchUser = async (userId: number) => {
@@ -177,20 +241,29 @@ export default function EditUser() {
       }
       const data = await res.json().catch(() => ({}));
       if (data.user) {
-        setUser(data.user);
-        setUsername(data.user.username || '');
-        setEmail(data.user.email || '');
-        setRole((data.user.role || 'viewer') as 'viewer' | 'contributor' | 'admin');
-        setVerified(Boolean(data.user.verified));
-        setUserType(data.user.user_type === 'devops_user' ? 'devops_user' : 'portal_user');
-        setManagerId(data.user.manager_id != null ? String(data.user.manager_id) : '');
-        setIsPortalManager(Boolean(data.user.is_portal_manager));
-        const dp = data.user.devops_profile;
+        const nextUser = {
+          ...data.user,
+          teams: Array.isArray(data.user.teams) ? data.user.teams : [],
+        } as User;
+        setUser(nextUser);
+        setUsername(nextUser.username || '');
+        setEmail(nextUser.email || '');
+        setRole((nextUser.role || 'viewer') as 'viewer' | 'contributor' | 'admin');
+        setVerified(Boolean(nextUser.verified));
+        setUserType(nextUser.user_type === 'devops_user' ? 'devops_user' : 'portal_user');
+        setManagerId(nextUser.manager_id != null ? String(nextUser.manager_id) : '');
+        setIsPortalManager(Boolean((nextUser as any).is_portal_manager));
+        const dp = nextUser.devops_profile;
         if (dp) {
           setIsManager(Boolean(dp.is_manager));
           setPosition(dp.position || '');
           setOnboardDate(dp.onboard_date || '');
           setLevel((dp.level || 'L1') as 'L1' | 'L2' | 'L3' | 'L4');
+        } else {
+          setIsManager(false);
+          setPosition('');
+          setOnboardDate('');
+          setLevel('L1');
         }
       } else {
         setError(data.error || 'User not found');
@@ -328,7 +401,7 @@ export default function EditUser() {
   return (
     <>
       <Head>
-        <title>Edit user - InfraGate Admin</title>
+        <title>Edit user - SetuOps Governance</title>
       </Head>
       <AdminLayout>
         <div className="container">
@@ -336,7 +409,7 @@ export default function EditUser() {
             ← Back to Users
           </Link>
           {created === '1' && (
-            <div className="alert" role="alert" style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', marginBottom: 16 }}>
+            <div className="alert admin-user-edit__success-alert" role="alert">
               User created successfully.
               {team_assign_failed ? ` Some team assignments still need review.` : ''}
             </div>
@@ -349,13 +422,13 @@ export default function EditUser() {
             </div>
           ) : user ? (
             <>
-              <div className="card onboarding-admin-card" style={{ maxWidth: 960, marginBottom: 24 }}>
-                <h3 className="card-title" style={{ fontSize: 18 }}>Onboarding Progress Tracker</h3>
-                <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 16 }}>
+              <div className="card onboarding-admin-card admin-user-edit__card admin-user-edit__card--wide">
+                <h3 className="card-title admin-user-edit__section-title">Onboarding Progress Tracker</h3>
+                <p className="admin-user-edit__section-copy">
                   Review where this user is blocked and what needs to happen next.
                 </p>
                 {onboardingLoading ? (
-                  <div className="empty-state" style={{ padding: 16, textAlign: 'left' }}>Loading onboarding progress…</div>
+                  <div className="empty-state admin-user-edit__empty-inline">Loading onboarding progress…</div>
                 ) : onboardingProgress ? (
                   <>
                     <div className="admin-onboarding-summary-grid">
@@ -401,30 +474,29 @@ export default function EditUser() {
                     </div>
                   </>
                 ) : (
-                  <div className="empty-state" style={{ padding: 16, textAlign: 'left' }}>
+                  <div className="empty-state admin-user-edit__empty-inline">
                     Onboarding progress is not available for this user right now.
                   </div>
                 )}
               </div>
               {user.teams && user.teams.length > 0 && (
-                <div className="card" style={{ maxWidth: 480, marginBottom: 24 }}>
-                  <h3 className="card-title" style={{ fontSize: 18 }}>Teams</h3>
-                  <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 12 }}>
+                <div className="card admin-user-edit__card admin-user-edit__card--narrow">
+                  <h3 className="card-title admin-user-edit__section-title">Teams</h3>
+                  <p className="admin-user-edit__section-copy admin-user-edit__section-copy--compact">
                     Review this user&apos;s current team memberships here. You can also remove them directly from this screen.
                   </p>
-                  <ul style={{ margin: 0, paddingLeft: 20 }}>
+                  <ul className="admin-user-edit__team-list">
                     {user.teams.map((t) => (
-                      <li key={t.id} style={{ marginBottom: 10 }}>
+                      <li key={t.id} className="admin-user-edit__team-item">
                         <Link href={`/teams/${t.id}`}>{t.name}</Link>
                         {t.team_type && (
-                          <span style={{ marginLeft: 8, fontSize: 13, color: 'var(--color-text-muted)' }}>
+                          <span className="admin-user-edit__team-meta">
                             ({t.team_type})
                           </span>
                         )}
                         <button
                           type="button"
-                          className="btn btn-secondary"
-                          style={{ padding: '6px 12px', fontSize: 12, marginLeft: 12 }}
+                          className="btn btn-secondary admin-user-edit__team-remove"
                           disabled={membershipSaving}
                           onClick={() => void handleRemoveTeamMembership(t.id)}
                         >
@@ -435,13 +507,13 @@ export default function EditUser() {
                   </ul>
                 </div>
               )}
-              <div className="card" style={{ maxWidth: 480, marginBottom: 24 }}>
-                <h3 className="card-title" style={{ fontSize: 18 }}>Add to team</h3>
-                <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 12 }}>
+              <div className="card admin-user-edit__card admin-user-edit__card--narrow">
+                <h3 className="card-title admin-user-edit__section-title">Add to team</h3>
+                <p className="admin-user-edit__section-copy admin-user-edit__section-copy--compact">
                   Assign this user to {userType === 'devops_user' ? 'DevOps' : 'portal'} teams without leaving the user screen.
                 </p>
                 {availableTeams.length === 0 ? (
-                  <div className="empty-state" style={{ padding: 16, textAlign: 'left' }}>
+                  <div className="empty-state admin-user-edit__empty-inline">
                     No additional {userType === 'devops_user' ? 'DevOps' : 'portal'} teams are available.
                   </div>
                 ) : (
@@ -465,10 +537,9 @@ export default function EditUser() {
                       <label className="label" htmlFor="user-team-role">Membership role</label>
                       <select
                         id="user-team-role"
-                        className="input"
+                        className="input admin-user-edit__select--sm"
                         value={teamRole}
                         onChange={(e) => setTeamRole(e.target.value)}
-                        style={{ maxWidth: 220 }}
                       >
                         {userType === 'devops_user' ? (
                           <>
@@ -491,9 +562,9 @@ export default function EditUser() {
                   </form>
                 )}
               </div>
-            <div className="card" style={{ maxWidth: 480 }}>
+            <div className="card admin-user-edit__card admin-user-edit__card--narrow">
               <h2 className="card-title">Edit user profile</h2>
-              <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 24 }}>
+              <p className="admin-user-edit__section-copy admin-user-edit__section-copy--form">
                 Update username, email, role, or verified status. Changes apply immediately.
               </p>
               {error && (
@@ -536,10 +607,9 @@ export default function EditUser() {
                   </label>
                   <select
                     id="edit-role"
-                    className="input"
+                    className="input admin-user-edit__select--xs"
                     value={role}
                     onChange={(e) => setRole(e.target.value as 'viewer' | 'contributor' | 'admin')}
-                    style={{ maxWidth: 200 }}
                   >
                     <option value="viewer">Viewer</option>
                     <option value="contributor">Contributor</option>
@@ -547,7 +617,7 @@ export default function EditUser() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <label className="admin-user-edit__check">
                     <input
                       type="checkbox"
                       checked={verified}
@@ -562,10 +632,9 @@ export default function EditUser() {
                   </label>
                   <select
                     id="edit-user-type"
-                    className="input"
+                    className="input admin-user-edit__select--xs"
                     value={userType}
                     onChange={(e) => setUserType(e.target.value as 'portal_user' | 'devops_user')}
-                    style={{ maxWidth: 200 }}
                   >
                     <option value="portal_user">Portal user</option>
                     <option value="devops_user">DevOps user</option>
@@ -576,24 +645,23 @@ export default function EditUser() {
                     <label className="label" htmlFor="edit-manager">Manager (for two-step approval)</label>
                     <select
                       id="edit-manager"
-                      className="input"
+                      className="input admin-user-edit__select--md"
                       value={managerId}
                       onChange={(e) => setManagerId(e.target.value)}
-                      style={{ maxWidth: 280 }}
                     >
                       <option value="">None</option>
                       {usersList.filter((u) => u.id !== (id && typeof id === 'string' ? parseInt(id, 10) : 0)).map((u) => (
                         <option key={u.id} value={u.id}>{u.username}</option>
                       ))}
                     </select>
-                    <span className="label-optional" style={{ display: 'block', marginTop: 4 }}>
+                    <span className="label-optional admin-user-edit__hint">
                       When this user submits a request, their manager approves first, then DevOps.
                     </span>
                   </div>
                 )}
                 {userType === 'portal_user' && (
                   <div className="form-group">
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <label className="admin-user-edit__check">
                       <input
                         type="checkbox"
                         checked={isPortalManager}
@@ -601,7 +669,7 @@ export default function EditUser() {
                       />
                       <span className="label">Portal manager</span>
                     </label>
-                    <span className="label-optional" style={{ display: 'block', marginTop: 4 }}>
+                    <span className="label-optional admin-user-edit__hint">
                       Designate as group manager (same as DevOps manager). They can approve team tickets and see Group tickets.
                     </span>
                   </div>
@@ -609,7 +677,7 @@ export default function EditUser() {
                 {userType === 'devops_user' && (
                   <>
                     <div className="form-group">
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                      <label className="admin-user-edit__check">
                         <input
                           type="checkbox"
                           checked={isManager}
@@ -631,23 +699,17 @@ export default function EditUser() {
                     </div>
                     <div className="form-group">
                       <label className="label" htmlFor="edit-onboard">Onboard date</label>
-                      <input
-                        id="edit-onboard"
-                        className="input"
-                        type="date"
-                        value={onboardDate}
-                        onChange={(e) => setOnboardDate(e.target.value)}
-                        style={{ maxWidth: 200 }}
-                      />
+                      <div className="admin-user-edit__date-wrap">
+                        <CalendarDateInput id="edit-onboard" value={onboardDate} onChange={setOnboardDate} />
+                      </div>
                     </div>
                     <div className="form-group">
                       <label className="label" htmlFor="edit-level">Level</label>
                       <select
                         id="edit-level"
-                        className="input"
+                        className="input admin-user-edit__select--level"
                         value={level}
                         onChange={(e) => setLevel(e.target.value as 'L1' | 'L2' | 'L3' | 'L4')}
-                        style={{ maxWidth: 120 }}
                       >
                         <option value="L1">L1</option>
                         <option value="L2">L2</option>
@@ -659,9 +721,8 @@ export default function EditUser() {
                 )}
                 <button
                   type="submit"
-                  className="btn btn-primary"
+                  className="btn btn-primary admin-user-edit__submit"
                   disabled={saving}
-                  style={{ padding: '10px 24px' }}
                 >
                   {saving ? 'Saving…' : 'Save changes'}
                 </button>

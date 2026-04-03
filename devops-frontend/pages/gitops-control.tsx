@@ -756,9 +756,7 @@ export default function GitOpsControlPage() {
   };
 
   const openProjectEditor = (project: ManagedProject) => {
-    selectProject(project);
-    loadProjectIntoForm(project);
-    setActiveRail(project.can_manage ? 'builder' : 'explorer');
+    void router.push(`/gitops-control/${project.id}/edit`);
   };
 
   return (
@@ -777,6 +775,9 @@ export default function GitOpsControlPage() {
               </p>
             </div>
             <div className="portal-page__actions">
+              <Link href="/gitops-control/new" className="btn btn-primary">
+                New GitOps project
+              </Link>
               <Link href="/gitops-projects" className="btn btn-secondary">
                 Open GitOps Projects
               </Link>
@@ -799,14 +800,14 @@ export default function GitOpsControlPage() {
             <>
               {error && (
                 <section className="portal-surface portal-surface--tight">
-                  <div className="portal-empty" style={{ padding: 0, textAlign: 'left' }}>
+                  <div className="portal-empty gitops-page__message">
                     <p>{error}</p>
                   </div>
                 </section>
               )}
               {feedback && (
                 <section className={`portal-surface portal-surface--tight gitops-feedback gitops-feedback--${feedback.tone}`}>
-                  <div className="portal-empty" style={{ padding: 0, textAlign: 'left' }}>
+                  <div className="portal-empty gitops-page__message">
                     <p>
                       {feedback.message}{' '}
                       {feedback.link && (
@@ -818,29 +819,15 @@ export default function GitOpsControlPage() {
                   </div>
                 </section>
               )}
-              <section className="portal-stat-grid">
-                <article className="portal-stat-card">
-                  <span className="portal-stat-card__label">Managed Teams</span>
-                  <strong className="portal-stat-card__value">{formatCount(data.teams.length)}</strong>
-                  <p className="portal-stat-card__copy">DevOps teams available for project structure ownership.</p>
-                </article>
-                <article className="portal-stat-card">
-                  <span className="portal-stat-card__label">Projects</span>
-                  <strong className="portal-stat-card__value">{formatCount(data.projects.length)}</strong>
-                  <p className="portal-stat-card__copy">GitOps structures created directly from the DevOps portal.</p>
-                </article>
-                <article className="portal-stat-card">
-                  <span className="portal-stat-card__label">Access Rules</span>
-                  <strong className="portal-stat-card__value">
-                    {formatCount(data.projects.reduce((total, project) => total + project.access.length, 0))}
-                  </strong>
-                  <p className="portal-stat-card__copy">User and environment visibility rules currently enforced by managers.</p>
-                </article>
-                <article className="portal-stat-card">
-                  <span className="portal-stat-card__label">Scope</span>
-                  <strong className="portal-stat-card__value">{formatCount(data.users.length)}</strong>
-                  <p className="portal-stat-card__copy">Assignable DevOps users available for project visibility.</p>
-                </article>
+              <section className="portal-surface gitops-page__summary-surface">
+                <div className="portal-pill-row">
+                  <span className="portal-pill">Managed teams {formatCount(data.teams.length)}</span>
+                  <span className="portal-pill">Projects {formatCount(data.projects.length)}</span>
+                  <span className="portal-pill">
+                    Access rules {formatCount(data.projects.reduce((total, project) => total + project.access.length, 0))}
+                  </span>
+                  <span className="portal-pill">Visible users {formatCount(data.users.length)}</span>
+                </div>
               </section>
 
               <section className="portal-grid">
@@ -985,7 +972,7 @@ export default function GitOpsControlPage() {
                       </div>
                     </form>
                   ) : (
-                    <div className="portal-empty" style={{ padding: 0, textAlign: 'left' }}>
+                    <div className="portal-empty gitops-page__message">
                       <p>Your GitOps admin scope can manage existing projects, but only managers can create new project structures in this portal scope.</p>
                     </div>
                   )}

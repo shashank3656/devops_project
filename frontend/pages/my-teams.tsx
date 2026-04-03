@@ -55,7 +55,7 @@ export default function MyTeamsPage() {
       })
       .then((data) => {
         if (!data) return;
-        const list = data.teams || [];
+        const list = Array.isArray(data?.teams) ? data.teams : [];
         setTeams(list);
         list.forEach((team: Team) => {
           fetch(`${apiUrl}/api/me/teams/${team.id}/members`, { headers: { Authorization: `Bearer ${token}` } })
@@ -63,6 +63,8 @@ export default function MyTeamsPage() {
             .then((memberData) => {
               if (memberData && Array.isArray(memberData.members)) {
                 setMembersByTeam((prev) => ({ ...prev, [team.id]: memberData.members }));
+              } else {
+                setMembersByTeam((prev) => ({ ...prev, [team.id]: [] }));
               }
             })
             .catch(() => {});
@@ -80,6 +82,8 @@ export default function MyTeamsPage() {
       .then((d) => {
         if (d && Array.isArray(d.members)) {
           setMembersByTeam((prev) => ({ ...prev, [teamId]: d.members }));
+        } else {
+          setMembersByTeam((prev) => ({ ...prev, [teamId]: [] }));
         }
       })
       .catch(() => {});

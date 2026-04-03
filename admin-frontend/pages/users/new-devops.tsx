@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import AdminLayout from '../../components/AdminLayout';
+import CalendarDateInput from '../../components/CalendarDateInput';
 
 interface Team {
   id: number;
@@ -42,9 +43,11 @@ export default function NewDevopsUser() {
       .then((data) => {
         if (Array.isArray(data.teams)) {
           setTeams(data.teams);
+        } else {
+          setTeams([]);
         }
       })
-      .catch(() => {});
+      .catch(() => setTeams([]));
   }, [apiUrl, router]);
 
   const toggleTeam = (teamId: number) => {
@@ -224,14 +227,9 @@ export default function NewDevopsUser() {
                 <label className="label" htmlFor="devops-onboard">
                   Onboard date
                 </label>
-                <input
-                  id="devops-onboard"
-                  className="input"
-                  type="date"
-                  value={onboardDate}
-                  onChange={(e) => setOnboardDate(e.target.value)}
-                  style={{ maxWidth: 200 }}
-                />
+                <div style={{ maxWidth: 220 }}>
+                  <CalendarDateInput id="devops-onboard" value={onboardDate} onChange={setOnboardDate} />
+                </div>
               </div>
               <div className="form-group">
                 <label className="label" htmlFor="devops-level">

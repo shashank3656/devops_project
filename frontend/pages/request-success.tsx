@@ -4,47 +4,59 @@ import Link from 'next/link';
 
 export default function RequestSuccess() {
   const router = useRouter();
-  const { id, team, group } = router.query;
+  const { id, team, group, type } = router.query;
   const ticketId = id ? String(id) : '';
   const teamName = team ? String(team) : '';
   const groupName = group ? String(group) : '';
+  const requestType = type ? String(type).trim().toLowerCase() : '';
+  const isIamFlow = requestType === 'iam';
 
   return (
     <>
       <Head>
-        <title>Ticket Created - InfraGate</title>
+        <title>{isIamFlow ? 'Access Request Sent - SetuOps' : 'Request Sent - SetuOps'}</title>
       </Head>
-      <div style={{ minHeight: '100vh', padding: '40px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div className="card" style={{ maxWidth: 480, width: '100%' }}>
-          <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>✓</div>
-            <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Ticket created successfully</h1>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: 15 }}>
-              Your request has been submitted for approval.
+      <div className="request-success-shell">
+        <div className="request-success-card">
+          <div className="request-success-hero">
+            <div className="request-success-hero__mark" aria-hidden="true">✓</div>
+            <h1 className="request-success-hero__title">
+              {isIamFlow ? 'Access request sent successfully' : 'Request sent successfully'}
+            </h1>
+            <p className="request-success-hero__subtitle">
+              {isIamFlow ? 'Your access request is now in the review flow.' : 'Your request is now in the review flow.'}
             </p>
           </div>
-          <div style={{ background: 'var(--bg-gray-100)', borderRadius: 8, padding: 20, marginBottom: 24 }}>
+          <div className="request-success-summary">
             {ticketId && (
-              <p style={{ marginBottom: 8, fontSize: 15 }}>
-                <strong>Ticket ID:</strong> <code style={{ background: 'var(--color-surface)', padding: '2px 8px', borderRadius: 4 }}>#{ticketId}</code>
-              </p>
+              <div className="request-success-summary__row">
+                <span className="request-success-summary__label">{isIamFlow ? 'Access request #' : 'Request #'}</span>
+                <code className="request-success-summary__code">#{ticketId}</code>
+              </div>
             )}
             {teamName && (
-              <p style={{ marginBottom: groupName ? 8 : 0, fontSize: 15 }}>
-                <strong>Team:</strong> {teamName}
-              </p>
+              <div className="request-success-summary__row">
+                <span className="request-success-summary__label">Team</span>
+                <span className="request-success-summary__value">{teamName}</span>
+              </div>
             )}
             {groupName && (
-              <p style={{ margin: 0, fontSize: 15 }}>
-                <strong>Group:</strong> {groupName}
-              </p>
+              <div className="request-success-summary__row">
+                <span className="request-success-summary__label">Group</span>
+                <span className="request-success-summary__value">{groupName}</span>
+              </div>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <Link href="/history" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-              View in History
+          <p className="request-success-copy">
+            {isIamFlow
+              ? 'Open My Requests any time to check approval progress, comments, or next steps for this access change.'
+              : 'Open My Requests any time to check review progress, comments, or next steps.'}
+          </p>
+          <div className="request-success-actions">
+            <Link href="/history" className="btn btn-primary request-success-actions__btn">
+              Open My Requests
             </Link>
-            <Link href="/home" className="btn btn-secondary" style={{ textDecoration: 'none' }}>
+            <Link href="/home" className="btn btn-secondary request-success-actions__btn">
               Back to Home
             </Link>
           </div>

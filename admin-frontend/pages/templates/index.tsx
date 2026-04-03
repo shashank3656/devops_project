@@ -1,43 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import AdminLayout from '../../components/AdminLayout';
 import { asRecord, getString } from '../../lib/payload';
-
-interface RequestTemplate {
-  id: number;
-  name: string;
-  description: string;
-  cloud: string;
-  env: string;
-  service: string;
-  config: string;
-  status?: string;
-  created_at: string;
-  created_by: number | null;
-  teams?: TeamSummary[];
-  projects?: ProjectSummary[];
-  visible_to_all?: boolean;
-}
-
-interface TeamSummary {
-  id: number;
-  name: string;
-}
-
-interface ProjectSummary {
-  id: number;
-  name: string;
-  code: string;
-}
+import { buildCloudGroups, formatEnvironmentList, normalizeTemplate, RequestTemplate } from '../../lib/requestTemplates';
 
 export default function TemplatesList() {
   const router = useRouter();
   const [templates, setTemplates] = useState<RequestTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [search, setSearch] = useState('');
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -63,7 +37,11 @@ export default function TemplatesList() {
       }
       const data = asRecord(await res.json().catch(() => ({})));
       if (res.ok) {
-        setTemplates(Array.isArray(data.templates) ? (data.templates as RequestTemplate[]) : []);
+        setTemplates(
+          Array.isArray(data.templates)
+            ? data.templates.map(normalizeTemplate).filter((item): item is RequestTemplate => Boolean(item))
+            : [],
+        );
         setError('');
       } else {
         setTemplates([]);
@@ -77,42 +55,25 @@ export default function TemplatesList() {
     }
   };
 
-  const handleDelete = async (template: RequestTemplate) => {
-    if (!confirm(`Delete template "${template.name}"?`)) return;
-    setDeletingId(template.id);
-    setError('');
-    try {
-      const res = await fetch(`${apiUrl}/api/admin/templates/${template.id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
+  const cloudGroups = useMemo(() => buildCloudGroups(templates), [templates]);
+  const filteredCloudGroups = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return cloudGroups;
+    return cloudGroups.filter((cloud) => {
+      if (cloud.label.toLowerCase().includes(query)) return true;
+      return cloud.services.some((service) => {
+        if (service.label.toLowerCase().includes(query)) return true;
+        return service.templates.some((template) => {
+          const haystack = `${template.name} ${template.description} ${template.service} ${template.env}`.toLowerCase();
+          return haystack.includes(query);
+        });
       });
-      const data = asRecord(await res.json().catch(() => ({})));
-      if (res.ok) {
-        setTemplates((prev) => prev.filter((x) => x.id !== template.id));
-      } else {
-        setError(getString(data.error, 'Failed to delete'));
-      }
-    } catch (_) {
-      setError('Failed to delete');
-    } finally {
-      setDeletingId(null);
-    }
+    });
+  }, [cloudGroups, search]);
+
+  const openCloud = (cloudKey: string) => {
+    void router.push(`/templates/cloud/${cloudKey}`);
   };
-
-  const byCloud = templates.reduce<Record<string, RequestTemplate[]>>((acc, template) => {
-    const cloud = (template.cloud || 'other').toLowerCase();
-    if (!acc[cloud]) acc[cloud] = [];
-    acc[cloud].push(template);
-    return acc;
-  }, {});
-
-  const cloudOrder = ['aws', 'gcp', 'azure'];
-  const clouds = Array.from(
-    new Set([
-      ...cloudOrder.filter((cloud) => byCloud[cloud]?.length),
-      ...Object.keys(byCloud).filter((cloud) => !cloudOrder.includes(cloud)),
-    ]),
-  );
 
   return (
     <>
@@ -126,7 +87,7 @@ export default function TemplatesList() {
               <span className="portal-page__eyebrow">Templates</span>
               <h1 className="portal-page__title">Template Management</h1>
               <p className="portal-page__subtitle">
-                Shape reusable request patterns by cloud, update weak templates, and retire the ones that should not be reused.
+                Pick a cloud first, then open its service library and templates on a dedicated page.
               </p>
             </div>
             <Link href="/templates/new" className="btn btn-primary">
@@ -134,11 +95,11 @@ export default function TemplatesList() {
             </Link>
           </div>
 
-          {error && (
+          {error ? (
             <div className="alert alert-error" role="alert">
               {error}
             </div>
-          )}
+          ) : null}
 
           {loading ? (
             <div className="portal-surface">
@@ -146,62 +107,77 @@ export default function TemplatesList() {
             </div>
           ) : templates.length === 0 ? (
             <div className="portal-surface">
-              <div className="empty-state">
-                No templates exist yet.
-              </div>
+              <div className="empty-state">No templates exist yet.</div>
             </div>
           ) : (
-            clouds.map((cloud) => (
-              <section key={cloud} className="portal-surface">
-                <div className="portal-surface__header">
-                  <div>
-                    <span className="portal-surface__eyebrow">{cloud.toUpperCase()}</span>
-                    <h2 className="portal-surface__title">{cloud.toUpperCase()} template set</h2>
-                  </div>
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Template library</span>
+                  <h2 className="portal-surface__title">Cloud list</h2>
+                  <p className="portal-surface__subtitle">
+                    Click a cloud to view its services and templates on a dedicated page.
+                  </p>
                 </div>
+              </div>
 
-                <div className="portal-template-grid">
-                  {(byCloud[cloud] || []).map((template) => (
-                    <article key={template.id} className="portal-template-card">
-                      <div className="portal-template-card__top">
-                        <div>
-                          <h3 className="portal-template-card__name">{template.name}</h3>
-                          <p className="portal-template-card__description">
-                            {template.description || 'Template for repeatable infrastructure request creation.'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="portal-template-card__meta">
-                        <span className="portal-pill">{template.env}</span>
-                        <span className="portal-pill">{template.service}</span>
-                        <span className="portal-pill">{(template.status || 'draft').replace('_', ' ')}</span>
-                        <span className="portal-pill">
-                          {template.visible_to_all || !template.teams?.length
-                            ? 'All portal teams'
-                            : `${template.teams.length} portal team${template.teams.length === 1 ? '' : 's'}`}
-                        </span>
-                        <span className="portal-pill">
-                          {template.projects?.length
-                            ? `${template.projects.length} project${template.projects.length === 1 ? '' : 's'}`
-                            : 'All projects'}
-                        </span>
-                      </div>
-                      <div className="portal-template-card__actions">
-                        <Link href={`/templates/${template.id}`} className="btn btn-secondary btn-sm">
-                          View
-                        </Link>
-                        <Link href={`/templates/${template.id}/edit`} className="btn btn-secondary btn-sm">
-                          Edit
-                        </Link>
-                        <button type="button" className="btn btn-secondary btn-sm" disabled={deletingId === template.id} onClick={() => handleDelete(template)}>
-                          {deletingId === template.id ? 'Deleting...' : 'Delete'}
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            ))
+              <div className="template-browser-filter">
+                <label className="template-browser-filter__search">
+                  <span className="template-browser-filter__label">Search</span>
+                  <input
+                    className="input template-browser-filter__input"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search cloud, service, or template"
+                  />
+                </label>
+              </div>
+
+              <div className="table-scroll">
+                <table className="templates-table template-tree-table">
+                  <thead>
+                    <tr>
+                      <th>Cloud</th>
+                      <th>Services</th>
+                      <th>Templates</th>
+                      <th>Environments</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredCloudGroups.map((cloud) => (
+                      <tr
+                        key={cloud.key}
+                        className="template-tree-table__row-link"
+                        tabIndex={0}
+                        role="link"
+                        onClick={() => openCloud(cloud.key)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            openCloud(cloud.key);
+                          }
+                        }}
+                      >
+                        <td>
+                          <div className="template-tree__template-name">{cloud.label}</div>
+                          <div className="template-tree__meta">Click to browse the services and templates inside this cloud.</div>
+                        </td>
+                        <td>{cloud.services.length}</td>
+                        <td>{cloud.templateCount}</td>
+                        <td>{formatEnvironmentList(cloud.environments) || '—'}</td>
+                      </tr>
+                    ))}
+                    {filteredCloudGroups.length === 0 ? (
+                      <tr>
+                        <td colSpan={4}>
+                          <div className="empty-state">No clouds match the current search.</div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           )}
         </div>
       </AdminLayout>

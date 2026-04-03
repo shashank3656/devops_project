@@ -108,7 +108,7 @@ export default function UsersList() {
   return (
     <>
       <Head>
-        <title>Users - InfraGate Admin</title>
+        <title>Users - SetuOps Governance</title>
       </Head>
       <AdminLayout>
         <div className="portal-page">
@@ -160,12 +160,12 @@ export default function UsersList() {
               </div>
             )}
             {successMessage && (
-              <div className="alert alert-info" role="alert" style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', border: '1px solid #a7f3d0', margin: 24 }}>
+              <div className="alert alert-info admin-users-index__success" role="alert">
                 {successMessage}
               </div>
             )}
             {loading ? (
-              <div className="empty-state" style={{ padding: 24 }}>Loading users...</div>
+              <div className="empty-state admin-users-index__empty">Loading users...</div>
             ) : users.length === 0 ? (
               <div className="empty-state">
                 <p>No users are onboarded yet.</p>
@@ -189,14 +189,14 @@ export default function UsersList() {
                         <td className="td-username">{u.username}</td>
                         <td className="td-email">{u.email}</td>
                         <td>
-                          <span style={{ textTransform: 'capitalize' }}>
+                          <span className="admin-users-index__type">
                             {u.user_type === 'devops_user' ? 'DevOps user' : 'Portal user'}
                           </span>
                           {u.user_type === 'devops_user' && u.devops_profile?.is_manager && (
-                            <span style={{ marginLeft: 6, fontSize: 12, color: 'var(--color-primary)' }}>(Manager)</span>
+                            <span className="admin-users-index__type-flag">(Manager)</span>
                           )}
                           {u.user_type === 'devops_user' && u.devops_profile?.level && (
-                            <span style={{ marginLeft: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>/ {u.devops_profile.level}</span>
+                            <span className="admin-users-index__type-level">/ {u.devops_profile.level}</span>
                           )}
                         </td>
                         <td>

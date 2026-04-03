@@ -447,7 +447,7 @@ func buildProjectReleaseDashboard(project ProjectCatalog) (*projectReleaseDashbo
 }
 
 func buildProjectK8sPreview(project ProjectCatalog) (*projectK8sPreview, error) {
-	overview, err := buildK8sDashboard(project.ID, "", "", "")
+	overview, err := buildK8sDashboard(project.ID, "", "", "", true)
 	if err != nil {
 		return nil, err
 	}
@@ -764,6 +764,21 @@ func findDeploymentGateEnvironment(engine deploymentGatePolicyEngine, environmen
 		}
 	}
 	return nil
+}
+
+func buildUngatedPromotionDecision(targetEnvironment string) *promotionGateDecision {
+	summary := fmt.Sprintf(
+		"No deployment gate target is configured for %s yet. Promotion can continue without an additional gate review.",
+		strings.ToUpper(strings.TrimSpace(targetEnvironment)),
+	)
+	decision := buildPromotionGateDecision(targetEnvironment, nil, nil, summary, false)
+	decision.Status = "ready"
+	decision.CanPromote = true
+	decision.RequiresAcknowledgement = false
+	decision.CommentRequired = false
+	decision.ReviewMessage = "No deployment gate target is configured for this environment, so promotion can continue."
+	decision.Summary = summary
+	return decision
 }
 
 func buildPromotionGateDecision(targetEnvironment string, gate *deploymentGateEnvironment, approval *deploymentGateApprovalRecord, fallbackSummary string, fallbackBlocked bool) *promotionGateDecision {

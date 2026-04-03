@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import CalendarDateInput from '../components/CalendarDateInput';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -104,6 +105,7 @@ export default function GateApprovalsPage() {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [expiresWithinDays, setExpiresWithinDays] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   const fetchApprovals = useCallback(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -214,10 +216,14 @@ export default function GateApprovalsPage() {
       .sort((left, right) => left.localeCompare(right));
   }, [approvals]);
 
+  const hasActiveFilters = Boolean(
+    projectId || targetEnvironment || stateFilter || approver.trim() || fromDate || toDate || expiresWithinDays
+  );
+
   return (
     <>
       <Head>
-        <title>Gate Approval Audit - InfraGate DevOps</title>
+        <title>Gate Approval Audit - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">
@@ -231,34 +237,43 @@ export default function GateApprovalsPage() {
             </div>
           </header>
 
-          <section className="portal-stat-grid">
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Approvals</span>
-              <strong className="portal-stat-card__value">{summary.total_count}</strong>
-              <p className="portal-stat-card__copy">Deployment gate approval records that match the current filter set.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Active</span>
-              <strong className="portal-stat-card__value">{summary.active_count}</strong>
-              <p className="portal-stat-card__copy">Still-valid approvals that can support promotion actions.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Expired</span>
-              <strong className="portal-stat-card__value">{summary.expired_count}</strong>
-              <p className="portal-stat-card__copy">Approvals that timed out and require a new decision before promotion.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Revoked</span>
-              <strong className="portal-stat-card__value">{summary.revoked_count}</strong>
-              <p className="portal-stat-card__copy">Previously granted approvals that were explicitly withdrawn.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Production scope</span>
-              <strong className="portal-stat-card__value">{summary.production_count}</strong>
-              <p className="portal-stat-card__copy">Records targeting production and subject to higher review expectations.</p>
-            </article>
+          <section className="portal-surface gate-approvals__surface-gap">
+            <div className="gate-approvals__summary-actions">
+              <div className="portal-pill-row">
+                <span className="portal-pill">Approvals {summary.total_count}</span>
+                <span className="portal-pill">Active {summary.active_count}</span>
+                <span className="portal-pill">Expired {summary.expired_count}</span>
+                <span className="portal-pill">Revoked {summary.revoked_count}</span>
+                <span className="portal-pill">Production {summary.production_count}</span>
+              </div>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters((current) => !current)}>
+                {showFilters ? 'Hide filters' : 'Show filters'}
+              </button>
+            </div>
           </section>
 
+          {hasActiveFilters ? (
+            <div className="alert alert-info gate-approvals__scope-alert">
+              Viewing a filtered approval audit slice.
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setProjectId('');
+                  setTargetEnvironment('');
+                  setStateFilter('');
+                  setApprover('');
+                  setFromDate('');
+                  setToDate('');
+                  setExpiresWithinDays('');
+                }}
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : null}
+
+          {showFilters ? (
           <section className="portal-surface">
             <div className="portal-surface__header">
               <div>
@@ -266,6 +281,9 @@ export default function GateApprovalsPage() {
                 <h2 className="portal-surface__title">Focus the approval history</h2>
                 <p className="portal-surface__subtitle">Slice the audit stream by project, environment, state, approver, and review date.</p>
               </div>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowFilters(false)}>
+                Close
+              </button>
             </div>
 
             <div className="portal-toolbar">
@@ -318,11 +336,11 @@ export default function GateApprovalsPage() {
                 </div>
                 <div className="portal-toolbar__item">
                   <label className="credential-audit-label" htmlFor="gate-audit-from-date">From date</label>
-                  <input id="gate-audit-from-date" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="input" />
+                  <CalendarDateInput id="gate-audit-from-date" value={fromDate} onChange={setFromDate} />
                 </div>
                 <div className="portal-toolbar__item">
                   <label className="credential-audit-label" htmlFor="gate-audit-to-date">To date</label>
-                  <input id="gate-audit-to-date" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="input" />
+                  <CalendarDateInput id="gate-audit-to-date" value={toDate} onChange={setToDate} />
                 </div>
                 <div className="portal-toolbar__item">
                   <label className="credential-audit-label" htmlFor="gate-audit-expiry-window">Expiring within</label>
@@ -353,6 +371,7 @@ export default function GateApprovalsPage() {
               </div>
             </div>
           </section>
+          ) : null}
 
           {error ? <div className="alert alert-error">{error}</div> : null}
 
@@ -388,61 +407,54 @@ export default function GateApprovalsPage() {
                   <tbody>
                     {approvals.map((item) => (
                       <tr key={item.id}>
-                        <td style={{ whiteSpace: 'nowrap', color: 'var(--color-text-muted)', fontSize: 13 }}>
-                          {formatDateTime(item.approved_at)}
+                        <td className="gate-approvals__date-col">
+                          <span className="gate-approvals__date">{formatDateTime(item.approved_at)}</span>
                         </td>
                         <td>
                           {item.project_name ? (
-                            <div>
+                            <div className="gate-approvals__stack">
                               <strong>{item.project_name}</strong>
-                              {item.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.project_code}</div> : null}
+                              {item.project_code ? <div className="gate-approvals__meta gate-approvals__meta--minor">{item.project_code}</div> : null}
                             </div>
                           ) : (
                             '—'
                           )}
                         </td>
                         <td>
-                          <div>
+                          <div className="gate-approvals__stack">
                             <strong>Request #{item.request_id}</strong>
-                            <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
+                            <div className="gate-approvals__meta gate-approvals__meta--minor">
                               {[item.cloud, item.service, item.team].filter(Boolean).join(' / ') || item.request_status || '—'}
                             </div>
                           </div>
                         </td>
                         <td>{`${item.source_environment || 'n/a'} → ${item.target_environment || 'n/a'}`}</td>
                         <td>
-                          <span style={{ ...stateTone(item.state), padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, textTransform: 'capitalize' }}>
+                          <span className="project-detail__tone-chip project-detail__tone-chip--sm" style={stateTone(item.state)}>
                             {item.state}
                           </span>
                         </td>
                         <td>
-                          <div style={{ display: 'grid', gap: 6 }}>
+                          <div className="gate-approvals__stack gate-approvals__stack--tight">
                             <span
-                              style={{
-                                ...gateTone(item.gate_status),
-                                width: 'fit-content',
-                                padding: '6px 10px',
-                                borderRadius: 999,
-                                fontSize: 12,
-                                fontWeight: 700,
-                                textTransform: 'capitalize',
-                              }}
+                              className="project-detail__tone-chip project-detail__tone-chip--sm"
+                              style={gateTone(item.gate_status)}
                             >
                               {item.gate_status}
                             </span>
-                            <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.summary || 'No summary recorded.'}</span>
+                            <span className="gate-approvals__meta gate-approvals__meta--minor">{item.summary || 'No summary recorded.'}</span>
                           </div>
                         </td>
                         <td>{item.approved_by_username || '—'}</td>
-                        <td style={{ minWidth: 220 }}>
-                          <div style={{ display: 'grid', gap: 4, color: 'var(--color-text-muted)', fontSize: 12 }}>
+                        <td className="gate-approvals__expiry-col">
+                          <div className="gate-approvals__stack gate-approvals__stack--tight gate-approvals__meta gate-approvals__meta--minor">
                             <span>Expires: {formatDateTime(item.expires_at)}</span>
                             {item.revoked_at ? <span>Revoked: {formatDateTime(item.revoked_at)}</span> : null}
                             {item.revoked_by_username ? <span>Revoked by: {item.revoked_by_username}</span> : null}
                           </div>
                         </td>
-                        <td style={{ minWidth: 260 }}>
-                          <div style={{ display: 'grid', gap: 6, color: 'var(--color-text-muted)', fontSize: 12 }}>
+                        <td className="gate-approvals__notes-col">
+                          <div className="gate-approvals__stack gate-approvals__stack--tight gate-approvals__meta gate-approvals__meta--minor">
                             <span>{item.note || 'No approval note.'}</span>
                             {item.revoke_note ? <span>Revoke note: {item.revoke_note}</span> : null}
                           </div>

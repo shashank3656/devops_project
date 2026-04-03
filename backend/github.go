@@ -281,6 +281,9 @@ func CreateGitHubPRWithFiles(branchName string, files map[string][]byte, title, 
 // Helper functions to extract team and env from branch name
 func extractTeamFromBranch(branchName string) string {
 	parts := strings.Split(branchName, "/")
+	if len(parts) >= 6 && strings.EqualFold(parts[0], "project") {
+		return parts[2]
+	}
 	if len(parts) > 0 {
 		return parts[0]
 	}
@@ -289,6 +292,9 @@ func extractTeamFromBranch(branchName string) string {
 
 func extractEnvFromBranch(branchName string) string {
 	parts := strings.Split(branchName, "/")
+	if len(parts) >= 6 && strings.EqualFold(parts[0], "project") {
+		return parts[4]
+	}
 	if len(parts) > 1 {
 		return parts[1]
 	}
