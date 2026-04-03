@@ -17,9 +17,6 @@ permissions:
   id-token: write
   pull-requests: write
 
-env:
-  NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL_PROD || vars.NEXT_PUBLIC_API_URL }}
-
 jobs:
   deploy:
     permissions:
@@ -30,6 +27,6 @@ jobs:
     uses: ./.github/workflows/deploy-reusable.yaml
     with:
       environment_name: prod
-      public_api_url: ${{ env.NEXT_PUBLIC_API_URL }}
+      public_api_url: ${{ vars.NEXT_PUBLIC_API_URL_PROD || vars.NEXT_PUBLIC_API_URL }}
       release_notes: ${{ github.event_name == 'workflow_dispatch' && inputs.release_notes || format('Automated production deployment for {0}', github.sha) }}
     secrets: inherit
