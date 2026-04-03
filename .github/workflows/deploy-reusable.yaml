@@ -35,7 +35,7 @@ env:
 
 jobs:
   quality-gates:
-    uses: ./.github/actions/quality-gates-reusable/action.yml@main
+    uses: ./.github/actions/quality-gates-reusable
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
