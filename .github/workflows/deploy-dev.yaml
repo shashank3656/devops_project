@@ -6,6 +6,7 @@ on:
     branches:
       - dev
       - feature/**
+      - feat/cicd-fixes
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
