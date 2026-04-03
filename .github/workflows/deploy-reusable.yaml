@@ -14,8 +14,6 @@ on:
         type: string
         default: ""
     secrets:
-      # SONAR_TOKEN:
-      #   required: true
       SNYK_TOKEN:
         required: false
       SLACK_WEBHOOK_URL:
@@ -35,9 +33,18 @@ env:
 
 jobs:
   quality-gates:
-   uses: ./.github/actions/quality-gates-reusable
-    secrets:
-      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run quality gates
+        uses: ./.github/actions/quality-gates
+        with:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
   build-and-push:
     name: Build, Scan, and Push Images
@@ -139,10 +146,7 @@ jobs:
                           "blocks": [
                               {
                                   "type": "header",
-                                  "text": {
-                                      "type": "plain_text",
-                                      "text": title,
-                                  },
+                                  "text": {"type": "plain_text", "text": title},
                               },
                               {
                                   "type": "section",
@@ -169,10 +173,7 @@ jobs:
                                   "elements": [
                                       {
                                           "type": "button",
-                                          "text": {
-                                              "type": "plain_text",
-                                              "text": "Open workflow run",
-                                          },
+                                          "text": {"type": "plain_text", "text": "Open workflow run"},
                                           "url": run_url,
                                       }
                                   ],
