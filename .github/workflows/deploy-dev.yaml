@@ -18,12 +18,7 @@ permissions:
 jobs:
   deploy:
     if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/')
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-      pull-requests: write
-    uses: ./.github/action/deploy-reusable/action.yml
+    uses: ./.github/workflows/deploy-reusable.yaml
     secrets: inherit
     with:
       environment_name: dev
