@@ -229,14 +229,17 @@ export default function NewRunbookPage() {
             <div>
               <span className="portal-surface__eyebrow">New runbook</span>
               <h2 className="portal-surface__title">Runbook details</h2>
+              <p className="portal-surface__subtitle">
+                Choose the project and service first, then capture the operational steps and supporting link in one clean editor.
+              </p>
             </div>
           </div>
 
           {loading ? (
             <div className="empty-state">Loading runbook options...</div>
           ) : (
-            <>
-              <div className="portal-form-grid">
+            <div className="catalog-editor__form">
+              <div className="portal-form-grid catalog-editor__field-grid">
                 <label className="label">
                   Project
                   <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
@@ -262,7 +265,7 @@ export default function NewRunbookPage() {
                     ))}
                   </select>
                   {projectId && availableEditorServices.length === 0 ? (
-                    <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                    <span className="catalog-editor__field-help">
                       {selectedProject
                         ? `No catalog services were found for ${selectedProject.name} yet.`
                         : 'No catalog services were found for this project yet.'}
@@ -278,7 +281,7 @@ export default function NewRunbookPage() {
                   <input className="input" value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} placeholder="https://internal/wiki/runbook" />
                 </label>
               </div>
-              <label className="label">
+              <label className="label catalog-editor__field-block">
                 Runbook content
                 <textarea className="input" rows={8} value={content} onChange={(event) => setContent(event.target.value)} placeholder="Step-by-step runbook notes..." />
               </label>
@@ -292,7 +295,7 @@ export default function NewRunbookPage() {
                   {saving ? 'Saving...' : 'Create runbook'}
                 </button>
               </div>
-            </>
+            </div>
           )}
         </section>
       </div>

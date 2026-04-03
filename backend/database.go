@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -19,7 +20,7 @@ import (
 )
 
 const (
-	defaultDBHost                = "postgres"
+	defaultDBHost                = "localhost"
 	defaultDBPort                = "5432"
 	defaultDBName                = "infra_portal"
 	defaultDBSSLMode             = "disable"
@@ -221,9 +222,15 @@ func getEnvIntOrDefault(key string, fallback int) int {
 
 func buildDatabaseDSN() (dsn string, redacted string, err error) {
 	if databaseURL := getEnvTrimmed("DATABASE_URL"); databaseURL != "" {
-		return databaseURL, "DATABASE_URL", nil
+		withCert, certSuffix := attachSSLRootCert(databaseURL, getEnvTrimmed("DB_SSLROOTCERT"))
+		if certSuffix != "" {
+			return withCert, "DATABASE_URL " + certSuffix, nil
+		}
+		return withCert, "DATABASE_URL", nil
 	}
 
+	// Keep legacy POSTGRES_* fallbacks for older deployments, but prefer
+	// DATABASE_URL or DB_* for Supabase / managed Postgres setups.
 	dbHost := getEnvTrimmed("DB_HOST")
 	if dbHost == "" {
 		dbHost = getEnvTrimmed("POSTGRES_HOST")
@@ -258,13 +265,14 @@ func buildDatabaseDSN() (dsn string, redacted string, err error) {
 		dbName = defaultDBName
 	}
 	dbSSLMode := getEnvOrDefault("DB_SSLMODE", defaultDBSSLMode)
+	dbSSLRootCert := getEnvTrimmed("DB_SSLROOTCERT")
 	connectTimeout := getEnvIntOrDefault("DB_CONNECT_TIMEOUT_SECONDS", defaultDBPingTimeoutSeconds)
 
 	if dbUser == "" {
-		return "", "", fmt.Errorf("DB_USER or POSTGRES_USER is required when DATABASE_URL is not set")
+		return "", "", fmt.Errorf("DATABASE_URL is preferred; when it is not set, DB_USER is required")
 	}
 	if strings.TrimSpace(dbPassword) == "" {
-		return "", "", fmt.Errorf("DB_PASSWORD or POSTGRES_PASSWORD is required when DATABASE_URL is not set")
+		return "", "", fmt.Errorf("DATABASE_URL is preferred; when it is not set, DB_PASSWORD is required")
 	}
 
 	dsn = fmt.Sprintf(
@@ -275,7 +283,32 @@ func buildDatabaseDSN() (dsn string, redacted string, err error) {
 		"host=%s port=%s user=%s dbname=%s sslmode=%s",
 		dbHost, dbPort, dbUser, dbName, dbSSLMode,
 	)
+	if dbSSLRootCert != "" {
+		dsn = fmt.Sprintf("%s sslrootcert=%s", dsn, dbSSLRootCert)
+		redacted = fmt.Sprintf("%s sslrootcert=%s", redacted, dbSSLRootCert)
+	}
 	return dsn, redacted, nil
+}
+
+func attachSSLRootCert(dsn string, sslRootCert string) (string, string) {
+	sslRootCert = strings.TrimSpace(sslRootCert)
+	if sslRootCert == "" || strings.Contains(dsn, "sslrootcert=") {
+		return dsn, ""
+	}
+
+	trimmed := strings.TrimSpace(dsn)
+	if strings.HasPrefix(trimmed, "postgres://") || strings.HasPrefix(trimmed, "postgresql://") {
+		parsed, err := url.Parse(trimmed)
+		if err != nil {
+			return dsn, ""
+		}
+		query := parsed.Query()
+		query.Set("sslrootcert", sslRootCert)
+		parsed.RawQuery = query.Encode()
+		return parsed.String(), "sslrootcert=" + sslRootCert
+	}
+
+	return dsn + " sslrootcert=" + sslRootCert, "sslrootcert=" + sslRootCert
 }
 
 var DB *sql.DB

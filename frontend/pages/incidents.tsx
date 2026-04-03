@@ -172,10 +172,9 @@ export default function UserIncidentsPage() {
               </label>
               <select
                 id="incident-status-filter"
-                className="input"
+                className="input incidents-page__filter"
                 value={activeStatus}
                 onChange={(event) => setActiveStatus(event.target.value)}
-                style={{ minWidth: 180 }}
               >
                 <option value="all">All statuses</option>
                 <option value="open">Open</option>
@@ -191,7 +190,7 @@ export default function UserIncidentsPage() {
           ) : filteredIncidents.length === 0 ? (
             <div className="empty-state">No incidents match the current filter.</div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div className="incidents-page__table-wrap">
               <table className="templates-table">
                 <thead>
                   <tr>
@@ -211,7 +210,7 @@ export default function UserIncidentsPage() {
                       <td>
                         <div>
                           <strong>{getIncidentReference(incident)}</strong>
-                          <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
+                          <div className="incidents-page__meta">
                             {[incident.request_service || 'service', incident.request_env || '', incident.request_cloud || '']
                               .filter(Boolean)
                               .join(' · ')}
@@ -226,7 +225,7 @@ export default function UserIncidentsPage() {
                         <div>
                           <strong>{incident.summary || 'No summary yet'}</strong>
                           {incident.notes ? (
-                            <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 6 }}>
+                            <div className="incidents-page__notes">
                               {incident.notes}
                             </div>
                           ) : null}

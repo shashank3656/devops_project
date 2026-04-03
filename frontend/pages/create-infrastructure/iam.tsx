@@ -26,7 +26,7 @@ export default function IAMCloudSelect() {
         <title>Access Request - Choose Cloud - SetuOps</title>
         <meta name="description" content="Choose a cloud for an access request" />
       </Head>
-      <div style={{ minHeight: '100vh', padding: '40px 20px' }}>
+      <div className="request-entry-shell request-entry-shell--wide">
         <div className="container">
           <div className="request-builder">
             <div className="request-builder__header">
@@ -47,56 +47,29 @@ export default function IAMCloudSelect() {
                     <p>Select the platform where the access change is needed.</p>
                   </div>
 
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                      gap: '20px',
-                    }}
-                  >
+                  <div className="request-entry-grid request-entry-grid--clouds">
                     {CLOUDS.map((c) => (
                       <button
                         type="button"
                         key={c.id}
                         onClick={() => router.push(`/select-service?cloud=${c.id}&type=iam`)}
-                        className="card card-interactive"
-                        style={{
-                          padding: '28px 24px',
-                          border: '1px solid var(--color-border)',
-                          margin: 0,
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          transition: 'border-color 0.2s, box-shadow 0.2s, transform 0.2s',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = c.color;
-                          e.currentTarget.style.boxShadow = `0 10px 24px ${c.color}18`;
-                          e.currentTarget.style.transform = 'translateY(-2px)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = 'var(--color-border)';
-                          e.currentTarget.style.boxShadow = 'none';
-                          e.currentTarget.style.transform = 'translateY(0)';
-                        }}
+                        className="request-entry-option request-entry-option--cloud"
                       >
-                        <div style={{ height: '48px', display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
+                        <div className="request-entry-option__logo-wrap">
                           <Image
                             src={`/${c.id}-logo.png`}
                             alt={c.short}
                             width={120}
                             height={48}
-                            style={{ height: 48, width: 'auto', objectFit: 'contain' }}
+                            className="request-entry-option__logo"
                           />
                         </div>
-                        <h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '8px', color: 'var(--color-text)' }}>
-                          {c.name}
-                        </h3>
-                        <p style={{ color: 'var(--color-text-muted)', fontSize: '14px', lineHeight: 1.6, margin: '0 0 16px' }}>
-                          {c.description}
-                        </p>
-                        <span style={{ color: 'var(--color-primary)', fontSize: '14px', fontWeight: 600 }}>
-                          Continue with {c.short} →
-                        </span>
+                        <div className="request-entry-option__body">
+                          <p className="request-entry-option__eyebrow">{c.short}</p>
+                          <h3 className="request-entry-option__title">{c.name}</h3>
+                          <p className="request-entry-option__copy">{c.description}</p>
+                        </div>
+                        <span className="request-entry-option__cta">Continue with {c.short}</span>
                       </button>
                     ))}
                   </div>

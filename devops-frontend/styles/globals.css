@@ -3436,6 +3436,327 @@ tbody tr td { color: var(--color-text); }
   flex-wrap: wrap;
 }
 
+.rollback-console__surface-gap,
+.approval-sla__surface-gap,
+.workload__surface-gap {
+  margin-bottom: 24px;
+}
+
+.rollback-console__summary-actions,
+.rollback-console__candidate-head,
+.rollback-console__record-head,
+.rollback-console__action-row,
+.approval-sla__pill-row,
+.workload__scope-alert {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.rollback-console__summary-actions,
+.rollback-console__record-head {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rollback-console__scope-alert,
+.workload__scope-alert {
+  align-items: center;
+}
+
+.rollback-console__grid,
+.approval-sla__grid {
+  align-items: start;
+}
+
+.rollback-console__candidate-list,
+.rollback-console__detail-stack,
+.rollback-console__stack {
+  display: grid;
+  gap: 12px;
+}
+
+.rollback-console__detail-stack {
+  gap: 24px;
+}
+
+.rollback-console__candidate-card,
+.rollback-console__subsurface {
+  padding: 16px;
+}
+
+.rollback-console__candidate-card {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), transform var(--transition);
+}
+
+.rollback-console__candidate-card:hover {
+  transform: translateY(-1px);
+}
+
+.rollback-console__candidate-card--active {
+  border-color: var(--color-primary);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.rollback-console__candidate-head {
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.rollback-console__candidate-meta,
+.rollback-console__record-time,
+.rollback-console__record-copy {
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.rollback-console__candidate-meta,
+.rollback-console__record-copy {
+  font-size: 13px;
+}
+
+.rollback-console__candidate-meta--minor,
+.rollback-console__record-time,
+.rollback-console__record-copy--minor {
+  font-size: 12px;
+}
+
+.rollback-console__candidate-meta--minor {
+  margin-top: 6px;
+}
+
+.rollback-console__focus-pills {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rollback-console__section-title {
+  margin-bottom: 12px;
+  font-size: 18px;
+}
+
+.rollback-console__record-card {
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: rgba(2, 10, 21, 0.72);
+}
+
+.rollback-console__record-preview {
+  margin: 10px 0 0;
+  white-space: pre-wrap;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.rollback-console__record-copy {
+  margin-top: 4px;
+}
+
+.rollback-console__empty-inline {
+  padding: 0;
+}
+
+.approval-sla__pill-row {
+  align-items: center;
+}
+
+.approval-sla__pill-row--spaced,
+.approval-sla__grid--spaced {
+  margin-top: 24px;
+}
+
+.approval-sla__table-wrap {
+  overflow-x: auto;
+}
+
+.runbooks__scope-alert,
+.runbooks__scope-row,
+.runbooks__action-row,
+.gate-approvals__summary-actions,
+.gate-approvals__scope-alert {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.runbooks__scope-row,
+.gate-approvals__summary-actions {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.runbooks__scope-alert,
+.gate-approvals__scope-alert {
+  align-items: center;
+}
+
+.runbooks__filters {
+  margin-bottom: 16px;
+}
+
+.runbooks__table-wrap {
+  overflow-x: auto;
+}
+
+.runbooks__action-row {
+  align-items: center;
+}
+
+.gate-approvals__surface-gap {
+  margin-bottom: 24px;
+}
+
+.gate-approvals__stack {
+  display: grid;
+  gap: 6px;
+}
+
+.gate-approvals__stack--tight {
+  gap: 4px;
+}
+
+.gate-approvals__meta {
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.gate-approvals__meta--minor,
+.gate-approvals__date {
+  font-size: 12px;
+}
+
+.gate-approvals__date {
+  white-space: nowrap;
+  color: var(--color-text-muted);
+}
+
+.gate-approvals__date-col {
+  white-space: nowrap;
+}
+
+.gate-approvals__expiry-col {
+  min-width: 220px;
+}
+
+.gate-approvals__notes-col {
+  min-width: 260px;
+}
+
+.credential-audit__scope-row,
+.credential-audit__action-row,
+.project-operations__pill-row,
+.project-operations__action-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.credential-audit__scope-row {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.credential-audit__stack,
+.project-operations__stack {
+  display: grid;
+  gap: 12px;
+}
+
+.credential-audit__meta,
+.project-operations__meta {
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.credential-audit__meta--minor,
+.project-operations__meta--minor {
+  font-size: 12px;
+}
+
+.credential-audit__note {
+  margin-top: 6px;
+}
+
+.credential-audit__date-col {
+  white-space: nowrap;
+}
+
+.credential-audit__recommendation-col {
+  min-width: 260px;
+}
+
+.credential-audit__actions-col {
+  min-width: 220px;
+}
+
+.credential-audit-cloud-badge--aws {
+  background: #ea580c;
+  color: #fff;
+}
+
+.credential-audit-cloud-badge--gcp {
+  background: #2563eb;
+  color: #fff;
+}
+
+.credential-audit-cloud-badge--azure {
+  background: #0078d4;
+  color: #fff;
+}
+
+.project-operations__surface-gap {
+  margin-bottom: 24px;
+}
+
+.project-operations__grid {
+  align-items: start;
+}
+
+.project-operations__pill-row {
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.project-operations__pill-row--spaced {
+  margin: 10px 0 0;
+}
+
+.project-operations__table-wrap {
+  overflow-x: auto;
+}
+
+.project-operations__section {
+  display: grid;
+  gap: 10px;
+}
+
+.workload__table-head {
+  padding: 24px 24px 0;
+}
+
+.workload__checkbox-col {
+  width: 40px;
+}
+
+.workload__user-row {
+  cursor: pointer;
+}
+
+.workload__user-row--active td {
+  background: rgba(13, 148, 136, 0.12);
+}
+
+.workload__other-status {
+  color: var(--color-text-muted);
+}
+
 .incident-workspace__surface-gap {
   margin-bottom: 24px;
 }
@@ -3589,6 +3910,13 @@ tbody tr td { color: var(--color-text); }
 }
 
 @media (max-width: 900px) {
+  .rollback-console__summary-actions,
+  .rollback-console__candidate-head,
+  .rollback-console__record-head,
+  .rollback-console__action-row,
+  .credential-audit__scope-row,
+  .credential-audit__action-row,
+  .project-operations__action-row,
   .incident-workspace__scope-alert,
   .incident-workspace__summary-actions,
   .incident-workspace__save-row {
@@ -4657,6 +4985,161 @@ th,
 
 .portal-form-grid {
   gap: 12px;
+}
+
+.catalog-editor__form {
+  display: grid;
+  gap: 24px;
+}
+
+.catalog-editor__field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.catalog-editor__field-block {
+  margin-top: 4px;
+}
+
+.catalog-editor__field-help {
+  display: block;
+  margin-top: 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.catalog-editor__section {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.catalog-editor__section--lg {
+  margin-top: 24px;
+}
+
+.catalog-editor__section-copy {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.catalog-editor__choice-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.catalog-editor__choice-row--tight {
+  gap: 10px;
+}
+
+.catalog-editor__toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text);
+}
+
+.catalog-editor__toggle-label--tight {
+  gap: 6px;
+}
+
+.catalog-editor__toggle-label input {
+  accent-color: var(--color-primary);
+}
+
+.catalog-editor__choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.catalog-editor__choice-card {
+  display: grid;
+  gap: 12px;
+}
+
+.catalog-editor__choice-list {
+  display: grid;
+  gap: 6px;
+}
+
+.catalog-editor__table-wrap {
+  overflow-x: auto;
+}
+
+.catalog-editor__footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
+.catalog-editor__owner-note {
+  color: var(--color-text-muted);
+}
+
+.route-launch {
+  display: grid;
+  min-height: 240px;
+  align-items: center;
+}
+
+.route-launch__stack {
+  display: grid;
+  gap: 16px;
+  max-width: 640px;
+}
+
+.route-launch__actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.access-overrides__surface-gap,
+.gitops-page__summary-surface {
+  margin-bottom: 24px;
+}
+
+.access-overrides__summary-actions,
+.access-overrides__action-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.access-overrides__table-wrap {
+  overflow-x: auto;
+}
+
+.access-overrides__stack {
+  display: grid;
+  gap: 4px;
+}
+
+.access-overrides__meta,
+.access-overrides__expiry {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.access-overrides__env-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.gitops-page__message {
+  padding: 0;
+  text-align: left;
 }
 
 .templates-table th,

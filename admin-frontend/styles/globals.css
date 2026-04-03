@@ -3869,6 +3869,87 @@ tbody tr:hover,
   border-color: rgba(248, 113, 113, 0.3);
 }
 
+.admin-project-detail__stage-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.admin-project-detail__signals {
+  margin-top: 16px;
+}
+
+.admin-project-detail__signals--flush,
+.admin-project-detail__preview-grid--flush {
+  margin-top: 0;
+}
+
+.admin-project-detail__catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.admin-project-detail__catalog-card {
+  min-height: 0;
+}
+
+.admin-project-detail__catalog-copy {
+  margin-top: 8px;
+  color: var(--color-text-muted);
+  line-height: 1.65;
+}
+
+.admin-project-detail__table-wrap {
+  overflow-x: auto;
+}
+
+.project-governance__grid {
+  align-items: start;
+}
+
+.project-governance__stack,
+.project-governance__demand-stack {
+  display: grid;
+}
+
+.project-governance__stack {
+  gap: 14px;
+}
+
+.project-governance__demand-stack {
+  gap: 18px;
+}
+
+.project-governance__pill-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.project-governance__pill-row--spaced {
+  margin-top: 10px;
+}
+
+.project-governance__table-wrap {
+  overflow-x: auto;
+}
+
+.project-governance__minor {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.project-governance__section-label {
+  display: block;
+}
+
 @media (max-width: 768px) {
   .portal-preview-grid {
     grid-template-columns: 1fr;
@@ -4105,6 +4186,264 @@ td {
 .admin-onboarding-state--attention {
   color: var(--color-danger);
   border-color: rgba(248, 113, 113, 0.35);
+}
+
+.admin-user-edit__success-alert {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  margin-bottom: 16px;
+}
+
+.admin-user-edit__card {
+  margin-bottom: 24px;
+}
+
+.admin-user-edit__card--wide {
+  max-width: 960px;
+}
+
+.admin-user-edit__card--narrow {
+  max-width: 480px;
+}
+
+.admin-user-edit__section-title {
+  font-size: 18px;
+}
+
+.admin-user-edit__section-copy {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.admin-user-edit__section-copy--compact {
+  margin-bottom: 12px;
+}
+
+.admin-user-edit__section-copy--form {
+  margin-bottom: 24px;
+}
+
+.admin-user-edit__empty-inline {
+  padding: 16px;
+  text-align: left;
+}
+
+.admin-user-edit__team-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.admin-user-edit__team-item {
+  margin-bottom: 10px;
+}
+
+.admin-user-edit__team-meta {
+  margin-left: 8px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.admin-user-edit__team-remove {
+  padding: 6px 12px;
+  font-size: 12px;
+  margin-left: 12px;
+}
+
+.admin-user-edit__select--sm {
+  max-width: 220px;
+}
+
+.admin-user-edit__select--xs {
+  max-width: 200px;
+}
+
+.admin-user-edit__select--md {
+  max-width: 280px;
+}
+
+.admin-user-edit__select--level {
+  max-width: 120px;
+}
+
+.admin-user-edit__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.admin-user-edit__hint {
+  display: block;
+  margin-top: 4px;
+}
+
+.admin-user-edit__date-wrap {
+  max-width: 220px;
+}
+
+.admin-user-edit__submit {
+  padding: 10px 24px;
+}
+
+.admin-team-detail__success-alert {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  margin-bottom: 16px;
+}
+
+.admin-team-detail__card {
+  margin-bottom: 24px;
+}
+
+.admin-team-detail__header,
+.admin-team-detail__inline-form,
+.admin-team-detail__bulk-actions,
+.admin-team-detail__bulk-item {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-team-detail__header {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.admin-team-detail__meta,
+.admin-team-detail__copy,
+.admin-team-detail__hint,
+.admin-team-detail__minor {
+  color: var(--color-text-muted);
+}
+
+.admin-team-detail__meta,
+.admin-team-detail__copy {
+  font-size: 14px;
+}
+
+.admin-team-detail__meta-sep {
+  margin-left: 12px;
+}
+
+.admin-team-detail__hint,
+.admin-team-detail__minor {
+  font-size: 13px;
+}
+
+.admin-team-detail__hint {
+  margin-top: 8px;
+}
+
+.admin-team-detail__copy {
+  margin-bottom: 16px;
+}
+
+.admin-team-detail__inline-form {
+  align-items: flex-end;
+}
+
+.admin-team-detail__field {
+  margin-bottom: 0;
+}
+
+.admin-team-detail__field--compact {
+  min-width: 180px;
+}
+
+.admin-team-detail__field--user {
+  min-width: 220px;
+}
+
+.admin-team-detail__field--role {
+  min-width: 120px;
+}
+
+.admin-team-detail__saved {
+  color: var(--color-success);
+  font-size: 14px;
+}
+
+.admin-team-detail__section {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.admin-team-detail__subheading {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.admin-team-detail__bulk {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--color-border);
+}
+
+.admin-team-detail__bulk-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-team-detail__bulk-list {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.admin-team-detail__bulk-item {
+  align-items: center;
+  padding: 6px 0;
+  cursor: pointer;
+  gap: 10px;
+}
+
+.admin-team-detail__bulk-actions {
+  align-items: center;
+}
+
+.admin-team-detail__member-role {
+  min-width: 100px;
+  padding: 6px 8px;
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.admin-team-detail__remove-btn {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.admin-users-index__success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  border: 1px solid #a7f3d0;
+  margin: 24px;
+}
+
+.admin-users-index__empty {
+  padding: 24px;
+}
+
+.admin-users-index__type {
+  text-transform: capitalize;
+}
+
+.admin-users-index__type-flag {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--color-primary);
+}
+
+.admin-users-index__type-level {
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
 @media (max-width: 900px) {

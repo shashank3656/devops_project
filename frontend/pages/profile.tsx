@@ -350,7 +350,7 @@ export default function Profile() {
           <div className="portal-surface">
             <div className="empty-state">
               <p>User not found. You may need to sign in again.</p>
-              <div className="portal-form-actions" style={{ justifyContent: 'center', marginTop: 16 }}>
+              <div className="portal-form-actions profile-page__empty-actions">
                 <button type="button" onClick={() => router.push('/login')} className="btn btn-primary">
                   Go to login
                 </button>
@@ -374,7 +374,7 @@ export default function Profile() {
                     <span className="portal-badge portal-badge--neutral">{user.role || 'viewer'}</span>
                   </div>
                   {!user.verified && (
-                    <div className="portal-form-actions" style={{ marginTop: 14 }}>
+                    <div className="portal-form-actions profile-page__verify-actions">
                       <button type="button" onClick={handleResendVerification} disabled={resending} className="btn btn-secondary btn-sm">
                         {resending ? 'Sending...' : 'Resend verification'}
                       </button>
@@ -464,7 +464,7 @@ export default function Profile() {
                     { key: 'email_assigned' as const, label: 'Ticket assigned to me' },
                     { key: 'email_sla_breach' as const, label: 'SLA breach or overdue' },
                   ].map(({ key, label }) => (
-                    <label key={key} className="portal-list__item" style={{ cursor: 'pointer' }}>
+                    <label key={key} className="portal-list__item profile-page__pref-row">
                       <span>{label}</span>
                       <input
                         type="checkbox"
@@ -526,7 +526,7 @@ export default function Profile() {
                     value={createdKeyValue}
                     onClick={(e) => (e.target as HTMLInputElement).select()}
                     aria-label="New API key"
-                    style={{ minWidth: 260, flex: 1 }}
+                    className="profile-page__key-value"
                   />
                   <button type="button" className="btn btn-secondary" onClick={() => copyKey(createdKeyValue)}>
                     Copy
@@ -553,11 +553,11 @@ export default function Profile() {
               </form>
 
               {apiKeysLoading ? (
-                <div className="empty-state" style={{ marginTop: 16 }}>Loading keys...</div>
+                <div className="empty-state profile-page__api-state">Loading keys...</div>
               ) : apiKeys.length === 0 ? (
-                <div className="empty-state" style={{ marginTop: 16 }}>No API keys yet.</div>
+                <div className="empty-state profile-page__api-state">No API keys yet.</div>
               ) : (
-                <div className="table-wrap" style={{ marginTop: 16 }}>
+                <div className="table-wrap profile-page__table-wrap">
                   <table>
                     <thead>
                       <tr>

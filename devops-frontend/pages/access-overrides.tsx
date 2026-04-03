@@ -175,6 +175,14 @@ export default function DevOpsAccessOverridesPage() {
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
 
+        <section className="portal-surface access-overrides__surface-gap">
+          <div className="access-overrides__summary-actions">
+            <span className="portal-pill">Active overrides {overrides.length}</span>
+            <span className="portal-pill">Projects {projects.length}</span>
+            <span className="portal-pill">Visible users {users.length}</span>
+          </div>
+        </section>
+
         <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
@@ -190,7 +198,7 @@ export default function DevOpsAccessOverridesPage() {
           ) : overrides.length === 0 ? (
             <div className="empty-state">No active overrides.</div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div className="access-overrides__table-wrap">
               <table className="templates-table">
                 <thead>
                   <tr>
@@ -205,15 +213,41 @@ export default function DevOpsAccessOverridesPage() {
                 <tbody>
                   {overrides.map((override) => (
                     <tr key={override.id}>
-                      <td>{override.project_name} ({override.project_code})</td>
-                      <td>{override.username}</td>
-                      <td>{override.environments.join(', ')}</td>
-                      <td>{override.permission}</td>
-                      <td>{new Date(override.expires_at).toLocaleString()}</td>
                       <td>
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => void revokeOverride(override.id)}>
-                          Revoke
-                        </button>
+                        <div className="access-overrides__stack">
+                          <strong>{override.project_name}</strong>
+                          <span className="access-overrides__meta">{override.project_code}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="access-overrides__stack">
+                          <strong>{override.username}</strong>
+                          <span className="access-overrides__meta">User #{override.user_id}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="access-overrides__env-row">
+                          {override.environments.map((environment) => (
+                            <span key={`${override.id}-${environment}`} className="project-detail__tone-chip project-detail__tone-chip--sm">
+                              {environment}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td>
+                        <span className="project-detail__tone-chip project-detail__tone-chip--sm">
+                          {override.permission}
+                        </span>
+                      </td>
+                      <td className="access-overrides__expiry">
+                        {new Date(override.expires_at).toLocaleString()}
+                      </td>
+                      <td>
+                        <div className="access-overrides__action-row">
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void revokeOverride(override.id)}>
+                            Revoke
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
