@@ -3552,7 +3552,7 @@ func ListRequestTemplatesForUser(userID int) ([]RequestTemplate, error) {
 	}
 	allowedTeams, err := getPortalTeamIDSetForUser(userID)
 	if err != nil {
-		log.Printf("warning: failed to resolve template portal teams for user %d: %v", userID, err)
+		log.Printf("warning: failed to resolve template portal teams for user %d", userID)
 		allowedTeams = map[int]bool{}
 	}
 	filtered := make([]RequestTemplate, 0, len(templates))
