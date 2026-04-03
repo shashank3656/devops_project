@@ -126,50 +126,36 @@ export default function DevOpsApprovalSLAPage() {
 
         {!loading && !error && sla ? (
           <>
-            <section className="portal-stat-grid">
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Pending approvals</span>
-                <span className="portal-stat-card__value">{sla.summary.pending_count}</span>
-                <p className="portal-stat-card__copy">Requests waiting in manager, DevOps, or final approval queues.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Overdue</span>
-                <span className="portal-stat-card__value">{sla.summary.overdue_count}</span>
-                <p className="portal-stat-card__copy">Pending items whose due date is already past.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Average age</span>
-                <span className="portal-stat-card__value">{sla.summary.avg_age_hours.toFixed(1)}h</span>
-                <p className="portal-stat-card__copy">Average time current approvals have been waiting.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Oldest item</span>
-                <span className="portal-stat-card__value">{sla.summary.oldest_age_hours.toFixed(1)}h</span>
-                <p className="portal-stat-card__copy">Longest-running approval item still open.</p>
-              </article>
+            <section className="portal-surface approval-sla__surface-gap">
+              <div className="portal-pill-row">
+                <span className="portal-pill">Pending approvals {sla.summary.pending_count}</span>
+                <span className="portal-pill">Overdue {sla.summary.overdue_count}</span>
+                <span className="portal-pill">Average age {sla.summary.avg_age_hours.toFixed(1)}h</span>
+                <span className="portal-pill">Oldest item {sla.summary.oldest_age_hours.toFixed(1)}h</span>
+              </div>
             </section>
 
-            <section className="portal-surface" style={{ marginBottom: 24 }}>
+            <section className="portal-surface approval-sla__surface-gap">
               <div className="portal-surface__header">
                 <div>
                   <span className="portal-surface__eyebrow">Queue split</span>
                   <h2 className="portal-surface__title">Approval lanes</h2>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <div className="approval-sla__pill-row">
                 <span className="portal-pill">Manager: {sla.summary.manager_queue}</span>
                 <span className="portal-pill">DevOps: {sla.summary.devops_queue}</span>
                 <span className="portal-pill">Final review: {sla.summary.final_review_queue}</span>
                 <span className="portal-pill">Due soon: {sla.summary.due_soon_count}</span>
               </div>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 14 }}>
+              <div className="approval-sla__pill-row approval-sla__pill-row--spaced">
                 {sla.aging_buckets.map((bucket) => (
                   <span key={bucket.key} className="portal-pill">{bucket.label}: {bucket.count}</span>
                 ))}
               </div>
             </section>
 
-            <div className="portal-grid" style={{ alignItems: 'start' }}>
+            <div className="portal-grid approval-sla__grid">
               <section className="portal-surface">
                 <div className="portal-surface__header">
                   <div>
@@ -177,7 +163,7 @@ export default function DevOpsApprovalSLAPage() {
                     <h2 className="portal-surface__title">Project aging</h2>
                   </div>
                 </div>
-                <div style={{ overflowX: 'auto' }}>
+                <div className="approval-sla__table-wrap">
                   <table className="templates-table">
                     <thead>
                       <tr>
@@ -210,7 +196,7 @@ export default function DevOpsApprovalSLAPage() {
                     <h2 className="portal-surface__title">Approval owners</h2>
                   </div>
                 </div>
-                <div style={{ overflowX: 'auto' }}>
+                <div className="approval-sla__table-wrap">
                   <table className="templates-table">
                     <thead>
                       <tr>
@@ -235,7 +221,7 @@ export default function DevOpsApprovalSLAPage() {
               </section>
             </div>
 
-            <div className="portal-grid" style={{ alignItems: 'start', marginTop: 24 }}>
+            <div className="portal-grid approval-sla__grid approval-sla__grid--spaced">
               <section className="portal-surface">
                 <div className="portal-surface__header">
                   <div>
@@ -243,7 +229,7 @@ export default function DevOpsApprovalSLAPage() {
                     <h2 className="portal-surface__title">Environment pressure</h2>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <div className="approval-sla__pill-row">
                   {sla.by_environment.map((item) => (
                     <span key={`env-${item.key}`} className="portal-pill">
                       {item.label}: {item.pending_count} pending
@@ -259,7 +245,7 @@ export default function DevOpsApprovalSLAPage() {
                     <h2 className="portal-surface__title">Team approval load</h2>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <div className="approval-sla__pill-row">
                   {sla.by_team.map((item) => (
                     <span key={`team-${item.key}`} className="portal-pill">
                       {item.label}: {item.pending_count} pending

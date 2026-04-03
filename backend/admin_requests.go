@@ -432,6 +432,10 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		enriched = append(enriched, obj)
 	}
 
+	if enriched == nil {
+		enriched = []map[string]interface{}{}
+	}
+
 	format := r.URL.Query().Get("format")
 	if format == "csv" {
 		w.Header().Set("Content-Type", "text/csv")

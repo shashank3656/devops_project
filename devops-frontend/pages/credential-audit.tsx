@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import CalendarDateInput from '../components/CalendarDateInput';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -76,15 +77,10 @@ interface ExpiryTrackerPayload {
   items: ExpiryTrackerItem[];
 }
 
-const CLOUD_BADGES: Record<string, { bg: string; color: string }> = {
-  AWS: { bg: '#ea580c', color: '#fff' },
-  GCP: { bg: '#2563eb', color: '#fff' },
-  Azure: { bg: '#0078d4', color: '#fff' },
-};
-
 export default function CredentialAuditPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const [activePanel, setActivePanel] = useState<'audit' | null>(null);
   const [entries, setEntries] = useState<CredentialAuditEntry[]>([]);
   const [expiryTracker, setExpiryTracker] = useState<ExpiryTrackerPayload | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -96,6 +92,11 @@ export default function CredentialAuditPage() {
   const [projectId, setProjectId] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+
+  const selectedProject = projectId
+    ? projects.find((project) => String(project.id) === projectId) || null
+    : null;
+  const hasActiveScope = Boolean(cloudFilter || projectId || fromDate || toDate);
 
   const fetchEntries = useCallback(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -272,61 +273,33 @@ export default function CredentialAuditPage() {
   return (
     <>
       <Head>
-        <title>Credential Audit - InfraGate DevOps</title>
+        <title>Credential Audit - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">
           <header className="portal-page__header">
             <div className="portal-page__header-main">
               <span className="portal-page__eyebrow">Credential Audit</span>
-              <h1 className="portal-page__title">Credential Audit</h1>
+              <h1 className="portal-page__title">Secrets & Certificates</h1>
               <p className="portal-page__subtitle">
-                Existing audit features remain unchanged, but the page now uses a clearer filtering and evidence-review pattern.
+                Track expiry risk first with compact filters, then open the raw audit log only when you need deeper evidence.
               </p>
+            </div>
+            <div className="portal-page__actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setActivePanel((current) => (current === 'audit' ? null : 'audit'))}
+              >
+                {activePanel === 'audit' ? 'Hide audit log' : 'Open audit log'}
+              </button>
+              <button type="button" className="btn btn-primary" onClick={exportCsv}>
+                Export CSV
+              </button>
             </div>
           </header>
 
-          <section className="portal-stat-grid">
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Entries</span>
-              <strong className="portal-stat-card__value">{entries.length}</strong>
-              <p className="portal-stat-card__copy">Credential-related approvals currently in the visible audit window.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Cloud filter</span>
-              <strong className="portal-stat-card__value">{cloudFilter || 'All'}</strong>
-              <p className="portal-stat-card__copy">Cloud-specific audit slicing without changing backend behavior.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Project filter</span>
-              <strong className="portal-stat-card__value">
-                {projectId ? (projects.find((project) => String(project.id) === projectId)?.code || 'Scoped') : 'All'}
-              </strong>
-              <p className="portal-stat-card__copy">Project-scoped credential review for governance and evidence tracking.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Date range</span>
-              <strong className="portal-stat-card__value">{fromDate || toDate ? 'Filtered' : 'Open'}</strong>
-              <p className="portal-stat-card__copy">Time-bound review mode for access-key and service-account creation.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Export</span>
-              <strong className="portal-stat-card__value">CSV</strong>
-              <p className="portal-stat-card__copy">One-click export is preserved for handoff and governance workflows.</p>
-            </article>
-          </section>
-
-          <section className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <span className="portal-surface__eyebrow">Filters</span>
-                <h2 className="portal-surface__title">Scope the evidence</h2>
-                <p className="portal-surface__subtitle">
-                  Track who created AWS access keys, GCP service account keys, and similar credentials via approved requests.
-                </p>
-              </div>
-            </div>
-
+          <section className="portal-surface portal-surface--tight">
             <div className="portal-toolbar">
               <div className="portal-toolbar__group">
                 <div className="portal-toolbar__item">
@@ -361,38 +334,61 @@ export default function CredentialAuditPage() {
                 </div>
                 <div className="portal-toolbar__item">
                   <label className="credential-audit-label" htmlFor="credential-audit-from-date">From date</label>
-                  <input
-                    id="credential-audit-from-date"
-                    type="date"
-                    value={fromDate}
-                    onChange={(event) => setFromDate(event.target.value)}
-                    className="input"
-                  />
+                  <CalendarDateInput id="credential-audit-from-date" value={fromDate} onChange={setFromDate} />
                 </div>
                 <div className="portal-toolbar__item">
                   <label className="credential-audit-label" htmlFor="credential-audit-to-date">To date</label>
-                  <input
-                    id="credential-audit-to-date"
-                    type="date"
-                    value={toDate}
-                    onChange={(event) => setToDate(event.target.value)}
-                    className="input"
-                  />
+                  <CalendarDateInput id="credential-audit-to-date" value={toDate} onChange={setToDate} />
                 </div>
               </div>
               <div className="portal-page__actions">
                 <button type="button" className="btn btn-secondary" onClick={fetchEntries}>
                   Refresh
                 </button>
-                <button type="button" className="btn btn-primary" onClick={exportCsv}>
-                  Export CSV
-                </button>
+                {hasActiveScope ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setCloudFilter('');
+                      setProjectId('');
+                      setFromDate('');
+                      setToDate('');
+                    }}
+                  >
+                    Clear
+                  </button>
+                ) : null}
               </div>
             </div>
           </section>
 
           {error && <div className="alert alert-error">{error}</div>}
           {notice && <div className="alert alert-success">{notice}</div>}
+          {hasActiveScope ? (
+            <div className="alert alert-info">
+              <div className="credential-audit__scope-row">
+                <span>
+                  Reviewing
+                  {cloudFilter ? <> <strong>{cloudFilter}</strong></> : <> all clouds</>}
+                  {selectedProject ? <> for <strong>{selectedProject.name}{selectedProject.code ? ` (${selectedProject.code})` : ''}</strong></> : <> across all projects</>}
+                  {fromDate || toDate ? <> with a custom date range</> : null}.
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setCloudFilter('');
+                    setProjectId('');
+                    setFromDate('');
+                    setToDate('');
+                  }}
+                >
+                  Clear filters
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {expiryTracker ? (
             <>
@@ -400,58 +396,20 @@ export default function CredentialAuditPage() {
                 <div className="portal-surface__header">
                   <div>
                     <span className="portal-surface__eyebrow">Expiry Tracker</span>
-                    <h2 className="portal-surface__title">Secrets and certificate review windows</h2>
+                    <h2 className="portal-surface__title">Expiry watchlist</h2>
                     <p className="portal-surface__subtitle">
-                      Phase-one expiry visibility combines real credential events with project cluster connection review windows.
+                      Focus on what needs rotation or follow-up now. Use the audit log only when you need the raw evidence trail.
                     </p>
                   </div>
                 </div>
-                <div className="portal-stat-grid">
-                  <article className="portal-stat-card">
-                    <span className="portal-stat-card__label">Tracked items</span>
-                    <strong className="portal-stat-card__value">{expiryTracker.summary.total_items}</strong>
-                    <p className="portal-stat-card__copy">Credentials {expiryTracker.summary.credential_items} · Secrets {expiryTracker.summary.secret_items} · Certificates {expiryTracker.summary.certificate_items}</p>
-                  </article>
-                  <article className="portal-stat-card">
-                    <span className="portal-stat-card__label">Expired</span>
-                    <strong className="portal-stat-card__value">{expiryTracker.summary.expired_count}</strong>
-                    <p className="portal-stat-card__copy">Items already outside the safe review or rotation window.</p>
-                  </article>
-                  <article className="portal-stat-card">
-                    <span className="portal-stat-card__label">Next 30 days</span>
-                    <strong className="portal-stat-card__value">{expiryTracker.summary.expiring_within_30_days}</strong>
-                    <p className="portal-stat-card__copy">Immediate rotation and certificate review attention required.</p>
-                  </article>
-                  <article className="portal-stat-card">
-                    <span className="portal-stat-card__label">Next 60 days</span>
-                    <strong className="portal-stat-card__value">{expiryTracker.summary.expiring_within_60_days}</strong>
-                    <p className="portal-stat-card__copy">Upcoming rotation pressure that should enter planning now.</p>
-                  </article>
-                  <article className="portal-stat-card">
-                    <span className="portal-stat-card__label">Healthy</span>
-                    <strong className="portal-stat-card__value">{expiryTracker.summary.healthy_count}</strong>
-                    <p className="portal-stat-card__copy">Tracked items still outside the active risk window.</p>
-                  </article>
-                  <article className="portal-stat-card">
-                    <span className="portal-stat-card__label">Actionable</span>
-                    <strong className="portal-stat-card__value">{expiryTracker.summary.actionable_count}</strong>
-                    <p className="portal-stat-card__copy">Non-healthy items still waiting for completion.</p>
-                  </article>
-                  <article className="portal-stat-card">
-                    <span className="portal-stat-card__label">Acknowledged</span>
-                    <strong className="portal-stat-card__value">{expiryTracker.summary.acknowledged_count}</strong>
-                    <p className="portal-stat-card__copy">Items that have an owner but no active rotation work yet.</p>
-                  </article>
-                  <article className="portal-stat-card">
-                    <span className="portal-stat-card__label">In progress</span>
-                    <strong className="portal-stat-card__value">{expiryTracker.summary.in_progress_count}</strong>
-                    <p className="portal-stat-card__copy">Items currently being rotated or reviewed.</p>
-                  </article>
-                  <article className="portal-stat-card">
-                    <span className="portal-stat-card__label">Rotated</span>
-                    <strong className="portal-stat-card__value">{expiryTracker.summary.rotated_count}</strong>
-                    <p className="portal-stat-card__copy">Completed items kept for operational history.</p>
-                  </article>
+                <div className="portal-pill-row">
+                  <span className="portal-pill">Tracked {expiryTracker.summary.total_items}</span>
+                  <span className="portal-pill">Actionable {expiryTracker.summary.actionable_count}</span>
+                  <span className="portal-pill">Expired {expiryTracker.summary.expired_count}</span>
+                  <span className="portal-pill">30 days {expiryTracker.summary.expiring_within_30_days}</span>
+                  <span className="portal-pill">60 days {expiryTracker.summary.expiring_within_60_days}</span>
+                  <span className="portal-pill">In progress {expiryTracker.summary.in_progress_count}</span>
+                  <span className="portal-pill">Rotated {expiryTracker.summary.rotated_count}</span>
                 </div>
               </section>
 
@@ -459,7 +417,7 @@ export default function CredentialAuditPage() {
                 <div className="portal-surface__header">
                   <div>
                     <span className="portal-surface__eyebrow">Rotation Queue</span>
-                    <h2 className="portal-surface__title">Expiry watchlist</h2>
+                    <h2 className="portal-surface__title">Priority items</h2>
                   </div>
                 </div>
                 <div className="table-wrap">
@@ -489,14 +447,14 @@ export default function CredentialAuditPage() {
                           <tr key={`${item.category}-${item.resource_name}-${item.namespace || item.project_code || 'global'}`}>
                             <td>
                               <strong>{item.resource_name}</strong>
-                              <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.resource_type}</div>
+                              <div className="credential-audit__meta credential-audit__meta--minor">{item.resource_type}</div>
                             </td>
                             <td>{item.category}</td>
                             <td>
                               {item.project_name ? (
-                                <div>
+                                <div className="credential-audit__stack">
                                   <strong>{item.project_name}</strong>
-                                  {item.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.project_code}</div> : null}
+                                  {item.project_code ? <div className="credential-audit__meta credential-audit__meta--minor">{item.project_code}</div> : null}
                                 </div>
                               ) : '—'}
                             </td>
@@ -505,35 +463,35 @@ export default function CredentialAuditPage() {
                             <td>{item.expires_at ? new Date(item.expires_at).toLocaleDateString() : '—'}</td>
                             <td>{item.days_remaining}</td>
                             <td>
-                              <span style={{ ...tone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+                              <span className="project-detail__tone-chip project-detail__tone-chip--sm" style={tone}>
                                 {item.status}
                               </span>
                             </td>
                             <td>
-                              <span style={{ ...workflow, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+                              <span className="project-detail__tone-chip project-detail__tone-chip--sm" style={workflow}>
                                 {workflowLabel(item.workflow_state)}
                               </span>
                               {item.workflow_note ? (
-                                <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 6 }}>
+                                <div className="credential-audit__meta credential-audit__meta--minor credential-audit__note">
                                   {item.workflow_note}
                                 </div>
                               ) : null}
                             </td>
-                            <td style={{ whiteSpace: 'nowrap' }}>
+                            <td className="credential-audit__date-col">
                               {item.workflow_updated_at ? (
-                                <div>
+                                <div className="credential-audit__stack">
                                   <div>{new Date(item.workflow_updated_at).toLocaleString()}</div>
                                   {item.workflow_updated_by_username ? (
-                                    <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                    <div className="credential-audit__meta credential-audit__meta--minor">
                                       by {item.workflow_updated_by_username}
                                     </div>
                                   ) : null}
                                 </div>
                               ) : '—'}
                             </td>
-                            <td style={{ minWidth: 260 }}>{item.recommendation}</td>
-                            <td style={{ minWidth: 220 }}>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            <td className="credential-audit__recommendation-col">{item.recommendation}</td>
+                            <td className="credential-audit__actions-col">
+                              <div className="credential-audit__action-row">
                                 {item.workflow_state !== 'acknowledged' ? (
                                   <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => updateWorkflow(item, 'acknowledged')}>
                                     {saving ? 'Saving...' : 'Acknowledge'}
@@ -566,20 +524,57 @@ export default function CredentialAuditPage() {
             </>
           ) : null}
 
-          {loading ? (
-            <section className="portal-surface">
-              <div className="portal-empty">
-                <p>Loading credential audit...</p>
-              </div>
-            </section>
-          ) : entries.length === 0 ? (
-            <section className="portal-surface">
-              <div className="portal-empty">
-                <p>No credential audit entries yet.</p>
-              </div>
-            </section>
-          ) : (
+          {activePanel === 'audit' ? (
+            loading ? (
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Audit log</span>
+                    <h2 className="portal-surface__title">Credential creation history</h2>
+                  </div>
+                  <div className="portal-page__actions">
+                    <button type="button" className="btn btn-secondary" onClick={() => setActivePanel(null)}>
+                      Close
+                    </button>
+                  </div>
+                </div>
+                <div className="portal-empty">
+                  <p>Loading credential audit...</p>
+                </div>
+              </section>
+            ) : entries.length === 0 ? (
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Audit log</span>
+                    <h2 className="portal-surface__title">Credential creation history</h2>
+                  </div>
+                  <div className="portal-page__actions">
+                    <button type="button" className="btn btn-secondary" onClick={() => setActivePanel(null)}>
+                      Close
+                    </button>
+                  </div>
+                </div>
+                <div className="portal-empty">
+                  <p>No credential audit entries yet.</p>
+                </div>
+              </section>
+            ) : (
             <section className="portal-surface portal-surface--table">
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Audit log</span>
+                  <h2 className="portal-surface__title">Credential creation history</h2>
+                  <p className="portal-surface__subtitle">
+                    Review the raw evidence only when you need to trace who created, approved, and linked a credential request.
+                  </p>
+                </div>
+                <div className="portal-page__actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => setActivePanel(null)}>
+                    Close
+                  </button>
+                </div>
+              </div>
               <div className="table-wrap">
                 <table className="credential-audit-table">
                   <thead>
@@ -597,22 +592,22 @@ export default function CredentialAuditPage() {
                   </thead>
                   <tbody>
                     {entries.map((entry) => {
-                      const cloudStyle = CLOUD_BADGES[entry.cloud] || { bg: 'var(--color-primary)', color: '#fff' };
+                      const cloudBadgeClass = `credential-audit-cloud-badge credential-audit-cloud-badge--${entry.cloud.toLowerCase()}`;
                       return (
                         <tr key={entry.id}>
-                          <td style={{ whiteSpace: 'nowrap', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                          <td className="credential-audit__date-col credential-audit__meta credential-audit__meta--minor">
                             {new Date(entry.created_at).toLocaleString()}
                           </td>
                           <td>
-                            <span className="credential-audit-cloud-badge" style={{ background: cloudStyle.bg, color: cloudStyle.color }}>
+                            <span className={cloudBadgeClass}>
                               {entry.cloud}
                             </span>
                           </td>
                           <td>
                             {entry.project_name ? (
-                              <div>
+                              <div className="credential-audit__stack">
                                 <strong>{entry.project_name}</strong>
-                                {entry.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{entry.project_code}</div> : null}
+                                {entry.project_code ? <div className="credential-audit__meta credential-audit__meta--minor">{entry.project_code}</div> : null}
                               </div>
                             ) : (
                               '-'
@@ -643,7 +638,8 @@ export default function CredentialAuditPage() {
                 </table>
               </div>
             </section>
-          )}
+            )
+          ) : null}
         </div>
       </DevOpsLayout>
     </>

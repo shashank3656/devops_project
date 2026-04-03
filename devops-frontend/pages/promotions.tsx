@@ -186,6 +186,24 @@ function formatDateTime(value?: string | null): string {
   return parsed.toLocaleString();
 }
 
+function getPromoteActionLabel(item: PromotionItem, promotingId: number | null): string {
+  if (promotingId === item.request_id) return 'Promoting...';
+  if (item.gate?.status === 'blocked') return 'Blocked';
+  if (item.gate?.requires_acknowledgement) return 'Approve gate first';
+  return 'Promote';
+}
+
+function getPromoteActionHint(item: PromotionItem): string {
+  if (!item.next_environment) return 'This request is already at the highest available environment.';
+  if (item.gate?.status === 'blocked') {
+    return item.gate.summary || item.gate.review_message || 'This promotion is blocked until the gate issue is resolved.';
+  }
+  if (item.gate?.requires_acknowledgement) {
+    return item.gate.review_message || 'Approve the deployment gate before promoting this request.';
+  }
+  return `Promote this request into ${item.next_environment.toUpperCase()}.`;
+}
+
 export default function DevOpsPromotionsPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -603,17 +621,18 @@ export default function DevOpsPromotionsPage() {
                           <button
                             type="button"
                             className="btn btn-primary btn-sm"
+                            title={getPromoteActionHint(item)}
                             disabled={
                               promotingId === item.request_id ||
                               approvingId === item.request_id ||
                               revokingId === item.request_id ||
                               !item.next_environment ||
-                              item.gate?.status === 'blocked' ||
+                              item.gate?.can_promote === false ||
                               item.gate?.requires_acknowledgement
                             }
                             onClick={() => void promote(item)}
                           >
-                            {promotingId === item.request_id ? 'Promoting...' : 'Promote'}
+                            {getPromoteActionLabel(item, promotingId)}
                           </button>
                         </div>
                       </td>

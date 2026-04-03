@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { useToast } from '../context/ToastContext';
+import CalendarDateInput from '../components/CalendarDateInput';
 
 import { maskSensitiveJson } from '../lib/maskSensitive';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
@@ -113,6 +114,37 @@ function getPreviewSignalClass(severity?: string): string {
   }
 }
 
+function isAccessRequest(req: PRRequest | null | undefined): boolean {
+  if (!req?.config) return false;
+  try {
+    const parsed = JSON.parse(req.config) as { request_type?: unknown };
+    return typeof parsed.request_type === 'string' && parsed.request_type.trim().toLowerCase() === 'iam';
+  } catch {
+    return false;
+  }
+}
+
+function getRequestStatusMeta(status: string): { label: string; tone: 'success' | 'error' | 'warning' | 'info' } {
+  switch (status) {
+    case 'draft':
+      return { label: 'Draft', tone: 'info' };
+    case 'pending_approval':
+      return { label: 'Waiting for review', tone: 'warning' };
+    case 'pending_user_manager_approval':
+      return { label: 'Waiting for your approval', tone: 'warning' };
+    case 'pending_devops_approval':
+      return { label: 'Waiting for platform team', tone: 'warning' };
+    case 'in_progress':
+      return { label: 'In progress', tone: 'info' };
+    case 'completed':
+      return { label: 'Completed', tone: 'success' };
+    case 'rejected':
+      return { label: 'Rejected', tone: 'error' };
+    default:
+      return { label: status.replace(/_/g, ' '), tone: 'info' };
+  }
+}
+
 const PAGE_SIZE = 10;
 
 export default function History() {
@@ -142,6 +174,7 @@ export default function History() {
   const [sortBy, setSortBy] = useState<'id' | 'created_at' | 'team' | 'cloud' | 'priority' | 'due_date'>('created_at');
   const [sortDesc, setSortDesc] = useState(true);
   const [viewMode, setViewMode] = useState<'mine' | 'team'>('mine');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const defaultedToTeamView = useRef(false);
   const [configHistory, setConfigHistory] = useState<{ id: number; config: string; created_at: string; note?: string }[]>([]);
@@ -156,21 +189,33 @@ export default function History() {
   const [presets, setPresets] = useState<FilterPreset[]>([]);
   const [presetName, setPresetName] = useState('');
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const detailRequestIsAccess = isAccessRequest(detailRequest);
+  const detailStatusMeta = detailRequest ? getRequestStatusMeta(detailRequest.status) : null;
+  const activeFilterCount = [
+    filterValue.trim(),
+    projectId,
+    statusFilter,
+    fromDate,
+    toDate,
+    viewMode === 'team' ? 'team' : '',
+    sortBy !== 'created_at' ? sortBy : '',
+    !sortDesc ? 'ascending' : '',
+  ].filter(Boolean).length;
 
   const formatTimelineAction = (action: string) => {
     const map: Record<string, string> = {
-      request_create: 'created request',
-      request_submit: 'submitted',
-      request_approved_by_manager: 'approved (manager)',
+      request_create: 'created this request',
+      request_submit: 'sent it for review',
+      request_approved_by_manager: 'approved it as manager',
       request_approve: 'approved',
       request_reject: 'rejected',
-      request_comment: 'commented',
-      request_clone: 'cloned',
-      request_resubmit: 'resubmitted',
-      request_cancel: 'cancelled',
-      request_promote: 'promoted',
-      request_plan_output: 'updated plan output',
-      request_reassign: 'reassigned',
+      request_comment: 'left a comment',
+      request_clone: 'copied this request',
+      request_resubmit: 'created a new draft from this request',
+      request_cancel: 'cancelled this request',
+      request_promote: 'created the next environment request',
+      request_plan_output: 'updated delivery output',
+      request_reassign: 'reassigned this request',
     };
     return map[action] || action.replace(/_/g, ' ');
   };
@@ -204,6 +249,9 @@ export default function History() {
         setFromDate(l.fromDate || '');
         setToDate(l.toDate || '');
         setViewMode(l.viewMode || 'mine');
+        if (l.fromDate || l.toDate || l.viewMode === 'team') {
+          setShowAdvancedFilters(true);
+        }
       }
     } catch (_) {}
   }, []);
@@ -240,6 +288,12 @@ export default function History() {
     } catch (_) {}
   }, [filterType, filterValue, projectId, statusFilter, fromDate, toDate, viewMode]);
 
+  useEffect(() => {
+    if (fromDate || toDate || viewMode === 'team' || sortBy !== 'created_at' || !sortDesc) {
+      setShowAdvancedFilters(true);
+    }
+  }, [fromDate, toDate, viewMode, sortBy, sortDesc]);
+
   const savePreset = () => {
     const name = presetName.trim() || `Preset ${presets.length + 1}`;
     const p: FilterPreset = { name, filterType, filterValue, projectId, statusFilter, fromDate, toDate, viewMode };
@@ -250,6 +304,20 @@ export default function History() {
       localStorage.setItem(HISTORY_FILTER_PRESETS_KEY, JSON.stringify(next));
     } catch (_) {}
     toast(`Saved preset "${name}"`, 'success');
+  };
+
+  const clearFilters = () => {
+    setFilterValue('');
+    setProjectId('');
+    setStatusFilter('');
+    setFromDate('');
+    setToDate('');
+    setViewMode('mine');
+    setSortBy('created_at');
+    setSortDesc(true);
+    setPresetName('');
+    setShowAdvancedFilters(false);
+    setPage(0);
   };
 
   const loadPreset = (p: FilterPreset) => {
@@ -324,8 +392,9 @@ export default function History() {
       }
 
       const data = await response.json();
-      setRequests(data.requests || []);
-      setTotalCount(data.total_count ?? data.requests?.length ?? 0);
+      const requests = Array.isArray(data?.requests) ? data.requests : [];
+      setRequests(requests);
+      setTotalCount(data?.total_count ?? requests.length ?? 0);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch history');
     } finally {
@@ -379,16 +448,16 @@ export default function History() {
       }
       if (commentsRes.ok) {
         const cData = await commentsRes.json();
-        setComments(cData.comments || []);
+        setComments(Array.isArray(cData?.comments) ? cData.comments : []);
       }
       const timelineRes = await fetch(`${apiUrl}/api/request/${req.id}/timeline`, { headers });
       if (timelineRes.ok) {
         const tData = await timelineRes.json();
-        setTimeline(tData.timeline || []);
+        setTimeline(Array.isArray(tData?.timeline) ? tData.timeline : []);
       }
       if (tagsRes.ok) {
         const tData = await tagsRes.json();
-        setTags(tData.tags || []);
+        setTags(Array.isArray(tData?.tags) ? tData.tags : []);
       }
     } catch (_) {
       addRecentRequestId(req.id);
@@ -406,7 +475,7 @@ export default function History() {
       const res = await fetch(`${apiUrl}/api/request/${id}/timeline`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const d = await res.json();
-        setTimeline(d.timeline || []);
+        setTimeline(Array.isArray(d?.timeline) ? d.timeline : []);
       }
     } catch (_) {
       setTimeline([]);
@@ -589,7 +658,7 @@ export default function History() {
       });
       const d = await res.json().catch(() => ({}));
       if (res.ok) {
-        toast(d?.message || 'Ticket cancelled', 'success');
+        toast(d?.message || 'Request cancelled', 'success');
         setDetailRequest(null);
         fetchHistory();
       } else {
@@ -617,7 +686,7 @@ export default function History() {
         const listRes = await fetch(`${apiUrl}/api/request/${detailRequest.id}/comments`, { headers });
         if (listRes.ok) {
           const d = await listRes.json();
-          setComments(d.comments || []);
+          setComments(Array.isArray(d?.comments) ? d.comments : []);
         }
         fetchTimeline(detailRequest.id);
         toast('Comment added', 'success');
@@ -641,7 +710,7 @@ export default function History() {
       });
       if (res.ok) {
         const d = await res.json();
-        setConfigHistory(d.history || []);
+        setConfigHistory(Array.isArray(d?.history) ? d.history : []);
         setShowConfigHistory(true);
       }
     } catch (_) {
@@ -792,14 +861,19 @@ export default function History() {
   return (
     <>
       <Head>
-        <title>History - Infrastructure Portal</title>
+        <title>My Requests - SetuOps</title>
       </Head>
       <div className="history-page">
         <div className="history-page__header">
-          <h1 className="page-header__title">PR Request History</h1>
+          <div>
+            <h1 className="page-header__title">My Requests</h1>
+            <p style={{ marginTop: 8, color: 'var(--text-secondary)', maxWidth: 720 }}>
+              Check status, open comments, and reuse earlier requests without digging through technical details.
+            </p>
+          </div>
           {recentIds.length > 0 && (
             <div className="history-recent" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Recent:</span>
+              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Recent requests:</span>
               {recentIds.map((id) => (
                 <button
                   key={id}
@@ -815,227 +889,260 @@ export default function History() {
           )}
           <div className="history-page__actions">
             <button onClick={handleRefresh} className="btn btn-secondary" disabled={loading} title="Refresh">
-              🔄 Refresh
+              Refresh list
             </button>
             <button onClick={exportCSV} className="btn btn-secondary" disabled={loading}>
-              📥 Export CSV
+              Download CSV
             </button>
           </div>
         </div>
 
-        {/* Filter Box */}
         <div className="card history-filter-card">
-          <h3 className="history-filter-card__title">Filter Requests</h3>
-          <div className="history-filter-card__row">
-            <div className="history-filter-field">
-              <label htmlFor="filter-type" className="history-filter-label">Filter By</label>
-              <select
+          <div className="history-filter-shell history-filter-shell--compact">
+            <div className="history-filter-bar" role="group" aria-label="Request filters">
+              <label className="history-filter-pill history-filter-pill--type">
+                <span className="history-filter-pill__caption">Filter</span>
+                <select
                   id="filter-type"
                   value={filterType}
                   onChange={(e) => {
                     setFilterType(e.target.value as 'team' | 'pr_number' | 'env' | 'cloud' | 'search' | 'application_id');
-                    setFilterValue(''); // Clear value when changing filter type
+                    setFilterValue('');
                   }}
-                  className="history-filter-select"
+                  className="history-filter-pill__control"
+                  aria-label="Filter type"
                 >
                   <option value="team">Team</option>
-                  <option value="pr_number">PR Number</option>
-                  <option value="application_id">Application ID</option>
+                  <option value="pr_number">Request #</option>
+                  <option value="application_id">App ID</option>
                   <option value="env">Environment</option>
                   <option value="cloud">Cloud</option>
-                  <option value="search">Search (all fields)</option>
-              </select>
-            </div>
-            <div className="history-filter-field history-filter-field--grow">
-              <label htmlFor="filter-value" className="history-filter-label">
-                  {filterType === 'pr_number' ? 'PR Number' :
-                   filterType === 'search' ? 'Search term' :
-                   filterType === 'team' ? 'Team Name' :
-                   filterType === 'application_id' ? 'Application ID' :
-                   filterType === 'env' ? 'Environment' : 'Cloud Provider'}
+                  <option value="search">Anything</option>
+                </select>
               </label>
-              <input
-                id="filter-value"
-                type={filterType === 'pr_number' ? 'number' : 'text'}
-                value={filterValue}
-                onChange={(e) => setFilterValue(e.target.value)}
-                placeholder={
-                  filterType === 'pr_number' ? 'Enter PR number (e.g., 123)' :
-                  filterType === 'search' ? 'Search team, env, cloud, service…' :
-                  filterType === 'team' ? 'Enter team name' :
-                  filterType === 'application_id' ? 'Enter application ID' :
-                  filterType === 'env' ? 'Enter environment (dev, stage, prod)' :
-                  'Enter cloud provider (AWS, GCP, Azure)'
-                }
-                className="history-filter-input"
-              />
-            </div>
-            <div className="history-filter-field">
-              <label className="history-filter-label">Project</label>
-              <select value={projectId} onChange={(e) => { setProjectId(e.target.value); setPage(0); }} className="history-filter-select" style={{ minWidth: 220 }}>
-                <option value="">All assigned projects</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
-                ))}
-              </select>
-            </div>
-            <div className="history-filter-field">
-              <label className="history-filter-label">Status</label>
-              <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} className="history-filter-select" style={{ minWidth: 140 }}>
-                <option value="">All</option>
-                <option value="draft">Draft</option>
-                <option value="pending_approval">Pending approval</option>
-                <option value="pending_devops_approval">Pending DevOps</option>
-                <option value="pending_user_manager_approval">Pending manager</option>
-                <option value="in_progress">In progress</option>
-                <option value="completed">Completed</option>
-                <option value="rejected">Rejected</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-            <div className="history-filter-field">
-              <label className="history-filter-label">From date</label>
-              <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setPage(0); }} className="history-filter-input" />
-            </div>
-            <div className="history-filter-field">
-              <label className="history-filter-label">To date</label>
-              <input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setPage(0); }} className="history-filter-input" />
-            </div>
-            <div className="history-filter-actions">
-              <div className="history-filter-inline">
-                <span className="history-filter-label">View</span>
+
+              <label className="history-filter-pill history-filter-pill--search">
+                <span className="history-filter-pill__caption">Value</span>
+                <input
+                  id="filter-value"
+                  type={filterType === 'pr_number' ? 'number' : 'text'}
+                  value={filterValue}
+                  onChange={(e) => setFilterValue(e.target.value)}
+                  placeholder={
+                    filterType === 'pr_number' ? 'Enter request number'
+                      : filterType === 'search' ? 'Search team, project, cloud, or service'
+                      : filterType === 'team' ? 'Enter team name'
+                      : filterType === 'application_id' ? 'Enter application ID'
+                      : filterType === 'env' ? 'Enter environment'
+                      : 'Enter cloud provider'
+                  }
+                  className="history-filter-pill__control"
+                  aria-label="Filter value"
+                />
+              </label>
+
+              <label className="history-filter-pill">
+                <span className="history-filter-pill__caption">Project</span>
                 <select
-                  value={viewMode}
-                  onChange={(e) => { setViewMode(e.target.value as 'mine' | 'team'); setPage(0); }}
-                  className="history-filter-select"
-                  style={{ minWidth: 120 }}
+                  value={projectId}
+                  onChange={(e) => { setProjectId(e.target.value); setPage(0); }}
+                  className="history-filter-pill__control"
+                  aria-label="Project"
                 >
-                  <option value="mine">My tickets</option>
-                  <option value="team">Group tickets</option>
+                  <option value="">All projects</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+                  ))}
                 </select>
-              </div>
-              <div className="history-filter-inline">
-                <span className="history-filter-label">Sort by</span>
+              </label>
+
+              <label className="history-filter-pill">
+                <span className="history-filter-pill__caption">Status</span>
                 <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                  className="history-filter-select"
-                  style={{ minWidth: 140 }}
+                  value={statusFilter}
+                  onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
+                  className="history-filter-pill__control"
+                  aria-label="Status"
                 >
-                  <option value="created_at">Created (newest)</option>
-                  <option value="id">Ticket #</option>
-                  <option value="priority">Priority</option>
-                  <option value="due_date">Due date</option>
-                  <option value="team">Team</option>
-                  <option value="cloud">Cloud</option>
+                  <option value="">All statuses</option>
+                  <option value="draft">Draft</option>
+                  <option value="pending_approval">Pending approval</option>
+                  <option value="pending_devops_approval">Pending DevOps</option>
+                  <option value="pending_user_manager_approval">Pending manager</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="cancelled">Cancelled</option>
                 </select>
+              </label>
+
+              <div className="history-filter-bar__actions">
+                {activeFilterCount > 0 ? (
+                  <span className="history-filter-card__badge">{activeFilterCount} active</span>
+                ) : null}
                 <button
                   type="button"
-                  onClick={() => setSortDesc((d) => !d)}
                   className="btn btn-secondary btn-sm"
-                  title={sortDesc ? 'Descending' : 'Ascending'}
+                  onClick={() => setShowAdvancedFilters((current) => !current)}
                 >
-                  {sortDesc ? '↓' : '↑'}
+                  {showAdvancedFilters ? 'Hide' : 'More'}
                 </button>
-              </div>
-              <button
-                onClick={() => { setFilterValue(''); setProjectId(''); setPage(0); }}
-                className="btn btn-secondary"
-              >
-                Clear
-              </button>
-              <div className="history-filter-inline" style={{ marginLeft: 12, gap: 6 }}>
-                <input
-                  type="text"
-                  value={presetName}
-                  onChange={(e) => setPresetName(e.target.value)}
-                  placeholder="Preset name"
-                  className="history-filter-input"
-                  style={{ width: 100 }}
-                />
-                <button type="button" className="btn btn-secondary btn-sm" onClick={savePreset}>
-                  Save preset
+                <button onClick={clearFilters} className="btn btn-secondary btn-sm">
+                  Clear
                 </button>
-                {presets.length > 0 && (
-                  <select
-                    className="history-filter-select"
-                    style={{ minWidth: 120 }}
-                    value=""
-                    onChange={(e) => {
-                      const name = e.target.value;
-                      if (name) {
-                        const preset = presets.find((p) => p.name === name);
-                        if (preset) loadPreset(preset);
-                      }
-                      e.target.value = '';
-                    }}
-                  >
-                    <option value="">Load preset…</option>
-                    {presets.map((p) => (
-                      <option key={p.name} value={p.name}>{p.name}</option>
-                    ))}
-                  </select>
-                )}
               </div>
             </div>
           </div>
+
+          {showAdvancedFilters ? (
+            <div className="history-filter-panel">
+              <div className="history-filter-panel__row">
+                <div className="history-filter-field">
+                  <label className="history-filter-label">View</label>
+                  <select
+                    value={viewMode}
+                    onChange={(e) => { setViewMode(e.target.value as 'mine' | 'team'); setPage(0); }}
+                    className="history-filter-select"
+                  >
+                    <option value="mine">My requests</option>
+                    <option value="team">Team requests</option>
+                  </select>
+                </div>
+                <div className="history-filter-field">
+                  <label className="history-filter-label">From date</label>
+                  <CalendarDateInput value={fromDate} onChange={(value) => { setFromDate(value); setPage(0); }} />
+                </div>
+                <div className="history-filter-field">
+                  <label className="history-filter-label">To date</label>
+                  <CalendarDateInput value={toDate} onChange={(value) => { setToDate(value); setPage(0); }} />
+                </div>
+                <div className="history-filter-field">
+                  <label className="history-filter-label">Sort by</label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                    className="history-filter-select"
+                  >
+                    <option value="created_at">Created date</option>
+                    <option value="id">Request #</option>
+                    <option value="priority">Priority</option>
+                    <option value="due_date">Due date</option>
+                    <option value="team">Team</option>
+                    <option value="cloud">Cloud</option>
+                  </select>
+                </div>
+                <div className="history-filter-field">
+                  <label className="history-filter-label">Order</label>
+                  <select
+                    value={sortDesc ? 'desc' : 'asc'}
+                    onChange={(e) => setSortDesc(e.target.value === 'desc')}
+                    className="history-filter-select"
+                  >
+                    <option value="desc">Newest first</option>
+                    <option value="asc">Oldest first</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="history-filter-panel__row history-filter-panel__row--saved">
+                <div className="history-filter-field history-filter-field--saved-name">
+                  <label className="history-filter-label">Save current view</label>
+                  <input
+                    type="text"
+                    value={presetName}
+                    onChange={(e) => setPresetName(e.target.value)}
+                    placeholder="Saved view name"
+                    className="history-filter-input"
+                  />
+                </div>
+                <div className="history-filter-panel__saved-actions">
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={savePreset}>
+                    Save view
+                  </button>
+                  {presets.length > 0 && (
+                    <select
+                      className="history-filter-select"
+                      value=""
+                      onChange={(e) => {
+                        const name = e.target.value;
+                        if (name) {
+                          const preset = presets.find((p) => p.name === name);
+                          if (preset) loadPreset(preset);
+                        }
+                        e.target.value = '';
+                      }}
+                    >
+                      <option value="">Open saved view…</option>
+                      {presets.map((p) => (
+                        <option key={p.name} value={p.name}>{p.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
 
           {/* Table */}
           <div className="card history-table-card">
             {loading ? (
-              <div className="history-loading">
+              <div className="history-state history-state--loading">
                 <div className="history-loading-spinner" />
-                <p style={{ color: 'var(--text-secondary)' }}>Loading requests...</p>
+                <h3 className="history-state__title">Loading requests</h3>
+                <p className="history-state__copy">We’re pulling the latest request activity for you now.</p>
               </div>
             ) : error ? (
-              <div className="error" style={{ margin: '24px', padding: '16px', borderRadius: '8px' }}>
-                <strong>Error:</strong> {error}
+              <div className="history-state history-state--error">
+                <div className="history-state__icon" aria-hidden>!</div>
+                <h3 className="history-state__title">We couldn’t load your requests</h3>
+                <p className="history-state__copy">{error}</p>
+                <div className="history-state__actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => router.replace(router.asPath)}>
+                    Try again
+                  </button>
+                </div>
               </div>
             ) : requests.length === 0 ? (
-              <div className="history-empty">
-                <div className="history-empty__icon">📋</div>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>
-                  {filterValue ? 'No PR requests found matching your filter' : 'No requests yet'}
-                </p>
+              <div className="history-state history-state--empty">
+                <div className="history-state__icon" aria-hidden>⋯</div>
+                <h3 className="history-state__title">
+                  {filterValue ? 'No requests match this search.' : 'No requests yet.'}
+                </h3>
                 {!filterValue && (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.5rem' }}>
-                    Create your first request from Custom JSON or Select Service.
+                  <p className="history-state__copy">
+                    Start a new request, or use Advanced JSON if you already have a prepared payload.
                   </p>
                 )}
                 {filterValue ? (
                   <button
                     onClick={() => { setFilterValue(''); setProjectId(''); setPage(0); }}
                     className="btn btn-secondary"
-                    style={{ marginTop: '1rem' }}
                   >
-                    Clear Filter
+                    Clear filters
                   </button>
                 ) : (
-                  <div className="history-empty__actions">
-                    <button onClick={() => router.push('/custom-json')} className="btn btn-primary">
-                      Custom JSON
+                  <div className="history-state__actions">
+                    <button onClick={() => router.push('/select-service')} className="btn btn-primary">
+                      New request
                     </button>
-                    <button onClick={() => router.push('/select-service')} className="btn btn-secondary">
-                      Select Service
+                    <button onClick={() => router.push('/custom-json')} className="btn btn-secondary">
+                      Advanced JSON
                     </button>
                   </div>
                 )}
               </div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
+              <div className="history-table-wrap">
                 {viewMode === 'team' && (
                   <p style={{ padding: '12px 16px 0', margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>
-                    Showing tickets raised by you and your team members. Use <strong>Raised by</strong> to see who created each ticket.
+                    Showing requests from you and your team. Use <strong>Raised by</strong> to see who submitted each one.
                   </p>
                 )}
-                <p style={{ padding: '8px 16px 0', margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
-                  Tip: Use <kbd style={{ padding: '2px 6px', background: 'var(--bg-button-secondary)', borderRadius: 4 }}>j</kbd> / <kbd style={{ padding: '2px 6px', background: 'var(--bg-button-secondary)', borderRadius: 4 }}>k</kbd> to move, <kbd style={{ padding: '2px 6px', background: 'var(--bg-button-secondary)', borderRadius: 4 }}>Enter</kbd> to open
-                </p>
                 <table className="history-table">
                   <thead>
                     <tr>
-                      <th>Ticket #</th>
+                      <th>Request #</th>
                       <th>Project</th>
                       <th>Team</th>
                       {viewMode === 'team' && <th>Raised by</th>}
@@ -1044,7 +1151,7 @@ export default function History() {
                       <th>Service</th>
                       <th>Status</th>
                       <th>Created</th>
-                      <th>PR Link</th>
+                      <th>Pull request</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -1053,117 +1160,62 @@ export default function History() {
                       <tr
                         key={req.id}
                         onClick={() => { setSelectedRowIndex(idx); openDetail(req); }}
-                        style={{ background: idx === selectedRowIndex ? 'var(--primary-tint)' : undefined, cursor: 'pointer' }}
+                        className={idx === selectedRowIndex ? 'history-table__row history-table__row--active' : 'history-table__row'}
                       >
-                        <td style={{ padding: '16px', fontWeight: '600', color: 'var(--primary-color)' }}>
-                          #{req.id}
+                        <td className="history-table__cell">
+                          <span className="history-table__request-id">#{req.id}</span>
                         </td>
-                        <td style={{ padding: '16px' }}>
+                        <td className="history-table__cell">
                           {req.project_name ? (
-                            <>
+                            <div className="history-table__primary">
                               <strong>{req.project_name}</strong>
-                              {req.project_code ? <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{req.project_code}</div> : null}
-                            </>
+                              {req.project_code ? <span className="history-table__meta">{req.project_code}</span> : null}
+                            </div>
                           ) : '—'}
                         </td>
-                        <td style={{ padding: '16px' }}>{req.team}</td>
+                        <td className="history-table__cell">{req.team}</td>
                         {viewMode === 'team' && (
-                          <td style={{ padding: '16px', fontSize: '14px' }}>{req.created_by_username || '—'}</td>
+                          <td className="history-table__cell"><span className="history-table__meta">{req.created_by_username || '—'}</span></td>
                         )}
-                        <td style={{ padding: '16px' }}>
-                          <span style={{
-                            padding: '4px 12px',
-                            borderRadius: '12px',
-                            fontSize: '12px',
-                            fontWeight: '500',
-                            background: 'var(--info-bg)',
-                            color: 'var(--info-color)'
-                          }}>
-                            {req.env}
+                        <td className="history-table__cell">
+                          <span className="history-table__pill history-table__pill--env">{req.env}</span>
+                        </td>
+                        <td className="history-table__cell">
+                          <span className={`history-table__pill history-table__pill--cloud history-table__pill--cloud-${(req.cloud || '').toLowerCase()}`}>{req.cloud}</span>
+                        </td>
+                        <td className="history-table__cell">
+                          <div className="history-table__primary">
+                            <strong>{req.service}</strong>
+                          </div>
+                        </td>
+                        <td className="history-table__cell">
+                          <span className={`status-badge ${getRequestStatusMeta(req.status).tone}`}>
+                            {getRequestStatusMeta(req.status).label}
                           </span>
                         </td>
-                        <td style={{ padding: '16px' }}>
-                          <span style={{
-                            padding: '4px 12px',
-                            borderRadius: '12px',
-                            fontSize: '12px',
-                            fontWeight: '500',
-                            background: req.cloud === 'AWS' ? '#fff4e6' : req.cloud === 'GCP' ? '#e8f0fe' : '#e3f2fd',
-                            color: req.cloud === 'AWS' ? '#ff9900' : req.cloud === 'GCP' ? '#4285f4' : '#0078d4'
-                          }}>
-                            {req.cloud}
-                          </span>
+                        <td className="history-table__cell">
+                          <span className="history-table__date">{formatDate(req.created_at)}</span>
                         </td>
-                        <td style={{ padding: '16px' }}>{req.service}</td>
-                        <td style={{ padding: '16px' }}>
-                          <span style={{
-                            padding: '6px 12px',
-                            borderRadius: '6px',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            background: req.status === 'draft' ? 'var(--bg-gray-100)' :
-                                       req.status === 'pending_approval' || req.status === 'pending_user_manager_approval' || req.status === 'pending_devops_approval' ? 'var(--warning-bg)' :
-                                       req.status === 'in_progress' ? 'var(--info-bg)' :
-                                       req.status === 'completed' ? 'var(--success-bg)' :
-                                       req.status === 'rejected' ? 'var(--error-bg)' :
-                                       req.status === 'pending' ? 'var(--warning-bg)' :
-                                       req.status === 'merged' ? 'var(--success-bg)' :
-                                       req.status === 'closed' ? 'var(--error-bg)' : 'var(--info-bg)',
-                            color: req.status === 'draft' ? 'var(--text-secondary)' :
-                                   req.status === 'pending_approval' || req.status === 'pending_user_manager_approval' || req.status === 'pending_devops_approval' ? 'var(--warning-color)' :
-                                   req.status === 'in_progress' ? 'var(--info-color)' :
-                                   req.status === 'completed' ? 'var(--success-color)' :
-                                   req.status === 'rejected' ? 'var(--error-color)' :
-                                   req.status === 'pending' ? 'var(--warning-color)' :
-                                   req.status === 'merged' ? 'var(--success-color)' :
-                                   req.status === 'closed' ? 'var(--error-color)' : 'var(--info-color)'
-                          }}>
-                            {req.status === 'draft' ? 'Draft' :
-                             req.status === 'pending_approval' ? 'Pending approval' :
-                             req.status === 'pending_user_manager_approval' ? 'Pending your approval' :
-                             req.status === 'pending_devops_approval' ? 'Pending DevOps approval' :
-                             req.status === 'in_progress' ? 'In progress' :
-                             req.status === 'completed' ? 'Completed' :
-                             req.status === 'rejected' ? 'Rejected' : req.status}
-                          </span>
-                        </td>
-                        <td style={{ padding: '16px', fontSize: '14px', color: 'var(--text-secondary)' }}>
-                          {formatDate(req.created_at)}
-                        </td>
-                        <td style={{ padding: '16px' }}>
+                        <td className="history-table__cell">
                           {req.pr_url ? (
                             <a 
                               href={req.pr_url} 
                               target="_blank" 
                               rel="noopener noreferrer"
-                              style={{
-                                color: 'var(--primary-color)',
-                                textDecoration: 'none',
-                                fontWeight: '500',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.textDecoration = 'underline';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.textDecoration = 'none';
-                              }}
+                              className="history-table__link"
                             >
-                              View PR →
+                              Open PR →
                             </a>
                           ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>—</span>
+                            <span className="history-table__placeholder">—</span>
                           )}
                         </td>
-                        <td style={{ padding: '16px' }} onClick={(e) => e.stopPropagation()}>
-                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <td className="history-table__cell history-table__cell--actions" onClick={(e) => e.stopPropagation()}>
+                          <div className="history-table__actions">
                             {(currentUserId == null || req.created_by === currentUserId) && (
                               <button
                                 type="button"
-                                className="btn btn-secondary"
-                                style={{ padding: '6px 12px', fontSize: '13px' }}
+                                className="btn btn-secondary btn-sm history-table__action-btn"
                                 onClick={() => cloneRequest(req.id)}
                                 title="Clone as new draft"
                               >
@@ -1174,8 +1226,7 @@ export default function History() {
                              ['completed', 'in_progress'].includes(req.status) && (
                               <button
                                 type="button"
-                                className="btn btn-secondary"
-                                style={{ padding: '6px 12px', fontSize: '13px' }}
+                                className="btn btn-secondary btn-sm history-table__action-btn"
                                 onClick={() => promoteRequest(req.id)}
                                 title="Promote to next environment"
                               >
@@ -1186,8 +1237,7 @@ export default function History() {
                              (currentUserId == null || req.created_by === currentUserId) && (
                               <button
                                 type="button"
-                                className="btn btn-secondary"
-                                style={{ padding: '6px 12px', fontSize: '13px' }}
+                                className="btn btn-secondary btn-sm history-table__action-btn"
                                 onClick={() => cancelRequest(req.id)}
                               >
                                 Cancel
@@ -1204,35 +1254,25 @@ export default function History() {
 
             {/* Pagination */}
             {!loading && !error && totalCount > 0 && (
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center', 
-                padding: '16px 24px',
-                borderTop: '1px solid var(--border-color)',
-                flexWrap: 'wrap',
-                gap: '12px'
-              }}>
-                <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+              <div className="history-pagination">
+                <span className="history-pagination__info">
                   Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount}
                 </span>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div className="history-pagination__actions">
                   <button
                     onClick={() => setPage(p => Math.max(0, p - 1))}
                     disabled={page === 0}
                     className="btn btn-secondary"
-                    style={{ padding: '8px 16px' }}
                   >
                     Previous
                   </button>
-                  <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                  <span className="history-pagination__page">
                     Page {page + 1} of {totalPages}
                   </span>
                   <button
                     onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
                     disabled={page >= totalPages - 1}
                     className="btn btn-secondary"
-                    style={{ padding: '8px 16px' }}
                   >
                     Next
                   </button>
@@ -1243,128 +1283,148 @@ export default function History() {
 
           {/* View Details Modal */}
           {(detailRequest !== null || detailLoading) && (
-            <div
-              onClick={() => !detailLoading && setDetailRequest(null)}
-              style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(0,0,0,0.5)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 1000,
-                padding: '20px'
-              }}
-            >
+            <div className="modal-overlay" onClick={() => !detailLoading && setDetailRequest(null)}>
               <div
                 onClick={e => e.stopPropagation()}
-                className="card"
-                style={{
-                  maxWidth: '760px',
-                  width: '100%',
-                  maxHeight: '85vh',
-                  overflow: 'auto'
-                }}
+                className="modal history-detail-modal history-detail-modal__dialog"
               >
                 {detailLoading ? (
-                  <div style={{ textAlign: 'center', padding: '40px' }}>Loading details...</div>
+                  <div className="history-detail-modal__loading">Loading request details...</div>
                 ) : detailRequest ? (
                   <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                      <h3 style={{ margin: 0 }}>Ticket #{detailRequest.id}</h3>
-                      <button onClick={() => setDetailRequest(null)} className="btn btn-secondary" style={{ padding: '8px 16px' }}>
-                        Close
-                      </button>
-                    </div>
-                    {detailRequest.project_id && detailRequest.project_name && (
-                      <div style={{ marginBottom: '12px' }}>
-                        <strong>Project:</strong> {detailRequest.project_name}
-                        {detailRequest.project_code ? ` (${detailRequest.project_code})` : ''}
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          style={{ marginLeft: 10 }}
-                          onClick={() => router.push(`/my-projects/${detailRequest.project_id}`)}
-                        >
-                          Open project
+                    <div className="history-detail-modal__header">
+                      <div className="history-detail-modal__title-wrap">
+                        <span className="history-detail-modal__eyebrow">
+                          {detailRequestIsAccess ? 'Access request' : 'Request'}
+                        </span>
+                        <h3 className="modal-title history-detail-modal__title">
+                          {detailRequestIsAccess ? `Access request #${detailRequest.id}` : `Request #${detailRequest.id}`}
+                        </h3>
+                        <p className="history-detail-modal__subtitle">
+                          Review the current status, important request details, and the latest updates in one place.
+                        </p>
+                      </div>
+                      <div className="history-detail-modal__header-actions">
+                        {detailStatusMeta ? (
+                          <span className={`status-badge ${detailStatusMeta.tone}`}>
+                            {detailStatusMeta.label}
+                          </span>
+                        ) : null}
+                        <button onClick={() => setDetailRequest(null)} className="btn btn-secondary">
+                          Close
                         </button>
                       </div>
-                    )}
-                    <div style={{ marginBottom: '12px' }}>
-                      <strong>Team:</strong> {detailRequest.team} &nbsp;|&nbsp; <strong>Env:</strong> {detailRequest.env} &nbsp;|&nbsp; <strong>Cloud:</strong> {detailRequest.cloud} &nbsp;|&nbsp; <strong>Service:</strong> {detailRequest.service}
-                      {detailRequest.application_id && (
-                        <> &nbsp;|&nbsp; <strong>App ID:</strong> <code style={{ background: 'var(--bg-gray-100)', padding: '2px 6px', borderRadius: 4 }}>{detailRequest.application_id}</code></>
-                      )}
                     </div>
-                    {(detailRequest.priority || detailRequest.due_date) && (
-                      <div style={{ marginBottom: '12px', fontSize: '14px', color: 'var(--text-secondary)' }}>
-                        {detailRequest.priority && <span><strong>Priority:</strong> {detailRequest.priority} </span>}
-                        {detailRequest.due_date && <span><strong>Due:</strong> {new Date(detailRequest.due_date).toLocaleDateString()} </span>}
+                    <div className="portal-detail-grid history-detail-modal__summary-grid">
+                      {detailRequest.project_name ? (
+                        <article className="portal-detail-card">
+                          <span className="history-detail-modal__summary-label">Project</span>
+                          <strong className="portal-detail-card__value">
+                            {detailRequest.project_name}
+                            {detailRequest.project_code ? ` (${detailRequest.project_code})` : ''}
+                          </strong>
+                          {detailRequest.project_id ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm history-detail-modal__summary-action"
+                              onClick={() => router.push(`/my-projects/${detailRequest.project_id}`)}
+                            >
+                              View project
+                            </button>
+                          ) : null}
+                        </article>
+                      ) : null}
+                      <article className="portal-detail-card">
+                        <span className="history-detail-modal__summary-label">Team</span>
+                        <strong className="portal-detail-card__value">{detailRequest.team || '—'}</strong>
+                      </article>
+                      <article className="portal-detail-card">
+                        <span className="history-detail-modal__summary-label">Environment</span>
+                        <strong className="portal-detail-card__value">{detailRequest.env || '—'}</strong>
+                      </article>
+                      <article className="portal-detail-card">
+                        <span className="history-detail-modal__summary-label">Cloud</span>
+                        <strong className="portal-detail-card__value">{detailRequest.cloud || '—'}</strong>
+                      </article>
+                      <article className="portal-detail-card">
+                        <span className="history-detail-modal__summary-label">{detailRequestIsAccess ? 'Target' : 'Service'}</span>
+                        <strong className="portal-detail-card__value">{detailRequest.service || '—'}</strong>
+                      </article>
+                      {detailRequest.priority ? (
+                        <article className="portal-detail-card">
+                          <span className="history-detail-modal__summary-label">Priority</span>
+                          <strong className="portal-detail-card__value">{detailRequest.priority}</strong>
+                        </article>
+                      ) : null}
+                      {detailRequest.due_date ? (
+                        <article className="portal-detail-card">
+                          <span className="history-detail-modal__summary-label">Due date</span>
+                          <strong className="portal-detail-card__value">{new Date(detailRequest.due_date).toLocaleDateString()}</strong>
+                        </article>
+                      ) : null}
+                      {detailRequest.application_id ? (
+                        <article className="portal-detail-card">
+                          <span className="history-detail-modal__summary-label">App ID</span>
+                          <strong className="portal-detail-card__value">{detailRequest.application_id}</strong>
+                        </article>
+                      ) : null}
+                      {detailRequest.branch ? (
+                        <article className="portal-detail-card">
+                          <span className="history-detail-modal__summary-label">Request branch</span>
+                          <strong className="portal-detail-card__value">{detailRequest.branch}</strong>
+                        </article>
+                      ) : null}
+                      {detailRequest.file_path ? (
+                        <article className="portal-detail-card">
+                          <span className="history-detail-modal__summary-label">Config path</span>
+                          <strong className="portal-detail-card__value">{detailRequest.file_path}</strong>
+                        </article>
+                      ) : null}
+                    </div>
+                    {(detailRequest.branch || detailRequest.file_path) && (
+                      <div className="history-detail-modal__notice history-detail-modal__notice--spaced">
+                        <strong className="history-detail-modal__notice-title">Current repo layout</strong>
+                        <p className="history-detail-modal__notice-copy">
+                          Requests now write to <code>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/envs/&lt;env&gt;/&lt;service&gt;/request.json</code> and use a matching <code>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/&lt;env&gt;/&lt;service&gt;/&lt;request-id&gt;</code> branch.
+                        </p>
                       </div>
                     )}
-                    <div style={{ marginBottom: '12px' }}>
-                      <strong>Status:</strong>{' '}
-                      <span style={{
-                        padding: '4px 10px',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        background: detailRequest.status === 'draft' ? 'var(--bg-gray-100)' :
-                                   detailRequest.status === 'pending_approval' || detailRequest.status === 'pending_user_manager_approval' || detailRequest.status === 'pending_devops_approval' ? 'var(--warning-bg)' :
-                                   detailRequest.status === 'in_progress' ? 'var(--info-bg)' :
-                                   detailRequest.status === 'completed' ? 'var(--success-bg)' :
-                                   detailRequest.status === 'rejected' ? 'var(--error-bg)' : 'var(--info-bg)',
-                        color: detailRequest.status === 'draft' ? 'var(--text-secondary)' :
-                               detailRequest.status === 'pending_approval' || detailRequest.status === 'pending_user_manager_approval' || detailRequest.status === 'pending_devops_approval' ? 'var(--warning-color)' :
-                               detailRequest.status === 'in_progress' ? 'var(--info-color)' :
-                               detailRequest.status === 'completed' ? 'var(--success-color)' :
-                               detailRequest.status === 'rejected' ? 'var(--error-color)' : 'var(--info-color)'
-                      }}>
-                        {detailRequest.status === 'draft' ? 'Draft' :
-                         detailRequest.status === 'pending_approval' ? 'Pending approval' :
-                         detailRequest.status === 'pending_user_manager_approval' ? 'Pending your approval' :
-                         detailRequest.status === 'pending_devops_approval' ? 'Pending DevOps approval' :
-                         detailRequest.status === 'in_progress' ? 'In progress' :
-                         detailRequest.status === 'completed' ? 'Completed' :
-                         detailRequest.status === 'rejected' ? 'Rejected' : detailRequest.status}
-                      </span>
-                    </div>
                     {detailRequest.status === 'rejected' && detailRequest.reject_reason && (
-                      <div style={{ marginBottom: '12px', padding: '12px', background: 'var(--error-bg)', borderRadius: '8px', borderLeft: '4px solid var(--error-color)' }}>
-                        <strong style={{ color: 'var(--error-color)' }}>Rejection reason (from admin):</strong>
-                        <p style={{ margin: '6px 0 0', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>{detailRequest.reject_reason}</p>
+                      <div className="history-detail-modal__notice history-detail-modal__notice--error">
+                        <strong className="history-detail-modal__notice-title history-detail-modal__notice-title--error">Why it was rejected</strong>
+                        <p className="history-detail-modal__notice-copy history-detail-modal__notice-copy--prewrap">{detailRequest.reject_reason}</p>
                       </div>
                     )}
                     {detailRequest.cost_risk_preview && (
-                      <div className="portal-preview-panel" style={{ marginBottom: '12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+                      <div className="portal-preview-panel history-detail-modal__panel">
+                        <div className="history-detail-modal__panel-head">
                           <div>
-                            <div className="portal-preview-eyebrow">Cost And Risk</div>
-                            <strong className="portal-preview-value" style={{ fontSize: 18 }}>Manager Review Preview</strong>
+                            <div className="portal-preview-eyebrow">Estimated Cost</div>
+                            <strong className="portal-preview-value history-detail-modal__panel-title">What reviewers may check</strong>
                           </div>
                           <span className={getPreviewRiskClass(detailRequest.cost_risk_preview.risk_level)}>
-                            {detailRequest.cost_risk_preview.risk_level} risk
+                            {detailRequest.cost_risk_preview.risk_level} review attention
                           </span>
                         </div>
 
                         <div className="portal-preview-grid">
                           <div className="portal-preview-card">
-                            <span className="portal-preview-eyebrow">Estimated monthly</span>
+                            <span className="portal-preview-eyebrow">Estimated monthly cost</span>
                             <strong className="portal-preview-value">{detailRequest.cost_risk_preview.estimated_monthly}</strong>
                             <p className="portal-preview-copy">
                               {detailRequest.cost_risk_preview.estimated_band} footprint. {detailRequest.cost_risk_preview.estimate_basis}
                             </p>
                           </div>
                           <div className="portal-preview-card">
-                            <span className="portal-preview-eyebrow">Review summary</span>
-                            <strong className="portal-preview-value">{detailRequest.cost_risk_preview.signals.length} signals</strong>
+                            <span className="portal-preview-eyebrow">Review notes</span>
+                            <strong className="portal-preview-value">{detailRequest.cost_risk_preview.signals.length} checks</strong>
                             <p className="portal-preview-copy">{detailRequest.cost_risk_preview.summary}</p>
                           </div>
                         </div>
 
                         {detailRequest.cost_risk_preview.cost_link && (
                           <div className="portal-preview-actions">
-                            <a href={detailRequest.cost_risk_preview.cost_link} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
+                            <a href={detailRequest.cost_risk_preview.cost_link} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">
                               Open cost calculator
                             </a>
                           </div>
@@ -1384,11 +1444,11 @@ export default function History() {
                           ) : (
                             <article className={getPreviewSignalClass('low')}>
                               <div className="portal-preview-signal__top">
-                                <strong className="portal-preview-signal__title">No major heuristic risks</strong>
+                                <strong className="portal-preview-signal__title">No major review concerns</strong>
                                 <span className={getPreviewRiskClass('low')}>low</span>
                               </div>
                               <p className="portal-preview-signal__detail">
-                                The request did not trigger major risk heuristics, but manager approval should still verify ownership, rollout safety, and expected spend.
+                                Nothing major was flagged automatically, but reviewers should still confirm ownership, rollout safety, and expected spend.
                               </p>
                             </article>
                           )}
@@ -1396,11 +1456,11 @@ export default function History() {
                       </div>
                     )}
                     {detailRequest.approval_context && (
-                      <div className="portal-preview-panel" style={{ marginBottom: '12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+                      <div className="portal-preview-panel history-detail-modal__panel">
+                        <div className="history-detail-modal__panel-head">
                           <div>
-                            <div className="portal-preview-eyebrow">Approval Flow</div>
-                            <strong className="portal-preview-value" style={{ fontSize: 18 }}>Project rule explanation</strong>
+                            <div className="portal-preview-eyebrow">Review Steps</div>
+                            <strong className="portal-preview-value history-detail-modal__panel-title">How this request is reviewed</strong>
                           </div>
                           <span className={getPreviewRiskClass(detailRequest.approval_context.requires_devops_approval ? 'medium' : 'low')}>
                             {detailRequest.approval_context.current_stage}
@@ -1408,109 +1468,106 @@ export default function History() {
                         </div>
                         <div className="portal-preview-grid">
                           <div className="portal-preview-card">
-                            <span className="portal-preview-eyebrow">Current stage</span>
+                            <span className="portal-preview-eyebrow">Current step</span>
                             <strong className="portal-preview-value">{detailRequest.approval_context.current_stage}</strong>
                             <p className="portal-preview-copy">
                               {detailRequest.approval_context.next_stage
-                                ? `Next stage: ${detailRequest.approval_context.next_stage}`
-                                : 'No further approval stage is pending.'}
+                                ? `Next step: ${detailRequest.approval_context.next_stage}`
+                                : 'No more review steps are waiting right now.'}
                             </p>
                           </div>
                           <div className="portal-preview-card">
-                            <span className="portal-preview-eyebrow">Rule source</span>
+                            <span className="portal-preview-eyebrow">Based on</span>
                             <strong className="portal-preview-value">
-                              {detailRequest.approval_context.rule_source === 'project_rule' ? 'Project rule' : 'Default flow'}
+                              {detailRequest.approval_context.rule_source === 'project_rule' ? 'Project setting' : 'Standard flow'}
                             </strong>
                             <p className="portal-preview-copy">{detailRequest.approval_context.summary}</p>
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <div className="history-detail-modal__signal-row">
                           <span className={getPreviewSignalClass(detailRequest.approval_context.requires_manager_approval ? 'medium' : 'low')}>
-                            {detailRequest.approval_context.requires_manager_approval ? 'Manager gate enabled' : 'No manager gate'}
+                            {detailRequest.approval_context.requires_manager_approval ? 'Manager review required' : 'No manager review'}
                           </span>
                           <span className={getPreviewSignalClass(detailRequest.approval_context.requires_devops_approval ? 'medium' : 'low')}>
-                            {detailRequest.approval_context.requires_devops_approval ? 'DevOps gate enabled' : 'No DevOps gate'}
+                            {detailRequest.approval_context.requires_devops_approval ? 'Platform review required' : 'No platform review'}
                           </span>
                         </div>
                       </div>
                     )}
-                    <div style={{ marginBottom: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                    <div className="history-detail-modal__actions">
                       {detailRequest.status === 'draft' && (
                         <>
-                          <button type="button" onClick={() => submitDraft(detailRequest.id)} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '14px' }}>
-                            Submit for approval
+                          <button type="button" onClick={() => submitDraft(detailRequest.id)} className="btn btn-primary">
+                            Send for review
                           </button>
-                          <button type="button" onClick={() => deleteDraft(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }}>
+                          <button type="button" onClick={() => deleteDraft(detailRequest.id)} className="btn btn-secondary">
                             Delete draft
                           </button>
                         </>
                       )}
                       {detailRequest.status === 'pending_user_manager_approval' && canApproveByManager && (
-                        <button type="button" onClick={() => approveByManager(detailRequest.id)} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '14px' }}>
-                          Approve (send to DevOps)
+                        <button type="button" onClick={() => approveByManager(detailRequest.id)} className="btn btn-primary">
+                          Approve and send on
                         </button>
                       )}
                       {detailRequest.status === 'rejected' && (
-                        <button type="button" onClick={() => resubmitRequest(detailRequest.id)} className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '14px' }}>
-                          Resubmit as draft
+                        <button type="button" onClick={() => resubmitRequest(detailRequest.id)} className="btn btn-primary">
+                          Create a new draft
                         </button>
                       )}
                       {(currentUserId == null || detailRequest.created_by === currentUserId) && (
-                        <button type="button" onClick={() => cloneRequest(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }} title="Clone as new draft">
-                          Clone request
+                        <button type="button" onClick={() => cloneRequest(detailRequest.id)} className="btn btn-secondary" title="Clone as new draft">
+                          Copy request
                         </button>
                       )}
                       {(currentUserId == null || detailRequest.created_by === currentUserId) &&
                        ['completed', 'in_progress'].includes(detailRequest.status) && (
-                        <button type="button" onClick={() => promoteRequest(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }} title="Create new request for next environment (dev→stage→prod)">
-                          Promote to next env
+                        <button type="button" onClick={() => promoteRequest(detailRequest.id)} className="btn btn-secondary" title="Create new request for next environment (dev→stage→prod)">
+                          Create next environment request
                         </button>
                       )}
                       {(currentUserId == null || detailRequest.created_by === currentUserId) &&
                        ['draft', 'in_progress'].includes(detailRequest.status) && (
-                        <button type="button" onClick={() => fetchConfigHistory(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }} title="Restore config from previous snapshot">
-                          Rollback
+                        <button type="button" onClick={() => fetchConfigHistory(detailRequest.id)} className="btn btn-secondary" title="Restore config from previous snapshot">
+                          Open previous versions
                         </button>
                       )}
                       {CANCELLABLE_STATUSES.includes(detailRequest.status) &&
                        (currentUserId == null || detailRequest.created_by === currentUserId) && (
-                        <button type="button" onClick={() => cancelRequest(detailRequest.id)} className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }}>
-                          Cancel ticket
+                        <button type="button" onClick={() => cancelRequest(detailRequest.id)} className="btn btn-secondary">
+                          Cancel request
                         </button>
                       )}
                       {detailRequest.pr_url ? (
-                        <a href={detailRequest.pr_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)' }}>
-                          Open PR →
+                        <a href={detailRequest.pr_url} target="_blank" rel="noopener noreferrer" className="history-detail-modal__link">
+                          Open pull request →
                         </a>
                       ) : null}
                       <button
                         type="button"
                         onClick={() => applyAsTemplate(detailRequest)}
                         className="btn btn-secondary"
-                        style={{ padding: '8px 16px', fontSize: '14px' }}
                       >
-                        Use as template
+                        Reuse this request
                       </button>
                       <button
                         type="button"
                         onClick={() => saveConfiguration(detailRequest)}
                         className="btn btn-secondary"
-                        style={{ padding: '8px 16px', fontSize: '14px' }}
                       >
-                        Save as my template
+                        Save as reusable request
                       </button>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div className="history-detail-modal__compare">
                         <input
                           type="number"
-                          placeholder="Compare with PR #"
+                          placeholder="Compare with request #"
                           value={compareWithId}
                           onChange={(e) => setCompareWithId(e.target.value)}
-                          style={{ width: 120, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border-color)' }}
+                          className="history-filter-input history-detail-modal__compare-input"
                         />
                         <button
                           type="button"
                           className="btn btn-secondary"
-                          style={{ padding: '6px 12px', fontSize: 13 }}
                           disabled={!compareWithId}
                           onClick={async () => {
                             const token = localStorage.getItem('token');
@@ -1529,40 +1586,39 @@ export default function History() {
                           Compare
                         </button>
                         {diffResult && (
-                          <button type="button" className="btn btn-secondary" style={{ padding: '6px' }} onClick={() => setDiffResult(null)}>
-                            Clear diff
+                          <button type="button" className="btn btn-secondary" onClick={() => setDiffResult(null)}>
+                            Clear comparison
                           </button>
                         )}
                       </div>
                     </div>
                     {showConfigHistory && detailRequest && (
-                      <div style={{ marginBottom: 12, padding: 12, background: 'var(--bg-gray-50)', borderRadius: 8 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                          <strong>Config history (rollback)</strong>
-                          <button type="button" className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setShowConfigHistory(false); setConfigHistory([]); }}>
+                      <div className="history-detail-modal__section history-detail-modal__section--muted">
+                        <div className="history-detail-modal__section-head">
+                          <strong>Previous versions</strong>
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setShowConfigHistory(false); setConfigHistory([]); }}>
                             Close
                           </button>
                         </div>
                         {configHistory.length === 0 ? (
-                          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>No config snapshots yet.</p>
+                          <p className="history-detail-modal__empty-copy">No earlier versions yet.</p>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 200, overflowY: 'auto' }}>
+                          <div className="history-detail-modal__history-list">
                             {configHistory.map((h) => (
-                              <div key={h.id} style={{ padding: 8, background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border-color)' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                                    #{h.id} · {h.note || 'snapshot'} · {new Date(h.created_at).toLocaleString()}
+                              <div key={h.id} className="history-detail-modal__history-card">
+                                <div className="history-detail-modal__history-head">
+                                  <span className="history-detail-modal__history-meta">
+                                    #{h.id} · {h.note || 'saved version'} · {new Date(h.created_at).toLocaleString()}
                                   </span>
                                   <button
                                     type="button"
-                                    className="btn btn-primary"
-                                    style={{ padding: '4px 10px', fontSize: 12 }}
+                                    className="btn btn-primary btn-sm"
                                     onClick={() => rollbackRequest(detailRequest.id, h.id)}
                                   >
-                                    Restore
+                                    Restore this version
                                   </button>
                                 </div>
-                                <pre style={{ margin: 0, fontSize: 11, overflow: 'auto', maxHeight: 60 }}>{String(h.config || '').slice(0, 200)}...</pre>
+                                <pre className="history-detail-modal__history-code">{String(h.config || '').slice(0, 200)}...</pre>
                               </div>
                             ))}
                           </div>
@@ -1570,35 +1626,25 @@ export default function History() {
                       </div>
                     )}
                     {(diffResult?.changes?.length ?? 0) > 0 && (
-                      <div style={{ marginBottom: 12, padding: 12, background: 'var(--bg-gray-50)', borderRadius: 8 }}>
-                        <strong>Diff (this vs #{compareWithId})</strong>
-                        {diffResult?.changes?.map((c: any) => (
-                          <div key={c.field} style={{ marginTop: 8, fontSize: 13 }}>
-                            <strong>{c.field}:</strong> <span style={{ color: 'var(--error-color)' }}>− {String(c.base_value || '').slice(0, 80)}</span>
-                            <br />
-                            <strong>{c.field}:</strong> <span style={{ color: 'var(--success-color)' }}>+ {String(c.compare_value || '').slice(0, 80)}</span>
-                          </div>
-                        ))}
+                      <div className="history-detail-modal__section history-detail-modal__section--muted">
+                        <strong>Comparison with request #{compareWithId}</strong>
+                        <div className="history-detail-modal__diff-list">
+                          {diffResult?.changes?.map((c: any) => (
+                            <div key={c.field} className="history-detail-modal__diff-row">
+                              <strong>{c.field}:</strong> <span className="history-detail-modal__diff-value history-detail-modal__diff-value--old">− {String(c.base_value || '').slice(0, 80)}</span>
+                              <br />
+                              <strong>{c.field}:</strong> <span className="history-detail-modal__diff-value history-detail-modal__diff-value--new">+ {String(c.compare_value || '').slice(0, 80)}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                     {/* Tags */}
-                    <div style={{ marginBottom: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-color)' }}>
-                      <strong>Tags</strong>
-                      <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                    <div className="history-detail-modal__section">
+                      <strong>Labels</strong>
+                      <div className="history-detail-modal__tags">
                         {tags.map((t) => (
-                          <span
-                            key={t}
-                            style={{
-                              padding: '4px 10px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              background: 'var(--primary-tint)',
-                              color: 'var(--primary-color)',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                            }}
-                          >
+                          <span key={t} className="history-detail-modal__tag">
                             {t}
                             <button
                               type="button"
@@ -1613,17 +1659,17 @@ export default function History() {
                                   setTags((prev) => prev.filter((x) => x !== t));
                                 }
                               }}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 14 }}
+                              className="history-detail-modal__tag-remove"
                               aria-label={`Remove ${t}`}
                             >
                               ×
                             </button>
                           </span>
                         ))}
-                        <div style={{ display: 'flex', gap: '6px' }}>
+                        <div className="history-detail-modal__tag-form">
                           <input
                             type="text"
-                            placeholder="Add tag"
+                            placeholder="Add label"
                             value={newTag}
                             onChange={(e) => setNewTag(e.target.value)}
                             onKeyDown={(e) => {
@@ -1639,18 +1685,17 @@ export default function History() {
                                   });
                                   if (res.ok) {
                                     const d = await res.json();
-                                    setTags(d.tags || []);
+                                    setTags(Array.isArray(d?.tags) ? d.tags : []);
                                     setNewTag('');
                                   }
                                 })();
                               }
                             }}
-                            style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', width: 100 }}
+                            className="history-detail-modal__tag-input"
                           />
                           <button
                             type="button"
-                            className="btn btn-secondary"
-                            style={{ padding: '6px 12px', fontSize: 13 }}
+                            className="btn btn-secondary btn-sm"
                             disabled={!newTag.trim()}
                             onClick={async () => {
                               if (!newTag.trim()) return;
@@ -1663,36 +1708,42 @@ export default function History() {
                               });
                               if (res.ok) {
                                 const d = await res.json();
-                                setTags(d.tags || []);
+                                setTags(Array.isArray(d?.tags) ? d.tags : []);
                                 setNewTag('');
                               }
                             }}
                           >
-                            Add
+                            Add label
                           </button>
                         </div>
                       </div>
                     </div>
                     {/* Dependencies */}
                     {(dependsOn.length > 0 || blockedBy.length > 0 || (detailRequest && (currentUserId == null || detailRequest.created_by === currentUserId))) && (
-                      <div style={{ marginBottom: 20, padding: '12px 16px', background: 'var(--bg-gray-100)', borderRadius: 8 }}>
-                        <strong>Dependencies</strong>
+                      <div className="history-detail-modal__section history-detail-modal__section--muted">
+                        <strong>Linked requests</strong>
                         {dependsOn.length > 0 && (
-                          <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--text-secondary)' }}>
-                            Depends on: {dependsOn.map((id) => {
+                          <div className="history-detail-modal__dependency-block">
+                            <span className="history-detail-modal__dependency-label">Waiting on</span>
+                            <div className="history-detail-modal__dependency-list">
+                              {dependsOn.map((id) => {
                               const r = requests.find((x) => x.id === id);
                               const canRemove = detailRequest && (currentUserId == null || detailRequest.created_by === currentUserId);
                               return (
-                                <span key={id} style={{ marginRight: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <span key={id} className="history-detail-modal__dependency-item">
                                   {r ? (
-                                    <button type="button" onClick={() => { setDetailRequest(null); openDetail(r); }} style={{ padding: '2px 8px', background: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setDetailRequest(null); openDetail(r); }}
+                                      className="history-detail-modal__dependency-chip history-detail-modal__dependency-chip--waiting"
+                                    >
                                       #{id}
                                     </button>
                                   ) : (
                                     <button
                                       type="button"
                                       onClick={() => { setFilterType('pr_number'); setFilterValue(String(id)); fetchHistory(); }}
-                                      style={{ color: 'var(--primary-color)', fontSize: 13, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                                      className="history-detail-modal__dependency-link"
                                     >
                                       #{id}
                                     </button>
@@ -1703,19 +1754,27 @@ export default function History() {
                                       if (!token || !detailRequest) return;
                                       const res = await fetch(`${apiUrl}/api/request/${detailRequest.id}/dependencies/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
                                       if (res.ok) { setDependsOn((p) => p.filter((x) => x !== id)); toast('Dependency removed'); }
-                                    }} style={{ padding: '0 4px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--error-color)', fontSize: 14 }} title="Remove">×</button>
+                                    }} className="history-detail-modal__dependency-remove" title="Remove">×</button>
                                   )}
                                 </span>
                               );
                             })}
-                          </p>
+                            </div>
+                          </div>
                         )}
                         {blockedBy.length > 0 && (
-                          <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--text-secondary)' }}>
-                            Blocking: {blockedBy.map((id) => {
+                          <div className="history-detail-modal__dependency-block">
+                            <span className="history-detail-modal__dependency-label">Blocking</span>
+                            <div className="history-detail-modal__dependency-list">
+                              {blockedBy.map((id) => {
                               const r = requests.find((x) => x.id === id);
                               return r ? (
-                                <button key={id} type="button" onClick={() => { setDetailRequest(null); openDetail(r); }} style={{ marginRight: 8, padding: '2px 8px', background: 'var(--info-color)', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                                <button
+                                  key={id}
+                                  type="button"
+                                  onClick={() => { setDetailRequest(null); openDetail(r); }}
+                                  className="history-detail-modal__dependency-chip history-detail-modal__dependency-chip--blocking"
+                                >
                                   #{id}
                                 </button>
                               ) : (
@@ -1723,17 +1782,18 @@ export default function History() {
                                   key={id}
                                   type="button"
                                   onClick={() => { setFilterType('pr_number'); setFilterValue(String(id)); fetchHistory(); }}
-                                  style={{ marginRight: 8, color: 'var(--info-color)', fontSize: 13, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                                  className="history-detail-modal__dependency-link history-detail-modal__dependency-link--blocking"
                                 >
                                   #{id}
                                 </button>
                               );
                             })}
-                          </p>
+                            </div>
+                          </div>
                         )}
                         {detailRequest && (currentUserId == null || detailRequest.created_by === currentUserId) && (
-                          <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                            <input type="number" placeholder="Request #" value={newDepId} onChange={(e) => setNewDepId(e.target.value)} className="input" style={{ width: 100, padding: '6px 10px' }} min={1} />
+                          <div className="history-detail-modal__dependency-form">
+                            <input type="number" placeholder="Request #" value={newDepId} onChange={(e) => setNewDepId(e.target.value)} className="input history-detail-modal__dependency-input" min={1} />
                             <button type="button" className="btn btn-secondary btn-sm" disabled={addingDep || !newDepId.trim()} onClick={async () => {
                               const depId = parseInt(newDepId.trim(), 10);
                               if (Number.isNaN(depId) || depId <= 0 || !detailRequest) return;
@@ -1750,7 +1810,7 @@ export default function History() {
                                 else toast(d.error || 'Failed to add', 'error');
                               } finally { setAddingDep(false); }
                             }}>
-                              {addingDep ? '…' : 'Add dependency'}
+                              {addingDep ? '…' : 'Link request'}
                             </button>
                           </div>
                         )}
@@ -1758,48 +1818,52 @@ export default function History() {
                     )}
 
                     {/* Audit trail */}
-                    <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
-                      <strong>Audit trail</strong>
-                      <div style={{ marginTop: '8px', maxHeight: '180px', overflowY: 'auto' }}>
+                    <div className="history-detail-modal__section">
+                      <strong>Activity</strong>
+                      <div className="history-detail-modal__feed">
                         {timelineLoading ? (
-                          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>Loading…</p>
+                          <p className="history-detail-modal__empty-copy">Loading activity…</p>
                         ) : timeline.length === 0 ? (
-                          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>No activity yet.</p>
+                          <p className="history-detail-modal__empty-copy">No updates yet.</p>
                         ) : (
                           timeline.map((e) => (
-                            <div key={`${e.kind}-${e.id}`} style={{ marginBottom: '8px', padding: '6px 10px', background: 'var(--bg-gray-50)', borderRadius: '6px', fontSize: '13px' }}>
-                              <span style={{ fontWeight: 600 }}>{e.username || 'System'}</span>
-                              <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>{formatTimelineAction(e.action)}</span>
-                              {e.details && <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}> - {e.details}</span>}
-                              {e.body && <p style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{e.body}</p>}
-                              <span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{new Date(e.created_at).toLocaleString()}</span>
-                            </div>
+                            <article key={`${e.kind}-${e.id}`} className="history-detail-modal__feed-item">
+                              <div className="history-detail-modal__feed-meta">
+                                <strong>{e.username || 'System'}</strong>
+                                <span>{new Date(e.created_at).toLocaleString()}</span>
+                              </div>
+                              <p>
+                                <span className="history-detail-modal__feed-action">{formatTimelineAction(e.action)}</span>
+                                {e.details ? ` · ${e.details}` : ''}
+                              </p>
+                              {e.body && <p className="history-detail-modal__feed-body">{e.body}</p>}
+                            </article>
                           ))
                         )}
                       </div>
                     </div>
                     {/* Comments */}
-                    <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
-                      <strong>Comments</strong>
-                      <div style={{ marginTop: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                    <div className="history-detail-modal__section">
+                      <strong>Conversation</strong>
+                      <div className="history-detail-modal__feed history-detail-modal__feed--comments">
                         {comments.length === 0 ? (
-                          <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>No comments yet.</p>
+                          <p className="history-detail-modal__empty-copy">No comments yet.</p>
                         ) : (
                           comments.map(c => (
-                            <div key={c.id} style={{ marginBottom: '12px', padding: '8px', background: 'var(--bg-gray-50)', borderRadius: '8px' }}>
-                              <span style={{ fontWeight: '600', fontSize: '13px' }}>{c.username || 'User'}</span>
-                              <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '8px' }}>
-                                {new Date(c.created_at).toLocaleString()}
-                              </span>
-                              <p style={{ margin: '4px 0 0', fontSize: '14px', whiteSpace: 'pre-wrap' }}>{c.body}</p>
-                            </div>
+                            <article key={c.id} className="history-detail-modal__feed-item">
+                              <div className="history-detail-modal__feed-meta">
+                                <strong>{c.username || 'User'}</strong>
+                                <span>{new Date(c.created_at).toLocaleString()}</span>
+                              </div>
+                              <p className="history-detail-modal__feed-body">{c.body}</p>
+                            </article>
                           ))
                         )}
                       </div>
-                      <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+                      <div className="history-detail-modal__comment-form">
                         <input
                           type="text"
-                          placeholder="Add a comment..."
+                          placeholder="Write a comment for reviewers or teammates"
                           value={commentBody}
                           onChange={(e) => setCommentBody(e.target.value)}
                           onKeyDown={(e) => {
@@ -1808,29 +1872,20 @@ export default function History() {
                               addComment();
                             }
                           }}
-                          style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}
+                          className="history-detail-modal__comment-input"
                         />
-                        <button type="button" onClick={addComment} className="btn btn-primary" disabled={!commentBody.trim() || commentSubmitting} style={{ padding: '8px 16px' }}>
-                          {commentSubmitting ? '...' : 'Post'}
+                        <button type="button" onClick={addComment} className="btn btn-primary" disabled={!commentBody.trim() || commentSubmitting}>
+                          {commentSubmitting ? '...' : 'Send'}
                         </button>
                       </div>
                     </div>
                     {detailRequest.config && (
-                      <div>
-                        <strong>Configuration (JSON):</strong>
-                        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                          Sensitive and customer data (passwords, tokens, email, name, phone, etc.) are masked. Raw data is not kept in page state.
+                      <div className="history-detail-modal__section">
+                        <strong>Request details (JSON)</strong>
+                        <p className="history-detail-modal__code-note">
+                          Sensitive values are hidden in this view. Raw values are not kept in page state.
                         </p>
-                        <pre style={{ 
-                          background: 'var(--bg-gray-100)', 
-                          padding: '16px', 
-                          borderRadius: '8px', 
-                          overflow: 'auto', 
-                          fontSize: '13px',
-                          maxHeight: '300px',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word'
-                        }}>
+                        <pre className="portal-code-block history-detail-modal__code">
                           {detailRequest.config}
                         </pre>
                       </div>

@@ -495,6 +495,9 @@ func adminTeamsListHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to list teams", err)
 		return
 	}
+	if teams == nil {
+		teams = []Team{}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeAdminTeamJSON(w, map[string]interface{}{"teams": teams, "status": "ok"})
 }

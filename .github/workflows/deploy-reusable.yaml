@@ -39,8 +39,6 @@ on:
         required: true
       DB_PASSWORD:
         required: true
-      GITHUB_TOKEN:
-        required: true
       ADMIN_SECRET:
         required: true
       DEFAULT_ADMIN_PASSWORD:
@@ -78,11 +76,14 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
+  id-token: write
   packages: write
 
 env:
   REGISTRY: ghcr.io
   IMAGE_TAG: ${{ github.sha }}
+  HAS_SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
 
 jobs:
   quality-gates:
@@ -161,7 +162,7 @@ jobs:
           build-args: ${{ matrix.needs_api_url && format('NEXT_PUBLIC_API_URL={0}', steps.public-api.outputs.url) || '' }}
 
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: ${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}
           format: table
@@ -316,7 +317,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
           DEFAULT_ADMIN_PASSWORD: ${{ secrets.DEFAULT_ADMIN_PASSWORD }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
@@ -601,7 +602,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Notify Slack on success
-        if: steps.result.outputs.final_status == 'success' && secrets.SLACK_WEBHOOK_URL != ''
+        if: steps.result.outputs.final_status == 'success' && env.HAS_SLACK_WEBHOOK_URL == 'true'
         uses: slackapi/slack-github-action@v1.26.0
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -642,7 +643,7 @@ jobs:
             }
 
       - name: Notify Slack on failure
-        if: steps.result.outputs.final_status == 'failure' && secrets.SLACK_WEBHOOK_URL != ''
+        if: steps.result.outputs.final_status == 'failure' && env.HAS_SLACK_WEBHOOK_URL == 'true'
         uses: slackapi/slack-github-action@v1.26.0
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}

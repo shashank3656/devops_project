@@ -176,7 +176,6 @@ export default function DevOpsProjectOperationsPage() {
           </div>
           <div className="portal-page__actions">
             <Link href="/projects" className="btn btn-secondary">Projects</Link>
-            <Link href="/change-calendar" className="btn btn-secondary">Change calendar</Link>
             <Link href="/service-heatmap" className="btn btn-secondary">Service heatmap</Link>
             <Link href="/incidents" className="btn btn-secondary">Incidents</Link>
             <Link href="/runbooks" className="btn btn-secondary">Runbooks</Link>
@@ -194,30 +193,16 @@ export default function DevOpsProjectOperationsPage() {
 
         {!loading && !error && analytics && summary ? (
           <>
-            <section className="portal-stat-grid">
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Pending requests</span>
-                <span className="portal-stat-card__value">{summary.pending_request_count}</span>
-                <p className="portal-stat-card__copy">All project-scoped requests still waiting for delivery or approval action.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Needs setup</span>
-                <span className="portal-stat-card__value">{summary.needs_setup_count}</span>
-                <p className="portal-stat-card__copy">Projects missing enough configuration to safely accept steady request flow.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Mapped teams</span>
-                <span className="portal-stat-card__value">{summary.mapped_team_count}</span>
-                <p className="portal-stat-card__copy">Teams currently consuming project-scoped services and environments.</p>
-              </article>
-              <article className="portal-stat-card">
-                <span className="portal-stat-card__label">Lead time</span>
-                <span className="portal-stat-card__value">{leadTimeAverage.toFixed(1)}h</span>
-                <p className="portal-stat-card__copy">Average completion time for delivered project requests.</p>
-              </article>
+            <section className="portal-surface project-operations__surface-gap">
+              <div className="portal-pill-row">
+                <span className="portal-pill">Pending requests {summary.pending_request_count}</span>
+                <span className="portal-pill">Needs setup {summary.needs_setup_count}</span>
+                <span className="portal-pill">Mapped teams {summary.mapped_team_count}</span>
+                <span className="portal-pill">Lead time {leadTimeAverage.toFixed(1)}h</span>
+              </div>
             </section>
 
-            <div className="portal-grid" style={{ alignItems: 'start' }}>
+            <div className="portal-grid project-operations__grid">
               <section className="portal-surface">
                 <div className="portal-surface__header">
                   <div>
@@ -225,12 +210,12 @@ export default function DevOpsProjectOperationsPage() {
                     <h2 className="portal-surface__title">Bottlenecks and risk</h2>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+                <div className="project-operations__pill-row">
                   {riskMix.map((item) => (
                     <span key={`risk-${item.key}`} className="portal-pill">{item.label}: {item.count}</span>
                   ))}
                 </div>
-                <div style={{ overflowX: 'auto' }}>
+                <div className="project-operations__table-wrap">
                   <table className="templates-table">
                     <thead>
                       <tr>
@@ -246,13 +231,13 @@ export default function DevOpsProjectOperationsPage() {
                         <tr key={`bottleneck-${project.id}`}>
                           <td>
                             <strong>{project.name}</strong>
-                            <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{project.code}</div>
+                            <div className="project-operations__meta project-operations__meta--minor">{project.code}</div>
                           </td>
                           <td>{project.pending}</td>
                           <td>{project.completed}</td>
                           <td>{project.teams}</td>
                           <td>
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <div className="project-operations__action-row">
                               <Link href={`/projects/${project.id}`} className="btn btn-secondary btn-sm">Open project</Link>
                               <Link href={`/tickets?project_id=${project.id}`} className="btn btn-secondary btn-sm">Open tickets</Link>
                             </div>
@@ -271,26 +256,26 @@ export default function DevOpsProjectOperationsPage() {
                     <h2 className="portal-surface__title">Cloud and service pressure</h2>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gap: 18 }}>
-                  <div>
+                <div className="project-operations__stack">
+                  <div className="project-operations__section">
                     <strong>Service demand</strong>
-                    <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <div className="project-operations__pill-row project-operations__pill-row--spaced">
                       {topServices.map((item) => (
                         <span key={`svc-${item.key}`} className="portal-pill">{item.label}: {item.count}</span>
                       ))}
                     </div>
                   </div>
-                  <div>
+                  <div className="project-operations__section">
                     <strong>Cloud demand</strong>
-                    <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <div className="project-operations__pill-row project-operations__pill-row--spaced">
                       {topClouds.map((item) => (
                         <span key={`cloud-${item.key}`} className="portal-pill">{item.label}: {item.count}</span>
                       ))}
                     </div>
                   </div>
-                  <div>
+                  <div className="project-operations__section">
                     <strong>Environment pressure</strong>
-                    <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <div className="project-operations__pill-row project-operations__pill-row--spaced">
                       {environmentPressure.map((item) => (
                         <span key={`env-${item.key}`} className="portal-pill">{item.label}: {item.count}</span>
                       ))}
@@ -307,7 +292,7 @@ export default function DevOpsProjectOperationsPage() {
                   <h2 className="portal-surface__title">Projects needing attention</h2>
                 </div>
               </div>
-              <div style={{ overflowX: 'auto' }}>
+              <div className="project-operations__table-wrap">
                 <table className="templates-table">
                   <thead>
                     <tr>
@@ -325,7 +310,7 @@ export default function DevOpsProjectOperationsPage() {
                       <tr key={`attention-${project.id}`}>
                         <td>
                           <strong>{project.name}</strong>
-                          <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{project.code}</div>
+                          <div className="project-operations__meta project-operations__meta--minor">{project.code}</div>
                         </td>
                         <td>{project.status}</td>
                         <td>{project.stage}</td>
@@ -333,7 +318,7 @@ export default function DevOpsProjectOperationsPage() {
                         <td>{project.pending}</td>
                         <td>{project.services}</td>
                         <td>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <div className="project-operations__action-row">
                             <Link href={`/projects/${project.id}`} className="btn btn-secondary btn-sm">Inspect</Link>
                             <Link href={`/approval-center?project_id=${project.id}`} className="btn btn-secondary btn-sm">Open approvals</Link>
                           </div>

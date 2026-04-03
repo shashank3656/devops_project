@@ -16,13 +16,18 @@ import {
   IconChevronRight,
   IconChevronDown,
   IconMenu,
+  IconHelpCircle,
+  IconFileText,
 } from './Icons';
+import SupportHub from './SupportHub';
+import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
 
 const THEME_KEY = 'user-portal-theme';
 const SIDEBAR_COLLAPSED_KEY = 'user-portal-sidebar-collapsed';
 const HISTORY_LAST_SEEN_KEY = 'user_history_last_seen';
 const NOTIFY_POLL_MS = 30000;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@setuops.example';
 
 export function getApiUrl(): string {
   return apiUrl;
@@ -43,12 +48,12 @@ export function setStoredTheme(_theme: 'light' | 'dark') {
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  '/home': 'Dashboard',
-  '/create-infrastructure': 'Create Infrastructure',
-  '/templates': 'Templates',
-  '/my-projects': 'My Projects',
-  '/history': 'Request History',
-  '/incidents': 'Incidents',
+  '/home': 'Home',
+  '/create-infrastructure': 'New Request',
+  '/templates': 'Request Templates',
+  '/my-projects': 'Projects',
+  '/history': 'My Requests',
+  '/incidents': 'Help Tickets',
   '/my-teams': 'My Teams',
   '/profile': 'Profile',
 };
@@ -58,20 +63,20 @@ function getPageTitle(pathname: string): string {
   for (const [path, title] of Object.entries(PAGE_TITLES)) {
     if (path !== '/home' && pathname.startsWith(path)) return title;
   }
-  return 'Dashboard';
+  return 'Home';
 }
 
 function getUserIdentity(): { initials: string; label: string } {
   if (typeof window === 'undefined') {
-    return { initials: 'U', label: 'Portal User' };
+    return { initials: 'U', label: 'User' };
   }
 
   try {
     const raw = localStorage.getItem('user');
-    if (!raw) return { initials: 'U', label: 'Portal User' };
+    if (!raw) return { initials: 'U', label: 'User' };
 
     const user = JSON.parse(raw) as { username?: string; email?: string; name?: string };
-    const label = user?.name || user?.username || user?.email || 'Portal User';
+    const label = user?.name || user?.username || user?.email || 'User';
     const parts = label.trim().split(/[\s@.]/).filter(Boolean);
     const initials = parts.length >= 2
       ? (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2)
@@ -79,7 +84,7 @@ function getUserIdentity(): { initials: string; label: string } {
 
     return { initials, label };
   } catch {
-    return { initials: 'U', label: 'Portal User' };
+    return { initials: 'U', label: 'User' };
   }
 }
 
@@ -128,6 +133,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [recentNotifications, setRecentNotifications] = useState<UserNotificationItem[]>([]);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
   const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -157,7 +164,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     fetch(`${apiUrl}/api/me/teams`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.json().catch(() => ({})))
       .then((data) => {
-        const teams = data.teams || [];
+        const teams = Array.isArray(data?.teams) ? data.teams : [];
         setTeamCheck(teams.length > 0 ? 'ok' : 'forbidden');
       })
       .catch(() => setTeamCheck('forbidden'));
@@ -169,7 +176,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     fetch(`${apiUrl}/api/me/managed-teams`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        const teams = data?.teams || [];
+        const teams = Array.isArray(data?.teams) ? data.teams : [];
         setHasManagedTeams(teams.length > 0);
       })
       .catch(() => {});
@@ -225,6 +232,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setNotifyOpen(false);
     setProfileOpen(false);
+    setSupportOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -413,8 +421,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </button>
           {!sidebarCollapsed && (
             <Link href="/home" className="user-sidebar-shell__brand">
-              <span className="user-sidebar-shell__brand-word user-sidebar-shell__brand-word--primary">User</span>
-              <span className="user-sidebar-shell__brand-word">Portal</span>
+              <span className="user-sidebar-shell__brand-word user-sidebar-shell__brand-word--primary">SetuOps</span>
+              <span className="user-sidebar-shell__brand-word">User</span>
             </Link>
           )}
         </div>
@@ -516,6 +524,36 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           )}
 
           <div className="user-sidebar-shell__footer">
+            <button
+              type="button"
+              className="user-sidebar-shell__link"
+              onClick={() => {
+                setNotifyOpen(false);
+                setProfileOpen(false);
+                setSupportTab('chat');
+                setSupportOpen(true);
+                setMobileMenuOpen(false);
+              }}
+              title="Support"
+            >
+              <IconHelpCircle className="user-sidebar-shell__icon" />
+              {!sidebarCollapsed && <span className="user-sidebar-shell__label">Support</span>}
+            </button>
+            <button
+              type="button"
+              className="user-sidebar-shell__link"
+              onClick={() => {
+                setNotifyOpen(false);
+                setProfileOpen(false);
+                setSupportTab('docs');
+                setSupportOpen(true);
+                setMobileMenuOpen(false);
+              }}
+              title="Documentation"
+            >
+              <IconFileText className="user-sidebar-shell__icon" />
+              {!sidebarCollapsed && <span className="user-sidebar-shell__label">Documentation</span>}
+            </button>
             <button type="button" className="user-sidebar-shell__link" onClick={handleLogout}>
               <IconLogout className="user-sidebar-shell__icon" />
               {!sidebarCollapsed && <span className="user-sidebar-shell__label">Logout</span>}
@@ -540,7 +578,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <IconMenu />
             </button>
             <div className="user-topbar__title-wrap">
-              <span className="user-topbar__kicker">User Portal</span>
+              <span className="user-topbar__kicker">SetuOps</span>
               <h1 className="user-topbar__title">{pageTitle}</h1>
             </div>
             <span className={`user-topbar__status-chip ${pendingManagerApprovalCount > 0 ? 'user-topbar__status-chip--alert' : ''}`}>
@@ -550,6 +588,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
           <div className="user-topbar__right">
             <div className="user-topbar__actions">
+              <button
+                type="button"
+                className="user-topbar__assist-btn"
+                onClick={() => {
+                  setSupportTab('chat');
+                  setSupportOpen(true);
+                  setNotifyOpen(false);
+                  setProfileOpen(false);
+                }}
+              >
+                <IconHelpCircle />
+                <span>Help</span>
+              </button>
               <span className="user-topbar__workspace">{profileLabel}</span>
               <span className="user-topbar__role">{hasManagedTeams ? 'Lead' : 'Requester'}</span>
               <div className="user-topbar__notify-wrap" ref={notifyRef}>
@@ -559,6 +610,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   onClick={() => {
                     setNotifyOpen((open) => !open);
                     setProfileOpen(false);
+                    setSupportOpen(false);
                   }}
                   title={notifyBadgeCount > 0 ? `${notifyBadgeCount} notifications` : 'Notifications'}
                   aria-expanded={notifyOpen}
@@ -629,6 +681,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 onClick={() => {
                   setProfileOpen((o) => !o);
                   setNotifyOpen(false);
+                  setSupportOpen(false);
                 }}
                 aria-expanded={profileOpen}
                 aria-haspopup="true"
@@ -659,6 +712,25 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
         <main className="user-main-shell__content">{children}</main>
       </div>
+      <SupportHub
+        open={supportOpen}
+        initialTab={supportTab}
+        onClose={() => setSupportOpen(false)}
+        portalName="User Portal"
+        currentPath={pathname}
+        currentTitle={pageTitle}
+        articles={supportArticles}
+        quickPrompts={supportQuickPrompts}
+        externalDocsHref={process.env.NEXT_PUBLIC_DOCS_URL || ''}
+        escalationActions={[
+          {
+            label: 'Email platform support',
+            externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`SetuOps support: ${pageTitle}`)}`,
+          },
+          { label: 'Open incidents', href: '/incidents' },
+          { label: 'Open request history', href: '/history' },
+        ]}
+      />
     </div>
   );
 }

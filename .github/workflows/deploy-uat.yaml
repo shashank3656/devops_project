@@ -2,9 +2,25 @@ name: Deploy UAT
 
 on:
   workflow_dispatch:
+  push:
+    branches:s
+      - uat
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  pull-requests: write
 
 jobs:
   deploy:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/')
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      pull-requests: write
     uses: ./.github/workflows/deploy-reusable.yaml
     with:
       environment_name: uat

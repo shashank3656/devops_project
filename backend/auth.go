@@ -24,10 +24,27 @@ func encodeAuthJSON(w http.ResponseWriter, payload interface{}) {
 }
 
 func normalizeUserNotificationKind(raw string) string {
-	normalized := strings.TrimSpace(strings.ToLower(raw))
-	switch normalized {
-	case "", "approved", "rejected", "pr_created", "sla_breach", "assigned", "project_assigned", "project_access_updated", "project_access_removed", "project_catalog_updated":
-		return normalized
+	switch strings.TrimSpace(strings.ToLower(raw)) {
+	case "":
+		return ""
+	case "approved":
+		return "approved"
+	case "rejected":
+		return "rejected"
+	case "pr_created":
+		return "pr_created"
+	case "sla_breach":
+		return "sla_breach"
+	case "assigned":
+		return "assigned"
+	case "project_assigned":
+		return "project_assigned"
+	case "project_access_updated":
+		return "project_access_updated"
+	case "project_access_removed":
+		return "project_access_removed"
+	case "project_catalog_updated":
+		return "project_catalog_updated"
 	default:
 		return ""
 	}
@@ -466,6 +483,9 @@ func meTeamsHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to get teams", nil)
 		return
 	}
+	if teams == nil {
+		teams = []Team{}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeAuthJSON(w, map[string]interface{}{
 		"teams":  teams,
@@ -691,6 +711,9 @@ func meManagedTeamsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, err.Error(), err)
 		return
+	}
+	if teams == nil {
+		teams = []Team{}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeAuthJSON(w, map[string]interface{}{"teams": teams, "status": "ok"})

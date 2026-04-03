@@ -5,6 +5,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import AdminLayout from '../components/AdminLayout';
 import PieChart from '../components/PieChart';
+import CalendarDateInput from '../components/CalendarDateInput';
 
 const DashboardLineChart = dynamic(() => import('../components/DashboardLineChart'), { ssr: false });
 
@@ -221,18 +222,18 @@ export default function AdminDashboard() {
         <div className="portal-page">
           <div className="portal-page__header">
             <div>
-              <span className="portal-page__eyebrow">Dashboard</span>
-              <h1 className="portal-page__title">Admin Dashboard</h1>
+              <span className="portal-page__eyebrow">Overview</span>
+              <h1 className="portal-page__title">Admin Overview</h1>
               <p className="portal-page__subtitle">
-                Monitor request volume, approval pressure, team output, and SLA posture from one operational surface.
+                See incoming requests, team activity, and delivery health in one place.
               </p>
             </div>
             <div className="portal-page__actions">
               <Link href="/project-governance" className="btn btn-secondary">
-                Project governance
+                Projects
               </Link>
               <Link href="/team-ownership" className="btn btn-secondary">
-                Team ownership
+                Teams
               </Link>
               <Link href="/requests" className="btn btn-primary">
                 Open requests
@@ -243,8 +244,8 @@ export default function AdminDashboard() {
           <section className="portal-surface">
             <div className="portal-surface__header">
               <div>
-                <span className="portal-surface__eyebrow">Time Range</span>
-                <h2 className="portal-surface__title">Dashboard Filters</h2>
+                <span className="portal-surface__eyebrow">View</span>
+                <h2 className="portal-surface__title">Filter this page</h2>
               </div>
             </div>
             <div className="portal-field-grid">
@@ -261,11 +262,11 @@ export default function AdminDashboard() {
                 <>
                   <div>
                     <label className="label">From</label>
-                    <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="input" />
+                    <CalendarDateInput value={customFrom} onChange={setCustomFrom} />
                   </div>
                   <div>
                     <label className="label">To</label>
-                    <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="input" />
+                    <CalendarDateInput value={customTo} onChange={setCustomTo} />
                   </div>
                 </>
               )}

@@ -324,10 +324,12 @@ export default function DevOpsWorkload() {
     return true;
   });
 
+  const hasActiveFilters = Boolean(filterUserId || filterStatus);
+
   return (
     <>
       <Head>
-        <title>Workload - InfraGate DevOps</title>
+        <title>Workload - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">
@@ -341,34 +343,77 @@ export default function DevOpsWorkload() {
             </div>
           </header>
 
-          <section className="portal-stat-grid">
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Pending approvals</span>
-              <strong className="portal-stat-card__value">{pendingApprovals.length}</strong>
-              <p className="portal-stat-card__copy">Requests approved by managers and waiting for DevOps sign-off.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Tracked workload</span>
-              <strong className="portal-stat-card__value">{workload.length}</strong>
-              <p className="portal-stat-card__copy">In-flight tickets across assigned and unassigned DevOps work.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Visible users</span>
-              <strong className="portal-stat-card__value">{devopsUsers.length}</strong>
-              <p className="portal-stat-card__copy">Assignable DevOps users currently returned by the backend.</p>
-            </article>
-            <article className="portal-stat-card">
-              <span className="portal-stat-card__label">Filters</span>
-              <strong className="portal-stat-card__value">{filterUserId || filterStatus ? 'Active' : 'Open'}</strong>
-              <p className="portal-stat-card__copy">Current filter state for reviewing the in-progress queue.</p>
-            </article>
+          <section className="portal-surface portal-surface--tight workload__surface-gap">
+            <div className="portal-toolbar">
+              <div className="portal-toolbar__group">
+                <div className="portal-toolbar__item portal-toolbar__item--grow">
+                  <label className="label" htmlFor="workload-user-filter">
+                    DevOps user
+                  </label>
+                  <select id="workload-user-filter" className="input" value={filterUserId} onChange={(event) => setFilterUserId(event.target.value)}>
+                    <option value="">All users ({workload.length})</option>
+                    {workload.some((item) => item.assignee_id === 0) && (
+                      <option value="0">Unassigned ({workload.filter((item) => item.assignee_id === 0).length})</option>
+                    )}
+                    {devopsUsers.map((user) => {
+                      const count = userStats.find((stat) => stat.userId === user.id)?.total ?? 0;
+                      return (
+                        <option key={user.id} value={String(user.id)}>
+                          {user.username} ({count})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <div className="portal-toolbar__item">
+                  <label className="label" htmlFor="workload-status-filter">
+                    Status
+                  </label>
+                  <select id="workload-status-filter" className="input" value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)}>
+                    {STATUS_OPTIONS.map((option) => (
+                      <option key={option.value || 'all'} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="portal-page__actions">
+                <div className="portal-pill-row">
+                  <span className="portal-pill">Pending {pendingApprovals.length}</span>
+                  <span className="portal-pill">Tracked {workload.length}</span>
+                  <span className="portal-pill">Users {devopsUsers.length}</span>
+                </div>
+                {hasActiveFilters ? (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setFilterUserId(''); setFilterStatus(''); }}>
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+            </div>
           </section>
+
+          {hasActiveFilters ? (
+            <div className="alert alert-info workload__scope-alert">
+              Viewing a filtered workload slice.
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setFilterUserId('');
+                  setFilterStatus('');
+                }}
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : null}
 
           {(byTeam.length > 0 || byPerson.length > 0) && (
             <section className="portal-grid">
               {byTeam.length > 0 && (
                 <article className="portal-surface portal-surface--table">
-                  <div className="portal-surface__header" style={{ padding: '24px 24px 0' }}>
+                  <div className="portal-surface__header workload__table-head">
                     <div>
                       <span className="portal-surface__eyebrow">Capacity</span>
                       <h2 className="portal-surface__title">By team</h2>
@@ -401,7 +446,7 @@ export default function DevOpsWorkload() {
 
               {byPerson.length > 0 && (
                 <article className="portal-surface portal-surface--table">
-                  <div className="portal-surface__header" style={{ padding: '24px 24px 0' }}>
+                  <div className="portal-surface__header workload__table-head">
                     <div>
                       <span className="portal-surface__eyebrow">Capacity</span>
                       <h2 className="portal-surface__title">By person</h2>
@@ -473,7 +518,7 @@ export default function DevOpsWorkload() {
                 <table>
                   <thead>
                     <tr>
-                      <th style={{ width: 40 }}>
+                      <th className="workload__checkbox-col">
                         <input
                           type="checkbox"
                           checked={pendingApprovals.length > 0 && selectedIds.size === pendingApprovals.length}
@@ -556,10 +601,7 @@ export default function DevOpsWorkload() {
                       {userStats.map(({ userId, username, total, byStatus }) => (
                         <tr
                           key={userId}
-                          style={{
-                            cursor: 'pointer',
-                            background: filterUserId === String(userId) ? 'rgba(13, 148, 136, 0.12)' : undefined,
-                          }}
+                          className={`workload__user-row${filterUserId === String(userId) ? ' workload__user-row--active' : ''}`}
                           onClick={() => setFilterUserId(filterUserId === String(userId) ? '' : String(userId))}
                         >
                           <td>{userId === 0 ? 'Unassigned' : username}</td>
@@ -567,7 +609,7 @@ export default function DevOpsWorkload() {
                           <td>{byStatus.in_progress ?? 0}</td>
                           <td>{byStatus.completed ?? 0}</td>
                           <td>{byStatus.rejected ?? 0}</td>
-                          <td style={{ color: 'var(--color-text-muted)' }}>
+                          <td className="workload__other-status">
                             {Object.entries(byStatus)
                               .filter(([status]) => !['in_progress', 'completed', 'rejected'].includes(status))
                               .map(([status, count]) => `${status}: ${count}`)
@@ -581,59 +623,6 @@ export default function DevOpsWorkload() {
               </article>
             )}
 
-            <article className="portal-surface">
-              <div className="portal-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Filters</span>
-                  <h2 className="portal-surface__title">Refine in-flight work</h2>
-                  <p className="portal-surface__subtitle">
-                    Filter by assignee or status without changing the underlying workload feature set.
-                  </p>
-                </div>
-              </div>
-              <div className="portal-stack">
-                <div className="portal-toolbar__group">
-                  <div className="portal-toolbar__item portal-toolbar__item--grow">
-                    <label className="label" htmlFor="workload-user-filter">
-                      DevOps user
-                    </label>
-                    <select id="workload-user-filter" className="input" value={filterUserId} onChange={(event) => setFilterUserId(event.target.value)}>
-                      <option value="">All users ({workload.length})</option>
-                      {workload.some((item) => item.assignee_id === 0) && (
-                        <option value="0">Unassigned ({workload.filter((item) => item.assignee_id === 0).length})</option>
-                      )}
-                      {devopsUsers.map((user) => {
-                        const count = userStats.find((stat) => stat.userId === user.id)?.total ?? 0;
-                        return (
-                          <option key={user.id} value={String(user.id)}>
-                            {user.username} ({count})
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                  <div className="portal-toolbar__item">
-                    <label className="label" htmlFor="workload-status-filter">
-                      Status
-                    </label>
-                    <select id="workload-status-filter" className="input" value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)}>
-                      {STATUS_OPTIONS.map((option) => (
-                        <option key={option.value || 'all'} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                {(filterUserId || filterStatus) && (
-                  <div className="portal-form-actions">
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setFilterUserId(''); setFilterStatus(''); }}>
-                      Clear filters
-                    </button>
-                  </div>
-                )}
-              </div>
-            </article>
           </section>
 
           {error && <div className="alert alert-error">{error}</div>}

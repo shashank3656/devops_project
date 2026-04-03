@@ -37,10 +37,10 @@ export default function VerifyEmail() {
   return (
     <>
       <Head>
-        <title>Verify Email - Infrastructure Portal</title>
+        <title>Verify Email - SetuOps</title>
       </Head>
       <div className="auth-page">
-        <div className="auth-card">
+        <div className="auth-card auth-card--compact">
           <div className="auth-header">
             <h1 className="auth-title">Email Verification</h1>
             <p className="auth-subtitle">
@@ -50,17 +50,17 @@ export default function VerifyEmail() {
             </p>
           </div>
           {status === 'loading' && (
-            <div style={{ textAlign: 'center', padding: '24px' }}>
-              <span className="loading" style={{ width: 32, height: 32, borderWidth: 3, display: 'inline-block' }} />
+            <div className="auth-loading">
+              <span className="loading auth-loading__spinner" />
             </div>
           )}
           {status === 'success' && (
-            <div className="success" style={{ marginBottom: '24px' }}>
+            <div className="success auth-status-card">
               {message}
             </div>
           )}
           {status === 'error' && (
-            <div className="error" style={{ marginBottom: '24px' }}>
+            <div className="error auth-status-card">
               {message}
             </div>
           )}

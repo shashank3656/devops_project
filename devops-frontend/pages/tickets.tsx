@@ -85,6 +85,7 @@ interface TicketRow {
   created_at: string;
   updated_at: string;
   created_by_username?: string;
+  config?: string;
 }
 
 interface BlockedByItem {
@@ -183,12 +184,23 @@ function getPreviewSignalClass(severity?: string): string {
   }
 }
 
+function isAccessRequest(request: Pick<TicketRow, 'config'> | null | undefined): boolean {
+  if (!request?.config) return false;
+  try {
+    const parsed = JSON.parse(request.config) as { request_type?: unknown };
+    return typeof parsed.request_type === 'string' && parsed.request_type.trim().toLowerCase() === 'iam';
+  } catch {
+    return false;
+  }
+}
+
 export default function DevOpsTickets() {
   const router = useRouter();
   const apiUrl = useApiUrl();
   const [requests, setRequests] = useState<TicketRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState('');
   const [idFilter, setIdFilter] = useState('');
   const [team, setTeam] = useState('');
   const [projectId, setProjectId] = useState('');
@@ -200,7 +212,7 @@ export default function DevOpsTickets() {
   const [sortOrder, setSortOrder] = useState('desc');
   const [atRisk, setAtRisk] = useState(false);
   const [offset, setOffset] = useState(0);
-  const [filterExpanded, setFilterExpanded] = useState(true);
+  const [filterExpanded, setFilterExpanded] = useState(false);
   const [recentIds, setRecentIds] = useState<number[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [detailId, setDetailId] = useState<number | null>(null);
@@ -215,16 +227,30 @@ export default function DevOpsTickets() {
   const [rejectReason, setRejectReason] = useState('');
   const [actioning, setActioning] = useState<'approve' | 'reject' | null>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const detailRequestIsAccess = isAccessRequest(detailRequest);
   const limit = 20;
 
   const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
 
   const hasActiveFilters = Boolean(idFilter || team || projectId || cloud || status || search || requester || atRisk);
+  const activeFilterCount = [
+    idFilter.trim(),
+    team.trim(),
+    projectId,
+    cloud,
+    status,
+    search.trim(),
+    requester.trim(),
+    atRisk ? 'at-risk' : '',
+    sortBy !== 'created_at' ? sortBy : '',
+    sortOrder !== 'desc' ? sortOrder : '',
+  ].filter(Boolean).length;
   const canActOnDetail = detailRequest?.status === 'pending_devops_approval';
 
   const fetchTickets = () => {
     if (!token) return;
     setLoading(true);
+    setListError('');
     const params = new URLSearchParams();
     if (idFilter.trim()) params.set('id', idFilter.trim());
     if (team) params.set('team', team);
@@ -245,9 +271,14 @@ export default function DevOpsTickets() {
       })
       .then((data) => {
         if (Array.isArray(data.requests)) setRequests(data.requests as TicketRow[]);
+        else setRequests([]);
         if (typeof data.total_count === 'number') setTotal(data.total_count);
       })
-      .catch(() => {})
+      .catch(() => {
+        setRequests([]);
+        setTotal(0);
+        setListError('We couldn’t load the request queue right now.');
+      })
       .finally(() => setLoading(false));
   };
 
@@ -275,7 +306,7 @@ export default function DevOpsTickets() {
 
       if (!detailRes.ok) {
         const data = asRecord(await detailRes.json().catch(() => ({})));
-        throw new Error(getString(data.error, 'Failed to load ticket'));
+        throw new Error(getString(data.error, 'Failed to load request'));
       }
 
       const detailData = asRecord(await detailRes.json());
@@ -300,7 +331,7 @@ export default function DevOpsTickets() {
         workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 0);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load ticket';
+      const message = error instanceof Error ? error.message : 'Failed to load request';
       setDetailError(message);
       setDetailRequest(null);
       setDetailComments([]);
@@ -399,6 +430,12 @@ export default function DevOpsTickets() {
   }, [apiUrl, token]);
 
   useEffect(() => {
+    if (team || cloud || requester || atRisk || sortBy !== 'created_at' || sortOrder !== 'desc') {
+      setFilterExpanded(true);
+    }
+  }, [team, cloud, requester, atRisk, sortBy, sortOrder]);
+
+  useEffect(() => {
     setRecentIds(getRecentRequestIds());
   }, []);
 
@@ -441,20 +478,23 @@ export default function DevOpsTickets() {
     setStatus('');
     setSearch('');
     setRequester('');
+    setSortBy('created_at');
+    setSortOrder('desc');
     setAtRisk(false);
     setOffset(0);
+    setFilterExpanded(false);
   };
 
   return (
     <>
       <Head>
-        <title>Tickets - InfraGate DevOps</title>
+        <title>Requests - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="devops-tickets-page">
           <div className="devops-tickets-header">
             <div>
-              <h1 className="devops-tickets-title">Tickets</h1>
+              <h1 className="devops-tickets-title">Requests</h1>
               {recentIds.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Recent:</span>
@@ -465,7 +505,7 @@ export default function DevOpsTickets() {
                       className="btn btn-secondary"
                       style={{ padding: '6px 12px', fontSize: 13 }}
                       onClick={() => goToRecent(id)}
-                      title={`Open ticket #${id}`}
+                      title={`Open request #${id}`}
                     >
                       #{id}
                     </button>
@@ -473,152 +513,177 @@ export default function DevOpsTickets() {
                 </div>
               )}
               <p className="devops-tickets-subtitle">
-                Search by ticket, team, cloud, status, or requester. Click a row to open the approval workspace, review context, comment, and decide.
+                Search by request number, team, cloud, status, or requester. Click a row to open the review workspace, check the context, comment, and decide.
               </p>
             </div>
           </div>
 
-          <div className="devops-tickets-filter-card card">
-            <button
-              type="button"
-              className="devops-tickets-filter-toggle"
-              onClick={() => setFilterExpanded(!filterExpanded)}
-              aria-expanded={filterExpanded}
-            >
-              <span className="devops-tickets-filter-toggle__icon">{filterExpanded ? '▼' : '▶'}</span>
-              <span>Filters</span>
-              {hasActiveFilters && <span className="devops-tickets-filter-badge">{[idFilter, team, projectId, cloud, status, search, requester, atRisk].filter(Boolean).length}</span>}
-            </button>
+          <div className="devops-filter-ribbon card">
+            <div className="devops-filter-ribbon__bar">
+              <label className="devops-filter-ribbon__pill">
+                <span className="devops-filter-ribbon__key">Request #</span>
+                <input
+                  type="text"
+                  placeholder="Any request"
+                  value={idFilter}
+                  onChange={(e) => setIdFilter(e.target.value)}
+                  className="devops-filter-ribbon__control"
+                />
+              </label>
+              <label className="devops-filter-ribbon__pill devops-filter-ribbon__pill--search">
+                <span className="devops-filter-ribbon__key">Search</span>
+                <input
+                  type="text"
+                  placeholder="Project, team, service, or requester"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="devops-filter-ribbon__control"
+                />
+              </label>
+              <label className="devops-filter-ribbon__pill">
+                <span className="devops-filter-ribbon__key">Project</span>
+                <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="devops-filter-ribbon__control">
+                  <option value="">All projects</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+                  ))}
+                </select>
+              </label>
+              <label className="devops-filter-ribbon__pill">
+                <span className="devops-filter-ribbon__key">Status</span>
+                <select value={status} onChange={(e) => setStatus(e.target.value)} className="devops-filter-ribbon__control">
+                  {STATUS_OPTIONS.map((entry) => (
+                    <option key={entry.value || 'all'} value={entry.value}>{entry.label}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="devops-filter-ribbon__actions">
+                {activeFilterCount > 0 && <span className="devops-filter-ribbon__badge">{activeFilterCount} active</span>}
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setFilterExpanded(!filterExpanded)}
+                  aria-expanded={filterExpanded}
+                >
+                  {filterExpanded ? 'Less' : 'More'}
+                </button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters} disabled={!activeFilterCount}>
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div className="devops-filter-ribbon__footer">
+              <span className="devops-filter-ribbon__hint">Results update automatically. Open more only when you need a narrower queue.</span>
+            </div>
+
             {filterExpanded && (
-              <div className="devops-tickets-filter-grid">
-                <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Ticket #</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 123"
-                    value={idFilter}
-                    onChange={(e) => setIdFilter(e.target.value)}
-                    className="input devops-tickets-filter-input"
-                  />
-                </div>
-                <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Team</label>
-                  <input
-                    type="text"
-                    placeholder="Team name"
-                    value={team}
-                    onChange={(e) => setTeam(e.target.value)}
-                    className="input devops-tickets-filter-input"
-                  />
-                </div>
-                <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Project</label>
-                  <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="input devops-tickets-filter-input">
-                    <option value="">All projects</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Cloud</label>
-                  <select value={cloud} onChange={(e) => setCloud(e.target.value)} className="input devops-tickets-filter-input">
-                    <option value="">All clouds</option>
-                    {CLOUDS.map((entry) => (
-                      <option key={entry} value={entry}>{entry}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Status</label>
-                  <select value={status} onChange={(e) => setStatus(e.target.value)} className="input devops-tickets-filter-input">
-                    {STATUS_OPTIONS.map((entry) => (
-                      <option key={entry.value || 'all'} value={entry.value}>{entry.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Requester</label>
-                  <input
-                    type="text"
-                    placeholder="User ID"
-                    value={requester}
-                    onChange={(e) => setRequester(e.target.value)}
-                    className="input devops-tickets-filter-input"
-                  />
-                </div>
-                <div className="devops-tickets-filter-group devops-tickets-filter-group--wide">
-                  <label className="devops-tickets-filter-label">Search</label>
-                  <input
-                    type="text"
-                    placeholder="Search across fields"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="input devops-tickets-filter-input"
-                  />
-                </div>
-                <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Sort by</label>
-                  <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="input devops-tickets-filter-input">
-                    <option value="created_at">Created</option>
-                    <option value="updated_at">Updated</option>
-                    <option value="priority">Priority</option>
-                    <option value="due_date">Due date</option>
-                  </select>
-                </div>
-                <div className="devops-tickets-filter-group">
-                  <label className="devops-tickets-filter-label">Order</label>
-                  <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="input devops-tickets-filter-input">
-                    <option value="desc">Newest first</option>
-                    <option value="asc">Oldest first</option>
-                  </select>
-                </div>
-                <div className="devops-tickets-filter-group devops-tickets-filter-group--checkbox">
-                  <label className="devops-tickets-filter-checkbox">
-                    <input type="checkbox" checked={atRisk} onChange={(e) => setAtRisk(e.target.checked)} />
-                    <span>At risk (overdue or due in 24h)</span>
+              <div className="devops-filter-ribbon__panel">
+                <div className="devops-filter-ribbon__panel-grid">
+                  <label className="devops-tickets-filter-group">
+                    <span className="devops-tickets-filter-label">Team</span>
+                    <input
+                      type="text"
+                      placeholder="Team name"
+                      value={team}
+                      onChange={(e) => setTeam(e.target.value)}
+                      className="input devops-tickets-filter-input"
+                    />
                   </label>
-                </div>
-                <div className="devops-tickets-filter-actions">
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters} disabled={!hasActiveFilters}>
-                    Clear
-                  </button>
+                  <label className="devops-tickets-filter-group">
+                    <span className="devops-tickets-filter-label">Cloud</span>
+                    <select value={cloud} onChange={(e) => setCloud(e.target.value)} className="input devops-tickets-filter-input">
+                      <option value="">All clouds</option>
+                      {CLOUDS.map((entry) => (
+                        <option key={entry} value={entry}>{entry}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="devops-tickets-filter-group">
+                    <span className="devops-tickets-filter-label">Requester</span>
+                    <input
+                      type="text"
+                      placeholder="Username or user ID"
+                      value={requester}
+                      onChange={(e) => setRequester(e.target.value)}
+                      className="input devops-tickets-filter-input"
+                    />
+                  </label>
+                  <label className="devops-tickets-filter-group">
+                    <span className="devops-tickets-filter-label">Sort by</span>
+                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="input devops-tickets-filter-input">
+                      <option value="created_at">Created</option>
+                      <option value="updated_at">Updated</option>
+                      <option value="priority">Priority</option>
+                      <option value="due_date">Due date</option>
+                    </select>
+                  </label>
+                  <label className="devops-tickets-filter-group">
+                    <span className="devops-tickets-filter-label">Order</span>
+                    <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="input devops-tickets-filter-input">
+                      <option value="desc">Newest first</option>
+                      <option value="asc">Oldest first</option>
+                    </select>
+                  </label>
+                  <div className="devops-tickets-filter-group devops-tickets-filter-group--checkbox">
+                    <label className="devops-tickets-filter-checkbox">
+                      <input type="checkbox" checked={atRisk} onChange={(e) => setAtRisk(e.target.checked)} />
+                      <span>Only requests that need attention now</span>
+                    </label>
+                  </div>
                 </div>
               </div>
             )}
           </div>
 
           {loading ? (
-            <div className="devops-tickets-loading">
+            <div className="portal-table-state portal-table-state--loading">
               <div className="devops-tickets-spinner" />
-              <p>Loading tickets...</p>
+              <h3 className="portal-table-state__title">Loading requests</h3>
+              <p className="portal-table-state__copy">We’re refreshing the DevOps queue for you now.</p>
+            </div>
+          ) : listError ? (
+            <div className="portal-table-state portal-table-state--error">
+              <div className="portal-table-state__icon" aria-hidden>!</div>
+              <h3 className="portal-table-state__title">We couldn’t load this queue</h3>
+              <p className="portal-table-state__copy">{listError}</p>
+              <div className="portal-table-state__actions">
+                <button type="button" className="btn btn-secondary" onClick={fetchTickets}>
+                  Try again
+                </button>
+              </div>
             </div>
           ) : (
             <>
               <div className="devops-tickets-summary">
-                <span>Showing {requests.length} of {total} tickets</span>
+                <span>Showing {requests.length} of {total} requests</span>
                 <span>Open a row to work the request without leaving this page.</span>
               </div>
               <div className="devops-tickets-table-card card">
                 {requests.length === 0 ? (
-                  <div className="devops-tickets-empty">
-                    <div className="devops-tickets-empty__icon">[]</div>
-                    <p>No tickets match your filters.</p>
-                    <button type="button" className="btn btn-secondary" onClick={clearFilters}>
-                      Clear filters
-                    </button>
+                  <div className="portal-table-state portal-table-state--empty">
+                    <div className="portal-table-state__icon" aria-hidden>⋯</div>
+                    <h3 className="portal-table-state__title">No requests match these filters</h3>
+                    <p className="portal-table-state__copy">
+                      Clear one or two filters to bring the request queue back into view.
+                    </p>
+                    <div className="portal-table-state__actions">
+                      <button type="button" className="btn btn-secondary" onClick={clearFilters}>
+                        Clear filters
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="devops-tickets-table-wrap">
                     <table className="devops-tickets-table">
                       <thead>
                         <tr>
-                          <th>ID</th>
+                          <th>Request #</th>
                           <th>Project</th>
                           <th>Team</th>
                           <th>Env</th>
                           <th>Cloud</th>
-                          <th>Service</th>
+                          <th>Service / target</th>
                           <th>Requester</th>
                           <th>Priority</th>
                           <th>Due</th>
@@ -633,15 +698,14 @@ export default function DevOpsTickets() {
                             key={req.id}
                             className={detailId === req.id ? 'devops-tickets-table__row--active' : ''}
                             onClick={() => loadDetail(req.id)}
-                            style={{ cursor: 'pointer' }}
                           >
                             <td><code className="devops-ticket-id">#{req.id}</code></td>
                             <td>
                               {req.project_name ? (
-                                <>
+                                <div className="devops-ticket-primary">
                                   <strong>{req.project_name}</strong>
-                                  {req.project_code ? <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{req.project_code}</div> : null}
-                                </>
+                                  {req.project_code ? <span className="devops-ticket-meta">{req.project_code}</span> : null}
+                                </div>
                               ) : (
                                 <span style={{ color: 'var(--text-muted)' }}>Not set</span>
                               )}
@@ -649,12 +713,19 @@ export default function DevOpsTickets() {
                             <td>{req.team}</td>
                             <td><span className="devops-ticket-env">{req.env}</span></td>
                             <td><span className={`devops-ticket-cloud devops-ticket-cloud--${(req.cloud || '').toLowerCase()}`}>{req.cloud}</span></td>
-                            <td>{req.service}</td>
-                            <td>{req.created_by_username || 'Not available'}</td>
+                            <td>
+                              <div className="devops-ticket-primary">
+                                <strong>{req.service}</strong>
+                              {isAccessRequest(req) ? (
+                                <span className="devops-ticket-meta">Access request</span>
+                              ) : null}
+                              </div>
+                            </td>
+                            <td><span className="devops-ticket-meta">{req.created_by_username || 'Not available'}</span></td>
                             <td><span className={`devops-ticket-priority devops-ticket-priority--${(req.priority || 'medium').toLowerCase()}`}>{req.priority || 'medium'}</span></td>
                             <td>
                               <span className="devops-ticket-due">
-                                {formatDateOnly(req.due_date)}
+                                <span className="devops-ticket-meta">{formatDateOnly(req.due_date)}</span>
                                 {req.due_status === 'overdue' && <span className="devops-ticket-due-badge devops-ticket-due-badge--overdue">Overdue</span>}
                                 {req.due_status === 'due_soon' && <span className="devops-ticket-due-badge devops-ticket-due-badge--soon">Due in 24h</span>}
                               </span>
@@ -671,9 +742,9 @@ export default function DevOpsTickets() {
                                 >
                                   View PR
                                 </a>
-                              ) : 'Pending'}
+                              ) : <span className="devops-ticket-meta">Pending</span>}
                             </td>
-                            <td className="devops-ticket-updated">{formatDateTime(req.updated_at)}</td>
+                            <td className="devops-ticket-updated"><span className="devops-ticket-meta">{formatDateTime(req.updated_at)}</span></td>
                           </tr>
                         ))}
                       </tbody>
@@ -683,15 +754,17 @@ export default function DevOpsTickets() {
               </div>
               {requests.length > 0 && total > limit && (
                 <div className="devops-tickets-pagination">
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => setOffset((value) => Math.max(0, value - limit))}>
-                    Previous
-                  </button>
                   <span className="devops-tickets-pagination-info">
                     Page {Math.floor(offset / limit) + 1} of {Math.ceil(total / limit)}
                   </span>
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={offset + limit >= total} onClick={() => setOffset((value) => value + limit)}>
-                    Next
-                  </button>
+                  <div className="devops-tickets-pagination__actions">
+                    <button type="button" className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => setOffset((value) => Math.max(0, value - limit))}>
+                      Previous
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" disabled={offset + limit >= total} onClick={() => setOffset((value) => value + limit)}>
+                      Next
+                    </button>
+                  </div>
                 </div>
               )}
             </>
@@ -699,17 +772,17 @@ export default function DevOpsTickets() {
 
           {(detailId || detailLoading || detailRequest) && (
             <section ref={workspaceRef} className="portal-surface devops-approval-workspace">
-              <div className="portal-surface__header">
+              <div className="portal-surface__header devops-approval-workspace__header">
                 <div>
-                  <span className="portal-surface__eyebrow">Approval Workspace</span>
+                  <span className="portal-surface__eyebrow">Request Workspace</span>
                   <h2 className="portal-surface__title">
-                    {detailRequest ? `Ticket #${detailRequest.id}` : 'Loading ticket'}
+                    {detailRequest ? (detailRequestIsAccess ? `Access request #${detailRequest.id}` : `Request #${detailRequest.id}`) : 'Loading request'}
                   </h2>
                   <p className="portal-surface__subtitle">
-                    Review request context, dependency pressure, comments, and timeline without leaving the tickets queue.
+                    Review request context, dependency pressure, comments, and timeline without leaving the requests queue.
                   </p>
                 </div>
-                <div className="portal-page__actions">
+                <div className="portal-page__actions devops-approval-workspace__top-actions">
                   <button type="button" className="btn btn-secondary btn-sm" onClick={refreshDetail} disabled={detailLoading}>
                     Refresh
                   </button>
@@ -728,13 +801,13 @@ export default function DevOpsTickets() {
 
                   {detailRequest && (
                     <div className="devops-approval-workspace__grid">
-                      <section className="portal-surface portal-surface--tight">
+                      <section className="portal-surface portal-surface--tight devops-approval-workspace__summary-surface">
                         <div className="portal-surface__header">
                           <div>
                             <span className="portal-surface__eyebrow">Request Summary</span>
                             <h3 className="portal-surface__title">Execution Context</h3>
                           </div>
-                          <span className={`ticket-status ${getStatusBadgeClass(detailRequest.status)}`}>
+                          <span className={`ticket-status ${getStatusBadgeClass(detailRequest.status)} devops-approval-workspace__summary-status`}>
                             {formatStatus(detailRequest.status)}
                           </span>
                         </div>
@@ -757,7 +830,7 @@ export default function DevOpsTickets() {
                             <strong>{detailRequest.cloud}</strong>
                           </div>
                           <div className="devops-approval-workspace__meta-item">
-                            <span className="devops-approval-workspace__meta-label">Service</span>
+                            <span className="devops-approval-workspace__meta-label">{detailRequestIsAccess ? 'Target' : 'Service'}</span>
                             <strong>{detailRequest.service}</strong>
                           </div>
                           <div className="devops-approval-workspace__meta-item">
@@ -782,12 +855,14 @@ export default function DevOpsTickets() {
                             <strong>{detailRequest.application_id || 'Not set'}</strong>
                           </div>
                           <div className="devops-approval-workspace__meta-item">
-                            <span className="devops-approval-workspace__meta-label">Branch</span>
+                            <span className="devops-approval-workspace__meta-label">Request branch</span>
                             <strong>{detailRequest.branch || 'Not set'}</strong>
+                            <small>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/&lt;env&gt;/&lt;service&gt;/&lt;request-id&gt;</small>
                           </div>
                           <div className="devops-approval-workspace__meta-item">
-                            <span className="devops-approval-workspace__meta-label">File path</span>
+                            <span className="devops-approval-workspace__meta-label">Config path</span>
                             <strong>{detailRequest.file_path || 'Not set'}</strong>
+                            <small>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/envs/&lt;env&gt;/&lt;service&gt;/request.json</small>
                           </div>
                           <div className="devops-approval-workspace__meta-item">
                             <span className="devops-approval-workspace__meta-label">Created</span>
@@ -905,7 +980,7 @@ export default function DevOpsTickets() {
                                 <p className="portal-preview-copy">{detailRequest.approval_context.summary}</p>
                               </div>
                             </div>
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <div className="devops-approval-workspace__signal-row">
                               <span className={getPreviewSignalClass(detailRequest.approval_context.requires_manager_approval ? 'medium' : 'low')}>
                                 {detailRequest.approval_context.requires_manager_approval ? 'Manager gate enabled' : 'No manager gate'}
                               </span>
@@ -924,7 +999,7 @@ export default function DevOpsTickets() {
                         )}
 
                         <details className="devops-approval-workspace__details" open>
-                          <summary>Request configuration</summary>
+                          <summary>{detailRequestIsAccess ? 'Access request details' : 'Request details'}</summary>
                           <pre className="devops-approval-workspace__code">{detailRequest.config || '{}'}</pre>
                         </details>
 
@@ -936,7 +1011,7 @@ export default function DevOpsTickets() {
                         )}
                       </section>
 
-                      <section className="portal-surface portal-surface--tight">
+                      <section className="portal-surface portal-surface--tight devops-approval-workspace__decision-surface">
                         <div className="portal-surface__header">
                           <div>
                             <span className="portal-surface__eyebrow">Decision Panel</span>

@@ -103,6 +103,16 @@ function getPreviewSignalClass(severity?: string): string {
   }
 }
 
+function isAccessRequest(req: PRRequest | null | undefined): boolean {
+  if (!req?.config) return false;
+  try {
+    const parsed = JSON.parse(req.config) as { request_type?: unknown };
+    return typeof parsed.request_type === 'string' && parsed.request_type.trim().toLowerCase() === 'iam';
+  } catch {
+    return false;
+  }
+}
+
 export default function AdminRequests() {
   const router = useRouter();
   const [requests, setRequests] = useState<PRRequest[]>([]);
@@ -119,6 +129,7 @@ export default function AdminRequests() {
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const [atRiskOnly, setAtRiskOnly] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [offset, setOffset] = useState(0);
   const [actioningId, setActioningId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -142,6 +153,19 @@ export default function AdminRequests() {
   const [bulkStatusValue, setBulkStatusValue] = useState('');
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [timeline, setTimeline] = useState<{ id: number; kind: string; action: string; username: string; details: string; body?: string; created_at: string }[]>([]);
+  const detailRequestIsAccess = isAccessRequest(detailRequest);
+  const activeFilterCount = [
+    team.trim(),
+    projectId,
+    env.trim(),
+    cloud.trim(),
+    search.trim(),
+    statusFilter,
+    priorityFilter,
+    sortBy !== 'created_at' ? sortBy : '',
+    sortOrder !== 'desc' ? sortOrder : '',
+    atRiskOnly ? 'at-risk' : '',
+  ].filter(Boolean).length;
   const limit = 20;
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -155,9 +179,16 @@ export default function AdminRequests() {
     const nextProjectID = Array.isArray(rawProjectID) ? rawProjectID[0] : rawProjectID;
     if (typeof nextProjectID === 'string') {
       setProjectId(nextProjectID);
+      setShowAdvancedFilters(true);
       setOffset(0);
     }
   }, [router.isReady, router.query.project_id]);
+
+  useEffect(() => {
+    if (env || cloud || priorityFilter || sortBy !== 'created_at' || sortOrder !== 'desc' || atRiskOnly) {
+      setShowAdvancedFilters(true);
+    }
+  }, [env, cloud, priorityFilter, sortBy, sortOrder, atRiskOnly]);
 
   const fetchRequests = (overrides?: { team?: string; projectId?: string; env?: string; cloud?: string; search?: string; status?: string; priority?: string; sortBy?: string; sortOrder?: string; atRiskOnly?: boolean; offset?: number }) => {
     const t = overrides?.team !== undefined ? overrides.team : filtersRef.current.team;
@@ -194,7 +225,7 @@ export default function AdminRequests() {
         return res.json();
       })
       .then((data) => {
-        if (data.requests) setRequests(data.requests);
+        setRequests(Array.isArray(data.requests) ? data.requests : []);
         if (typeof data.total_count === 'number') setTotal(data.total_count);
         if (data.error) setError(data.error);
       })
@@ -256,11 +287,11 @@ export default function AdminRequests() {
         setCommentBody('');
         fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
           .then((r) => r.json())
-          .then((d) => setDetailComments(d.comments || []))
+          .then((d) => setDetailComments(Array.isArray(d?.comments) ? d.comments : []))
           .catch(() => {});
         fetch(`${apiUrl}/api/request/${req.id}/timeline`, { headers: { Authorization: `Bearer ${token}` } })
           .then((r) => (r.ok ? r.json() : null))
-          .then((d) => { if (d?.timeline) setTimeline(d.timeline); })
+          .then((d) => setTimeline(Array.isArray(d?.timeline) ? d.timeline : []))
           .catch(() => setTimeline([]));
         fetch(`${apiUrl}/api/admin/requests/${req.id}`, { headers: { Authorization: `Bearer ${token}` } })
           .then((r) => (r.ok ? r.json() : null))
@@ -319,6 +350,7 @@ export default function AdminRequests() {
     setSortBy('created_at');
     setSortOrder('desc');
     setAtRiskOnly(false);
+    setShowAdvancedFilters(false);
     setOffset(0);
     router.replace('/requests', undefined, { shallow: true });
     fetchRequests({ team: '', projectId: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false, offset: 0 });
@@ -437,11 +469,11 @@ export default function AdminRequests() {
     setCommentBody('');
     fetch(`${apiUrl}/api/request/${req.id}/timeline`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d?.timeline) setTimeline(d.timeline); })
+      .then((d) => setTimeline(Array.isArray(d?.timeline) ? d.timeline : []))
       .catch(() => setTimeline([]));
     fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.json())
-      .then((d) => setDetailComments(d.comments || []))
+      .then((d) => setDetailComments(Array.isArray(d?.comments) ? d.comments : []))
       .catch(() => {});
     fetch(`${apiUrl}/api/admin/requests/${req.id}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.ok ? res.json() : null)
@@ -467,10 +499,10 @@ export default function AdminRequests() {
         setCommentBody('');
         const listRes = await fetch(`${apiUrl}/api/request/${detailRequest.id}/comments`, { headers: { Authorization: `Bearer ${token}` } });
         const d = await listRes.json().catch(() => ({}));
-        setDetailComments(d.comments || []);
+        setDetailComments(Array.isArray(d?.comments) ? d.comments : []);
         fetch(`${apiUrl}/api/request/${detailRequest.id}/timeline`, { headers: { Authorization: `Bearer ${token}` } })
           .then((r) => (r.ok ? r.json() : null))
-          .then((td) => { if (td?.timeline) setTimeline(td.timeline); });
+          .then((td) => setTimeline(Array.isArray(td?.timeline) ? td.timeline : []));
       }
     } finally {
       setCommentSubmitting(false);
@@ -636,7 +668,7 @@ export default function AdminRequests() {
       });
       if (res.ok) {
         const d = await res.json();
-        setConfigHistory(d.history || []);
+        setConfigHistory(Array.isArray(d?.history) ? d.history : []);
         setShowConfigHistory(true);
       }
     } catch (_) {
@@ -702,16 +734,16 @@ export default function AdminRequests() {
   return (
     <>
       <Head>
-        <title>PR Requests - InfraGate Admin</title>
+        <title>Requests - SetuOps Admin</title>
       </Head>
       <AdminLayout>
         <div className="portal-page">
           <div className="portal-page__header">
             <div>
               <span className="portal-page__eyebrow">Requests</span>
-              <h1 className="portal-page__title">Request Management</h1>
+              <h1 className="portal-page__title">All requests</h1>
               <p className="portal-page__subtitle">
-                Search by team, environment, cloud, or priority, then act on individual requests or in bulk.
+                Search, review, and update requests from one queue.
               </p>
             </div>
             <button
@@ -743,13 +775,13 @@ export default function AdminRequests() {
                   .catch(() => setError('Export failed'));
               }}
             >
-              Export CSV (filtered)
+              Download CSV
             </button>
           </div>
 
           {recentIds.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-              <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Recent:</span>
+              <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Recent requests:</span>
               {recentIds.map((id) => (
                 <button
                   key={id}
@@ -765,133 +797,215 @@ export default function AdminRequests() {
             </div>
           )}
 
-          {error && (
+          {error && requests.length > 0 && (
             <div className="alert alert-error" role="alert">
               {error}
             </div>
           )}
 
-          <form onSubmit={handleFilter} className="filters-bar">
-            <input
-              id="filter-team"
-              name="filter-team"
-              type="text"
-              className="input"
-              placeholder="Team"
-              value={team}
-              onChange={(e) => setTeam(e.target.value)}
-            />
-            <select
-              id="filter-project"
-              name="filter-project"
-              className="input"
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              style={{ minWidth: 220 }}
-            >
-              <option value="">All projects</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
-              ))}
-            </select>
-            <input
-              id="filter-env"
-              name="filter-env"
-              type="text"
-              className="input"
-              placeholder="Env"
-              value={env}
-              onChange={(e) => setEnv(e.target.value)}
-            />
-            <input
-              id="filter-cloud"
-              name="filter-cloud"
-              type="text"
-              className="input"
-              placeholder="Cloud"
-              value={cloud}
-              onChange={(e) => setCloud(e.target.value)}
-            />
-            <input
-              id="filter-search"
-              name="filter-search"
-              type="text"
-              className="input"
-              placeholder="Search (all fields)"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{ minWidth: 180 }}
-            />
-            <select
-              id="filter-status"
-              name="filter-status"
-              className="input"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              style={{ minWidth: 160 }}
-            >
-              <option value="">All statuses</option>
-              <option value="draft">Draft</option>
-              <option value="pending_user_manager_approval">Pending user manager</option>
-              <option value="pending_devops_approval">Pending DevOps approval</option>
-              <option value="pending_approval">Pending approval</option>
-              <option value="in_progress">In progress</option>
-              <option value="completed">Completed</option>
-              <option value="rejected">Rejected</option>
-            </select>
-            <select
-              id="filter-priority"
-              name="filter-priority"
-              className="input"
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              style={{ minWidth: 120 }}
-            >
-              <option value="">All priorities</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-              <option value="critical">Critical</option>
-            </select>
-            <select id="filter-sort-by" name="filter-sort-by" className="input" value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ minWidth: 120 }}>
-              <option value="created_at">Sort: Created</option>
-              <option value="updated_at">Sort: Updated</option>
-              <option value="priority">Sort: Priority</option>
-              <option value="due_date">Sort: Due date</option>
-            </select>
-            <select id="filter-sort-order" name="filter-sort-order" className="input" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} style={{ minWidth: 80 }}>
-              <option value="desc">Desc</option>
-              <option value="asc">Asc</option>
-            </select>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <input type="checkbox" id="filter-at-risk" name="filter-at-risk" checked={atRiskOnly} onChange={(e) => setAtRiskOnly(e.target.checked)} />
-              At risk (overdue / due in 24h)
-            </label>
-            <button type="submit" className="btn btn-primary">
-              Apply filters
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={handleClearFilters}
-            >
-              Clear
-            </button>
+          <form onSubmit={handleFilter} className="admin-request-filter">
+            <div className="admin-request-filter__bar">
+              <label className="admin-request-filter__pill">
+                <span className="admin-request-filter__key">Team</span>
+                <input
+                  id="filter-team"
+                  name="filter-team"
+                  type="text"
+                  className="admin-request-filter__control"
+                  placeholder="Any team"
+                  value={team}
+                  onChange={(e) => setTeam(e.target.value)}
+                />
+              </label>
+
+              <label className="admin-request-filter__pill">
+                <span className="admin-request-filter__key">Project</span>
+                <select
+                  id="filter-project"
+                  name="filter-project"
+                  className="admin-request-filter__control"
+                  value={projectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                >
+                  <option value="">All projects</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="admin-request-filter__pill admin-request-filter__pill--search">
+                <span className="admin-request-filter__key">Search</span>
+                <input
+                  id="filter-search"
+                  name="filter-search"
+                  type="text"
+                  className="admin-request-filter__control"
+                  placeholder="Requester, team, cloud, or service"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </label>
+
+              <label className="admin-request-filter__pill">
+                <span className="admin-request-filter__key">Status</span>
+                <select
+                  id="filter-status"
+                  name="filter-status"
+                  className="admin-request-filter__control"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  <option value="">All statuses</option>
+                  <option value="draft">Draft</option>
+                  <option value="pending_user_manager_approval">Waiting for manager</option>
+                  <option value="pending_devops_approval">Waiting for platform team</option>
+                  <option value="pending_approval">Waiting for review</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </label>
+
+              <div className="admin-request-filter__actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowAdvancedFilters((current) => !current)}
+                >
+                  {showAdvancedFilters ? 'Less' : 'More'}
+                </button>
+                <button type="submit" className="btn btn-primary btn-sm">
+                  Apply
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleClearFilters}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div className="admin-request-filter__footer">
+              <div className="admin-request-filter__footer-meta">
+                {activeFilterCount > 0 ? (
+                  <span className="filters-bar__badge">{activeFilterCount} active</span>
+                ) : (
+                  <span className="admin-request-filter__hint">Start with one filter. Open more only if you need to narrow the queue.</span>
+                )}
+              </div>
+            </div>
+
+            {showAdvancedFilters ? (
+              <div className="admin-request-filter__panel">
+                <div className="admin-request-filter__panel-grid">
+                  <label className="filters-bar__field">
+                    <span className="filters-bar__field-label">Environment</span>
+                    <input
+                      id="filter-env"
+                      name="filter-env"
+                      type="text"
+                      className="input"
+                      placeholder="Environment"
+                      value={env}
+                      onChange={(e) => setEnv(e.target.value)}
+                    />
+                  </label>
+                  <label className="filters-bar__field">
+                    <span className="filters-bar__field-label">Cloud</span>
+                    <input
+                      id="filter-cloud"
+                      name="filter-cloud"
+                      type="text"
+                      className="input"
+                      placeholder="Cloud"
+                      value={cloud}
+                      onChange={(e) => setCloud(e.target.value)}
+                    />
+                  </label>
+                  <label className="filters-bar__field">
+                    <span className="filters-bar__field-label">Priority</span>
+                    <select
+                      id="filter-priority"
+                      name="filter-priority"
+                      className="input"
+                      value={priorityFilter}
+                      onChange={(e) => setPriorityFilter(e.target.value)}
+                    >
+                      <option value="">All priorities</option>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                  </label>
+                  <label className="filters-bar__checkbox">
+                    <input type="checkbox" id="filter-at-risk" name="filter-at-risk" checked={atRiskOnly} onChange={(e) => setAtRiskOnly(e.target.checked)} />
+                    <span>Due soon or overdue only</span>
+                  </label>
+                </div>
+
+                <div className="admin-request-filter__panel-grid admin-request-filter__panel-grid--short">
+                  <label className="filters-bar__field">
+                    <span className="filters-bar__field-label">Sort by</span>
+                    <select id="filter-sort-by" name="filter-sort-by" className="input" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                      <option value="created_at">Created</option>
+                      <option value="updated_at">Updated</option>
+                      <option value="priority">Priority</option>
+                      <option value="due_date">Due date</option>
+                    </select>
+                  </label>
+                  <label className="filters-bar__field">
+                    <span className="filters-bar__field-label">Order</span>
+                    <select id="filter-sort-order" name="filter-sort-order" className="input" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}>
+                      <option value="desc">Newest first</option>
+                      <option value="asc">Oldest first</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+            ) : null}
           </form>
 
           <div className="card">
             {loading ? (
-              <p className="loading-text">Loading…</p>
+              <div className="admin-queue-state admin-queue-state--loading">
+                <div className="admin-queue-state__spinner" />
+                <h3 className="admin-queue-state__title">Loading requests</h3>
+                <p className="admin-queue-state__copy">We’re pulling the latest request queue for you now.</p>
+              </div>
+            ) : error && requests.length === 0 ? (
+              <div className="admin-queue-state admin-queue-state--error">
+                <div className="admin-queue-state__icon" aria-hidden>!</div>
+                <h3 className="admin-queue-state__title">We couldn’t load this queue</h3>
+                <p className="admin-queue-state__copy">{error}</p>
+                <div className="admin-queue-state__actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => fetchRequests({ offset })}>
+                    Try again
+                  </button>
+                </div>
+              </div>
             ) : requests.length === 0 ? (
-              <div className="empty-state">
-                No PR requests match the filters.
+              <div className="admin-queue-state admin-queue-state--empty">
+                <div className="admin-queue-state__icon" aria-hidden>⋯</div>
+                <h3 className="admin-queue-state__title">No requests match these filters</h3>
+                <p className="admin-queue-state__copy">
+                  Try clearing one or two filters to bring the queue back into view.
+                </p>
+                <div className="admin-queue-state__actions">
+                  <button type="button" className="btn btn-secondary" onClick={handleClearFilters}>
+                    Clear filters
+                  </button>
+                </div>
               </div>
             ) : (
               <>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div className="admin-requests-bulk-bar">
                   {pendingIds.length > 0 && (
                     <>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                    <label className="admin-requests-bulk-bar__toggle">
                       <input
                         type="checkbox"
                         checked={selectedIds.size === pendingIds.length && pendingIds.length > 0}
@@ -902,7 +1016,6 @@ export default function AdminRequests() {
                     <button
                       type="button"
                       className="btn btn-primary"
-                      style={{ padding: '6px 14px', fontSize: 13 }}
                       disabled={selectedIds.size === 0 || bulkActioning}
                       onClick={handleBulkApprove}
                     >
@@ -911,7 +1024,6 @@ export default function AdminRequests() {
                     <button
                       type="button"
                       className="btn btn-danger"
-                      style={{ padding: '6px 14px', fontSize: 13 }}
                       disabled={selectedIds.size === 0 || bulkActioning}
                       onClick={handleBulkReject}
                     >
@@ -919,7 +1031,7 @@ export default function AdminRequests() {
                     </button>
                     </>
                   )}
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <label className="admin-requests-bulk-bar__toggle">
                     <input
                       type="checkbox"
                       checked={selectedIds.size === requests.length && requests.length > 0}
@@ -927,11 +1039,11 @@ export default function AdminRequests() {
                     />
                     Select all ({requests.length})
                   </label>
-                  <span style={{ marginLeft: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span className="admin-requests-bulk-bar__status">
                     <select
                       value={bulkStatusValue}
                       onChange={(e) => setBulkStatusValue(e.target.value)}
-                      style={{ padding: '6px 10px', borderRadius: 6, fontSize: 13 }}
+                      className="input"
                     >
                       <option value="">Bulk status…</option>
                       <option value="in_progress">In progress</option>
@@ -941,7 +1053,6 @@ export default function AdminRequests() {
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      style={{ padding: '6px 14px', fontSize: 13 }}
                       disabled={selectedIds.size === 0 || !bulkStatusValue || bulkActioning}
                       onClick={handleBulkStatus}
                     >
@@ -950,11 +1061,11 @@ export default function AdminRequests() {
                   </span>
                 </div>
                 <div className="table-wrap">
-                  <table>
+                  <table className="admin-requests-table">
                     <thead>
                       <tr>
-                        <th style={{ width: 44 }} title="Select">☐</th>
-                        <th>ID</th>
+                        <th className="admin-requests-table__select-col" title="Select">☐</th>
+                        <th>Request #</th>
                         <th>Project</th>
                         <th>Team</th>
                         <th>Env</th>
@@ -964,75 +1075,66 @@ export default function AdminRequests() {
                         <th>Due</th>
                         <th>Status</th>
                         <th>Created</th>
-                        <th style={{ width: 200 }}>Actions</th>
+                        <th className="admin-requests-table__actions-col">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {requests.map((req) => (
-                        <tr key={req.id} style={{ cursor: 'pointer' }} onClick={() => openDetail(req)}>
-                          <td onClick={(e) => e.stopPropagation()}>
+                        <tr key={req.id} className="admin-requests-table__row" style={{ cursor: 'pointer' }} onClick={() => openDetail(req)}>
+                          <td className="admin-requests-table__checkbox-cell" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
                               checked={selectedIds.has(req.id)}
                               onChange={() => toggleSelect(req.id)}
                             />
                           </td>
-                          <td>{req.id}</td>
+                          <td><span className="admin-requests-table__request-id">#{req.id}</span></td>
                           <td>
                             {req.project_name ? (
-                              <>
+                              <div className="admin-requests-table__primary">
                                 <strong>{req.project_name}</strong>
-                                {req.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{req.project_code}</div> : null}
-                              </>
+                                {req.project_code ? <span className="admin-requests-table__meta">{req.project_code}</span> : null}
+                              </div>
                             ) : '—'}
                           </td>
                           <td>{req.team}</td>
-                          <td>{req.env}</td>
-                          <td>{req.cloud}</td>
-                          <td>{req.service}</td>
-                          <td style={{ fontSize: 13 }}>{req.priority || '—'}</td>
-                          <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
-                            {req.due_date ? new Date(req.due_date).toLocaleDateString() : '—'}
+                          <td><span className="admin-requests-table__pill admin-requests-table__pill--env">{req.env}</span></td>
+                          <td><span className={`admin-requests-table__pill admin-requests-table__pill--cloud admin-requests-table__pill--cloud-${(req.cloud || '').toLowerCase()}`}>{req.cloud}</span></td>
+                          <td>
+                            <div className="admin-requests-table__primary">
+                              <strong>{req.service}</strong>
+                            {isAccessRequest(req) ? (
+                              <span className="admin-requests-table__meta">Access request</span>
+                            ) : null}
+                            </div>
+                          </td>
+                          <td><span className={`admin-requests-table__pill admin-requests-table__pill--priority admin-requests-table__pill--priority-${(req.priority || 'medium').toLowerCase()}`}>{req.priority || '—'}</span></td>
+                          <td>
+                            <div className="admin-requests-table__due">
+                              <span className="admin-requests-table__meta">{req.due_date ? new Date(req.due_date).toLocaleDateString() : '—'}</span>
                             {req.due_status === 'overdue' && (
-                              <span style={{ marginLeft: 6, padding: '2px 6px', borderRadius: 4, fontSize: 11, background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>Overdue</span>
+                              <span className="admin-requests-table__due-badge admin-requests-table__due-badge--overdue">Overdue</span>
                             )}
                             {req.due_status === 'due_soon' && (
-                              <span style={{ marginLeft: 6, padding: '2px 6px', borderRadius: 4, fontSize: 11, background: 'var(--color-warning-bg)', color: 'var(--color-warning)' }}>Due in 24h</span>
+                              <span className="admin-requests-table__due-badge admin-requests-table__due-badge--soon">Due in 24h</span>
                             )}
+                            </div>
                           </td>
                           <td>
-                            <span
-                              style={{
-                                padding: '4px 10px',
-                                borderRadius: 6,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                background: req.status === 'draft' ? '#f1f5f9' :
-                                           canApproveOrReject(req.status) ? 'var(--color-warning-bg)' :
-                                           req.status === 'in_progress' ? 'var(--color-primary-light)' :
-                                           req.status === 'completed' ? 'var(--color-success-bg)' :
-                                           req.status === 'rejected' ? 'var(--color-danger-bg)' : '#f1f5f9',
-                                color: req.status === 'draft' ? 'var(--color-text-muted)' :
-                                       canApproveOrReject(req.status) ? 'var(--color-warning)' :
-                                       req.status === 'in_progress' ? 'var(--color-primary)' :
-                                       req.status === 'completed' ? 'var(--color-success)' :
-                                       req.status === 'rejected' ? 'var(--color-danger)' : 'var(--color-text-muted)'
-                              }}
-                            >
+                            <span className="status-badge" data-status={req.status}>
                               {statusLabel(req.status)}
                             </span>
                           </td>
-                          <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
-                            {new Date(req.created_at).toLocaleString()}
+                          <td>
+                            <span className="admin-requests-table__meta">{new Date(req.created_at).toLocaleString()}</span>
                           </td>
-                          <td onClick={(e) => e.stopPropagation()}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                          <td className="admin-requests-table__actions-cell" onClick={(e) => e.stopPropagation()}>
+                            <div className="admin-requests-table__actions">
                               {req.status === 'pending_approval' && (
                                 <>
                                   <button
                                     type="button"
-                                    className="btn btn-primary"
-                                    style={{ padding: '6px 12px', fontSize: 13 }}
+                                    className="btn btn-primary btn-sm"
                                     disabled={actioningId !== null}
                                     onClick={() => handleApprove(req.id)}
                                   >
@@ -1040,8 +1142,7 @@ export default function AdminRequests() {
                                   </button>
                                   <button
                                     type="button"
-                                    className="btn btn-danger"
-                                    style={{ padding: '6px 12px', fontSize: 13 }}
+                                    className="btn btn-danger btn-sm"
                                     disabled={actioningId !== null}
                                     onClick={() => handleReject(req.id)}
                                   >
@@ -1052,8 +1153,7 @@ export default function AdminRequests() {
                               {req.status === 'in_progress' && (
                                 <button
                                   type="button"
-                                  className="btn btn-secondary"
-                                  style={{ padding: '6px 12px', fontSize: 13 }}
+                                  className="btn btn-secondary btn-sm"
                                   disabled={actioningId !== null}
                                   onClick={() => handleSetStatus(req.id, 'completed')}
                                 >
@@ -1062,8 +1162,7 @@ export default function AdminRequests() {
                               )}
                               <button
                                 type="button"
-                                className="btn btn-secondary"
-                                style={{ padding: '6px 12px', fontSize: 13 }}
+                                className="btn btn-secondary btn-sm"
                                 disabled={actioningId !== null || cloningId !== null}
                                 onClick={(e) => { e.stopPropagation(); handleClone(req.id); }}
                                 title="Clone as new draft"
@@ -1073,8 +1172,7 @@ export default function AdminRequests() {
                               {['completed', 'in_progress'].includes(req.status) && (
                                 <button
                                   type="button"
-                                  className="btn btn-secondary"
-                                  style={{ padding: '6px 12px', fontSize: 13 }}
+                                  className="btn btn-secondary btn-sm"
                                   disabled={promotingId !== null}
                                   onClick={(e) => { e.stopPropagation(); handlePromote(req.id); }}
                                   title="Promote to next environment"
@@ -1083,7 +1181,7 @@ export default function AdminRequests() {
                                 </button>
                               )}
                               {req.pr_url ? (
-                                <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
+                                <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">
                                   Open PR
                                 </a>
                               ) : null}
@@ -1094,26 +1192,28 @@ export default function AdminRequests() {
                     </tbody>
                   </table>
                 </div>
-                <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                  <span style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>
+                <div className="admin-requests-pagination">
+                  <span className="admin-requests-pagination__info">
                     Page {currentPage} of {totalPages} ({total} total)
                   </span>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    disabled={offset === 0}
-                    onClick={() => setOffset((o) => Math.max(0, o - limit))}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    disabled={offset + limit >= total}
-                    onClick={() => setOffset((o) => o + limit)}
-                  >
-                    Next
-                  </button>
+                  <div className="admin-requests-pagination__actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={offset === 0}
+                      onClick={() => setOffset((o) => Math.max(0, o - limit))}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={offset + limit >= total}
+                      onClick={() => setOffset((o) => o + limit)}
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               </>
             )}
@@ -1123,70 +1223,121 @@ export default function AdminRequests() {
             <div
               role="dialog"
               aria-modal="true"
-              style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(0,0,0,0.5)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 1000,
-                padding: 20,
-              }}
+              className="modal-overlay admin-request-detail-modal"
               onClick={() => setDetailRequest(null)}
             >
               <div
-                className="card"
-                style={{ maxWidth: 760, width: '100%', maxHeight: '90vh', overflow: 'auto' }}
+                className="modal admin-request-detail-modal__dialog"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3 style={{ margin: 0 }}>Request #{detailRequest.id}</h3>
-                  <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px' }} onClick={() => setDetailRequest(null)}>
-                    Close
-                  </button>
-                </div>
-                {detailRequest.project_id && detailRequest.project_name && (
-                  <p style={{ marginBottom: 8, fontSize: 14 }}>
-                    <strong>Project:</strong> {detailRequest.project_name}
-                    {detailRequest.project_code ? ` (${detailRequest.project_code})` : ''}
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      style={{ marginLeft: 10 }}
-                      onClick={() => router.push(`/projects/${detailRequest.project_id}`)}
-                    >
-                      Open project
+                <div className="admin-request-detail-modal__header">
+                  <div className="admin-request-detail-modal__title-wrap">
+                    <span className="admin-request-detail-modal__eyebrow">
+                      {detailRequestIsAccess ? 'Access request' : 'Request'}
+                    </span>
+                    <h3 className="admin-request-detail-modal__title">
+                      {detailRequestIsAccess ? `Access request #${detailRequest.id}` : `Request #${detailRequest.id}`}
+                    </h3>
+                    <p className="admin-request-detail-modal__subtitle">
+                      Review request context, repo placement, approval signals, and the latest discussion without leaving the queue.
+                    </p>
+                  </div>
+                  <div className="admin-request-detail-modal__header-actions">
+                    <span className="status-badge" data-status={detailRequest.status}>
+                      {statusLabel(detailRequest.status)}
+                    </span>
+                    <button type="button" className="btn btn-secondary" onClick={() => setDetailRequest(null)}>
+                      Close
                     </button>
-                  </p>
+                  </div>
+                </div>
+
+                <div className="portal-detail-grid admin-request-detail-modal__summary-grid">
+                  {detailRequest.project_name ? (
+                    <article className="portal-detail-card">
+                      <span className="admin-request-detail-modal__summary-label">Project</span>
+                      <strong className="portal-detail-card__value">
+                        {detailRequest.project_name}
+                        {detailRequest.project_code ? ` (${detailRequest.project_code})` : ''}
+                      </strong>
+                      {detailRequest.project_id ? (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm admin-request-detail-modal__summary-action"
+                          onClick={() => router.push(`/projects/${detailRequest.project_id}`)}
+                        >
+                          Open project
+                        </button>
+                      ) : null}
+                    </article>
+                  ) : null}
+                  <article className="portal-detail-card">
+                    <span className="admin-request-detail-modal__summary-label">Team</span>
+                    <strong className="portal-detail-card__value">{detailRequest.team || '—'}</strong>
+                  </article>
+                  <article className="portal-detail-card">
+                    <span className="admin-request-detail-modal__summary-label">Environment</span>
+                    <strong className="portal-detail-card__value">{detailRequest.env || '—'}</strong>
+                  </article>
+                  <article className="portal-detail-card">
+                    <span className="admin-request-detail-modal__summary-label">Cloud</span>
+                    <strong className="portal-detail-card__value">{detailRequest.cloud || '—'}</strong>
+                  </article>
+                  <article className="portal-detail-card">
+                    <span className="admin-request-detail-modal__summary-label">{detailRequestIsAccess ? 'Target' : 'Service'}</span>
+                    <strong className="portal-detail-card__value">{detailRequest.service || '—'}</strong>
+                  </article>
+                  <article className="portal-detail-card">
+                    <span className="admin-request-detail-modal__summary-label">Requester</span>
+                    <strong className="portal-detail-card__value">{detailRequest.created_by_username || 'Not available'}</strong>
+                  </article>
+                  <article className="portal-detail-card">
+                    <span className="admin-request-detail-modal__summary-label">Priority</span>
+                    <strong className="portal-detail-card__value">{detailRequest.priority || 'Not set'}</strong>
+                  </article>
+                  <article className="portal-detail-card">
+                    <span className="admin-request-detail-modal__summary-label">Due date</span>
+                    <strong className="portal-detail-card__value">
+                      {detailRequest.due_date ? new Date(detailRequest.due_date).toLocaleDateString() : 'Not set'}
+                    </strong>
+                  </article>
+                  <article className="portal-detail-card">
+                    <span className="admin-request-detail-modal__summary-label">Created</span>
+                    <strong className="portal-detail-card__value">{new Date(detailRequest.created_at).toLocaleString()}</strong>
+                  </article>
+                  <article className="portal-detail-card">
+                    <span className="admin-request-detail-modal__summary-label">Updated</span>
+                    <strong className="portal-detail-card__value">
+                      {detailRequest.updated_at ? new Date(detailRequest.updated_at).toLocaleString() : 'Not updated yet'}
+                    </strong>
+                  </article>
+                  {detailRequest.branch ? (
+                    <article className="portal-detail-card">
+                      <span className="admin-request-detail-modal__summary-label">Request branch</span>
+                      <strong className="portal-detail-card__value">{detailRequest.branch}</strong>
+                    </article>
+                  ) : null}
+                  {detailRequest.file_path ? (
+                    <article className="portal-detail-card">
+                      <span className="admin-request-detail-modal__summary-label">Config path</span>
+                      <strong className="portal-detail-card__value">{detailRequest.file_path}</strong>
+                    </article>
+                  ) : null}
+                </div>
+
+                {(detailRequest.branch || detailRequest.file_path) && (
+                  <div className="admin-request-detail-modal__notice">
+                    <strong className="admin-request-detail-modal__notice-title">Current repo layout</strong>
+                    <p className="admin-request-detail-modal__notice-copy">
+                      Requests now write to <code>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/envs/&lt;env&gt;/&lt;service&gt;/request.json</code> and use a matching <code>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/&lt;env&gt;/&lt;service&gt;/&lt;request-id&gt;</code> branch.
+                    </p>
+                  </div>
                 )}
-                <p style={{ marginBottom: 8, fontSize: 14 }}>
-                  <strong>Team:</strong> {detailRequest.team} · <strong>Env:</strong> {detailRequest.env} · <strong>Cloud:</strong> {detailRequest.cloud} · <strong>Service:</strong> {detailRequest.service}
-                </p>
-                {detailRequest.created_by_username && (
-                  <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--color-text-muted)' }}>
-                    <strong>Requester:</strong> {detailRequest.created_by_username}
-                  </p>
-                )}
-                {detailRequest.branch && (
-                  <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--color-text-muted)' }}>
-                    <strong>Branch:</strong> <code style={{ fontSize: 12 }}>{detailRequest.branch}</code>
-                  </p>
-                )}
-                {detailRequest.file_path && (
-                  <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--color-text-muted)' }}>
-                    <strong>File path:</strong> <code style={{ fontSize: 12 }}>{detailRequest.file_path}</code>
-                  </p>
-                )}
-                <p style={{ marginBottom: 8, fontSize: 13, color: 'var(--color-text-muted)' }}>
-                  Created: {new Date(detailRequest.created_at).toLocaleString()}
-                  {detailRequest.updated_at && ` · Updated: ${new Date(detailRequest.updated_at).toLocaleString()}`}
-                </p>
-                <div style={{ marginBottom: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+
+                <div className="admin-request-detail-modal__actions">
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    style={{ padding: '6px 12px', fontSize: 13 }}
                     disabled={cloningId !== null}
                     onClick={() => handleClone(detailRequest.id)}
                     title="Clone as new draft"
@@ -1197,7 +1348,6 @@ export default function AdminRequests() {
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      style={{ padding: '6px 12px', fontSize: 13 }}
                       disabled={promotingId !== null}
                       onClick={() => handlePromote(detailRequest.id)}
                       title="Create new request for next environment (dev→stage→prod)"
@@ -1209,7 +1359,6 @@ export default function AdminRequests() {
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      style={{ padding: '6px 12px', fontSize: 13 }}
                       disabled={rollbackingId !== null}
                       onClick={() => fetchConfigHistory(detailRequest.id)}
                       title="Restore config from previous snapshot"
@@ -1218,64 +1367,43 @@ export default function AdminRequests() {
                     </button>
                   )}
                   {detailRequest.pr_url && (
-                    <a href={detailRequest.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
+                    <a href={detailRequest.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">
                       Open PR
                     </a>
                   )}
                 </div>
-                {(detailRequest.priority || detailRequest.due_date) && (
-                  <p style={{ marginBottom: 8, fontSize: 14, color: 'var(--color-text-muted)' }}>
-                    {detailRequest.priority && <span>Priority: {detailRequest.priority} </span>}
-                    {detailRequest.due_date && <span>Due: {new Date(detailRequest.due_date).toLocaleDateString()}</span>}
-                  </p>
-                )}
-                <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <strong style={{ fontSize: 14 }}>Jira ticket:</strong>
-                  <input
-                    type="text"
-                    value={jiraEdit}
-                    onChange={(e) => setJiraEdit(e.target.value)}
-                    placeholder="e.g. PROJ-123"
-                    style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 13, minWidth: 140 }}
-                  />
-                  <button type="button" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }} disabled={jiraSaving} onClick={handleSaveJira}>
-                    {jiraSaving ? '…' : 'Save'}
-                  </button>
+
+                <div className="admin-request-detail-modal__jira">
+                  <span className="admin-request-detail-modal__summary-label">Jira ticket</span>
+                  <div className="admin-request-detail-modal__jira-row">
+                    <input
+                      type="text"
+                      value={jiraEdit}
+                      onChange={(e) => setJiraEdit(e.target.value)}
+                      placeholder="e.g. PROJ-123"
+                      className="admin-request-detail-modal__jira-input"
+                    />
+                    <button type="button" className="btn btn-secondary" disabled={jiraSaving} onClick={handleSaveJira}>
+                      {jiraSaving ? '…' : 'Save'}
+                    </button>
+                  </div>
                 </div>
+
                 {detailRequest.blocked_by_with_status && detailRequest.blocked_by_with_status.length > 0 && (
-                  <p style={{ marginBottom: 8, fontSize: 13, color: 'var(--color-warning)' }}>
-                    <strong>Blocks:</strong> Request(s) #{detailRequest.blocked_by_with_status.map((b) => b.id).join(', #')} depend on this one.
-                  </p>
+                  <div className="admin-request-detail-modal__notice admin-request-detail-modal__notice--warning">
+                    <strong className="admin-request-detail-modal__notice-title">Downstream dependencies</strong>
+                    <p className="admin-request-detail-modal__notice-copy">
+                      Request(s) #{detailRequest.blocked_by_with_status.map((b) => b.id).join(', #')} are waiting on this one.
+                    </p>
+                  </div>
                 )}
-                <p style={{ marginBottom: 16 }}>
-                  <span
-                    style={{
-                      padding: '4px 10px',
-                      borderRadius: 6,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      background: detailRequest.status === 'draft' ? '#f1f5f9' :
-                                 canApproveOrReject(detailRequest.status) ? 'var(--color-warning-bg)' :
-                                 detailRequest.status === 'in_progress' ? 'var(--color-primary-light)' :
-                                 detailRequest.status === 'completed' ? 'var(--color-success-bg)' :
-                                 detailRequest.status === 'rejected' ? 'var(--color-danger-bg)' : '#f1f5f9',
-                      color: detailRequest.status === 'draft' ? 'var(--color-text-muted)' :
-                             canApproveOrReject(detailRequest.status) ? 'var(--color-warning)' :
-                             detailRequest.status === 'in_progress' ? 'var(--color-primary)' :
-                             detailRequest.status === 'completed' ? 'var(--color-success)' :
-                             detailRequest.status === 'rejected' ? 'var(--color-danger)' : 'var(--color-text-muted)'
-                    }}
-                  >
-                    {statusLabel(detailRequest.status)}
-                  </span>
-                </p>
 
                 {detailRequest.cost_risk_preview && (
-                  <div className="portal-preview-panel" style={{ marginBottom: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap' }}>
+                  <div className="portal-preview-panel admin-request-detail-modal__panel">
+                    <div className="admin-request-detail-modal__panel-head">
                       <div>
                         <div className="portal-preview-eyebrow">Cost And Risk</div>
-                        <strong className="portal-preview-value" style={{ fontSize: 18 }}>Approval Preview</strong>
+                        <strong className="portal-preview-value admin-request-detail-modal__panel-title">Approval preview</strong>
                       </div>
                       <span className={getPreviewRiskClass(detailRequest.cost_risk_preview.risk_level)}>
                         {detailRequest.cost_risk_preview.risk_level} risk
@@ -1299,7 +1427,7 @@ export default function AdminRequests() {
 
                     {detailRequest.cost_risk_preview.cost_link && (
                       <div className="portal-preview-actions">
-                        <a href={detailRequest.cost_risk_preview.cost_link} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>
+                        <a href={detailRequest.cost_risk_preview.cost_link} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">
                           Open cost calculator
                         </a>
                       </div>
@@ -1331,11 +1459,11 @@ export default function AdminRequests() {
                   </div>
                 )}
                 {detailRequest.approval_context && (
-                  <div className="portal-preview-panel" style={{ marginBottom: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap' }}>
+                  <div className="portal-preview-panel admin-request-detail-modal__panel">
+                    <div className="admin-request-detail-modal__panel-head">
                       <div>
                         <div className="portal-preview-eyebrow">Approval Flow</div>
-                        <strong className="portal-preview-value" style={{ fontSize: 18 }}>Rule explanation</strong>
+                        <strong className="portal-preview-value admin-request-detail-modal__panel-title">Rule explanation</strong>
                       </div>
                       <span className={getPreviewRiskClass(detailRequest.approval_context.requires_devops_approval ? 'medium' : 'low')}>
                         {detailRequest.approval_context.current_stage}
@@ -1359,7 +1487,7 @@ export default function AdminRequests() {
                         <p className="portal-preview-copy">{detailRequest.approval_context.summary}</p>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <div className="admin-request-detail-modal__signal-row">
                       <span className={getPreviewSignalClass(detailRequest.approval_context.requires_manager_approval ? 'medium' : 'low')}>
                         {detailRequest.approval_context.requires_manager_approval ? 'Manager gate enabled' : 'No manager gate'}
                       </span>
@@ -1371,7 +1499,7 @@ export default function AdminRequests() {
                 )}
 
                 {canApproveOrReject(detailRequest.status) && (
-                  <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <div className="admin-request-detail-modal__decision-row">
                     <button
                       type="button"
                       className="btn btn-primary"
@@ -1392,16 +1520,16 @@ export default function AdminRequests() {
                 )}
 
                 {detailRequest.config && (
-                  <div style={{ marginTop: 16, borderTop: '1px solid var(--color-border)', paddingTop: 16 }}>
+                  <div className="admin-request-detail-modal__section">
                     <button
                       type="button"
                       onClick={() => setDetailConfigOpen((o) => !o)}
-                      style={{ background: 'none', border: 'none', padding: 0, fontWeight: 600, cursor: 'pointer', color: 'var(--color-text)' }}
+                      className="admin-request-detail-modal__toggle"
                     >
-                      {detailConfigOpen ? '▼' : '▶'} Configuration (JSON, secrets masked)
+                      {detailConfigOpen ? '▼' : '▶'} {detailRequestIsAccess ? 'Access request details' : 'Request details'} (JSON, secrets masked)
                     </button>
                     {detailConfigOpen && (
-                      <pre style={{ marginTop: 8, padding: 12, background: 'var(--color-bg)', borderRadius: 8, overflow: 'auto', fontSize: 12, maxHeight: 280 }}>
+                      <pre className="portal-code-block admin-request-detail-modal__code">
                         {detailRequest.config}
                       </pre>
                     )}
@@ -1409,34 +1537,33 @@ export default function AdminRequests() {
                 )}
 
                 {showConfigHistory && detailRequest && (
-                  <div style={{ marginTop: 16, padding: 12, background: 'var(--color-bg)', borderRadius: 8, border: '1px solid var(--color-border)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div className="admin-request-detail-modal__section admin-request-detail-modal__section--muted">
+                    <div className="admin-request-detail-modal__section-head">
                       <strong>Config history (rollback)</strong>
-                      <button type="button" className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setShowConfigHistory(false); setConfigHistory([]); }}>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setShowConfigHistory(false); setConfigHistory([]); }}>
                         Close
                       </button>
                     </div>
                     {configHistory.length === 0 ? (
-                      <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-muted)' }}>No config snapshots yet.</p>
+                      <p className="admin-request-detail-modal__empty-copy">No config snapshots yet.</p>
                     ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 200, overflowY: 'auto' }}>
+                      <div className="admin-request-detail-modal__history-list">
                         {configHistory.map((h) => (
-                          <div key={h.id} style={{ padding: 8, background: 'var(--color-bg)', borderRadius: 6, border: '1px solid var(--color-border)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                              <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                          <div key={h.id} className="admin-request-detail-modal__history-card">
+                            <div className="admin-request-detail-modal__history-head">
+                              <span className="admin-request-detail-modal__history-meta">
                                 #{h.id} · {h.note || 'snapshot'} · {new Date(h.created_at).toLocaleString()}
                               </span>
                               <button
                                 type="button"
-                                className="btn btn-primary"
-                                style={{ padding: '4px 10px', fontSize: 12 }}
+                                className="btn btn-primary btn-sm"
                                 disabled={rollbackingId !== null}
                                 onClick={() => handleRollback(detailRequest.id, h.id)}
                               >
                                 Restore
                               </button>
                             </div>
-                            <pre style={{ margin: 0, fontSize: 11, overflow: 'auto', maxHeight: 60 }}>{String(h.config || '').slice(0, 200)}...</pre>
+                            <pre className="admin-request-detail-modal__history-code">{String(h.config || '').slice(0, 200)}...</pre>
                           </div>
                         ))}
                       </div>
@@ -1444,41 +1571,41 @@ export default function AdminRequests() {
                   </div>
                 )}
 
-                <div style={{ marginTop: 16, borderTop: '1px solid var(--color-border)', paddingTop: 16 }}>
+                <div className="admin-request-detail-modal__section">
                   <button
                     type="button"
                     onClick={() => setDetailTerraformOpen((o) => !o)}
-                    style={{ background: 'none', border: 'none', padding: 0, fontWeight: 600, cursor: 'pointer', color: 'var(--color-text)' }}
+                    className="admin-request-detail-modal__toggle"
                   >
                     {detailTerraformOpen ? '▼' : '▶'} Terraform plan / output
                   </button>
                   {detailTerraformOpen && (
-                    <div style={{ marginTop: 8 }}>
+                    <div className="admin-request-detail-modal__terraform">
                       {detailRequest.terraform_plan_output ? (
                         <>
-                          <pre style={{ padding: 12, background: 'var(--color-bg)', borderRadius: 8, overflow: 'auto', fontSize: 12, maxHeight: 200, whiteSpace: 'pre-wrap' }}>
+                          <pre className="portal-code-block admin-request-detail-modal__code admin-request-detail-modal__code--short">
                             {detailRequest.terraform_plan_output}
                           </pre>
                           <textarea
                             value={terraformOutputEdit}
                             onChange={(e) => setTerraformOutputEdit(e.target.value)}
                             placeholder="Paste Terraform plan or apply output from CI..."
-                            style={{ width: '100%', minHeight: 100, marginTop: 8, padding: 12, borderRadius: 8, fontSize: 12, fontFamily: 'monospace' }}
+                            className="admin-request-detail-modal__textarea"
                           />
-                          <button type="button" className="btn btn-primary" style={{ marginTop: 8 }} disabled={terraformSaving} onClick={saveTerraformOutput}>
+                          <button type="button" className="btn btn-primary" disabled={terraformSaving} onClick={saveTerraformOutput}>
                             {terraformSaving ? 'Saving…' : 'Update output'}
                           </button>
                         </>
                       ) : (
                         <>
-                          <p style={{ fontSize: 14, color: 'var(--color-text-muted)', marginBottom: 8 }}>No Terraform output yet. Paste from CI or manual run.</p>
+                          <p className="admin-request-detail-modal__empty-copy">No Terraform output yet. Paste from CI or a manual run.</p>
                           <textarea
                             value={terraformOutputEdit}
                             onChange={(e) => setTerraformOutputEdit(e.target.value)}
                             placeholder="Paste Terraform plan or apply output..."
-                            style={{ width: '100%', minHeight: 100, padding: 12, borderRadius: 8, fontSize: 12, fontFamily: 'monospace' }}
+                            className="admin-request-detail-modal__textarea"
                           />
-                          <button type="button" className="btn btn-primary" style={{ marginTop: 8 }} disabled={terraformSaving || !terraformOutputEdit.trim()} onClick={saveTerraformOutput}>
+                          <button type="button" className="btn btn-primary" disabled={terraformSaving || !terraformOutputEdit.trim()} onClick={saveTerraformOutput}>
                             {terraformSaving ? 'Saving…' : 'Save output'}
                           </button>
                         </>
@@ -1487,43 +1614,49 @@ export default function AdminRequests() {
                   )}
                 </div>
 
-                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 16, marginTop: 16 }}>
+                <div className="admin-request-detail-modal__section">
                   <strong>Audit trail</strong>
-                  <div style={{ marginTop: 8, maxHeight: 160, overflowY: 'auto' }}>
+                  <div className="admin-request-detail-modal__feed">
                     {timeline.length === 0 ? (
-                      <p style={{ fontSize: 14, color: 'var(--color-text-muted)' }}>No activity yet.</p>
+                      <p className="admin-request-detail-modal__empty-copy">No activity yet.</p>
                     ) : (
                       timeline.map((e) => (
-                        <div key={`${e.kind}-${e.id}`} style={{ marginBottom: 8, padding: '6px 10px', background: 'var(--color-bg)', borderRadius: 6, fontSize: 13 }}>
-                          <span style={{ fontWeight: 600 }}>{e.username || 'System'}</span>
-                          <span style={{ color: 'var(--color-text-muted)', marginLeft: 6 }}>
-                            {({ request_create: 'created', request_submit: 'submitted', request_approve: 'approved', request_reject: 'rejected', request_comment: 'commented', request_clone: 'cloned', request_resubmit: 'resubmitted', request_cancel: 'cancelled', request_promote: 'promoted', request_plan_output: 'updated plan', request_reassign: 'reassigned', request_approved_by_manager: 'approved (manager)' } as Record<string, string>)[e.action] || e.action.replace(/_/g, ' ')}
-                          </span>
-                          {e.details && <span style={{ color: 'var(--color-text-muted)', marginLeft: 6 }}> - {e.details}</span>}
-                          {e.body && <p style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{e.body}</p>}
-                          <span style={{ display: 'block', fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>{new Date(e.created_at).toLocaleString()}</span>
+                        <div key={`${e.kind}-${e.id}`} className="admin-request-detail-modal__feed-item">
+                          <div className="admin-request-detail-modal__feed-meta">
+                            <strong>{e.username || 'System'}</strong>
+                            <span>{new Date(e.created_at).toLocaleString()}</span>
+                          </div>
+                          <p>
+                            <span className="admin-request-detail-modal__feed-action">
+                              {({ request_create: 'created', request_submit: 'submitted', request_approve: 'approved', request_reject: 'rejected', request_comment: 'commented', request_clone: 'cloned', request_resubmit: 'resubmitted', request_cancel: 'cancelled', request_promote: 'promoted', request_plan_output: 'updated plan', request_reassign: 'reassigned', request_approved_by_manager: 'approved (manager)' } as Record<string, string>)[e.action] || e.action.replace(/_/g, ' ')}
+                            </span>
+                            {e.details ? ` · ${e.details}` : ''}
+                          </p>
+                          {e.body && <p className="admin-request-detail-modal__feed-body">{e.body}</p>}
                         </div>
                       ))
                     )}
                   </div>
                 </div>
 
-                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 16, marginTop: 16 }}>
+                <div className="admin-request-detail-modal__section">
                   <strong>Comments</strong>
-                  <div style={{ marginTop: 8, maxHeight: 200, overflowY: 'auto' }}>
+                  <div className="admin-request-detail-modal__feed">
                     {detailComments.length === 0 ? (
-                      <p style={{ fontSize: 14, color: 'var(--color-text-muted)' }}>No comments yet.</p>
+                      <p className="admin-request-detail-modal__empty-copy">No comments yet.</p>
                     ) : (
                       detailComments.map((c) => (
-                        <div key={c.id} style={{ marginBottom: 12, padding: 8, background: 'var(--color-bg)', borderRadius: 8 }}>
-                          <span style={{ fontWeight: 600, fontSize: 13 }}>{c.username || 'User'}</span>
-                          <span style={{ fontSize: 12, color: 'var(--color-text-muted)', marginLeft: 8 }}>{new Date(c.created_at).toLocaleString()}</span>
-                          <p style={{ margin: '4px 0 0', fontSize: 14, whiteSpace: 'pre-wrap' }}>{c.body}</p>
+                        <div key={c.id} className="admin-request-detail-modal__feed-item">
+                          <div className="admin-request-detail-modal__feed-meta">
+                            <strong>{c.username || 'User'}</strong>
+                            <span>{new Date(c.created_at).toLocaleString()}</span>
+                          </div>
+                          <p className="admin-request-detail-modal__feed-body">{c.body}</p>
                         </div>
                       ))
                     )}
                   </div>
-                  <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                  <div className="admin-request-detail-modal__comment-form">
                     <input
                       type="text"
                       placeholder="Add a comment..."
@@ -1535,9 +1668,9 @@ export default function AdminRequests() {
                           addComment();
                         }
                       }}
-                      style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-border)' }}
+                      className="admin-request-detail-modal__comment-input"
                     />
-                    <button type="button" className="btn btn-primary" disabled={!commentBody.trim() || commentSubmitting} onClick={addComment} style={{ padding: '8px 16px' }}>
+                    <button type="button" className="btn btn-primary" disabled={!commentBody.trim() || commentSubmitting} onClick={addComment}>
                       {commentSubmitting ? '…' : 'Post'}
                     </button>
                   </div>
