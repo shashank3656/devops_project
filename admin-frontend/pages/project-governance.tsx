@@ -187,7 +187,7 @@ export default function AdminProjectGovernancePage() {
                 </article>
               </section>
 
-              <div className="portal-grid" style={{ alignItems: 'start' }}>
+              <div className="portal-grid project-governance__grid">
                 <section className="portal-surface">
                   <div className="portal-surface__header">
                     <div>
@@ -195,8 +195,8 @@ export default function AdminProjectGovernancePage() {
                       <h2 className="portal-surface__title">Risk and approval pressure</h2>
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gap: 14 }}>
-                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <div className="project-governance__stack">
+                    <div className="project-governance__pill-row">
                       {riskMix.length === 0 ? (
                         <span className="portal-pill">No risk signals yet</span>
                       ) : (
@@ -207,7 +207,7 @@ export default function AdminProjectGovernancePage() {
                         ))
                       )}
                     </div>
-                    <div style={{ overflowX: 'auto' }}>
+                    <div className="project-governance__table-wrap">
                       <table className="templates-table">
                         <thead>
                           <tr>
@@ -223,7 +223,7 @@ export default function AdminProjectGovernancePage() {
                             <tr key={`risk-${project.id}`}>
                               <td>
                                 <strong>{project.name}</strong>
-                                <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{project.code}</div>
+                                <div className="project-governance__minor">{project.code}</div>
                               </td>
                               <td>{project.stage}</td>
                               <td>{project.pending}</td>
@@ -244,26 +244,26 @@ export default function AdminProjectGovernancePage() {
                       <h2 className="portal-surface__title">Demand profile</h2>
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gap: 18 }}>
+                  <div className="project-governance__demand-stack">
                     <div>
-                      <strong>Top services</strong>
-                      <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      <strong className="project-governance__section-label">Top services</strong>
+                      <div className="project-governance__pill-row project-governance__pill-row--spaced">
                         {topServices.map((item) => (
                           <span key={`svc-${item.key}`} className="portal-pill">{item.label}: {item.count}</span>
                         ))}
                       </div>
                     </div>
                     <div>
-                      <strong>Cloud demand</strong>
-                      <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      <strong className="project-governance__section-label">Cloud demand</strong>
+                      <div className="project-governance__pill-row project-governance__pill-row--spaced">
                         {topClouds.map((item) => (
                           <span key={`cloud-${item.key}`} className="portal-pill">{item.label}: {item.count}</span>
                         ))}
                       </div>
                     </div>
                     <div>
-                      <strong>Environment pressure</strong>
-                      <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      <strong className="project-governance__section-label">Environment pressure</strong>
+                      <div className="project-governance__pill-row project-governance__pill-row--spaced">
                         {environmentPressure.map((item) => (
                           <span key={`env-${item.key}`} className="portal-pill">{item.label}: {item.count}</span>
                         ))}
@@ -280,7 +280,7 @@ export default function AdminProjectGovernancePage() {
                     <h2 className="portal-surface__title">Highest request volume</h2>
                   </div>
                 </div>
-                <div style={{ overflowX: 'auto' }}>
+                <div className="project-governance__table-wrap">
                   <table className="templates-table">
                     <thead>
                       <tr>
@@ -299,7 +299,7 @@ export default function AdminProjectGovernancePage() {
                         <tr key={`top-project-${project.id}`}>
                           <td>
                             <strong>{project.name}</strong>
-                            <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{project.code}</div>
+                            <div className="project-governance__minor">{project.code}</div>
                           </td>
                           <td>{project.status}</td>
                           <td>{project.stage}</td>

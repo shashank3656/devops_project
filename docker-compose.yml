@@ -260,7 +260,7 @@ version: '3.8'
 
 # Infrastructure Portal - Docker Compose
 #
-# Single command to spin up all containers (postgres + backend + user frontend + admin frontend):
+# Single command to spin up all app containers against env-provided services:
 #   docker-compose up -d
 #
 # Development (hot reload, includes admin-frontend; use override so admin-frontend uses dev backend):
@@ -269,27 +269,6 @@ version: '3.8'
 # Environment variables: config/.env (copy from config/.env.example)
 
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
-    container_name: infra-postgres
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${POSTGRES_DB:-infra_portal}
-    ports:
-      - "127.0.0.1:5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    networks:
-      - infra-network
-
   # Redis cache / background job broker
   redis:
     image: redis:7-alpine
@@ -340,19 +319,19 @@ services:
       - DB_QUERY_TIMEOUT_SECONDS=${DB_QUERY_TIMEOUT_SECONDS:-5}
       - DB_SLOW_QUERY_MS=${DB_SLOW_QUERY_MS:-750}
       - REQUEST_LOG_SLOW_MS=${REQUEST_LOG_SLOW_MS:-500}
+      - DB_SSLROOTCERT=/app/certs/prod-ca-2021.crt
       - SSO_LOGIN_URL=${SSO_LOGIN_URL:-}
       - SSO_AUTH_SHARED_SECRET=${SSO_AUTH_SHARED_SECRET:-}
     volumes:
       # Mount source code for hot reload
       - ./backend:/app
+      - ./prod-ca-2021.crt:/app/certs/prod-ca-2021.crt:ro
       # Exclude vendor directory to avoid vendoring conflicts
       - /app/vendor
     # Command runs go run . from the mounted volume
     # Use -mod=mod to ignore vendor directory if it exists
     command: sh -c "go mod download && go run -mod=mod ."
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -395,11 +374,12 @@ services:
       - DB_QUERY_TIMEOUT_SECONDS=${DB_QUERY_TIMEOUT_SECONDS:-5}
       - DB_SLOW_QUERY_MS=${DB_SLOW_QUERY_MS:-750}
       - REQUEST_LOG_SLOW_MS=${REQUEST_LOG_SLOW_MS:-500}
+      - DB_SSLROOTCERT=/app/certs/prod-ca-2021.crt
       - SSO_LOGIN_URL=${SSO_LOGIN_URL:-}
       - SSO_AUTH_SHARED_SECRET=${SSO_AUTH_SHARED_SECRET:-}
+    volumes:
+      - ./prod-ca-2021.crt:/app/certs/prod-ca-2021.crt:ro
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -463,8 +443,6 @@ services:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.42.123.107:8080}
     depends_on:
       backend-prod:
-        condition: service_healthy
-      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://34.42.123.107:3000"]
@@ -538,7 +516,6 @@ services:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.42.123.107:8080}
     depends_on:
       - backend
-      - postgres
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://34.42.123.107:3002"]
       interval: 30s
@@ -567,7 +544,6 @@ services:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
     depends_on:
       - backend-prod
-      - postgres
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3002"]
       interval: 30s
@@ -581,7 +557,6 @@ services:
       - prod
 
 volumes:
-  postgres_data:
   redis_data:
 
 networks:

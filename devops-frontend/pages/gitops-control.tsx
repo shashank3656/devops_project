@@ -800,14 +800,14 @@ export default function GitOpsControlPage() {
             <>
               {error && (
                 <section className="portal-surface portal-surface--tight">
-                  <div className="portal-empty" style={{ padding: 0, textAlign: 'left' }}>
+                  <div className="portal-empty gitops-page__message">
                     <p>{error}</p>
                   </div>
                 </section>
               )}
               {feedback && (
                 <section className={`portal-surface portal-surface--tight gitops-feedback gitops-feedback--${feedback.tone}`}>
-                  <div className="portal-empty" style={{ padding: 0, textAlign: 'left' }}>
+                  <div className="portal-empty gitops-page__message">
                     <p>
                       {feedback.message}{' '}
                       {feedback.link && (
@@ -819,7 +819,7 @@ export default function GitOpsControlPage() {
                   </div>
                 </section>
               )}
-              <section className="portal-surface" style={{ marginBottom: 24 }}>
+              <section className="portal-surface gitops-page__summary-surface">
                 <div className="portal-pill-row">
                   <span className="portal-pill">Managed teams {formatCount(data.teams.length)}</span>
                   <span className="portal-pill">Projects {formatCount(data.projects.length)}</span>
@@ -972,7 +972,7 @@ export default function GitOpsControlPage() {
                       </div>
                     </form>
                   ) : (
-                    <div className="portal-empty" style={{ padding: 0, textAlign: 'left' }}>
+                    <div className="portal-empty gitops-page__message">
                       <p>Your GitOps admin scope can manage existing projects, but only managers can create new project structures in this portal scope.</p>
                     </div>
                   )}

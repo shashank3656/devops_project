@@ -58,10 +58,10 @@ export default function VerifyRequired() {
   return (
     <>
       <Head>
-        <title>Verify your email - Infrastructure Portal</title>
+        <title>Verify Your Email - SetuOps</title>
       </Head>
       <div className="auth-page">
-        <div className="auth-card" style={{ maxWidth: 440 }}>
+        <div className="auth-card auth-card--compact">
           <div className="auth-header">
             <h1 className="auth-title">Verify your email</h1>
             <p className="auth-subtitle">
@@ -69,25 +69,24 @@ export default function VerifyRequired() {
             </p>
           </div>
           {email && (
-            <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
+            <p className="auth-note">
               We sent a link to <strong>{email}</strong>
             </p>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="auth-stack">
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-primary auth-action-btn"
               onClick={handleResend}
               disabled={resending}
-              style={{ padding: '12px 20px' }}
             >
               {resending ? 'Sending…' : 'Resend verification email'}
             </button>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            <p className="auth-helper-copy">
               Already verified? <Link href="/home">Go to home</Link> to refresh your session.
             </p>
-            <div style={{ borderTop: '1px solid var(--border-color)', marginTop: 8, paddingTop: 16 }}>
-              <button type="button" className="btn btn-secondary" onClick={handleLogout} style={{ padding: '10px 16px' }}>
+            <div className="auth-divider auth-divider--tight auth-divider--left">
+              <button type="button" className="btn btn-secondary auth-action-btn auth-action-btn--secondary" onClick={handleLogout}>
                 Sign out
               </button>
             </div>

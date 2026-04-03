@@ -221,7 +221,7 @@ export default function ProjectDetailsPage() {
                   <h2 className="portal-surface__title">Overview</h2>
                   <p className="portal-surface__subtitle">{project.description || 'Project-driven request scope for your assigned teams.'}</p>
                 </div>
-                <span style={{ ...stageStyle, padding: '8px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700, textTransform: 'uppercase' }}>
+                <span className="my-project-detail__stage-chip" style={stageStyle}>
                   {project.onboarding_stage || 'configured'}
                 </span>
               </div>
@@ -258,7 +258,7 @@ export default function ProjectDetailsPage() {
                     {project.cost_risk_summary.overall_risk} risk
                   </span>
                 </div>
-                <div className="portal-preview-grid" style={{ marginTop: 0 }}>
+                <div className="portal-preview-grid my-project-detail__preview-grid">
                   <article className="portal-detail-card">
                     <span className="portal-preview-eyebrow">Estimated monthly</span>
                     <strong className="portal-preview-value">{project.cost_risk_summary.estimated_monthly}</strong>
@@ -277,7 +277,7 @@ export default function ProjectDetailsPage() {
                     <p className="portal-preview-copy">High risk: {project.cost_risk_summary.high_risk_count} · Medium risk: {project.cost_risk_summary.medium_risk_count}</p>
                   </article>
                 </div>
-                <div className="portal-preview-signals" style={{ marginTop: 16 }}>
+                <div className="portal-preview-signals my-project-detail__signals">
                   {project.cost_risk_summary.signals.map((signal) => (
                     <article key={`${signal.category}-${signal.title}`} className={getPreviewSignalClass(signal.severity)}>
                       <div className="portal-preview-signal__top">
@@ -299,11 +299,11 @@ export default function ProjectDetailsPage() {
                   <p className="portal-surface__subtitle">Only these cloud-service combinations are requestable for this project.</p>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+              <div className="my-project-detail__service-grid">
                 {servicesByCloud.map((entry) => (
                   <article key={`${project.id}-${entry.cloud}`} className="request-choice-card">
                     <strong>{entry.cloud.toUpperCase()}</strong>
-                    <p style={{ marginTop: 8 }}>{entry.services.join(', ') || 'No services configured'}</p>
+                    <p className="my-project-detail__service-copy">{entry.services.join(', ') || 'No services configured'}</p>
                   </article>
                 ))}
               </div>
@@ -320,7 +320,7 @@ export default function ProjectDetailsPage() {
               {project.team_access.length === 0 ? (
                 <div className="empty-state">No team access has been mapped to this project yet.</div>
               ) : (
-                <div style={{ overflowX: 'auto' }}>
+                <div className="my-project-detail__table-wrap">
                   <table className="templates-table">
                     <thead>
                       <tr>
@@ -351,7 +351,7 @@ export default function ProjectDetailsPage() {
                   <p className="portal-surface__subtitle">Approval requirements vary by environment so requesters know what happens before a PR is raised.</p>
                 </div>
               </div>
-              <div style={{ overflowX: 'auto' }}>
+              <div className="my-project-detail__table-wrap">
                 <table className="templates-table">
                   <thead>
                     <tr>

@@ -35,15 +35,12 @@ backend:
   affinity: {}
   env:
     APP_ENV: production
-    DB_HOST: postgres.default.svc.cluster.local
+    DB_HOST: ""
     DB_PORT: "5432"
-    DB_USER: infra_user
-    DB_NAME: infra_portal
-    DB_SSLMODE: disable
-    POSTGRES_HOST: ""
-    POSTGRES_PORT: ""
-    POSTGRES_USER: ""
-    POSTGRES_DB: ""
+    DB_USER: ""
+    DB_NAME: ""
+    DB_SSLMODE: verify-full
+    DB_SSLROOTCERT: ""
     DB_CONNECT_TIMEOUT_SECONDS: "5"
     REDIS_ADDR: redis.default.svc.cluster.local:6379
     REDIS_DB: "0"
@@ -83,7 +80,6 @@ backend:
   secretEnv:
     DATABASE_URL: ""
     DB_PASSWORD: change-me
-    POSTGRES_PASSWORD: ""
     GITHUB_TOKEN: change-me
     ADMIN_SECRET: change-me-admin-secret
     DEFAULT_ADMIN_PASSWORD: change-me-admin-password
@@ -102,6 +98,8 @@ backend:
     SSO_DIRECTORY_USERS_JSON: ""
     SSO_BREAK_GLASS_USERS: ""
   extraEnv: []
+  extraVolumes: []
+  extraVolumeMounts: []
   livenessProbe:
     httpGet:
       path: /health

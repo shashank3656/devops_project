@@ -166,13 +166,16 @@ export default function NewAccessOverridePage() {
             <div>
               <span className="portal-surface__eyebrow">Temporary Grant</span>
               <h2 className="portal-surface__title">Override details</h2>
+              <p className="portal-surface__subtitle">
+                Set the project, user, access level, and expiry in one place so the override window is clear before it is granted.
+              </p>
             </div>
           </div>
           {loading ? (
             <div className="empty-state">Loading override options...</div>
           ) : (
-            <>
-              <div className="portal-form-grid">
+            <div className="catalog-editor__form">
+              <div className="portal-form-grid catalog-editor__field-grid">
                 <label className="label">
                   Project
                   <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
@@ -198,6 +201,7 @@ export default function NewAccessOverridePage() {
                 <label className="label">
                   Environments
                   <input className="input" value={environments} onChange={(event) => setEnvironments(event.target.value)} placeholder="dev,uat" />
+                  <span className="catalog-editor__field-help">Enter one or more environments separated by commas.</span>
                 </label>
                 <label className="label">
                   Permission
@@ -209,13 +213,14 @@ export default function NewAccessOverridePage() {
                 <label className="label">
                   Expires at
                   <CalendarDateInput type="datetime-local" value={expiresAt} onChange={setExpiresAt} />
+                  <span className="catalog-editor__field-help">Choose when this temporary access should expire automatically.</span>
                 </label>
                 <label className="label">
                   Reason
                   <input className="input" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Emergency release support" />
                 </label>
               </div>
-              <div className="portal-form-actions">
+              <div className="portal-form-actions catalog-editor__footer">
                 <button
                   type="button"
                   className="btn btn-primary"
@@ -228,7 +233,7 @@ export default function NewAccessOverridePage() {
                   Cancel
                 </Link>
               </div>
-            </>
+            </div>
           )}
         </section>
       </div>

@@ -332,7 +332,7 @@ export default function TeamDetail() {
           </Link>
 
           {created === '1' && group && (
-            <div className="alert" role="alert" style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', marginBottom: 16 }}>
+            <div className="alert admin-team-detail__success-alert" role="alert">
               Team created successfully. <strong>{team?.name ?? ''}</strong> ({decodeURIComponent(String(group))}).
             </div>
           )}
@@ -347,27 +347,22 @@ export default function TeamDetail() {
             </div>
           ) : team ? (
             <>
-              <div className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+              <div className="card admin-team-detail__card">
+                <div className="admin-team-detail__header">
                   <div>
                     <h2 className="card-title">{team.name}</h2>
-                    <p
-                      style={{
-                        color: 'var(--color-text-muted)',
-                        fontSize: 14,
-                      }}
-                    >
+                    <p className="admin-team-detail__meta">
                       Group ID: <code>{team.application_id || 'Pending'}</code>
-                      <span style={{ marginLeft: 12 }}>
+                      <span className="admin-team-detail__meta-sep">
                         Slug: <code>{team.slug}</code>
                       </span>
                       {(team.team_type === 'devops' || team.team_type === 'portal') && (
-                        <span style={{ marginLeft: 12 }}>
+                        <span className="admin-team-detail__meta-sep">
                           Group: {team.team_type === 'devops' ? 'DevOps team group' : 'Portal team group'}
                         </span>
                       )}
                     </p>
-                    <p style={{ color: 'var(--color-text-muted)', fontSize: 13, marginTop: 8 }}>
+                    <p className="admin-team-detail__hint">
                       Group ID is the stable Git/PR folder key for new infrastructure requests.
                     </p>
                   </div>
@@ -382,13 +377,13 @@ export default function TeamDetail() {
                 </div>
               </div>
 
-              <div className="card">
+              <div className="card admin-team-detail__card">
                 <h3 className="card-title">Team default settings</h3>
-                <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 16 }}>
+                <p className="admin-team-detail__copy">
                   Default environment and cloud are prefilled when a user from this team creates a request.
                 </p>
-                <form onSubmit={handleSaveDefaults} style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-end' }}>
-                  <div className="form-group" style={{ marginBottom: 0, minWidth: 180 }}>
+                <form onSubmit={handleSaveDefaults} className="admin-team-detail__inline-form">
+                  <div className="form-group admin-team-detail__field admin-team-detail__field--compact">
                     <label className="label" htmlFor="team-default-env">Default environment</label>
                     <select
                       id="team-default-env"
@@ -402,7 +397,7 @@ export default function TeamDetail() {
                       <option value="prod">prod</option>
                     </select>
                   </div>
-                  <div className="form-group" style={{ marginBottom: 0, minWidth: 180 }}>
+                  <div className="form-group admin-team-detail__field admin-team-detail__field--compact">
                     <label className="label" htmlFor="team-default-cloud">Default cloud</label>
                     <select
                       id="team-default-cloud"
@@ -419,11 +414,11 @@ export default function TeamDetail() {
                   <button type="submit" className="btn btn-primary" disabled={savingDefaults}>
                     {savingDefaults ? 'Saving…' : 'Save'}
                   </button>
-                  {defaultsSaved && <span style={{ color: 'var(--color-success)', fontSize: 14 }}>Saved.</span>}
+                  {defaultsSaved && <span className="admin-team-detail__saved">Saved.</span>}
                 </form>
               </div>
 
-              <div className="card">
+              <div className="card admin-team-detail__card">
                 <h3 className="card-title">Members</h3>
                 {error && (
                   <div className="alert alert-error" role="alert">
@@ -431,36 +426,16 @@ export default function TeamDetail() {
                   </div>
                 )}
 
-                <div
-                  style={{
-                    marginBottom: 24,
-                    paddingBottom: 24,
-                    borderBottom: '1px solid var(--color-border)',
-                  }}
-                >
-                  <h4 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>
+                <div className="admin-team-detail__section">
+                  <h4 className="admin-team-detail__subheading">
                     Add new member
                   </h4>
-                  <p
-                    style={{
-                      color: 'var(--color-text-muted)',
-                      fontSize: 14,
-                      marginBottom: 16,
-                    }}
-                  >
+                  <p className="admin-team-detail__copy">
                     Select a user to add to this team. New users can be created from the{' '}
                     <Link href="/users/new">Users</Link> page.
                   </p>
-                  <form
-                    onSubmit={handleAddMember}
-                    style={{
-                      display: 'flex',
-                      gap: 16,
-                      flexWrap: 'wrap',
-                      alignItems: 'flex-end',
-                    }}
-                  >
-                    <div className="form-group" style={{ marginBottom: 0, minWidth: 220 }}>
+                  <form onSubmit={handleAddMember} className="admin-team-detail__inline-form">
+                    <div className="form-group admin-team-detail__field admin-team-detail__field--user">
                       <label className="label" htmlFor="add-user">
                         User
                       </label>
@@ -469,7 +444,6 @@ export default function TeamDetail() {
                         className="input"
                         value={addUserId}
                         onChange={(e) => setAddUserId(e.target.value)}
-                        style={{ minWidth: 220 }}
                       >
                         <option value="">Select user…</option>
                         {availableUsers.map((u) => (
@@ -479,7 +453,7 @@ export default function TeamDetail() {
                         ))}
                       </select>
                     </div>
-                    <div className="form-group" style={{ marginBottom: 0, minWidth: 120 }}>
+                    <div className="form-group admin-team-detail__field admin-team-detail__field--role">
                       <label className="label" htmlFor="add-role">
                         Role
                       </label>
@@ -488,7 +462,6 @@ export default function TeamDetail() {
                         className="input"
                         value={addRole}
                         onChange={(e) => setAddRole(e.target.value)}
-                        style={{ minWidth: 140 }}
                       >
                         {team.team_type === 'portal' ? (
                           <>
@@ -516,52 +489,19 @@ export default function TeamDetail() {
 
                   {/* Bulk add */}
                   {availableUsers.length > 0 && (
-                    <div
-                      style={{
-                        marginTop: 24,
-                        paddingTop: 24,
-                        borderTop: '1px solid var(--color-border)',
-                      }}
-                    >
-                      <h4 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>
+                    <div className="admin-team-detail__bulk">
+                      <h4 className="admin-team-detail__subheading">
                         Bulk add members
                       </h4>
-                      <p
-                        style={{
-                          color: 'var(--color-text-muted)',
-                          fontSize: 14,
-                          marginBottom: 16,
-                        }}
-                      >
+                      <p className="admin-team-detail__copy">
                         Select multiple users below and add them at once.
                       </p>
-                      <form
-                        onSubmit={handleBulkAddMembers}
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 16,
-                        }}
-                      >
-                        <div
-                          style={{
-                            maxHeight: 180,
-                            overflowY: 'auto',
-                            border: '1px solid var(--color-border)',
-                            borderRadius: 8,
-                            padding: 12,
-                          }}
-                        >
+                      <form onSubmit={handleBulkAddMembers} className="admin-team-detail__bulk-form">
+                        <div className="admin-team-detail__bulk-list">
                           {availableUsers.map((u) => (
                             <label
                               key={u.id}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 10,
-                                padding: '6px 0',
-                                cursor: 'pointer',
-                              }}
+                              className="admin-team-detail__bulk-item"
                             >
                               <input
                                 type="checkbox"
@@ -569,12 +509,12 @@ export default function TeamDetail() {
                                 onChange={() => toggleUserSelection(u.id)}
                               />
                               <span>
-                                {u.username} <span style={{ color: 'var(--color-text-muted)' }}>({u.email})</span>
+                                {u.username} <span className="admin-team-detail__minor">({u.email})</span>
                               </span>
                             </label>
                           ))}
                         </div>
-                        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <div className="admin-team-detail__bulk-actions">
                           <button
                             type="submit"
                             className="btn btn-primary"
@@ -616,23 +556,17 @@ export default function TeamDetail() {
                         {members.map((m) => (
                           <tr key={m.id}>
                             <td>{m.username}</td>
-                            <td style={{ color: 'var(--color-text-muted)' }}>
+                            <td className="admin-team-detail__minor">
                               {m.email}
                             </td>
                             <td>
                               <select
-                                className="input"
+                                className="input admin-team-detail__member-role"
                                 value={m.role}
                                 disabled={updatingRoleFor === m.user_id}
                                 onChange={(e) =>
                                   handleRoleChange(m.user_id, e.target.value)
                                 }
-                                style={{
-                                  minWidth: 100,
-                                  padding: '6px 8px',
-                                  fontSize: 13,
-                                  textTransform: 'capitalize',
-                                }}
                                 aria-label={`Role for ${m.username}`}
                               >
                                 {team.team_type === 'portal' ? (
@@ -653,11 +587,7 @@ export default function TeamDetail() {
                             <td>
                               <button
                                 type="button"
-                                className="btn btn-danger"
-                                style={{
-                                  padding: '6px 12px',
-                                  fontSize: 13,
-                                }}
+                                className="btn btn-danger admin-team-detail__remove-btn"
                                 onClick={() =>
                                   handleRemoveMember(m.user_id)
                                 }

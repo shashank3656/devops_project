@@ -255,8 +255,8 @@ export default function RollbackConsolePage() {
 
         {!loading && !error && summary ? (
           <>
-            <section className="portal-surface" style={{ marginBottom: 24 }}>
-              <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <section className="portal-surface rollback-console__surface-gap">
+              <div className="rollback-console__summary-actions">
                 <div className="portal-pill-row">
                   <span className="portal-pill">Candidates {summary.candidate_count}</span>
                   <span className="portal-pill">Ready now {summary.ready_count}</span>
@@ -271,12 +271,11 @@ export default function RollbackConsolePage() {
             </section>
 
             {hasActiveScope ? (
-              <div className="alert alert-info" style={{ marginBottom: 24 }}>
+              <div className="alert alert-info rollback-console__scope-alert">
                 Viewing a focused rollback slice.
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  style={{ marginLeft: 12 }}
                   onClick={() => {
                     setProjectId('');
                     setFocusRequestId('');
@@ -288,7 +287,7 @@ export default function RollbackConsolePage() {
             ) : null}
 
             {showFilters ? (
-            <section className="portal-surface" style={{ marginBottom: 24 }}>
+            <section className="portal-surface rollback-console__surface-gap">
               <div className="portal-surface__header">
                 <div>
                   <span className="portal-surface__eyebrow">Scope</span>
@@ -317,7 +316,7 @@ export default function RollbackConsolePage() {
             </section>
             ) : null}
 
-            <div className="portal-grid" style={{ alignItems: 'start' }}>
+            <div className="portal-grid rollback-console__grid">
               <section className="portal-surface">
                 <div className="portal-surface__header">
                   <div>
@@ -325,7 +324,7 @@ export default function RollbackConsolePage() {
                     <h2 className="portal-surface__title">Eligible request history</h2>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gap: 12 }}>
+                <div className="rollback-console__candidate-list">
                   {(consoleData?.items || []).length === 0 ? (
                     <div className="empty-state">No rollback candidates are available for the current filters.</div>
                   ) : (
@@ -333,23 +332,17 @@ export default function RollbackConsolePage() {
                       <button
                         key={`rollback-candidate-${item.request_id}`}
                         type="button"
-                        className="portal-surface"
-                        style={{
-                          padding: 16,
-                          textAlign: 'left',
-                          borderColor: focusCandidate?.request_id === item.request_id ? 'var(--color-primary)' : 'var(--color-border)',
-                          background: focusCandidate?.request_id === item.request_id ? 'rgba(59, 130, 246, 0.08)' : 'var(--color-surface)',
-                        }}
+                        className={`portal-surface rollback-console__candidate-card${focusCandidate?.request_id === item.request_id ? ' rollback-console__candidate-card--active' : ''}`}
                         onClick={() => setFocusRequestId(String(item.request_id))}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+                        <div className="rollback-console__candidate-head">
                           <strong>#{item.request_id} · {item.client_name}</strong>
                           <span className="portal-pill">{item.eligible ? 'ready' : 'review'}</span>
                         </div>
-                        <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
+                        <div className="rollback-console__candidate-meta">
                           {item.project_name ? `${item.project_name} (${item.project_code})` : 'No project'} · {item.environment}/{item.service}
                         </div>
-                        <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 6 }}>
+                        <div className="rollback-console__candidate-meta rollback-console__candidate-meta--minor">
                           Snapshots: {item.snapshot_count} · Incidents: {item.incident_count} · Rollbacks: {item.rollback_count}
                         </div>
                       </button>
@@ -370,8 +363,8 @@ export default function RollbackConsolePage() {
                 </div>
 
                 {focusCandidate ? (
-                  <div style={{ display: 'grid', gap: 24 }}>
-                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <div className="rollback-console__detail-stack">
+                    <div className="rollback-console__focus-pills">
                       <span className="portal-pill">Status: {focusCandidate.status}</span>
                       <span className="portal-pill">Priority: {focusCandidate.priority}</span>
                       <span className="portal-pill">Env: {focusCandidate.environment}</span>
@@ -379,13 +372,13 @@ export default function RollbackConsolePage() {
                       <span className="portal-pill">Service: {focusCandidate.service}</span>
                     </div>
 
-                    <div className="portal-grid" style={{ alignItems: 'start' }}>
-                      <div className="portal-surface" style={{ padding: 16 }}>
-                        <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Configuration snapshots</h3>
+                    <div className="portal-grid rollback-console__grid">
+                      <div className="portal-surface rollback-console__subsurface">
+                        <h3 className="portal-surface__title rollback-console__section-title">Configuration snapshots</h3>
                         {focusCandidate.snapshots.length === 0 ? (
-                          <div className="empty-state" style={{ padding: 0 }}>No configuration snapshots are available for this request.</div>
+                          <div className="empty-state rollback-console__empty-inline">No configuration snapshots are available for this request.</div>
                         ) : (
-                          <div style={{ display: 'grid', gap: 12 }}>
+                          <div className="rollback-console__stack">
                             <div>
                               <label className="credential-audit-label" htmlFor="rollback-snapshot">Snapshot</label>
                               <select id="rollback-snapshot" className="input" value={selectedSnapshotId} onChange={(event) => setSelectedSnapshotId(event.target.value)}>
@@ -397,22 +390,22 @@ export default function RollbackConsolePage() {
                               </select>
                             </div>
                             {focusCandidate.snapshots.map((snapshot) => (
-                              <article key={`snapshot-${snapshot.id}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 14 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                              <article key={`snapshot-${snapshot.id}`} className="rollback-console__record-card">
+                                <div className="rollback-console__record-head">
                                   <strong>Snapshot #{snapshot.id}</strong>
-                                  <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{formatDateTime(snapshot.created_at)}</span>
+                                  <span className="rollback-console__record-time">{formatDateTime(snapshot.created_at)}</span>
                                 </div>
-                                {snapshot.note ? <div style={{ color: 'var(--color-text-muted)', fontSize: 13, marginTop: 4 }}>{snapshot.note}</div> : null}
-                                <pre style={{ whiteSpace: 'pre-wrap', margin: '10px 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>{snapshot.preview}</pre>
+                                {snapshot.note ? <div className="rollback-console__record-copy">{snapshot.note}</div> : null}
+                                <pre className="rollback-console__record-preview">{snapshot.preview}</pre>
                               </article>
                             ))}
                           </div>
                         )}
                       </div>
 
-                      <div className="portal-surface" style={{ padding: 16 }}>
-                        <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Prepare rollback request</h3>
-                        <div style={{ display: 'grid', gap: 12 }}>
+                      <div className="portal-surface rollback-console__subsurface">
+                        <h3 className="portal-surface__title rollback-console__section-title">Prepare rollback request</h3>
+                        <div className="rollback-console__stack">
                           <div>
                             <label className="credential-audit-label" htmlFor="rollback-reason">Reason</label>
                             <textarea id="rollback-reason" className="input" rows={3} value={reason} onChange={(event) => setReason(event.target.value)} />
@@ -421,7 +414,7 @@ export default function RollbackConsolePage() {
                             <label className="credential-audit-label" htmlFor="rollback-notes">Notes</label>
                             <textarea id="rollback-notes" className="input" rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} />
                           </div>
-                          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                          <div className="rollback-console__action-row">
                             <button type="button" className="btn btn-primary" disabled={submitting || !focusCandidate.eligible} onClick={() => void submitRollback()}>
                               {submitting ? 'Preparing...' : 'Prepare rollback draft'}
                             </button>
@@ -436,21 +429,21 @@ export default function RollbackConsolePage() {
                       </div>
                     </div>
 
-                    <div className="portal-surface" style={{ padding: 16 }}>
-                      <h3 className="portal-surface__title" style={{ fontSize: 18, marginBottom: 12 }}>Recent rollback operations</h3>
+                    <div className="portal-surface rollback-console__subsurface">
+                      <h3 className="portal-surface__title rollback-console__section-title">Recent rollback operations</h3>
                       {(consoleData?.recent_operations || []).length === 0 ? (
-                        <div className="empty-state" style={{ padding: 0 }}>No rollback operations have been recorded yet.</div>
+                        <div className="empty-state rollback-console__empty-inline">No rollback operations have been recorded yet.</div>
                       ) : (
-                        <div style={{ display: 'grid', gap: 12 }}>
+                        <div className="rollback-console__stack">
                           {(consoleData?.recent_operations || []).map((operation) => (
-                            <article key={`rollback-operation-${operation.id}`} style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 14 }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                            <article key={`rollback-operation-${operation.id}`} className="rollback-console__record-card">
+                              <div className="rollback-console__record-head">
                                 <strong>Rollback draft #{operation.rollback_request_id}</strong>
-                                <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{formatDateTime(operation.created_at)}</span>
+                                <span className="rollback-console__record-time">{formatDateTime(operation.created_at)}</span>
                               </div>
-                              <div style={{ color: 'var(--color-text-muted)', fontSize: 13, marginTop: 4 }}>{operation.reason}</div>
-                              {operation.notes ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 4 }}>Notes: {operation.notes}</div> : null}
-                              <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 4 }}>Prepared by {operation.approved_by_username || 'manager'}</div>
+                              <div className="rollback-console__record-copy">{operation.reason}</div>
+                              {operation.notes ? <div className="rollback-console__record-copy rollback-console__record-copy--minor">Notes: {operation.notes}</div> : null}
+                              <div className="rollback-console__record-copy rollback-console__record-copy--minor">Prepared by {operation.approved_by_username || 'manager'}</div>
                             </article>
                           ))}
                         </div>

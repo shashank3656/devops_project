@@ -77,12 +77,6 @@ interface ExpiryTrackerPayload {
   items: ExpiryTrackerItem[];
 }
 
-const CLOUD_BADGES: Record<string, { bg: string; color: string }> = {
-  AWS: { bg: '#ea580c', color: '#fff' },
-  GCP: { bg: '#2563eb', color: '#fff' },
-  Azure: { bg: '#0078d4', color: '#fff' },
-};
-
 export default function CredentialAuditPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -373,7 +367,7 @@ export default function CredentialAuditPage() {
           {notice && <div className="alert alert-success">{notice}</div>}
           {hasActiveScope ? (
             <div className="alert alert-info">
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="credential-audit__scope-row">
                 <span>
                   Reviewing
                   {cloudFilter ? <> <strong>{cloudFilter}</strong></> : <> all clouds</>}
@@ -453,14 +447,14 @@ export default function CredentialAuditPage() {
                           <tr key={`${item.category}-${item.resource_name}-${item.namespace || item.project_code || 'global'}`}>
                             <td>
                               <strong>{item.resource_name}</strong>
-                              <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.resource_type}</div>
+                              <div className="credential-audit__meta credential-audit__meta--minor">{item.resource_type}</div>
                             </td>
                             <td>{item.category}</td>
                             <td>
                               {item.project_name ? (
-                                <div>
+                                <div className="credential-audit__stack">
                                   <strong>{item.project_name}</strong>
-                                  {item.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.project_code}</div> : null}
+                                  {item.project_code ? <div className="credential-audit__meta credential-audit__meta--minor">{item.project_code}</div> : null}
                                 </div>
                               ) : '—'}
                             </td>
@@ -469,35 +463,35 @@ export default function CredentialAuditPage() {
                             <td>{item.expires_at ? new Date(item.expires_at).toLocaleDateString() : '—'}</td>
                             <td>{item.days_remaining}</td>
                             <td>
-                              <span style={{ ...tone, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+                              <span className="project-detail__tone-chip project-detail__tone-chip--sm" style={tone}>
                                 {item.status}
                               </span>
                             </td>
                             <td>
-                              <span style={{ ...workflow, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+                              <span className="project-detail__tone-chip project-detail__tone-chip--sm" style={workflow}>
                                 {workflowLabel(item.workflow_state)}
                               </span>
                               {item.workflow_note ? (
-                                <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 6 }}>
+                                <div className="credential-audit__meta credential-audit__meta--minor credential-audit__note">
                                   {item.workflow_note}
                                 </div>
                               ) : null}
                             </td>
-                            <td style={{ whiteSpace: 'nowrap' }}>
+                            <td className="credential-audit__date-col">
                               {item.workflow_updated_at ? (
-                                <div>
+                                <div className="credential-audit__stack">
                                   <div>{new Date(item.workflow_updated_at).toLocaleString()}</div>
                                   {item.workflow_updated_by_username ? (
-                                    <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
+                                    <div className="credential-audit__meta credential-audit__meta--minor">
                                       by {item.workflow_updated_by_username}
                                     </div>
                                   ) : null}
                                 </div>
                               ) : '—'}
                             </td>
-                            <td style={{ minWidth: 260 }}>{item.recommendation}</td>
-                            <td style={{ minWidth: 220 }}>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            <td className="credential-audit__recommendation-col">{item.recommendation}</td>
+                            <td className="credential-audit__actions-col">
+                              <div className="credential-audit__action-row">
                                 {item.workflow_state !== 'acknowledged' ? (
                                   <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => updateWorkflow(item, 'acknowledged')}>
                                     {saving ? 'Saving...' : 'Acknowledge'}
@@ -598,22 +592,22 @@ export default function CredentialAuditPage() {
                   </thead>
                   <tbody>
                     {entries.map((entry) => {
-                      const cloudStyle = CLOUD_BADGES[entry.cloud] || { bg: 'var(--color-primary)', color: '#fff' };
+                      const cloudBadgeClass = `credential-audit-cloud-badge credential-audit-cloud-badge--${entry.cloud.toLowerCase()}`;
                       return (
                         <tr key={entry.id}>
-                          <td style={{ whiteSpace: 'nowrap', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                          <td className="credential-audit__date-col credential-audit__meta credential-audit__meta--minor">
                             {new Date(entry.created_at).toLocaleString()}
                           </td>
                           <td>
-                            <span className="credential-audit-cloud-badge" style={{ background: cloudStyle.bg, color: cloudStyle.color }}>
+                            <span className={cloudBadgeClass}>
                               {entry.cloud}
                             </span>
                           </td>
                           <td>
                             {entry.project_name ? (
-                              <div>
+                              <div className="credential-audit__stack">
                                 <strong>{entry.project_name}</strong>
-                                {entry.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{entry.project_code}</div> : null}
+                                {entry.project_code ? <div className="credential-audit__meta credential-audit__meta--minor">{entry.project_code}</div> : null}
                               </div>
                             ) : (
                               '-'

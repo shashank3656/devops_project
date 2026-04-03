@@ -343,7 +343,7 @@ export default function DevOpsWorkload() {
             </div>
           </header>
 
-          <section className="portal-surface portal-surface--tight" style={{ marginBottom: 24 }}>
+          <section className="portal-surface portal-surface--tight workload__surface-gap">
             <div className="portal-toolbar">
               <div className="portal-toolbar__group">
                 <div className="portal-toolbar__item portal-toolbar__item--grow">
@@ -394,12 +394,11 @@ export default function DevOpsWorkload() {
           </section>
 
           {hasActiveFilters ? (
-            <div className="alert alert-info" style={{ marginBottom: 24 }}>
+            <div className="alert alert-info workload__scope-alert">
               Viewing a filtered workload slice.
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
-                style={{ marginLeft: 12 }}
                 onClick={() => {
                   setFilterUserId('');
                   setFilterStatus('');
@@ -414,7 +413,7 @@ export default function DevOpsWorkload() {
             <section className="portal-grid">
               {byTeam.length > 0 && (
                 <article className="portal-surface portal-surface--table">
-                  <div className="portal-surface__header" style={{ padding: '24px 24px 0' }}>
+                  <div className="portal-surface__header workload__table-head">
                     <div>
                       <span className="portal-surface__eyebrow">Capacity</span>
                       <h2 className="portal-surface__title">By team</h2>
@@ -447,7 +446,7 @@ export default function DevOpsWorkload() {
 
               {byPerson.length > 0 && (
                 <article className="portal-surface portal-surface--table">
-                  <div className="portal-surface__header" style={{ padding: '24px 24px 0' }}>
+                  <div className="portal-surface__header workload__table-head">
                     <div>
                       <span className="portal-surface__eyebrow">Capacity</span>
                       <h2 className="portal-surface__title">By person</h2>
@@ -519,7 +518,7 @@ export default function DevOpsWorkload() {
                 <table>
                   <thead>
                     <tr>
-                      <th style={{ width: 40 }}>
+                      <th className="workload__checkbox-col">
                         <input
                           type="checkbox"
                           checked={pendingApprovals.length > 0 && selectedIds.size === pendingApprovals.length}
@@ -602,10 +601,7 @@ export default function DevOpsWorkload() {
                       {userStats.map(({ userId, username, total, byStatus }) => (
                         <tr
                           key={userId}
-                          style={{
-                            cursor: 'pointer',
-                            background: filterUserId === String(userId) ? 'rgba(13, 148, 136, 0.12)' : undefined,
-                          }}
+                          className={`workload__user-row${filterUserId === String(userId) ? ' workload__user-row--active' : ''}`}
                           onClick={() => setFilterUserId(filterUserId === String(userId) ? '' : String(userId))}
                         >
                           <td>{userId === 0 ? 'Unassigned' : username}</td>
@@ -613,7 +609,7 @@ export default function DevOpsWorkload() {
                           <td>{byStatus.in_progress ?? 0}</td>
                           <td>{byStatus.completed ?? 0}</td>
                           <td>{byStatus.rejected ?? 0}</td>
-                          <td style={{ color: 'var(--color-text-muted)' }}>
+                          <td className="workload__other-status">
                             {Object.entries(byStatus)
                               .filter(([status]) => !['in_progress', 'completed', 'rejected'].includes(status))
                               .map(([status, count]) => `${status}: ${count}`)

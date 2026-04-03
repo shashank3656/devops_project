@@ -237,8 +237,8 @@ export default function GateApprovalsPage() {
             </div>
           </header>
 
-          <section className="portal-surface" style={{ marginBottom: 24 }}>
-            <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <section className="portal-surface gate-approvals__surface-gap">
+            <div className="gate-approvals__summary-actions">
               <div className="portal-pill-row">
                 <span className="portal-pill">Approvals {summary.total_count}</span>
                 <span className="portal-pill">Active {summary.active_count}</span>
@@ -253,12 +253,11 @@ export default function GateApprovalsPage() {
           </section>
 
           {hasActiveFilters ? (
-            <div className="alert alert-info" style={{ marginBottom: 24 }}>
+            <div className="alert alert-info gate-approvals__scope-alert">
               Viewing a filtered approval audit slice.
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
-                style={{ marginLeft: 12 }}
                 onClick={() => {
                   setProjectId('');
                   setTargetEnvironment('');
@@ -408,61 +407,54 @@ export default function GateApprovalsPage() {
                   <tbody>
                     {approvals.map((item) => (
                       <tr key={item.id}>
-                        <td style={{ whiteSpace: 'nowrap', color: 'var(--color-text-muted)', fontSize: 13 }}>
-                          {formatDateTime(item.approved_at)}
+                        <td className="gate-approvals__date-col">
+                          <span className="gate-approvals__date">{formatDateTime(item.approved_at)}</span>
                         </td>
                         <td>
                           {item.project_name ? (
-                            <div>
+                            <div className="gate-approvals__stack">
                               <strong>{item.project_name}</strong>
-                              {item.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.project_code}</div> : null}
+                              {item.project_code ? <div className="gate-approvals__meta gate-approvals__meta--minor">{item.project_code}</div> : null}
                             </div>
                           ) : (
                             '—'
                           )}
                         </td>
                         <td>
-                          <div>
+                          <div className="gate-approvals__stack">
                             <strong>Request #{item.request_id}</strong>
-                            <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
+                            <div className="gate-approvals__meta gate-approvals__meta--minor">
                               {[item.cloud, item.service, item.team].filter(Boolean).join(' / ') || item.request_status || '—'}
                             </div>
                           </div>
                         </td>
                         <td>{`${item.source_environment || 'n/a'} → ${item.target_environment || 'n/a'}`}</td>
                         <td>
-                          <span style={{ ...stateTone(item.state), padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, textTransform: 'capitalize' }}>
+                          <span className="project-detail__tone-chip project-detail__tone-chip--sm" style={stateTone(item.state)}>
                             {item.state}
                           </span>
                         </td>
                         <td>
-                          <div style={{ display: 'grid', gap: 6 }}>
+                          <div className="gate-approvals__stack gate-approvals__stack--tight">
                             <span
-                              style={{
-                                ...gateTone(item.gate_status),
-                                width: 'fit-content',
-                                padding: '6px 10px',
-                                borderRadius: 999,
-                                fontSize: 12,
-                                fontWeight: 700,
-                                textTransform: 'capitalize',
-                              }}
+                              className="project-detail__tone-chip project-detail__tone-chip--sm"
+                              style={gateTone(item.gate_status)}
                             >
                               {item.gate_status}
                             </span>
-                            <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.summary || 'No summary recorded.'}</span>
+                            <span className="gate-approvals__meta gate-approvals__meta--minor">{item.summary || 'No summary recorded.'}</span>
                           </div>
                         </td>
                         <td>{item.approved_by_username || '—'}</td>
-                        <td style={{ minWidth: 220 }}>
-                          <div style={{ display: 'grid', gap: 4, color: 'var(--color-text-muted)', fontSize: 12 }}>
+                        <td className="gate-approvals__expiry-col">
+                          <div className="gate-approvals__stack gate-approvals__stack--tight gate-approvals__meta gate-approvals__meta--minor">
                             <span>Expires: {formatDateTime(item.expires_at)}</span>
                             {item.revoked_at ? <span>Revoked: {formatDateTime(item.revoked_at)}</span> : null}
                             {item.revoked_by_username ? <span>Revoked by: {item.revoked_by_username}</span> : null}
                           </div>
                         </td>
-                        <td style={{ minWidth: 260 }}>
-                          <div style={{ display: 'grid', gap: 6, color: 'var(--color-text-muted)', fontSize: 12 }}>
+                        <td className="gate-approvals__notes-col">
+                          <div className="gate-approvals__stack gate-approvals__stack--tight gate-approvals__meta gate-approvals__meta--minor">
                             <span>{item.note || 'No approval note.'}</span>
                             {item.revoke_note ? <span>Revoke note: {item.revoke_note}</span> : null}
                           </div>

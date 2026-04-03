@@ -409,7 +409,7 @@ export default function EditUser() {
             ← Back to Users
           </Link>
           {created === '1' && (
-            <div className="alert" role="alert" style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)', marginBottom: 16 }}>
+            <div className="alert admin-user-edit__success-alert" role="alert">
               User created successfully.
               {team_assign_failed ? ` Some team assignments still need review.` : ''}
             </div>
@@ -422,13 +422,13 @@ export default function EditUser() {
             </div>
           ) : user ? (
             <>
-              <div className="card onboarding-admin-card" style={{ maxWidth: 960, marginBottom: 24 }}>
-                <h3 className="card-title" style={{ fontSize: 18 }}>Onboarding Progress Tracker</h3>
-                <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 16 }}>
+              <div className="card onboarding-admin-card admin-user-edit__card admin-user-edit__card--wide">
+                <h3 className="card-title admin-user-edit__section-title">Onboarding Progress Tracker</h3>
+                <p className="admin-user-edit__section-copy">
                   Review where this user is blocked and what needs to happen next.
                 </p>
                 {onboardingLoading ? (
-                  <div className="empty-state" style={{ padding: 16, textAlign: 'left' }}>Loading onboarding progress…</div>
+                  <div className="empty-state admin-user-edit__empty-inline">Loading onboarding progress…</div>
                 ) : onboardingProgress ? (
                   <>
                     <div className="admin-onboarding-summary-grid">
@@ -474,30 +474,29 @@ export default function EditUser() {
                     </div>
                   </>
                 ) : (
-                  <div className="empty-state" style={{ padding: 16, textAlign: 'left' }}>
+                  <div className="empty-state admin-user-edit__empty-inline">
                     Onboarding progress is not available for this user right now.
                   </div>
                 )}
               </div>
               {user.teams && user.teams.length > 0 && (
-                <div className="card" style={{ maxWidth: 480, marginBottom: 24 }}>
-                  <h3 className="card-title" style={{ fontSize: 18 }}>Teams</h3>
-                  <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 12 }}>
+                <div className="card admin-user-edit__card admin-user-edit__card--narrow">
+                  <h3 className="card-title admin-user-edit__section-title">Teams</h3>
+                  <p className="admin-user-edit__section-copy admin-user-edit__section-copy--compact">
                     Review this user&apos;s current team memberships here. You can also remove them directly from this screen.
                   </p>
-                  <ul style={{ margin: 0, paddingLeft: 20 }}>
+                  <ul className="admin-user-edit__team-list">
                     {user.teams.map((t) => (
-                      <li key={t.id} style={{ marginBottom: 10 }}>
+                      <li key={t.id} className="admin-user-edit__team-item">
                         <Link href={`/teams/${t.id}`}>{t.name}</Link>
                         {t.team_type && (
-                          <span style={{ marginLeft: 8, fontSize: 13, color: 'var(--color-text-muted)' }}>
+                          <span className="admin-user-edit__team-meta">
                             ({t.team_type})
                           </span>
                         )}
                         <button
                           type="button"
-                          className="btn btn-secondary"
-                          style={{ padding: '6px 12px', fontSize: 12, marginLeft: 12 }}
+                          className="btn btn-secondary admin-user-edit__team-remove"
                           disabled={membershipSaving}
                           onClick={() => void handleRemoveTeamMembership(t.id)}
                         >
@@ -508,13 +507,13 @@ export default function EditUser() {
                   </ul>
                 </div>
               )}
-              <div className="card" style={{ maxWidth: 480, marginBottom: 24 }}>
-                <h3 className="card-title" style={{ fontSize: 18 }}>Add to team</h3>
-                <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 12 }}>
+              <div className="card admin-user-edit__card admin-user-edit__card--narrow">
+                <h3 className="card-title admin-user-edit__section-title">Add to team</h3>
+                <p className="admin-user-edit__section-copy admin-user-edit__section-copy--compact">
                   Assign this user to {userType === 'devops_user' ? 'DevOps' : 'portal'} teams without leaving the user screen.
                 </p>
                 {availableTeams.length === 0 ? (
-                  <div className="empty-state" style={{ padding: 16, textAlign: 'left' }}>
+                  <div className="empty-state admin-user-edit__empty-inline">
                     No additional {userType === 'devops_user' ? 'DevOps' : 'portal'} teams are available.
                   </div>
                 ) : (
@@ -538,10 +537,9 @@ export default function EditUser() {
                       <label className="label" htmlFor="user-team-role">Membership role</label>
                       <select
                         id="user-team-role"
-                        className="input"
+                        className="input admin-user-edit__select--sm"
                         value={teamRole}
                         onChange={(e) => setTeamRole(e.target.value)}
-                        style={{ maxWidth: 220 }}
                       >
                         {userType === 'devops_user' ? (
                           <>
@@ -564,9 +562,9 @@ export default function EditUser() {
                   </form>
                 )}
               </div>
-            <div className="card" style={{ maxWidth: 480 }}>
+            <div className="card admin-user-edit__card admin-user-edit__card--narrow">
               <h2 className="card-title">Edit user profile</h2>
-              <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 24 }}>
+              <p className="admin-user-edit__section-copy admin-user-edit__section-copy--form">
                 Update username, email, role, or verified status. Changes apply immediately.
               </p>
               {error && (
@@ -609,10 +607,9 @@ export default function EditUser() {
                   </label>
                   <select
                     id="edit-role"
-                    className="input"
+                    className="input admin-user-edit__select--xs"
                     value={role}
                     onChange={(e) => setRole(e.target.value as 'viewer' | 'contributor' | 'admin')}
-                    style={{ maxWidth: 200 }}
                   >
                     <option value="viewer">Viewer</option>
                     <option value="contributor">Contributor</option>
@@ -620,7 +617,7 @@ export default function EditUser() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <label className="admin-user-edit__check">
                     <input
                       type="checkbox"
                       checked={verified}
@@ -635,10 +632,9 @@ export default function EditUser() {
                   </label>
                   <select
                     id="edit-user-type"
-                    className="input"
+                    className="input admin-user-edit__select--xs"
                     value={userType}
                     onChange={(e) => setUserType(e.target.value as 'portal_user' | 'devops_user')}
-                    style={{ maxWidth: 200 }}
                   >
                     <option value="portal_user">Portal user</option>
                     <option value="devops_user">DevOps user</option>
@@ -649,24 +645,23 @@ export default function EditUser() {
                     <label className="label" htmlFor="edit-manager">Manager (for two-step approval)</label>
                     <select
                       id="edit-manager"
-                      className="input"
+                      className="input admin-user-edit__select--md"
                       value={managerId}
                       onChange={(e) => setManagerId(e.target.value)}
-                      style={{ maxWidth: 280 }}
                     >
                       <option value="">None</option>
                       {usersList.filter((u) => u.id !== (id && typeof id === 'string' ? parseInt(id, 10) : 0)).map((u) => (
                         <option key={u.id} value={u.id}>{u.username}</option>
                       ))}
                     </select>
-                    <span className="label-optional" style={{ display: 'block', marginTop: 4 }}>
+                    <span className="label-optional admin-user-edit__hint">
                       When this user submits a request, their manager approves first, then DevOps.
                     </span>
                   </div>
                 )}
                 {userType === 'portal_user' && (
                   <div className="form-group">
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <label className="admin-user-edit__check">
                       <input
                         type="checkbox"
                         checked={isPortalManager}
@@ -674,7 +669,7 @@ export default function EditUser() {
                       />
                       <span className="label">Portal manager</span>
                     </label>
-                    <span className="label-optional" style={{ display: 'block', marginTop: 4 }}>
+                    <span className="label-optional admin-user-edit__hint">
                       Designate as group manager (same as DevOps manager). They can approve team tickets and see Group tickets.
                     </span>
                   </div>
@@ -682,7 +677,7 @@ export default function EditUser() {
                 {userType === 'devops_user' && (
                   <>
                     <div className="form-group">
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                      <label className="admin-user-edit__check">
                         <input
                           type="checkbox"
                           checked={isManager}
@@ -704,7 +699,7 @@ export default function EditUser() {
                     </div>
                     <div className="form-group">
                       <label className="label" htmlFor="edit-onboard">Onboard date</label>
-                      <div style={{ maxWidth: 220 }}>
+                      <div className="admin-user-edit__date-wrap">
                         <CalendarDateInput id="edit-onboard" value={onboardDate} onChange={setOnboardDate} />
                       </div>
                     </div>
@@ -712,10 +707,9 @@ export default function EditUser() {
                       <label className="label" htmlFor="edit-level">Level</label>
                       <select
                         id="edit-level"
-                        className="input"
+                        className="input admin-user-edit__select--level"
                         value={level}
                         onChange={(e) => setLevel(e.target.value as 'L1' | 'L2' | 'L3' | 'L4')}
-                        style={{ maxWidth: 120 }}
                       >
                         <option value="L1">L1</option>
                         <option value="L2">L2</option>
@@ -727,9 +721,8 @@ export default function EditUser() {
                 )}
                 <button
                   type="submit"
-                  className="btn btn-primary"
+                  className="btn btn-primary admin-user-edit__submit"
                   disabled={saving}
-                  style={{ padding: '10px 24px' }}
                 >
                   {saving ? 'Saving…' : 'Save changes'}
                 </button>

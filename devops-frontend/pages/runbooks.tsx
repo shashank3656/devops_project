@@ -313,8 +313,8 @@ export default function DevOpsRunbooksPage() {
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
         {hasLibraryFilters ? (
-          <div className="alert alert-info">
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="alert alert-info runbooks__scope-alert">
+            <div className="runbooks__scope-row">
               <span>
                 Showing runbooks
                 {libraryProjectId ? ` for project #${libraryProjectId}` : ''}
@@ -345,7 +345,7 @@ export default function DevOpsRunbooksPage() {
               </p>
             </div>
           </div>
-          <div className="portal-form-grid" style={{ marginBottom: 16 }}>
+          <div className="portal-form-grid runbooks__filters">
             <label className="label">
               Filter by project
               <select className="input" value={libraryProjectId} onChange={(event) => setLibraryProjectId(event.target.value)}>
@@ -374,7 +374,7 @@ export default function DevOpsRunbooksPage() {
               {hasLibraryFilters ? 'No runbooks match the current filters.' : 'No runbooks yet.'}
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div className="runbooks__table-wrap">
               <table className="templates-table">
                 <thead>
                   <tr>
@@ -395,7 +395,7 @@ export default function DevOpsRunbooksPage() {
                         <td>{runbook.title}</td>
                         <td>{runbook.link_url ? <a href={runbook.link_url} target="_blank" rel="noreferrer">Open link</a> : 'Inline only'}</td>
                         <td>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <div className="runbooks__action-row">
                             <button
                               type="button"
                               className="btn btn-secondary btn-sm"

@@ -69,13 +69,13 @@ export default function ForgotPassword() {
               Enter your email and we&apos;ll send you a link to reset your password.
             </p>
             {sent ? (
-              <p style={{ color: 'var(--success-color)', marginBottom: 16 }}>
+              <p className="login-page__message login-page__message--success">
                 Check your email for a reset link. It may take a few minutes to arrive.
               </p>
             ) : (
               <form onSubmit={handleSubmit}>
                 {error && (
-                  <p style={{ color: 'var(--error-color, #dc2626)', marginBottom: 16 }}>
+                  <p className="login-page__message login-page__message--error">
                     {error}
                   </p>
                 )}
@@ -98,8 +98,8 @@ export default function ForgotPassword() {
                 </button>
               </form>
             )}
-            <p style={{ marginTop: 16 }}>
-              <Link href="/login" style={{ color: 'var(--primary-color)', textDecoration: 'none' }}>
+            <p className="login-page__link-row">
+              <Link href="/login" className="login-page__inline-link">
                 ← Back to login
               </Link>
             </p>

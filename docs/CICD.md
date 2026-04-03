@@ -125,9 +125,8 @@ Set these in repository or environment secrets.
 | `GHCR_PASSWORD` | GHCR login password or PAT with package write/read |
 | `KUBECONFIG_B64` | Base64-encoded kubeconfig for the target cluster |
 | `SONAR_TOKEN` | SonarQube authentication |
-| `DATABASE_URL` | Backend database connection string |
-| `DB_PASSWORD` | Backend database password when used separately |
-| `POSTGRES_PASSWORD` | Optional Postgres password when using split env configuration |
+| `DATABASE_URL` | Preferred backend database connection string for Supabase or managed Postgres |
+| `DB_PASSWORD` | Backend database password when using split `DB_*` configuration |
 | `GITHUB_TOKEN` | GitHub integration token used by the backend |
 | `ADMIN_SECRET` | Backend admin secret |
 | `DEFAULT_ADMIN_PASSWORD` | Initial admin password |
@@ -175,11 +174,8 @@ Use repository variables for shared defaults or environment variables when they 
 | `DB_USER` | Database user |
 | `DB_NAME` | Database name |
 | `DB_SSLMODE` | Database SSL mode |
+| `DB_SSLROOTCERT` | Optional CA certificate path for managed Postgres TLS verification |
 | `DB_CONNECT_TIMEOUT_SECONDS` | Backend DB connect timeout |
-| `POSTGRES_HOST` | Optional Postgres host |
-| `POSTGRES_PORT` | Optional Postgres port |
-| `POSTGRES_USER` | Optional Postgres user |
-| `POSTGRES_DB` | Optional Postgres database |
 | `REDIS_ADDR` | Redis address |
 | `REDIS_DB` | Redis database index |
 | `REDIS_CACHE_TTL_SECONDS` | Cache TTL |
@@ -218,6 +214,12 @@ The repo includes baseline environment values:
 - [`helm/infragate/values-prod.yaml`](../helm/infragate/values-prod.yaml)
 
 The GitHub Actions workflow layers a generated CI override file on top of these values so image tags, hosts, config, and secrets come from GitHub variables and secrets rather than from committed files.
+
+If your managed Postgres provider requires a CA file:
+
+1. store the certificate in a Secret or ConfigMap
+2. mount it with `backend.extraVolumes` and `backend.extraVolumeMounts`
+3. set `backend.env.DB_SSLROOTCERT` to the mounted path
 
 ## Makefile Helpers
 

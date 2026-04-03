@@ -341,8 +341,8 @@ export default function NewProjectPage() {
           {loading ? (
             <div className="empty-state">Loading project options...</div>
           ) : (
-            <form onSubmit={submitForm}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+            <form className="catalog-editor__form" onSubmit={submitForm}>
+              <div className="catalog-editor__field-grid">
                 <div className="form-group">
                   <label className="label">Project name</label>
                   <input className="input" value={form.name} onChange={(e) => updateForm({ name: e.target.value })} required />
@@ -362,7 +362,7 @@ export default function NewProjectPage() {
                       </option>
                     ))}
                   </select>
-                  <small style={{ color: 'var(--text-muted)' }}>
+                  <small className="catalog-editor__field-help">
                     {ownerTeams.length > 0
                       ? `Showing ${ownerTeams.length} team${ownerTeams.length === 1 ? '' : 's'} from the admin team catalog for project ownership.`
                       : teamOptionsError || 'No teams were returned from the backend team catalog yet.'}
@@ -378,16 +378,16 @@ export default function NewProjectPage() {
                 </div>
               </div>
 
-              <div className="form-group" style={{ marginTop: 16 }}>
+              <div className="form-group catalog-editor__field-block">
                 <label className="label">Description</label>
                 <textarea className="textarea" rows={3} value={form.description} onChange={(e) => updateForm({ description: e.target.value })} />
               </div>
 
-              <div style={{ marginTop: 20 }}>
+              <div className="catalog-editor__section">
                 <strong>Environments</strong>
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
+                <div className="catalog-editor__choice-row">
                   {DEFAULT_ENVIRONMENTS.map((environment) => (
-                    <label key={environment} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <label key={environment} className="catalog-editor__toggle-label">
                       <input type="checkbox" checked={form.environments.includes(environment)} onChange={() => toggleEnvironment(environment)} />
                       <span>{environment.toUpperCase()}</span>
                     </label>
@@ -395,11 +395,11 @@ export default function NewProjectPage() {
                 </div>
               </div>
 
-              <div style={{ marginTop: 20 }}>
+              <div className="catalog-editor__section">
                 <strong>Clouds</strong>
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
+                <div className="catalog-editor__choice-row">
                   {CLOUD_OPTIONS.map((cloud) => (
-                    <label key={cloud.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <label key={cloud.value} className="catalog-editor__toggle-label">
                       <input type="checkbox" checked={form.clouds.includes(cloud.value)} onChange={() => toggleCloud(cloud.value)} />
                       <span>{cloud.label}</span>
                     </label>
@@ -407,12 +407,12 @@ export default function NewProjectPage() {
                 </div>
               </div>
 
-              <div style={{ marginTop: 24 }}>
+              <div className="catalog-editor__section catalog-editor__section--lg">
                 <strong>Approval rules</strong>
-                <p style={{ color: 'var(--text-secondary)', marginTop: 8 }}>
+                <p className="catalog-editor__section-copy">
                   Choose which approval stages apply per environment before a PR is created.
                 </p>
-                <div style={{ overflowX: 'auto', marginTop: 12 }}>
+                <div className="catalog-editor__table-wrap">
                   <table className="templates-table">
                     <thead>
                       <tr>
@@ -453,15 +453,15 @@ export default function NewProjectPage() {
                 </div>
               </div>
 
-              <div style={{ marginTop: 20 }}>
+              <div className="catalog-editor__section">
                 <strong>Allowed services</strong>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginTop: 12 }}>
+                <div className="catalog-editor__choice-grid">
                   {Object.entries(servicesByCloud).map(([cloud, services]) => (
-                    <div key={cloud} className="request-choice-card">
+                    <div key={cloud} className="request-choice-card catalog-editor__choice-card">
                       <strong>{cloud.toUpperCase()}</strong>
-                      <div style={{ display: 'grid', gap: 6, marginTop: 12 }}>
+                      <div className="catalog-editor__choice-list">
                         {services.map((service) => (
-                          <label key={`${cloud}-${service}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          <label key={`${cloud}-${service}`} className="catalog-editor__toggle-label">
                             <input
                               type="checkbox"
                               checked={form.services.some((entry) => entry.cloud === cloud && entry.service === service)}
@@ -476,10 +476,10 @@ export default function NewProjectPage() {
                 </div>
               </div>
 
-              <div style={{ marginTop: 24 }}>
+              <div className="catalog-editor__section catalog-editor__section--lg">
                 <strong>Team access</strong>
-                <p style={{ color: 'var(--text-secondary)', marginTop: 8 }}>Choose which portal teams can see the project, then scope the environments they can request.</p>
-                <div style={{ overflowX: 'auto', marginTop: 12 }}>
+                <p className="catalog-editor__section-copy">Choose which portal teams can see the project, then scope the environments they can request.</p>
+                <div className="catalog-editor__table-wrap">
                   <table className="templates-table">
                     <thead>
                       <tr>
@@ -499,9 +499,9 @@ export default function NewProjectPage() {
                             <td>{team.name}</td>
                             <td>
                               {access ? (
-                                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                                <div className="catalog-editor__choice-row catalog-editor__choice-row--tight">
                                   {form.environments.map((environment) => (
-                                    <label key={`${team.id}-${environment}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                    <label key={`${team.id}-${environment}`} className="catalog-editor__toggle-label catalog-editor__toggle-label--tight">
                                       <input
                                         type="checkbox"
                                         checked={access.environments.includes(environment)}
@@ -512,7 +512,7 @@ export default function NewProjectPage() {
                                   ))}
                                 </div>
                               ) : (
-                                <span style={{ color: 'var(--text-muted)' }}>No access</span>
+                                <span className="catalog-editor__field-help">No access</span>
                               )}
                             </td>
                           </tr>
@@ -523,11 +523,11 @@ export default function NewProjectPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
+              <div className="catalog-editor__footer">
                 <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? 'Saving...' : 'Create project'}
                 </button>
-                <span style={{ color: 'var(--text-muted)', alignSelf: 'center' }}>Owner team: {selectedOwnerTeamName}</span>
+                <span className="catalog-editor__owner-note">Owner team: {selectedOwnerTeamName}</span>
               </div>
             </form>
           )}

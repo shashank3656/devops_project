@@ -15,7 +15,7 @@ It combines three portals with one backend control plane:
 - `frontend/`: User Portal for self-service requests, templates, incidents, and request history
 - `admin-frontend/`: Admin Portal for governance, user/team management, approvals, and platform administration
 - `devops-frontend/`: DevOps Portal for operational control, release workflows, reliability, and incident response
-- `backend/`: Go API and workflow engine backed by PostgreSQL and Redis
+- `backend/`: Go API and workflow engine backed by PostgreSQL-compatible storage (for example Supabase Postgres) and Redis
 
 ## Start Here
 
@@ -198,6 +198,13 @@ Edit `config/.env` with your real values for:
 - GitHub owner, repo, and token
 - frontend/backend URLs
 - SMTP or webhook destinations if you want notifications enabled
+
+Recommended database path:
+
+- use `DATABASE_URL` for Supabase / managed Postgres
+- use split `DB_*` values only if you explicitly prefer host/user/password fields
+- use `DB_SSLROOTCERT` if your managed Postgres provider requires a CA certificate
+- no separate local Postgres service is required if your `.env` already points at Supabase
 
 ### 2. Start the stack
 
