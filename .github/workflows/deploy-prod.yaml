@@ -2,19 +2,14 @@ name: Deploy Prod
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
     inputs:
       release_notes:
         description: Release notes for this production deployment
         required: true
         type: string
+  push:
+    branches:
+      - master
 
 permissions:
   contents: read
@@ -29,11 +24,9 @@ jobs:
       packages: write
       id-token: write
       pull-requests: write
-    uses: ./.github/workflows/deploy-reusable.yaml
+    uses: ./.github/actions/deploy-reusable.yaml
     with:
       environment_name: prod
-      values_file: ./helm/infragate/values-prod.yaml
-      release_name: infragate-prod
-      namespace: infragate-prod
-      release_notes: ${{ inputs.release_notes }}
+      public_api_url: ${{ vars.NEXT_PUBLIC_API_URL_PROD || vars.NEXT_PUBLIC_API_URL }}
+      release_notes: ${{ github.event_name == 'workflow_dispatch' && inputs.release_notes || format('Automated production deployment for {0}', github.sha) }}
     secrets: inherit

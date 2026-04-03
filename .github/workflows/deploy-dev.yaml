@@ -6,6 +6,7 @@ on:
     branches:
       - dev
       - feature/**
+      - feat/cicd-fixes
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
@@ -13,7 +14,6 @@ permissions:
   packages: write
   id-token: write
   pull-requests: write
-  
 
 jobs:
   deploy:
@@ -23,10 +23,8 @@ jobs:
       packages: write
       id-token: write
       pull-requests: write
-    uses: ./.github/workflows/deploy-reusable.yaml
+    uses: ./.github/actions/deploy-reusable.yaml
+    secrets: inherit
     with:
       environment_name: dev
-      values_file: ./helm/infragate/values-dev.yaml
-      release_name: infragate-dev
-      namespace: infragate-dev
-    secrets: inherit
+      public_api_url: ${{ vars.NEXT_PUBLIC_API_URL_DEV || vars.NEXT_PUBLIC_API_URL }}
