@@ -562,11 +562,14 @@ export default function DevOpsK8sPodTerminalPage() {
           }
           return;
         }
+        const streamPayload = event.data;
         tailRetryCountRef.current = 0;
         setTailTransportState('attached');
-        setTailStatus(event.data.stream_status || 'live');
-        setTailIntervalSeconds(event.data.live_interval_seconds || 5);
-        setLiveTail((current) => (event.type === 'snapshot' ? event.data.items.slice(0, 24) : mergeLiveTail(current, event.data.items)));
+        setTailStatus(streamPayload.stream_status || 'live');
+        setTailIntervalSeconds(streamPayload.live_interval_seconds || 5);
+        setLiveTail((current) =>
+          event.type === 'snapshot' ? streamPayload.items.slice(0, 24) : mergeLiveTail(current, streamPayload.items),
+        );
       },
       controller.signal,
     ).catch(() => {
