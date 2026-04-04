@@ -2131,7 +2131,8 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		createdBy := &userID
 		project, err := createProjectCatalog(input, createdBy)
 		if err != nil {
-			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
+			// Surface validation/DB errors in `error` so clients are not stuck on generic "request failed".
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
