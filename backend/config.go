@@ -43,6 +43,9 @@ var (
 	RedisQueueName          = getEnv("REDIS_QUEUE_NAME", "infra:jobs")
 	RedisJobPollTimeout     = getEnvDurationSeconds("REDIS_JOB_POLL_TIMEOUT_SECONDS", 5*time.Second)
 	DBQueryTimeout          = getEnvDurationSeconds("DB_QUERY_TIMEOUT_SECONDS", 5*time.Second)
+	// DBTxTimeout applies to multi-statement transactions (e.g. project catalog create/update).
+	// Keep higher than DBQueryTimeout when using remote Postgres / poolers.
+	DBTxTimeout = getEnvDurationSeconds("DB_TX_TIMEOUT_SECONDS", 30*time.Second)
 	SlowQueryThreshold      = getEnvDurationMilliseconds("DB_SLOW_QUERY_MS", 750*time.Millisecond)
 	RequestLogSlowThreshold = getEnvDurationMilliseconds("REQUEST_LOG_SLOW_MS", 500*time.Millisecond)
 
