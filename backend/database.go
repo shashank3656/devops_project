@@ -573,6 +573,38 @@ func InitDB() error {
 	return nil
 }
 
+// isTransientDBConnError reports stale pool connections or network blips that often succeed on retry.
+// It is not for SQL validation or unique-constraint failures.
+func isTransientDBConnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "bad connection") ||
+		strings.Contains(s, "driver: bad connection") ||
+		strings.Contains(s, "connection reset") ||
+		strings.Contains(s, "broken pipe") ||
+		strings.Contains(s, "connection refused") ||
+		strings.Contains(s, "no connection to the server") ||
+		strings.Contains(s, "server closed the connection") ||
+		strings.Contains(s, "connection timed out") ||
+		strings.Contains(s, "i/o timeout") ||
+		strings.Contains(s, "conn busy")
+}
+
+// retryDBOnceIfConnError runs fn once; on a transient connection error it logs and runs fn again.
+func retryDBOnceIfConnError[T any](label string, fn func() (T, error)) (T, error) {
+	v, err := fn()
+	if err == nil {
+		return v, nil
+	}
+	if !isTransientDBConnError(err) {
+		return v, err
+	}
+	log.Printf("[DB] %s: transient connection error, retrying once: %v", label, err)
+	return fn()
+}
+
 // createTables creates the necessary database tables
 func createTables() error {
 	// Users table
