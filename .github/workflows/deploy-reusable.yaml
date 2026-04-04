@@ -241,7 +241,7 @@ jobs:
 
       - name: Notify Slack on success
         if: success() && env.HAS_SLACK_WEBHOOK_URL == 'true'
-        uses: slackapi/slack-github-action@v1.26.0
+        uses: slackapi/slack-github-action@v2.1.0
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
@@ -249,7 +249,7 @@ jobs:
 
       - name: Notify Slack on failure
         if: failure() && env.HAS_SLACK_WEBHOOK_URL == 'true'
-        uses: slackapi/slack-github-action@v1.26.0
+        uses: slackapi/slack-github-action@v2.1.0
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
