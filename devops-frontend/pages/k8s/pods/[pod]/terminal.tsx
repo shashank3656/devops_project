@@ -479,7 +479,7 @@ export default function DevOpsK8sPodTerminalPage() {
   useEffect(() => {
     if (!activeSessionId || !detail) return;
     const controller = new AbortController();
-    let retryTimer: ReturnType<typeof window.setTimeout> | undefined;
+    let retryTimer: number | undefined;
     setSessionError('');
     setTransportState(sessionAttachVersion > 0 ? 'reconnecting' : 'connecting');
 
@@ -541,7 +541,7 @@ export default function DevOpsK8sPodTerminalPage() {
   useEffect(() => {
     if (!activeSessionId || !detail || !pod) return;
     const controller = new AbortController();
-    let retryTimer: ReturnType<typeof window.setTimeout> | undefined;
+    let retryTimer: number | undefined;
     setTailStatus('connecting');
     setTailTransportState(tailAttachVersion > 0 ? 'reconnecting' : 'connecting');
 
