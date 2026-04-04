@@ -162,7 +162,7 @@ export default function DevOpsK8sWorkloadsPage() {
         action: 'restart',
         reason: 'Requested from the DevOps K8s workloads workspace',
       });
-      setNotice(response.message || `Restart request queued for ${item.name}.`);
+      setNotice(response || `Restart request queued for ${item.name}.`);
       setRefreshKey((value) => value + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to restart ${item.name}`);
@@ -193,7 +193,7 @@ export default function DevOpsK8sWorkloadsPage() {
         action: 'resume',
         reason: 'Requested from the DevOps K8s workloads workspace',
       });
-      setNotice(response.message || `Rollout resume queued for ${item.name}.`);
+      setNotice(response || `Rollout resume queued for ${item.name}.`);
       setRefreshKey((value) => value + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to resume rollout for ${item.name}`);
@@ -230,7 +230,7 @@ export default function DevOpsK8sWorkloadsPage() {
         replicas,
         reason: 'Requested from the DevOps K8s workloads workspace',
       });
-      setNotice(response.message || `Scale request queued for ${item.name}.`);
+      setNotice(response || `Scale request queued for ${item.name}.`);
       setScaleTargetKey('');
       setScaleReplicas('');
       setRefreshKey((value) => value + 1);
