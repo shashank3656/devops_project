@@ -647,7 +647,7 @@ func createProjectCatalog(input ProjectCatalogInput, createdBy *int) (*ProjectCa
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := dbTimeoutContext()
+	ctx, cancel := dbTransactionTimeoutContext()
 	defer cancel()
 	tx, err := DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -692,7 +692,7 @@ func updateProjectCatalog(projectID int, input ProjectCatalogInput, updatedBy *i
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := dbTimeoutContext()
+	ctx, cancel := dbTransactionTimeoutContext()
 	defer cancel()
 	tx, err := DB.BeginTx(ctx, nil)
 	if err != nil {
