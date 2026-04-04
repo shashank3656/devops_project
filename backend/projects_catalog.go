@@ -2129,9 +2129,14 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		createdBy := &userID
-		project, err := createProjectCatalog(input, createdBy)
+		project, err := retryDBOnceIfConnError("createProjectCatalog", func() (*ProjectCatalog, error) {
+			return createProjectCatalog(input, createdBy)
+		})
 		if err != nil {
-			// Surface validation/DB errors in `error` so clients are not stuck on generic "request failed".
+			if isTransientDBConnError(err) {
+				writeAPIError(w, r, http.StatusServiceUnavailable, "Database temporarily unavailable. Please retry in a moment.", err)
+				return
+			}
 			writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
 			return
 		}
@@ -2250,9 +2255,15 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
 			return
 		}
-		project, err := updateProjectCatalog(projectID, input, &userID)
+		project, err := retryDBOnceIfConnError("updateProjectCatalog", func() (*ProjectCatalog, error) {
+			return updateProjectCatalog(projectID, input, &userID)
+		})
 		if err != nil {
-			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
+			if isTransientDBConnError(err) {
+				writeAPIError(w, r, http.StatusServiceUnavailable, "Database temporarily unavailable. Please retry in a moment.", err)
+				return
+			}
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
