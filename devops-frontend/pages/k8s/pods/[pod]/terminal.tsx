@@ -1,6 +1,6 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import { useRouter, type ParsedUrlQuery } from 'next/router';
+import { useRouter } from 'next/router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DevOpsLayout from '../../../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../../../components/K8sWorkspaceShell';
@@ -438,7 +438,7 @@ export default function DevOpsK8sPodTerminalPage() {
     const nextContainer = selectedContainer.trim();
     const nextShell = selectedShell.trim();
     if (currentSessionId === nextSessionId && currentContainer === nextContainer && currentShell === nextShell) return;
-    const nextQuery: ParsedUrlQuery = { ...router.query };
+    const nextQuery: { [key: string]: string | string[] | undefined } = { ...router.query };
     if (nextSessionId) nextQuery.session_id = nextSessionId;
     else delete nextQuery.session_id;
     if (nextContainer) nextQuery.container = nextContainer;
