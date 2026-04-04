@@ -137,26 +137,27 @@ export default function DevOpsK8sLogsPage() {
       },
       (event) => {
         if (!event.data) return;
-        setStreamStatus(event.data.stream_status || 'live');
-        setLiveIntervalSeconds(event.data.live_interval_seconds || 5);
+        const streamPayload = event.data;
+        setStreamStatus(streamPayload.stream_status || 'live');
+        setLiveIntervalSeconds(streamPayload.live_interval_seconds || 5);
         setLastUpdated(new Date().toISOString());
         setData((current) => {
           if (event.type === 'snapshot' || !current) {
             setLoading(false);
             setNewEntries(0);
             return {
-              ...event.data,
-              items: event.data.items,
+              ...streamPayload,
+              items: streamPayload.items,
             };
           }
-          if (event.data.items.length === 0) {
+          if (streamPayload.items.length === 0) {
             return current;
           }
-          setNewEntries((count) => count + event.data.items.length);
+          setNewEntries((count) => count + streamPayload.items.length);
           return {
             ...current,
-            ...event.data,
-            items: mergeLogItems(current.items, event.data.items),
+            ...streamPayload,
+            items: mergeLogItems(current.items, streamPayload.items),
           };
         });
       },
