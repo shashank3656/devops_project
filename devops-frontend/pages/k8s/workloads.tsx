@@ -1,10 +1,18 @@
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { fetchK8sWorkloads, K8sWorkloadsData, readQueryString } from '../../lib/k8sWorkspace';
+import {
+  DEVOPS_USER_KEY,
+  buildK8sHref,
+  fetchK8sWorkloads,
+  K8sWorkloadsData,
+  readQueryString,
+  triggerK8sWorkloadAction,
+} from '../../lib/k8sWorkspace';
 
 export default function DevOpsK8sWorkloadsPage() {
   const apiUrl = useApiUrl();
@@ -12,12 +20,17 @@ export default function DevOpsK8sWorkloadsPage() {
   const [overview, setOverview] = useState<K8sWorkloadsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [projectId, setProjectId] = useState('');
   const [clusterName, setClusterName] = useState('');
   const [namespace, setNamespace] = useState('');
   const [environment, setEnvironment] = useState('');
   const [search, setSearch] = useState('');
+  const [isManager, setIsManager] = useState(false);
+  const [submittingKey, setSubmittingKey] = useState('');
+  const [scaleTargetKey, setScaleTargetKey] = useState('');
+  const [scaleReplicas, setScaleReplicas] = useState('');
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -32,6 +45,21 @@ export default function DevOpsK8sWorkloadsPage() {
     router.query.namespace,
     router.query.project_id,
   ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const rawUser = window.localStorage.getItem(DEVOPS_USER_KEY);
+      if (!rawUser) {
+        setIsManager(false);
+        return;
+      }
+      const parsed = JSON.parse(rawUser) as { devops_profile?: { is_manager?: boolean } } | null;
+      setIsManager(Boolean(parsed?.devops_profile?.is_manager));
+    } catch {
+      setIsManager(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -82,6 +110,137 @@ export default function DevOpsK8sWorkloadsPage() {
     [visibleRows],
   );
 
+  const buildScopedHref = (path: string, item: K8sWorkloadsData['items'][number]) =>
+    buildK8sHref(path, {
+      project_id: projectId || String(projectIdByRowKey.get(`${item.cluster_name}-${item.namespace}-${item.name}`) || ''),
+      cluster_name: item.cluster_name,
+      namespace: item.namespace,
+      environment: environment || undefined,
+    });
+
+  const projectIdByRowKey = useMemo(() => {
+    const mapping = new Map<string, number>();
+    const selectedProjectId = overview?.selected_project_id || 0;
+    for (const item of overview?.items || []) {
+      const rowKey = `${item.cluster_name}-${item.namespace}-${item.name}`;
+      if (selectedProjectId > 0) {
+        mapping.set(rowKey, selectedProjectId);
+        continue;
+      }
+      const matchedConnection = (overview?.connections || []).find(
+        (connection) =>
+          connection.cluster_name === item.cluster_name &&
+          (!environment || connection.environment === environment) &&
+          (!namespace || connection.namespace === item.namespace || connection.namespace === ''),
+      );
+      if (matchedConnection?.project_id) {
+        mapping.set(rowKey, matchedConnection.project_id);
+      }
+    }
+    return mapping;
+  }, [environment, namespace, overview]);
+
+  const handleRestart = async (rowKey: string, item: K8sWorkloadsData['items'][number]) => {
+    const targetProjectId = projectIdByRowKey.get(rowKey) || 0;
+    if (targetProjectId <= 0) {
+      setNotice('');
+      setError('Select a project-scoped cluster before running a workload action.');
+      return;
+    }
+
+    setSubmittingKey(rowKey);
+    setScaleTargetKey('');
+    setNotice('');
+    setError('');
+    try {
+      const response = await triggerK8sWorkloadAction(apiUrl, {
+        project_id: targetProjectId,
+        cluster_name: item.cluster_name,
+        namespace: item.namespace,
+        environment: environment || undefined,
+        workload_name: item.name,
+        action: 'restart',
+        reason: 'Requested from the DevOps K8s workloads workspace',
+      });
+      setNotice(response.message || `Restart request queued for ${item.name}.`);
+      setRefreshKey((value) => value + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to restart ${item.name}`);
+    } finally {
+      setSubmittingKey('');
+    }
+  };
+
+  const handleResumeRollout = async (rowKey: string, item: K8sWorkloadsData['items'][number]) => {
+    const targetProjectId = projectIdByRowKey.get(rowKey) || 0;
+    if (targetProjectId <= 0) {
+      setNotice('');
+      setError('Select a project-scoped cluster before running a workload action.');
+      return;
+    }
+
+    setSubmittingKey(rowKey);
+    setScaleTargetKey('');
+    setNotice('');
+    setError('');
+    try {
+      const response = await triggerK8sWorkloadAction(apiUrl, {
+        project_id: targetProjectId,
+        cluster_name: item.cluster_name,
+        namespace: item.namespace,
+        environment: environment || undefined,
+        workload_name: item.name,
+        action: 'resume',
+        reason: 'Requested from the DevOps K8s workloads workspace',
+      });
+      setNotice(response.message || `Rollout resume queued for ${item.name}.`);
+      setRefreshKey((value) => value + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to resume rollout for ${item.name}`);
+    } finally {
+      setSubmittingKey('');
+    }
+  };
+
+  const handleScaleSubmit = async (rowKey: string, item: K8sWorkloadsData['items'][number]) => {
+    const targetProjectId = projectIdByRowKey.get(rowKey) || 0;
+    if (targetProjectId <= 0) {
+      setNotice('');
+      setError('Select a project-scoped cluster before running a workload action.');
+      return;
+    }
+    const replicas = Number.parseInt(scaleReplicas, 10);
+    if (!Number.isFinite(replicas) || replicas < 0) {
+      setNotice('');
+      setError('Enter a valid replica count of 0 or greater.');
+      return;
+    }
+
+    setSubmittingKey(rowKey);
+    setNotice('');
+    setError('');
+    try {
+      const response = await triggerK8sWorkloadAction(apiUrl, {
+        project_id: targetProjectId,
+        cluster_name: item.cluster_name,
+        namespace: item.namespace,
+        environment: environment || undefined,
+        workload_name: item.name,
+        action: 'scale',
+        replicas,
+        reason: 'Requested from the DevOps K8s workloads workspace',
+      });
+      setNotice(response.message || `Scale request queued for ${item.name}.`);
+      setScaleTargetKey('');
+      setScaleReplicas('');
+      setRefreshKey((value) => value + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to scale ${item.name}`);
+    } finally {
+      setSubmittingKey('');
+    }
+  };
+
   return (
     <>
       <Head>
@@ -101,6 +260,12 @@ export default function DevOpsK8sWorkloadsPage() {
           {error ? (
             <div className="alert alert-error" role="alert">
               {error}
+            </div>
+          ) : null}
+
+          {notice ? (
+            <div className="alert alert-success" role="status">
+              {notice}
             </div>
           ) : null}
 
@@ -224,28 +389,139 @@ export default function DevOpsK8sWorkloadsPage() {
                     <th>Ready</th>
                     <th>Cluster</th>
                     <th>Status</th>
+                    {isManager ? <th>Actions</th> : null}
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleRows.map((item) => (
-                    <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}>
-                      <td>
-                        <div className="k8s-link-cell__title">{item.name}</div>
-                        <div className="k8s-link-cell__meta">{item.image || 'No image detail'}</div>
-                      </td>
-                      <td>{item.namespace}</td>
-                      <td>{item.cpu_utilization_pct}%</td>
-                      <td>{item.cpu_hours}</td>
-                      <td>{item.memory_utilization_gb}</td>
-                      <td>{item.memory_hours}</td>
-                      <td>{item.ready_replicas}/{item.updated_replicas}</td>
-                      <td>{item.cluster_name}</td>
-                      <td><span className="portal-pill">{item.status}</span></td>
-                    </tr>
-                  ))}
+                  {visibleRows.map((item) => {
+                    const rowKey = `${item.cluster_name}-${item.namespace}-${item.name}`;
+                    const actionBusy = submittingKey === rowKey;
+                    const canRunActions = (projectIdByRowKey.get(rowKey) || 0) > 0;
+                    return (
+                      <Fragment key={rowKey}>
+                        <tr key={rowKey}>
+                          <td>
+                            <Link
+                              className="k8s-link-cell"
+                              href={buildK8sHref(`/k8s/workloads/${encodeURIComponent(item.name)}/rollout`, {
+                                project_id: projectId || String(projectIdByRowKey.get(rowKey) || ''),
+                                cluster_name: item.cluster_name,
+                                namespace: item.namespace,
+                                environment: environment || undefined,
+                                workload_name: item.name,
+                              })}
+                            >
+                              <div className="k8s-link-cell__title">{item.name}</div>
+                              <div className="k8s-link-cell__meta">{item.image || 'No image detail'} · Open rollout view</div>
+                            </Link>
+                          </td>
+                          <td>{item.namespace}</td>
+                          <td>{item.cpu_utilization_pct}%</td>
+                          <td>{item.cpu_hours}</td>
+                          <td>{item.memory_utilization_gb}</td>
+                          <td>{item.memory_hours}</td>
+                          <td>
+                            {item.ready_replicas}/{item.updated_replicas}
+                          </td>
+                          <td>{item.cluster_name}</td>
+                          <td>
+                            <span className="portal-pill">{item.status}</span>
+                          </td>
+                          {isManager ? (
+                            <td className="k8s-action-cell">
+                              <div className="k8s-action-buttons">
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  disabled={actionBusy || !canRunActions}
+                                  onClick={() => handleRestart(rowKey, item)}
+                                >
+                                  {actionBusy ? 'Working...' : 'Restart'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  disabled={actionBusy || !canRunActions}
+                                  onClick={() => {
+                                    setNotice('');
+                                    setError('');
+                                    setScaleTargetKey(rowKey);
+                                    setScaleReplicas(String(item.replicas));
+                                  }}
+                                >
+                                  Scale
+                                </button>
+                                <Link className="btn btn-secondary btn-sm" href={buildScopedHref(`/k8s/workloads/${encodeURIComponent(item.name)}/rollout`, item)}>
+                                  Rollout
+                                </Link>
+                                {item.status.toLowerCase() !== 'healthy' ? (
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm"
+                                    disabled={actionBusy || !canRunActions}
+                                    onClick={() => handleResumeRollout(rowKey, item)}
+                                  >
+                                    Resume rollout
+                                  </button>
+                                ) : null}
+                              </div>
+                              {!canRunActions ? (
+                                <div className="k8s-link-cell__meta">Choose a project-scoped cluster to run actions.</div>
+                              ) : null}
+                            </td>
+                          ) : null}
+                        </tr>
+                        {isManager && scaleTargetKey === rowKey ? (
+                          <tr className="k8s-inline-action-row">
+                            <td colSpan={10}>
+                              <div className="k8s-inline-action">
+                                <div className="k8s-inline-action__copy">
+                                  <strong>Scale {item.name}</strong>
+                                  <p>Queue a replica update for this workload without leaving the cluster workspace.</p>
+                                </div>
+                                <div className="k8s-inline-action__controls">
+                                  <label className="k8s-inline-action__label">
+                                    <span>Replicas</span>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      className="input k8s-inline-action__input"
+                                      value={scaleReplicas}
+                                      onChange={(event) => setScaleReplicas(event.target.value)}
+                                    />
+                                  </label>
+                                  <div className="k8s-inline-action__actions">
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-sm"
+                                      disabled={actionBusy}
+                                      onClick={() => handleScaleSubmit(rowKey, item)}
+                                    >
+                                      {actionBusy ? 'Applying...' : 'Apply scale'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-sm"
+                                      disabled={actionBusy}
+                                      onClick={() => {
+                                        setScaleTargetKey('');
+                                        setScaleReplicas('');
+                                      }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
                   {!loading && visibleRows.length === 0 ? (
                     <tr>
-                      <td colSpan={9}>
+                      <td colSpan={isManager ? 10 : 9}>
                         <div className="portal-empty">
                           <p>No workloads match the current filters.</p>
                         </div>
