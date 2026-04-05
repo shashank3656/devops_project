@@ -94,7 +94,7 @@ jobs:
           echo "image_uri=$image_uri" >> "$GITHUB_OUTPUT"
           echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
 
-            - name: Prepare Slack notification payloads
+      - name: Prepare Slack notification payloads
         id: notify-meta
         shell: bash
         env:
