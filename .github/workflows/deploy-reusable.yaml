@@ -74,6 +74,7 @@ jobs:
             dockerfile: ./devops-frontend/Dockerfile
             image_suffix: devops-frontend
             needs_api_url: true
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -92,107 +93,6 @@ jobs:
           latest_tag="${{ inputs.environment_name }}-latest"
           echo "image_uri=$image_uri" >> "$GITHUB_OUTPUT"
           echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
-
-      - name: Prepare Slack notification payloads
-        id: notify-meta
-        shell: bash
-        env:
-          SERVICE_NAME: ${{ matrix.service }}
-          ENVIRONMENT_NAME: ${{ inputs.environment_name }}
-          IMAGE_URI: ${{ steps.image-meta.outputs.image_uri }}
-          IMAGE_TAG: ${{ env.IMAGE_TAG }}
-          NEEDS_API_URL: ${{ matrix.needs_api_url }}
-          PUBLIC_API_URL: ${{ env.NEXT_PUBLIC_API_URL }}
-          RELEASE_NOTES: ${{ inputs.release_notes }}
-          REPOSITORY: ${{ github.repository }}
-          ACTOR: ${{ github.actor }}
-          RUN_ID: ${{ github.run_id }}
-          RUN_NUMBER: ${{ github.run_number }}
-          SERVER_URL: ${{ github.server_url }}
-          SHA_VALUE: ${{ github.sha }}
-          REF_NAME: ${{ github.ref_name }}
-          HEAD_REF: ${{ github.head_ref }}
-          WORKFLOW_NAME: ${{ github.workflow }}
-        run: |
-          set -euo pipefail
-          python3 <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          import os
-
-          env_name = os.environ["ENVIRONMENT_NAME"]
-          service = os.environ["SERVICE_NAME"]
-          image = f'{os.environ["IMAGE_URI"]}:{os.environ["IMAGE_TAG"]}'
-          release_notes = os.environ.get("RELEASE_NOTES", "").strip() or "Not provided"
-          ref_name = os.environ.get("HEAD_REF", "").strip() or os.environ.get("REF_NAME", "").strip()
-          short_sha = os.environ["SHA_VALUE"][:7]
-          run_url = f'{os.environ["SERVER_URL"]}/{os.environ["REPOSITORY"]}/actions/runs/{os.environ["RUN_ID"]}'
-          public_api_url = os.environ.get("PUBLIC_API_URL", "").strip() if os.environ.get("NEEDS_API_URL") == "true" else "not-required"
-
-          def build_payload(color: str, title: str) -> dict:
-              fields = [
-                  {"type": "mrkdwn", "text": f"*Environment:*\n{env_name}"},
-                  {"type": "mrkdwn", "text": f"*Service:*\n{service}"},
-                  {"type": "mrkdwn", "text": f"*Repository:*\n{os.environ['REPOSITORY']}"},
-                  {"type": "mrkdwn", "text": f"*Triggered by:*\n{os.environ['ACTOR']}"},
-                  {"type": "mrkdwn", "text": f"*Ref:*\n{ref_name}"},
-                  {"type": "mrkdwn", "text": f"*Commit:*\n{short_sha}"},
-                  {"type": "mrkdwn", "text": f"*Image:*\n{image}"},
-                  {"type": "mrkdwn", "text": f"*NEXT_PUBLIC_API_URL:*\n{public_api_url}"},
-              ]
-              return {
-                  "attachments": [
-                      {
-                          "color": color,
-                          "blocks": [
-                              {
-                                  "type": "header",
-                                  "text": {"type": "plain_text", "text": title},
-                              },
-                              {
-                                  "type": "section",
-                                  "fields": fields,
-                              },
-                              {
-                                  "type": "section",
-                                  "text": {
-                                      "type": "mrkdwn",
-                                      "text": f"*Release notes:*\n{release_notes}",
-                                  },
-                              },
-                              {
-                                  "type": "context",
-                                  "elements": [
-                                      {
-                                          "type": "mrkdwn",
-                                          "text": f'Workflow: {os.environ["WORKFLOW_NAME"]} | Run #{os.environ["RUN_NUMBER"]}',
-                                      }
-                                  ],
-                              },
-                              {
-                                  "type": "actions",
-                                  "elements": [
-                                      {
-                                          "type": "button",
-                                          "text": {"type": "plain_text", "text": "Open workflow run"},
-                                          "url": run_url,
-                                      }
-                                  ],
-                              },
-                          ],
-                      }
-                  ]
-              }
-
-          success_payload = build_payload("#16a34a", f"Deploy succeeded - {env_name} - {service}")
-          failure_payload = build_payload("#dc2626", f"Deploy failed - {env_name} - {service}")
-
-          print("success_payload<<__JSON__")
-          print(json.dumps(success_payload))
-          print("__JSON__")
-          print("failure_payload<<__JSON__")
-          print(json.dumps(failure_payload))
-          print("__JSON__")
-          PY
 
       - name: Validate public API URL
         if: matrix.needs_api_url
@@ -214,17 +114,53 @@ jobs:
           tags: ${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}
           build-args: ${{ matrix.needs_api_url && format('NEXT_PUBLIC_API_URL={0}', env.NEXT_PUBLIC_API_URL) || '' }}
 
+      # 🔐 Trivy Scan (UPDATED)
       - name: Trivy Advanced Container Scan
         uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: ${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}
-          format: table
+          format: json
+          output: trivy-results.json
           exit-code: "1"
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH,MEDIUM,LOW"
           scanners: "vuln,secret,config"
           timeout: "10m"
+
+      # 📊 Summary Board (NEW)
+      - name: Trivy Summary Board
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CRITICAL=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results.json)
+          HIGH=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results.json)
+          MEDIUM=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-results.json)
+          LOW=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="LOW")] | length' trivy-results.json)
+
+          echo "## 🔐 Trivy Security Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### 📦 Image" >> $GITHUB_STEP_SUMMARY
+          echo "\`${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔴 CRITICAL | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟠 HIGH     | $HIGH |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟡 MEDIUM   | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔵 LOW      | $LOW |" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "### ❌ Status: Failed (High/Critical vulnerabilities found)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ✅ Status: Passed" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -240,7 +176,7 @@ jobs:
           docker tag "${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}" "${{ steps.image-meta.outputs.image_uri }}:${{ steps.image-meta.outputs.latest_tag }}"
           docker push "${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}"
           docker push "${{ steps.image-meta.outputs.image_uri }}:${{ steps.image-meta.outputs.latest_tag }}"
-
+          
       - name: Notify Slack on success
         if: success() && env.HAS_SLACK_WEBHOOK_URL == 'true'
         uses: slackapi/slack-github-action@v2.1.0
