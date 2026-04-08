@@ -85,6 +85,171 @@ function parsePositiveIntParam(value: unknown): number | null {
   return parsed;
 }
 
+function formatToggleState(value: unknown): string {
+  return value === true ? 'Enabled' : 'Disabled';
+}
+
+function formatDefaultValue(value: string | number | boolean | undefined): string {
+  if (value === undefined) return '';
+  if (typeof value === 'boolean') return value ? 'Enabled' : 'Disabled';
+  return String(value);
+}
+
+function shouldRenderFieldDescription(description: string | undefined): boolean {
+  if (!description) return false;
+  return !description.startsWith('Recommended default:') && !description.startsWith('Default:');
+}
+
+function formatServiceFieldSummaryValue(field: ServiceField, value: unknown): string {
+  const resolvedValue = value === '' || value === undefined || value === null ? field.defaultValue : value;
+  if (resolvedValue === '' || resolvedValue === undefined || resolvedValue === null) {
+    return field.required ? 'Not set yet' : '';
+  }
+  if (field.type === 'boolean') {
+    return resolvedValue === true ? 'Enabled' : 'Disabled';
+  }
+  if (typeof resolvedValue === 'number') {
+    return String(resolvedValue);
+  }
+  return String(resolvedValue);
+}
+
+function getResourceNameGuidance(field: ServiceField, value: unknown): { tone: 'ok' | 'warning'; text: string } | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const trimmed = value.trim();
+
+  const lowercaseKebabPattern = /^[a-z][a-z0-9-]{1,61}$/;
+  const bucketPattern = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
+
+  if (field.name === 'bucket_name') {
+    if (!bucketPattern.test(trimmed) || trimmed.includes('..') || trimmed.includes('.-') || trimmed.includes('-.')) {
+      return {
+        tone: 'warning',
+        text: 'Bucket names should stay lowercase and use only numbers, letters, dots, and hyphens. Avoid spaces, underscores, and repeated separators.',
+      };
+    }
+    return {
+      tone: 'ok',
+      text: 'Bucket name format looks valid for a standard GCS bucket request.',
+    };
+  }
+
+  if (field.name === 'kms_key_name') {
+    if (!/^projects\/[^/]+\/locations\/[^/]+\/keyRings\/[^/]+\/cryptoKeys\/[^/]+$/.test(trimmed)) {
+      return {
+        tone: 'warning',
+        text: 'Use the full CMEK resource path: projects/<project>/locations/<region>/keyRings/<ring>/cryptoKeys/<key>.',
+      };
+    }
+    return {
+      tone: 'ok',
+      text: 'CMEK key path format looks good.',
+    };
+  }
+
+  if (['cluster_name', 'instance_name', 'db_instance_name', 'network_name', 'vpc_name', 'node_group_name'].includes(field.name)) {
+    if (!lowercaseKebabPattern.test(trimmed)) {
+      return {
+        tone: 'warning',
+        text: 'Use a lowercase kebab-case name so it is easier for infra, audit, and ops teams to work with later.',
+      };
+    }
+    return {
+      tone: 'ok',
+      text: 'Name format looks clean and operator-friendly.',
+    };
+  }
+
+  return null;
+}
+
+function getSectionExample(service: string, sectionTitle: string): string {
+  const examples: Record<string, Record<string, string>> = {
+    'cloud-storage': {
+      'Bucket basics': 'Example: app-artifacts bucket in asia-east2 with STANDARD storage.',
+      'Protection and retention': 'Example: keep soft delete on default, leave versioning off unless recovery is required.',
+      Encryption: 'Example: stay on Google-managed encryption unless a team-specific CMEK key is required.',
+    },
+    gke: {
+      'Cluster settings': 'Example: regional cluster on 1.28 for a shared application platform.',
+      Placement: 'Example: asia-east2 regional footprint with the default zone spread.',
+      'Maintenance and scaling': 'Example: evening maintenance window with autoscaling tuned for optimization.',
+      'Node pool': 'Example: e2-standard-4 nodes with balanced disks and autoscaling enabled.',
+    },
+    'compute-engine': {
+      'Core setup': 'Example: one application VM with the standard Ubuntu image.',
+      Placement: 'Example: place the VM close to the main app or data dependency.',
+      'Sizing and capacity': 'Example: start with e2-medium and a 20 GB disk, then scale if usage grows.',
+    },
+    'cloud-sql': {
+      'Core setup': 'Example: one shared database instance for the service team.',
+      'Database settings': 'Example: PostgreSQL with the team-approved engine version and database name.',
+      Placement: 'Example: keep the database in the same region as the main workload.',
+      'Sizing and capacity': 'Example: start small, then grow tier and disk only when needed.',
+    },
+    vpc: {
+      'Core setup': 'Example: one dedicated network lane for the application boundary.',
+      Networking: 'Example: regional routing with manual subnet control for stricter ownership.',
+    },
+    ec2: {
+      'Core setup': 'Example: a single application EC2 instance for a small internal workload.',
+      'Sizing and capacity': 'Example: start on t2.micro unless the workload already needs more headroom.',
+      'Access and bootstrap': 'Example: only add a key pair when the image bootstrap does not already cover access.',
+    },
+    eks: {
+      'Cluster settings': 'Example: a team-owned EKS cluster pinned to the validated Kubernetes version.',
+      'Node pool': 'Example: one main node group with standard instance sizing for app workloads.',
+      'Sizing and capacity': 'Example: begin with a narrow autoscaling range and widen it only when traffic proves the need.',
+    },
+    rds: {
+      'Core setup': 'Example: one managed PostgreSQL instance for the application service.',
+      'Database settings': 'Example: keep the engine and version aligned with the team platform baseline.',
+      'Sizing and capacity': 'Example: start with a small class and 20 GB unless expected usage is already known.',
+    },
+  };
+
+  return examples[service]?.[sectionTitle] || '';
+}
+
+function getReviewImpactNotes(service: string): string[] {
+  const notes: Record<string, string[]> = {
+    'cloud-storage': [
+      'Reviewers usually check naming, data location, retention, and encryption posture first.',
+      'CMEK requests often need one extra review because key ownership and access have to line up.',
+    ],
+    gke: [
+      'Reviewers usually check environment fit, Kubernetes version, and autoscaling posture first.',
+      'Node size and maintenance window choices often affect both cost and operational approval.',
+    ],
+    'compute-engine': [
+      'Reviewers usually check image baseline, machine size, and placement.',
+      'Instance naming and zone choice matter because they shape later operations and ownership.',
+    ],
+    'cloud-sql': [
+      'Reviewers usually check engine version, region alignment, and sizing.',
+      'Database requests often get extra attention when the version differs from the platform baseline.',
+    ],
+    vpc: [
+      'Reviewers usually check CIDR ownership, DNS posture, and routing mode.',
+      'Network requests often affect other teams, so clear naming and scope help approvals move faster.',
+    ],
+    ec2: [
+      'Reviewers usually check instance purpose, image baseline, and machine size.',
+      'Key pair and AMI choices can trigger follow-up questions if they differ from the standard pattern.',
+    ],
+    eks: [
+      'Reviewers usually check Kubernetes version, node group posture, and scaling limits.',
+      'Cluster requests often need stronger business context because they create a broader operational surface.',
+    ],
+    rds: [
+      'Reviewers usually check engine choice, version, storage, and class.',
+      'Database sizing and engine changes are common approval slow-downs when the impact is not explained clearly.',
+    ],
+  };
+
+  return notes[service] || ['Reviewers will usually check the core setup, placement, and main configuration choices for this request.'];
+}
+
 export default function SelectService() {
   const router = useRouter();
   const { toast } = useToast();
@@ -362,6 +527,36 @@ export default function SelectService() {
     }
   };
 
+  const renderConfiguredField = (field: ServiceField) => (
+    <div key={field.name} className="form-group">
+      {field.type !== 'boolean' && (
+        <label className="label">
+          {field.label} {field.required && <span style={{ color: 'var(--error-color)' }}>*</span>}
+        </label>
+      )}
+      {renderField(field)}
+      {(field.defaultValue !== undefined || field.description) && (
+        <div className="request-builder__field-meta">
+          {field.defaultValue !== undefined && (
+            <span className="request-builder__field-default">
+              Recommended default: {formatDefaultValue(field.defaultValue)}
+            </span>
+          )}
+          {shouldRenderFieldDescription(field.description) && <p className="request-builder__note">{field.description}</p>}
+        </div>
+      )}
+      {getResourceNameGuidance(field, formValues[field.name]) && (
+        <div
+          className={`request-builder__validation-hint request-builder__validation-hint--${
+            getResourceNameGuidance(field, formValues[field.name])?.tone || 'ok'
+          }`}
+        >
+          {getResourceNameGuidance(field, formValues[field.name])?.text}
+        </div>
+      )}
+    </div>
+  );
+
   const submitRequest = async (asDraft: boolean) => {
     if (!projectId || !team || !env || !cloud || !service) {
       setError('Choose a project, team, environment, cloud, and service first.');
@@ -445,8 +640,8 @@ export default function SelectService() {
   const serviceConfig = getServiceConfig();
   const availableServices = getAvailableServices();
   const selectedServiceLabel = service ? (serviceConfig?.displayName || service) : 'Not chosen yet';
-  const requiredServiceFieldCount = serviceConfig?.fields.filter((field) => field.required).length ?? 0;
   const requestReady = !!(projectId && team && env && cloud && service);
+  const isGcpStorageBucket = cloud === 'gcp' && service === 'cloud-storage';
   const pageTitle = isIamFlow ? 'Create an access request' : 'Create a request';
   const pageSubtitle = isIamFlow
     ? 'Start with the basics first. Then choose the cloud area related to the access change. The form only asks for the extra details reviewers need.'
@@ -471,6 +666,113 @@ export default function SelectService() {
     ? 'These choices are currently shaping this access request.'
     : 'These are the choices currently driving this request.';
   const targetSummaryLabel = isIamFlow ? 'Cloud and request target' : 'Cloud and service';
+  const bucketPolicySummary = isGcpStorageBucket
+    ? [
+        { label: 'Storage bucket name', value: String(formValues.bucket_name || 'Not set yet') },
+        { label: 'Region', value: String(formValues.region || 'asia-east2') },
+        { label: 'Storage class', value: String(formValues.storage_class || 'STANDARD') },
+        { label: 'Soft delete policy', value: String(formValues.soft_delete_policy || 'Default') },
+        { label: 'Object versioning', value: formatToggleState(formValues.versioning_enabled) },
+        { label: 'Bucket retention policy', value: formatToggleState(formValues.bucket_retention_policy_enabled) },
+        { label: 'Object retention', value: formatToggleState(formValues.object_retention_enabled) },
+        { label: 'Encryption type', value: String(formValues.encryption_type || 'Google-managed') },
+        ...(formValues.encryption_type === 'Customer-managed (CMEK)' && formValues.kms_key_name
+          ? [{ label: 'CMEK key resource', value: String(formValues.kms_key_name) }]
+          : []),
+      ]
+    : [];
+  const visibleServiceFields = serviceConfig
+    ? serviceConfig.fields.filter((field) => {
+        if (!field.showWhen) return true;
+        return formValues[field.showWhen.field] === field.showWhen.equals;
+      })
+    : [];
+  const requiredServiceFieldCount = visibleServiceFields.filter((field) => field.required).length;
+  const sectionDescriptions: Record<string, string> = {
+    'Core setup': 'Start with the resource identity and the minimum information needed to create it.',
+    'Placement': 'Choose where the resource should live.',
+    'Sizing and capacity': 'Set capacity, compute size, or storage allocation.',
+    'Access and bootstrap': 'Capture bootstrap or access-related details only when they are needed.',
+    'Networking': 'Define DNS, subnetwork, or routing behavior.',
+    'Cluster settings': 'Choose the main cluster posture and defaults.',
+    'Node pool': 'Configure worker shape, disk posture, and node scaling.',
+    'Maintenance and scaling': 'Control upgrades, autoscaling, and maintenance windows.',
+    'Database settings': 'Choose the database engine and runtime settings.',
+    'Bucket basics': 'Start with the bucket identity, region, and storage class.',
+    'Protection and retention': 'Decide how deletion, recovery, and retention should behave for this resource.',
+    'Encryption': 'Choose how data should be encrypted at rest.',
+  };
+  const serviceFieldSections = Array.from(
+    visibleServiceFields.reduce((groups, field) => {
+      const sectionName = field.section || 'Configuration';
+      const existing = groups.get(sectionName);
+      if (existing) {
+        existing.push(field);
+      } else {
+        groups.set(sectionName, [field]);
+      }
+      return groups;
+    }, new Map<string, ServiceField[]>()),
+  ).map(([title, fields]) => ({
+    title,
+    description: sectionDescriptions[title] || 'Review and complete the fields in this section.',
+    fields,
+  }));
+  const serviceSummarySections = serviceFieldSections
+    .map((section) => ({
+      title: section.title,
+      description: section.description,
+      items: section.fields
+        .map((field) => ({
+          label: field.label,
+          value: formatServiceFieldSummaryValue(field, formValues[field.name]),
+        }))
+        .filter((item) => item.value),
+    }))
+    .filter((section) => section.items.length > 0);
+  const primaryIdentityField =
+    visibleServiceFields.find((field) => ['bucket_name', 'cluster_name', 'instance_name', 'db_instance_name', 'network_name', 'vpc_name'].includes(field.name)) ||
+    visibleServiceFields.find((field) => field.required) ||
+    null;
+  const placementField =
+    visibleServiceFields.find((field) => ['region', 'zone', 'location'].includes(field.name)) || null;
+  const postureFields = visibleServiceFields.filter((field) =>
+    ['storage_class', 'encryption_type', 'instance_type', 'machine_type', 'tier', 'routing_mode', 'kubernetes_version', 'database_version'].includes(field.name),
+  );
+  const serviceBlueprintCards = service
+    ? [
+        {
+          icon: 'Build',
+          label: 'Resource',
+          value: primaryIdentityField
+            ? `${selectedServiceLabel} · ${formatServiceFieldSummaryValue(primaryIdentityField, formValues[primaryIdentityField.name])}`
+            : selectedServiceLabel,
+          detail: 'Primary resource identity',
+        },
+        {
+          icon: 'Pin',
+          label: 'Placement',
+          value: placementField
+            ? `${String(formValues[placementField.name] || placementField.defaultValue || 'Pending selection')} · ${env || 'environment pending'}`
+            : `${cloud ? cloud.toUpperCase() : 'Cloud pending'} · ${env || 'environment pending'}`,
+          detail: 'Where this resource will live',
+        },
+        {
+          icon: 'Shield',
+          label: 'Posture',
+          value:
+            postureFields.length > 0
+              ? postureFields
+                  .slice(0, 2)
+                  .map((field) => formatServiceFieldSummaryValue(field, formValues[field.name]))
+                  .filter(Boolean)
+                  .join(' · ') || 'Defaults in progress'
+              : serviceSummarySections[0]?.items.slice(0, 2).map((item) => item.value).join(' · ') || 'Defaults in progress',
+          detail: 'Key settings before review',
+        },
+      ]
+    : [];
+  const reviewImpactNotes = service ? getReviewImpactNotes(service) : [];
 
   return (
     <>
@@ -724,16 +1026,41 @@ export default function SelectService() {
                       </span>
                     )}
                   </h3>
-                  {serviceConfig.fields.map(field => (
-                    <div key={field.name} className="form-group">
-                      {field.type !== 'boolean' && (
-                        <label className="label">
-                          {field.label} {field.required && <span style={{ color: 'var(--error-color)' }}>*</span>}
-                        </label>
-                      )}
-                      {renderField(field)}
+                  {isGcpStorageBucket && (
+                    <div className="request-builder__service-spotlight">
+                      <strong>Bucket defaults</strong>
+                      <p>
+                        Start with the standard bucket posture, then turn on only the protections you need. Soft delete stays on the default
+                        policy, versioning and retention stay disabled unless you enable them, and encryption uses Google-managed keys by default.
+                      </p>
                     </div>
-                  ))}
+                  )}
+                  {serviceFieldSections.length > 0 ? (
+                    <div className="request-builder__service-groups">
+                      {serviceFieldSections.map((section) => (
+                        <section key={section.title} className="request-builder__service-group">
+                          <div className="request-builder__service-group-header">
+                            <strong>{section.title}</strong>
+                            <p>{section.description}</p>
+                            {getSectionExample(service, section.title) && (
+                              <div className="request-builder__service-example">
+                                {getSectionExample(service, section.title)}
+                              </div>
+                            )}
+                          </div>
+                          <div
+                            className={`request-builder__grid${
+                              section.fields.length === 1 ? ' request-builder__grid--single' : ''
+                            }`}
+                          >
+                            {section.fields.map((field) => renderConfiguredField(field))}
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+                  ) : (
+                    visibleServiceFields.map((field) => renderConfiguredField(field))
+                  )}
                     </div>
                   </section>
                 )}
@@ -839,6 +1166,72 @@ export default function SelectService() {
                     </div>
                   </div>
                 </div>
+
+                {serviceBlueprintCards.length > 0 && (
+                  <div className="request-builder__summary">
+                    <h3>What this request creates</h3>
+                    <p>A quick operator view of the resource, where it lands, and the main settings going into review.</p>
+                    <div className="request-builder__blueprint-grid">
+                      {serviceBlueprintCards.map((card) => (
+                        <div key={card.label} className="request-builder__blueprint-card">
+                          <span className="request-builder__blueprint-icon">{card.icon}</span>
+                          <span className="request-builder__summary-label">{card.label}</span>
+                          <strong className="request-builder__blueprint-value">{card.value}</strong>
+                          <span className="request-builder__blueprint-detail">{card.detail}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {reviewImpactNotes.length > 0 && (
+                      <div className="request-builder__impact-list">
+                        {reviewImpactNotes.map((note) => (
+                          <div key={note} className="request-builder__impact-item">
+                            {note}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {bucketPolicySummary.length > 0 && (
+                  <div className="request-builder__summary">
+                    <h3>Bucket configuration</h3>
+                    <p>These are the current storage bucket settings that will be sent for review.</p>
+                    <div className="request-builder__summary-list">
+                      {bucketPolicySummary.map((item) => (
+                        <div key={item.label} className="request-builder__summary-item">
+                          <span className="request-builder__summary-label">{item.label}</span>
+                          <span className="request-builder__summary-value">{item.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!isGcpStorageBucket && serviceSummarySections.length > 0 && (
+                  <div className="request-builder__summary">
+                    <h3>{selectedServiceLabel} configuration</h3>
+                    <p>These are the service-specific values that will be sent for review.</p>
+                    <div className="request-builder__service-summary-groups">
+                      {serviceSummarySections.map((section) => (
+                        <div key={section.title} className="request-builder__service-summary-group">
+                          <div className="request-builder__service-summary-header">
+                            <strong>{section.title}</strong>
+                            <p>{section.description}</p>
+                          </div>
+                          <div className="request-builder__summary-list">
+                            {section.items.map((item) => (
+                              <div key={`${section.title}-${item.label}`} className="request-builder__summary-item">
+                                <span className="request-builder__summary-label">{item.label}</span>
+                                <span className="request-builder__summary-value">{item.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </aside>
             </div>
           </div>

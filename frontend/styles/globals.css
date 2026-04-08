@@ -5976,6 +5976,208 @@ body {
   line-height: 1.55;
 }
 
+.request-builder__service-spotlight {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(34, 211, 238, 0.2);
+  background: rgba(8, 47, 73, 0.28);
+}
+
+.request-builder__service-spotlight strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #e0f2fe;
+  font-size: 14px;
+}
+
+.request-builder__service-spotlight p {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.request-builder__service-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.request-builder__service-group {
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.request-builder__service-group-header {
+  margin-bottom: 14px;
+}
+
+.request-builder__service-group-header strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #f8fafc;
+  font-size: 14px;
+}
+
+.request-builder__service-group-header p {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.request-builder__service-example {
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.42);
+  border: 1px dashed rgba(148, 163, 184, 0.18);
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.request-builder__field-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.request-builder__field-default {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  background: rgba(8, 47, 73, 0.24);
+  color: #bae6fd;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.request-builder__validation-hint {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.request-builder__validation-hint--ok {
+  background: rgba(21, 128, 61, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.18);
+  color: #bbf7d0;
+}
+
+.request-builder__validation-hint--warning {
+  background: rgba(120, 53, 15, 0.18);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  color: #fde68a;
+}
+
+.request-builder__blueprint-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.request-builder__blueprint-card {
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.28);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.request-builder__blueprint-icon {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(34, 211, 238, 0.16);
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  color: #a5f3fc;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.request-builder__blueprint-value {
+  color: #e2e8f0;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.request-builder__blueprint-detail {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.request-builder__impact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.request-builder__impact-item {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(8, 47, 73, 0.22);
+  border: 1px solid rgba(34, 211, 238, 0.14);
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.request-builder__service-summary-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.request-builder__service-summary-group {
+  padding-top: 4px;
+}
+
+.request-builder__service-summary-group + .request-builder__service-summary-group {
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  padding-top: 16px;
+}
+
+.request-builder__service-summary-header {
+  margin-bottom: 10px;
+}
+
+.request-builder__service-summary-header strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #e2e8f0;
+  font-size: 13px;
+}
+
+.request-builder__service-summary-header p {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.request-builder__grid--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .request-builder__inline-link {
   border: 0;
   background: none;
