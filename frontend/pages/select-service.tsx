@@ -250,6 +250,20 @@ function getReviewImpactNotes(service: string): string[] {
   return notes[service] || ['Reviewers will usually check the core setup, placement, and main configuration choices for this request.'];
 }
 
+function normalizeServiceKey(cloud: string, serviceKey: string): string {
+  if (cloud !== 'gcp') return serviceKey;
+
+  const normalized = serviceKey.trim().toLowerCase();
+  const aliases: Record<string, string> = {
+    storage: 'cloud-storage',
+    'cloud-storage': 'cloud-storage',
+    cloudsql: 'cloud-sql',
+    'cloud-sql': 'cloud-sql',
+  };
+
+  return aliases[normalized] || normalized;
+}
+
 export default function SelectService() {
   const router = useRouter();
   const { toast } = useToast();
@@ -417,7 +431,7 @@ export default function SelectService() {
       return awsServices[service];
     }
     if (cloud === 'gcp' && service) {
-      return gcpServices[service];
+      return gcpServices[normalizeServiceKey(cloud, service)];
     }
     return null;
   };
@@ -641,7 +655,8 @@ export default function SelectService() {
   const availableServices = getAvailableServices();
   const selectedServiceLabel = service ? (serviceConfig?.displayName || service) : 'Not chosen yet';
   const requestReady = !!(projectId && team && env && cloud && service);
-  const isGcpStorageBucket = cloud === 'gcp' && service === 'cloud-storage';
+  const normalizedService = service ? normalizeServiceKey(cloud, service) : '';
+  const isGcpStorageBucket = cloud === 'gcp' && normalizedService === 'cloud-storage';
   const pageTitle = isIamFlow ? 'Create an access request' : 'Create a request';
   const pageSubtitle = isIamFlow
     ? 'Start with the basics first. Then choose the cloud area related to the access change. The form only asks for the extra details reviewers need.'
@@ -772,7 +787,7 @@ export default function SelectService() {
         },
       ]
     : [];
-  const reviewImpactNotes = service ? getReviewImpactNotes(service) : [];
+  const reviewImpactNotes = normalizedService ? getReviewImpactNotes(normalizedService) : [];
 
   return (
     <>
@@ -992,7 +1007,10 @@ export default function SelectService() {
                   >
                     <option value="">{!projectId ? 'Choose project first' : !cloud ? 'Choose cloud first' : 'Choose service'}</option>
                     {availableServices.map(svc => {
-                      const config = cloud === 'aws' ? awsServices[svc] : gcpServices[svc];
+                      const config =
+                        cloud === 'aws'
+                          ? awsServices[svc]
+                          : gcpServices[normalizeServiceKey(cloud, svc)];
                       return (
                         <option key={svc} value={svc}>
                           {config?.displayName || svc}
@@ -1042,9 +1060,9 @@ export default function SelectService() {
                           <div className="request-builder__service-group-header">
                             <strong>{section.title}</strong>
                             <p>{section.description}</p>
-                            {getSectionExample(service, section.title) && (
+                            {normalizedService && getSectionExample(normalizedService, section.title) && (
                               <div className="request-builder__service-example">
-                                {getSectionExample(service, section.title)}
+                                {getSectionExample(normalizedService, section.title)}
                               </div>
                             )}
                           </div>
