@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../../components/DevOpsLayout';
+import K8sOperatorNextSteps from '../../../components/K8sOperatorNextSteps';
 import K8sWorkspaceShell from '../../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import {
@@ -115,6 +116,190 @@ export default function DevOpsK8sClusterDetailPage() {
     [namespaceHealth],
   );
 
+  const namespaceImpact = useMemo(() => {
+    return namespaces
+      .map((item) => {
+        const healthRow = namespaceHealth.find((row) => row.namespace === item.name);
+        const spotlightRows = workloadSpotlights.filter((row) => row.namespace === item.name);
+        const namespaceEventCount = recentEvents.filter((row) => row.namespace === item.name).length;
+        const namespaceLogCount = recentLogs.filter((row) => row.namespace === item.name).length;
+        const issueCount = healthRow?.issue_count || 0;
+        const restartingPods = healthRow?.restarting_pods || 0;
+        const warningLogs = healthRow?.warning_logs || 0;
+        const affectedDeployments = healthRow?.affected_deployments || 0;
+        const pressureScore =
+          issueCount * 3 +
+          restartingPods * 2 +
+          warningLogs * 2 +
+          affectedDeployments * 2 +
+          namespaceEventCount +
+          namespaceLogCount;
+        const primaryWorkload = [...spotlightRows].sort((left, right) => {
+          const leftPressure = left.warning_count * 2 + left.restart_count + (left.replicas - left.ready_replicas) * 3;
+          const rightPressure = right.warning_count * 2 + right.restart_count + (right.replicas - right.ready_replicas) * 3;
+          return rightPressure - leftPressure;
+        })[0];
+
+        return {
+          name: item.name,
+          clusterName: item.cluster_name,
+          status: (healthRow?.status || item.status || 'Unknown').trim(),
+          issueCount,
+          restartingPods,
+          warningLogs,
+          affectedDeployments,
+          namespaceEventCount,
+          namespaceLogCount,
+          spotlightCount: spotlightRows.length,
+          primaryWorkload: primaryWorkload?.name || 'No spotlight workload',
+          pressureScore,
+        };
+      })
+      .sort((left, right) => {
+        if (right.pressureScore !== left.pressureScore) {
+          return right.pressureScore - left.pressureScore;
+        }
+        return left.name.localeCompare(right.name);
+      });
+  }, [namespaceHealth, namespaces, recentEvents, recentLogs, workloadSpotlights]);
+
+  const blastRadius = useMemo(() => {
+    const impactedNamespaces = namespaceImpact.filter(
+      (item) => item.pressureScore > 0 || item.status.toLowerCase() !== 'healthy',
+    );
+    const crossSignalNamespaces = impactedNamespaces.filter(
+      (item) =>
+        (item.warningLogs > 0 || item.restartingPods > 0) &&
+        (item.namespaceEventCount > 0 || item.affectedDeployments > 0),
+    );
+
+    return {
+      impactedNamespaceCount: impactedNamespaces.length,
+      highPressureCount: impactedNamespaces.filter((item) => item.pressureScore >= 8).length,
+      deploymentImpact: impactedNamespaces.reduce((total, item) => total + item.affectedDeployments, 0),
+      noisySignalCount: impactedNamespaces.reduce(
+        (total, item) => total + item.namespaceEventCount + item.namespaceLogCount,
+        0,
+      ),
+      topNamespaces: impactedNamespaces.slice(0, 3),
+      crossSignalCount: crossSignalNamespaces.length,
+    };
+  }, [namespaceImpact]);
+
+  const blastGuidance = useMemo(() => {
+    const guidance: string[] = [];
+    if (blastRadius.highPressureCount > 0) {
+      guidance.push(
+        `${blastRadius.highPressureCount} namespaces are carrying stacked failure signals. Start with the highest-pressure namespace before the noise spreads.`,
+      );
+    }
+    if (blastRadius.deploymentImpact > 0) {
+      guidance.push(
+        `${blastRadius.deploymentImpact} deployment slots are already affected. Check service entry points and rollout posture before adding more change.`,
+      );
+    }
+    if (blastRadius.crossSignalCount > 0) {
+      guidance.push(
+        `${blastRadius.crossSignalCount} namespaces are showing both runtime pressure and event churn. Those are the best candidates for a focused incident review.`,
+      );
+    }
+    if (guidance.length === 0) {
+      guidance.push('Namespace pressure is low right now. Use this page as a steady-state health check before drilling into workloads.');
+    }
+    return guidance;
+  }, [blastRadius.crossSignalCount, blastRadius.deploymentImpact, blastRadius.highPressureCount]);
+
+  const incidentCorrelation = useMemo(() => {
+    const correlatedNamespaces = namespaceImpact
+      .map((item) => {
+        const matchingEvents = recentEvents.filter((event) => event.namespace === item.name);
+        const matchingLogs = recentLogs.filter((log) => log.namespace === item.name);
+        const warningEvents = matchingEvents.filter((event) => {
+          const severity = event.severity.trim().toLowerCase();
+          return severity === 'warning' || severity === 'critical' || severity === 'error';
+        });
+        const warningLogs = matchingLogs.filter((log) => {
+          const level = log.level.trim().toLowerCase();
+          return level === 'warning' || level === 'critical' || level === 'error';
+        });
+        const correlationScore =
+          item.pressureScore +
+          warningEvents.length * 3 +
+          warningLogs.length * 2 +
+          (item.restartingPods > 0 ? 2 : 0) +
+          (item.affectedDeployments > 0 ? 2 : 0);
+        const likelyIncident =
+          correlationScore >= 10 ||
+          ((warningEvents.length > 0 || warningLogs.length > 0) &&
+            (item.restartingPods > 0 || item.affectedDeployments > 0));
+
+        let nextAction = 'Watch this namespace for another signal before escalating it to an incident.';
+        if (warningEvents.length > 0 && item.restartingPods > 0) {
+          nextAction = 'Start with pod restarts and the newest warning events, then confirm whether service traffic is degrading.';
+        } else if (warningLogs.length > 0 && item.affectedDeployments > 0) {
+          nextAction = 'Check the impacted deployment rollout and compare recent warnings against the current pod health.';
+        } else if (item.namespaceEventCount > 0) {
+          nextAction = 'Open the recent events first, then confirm whether logs and workload health tell the same story.';
+        }
+
+        return {
+          ...item,
+          warningEventCount: warningEvents.length,
+          warningLogCount: warningLogs.length,
+          correlationScore,
+          likelyIncident,
+          topEventReason: warningEvents[0]?.reason || matchingEvents[0]?.reason || 'No recent event reason',
+          topLogSignal: warningLogs[0]?.name || matchingLogs[0]?.name || 'No recent warning log',
+          nextAction,
+        };
+      })
+      .filter((item) => item.correlationScore > 0)
+      .sort((left, right) => {
+        if (right.correlationScore !== left.correlationScore) {
+          return right.correlationScore - left.correlationScore;
+        }
+        return left.name.localeCompare(right.name);
+      });
+
+    return {
+      likelyIncidentCount: correlatedNamespaces.filter((item) => item.likelyIncident).length,
+      crossSignalCount: correlatedNamespaces.filter(
+        (item) => item.warningEventCount > 0 && item.warningLogCount > 0,
+      ).length,
+      restartLinkedCount: correlatedNamespaces.filter((item) => item.restartingPods > 0).length,
+      deploymentLinkedCount: correlatedNamespaces.filter((item) => item.affectedDeployments > 0).length,
+      topNamespaces: correlatedNamespaces.slice(0, 4),
+    };
+  }, [namespaceImpact, recentEvents, recentLogs]);
+
+  const operatorLinks = [
+    {
+      href: buildResourceHref('/k8s/workloads', scopeProjectId, scopeCluster, scopeEnvironment, namespace),
+      label: 'Workloads',
+      detail: 'Inspect rollout posture and deployment pressure for the workloads running in this cluster.',
+    },
+    {
+      href: buildResourceHref('/k8s/services', scopeProjectId, scopeCluster, scopeEnvironment, namespace),
+      label: 'Services',
+      detail: 'Check service exposure and dependency pressure across this cluster before following pod-level issues.',
+    },
+    {
+      href: buildResourceHref('/k8s/pods', scopeProjectId, scopeCluster, scopeEnvironment, namespace),
+      label: 'Pods',
+      detail: 'Open the pod inventory for this cluster and move straight into workload or pod detail views.',
+    },
+    {
+      href: buildResourceHref('/k8s/logs', scopeProjectId, scopeCluster, scopeEnvironment, namespace),
+      label: 'Logs',
+      detail: 'Use the live log surface for this cluster to confirm whether warning signals are still rising.',
+    },
+    {
+      href: buildResourceHref('/k8s/events', scopeProjectId, scopeCluster, scopeEnvironment, namespace),
+      label: 'Events',
+      detail: 'Use the event trail to separate rollout noise from real cluster or namespace incidents.',
+    },
+  ];
+
   return (
     <>
       <Head>
@@ -149,7 +334,13 @@ export default function DevOpsK8sClusterDetailPage() {
             </div>
           ) : null}
 
-          <section className="portal-surface">
+              <K8sOperatorNextSteps
+                title="Operator handoff"
+                subtitle="Use the cluster workspace as the top-level control point, then move directly into the K8s surface that explains the next signal."
+                items={operatorLinks}
+              />
+
+              <section className="portal-surface">
             <div className="portal-surface__header">
               <div>
                 <span className="portal-surface__eyebrow">Cluster workspace</span>
@@ -341,10 +532,19 @@ export default function DevOpsK8sClusterDetailPage() {
                     return (
                       <tr key={`${item.cluster_name}-${item.name}`}>
                         <td>
-                          <div className="k8s-link-cell">
+                          <Link
+                            href={buildResourceHref(
+                              `/k8s/namespaces/${encodeURIComponent(item.name)}`,
+                              scopeProjectId,
+                              scopeCluster,
+                              scopeEnvironment,
+                              item.name,
+                            )}
+                            className="k8s-link-cell"
+                          >
                             <span className="k8s-link-cell__title">{item.name}</span>
                             <span className="k8s-link-cell__meta">{item.cluster_name}</span>
-                          </div>
+                          </Link>
                         </td>
                         <td><span className={`portal-pill ${clusterStatusTone(healthRow?.status || item.status)}`}>{healthRow?.status || item.status}</span></td>
                         <td>{healthRow?.issue_count || 0}</td>
@@ -400,6 +600,133 @@ export default function DevOpsK8sClusterDetailPage() {
               {!loading && workloadSpotlights.length === 0 ? (
                 <div className="portal-empty">
                   <p>No workload spotlights are available for this cluster yet.</p>
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Blast radius</span>
+                <h2 className="portal-surface__title">Namespace dependency pressure</h2>
+                <p className="portal-surface__subtitle">
+                  This layer helps us see which namespaces are absorbing the most pressure across workloads, logs, and event flow before the issue fans out.
+                </p>
+              </div>
+            </div>
+
+            <div className="k8s-diagnostic-grid">
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Impacted namespaces</span>
+                <strong className="k8s-diagnostic-card__value">{blastRadius.impactedNamespaceCount}</strong>
+                <span className="k8s-diagnostic-card__meta">Namespaces carrying any warning, restart, or deployment pressure.</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">High pressure</span>
+                <strong className="k8s-diagnostic-card__value">{blastRadius.highPressureCount}</strong>
+                <span className="k8s-diagnostic-card__meta">Namespaces where multiple signals are stacking at once.</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Deployment impact</span>
+                <strong className="k8s-diagnostic-card__value">{blastRadius.deploymentImpact}</strong>
+                <span className="k8s-diagnostic-card__meta">Deployment slots already caught inside the current pressure band.</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Noisy signals</span>
+                <strong className="k8s-diagnostic-card__value">{blastRadius.noisySignalCount}</strong>
+                <span className="k8s-diagnostic-card__meta">Recent event and log signals connected to impacted namespaces.</span>
+              </div>
+            </div>
+
+            <div className="k8s-spotlight-grid">
+              {blastRadius.topNamespaces.map((item) => (
+                <article key={`${item.clusterName}-${item.name}`} className="k8s-spotlight-card">
+                  <div className="k8s-spotlight-card__header">
+                    <div>
+                      <h3 className="k8s-spotlight-card__title">{item.name}</h3>
+                      <p className="k8s-spotlight-card__meta">{item.clusterName} · primary workload {item.primaryWorkload}</p>
+                    </div>
+                    <span className={`portal-pill ${clusterStatusTone(item.status)}`}>{item.status}</span>
+                  </div>
+                  <div className="k8s-spotlight-card__stats">
+                    <span>Pressure {item.pressureScore}</span>
+                    <span>Deployments {item.affectedDeployments}</span>
+                    <span>Restarts {item.restartingPods}</span>
+                    <span>Events {item.namespaceEventCount}</span>
+                  </div>
+                </article>
+              ))}
+              {!loading && blastRadius.topNamespaces.length === 0 ? (
+                <div className="portal-empty">
+                  <p>No namespace blast-radius hotspots are visible for this cluster right now.</p>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="k8s-guidance-list">
+              {blastGuidance.map((item) => (
+                <div key={item} className="k8s-guidance-list__item">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Incident watchlist</span>
+                <h2 className="portal-surface__title">Namespace incident correlation</h2>
+                <p className="portal-surface__subtitle">
+                  This lines up namespace pressure with event and log signals so we can see which cluster areas are closest to becoming active incidents.
+                </p>
+              </div>
+            </div>
+
+            <div className="k8s-diagnostic-grid">
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Likely incidents</span>
+                <strong className="k8s-diagnostic-card__value">{incidentCorrelation.likelyIncidentCount}</strong>
+                <span className="k8s-diagnostic-card__meta">Namespaces where runtime pressure already lines up with event or log evidence.</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Cross-signal namespaces</span>
+                <strong className="k8s-diagnostic-card__value">{incidentCorrelation.crossSignalCount}</strong>
+                <span className="k8s-diagnostic-card__meta">Namespaces showing both event churn and warning-heavy log flow.</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Restart-linked</span>
+                <strong className="k8s-diagnostic-card__value">{incidentCorrelation.restartLinkedCount}</strong>
+                <span className="k8s-diagnostic-card__meta">Namespaces where pod restart pressure is part of the current incident picture.</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Deployment-linked</span>
+                <strong className="k8s-diagnostic-card__value">{incidentCorrelation.deploymentLinkedCount}</strong>
+                <span className="k8s-diagnostic-card__meta">Namespaces where deployment degradation is already part of the correlation trail.</span>
+              </div>
+            </div>
+
+            <div className="k8s-trace-list">
+              {incidentCorrelation.topNamespaces.map((item) => (
+                <article key={`${item.clusterName}-${item.name}-incident`} className="k8s-trace-item">
+                  <div className="k8s-trace-item__header">
+                    <strong className="k8s-trace-item__title">{item.name}</strong>
+                    <span className="portal-pill">Correlation {item.correlationScore}</span>
+                  </div>
+                  <p className="k8s-trace-item__meta">
+                    {item.clusterName} · workload {item.primaryWorkload} · events {item.warningEventCount} · warning logs {item.warningLogCount}
+                  </p>
+                  <div className="k8s-trace-item__issues">
+                    <span className="k8s-trace-item__issue">Top event: {item.topEventReason}</span>
+                    <span className="k8s-trace-item__issue">Top log signal: {item.topLogSignal}</span>
+                    <span className="k8s-trace-item__issue">{item.nextAction}</span>
+                  </div>
+                </article>
+              ))}
+              {!loading && incidentCorrelation.topNamespaces.length === 0 ? (
+                <div className="portal-empty">
+                  <p>No namespace incident correlations are visible for this cluster right now.</p>
                 </div>
               ) : null}
             </div>

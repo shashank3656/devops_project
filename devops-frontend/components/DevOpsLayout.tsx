@@ -68,6 +68,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/k8s/pods': 'Pods',
   '/k8s/logs': 'Logs',
   '/k8s/events': 'Events',
+  '/k8s/namespaces': 'Namespace',
   '/k8s/rollouts': 'Rollouts',
   '/k8s/workloads': 'Workloads',
   '/k8s/services': 'Services',
