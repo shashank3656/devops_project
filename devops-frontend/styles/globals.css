@@ -5510,6 +5510,43 @@ th,
   margin-bottom: 8px;
 }
 
+.k8s-operator-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.k8s-operator-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 110px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(34, 112, 177, 0.18);
+  background: rgba(4, 16, 30, 0.38);
+  text-decoration: none;
+  transition: border-color 0.18s ease, transform 0.18s ease, background-color 0.18s ease;
+}
+
+.k8s-operator-card:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(7, 20, 36, 0.72);
+  transform: translateY(-1px);
+}
+
+.k8s-operator-card__title {
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.k8s-operator-card__detail {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
 .k8s-summary-card {
   display: inline-flex;
   align-items: center;
@@ -5609,6 +5646,15 @@ th,
 
 .k8s-data-table tbody tr:hover td {
   background: rgba(8, 31, 56, 0.48);
+}
+
+.k8s-data-table tbody tr.is-clickable {
+  cursor: pointer;
+}
+
+.k8s-data-table tbody tr.is-active td {
+  background: rgba(10, 35, 66, 0.72);
+  border-top-color: rgba(34, 112, 177, 0.24);
 }
 
 .k8s-action-cell {
@@ -5830,6 +5876,19 @@ th,
   color: var(--color-text-muted);
 }
 
+.k8s-health-score {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.k8s-health-score__value {
+  font-size: 26px;
+  line-height: 1;
+  color: #dff6ff;
+}
+
 .k8s-spotlight-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5971,6 +6030,136 @@ th,
   font-size: 11px;
   line-height: 1.6;
   color: var(--color-text-muted);
+}
+
+.k8s-section-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.k8s-section-stack__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+.k8s-service-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.k8s-service-chip {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(34, 112, 177, 0.1);
+  background: rgba(5, 18, 34, 0.3);
+}
+
+.k8s-service-chip strong {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text);
+}
+
+.k8s-service-chip span {
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+
+.k8s-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.k8s-compare-card {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(34, 112, 177, 0.1);
+  background: rgba(5, 18, 34, 0.3);
+}
+
+.k8s-compare-card__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.k8s-compare-card__value {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+.k8s-compare-card__meta {
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--color-text-muted);
+}
+
+.k8s-trace-list {
+  display: grid;
+  gap: 8px;
+}
+
+.k8s-trace-item {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(34, 112, 177, 0.1);
+  background: rgba(5, 18, 34, 0.36);
+}
+
+.k8s-trace-item__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.k8s-trace-item__title {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+.k8s-trace-item__meta {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+
+.k8s-trace-item__issues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.k8s-trace-item__issue {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 151, 87, 0.2);
+  background: rgba(93, 33, 12, 0.34);
+  font-size: 11px;
+  line-height: 1.4;
+  color: #ffd6bb;
 }
 
 .k8s-rollout-timeline {
@@ -6297,6 +6486,7 @@ th,
   }
 
   .k8s-diagnostic-grid,
+  .k8s-compare-grid,
   .k8s-detail-grid,
   .k8s-spotlight-grid,
   .k8s-detail-columns,

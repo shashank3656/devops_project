@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../../components/DevOpsLayout';
+import K8sOperatorNextSteps from '../../../components/K8sOperatorNextSteps';
 import K8sWorkspaceShell from '../../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import {
@@ -20,6 +21,12 @@ function podStatusTone(status: string) {
   if (normalized === 'running') return 'k8s-data-pill k8s-data-pill--normal';
   if (normalized === 'warning' || normalized === 'pending') return 'k8s-data-pill k8s-data-pill--warning';
   return 'k8s-data-pill';
+}
+
+function healthScoreTone(score: number) {
+  if (score >= 85) return 'k8s-data-pill k8s-data-pill--healthy';
+  if (score >= 65) return 'k8s-data-pill k8s-data-pill--expiring';
+  return 'k8s-data-pill k8s-data-pill--critical';
 }
 
 function buildScopedHref(
@@ -138,6 +145,54 @@ export default function DevOpsK8sPodDetailPage() {
       serviceExposure,
     };
   }, [activityItems.length, pod?.restarts, recentLogs, services, siblingPods, warningCount]);
+  const healthScore = useMemo(() => {
+    let score = 100;
+    if ((pod?.status || '').trim().toLowerCase() !== 'running') score -= 35;
+    score -= Math.min(diagnostics.restartPressure * 8, 24);
+    score -= Math.min(diagnostics.warningEvents * 7, 21);
+    score -= Math.min(diagnostics.warningLogs * 6, 18);
+    if (deployment && deployment.ready_replicas < deployment.replicas) {
+      score -= Math.min((deployment.replicas - deployment.ready_replicas) * 6, 18);
+    }
+    const bounded = Math.max(score, 5);
+    return {
+      value: bounded,
+      label: bounded >= 85 ? 'Stable' : bounded >= 65 ? 'Watch closely' : 'At risk',
+    };
+  }, [deployment, diagnostics, pod?.status]);
+  const failureTrace = useMemo(() => {
+    const items = [
+      {
+        title: 'Runtime state',
+        status: pod?.status || 'Unknown',
+        detail:
+          (pod?.status || '').trim().toLowerCase() === 'running'
+            ? 'The pod is currently running, so the main risk is restart or signal pressure rather than scheduling.'
+            : 'The pod is not fully running, so investigate scheduling, image pull, or readiness blockers first.',
+      },
+      {
+        title: 'Deployment readiness',
+        status: deployment ? `${deployment.ready_replicas}/${deployment.replicas}` : 'No deployment mapping',
+        detail: deployment
+          ? `Deployment ${deployment.name} is carrying ${Math.max(deployment.replicas - deployment.ready_replicas, 0)} unavailable replica(s).`
+          : 'No deployment record is visible for this pod in the current workspace scope.',
+      },
+      {
+        title: 'Log and event pressure',
+        status: `${diagnostics.warningLogs + diagnostics.warningEvents} signal(s)`,
+        detail: `${diagnostics.warningLogs} warning/error log signal(s) and ${diagnostics.warningEvents} warning event(s) were captured recently.`,
+      },
+      {
+        title: 'Service impact',
+        status: `${services.length} service(s)`,
+        detail:
+          services.length > 0
+            ? `${diagnostics.serviceExposure} service path(s) leave the cluster boundary, so this pod may be visible to downstream callers.`
+            : 'No matching service selector is visible for this pod right now.',
+      },
+    ];
+    return items;
+  }, [deployment, diagnostics, pod?.status, services.length]);
   const guidance = useMemo(() => {
     const items: string[] = [];
     if (diagnostics.restartPressure > 0) {
@@ -157,6 +212,48 @@ export default function DevOpsK8sPodDetailPage() {
     }
     return items;
   }, [diagnostics]);
+
+  const operatorLinks = [
+    {
+      href: buildScopedHref('/k8s/logs', scopeProjectId, scopeCluster, scopeNamespace, environment),
+      label: 'Live logs',
+      detail: 'Stay in the same pod scope and confirm whether warning signals are still active in the stream.',
+    },
+    {
+      href: buildScopedHref(
+        `/k8s/pods/${encodeURIComponent(podName)}/terminal`,
+        scopeProjectId,
+        scopeCluster,
+        scopeNamespace,
+        environment,
+      ),
+      label: 'Terminal workspace',
+      detail: 'Open the operator terminal flow for this pod with the current cluster and namespace context preserved.',
+    },
+    {
+      href: deployment
+        ? buildScopedHref(
+            `/k8s/workloads/${encodeURIComponent(deployment.name)}/rollout`,
+            scopeProjectId,
+            scopeCluster,
+            scopeNamespace,
+            environment,
+          )
+        : buildScopedHref('/k8s/workloads', scopeProjectId, scopeCluster, scopeNamespace, environment),
+      label: 'Rollout context',
+      detail: 'Check the owning workload rollout before sending more recovery actions into the pod.',
+    },
+    {
+      href: buildScopedHref('/k8s/events', scopeProjectId, scopeCluster, scopeNamespace, environment),
+      label: 'Event trail',
+      detail: 'Compare pod warnings against the latest namespace events to separate runtime issues from scheduling pressure.',
+    },
+    {
+      href: buildScopedHref('/k8s/services', scopeProjectId, scopeCluster, scopeNamespace, environment),
+      label: 'Service impact',
+      detail: 'Jump into the service view to see whether this pod is already part of an exposed or degraded path.',
+    },
+  ];
 
   return (
     <>
@@ -183,6 +280,14 @@ export default function DevOpsK8sPodDetailPage() {
             <div className="alert alert-error" role="alert">
               {error}
             </div>
+          ) : null}
+
+          {pod ? (
+            <K8sOperatorNextSteps
+              title="Operator handoff"
+              subtitle="Use the current pod context to move into logs, rollout, service, and terminal workflows without resetting scope."
+              items={operatorLinks}
+            />
           ) : null}
 
           <section className="portal-surface">
@@ -238,6 +343,14 @@ export default function DevOpsK8sPodDetailPage() {
             </div>
 
             <div className="k8s-diagnostic-grid">
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Health score</span>
+                <div className="k8s-health-score">
+                  <strong className="k8s-health-score__value">{healthScore.value}</strong>
+                  <span className={healthScoreTone(healthScore.value)}>{healthScore.label}</span>
+                </div>
+                <span className="k8s-diagnostic-card__meta">Combined runtime, restart, event, and rollout pressure.</span>
+              </div>
               <div className="k8s-diagnostic-card">
                 <span className="k8s-diagnostic-card__label">Pod restarts</span>
                 <strong className="k8s-diagnostic-card__value">{diagnostics.restartPressure}</strong>
@@ -315,6 +428,28 @@ export default function DevOpsK8sPodDetailPage() {
                   {guidance.map((item, index) => (
                     <div key={`${index}-${item}`} className="k8s-guidance-list__item">
                       {item}
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="k8s-spotlight-card">
+                <div className="k8s-spotlight-card__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Failure trace</span>
+                    <h3 className="portal-surface__title">Where pressure is building</h3>
+                  </div>
+                </div>
+                <div className="k8s-trace-list">
+                  {failureTrace.map((item) => (
+                    <div key={item.title} className="k8s-trace-item">
+                      <div className="k8s-trace-item__header">
+                        <div className="k8s-trace-item__title">{item.title}</div>
+                        <span className={item.title === 'Runtime state' ? `portal-pill ${podStatusTone(item.status)}` : 'k8s-data-pill'}>
+                          {item.status}
+                        </span>
+                      </div>
+                      <p className="k8s-trace-item__meta">{item.detail}</p>
                     </div>
                   ))}
                 </div>

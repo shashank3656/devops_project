@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../../../components/DevOpsLayout';
+import K8sOperatorNextSteps from '../../../../components/K8sOperatorNextSteps';
 import K8sWorkspaceShell from '../../../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../../../context/ApiUrlContext';
 import {
@@ -129,6 +130,91 @@ export default function DevOpsK8sWorkloadRolloutPage() {
       operatorActions: activityItems.length,
     };
   }, [activityItems.length, detail, workload]);
+  const revisionCompare = useMemo(() => {
+    const current = detail?.replicasets?.[0];
+    const previous = detail?.replicasets?.[1] || null;
+    if (!current) return null;
+    const currentGap = Math.max(current.desired_replicas - current.ready_replicas, 0);
+    const previousGap = previous ? Math.max(previous.desired_replicas - previous.ready_replicas, 0) : 0;
+    const replicaDelta = previous ? current.ready_replicas - previous.ready_replicas : current.ready_replicas;
+    const restartDelta = (detail?.pods || []).reduce((sum, item) => sum + item.restarts, 0);
+    return {
+      current,
+      previous,
+      currentGap,
+      previousGap,
+      replicaDelta,
+      restartDelta,
+      latestCheckpoint: detail?.timeline?.[0]?.timestamp || '',
+    };
+  }, [detail]);
+  const checkpointSummary = useMemo(() => {
+    const steps = detail?.timeline || [];
+    return {
+      blocked: steps.filter((item) => ['blocked', 'failed', 'critical'].includes(item.status.trim().toLowerCase())).length,
+      degraded: steps.filter((item) => ['warning', 'pending', 'degraded'].includes(item.status.trim().toLowerCase())).length,
+      completed: steps.filter((item) => ['healthy', 'running', 'complete', 'completed'].includes(item.status.trim().toLowerCase())).length,
+      latestTitle: steps[0]?.title || 'No checkpoint yet',
+    };
+  }, [detail]);
+  const rolloutImpact = useMemo(() => {
+    const services = detail?.services || [];
+    const pods = detail?.pods || [];
+    const exposedServices = services.filter((item) => {
+      const exposure = item.exposure.trim().toLowerCase();
+      return exposure !== '' && exposure !== 'internal' || item.ingress_host.trim() !== '' || item.external_ip.trim() !== '';
+    });
+    const unhealthyPods = pods.filter((item) => {
+      const status = item.status.trim().toLowerCase();
+      return status !== 'running' && status !== 'healthy' && status !== 'ready';
+    });
+    const namespaceRiskScore =
+      Math.max((workload?.replicas ?? 0) - (workload?.ready_replicas ?? 0), 0) * 3 +
+      unhealthyPods.length * 2 +
+      exposedServices.length * 2 +
+      diagnostics.eventWarnings +
+      diagnostics.logSignals;
+    return {
+      serviceCount: services.length,
+      exposedServices: exposedServices.length,
+      unhealthyPods: unhealthyPods.length,
+      namespaceRiskScore,
+      topServiceTargets: services
+        .map((item) => ({
+          ...item,
+          riskScore:
+            ((item.exposure.trim().toLowerCase() !== '' && item.exposure.trim().toLowerCase() !== 'internal') ||
+            item.ingress_host.trim() !== '' ||
+            item.external_ip.trim() !== ''
+              ? 3
+              : 0) +
+            (item.selector.trim() === '' ? 2 : 0) +
+            (item.ingress_host.trim() !== '' ? 1 : 0),
+        }))
+        .sort((left, right) => right.riskScore - left.riskScore)
+        .slice(0, 4),
+    };
+  }, [detail, diagnostics.eventWarnings, diagnostics.logSignals, workload]);
+  const namespaceImpactGuidance = useMemo(() => {
+    const items: string[] = [];
+    if (rolloutImpact.exposedServices > 0) {
+      items.push(
+        `${rolloutImpact.exposedServices} service path(s) are externally reachable from this rollout scope. Validate service health before resuming more change.`,
+      );
+    }
+    if (rolloutImpact.unhealthyPods > 0) {
+      items.push(
+        `${rolloutImpact.unhealthyPods} pod replica(s) are not healthy or running. That is the quickest sign the rollout blast radius is already leaking into runtime.`,
+      );
+    }
+    if (rolloutImpact.namespaceRiskScore >= 8) {
+      items.push('Namespace risk is elevated. Treat this rollout as a cross-signal issue, not just a ReplicaSet mismatch.');
+    }
+    if (items.length === 0) {
+      items.push('Namespace impact is still contained. Use this as a controlled checkpoint before the next rollout action.');
+    }
+    return items;
+  }, [rolloutImpact.exposedServices, rolloutImpact.namespaceRiskScore, rolloutImpact.unhealthyPods]);
   const guidance = useMemo(() => {
     const items: string[] = [];
     if (diagnostics.unavailableReplicas > 0) {
@@ -148,6 +234,45 @@ export default function DevOpsK8sWorkloadRolloutPage() {
     }
     return items;
   }, [diagnostics]);
+
+  const scopeQuery = {
+    project_id: scopeProjectId || undefined,
+    cluster_name: scopeCluster || undefined,
+    namespace: scopeNamespace || undefined,
+    environment: environment || undefined,
+  };
+
+  const operatorLinks = [
+    {
+      href: buildK8sHref('/k8s/pods', scopeQuery),
+      label: 'Backing pods',
+      detail: 'Move into the pod list for this rollout scope and inspect which replicas are still carrying pressure.',
+    },
+    {
+      href: buildK8sHref('/k8s/services', scopeQuery),
+      label: 'Service impact',
+      detail: 'Check the exposed services behind this rollout before sending more change into the workload.',
+    },
+    {
+      href: buildK8sHref('/k8s/logs', scopeQuery),
+      label: 'Runtime logs',
+      detail: 'Confirm whether rollout warnings still show up in the latest cluster log stream.',
+    },
+    {
+      href: buildK8sHref('/k8s/events', scopeQuery),
+      label: 'Event trail',
+      detail: 'Compare rollout checkpoints with the most recent event churn in this namespace.',
+    },
+    {
+      href: buildK8sHref(`/k8s/clusters/${encodeURIComponent(scopeCluster)}`, {
+        project_id: scopeProjectId || undefined,
+        cluster_name: scopeCluster || undefined,
+        environment: environment || undefined,
+      }),
+      label: 'Cluster blast radius',
+      detail: 'Step back to the cluster view when you need to understand whether rollout pressure is spreading outward.',
+    },
+  ];
 
   return (
     <>
@@ -174,6 +299,14 @@ export default function DevOpsK8sWorkloadRolloutPage() {
             <div className="alert alert-error" role="alert">
               {error}
             </div>
+          ) : null}
+
+          {workload ? (
+            <K8sOperatorNextSteps
+              title="Operator handoff"
+              subtitle="Keep the rollout scope and move directly into the next cluster surface that explains impact, signal pressure, or recovery options."
+              items={operatorLinks}
+            />
           ) : null}
 
           <section className="portal-surface">
@@ -284,6 +417,36 @@ export default function DevOpsK8sWorkloadRolloutPage() {
                   </div>
                 </div>
                 <div className="k8s-feed">
+                  {revisionCompare ? (
+                    <div className="k8s-compare-grid">
+                      <div className="k8s-compare-card">
+                        <span className="k8s-compare-card__label">Current revision</span>
+                        <strong className="k8s-compare-card__value">{revisionCompare.current.name}</strong>
+                        <span className="k8s-compare-card__meta">
+                          {revisionCompare.current.ready_replicas}/{revisionCompare.current.desired_replicas} ready · gap {revisionCompare.currentGap}
+                        </span>
+                      </div>
+                      <div className="k8s-compare-card">
+                        <span className="k8s-compare-card__label">Previous revision</span>
+                        <strong className="k8s-compare-card__value">{revisionCompare.previous?.name || 'No prior revision'}</strong>
+                        <span className="k8s-compare-card__meta">
+                          {revisionCompare.previous
+                            ? `${revisionCompare.previous.ready_replicas}/${revisionCompare.previous.desired_replicas} ready · gap ${revisionCompare.previousGap}`
+                            : 'This is the only visible revision in scope.'}
+                        </span>
+                      </div>
+                      <div className="k8s-compare-card">
+                        <span className="k8s-compare-card__label">Shift signal</span>
+                        <strong className="k8s-compare-card__value">
+                          {revisionCompare.replicaDelta >= 0 ? '+' : ''}
+                          {revisionCompare.replicaDelta} ready replica change
+                        </strong>
+                        <span className="k8s-compare-card__meta">
+                          Restart pressure {revisionCompare.restartDelta} · latest checkpoint {formatDateTime(revisionCompare.latestCheckpoint)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
                   {(detail?.replicasets || []).map((item) => (
                     <div key={`${item.cluster_name}-${item.namespace}-${item.name}`} className="k8s-feed__item">
                       <div className="k8s-feed__header">
@@ -364,8 +527,85 @@ export default function DevOpsK8sWorkloadRolloutPage() {
                   <div className="k8s-guidance-list__item">
                     Updated replicas {workload?.updated_replicas ?? 0} · Services in scope {summary.services}
                   </div>
+                  <div className="k8s-guidance-list__item">
+                    Latest checkpoint {checkpointSummary.latestTitle} · blocked {checkpointSummary.blocked} · degraded {checkpointSummary.degraded}
+                  </div>
+                  <div className="k8s-guidance-list__item">
+                    Healthy checkpoints {checkpointSummary.completed} · visible revisions {summary.replicasets}
+                  </div>
                 </div>
               </section>
+            </div>
+
+            <div className="k8s-diagnostic-grid">
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Namespace risk</span>
+                <strong className="k8s-diagnostic-card__value">{rolloutImpact.namespaceRiskScore}</strong>
+                <span className="k8s-diagnostic-card__meta">Combined rollout, service, pod, and signal pressure in this namespace scope.</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Services in blast radius</span>
+                <strong className="k8s-diagnostic-card__value">{rolloutImpact.serviceCount}</strong>
+                <span className="k8s-diagnostic-card__meta">{rolloutImpact.exposedServices} externally reachable service path(s).</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Unhealthy pods</span>
+                <strong className="k8s-diagnostic-card__value">{rolloutImpact.unhealthyPods}</strong>
+                <span className="k8s-diagnostic-card__meta">Replica pressure that can spill directly into service behavior.</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Top service traces</span>
+                <strong className="k8s-diagnostic-card__value">{rolloutImpact.topServiceTargets.length}</strong>
+                <span className="k8s-diagnostic-card__meta">Priority service paths to validate before more rollout change.</span>
+              </div>
+            </div>
+
+            <div className="k8s-detail-columns">
+              <div className="k8s-section-stack">
+                <h3 className="k8s-section-stack__title">Namespace to rollout impact trace</h3>
+                <div className="k8s-trace-list">
+                  {rolloutImpact.topServiceTargets.map((service) => (
+                    <article key={`${service.cluster_name}-${service.namespace}-${service.name}-impact`} className="k8s-trace-item">
+                      <div className="k8s-trace-item__header">
+                        <div className="k8s-trace-item__title">{service.name}</div>
+                        <span className="portal-pill">Risk {service.riskScore}</span>
+                      </div>
+                      <p className="k8s-trace-item__meta">
+                        {service.namespace} · {service.type || 'Service'} · {service.ports || 'Ports pending'} · {service.exposure || 'internal'}
+                      </p>
+                      <div className="k8s-trace-item__issues">
+                        {(service.exposure.trim().toLowerCase() !== '' && service.exposure.trim().toLowerCase() !== 'internal') ||
+                        service.ingress_host.trim() !== '' ||
+                        service.external_ip.trim() !== '' ? (
+                          <span className="k8s-trace-item__issue">Traffic can reach this rollout through an exposed service path.</span>
+                        ) : null}
+                        {service.selector.trim() === '' ? (
+                          <span className="k8s-trace-item__issue">Selector ownership is unclear for this service.</span>
+                        ) : null}
+                        {service.ingress_host.trim() !== '' ? (
+                          <span className="k8s-trace-item__issue">Ingress host {service.ingress_host}</span>
+                        ) : null}
+                      </div>
+                    </article>
+                  ))}
+                  {!loading && rolloutImpact.topServiceTargets.length === 0 ? (
+                    <div className="portal-empty">
+                      <p>No service blast-radius targets are visible for this rollout right now.</p>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="k8s-section-stack">
+                <h3 className="k8s-section-stack__title">Recommended namespace checks</h3>
+                <div className="k8s-guidance-list">
+                  {namespaceImpactGuidance.map((item) => (
+                    <div key={item} className="k8s-guidance-list__item">
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="k8s-spotlight-grid">

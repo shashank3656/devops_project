@@ -15,13 +15,33 @@ import {
 
 function statusTone(status: string) {
   const normalized = status.trim().toLowerCase();
-  if (normalized === 'healthy' || normalized === 'active' || normalized === 'managed') {
+  if (normalized === 'healthy' || normalized === 'active' || normalized === 'managed' || normalized === 'internal' || normalized === 'cluster') {
     return 'k8s-data-pill k8s-data-pill--healthy';
+  }
+  if (normalized === 'external' || normalized === 'public') {
+    return 'k8s-data-pill k8s-data-pill--normal';
   }
   if (normalized === 'warning' || normalized === 'expiring' || normalized === 'pending') {
     return 'k8s-data-pill k8s-data-pill--expiring';
   }
   return 'k8s-data-pill k8s-data-pill--critical';
+}
+
+function certificateCoversHost(hosts: string, host: string) {
+  const normalizedHost = host.trim().toLowerCase();
+  if (!normalizedHost) return false;
+  return hosts
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean)
+    .some((entry) => {
+      if (entry === normalizedHost) return true;
+      if (entry.startsWith('*.')) {
+        const suffix = entry.slice(1);
+        return normalizedHost.endsWith(suffix);
+      }
+      return false;
+    });
 }
 
 export default function DevOpsK8sIngressDetailPage() {
@@ -98,6 +118,144 @@ export default function DevOpsK8sIngressDetailPage() {
     }),
     [detail],
   );
+  const routeTrace = useMemo(() => {
+    const routes = detail?.routes || [];
+    const services = detail?.services || [];
+    const certificates = detail?.certificates || [];
+    const primarySecret = detail?.secret?.name || ingress?.tls_secret || '';
+    return routes.map((route) => {
+      const matchedService = services.find((service) => service.name === route.service_name) || null;
+      const hasTlsCoverage = route.host
+        ? certificates.some((certificate) => certificateCoversHost(certificate.hosts, route.host))
+        : certificates.length > 0;
+      const secretAligned =
+        !route.tls_secret ||
+        route.tls_secret === primarySecret ||
+        certificates.some((certificate) => certificate.secret_name === route.tls_secret);
+      const issues: string[] = [];
+      if (!route.service_name) issues.push('No backend service is mapped to this route.');
+      if (route.service_name && !matchedService) issues.push('The mapped backend service is not visible in the current scope.');
+      if (!route.target_address) issues.push('No resolved service address is available for this route.');
+      if (route.host && certificates.length > 0 && !hasTlsCoverage) issues.push('The host is not covered by the current TLS certificates.');
+      if (route.tls_secret && !secretAligned) issues.push('The route TLS secret does not line up with the ingress TLS attachments.');
+      if (['critical', 'expired', 'error'].includes(route.certificate_status.trim().toLowerCase())) {
+        issues.push('The certificate status for this route is degraded.');
+      }
+      return {
+        route,
+        matchedService,
+        hasTlsCoverage,
+        issues,
+        status: issues.length === 0 ? 'healthy' : issues.length >= 3 ? 'critical' : 'warning',
+      };
+    });
+  }, [detail, ingress?.tls_secret]);
+  const diagnostics = useMemo(() => {
+    const warningEvents = (detail?.recent_events || []).filter((item) => item.severity.trim().toLowerCase() === 'warning').length;
+    const degradedCertificates = (detail?.certificates || []).filter((item) =>
+      ['warning', 'expiring', 'critical', 'expired', 'error'].includes(item.status.trim().toLowerCase()),
+    ).length;
+    const missingBackends = routeTrace.filter((item) =>
+      item.issues.some((issue) => issue.includes('backend service') || issue.includes('mapped backend service')),
+    ).length;
+    const uncoveredHosts = routeTrace.filter((item) => item.route.host && !item.hasTlsCoverage).length;
+    const targetGaps = routeTrace.filter((item) => item.issues.some((issue) => issue.includes('resolved service address'))).length;
+    return {
+      warningEvents,
+      degradedCertificates,
+      missingBackends,
+      uncoveredHosts,
+      targetGaps,
+      tracedRoutes: routeTrace.length,
+    };
+  }, [detail, routeTrace]);
+  const guidance = useMemo(() => {
+    const items: string[] = [];
+    if (diagnostics.missingBackends > 0) {
+      items.push('At least one ingress path does not have a visible backend service, so start with the route trace before chasing pod or rollout issues.');
+    }
+    if (diagnostics.uncoveredHosts > 0 || diagnostics.degradedCertificates > 0) {
+      items.push('TLS coverage is incomplete or degraded for part of this ingress. Validate the certificate attachments before assuming the backend is the source of failure.');
+    }
+    if (diagnostics.targetGaps > 0) {
+      items.push('One or more routes do not resolve to a target address, which usually points to service selector drift or missing endpoints.');
+    }
+    if (diagnostics.warningEvents > 0) {
+      items.push('Recent ingress warning events are active. Use the event trail to confirm whether the edge problem is config, cert, or target related.');
+    }
+    if (items.length === 0) {
+      items.push('The ingress edge looks well formed right now. Use the route trace to confirm path-to-service alignment before moving deeper into workloads.');
+    }
+    return items;
+  }, [diagnostics]);
+  const serviceBlastRadius = useMemo(() => {
+    const serviceMap = new Map<
+      string,
+      {
+        serviceName: string;
+        namespace: string;
+        routeCount: number;
+        unresolvedRoutes: number;
+        tlsRiskCount: number;
+        selectorGap: boolean;
+        exposure: string;
+        ingressHosts: string[];
+      }
+    >();
+
+    routeTrace.forEach((trace) => {
+      const serviceName = trace.route.service_name || trace.matchedService?.name || 'Unmapped backend';
+      const namespaceKey = trace.matchedService?.namespace || scopeNamespace || ingress?.namespace || 'default';
+      const key = `${namespaceKey}:${serviceName}`;
+      const summary = serviceMap.get(key) || {
+        serviceName,
+        namespace: namespaceKey,
+        routeCount: 0,
+        unresolvedRoutes: 0,
+        tlsRiskCount: 0,
+        selectorGap: trace.matchedService ? trace.matchedService.selector.trim() === '' : true,
+        exposure: trace.matchedService?.exposure || trace.route.exposure || ingress?.exposure || 'internal',
+        ingressHosts: [],
+      };
+
+      summary.routeCount += 1;
+      summary.unresolvedRoutes += trace.issues.some((issue) => issue.includes('resolved service address')) ? 1 : 0;
+      summary.tlsRiskCount +=
+        trace.issues.some(
+          (issue) =>
+            issue.includes('TLS') ||
+            issue.includes('certificate') ||
+            issue.includes('host is not covered'),
+        )
+          ? 1
+          : 0;
+      if (trace.route.host) {
+        summary.ingressHosts.push(trace.route.host);
+      }
+      serviceMap.set(key, summary);
+    });
+
+    const impactedServices = [...serviceMap.values()]
+      .map((item) => ({
+        ...item,
+        ingressHosts: [...new Set(item.ingressHosts)].slice(0, 3),
+        pressureScore:
+          item.routeCount * 2 + item.unresolvedRoutes * 3 + item.tlsRiskCount * 2 + (item.selectorGap ? 2 : 0),
+      }))
+      .sort((left, right) => {
+        if (right.pressureScore !== left.pressureScore) {
+          return right.pressureScore - left.pressureScore;
+        }
+        return left.serviceName.localeCompare(right.serviceName);
+      });
+
+    return {
+      impactedServices: impactedServices.filter((item) => item.pressureScore > 0).length,
+      riskyRoutes: routeTrace.filter((item) => item.status !== 'healthy').length,
+      namespaceSpread: new Set(impactedServices.map((item) => item.namespace)).size,
+      topServices: impactedServices.filter((item) => item.pressureScore > 0).slice(0, 4),
+    };
+  }, [ingress?.exposure, ingress?.namespace, routeTrace, scopeNamespace]);
 
   return (
     <>
@@ -186,6 +344,29 @@ export default function DevOpsK8sIngressDetailPage() {
               </div>
             </div>
 
+            <div className="k8s-diagnostic-grid">
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Routes traced</span>
+                <strong className="k8s-diagnostic-card__value">{diagnostics.tracedRoutes}</strong>
+                <span className="k8s-diagnostic-card__meta">End-to-end host and path checks in this ingress scope.</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Missing backends</span>
+                <strong className="k8s-diagnostic-card__value">{diagnostics.missingBackends}</strong>
+                <span className="k8s-diagnostic-card__meta">{diagnostics.targetGaps} route(s) also lack a resolved address.</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">TLS risk</span>
+                <strong className="k8s-diagnostic-card__value">{diagnostics.degradedCertificates}</strong>
+                <span className="k8s-diagnostic-card__meta">{diagnostics.uncoveredHosts} host(s) are not covered by visible TLS material.</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Event pressure</span>
+                <strong className="k8s-diagnostic-card__value">{diagnostics.warningEvents}</strong>
+                <span className="k8s-diagnostic-card__meta">Recent ingress warning event(s) that can explain edge failures.</span>
+              </div>
+            </div>
+
             <section className="k8s-spotlight-card">
               <div className="k8s-spotlight-card__header">
                 <div>
@@ -194,21 +375,30 @@ export default function DevOpsK8sIngressDetailPage() {
                 </div>
               </div>
               <div className="k8s-route-grid">
-                {(detail?.routes || []).map((item, index) => (
-                  <article key={`${item.host}-${item.path}-${item.service_name}-${index}`} className="k8s-route-card">
+                {routeTrace.map((trace, index) => (
+                  <article key={`${trace.route.host}-${trace.route.path}-${trace.route.service_name}-${index}`} className="k8s-route-card">
                     <div className="k8s-route-card__header">
-                      <div className="k8s-route-card__title">{item.host || ingress?.host || 'Wildcard host'}</div>
-                      <span className={statusTone(item.certificate_status || ingress?.certificate_status || 'unknown')}>
-                        {item.certificate_status || ingress?.certificate_status || 'unknown'}
+                      <div className="k8s-route-card__title">{trace.route.host || ingress?.host || 'Wildcard host'}</div>
+                      <span className={statusTone(trace.status)}>
+                        {trace.status}
                       </span>
                     </div>
-                    <div className="k8s-route-card__path">{item.path || '/'}</div>
+                    <div className="k8s-route-card__path">{trace.route.path || '/'}</div>
                     <div className="k8s-route-card__meta">
-                      <span>{item.service_name || 'No service mapping'}</span>
-                      <span>{item.service_type || 'service'}</span>
-                      <span>{item.target_address || 'no target address'}</span>
-                      <span>{item.exposure || ingress?.exposure || 'internal'}</span>
+                      <span>{trace.route.service_name || 'No service mapping'}</span>
+                      <span>{trace.route.service_type || 'service'}</span>
+                      <span>{trace.route.target_address || 'no target address'}</span>
+                      <span>{trace.route.exposure || ingress?.exposure || 'internal'}</span>
                     </div>
+                    {trace.issues.length > 0 ? (
+                      <div className="k8s-trace-item__issues">
+                        {trace.issues.map((issue) => (
+                          <span key={issue} className="k8s-trace-item__issue">
+                            {issue}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </article>
                 ))}
                 {!loading && (detail?.routes.length || 0) === 0 ? (
@@ -216,6 +406,131 @@ export default function DevOpsK8sIngressDetailPage() {
                     <p>No ingress routes are recorded yet.</p>
                   </div>
                 ) : null}
+              </div>
+            </section>
+
+            <div className="k8s-diagnostic-grid">
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Impacted services</span>
+                <strong className="k8s-diagnostic-card__value">{serviceBlastRadius.impactedServices}</strong>
+                <span className="k8s-diagnostic-card__meta">Backend services currently carrying route, TLS, or selector pressure from this ingress.</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Risky routes</span>
+                <strong className="k8s-diagnostic-card__value">{serviceBlastRadius.riskyRoutes}</strong>
+                <span className="k8s-diagnostic-card__meta">Ingress paths where the edge path no longer looks fully aligned with the backend.</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Namespace spread</span>
+                <strong className="k8s-diagnostic-card__value">{serviceBlastRadius.namespaceSpread}</strong>
+                <span className="k8s-diagnostic-card__meta">Namespaces touched by the currently impacted backend services.</span>
+              </div>
+              <div className="k8s-diagnostic-card">
+                <span className="k8s-diagnostic-card__label">Top service traces</span>
+                <strong className="k8s-diagnostic-card__value">{serviceBlastRadius.topServices.length}</strong>
+                <span className="k8s-diagnostic-card__meta">Service blast-radius drilldowns ready for the next hop in the investigation.</span>
+              </div>
+            </div>
+
+            <div className="k8s-spotlight-grid">
+              <section className="k8s-spotlight-card">
+                <div className="k8s-spotlight-card__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Operator guidance</span>
+                    <h3 className="portal-surface__title">Recommended next checks</h3>
+                  </div>
+                </div>
+                <div className="k8s-guidance-list">
+                  {guidance.map((item, index) => (
+                    <div key={`${index}-${item}`} className="k8s-guidance-list__item">
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="k8s-spotlight-card">
+                <div className="k8s-spotlight-card__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Failure trace</span>
+                    <h3 className="portal-surface__title">Edge to service mapping</h3>
+                  </div>
+                </div>
+                <div className="k8s-trace-list">
+                  {routeTrace.length > 0 ? (
+                    routeTrace.map((trace, index) => (
+                      <div key={`${trace.route.host}-${trace.route.path}-${index}`} className="k8s-trace-item">
+                        <div className="k8s-trace-item__header">
+                          <div className="k8s-trace-item__title">
+                            {(trace.route.host || ingress?.host || 'Wildcard host') + (trace.route.path || '/')}
+                          </div>
+                          <span className={statusTone(trace.status)}>{trace.status}</span>
+                        </div>
+                        <p className="k8s-trace-item__meta">
+                          {trace.route.service_name || 'No service mapping'} · {trace.matchedService?.type || trace.route.service_type || 'service'} ·{' '}
+                          {trace.route.target_address || 'No resolved target'}
+                        </p>
+                        {trace.issues.length > 0 ? (
+                          <div className="k8s-trace-item__issues">
+                            {trace.issues.map((issue) => (
+                              <span key={issue} className="k8s-trace-item__issue">
+                                {issue}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="k8s-guidance-list__item">This route currently has service, address, and TLS coverage aligned.</div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="portal-empty">
+                      <p>No route trace is available until ingress paths are discovered.</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+
+            <section className="k8s-spotlight-card">
+              <div className="k8s-spotlight-card__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Blast radius</span>
+                  <h3 className="portal-surface__title">Service drilldown from this ingress</h3>
+                </div>
+              </div>
+              <div className="k8s-trace-list">
+                {serviceBlastRadius.topServices.length > 0 ? (
+                  serviceBlastRadius.topServices.map((item) => (
+                    <article key={`${item.namespace}-${item.serviceName}`} className="k8s-trace-item">
+                      <div className="k8s-trace-item__header">
+                        <div className="k8s-trace-item__title">{item.serviceName}</div>
+                        <span className="portal-pill">Pressure {item.pressureScore}</span>
+                      </div>
+                      <p className="k8s-trace-item__meta">
+                        {item.namespace} · {item.exposure || 'internal'} · {item.routeCount} mapped route(s)
+                      </p>
+                      <div className="k8s-trace-item__issues">
+                        {item.unresolvedRoutes > 0 ? (
+                          <span className="k8s-trace-item__issue">{item.unresolvedRoutes} route(s) have no resolved target</span>
+                        ) : null}
+                        {item.tlsRiskCount > 0 ? (
+                          <span className="k8s-trace-item__issue">{item.tlsRiskCount} route(s) carry TLS risk</span>
+                        ) : null}
+                        {item.selectorGap ? <span className="k8s-trace-item__issue">Selector gap needs service ownership review</span> : null}
+                        {item.ingressHosts.map((host) => (
+                          <span key={`${item.serviceName}-${host}`} className="k8s-trace-item__issue">
+                            Host {host}
+                          </span>
+                        ))}
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <div className="portal-empty">
+                    <p>No backend blast-radius hotspots are visible for this ingress right now.</p>
+                  </div>
+                )}
               </div>
             </section>
 
