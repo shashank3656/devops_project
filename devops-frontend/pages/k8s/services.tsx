@@ -869,10 +869,10 @@ export default function DevOpsK8sServicesPage() {
                               Ready {workload.ready_replicas}/{workload.replicas}
                             </span>
                           </div>
-                          <p className="k8s-trace-item__meta">
-                            {workload.namespace} · {workload.status} · warnings {workload.warning_count} · restarts{' '}
-                            {workload.restart_count}
-                          </p>
+                        <p className="k8s-trace-item__meta">
+                          {workload.namespace} · {workload.status} · ready {workload.ready_replicas}/{workload.replicas} · cpu{' '}
+                          {workload.cpu_utilization_pct}%
+                        </p>
                         </article>
                       ))}
                     </div>
