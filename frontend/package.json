@@ -9,7 +9,7 @@
     "lint": "ESLINT_USE_FLAT_CONFIG=false eslint . --ext .js,.jsx,.ts,.tsx"
   },
   "dependencies": {
-    "next": "16.2.1",
+    "next": "16.2.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
