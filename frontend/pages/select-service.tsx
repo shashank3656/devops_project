@@ -40,6 +40,15 @@ interface ProjectOption {
   team_access: ProjectTeamAccess[];
 }
 
+interface BundledServiceDraft {
+  id: string;
+  cloud: string;
+  service: string;
+  normalizedService: string;
+  displayName: string;
+  formValues: Record<string, any>;
+}
+
 const VALID_CLOUDS = ['aws', 'gcp', 'azure'];
 const ENV_LABEL_OVERRIDES: Record<string, string> = {
   dev: 'Development',
@@ -264,6 +273,13 @@ function normalizeServiceKey(cloud: string, serviceKey: string): string {
   return aliases[normalized] || normalized;
 }
 
+function getServiceDisplayName(cloud: string, serviceKey: string): string {
+  if (!cloud || !serviceKey) return serviceKey;
+  if (cloud === 'aws') return awsServices[serviceKey]?.displayName || serviceKey;
+  if (cloud === 'gcp') return gcpServices[normalizeServiceKey(cloud, serviceKey)]?.displayName || serviceKey;
+  return serviceKey;
+}
+
 export default function SelectService() {
   const router = useRouter();
   const { toast } = useToast();
@@ -279,6 +295,7 @@ export default function SelectService() {
   const [cloud, setCloud] = useState('');
   const [service, setService] = useState('');
   const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const [bundledServices, setBundledServices] = useState<BundledServiceDraft[]>([]);
   const [loading, setLoading] = useState(false);
   const [prUrl, setPrUrl] = useState('');
   const [error, setError] = useState('');
@@ -480,6 +497,49 @@ export default function SelectService() {
     }));
   };
 
+  const buildBundledServiceDraft = (
+    draftCloud: string,
+    draftService: string,
+    values: Record<string, any>,
+    draftId?: string,
+  ): BundledServiceDraft | null => {
+    if (!draftCloud || !draftService) return null;
+    const normalized = normalizeServiceKey(draftCloud, draftService);
+    return {
+      id: draftId || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      cloud: draftCloud,
+      service: draftService,
+      normalizedService: normalized,
+      displayName: getServiceDisplayName(draftCloud, draftService),
+      formValues: { ...values },
+    };
+  };
+
+  const getServiceIdentityPreview = (draft: BundledServiceDraft): string => {
+    const identityFieldNames = ['bucket_name', 'cluster_name', 'instance_name', 'db_instance_name', 'network_name', 'vpc_name'];
+    const identityField = Object.entries(draft.formValues).find(([key, value]) => identityFieldNames.includes(key) && value);
+    if (identityField?.[1]) return String(identityField[1]);
+    return 'Configuration in progress';
+  };
+
+  const removeBundledService = (draftId: string) => {
+    setBundledServices((prev) => prev.filter((item) => item.id !== draftId));
+  };
+
+  const addCurrentServiceToBundle = () => {
+    const nextDraft = buildBundledServiceDraft(cloud, service, formValues);
+    if (!nextDraft) {
+      toast('Choose a cloud and service before adding another one.', 'error');
+      return;
+    }
+
+    setBundledServices((prev) => [...prev, nextDraft]);
+    setCloud('');
+    setService('');
+    setFormValues({});
+    toast(`${nextDraft.displayName} added to this request bundle.`, 'success');
+  };
+
   const renderField = (field: ServiceField) => {
     const value = formValues[field.name] ?? '';
 
@@ -572,8 +632,12 @@ export default function SelectService() {
   );
 
   const submitRequest = async (asDraft: boolean) => {
-    if (!projectId || !team || !env || !cloud || !service) {
-      setError('Choose a project, team, environment, cloud, and service first.');
+    const currentDraft = buildBundledServiceDraft(cloud, service, formValues);
+    const requestServices = currentDraft ? [...bundledServices, currentDraft] : [...bundledServices];
+    const primaryService = requestServices[0];
+
+    if (!projectId || !team || !env || !primaryService) {
+      setError('Choose the project, team, environment, and at least one service first.');
       return;
     }
 
@@ -588,18 +652,45 @@ export default function SelectService() {
     if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
     try {
+      const serviceBundlePayload = requestServices.map((entry) => ({
+        cloud: entry.cloud,
+        service: entry.service,
+        normalized_service: entry.normalizedService,
+        display_name: entry.displayName,
+        config: entry.formValues,
+      }));
+
       const payload = {
         project_id: projectId,
         team,
         env,
-        cloud,
-        service,
+        cloud: primaryService.cloud,
+        service: primaryService.service,
         client_name: clientName || undefined,
         priority,
         due_date: dueDate || undefined,
         draft: asDraft,
         initial_comment: initialComment.trim() || undefined,
-        config: isIamFlow ? { request_type: 'iam', ...formValues } : formValues
+        config: isIamFlow
+          ? {
+              request_type: 'iam',
+              ...primaryService.formValues,
+              ...(serviceBundlePayload.length > 1
+                ? {
+                    bundle_mode: true,
+                    service_bundle: serviceBundlePayload,
+                  }
+                : {}),
+            }
+          : {
+              ...primaryService.formValues,
+              ...(serviceBundlePayload.length > 1
+                ? {
+                    bundle_mode: true,
+                    service_bundle: serviceBundlePayload,
+                  }
+                : {}),
+            }
       };
 
       const response = await fetch(`${apiUrl}/api/request`, {
@@ -643,18 +734,25 @@ export default function SelectService() {
     }
   };
 
-  const canSubmitRequest =
-    loading || !projectId || !team || !env || !cloud || !service || canCreatePR !== true;
+  const serviceConfig = getServiceConfig();
+  const availableServices = getAvailableServices();
+  const currentServiceDraft = buildBundledServiceDraft(cloud, service, formValues, 'current-draft');
+  const requestServices = currentServiceDraft ? [...bundledServices, currentServiceDraft] : bundledServices;
+  const primaryBundledService = requestServices[0] || null;
+  const selectedServiceLabel = currentServiceDraft
+    ? currentServiceDraft.displayName
+    : primaryBundledService
+      ? `${requestServices.length} service${requestServices.length === 1 ? '' : 's'} selected`
+      : 'Not chosen yet';
+  const requestReady = !!(projectId && team && env && requestServices.length > 0);
+  const canSubmitRequest = loading || !projectId || !team || !env || requestServices.length === 0 || canCreatePR !== true;
+  const multiServiceMode = requestServices.length > 1;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     submitRequest(false);
   };
 
-  const serviceConfig = getServiceConfig();
-  const availableServices = getAvailableServices();
-  const selectedServiceLabel = service ? (serviceConfig?.displayName || service) : 'Not chosen yet';
-  const requestReady = !!(projectId && team && env && cloud && service);
   const normalizedService = service ? normalizeServiceKey(cloud, service) : '';
   const isGcpStorageBucket = cloud === 'gcp' && normalizedService === 'cloud-storage';
   const pageTitle = isIamFlow ? 'Create an access request' : 'Create a request';
@@ -788,6 +886,12 @@ export default function SelectService() {
       ]
     : [];
   const reviewImpactNotes = normalizedService ? getReviewImpactNotes(normalizedService) : [];
+  const bundledServiceSummary = requestServices.map((entry, index) => ({
+    id: entry.id,
+    title: `${index + 1}. ${entry.displayName}`,
+    detail: `${entry.cloud.toUpperCase()} · ${getServiceIdentityPreview(entry)}`,
+    isCurrentDraft: currentServiceDraft?.id === entry.id,
+  }));
 
   return (
     <>
@@ -855,6 +959,8 @@ export default function SelectService() {
                       setEnv('');
                       setCloud('');
                       setService('');
+                      setFormValues({});
+                      setBundledServices([]);
                     }}
                     required
                   >
@@ -1083,6 +1189,80 @@ export default function SelectService() {
                   </section>
                 )}
 
+                {(requestServices.length > 0 || serviceConfig) && (
+                  <section className="request-builder__section">
+                    <div className="request-builder__section-header">
+                      <h2>Step 3.5: Build the service bundle</h2>
+                      <p>
+                        Keep the project, team, and environment shared once, then add one or more service cards under the same request.
+                      </p>
+                    </div>
+                    <div className="request-builder__bundle-actions">
+                      {currentServiceDraft ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={addCurrentServiceToBundle}
+                          >
+                            + Add another service
+                          </button>
+                          <span className="request-builder__bundle-hint">
+                            Add this service card, then choose the next cloud and service below the same shared request.
+                          </span>
+                        </>
+                      ) : (
+                        <span className="request-builder__bundle-hint">
+                          Start by choosing a cloud and service, then add it to the request bundle.
+                        </span>
+                      )}
+                    </div>
+                    {multiServiceMode && (
+                      <div className="request-builder__service-spotlight">
+                        <strong>Bundle request mode</strong>
+                        <p>
+                          This request now carries multiple services. We will keep the first service as the primary request key for the
+                          current backend flow and attach the full service bundle in the request config for review.
+                        </p>
+                      </div>
+                    )}
+                    {requestServices.length > 0 && (
+                      <div className="request-builder__bundle-list">
+                        {requestServices.map((entry, index) => (
+                          <article
+                            key={entry.id}
+                            className={`request-builder__bundle-card${
+                              currentServiceDraft?.id === entry.id ? ' request-builder__bundle-card--draft' : ''
+                            }`}
+                          >
+                            <div className="request-builder__bundle-card-header">
+                              <div>
+                                <span className="request-builder__summary-label">Service {index + 1}</span>
+                                <h3>{entry.displayName}</h3>
+                              </div>
+                              <div className="request-builder__bundle-meta">
+                                <span className="request-builder__bundle-pill">{entry.cloud.toUpperCase()}</span>
+                                {currentServiceDraft?.id === entry.id ? (
+                                  <span className="request-builder__bundle-pill request-builder__bundle-pill--draft">Current draft</span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => removeBundledService(entry.id)}
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <p className="request-builder__bundle-detail">{getServiceIdentityPreview(entry)}</p>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                )}
+
                 <section className="request-builder__section">
                   <div className="request-builder__section-header">
                     <h2>Step 4: Add context and send</h2>
@@ -1153,11 +1333,19 @@ export default function SelectService() {
                     </div>
                     <div className="request-builder__summary-item">
                       <span className="request-builder__summary-label">{targetSummaryLabel}</span>
-                      <span className="request-builder__summary-value">{cloud ? `${cloud.toUpperCase()} · ${selectedServiceLabel}` : 'Not chosen yet'}</span>
+                      <span className="request-builder__summary-value">
+                        {primaryBundledService
+                          ? `${primaryBundledService.cloud.toUpperCase()} · ${primaryBundledService.displayName}`
+                          : 'Not chosen yet'}
+                      </span>
                     </div>
                     <div className="request-builder__summary-item">
-                      <span className="request-builder__summary-label">Extra fields</span>
-                      <span className="request-builder__summary-value">{serviceConfig ? `${requiredServiceFieldCount} required field${requiredServiceFieldCount === 1 ? '' : 's'} for this service` : service ? 'No extra fields required' : 'Choose a service to see'}</span>
+                      <span className="request-builder__summary-label">Services in this request</span>
+                      <span className="request-builder__summary-value">
+                        {requestServices.length > 0
+                          ? `${requestServices.length} service${requestServices.length === 1 ? '' : 's'} selected`
+                          : 'Choose a service to see'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1208,6 +1396,29 @@ export default function SelectService() {
                         ))}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {bundledServiceSummary.length > 0 && (
+                  <div className="request-builder__summary">
+                    <h3>Services in this request</h3>
+                    <p>Review the service bundle before you save or send it.</p>
+                    <div className="request-builder__service-summary-groups">
+                      {bundledServiceSummary.map((entry) => (
+                        <div key={entry.id} className="request-builder__service-summary-group">
+                          <div className="request-builder__service-summary-header">
+                            <strong>{entry.title}</strong>
+                            <p>{entry.isCurrentDraft ? 'Current service draft' : 'Added to the shared request bundle'}</p>
+                          </div>
+                          <div className="request-builder__summary-list">
+                            <div className="request-builder__summary-item">
+                              <span className="request-builder__summary-label">Target</span>
+                              <span className="request-builder__summary-value">{entry.detail}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 

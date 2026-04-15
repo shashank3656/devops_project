@@ -50,6 +50,21 @@ interface ApprovalContext {
   summary: string;
 }
 
+interface ServiceBundleEntry {
+  cloud: string;
+  service: string;
+  normalized_service?: string;
+  display_name?: string;
+  config?: Record<string, any>;
+}
+
+interface RequestBundleSummary {
+  count: number;
+  clouds?: string[];
+  services?: string[];
+  display_names?: string[];
+}
+
 interface PRRequest {
   id: number;
   project_id?: number | null;
@@ -73,6 +88,9 @@ interface PRRequest {
   created_by: number | null;
   created_by_username?: string;
   config?: string;
+  bundle_mode?: boolean;
+  service_bundle?: ServiceBundleEntry[];
+  bundle_summary?: RequestBundleSummary | null;
   cost_risk_preview?: CostRiskPreview | null;
   approval_context?: ApprovalContext | null;
 }
@@ -122,6 +140,66 @@ function isAccessRequest(req: PRRequest | null | undefined): boolean {
   } catch {
     return false;
   }
+}
+
+function getRequestServiceBundle(req: PRRequest | null | undefined): ServiceBundleEntry[] {
+  if (!req) return [];
+  if (Array.isArray(req.service_bundle) && req.service_bundle.length > 0) {
+    return req.service_bundle.filter((entry) => entry && entry.cloud && entry.service);
+  }
+  if (!req.config) return [];
+  try {
+    const parsed = JSON.parse(req.config) as { service_bundle?: unknown };
+    if (!Array.isArray(parsed.service_bundle)) return [];
+    return parsed.service_bundle
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return null;
+        const record = entry as Record<string, any>;
+        const cloud = typeof record.cloud === 'string' ? record.cloud.trim() : '';
+        const service = typeof record.service === 'string' ? record.service.trim() : '';
+        if (!cloud || !service) return null;
+        return {
+          cloud,
+          service,
+          normalized_service: typeof record.normalized_service === 'string' ? record.normalized_service : undefined,
+          display_name: typeof record.display_name === 'string' ? record.display_name : undefined,
+          config: record.config && typeof record.config === 'object' ? record.config as Record<string, any> : undefined,
+        } satisfies ServiceBundleEntry;
+      })
+      .filter((entry): entry is ServiceBundleEntry => Boolean(entry));
+  } catch {
+    return [];
+  }
+}
+
+function buildRequestBundleSummary(serviceBundle: ServiceBundleEntry[]): RequestBundleSummary | null {
+  if (serviceBundle.length === 0) return null;
+  const clouds = Array.from(new Set(serviceBundle.map((entry) => entry.cloud))).sort();
+  const services = Array.from(new Set(serviceBundle.map((entry) => entry.service))).sort();
+  const displayNames = Array.from(
+    new Set(
+      serviceBundle
+        .map((entry) => entry.display_name?.trim())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ).sort();
+  return {
+    count: serviceBundle.length,
+    clouds,
+    services,
+    display_names: displayNames,
+  };
+}
+
+function withBundleMetadata(req: PRRequest): PRRequest {
+  const serviceBundle = getRequestServiceBundle(req);
+  if (serviceBundle.length === 0) return req;
+  return {
+    ...req,
+    bundle_mode: req.bundle_mode ?? serviceBundle.length > 1,
+    service_bundle: serviceBundle,
+    bundle_summary: req.bundle_summary ?? buildRequestBundleSummary(serviceBundle),
+  };
 }
 
 function getRequestStatusMeta(status: string): { label: string; tone: 'success' | 'error' | 'warning' | 'info' } {
@@ -191,6 +269,7 @@ export default function History() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const detailRequestIsAccess = isAccessRequest(detailRequest);
   const detailStatusMeta = detailRequest ? getRequestStatusMeta(detailRequest.status) : null;
+  const detailServiceBundle = getRequestServiceBundle(detailRequest);
   const activeFilterCount = [
     filterValue.trim(),
     projectId,
@@ -392,7 +471,7 @@ export default function History() {
       }
 
       const data = await response.json();
-      const requests = Array.isArray(data?.requests) ? data.requests : [];
+      const requests = Array.isArray(data?.requests) ? data.requests.map(withBundleMetadata) : [];
       setRequests(requests);
       setTotalCount(data?.total_count ?? requests.length ?? 0);
     } catch (err: any) {
@@ -431,7 +510,7 @@ export default function History() {
       ]);
       if (detailRes.ok) {
         const data = await detailRes.json();
-        const full = data.request || req;
+        const full = withBundleMetadata(data.request || req);
         addRecentRequestId(full.id);
         setCanApproveByManager(Boolean(data.can_approve_by_manager));
         setDependsOn(Array.isArray(data.depends_on) ? data.depends_on : []);
@@ -444,7 +523,7 @@ export default function History() {
         }
       } else {
         addRecentRequestId(req.id);
-        setDetailRequest(req);
+        setDetailRequest(withBundleMetadata(req));
       }
       if (commentsRes.ok) {
         const cData = await commentsRes.json();
@@ -461,7 +540,7 @@ export default function History() {
       }
     } catch (_) {
       addRecentRequestId(req.id);
-      setDetailRequest(req);
+      setDetailRequest(withBundleMetadata(req));
     } finally {
       setDetailLoading(false);
     }
@@ -1186,6 +1265,9 @@ export default function History() {
                         <td className="history-table__cell">
                           <div className="history-table__primary">
                             <strong>{req.service}</strong>
+                            {req.bundle_summary && req.bundle_summary.count > 1 ? (
+                              <span className="history-table__meta">{req.bundle_summary.count} services bundled</span>
+                            ) : null}
                           </div>
                         </td>
                         <td className="history-table__cell">
@@ -1350,6 +1432,12 @@ export default function History() {
                         <span className="history-detail-modal__summary-label">{detailRequestIsAccess ? 'Target' : 'Service'}</span>
                         <strong className="portal-detail-card__value">{detailRequest.service || '—'}</strong>
                       </article>
+                      {detailServiceBundle.length > 1 ? (
+                        <article className="portal-detail-card">
+                          <span className="history-detail-modal__summary-label">Bundle</span>
+                          <strong className="portal-detail-card__value">{detailServiceBundle.length} services</strong>
+                        </article>
+                      ) : null}
                       {detailRequest.priority ? (
                         <article className="portal-detail-card">
                           <span className="history-detail-modal__summary-label">Priority</span>
@@ -1389,6 +1477,23 @@ export default function History() {
                         </p>
                       </div>
                     )}
+                    {detailServiceBundle.length > 1 ? (
+                      <div className="history-detail-modal__section history-detail-modal__section--muted">
+                        <div className="history-detail-modal__section-head">
+                          <strong>Service bundle</strong>
+                        </div>
+                        <p className="history-detail-modal__empty-copy">
+                          This request groups multiple services under one shared project, team, and environment review flow.
+                        </p>
+                        <div className="history-detail-modal__tags">
+                          {detailServiceBundle.map((entry, index) => (
+                            <span key={`${entry.cloud}-${entry.service}-${index}`} className="history-detail-modal__tag">
+                              {index + 1}. {entry.display_name || entry.service} · {entry.cloud.toUpperCase()}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     {detailRequest.status === 'rejected' && detailRequest.reject_reason && (
                       <div className="history-detail-modal__notice history-detail-modal__notice--error">
                         <strong className="history-detail-modal__notice-title history-detail-modal__notice-title--error">Why it was rejected</strong>
