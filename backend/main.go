@@ -116,6 +116,11 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		encodeJSON(w, errorResponse)
 		return
 	}
+	serviceBundleEntries, err := canonicalizeRequestBundlePayload(payload)
+	if err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
+		return
+	}
 
 	// Validate required fields
 	if err := validatePayload(payload); err != nil {
@@ -198,20 +203,6 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	clientName, _ := payload["client_name"].(string)
 	payload["client_name"] = clientName
 
-	// Marshal payload with indentation for readability
-	content, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		log.Printf("Error marshaling JSON: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		errorResponse := map[string]interface{}{
-			"error":  "error processing request",
-			"status": "error",
-		}
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, errorResponse)
-		return
-	}
-
 	log.Printf("Creating PR for: team=%s, env=%s, cloud=%s, service=%s", team, env, cloud, service)
 
 	appID, appErr := GenerateApplicationID()
@@ -228,6 +219,32 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		return nil
 	}(), team, cloud, env, service, appID)
 
+	// Save to database (use authenticated user ID)
+	var userIDPtr *int
+	if userID > 0 {
+		userIDPtr = &userID
+	}
+	if projectID > 0 {
+		if _, err := validateProjectBundleRequestForUser(userID, projectID, team, env, cloud, service, serviceBundleEntries); err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
+			return
+		}
+	}
+
+	// Marshal payload with indentation for readability after defaults/validation are applied.
+	content, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		log.Printf("Error marshaling JSON: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		errorResponse := map[string]interface{}{
+			"error":  "error processing request",
+			"status": "error",
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		encodeJSON(w, errorResponse)
+		return
+	}
+
 	prURL, err := CreateGitHubPR(branchName, filePath, content, appID)
 	if err != nil {
 		log.Printf("Error creating PR: %v", err)
@@ -239,18 +256,6 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		encodeJSON(w, errorResponse)
 		return
-	}
-
-	// Save to database (use authenticated user ID)
-	var userIDPtr *int
-	if userID > 0 {
-		userIDPtr = &userID
-	}
-	if projectID > 0 {
-		if _, err := validateProjectRequestForUser(userID, projectID, team, env, cloud, service); err != nil {
-			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
-			return
-		}
 	}
 
 	prRequest := &PRRequest{
@@ -333,6 +338,11 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
 		return
 	}
+	serviceBundleEntries, err := canonicalizeRequestBundlePayload(payload)
+	if err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
+		return
+	}
 	if err := validatePayload(payload); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
 		return
@@ -392,12 +402,6 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	}(), team, cloud, env, service, appID)
-	content, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "error processing request", nil)
-		return
-	}
-
 	if DB == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
@@ -408,15 +412,20 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		userIDPtr = &userID
 	}
 	if projectID > 0 {
-		validation, err := validateProjectRequestForUser(userID, projectID, team, env, cloud, service)
+		validation, err := validateProjectBundleRequestForUser(userID, projectID, team, env, cloud, service, serviceBundleEntries)
 		if err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
 			return
 		}
-		if clientName == "" {
+		if clientName == "" && validation != nil {
 			clientName = validation.Project.Name
 			payload["client_name"] = clientName
 		}
+	}
+	content, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "error processing request", nil)
+		return
 	}
 	status := "pending_devops_approval"
 	if !draft && userID > 0 {

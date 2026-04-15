@@ -314,31 +314,34 @@ func attachSSLRootCert(dsn string, sslRootCert string) (string, string) {
 var DB *sql.DB
 
 type PRRequest struct {
-	ID                  int        `json:"id"`
-	ProjectID           *int       `json:"project_id,omitempty"`
-	ProjectName         string     `json:"project_name,omitempty"`
-	ProjectCode         string     `json:"project_code,omitempty"`
-	Team                string     `json:"team"`
-	Env                 string     `json:"env"`
-	Cloud               string     `json:"cloud"`
-	Service             string     `json:"service"`
-	ClientName          string     `json:"client_name"`
-	ApplicationID       string     `json:"application_id"` // unique 10-char alphanumeric, used in branch/PR
-	Priority            string     `json:"priority"`       // low, medium, high, critical
-	DueDate             *time.Time `json:"due_date"`
-	PRURL               string     `json:"pr_url"`
-	Branch              string     `json:"branch"`
-	FilePath            string     `json:"file_path"`
-	Status              string     `json:"status"` // draft, pending_user_manager_approval, pending_devops_approval, pending_approval, in_progress, completed, rejected
-	RejectReason        string     `json:"reject_reason"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
-	CreatedBy           *int       `json:"created_by"`
-	CreatedByUsername   string     `json:"created_by_username,omitempty"` // set in history for "who raised" when view=team
-	AssignedTo          *int       `json:"assigned_to"`                   // DevOps user assigned after PR creation (by priority)
-	Config              string     `json:"config"`
-	TerraformPlanOutput string     `json:"terraform_plan_output,omitempty"` // Terraform plan/apply output from CI (display in UI)
-	JiraTicketID        string     `json:"jira_ticket_id,omitempty"`        // Jira/ticketing integration
+	ID                  int                   `json:"id"`
+	ProjectID           *int                  `json:"project_id,omitempty"`
+	ProjectName         string                `json:"project_name,omitempty"`
+	ProjectCode         string                `json:"project_code,omitempty"`
+	Team                string                `json:"team"`
+	Env                 string                `json:"env"`
+	Cloud               string                `json:"cloud"`
+	Service             string                `json:"service"`
+	ClientName          string                `json:"client_name"`
+	ApplicationID       string                `json:"application_id"` // unique 10-char alphanumeric, used in branch/PR
+	Priority            string                `json:"priority"`       // low, medium, high, critical
+	DueDate             *time.Time            `json:"due_date"`
+	PRURL               string                `json:"pr_url"`
+	Branch              string                `json:"branch"`
+	FilePath            string                `json:"file_path"`
+	Status              string                `json:"status"` // draft, pending_user_manager_approval, pending_devops_approval, pending_approval, in_progress, completed, rejected
+	RejectReason        string                `json:"reject_reason"`
+	CreatedAt           time.Time             `json:"created_at"`
+	UpdatedAt           time.Time             `json:"updated_at"`
+	CreatedBy           *int                  `json:"created_by"`
+	CreatedByUsername   string                `json:"created_by_username,omitempty"` // set in history for "who raised" when view=team
+	AssignedTo          *int                  `json:"assigned_to"`                   // DevOps user assigned after PR creation (by priority)
+	Config              string                `json:"config"`
+	BundleMode          bool                  `json:"bundle_mode,omitempty"`
+	ServiceBundle       []ServiceBundleEntry  `json:"service_bundle,omitempty"`
+	BundleSummary       *RequestBundleSummary `json:"bundle_summary,omitempty"`
+	TerraformPlanOutput string                `json:"terraform_plan_output,omitempty"` // Terraform plan/apply output from CI (display in UI)
+	JiraTicketID        string                `json:"jira_ticket_id,omitempty"`        // Jira/ticketing integration
 }
 
 // RequestComment is a comment on a PR request
@@ -1628,6 +1631,7 @@ func GetPRRequests(team, env, cloud string, projectID int, statusFilter, priorit
 		if dueDate.Valid {
 			req.DueDate = &dueDate.Time
 		}
+		hydrateRequestBundleMetadata(&req)
 		requests = append(requests, req)
 	}
 
@@ -1674,6 +1678,7 @@ func GetPRRequestByApplicationID(appID string) *PRRequest {
 	if dueDate.Valid {
 		r.DueDate = &dueDate.Time
 	}
+	hydrateRequestBundleMetadata(&r)
 	return &r
 }
 
@@ -1718,6 +1723,7 @@ func GetPRRequestByID(id int) (*PRRequest, error) {
 	if dueDate.Valid {
 		req.DueDate = &dueDate.Time
 	}
+	hydrateRequestBundleMetadata(&req)
 	return &req, nil
 }
 
