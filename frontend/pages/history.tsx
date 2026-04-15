@@ -151,22 +151,21 @@ function getRequestServiceBundle(req: PRRequest | null | undefined): ServiceBund
   try {
     const parsed = JSON.parse(req.config) as { service_bundle?: unknown };
     if (!Array.isArray(parsed.service_bundle)) return [];
-    return parsed.service_bundle
-      .map((entry) => {
-        if (!entry || typeof entry !== 'object') return null;
-        const record = entry as Record<string, any>;
-        const cloud = typeof record.cloud === 'string' ? record.cloud.trim() : '';
-        const service = typeof record.service === 'string' ? record.service.trim() : '';
-        if (!cloud || !service) return null;
-        return {
-          cloud,
-          service,
-          normalized_service: typeof record.normalized_service === 'string' ? record.normalized_service : undefined,
-          display_name: typeof record.display_name === 'string' ? record.display_name : undefined,
-          config: record.config && typeof record.config === 'object' ? record.config as Record<string, any> : undefined,
-        } satisfies ServiceBundleEntry;
-      })
-      .filter((entry): entry is ServiceBundleEntry => Boolean(entry));
+    return parsed.service_bundle.flatMap((entry) => {
+      if (!entry || typeof entry !== 'object') return [];
+      const record = entry as Record<string, any>;
+      const cloud = typeof record.cloud === 'string' ? record.cloud.trim() : '';
+      const service = typeof record.service === 'string' ? record.service.trim() : '';
+      if (!cloud || !service) return [];
+      const bundle: ServiceBundleEntry = {
+        cloud,
+        service,
+        normalized_service: typeof record.normalized_service === 'string' ? record.normalized_service : undefined,
+        display_name: typeof record.display_name === 'string' ? record.display_name : undefined,
+        config: record.config && typeof record.config === 'object' ? (record.config as Record<string, any>) : undefined,
+      };
+      return [bundle];
+    });
   } catch {
     return [];
   }
