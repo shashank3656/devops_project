@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
@@ -15,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	pq "github.com/lib/pq"
 	"golang.org/x/crypto/pbkdf2"
 )
 
@@ -643,6 +644,21 @@ func createTables() error {
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);`
 
+	requestServiceItemsTable := `
+	CREATE TABLE IF NOT EXISTS pr_request_service_items (
+		id SERIAL PRIMARY KEY,
+		request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+		position INTEGER NOT NULL,
+		cloud VARCHAR(50) NOT NULL,
+		service VARCHAR(100) NOT NULL,
+		normalized_service VARCHAR(100) NOT NULL DEFAULT '',
+		display_name VARCHAR(160) NOT NULL DEFAULT '',
+		config TEXT NOT NULL DEFAULT '{}',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(request_id, position)
+	);`
+
 	// GitHub logs table (for activity stream)
 	githubLogsTable := `
 	CREATE TABLE IF NOT EXISTS github_logs (
@@ -682,6 +698,8 @@ func createTables() error {
 		"CREATE INDEX IF NOT EXISTS idx_pr_requests_cloud ON pr_requests(cloud);",
 		"CREATE INDEX IF NOT EXISTS idx_pr_requests_created_by ON pr_requests(created_by);",
 		"CREATE INDEX IF NOT EXISTS idx_pr_requests_created_at ON pr_requests(created_at DESC);",
+		"CREATE INDEX IF NOT EXISTS idx_pr_request_service_items_request_id ON pr_request_service_items(request_id);",
+		"CREATE INDEX IF NOT EXISTS idx_pr_request_service_items_request_position ON pr_request_service_items(request_id, position);",
 		"CREATE INDEX IF NOT EXISTS idx_github_logs_created_at ON github_logs(created_at DESC);",
 		"CREATE INDEX IF NOT EXISTS idx_teams_slug ON teams(slug);",
 		"CREATE INDEX IF NOT EXISTS idx_team_members_team_id ON team_members(team_id);",
@@ -694,6 +712,9 @@ func createTables() error {
 
 	if _, err := DB.Exec(prRequestsTable); err != nil {
 		return fmt.Errorf("failed to create pr_requests table: %w", err)
+	}
+	if _, err := DB.Exec(requestServiceItemsTable); err != nil {
+		return fmt.Errorf("failed to create pr_request_service_items table: %w", err)
 	}
 
 	if _, err := DB.Exec(githubLogsTable); err != nil {
@@ -824,10 +845,176 @@ func SavePRRequest(req *PRRequest) error {
 	if err != nil {
 		return fmt.Errorf("failed to save PR request: %w", err)
 	}
+	if err := replaceRequestServiceItems(req.ID, req); err != nil {
+		return fmt.Errorf("failed to save request service items: %w", err)
+	}
 	_ = SaveRequestConfigHistory(req.ID, req.Config, "initial")
 	invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
 	refreshRequestSummaryViewAsync()
 	return nil
+}
+
+func replaceRequestServiceItems(requestID int, req *PRRequest) error {
+	if DB == nil || requestID <= 0 {
+		return nil
+	}
+
+	entries, err := requestServiceEntriesForPersistence(req)
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+
+	tx, err := DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err := tx.Exec("DELETE FROM pr_request_service_items WHERE request_id = $1", requestID); err != nil {
+		return err
+	}
+
+	for index, entry := range entries {
+		configJSON := "{}"
+		if entry.Config != nil {
+			if bytes, err := json.Marshal(entry.Config); err == nil {
+				configJSON = string(bytes)
+			} else {
+				return fmt.Errorf("marshal request service item config: %w", err)
+			}
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO pr_request_service_items
+				(request_id, position, cloud, service, normalized_service, display_name, config)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			requestID,
+			index+1,
+			entry.Cloud,
+			entry.Service,
+			entry.NormalizedService,
+			entry.DisplayName,
+			configJSON,
+		); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	tx = nil
+	return nil
+}
+
+func loadRequestServiceItems(requestID int) ([]ServiceBundleEntry, error) {
+	if DB == nil || requestID <= 0 {
+		return nil, nil
+	}
+
+	rows, err := DB.Query(`
+		SELECT cloud, service, COALESCE(normalized_service, ''), COALESCE(display_name, ''), COALESCE(config, '{}')
+		FROM pr_request_service_items
+		WHERE request_id = $1
+		ORDER BY position ASC
+	`, requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	entries := make([]ServiceBundleEntry, 0)
+	for rows.Next() {
+		var entry ServiceBundleEntry
+		var configJSON string
+		if err := rows.Scan(&entry.Cloud, &entry.Service, &entry.NormalizedService, &entry.DisplayName, &configJSON); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(configJSON) != "" {
+			var decoded map[string]interface{}
+			if err := json.Unmarshal([]byte(configJSON), &decoded); err == nil {
+				entry.Config = decoded
+			}
+		}
+		if entry.Config == nil {
+			entry.Config = map[string]interface{}{}
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+func loadRequestServiceItemsMap(requestIDs []int) (map[int][]ServiceBundleEntry, error) {
+	if DB == nil || len(requestIDs) == 0 {
+		return map[int][]ServiceBundleEntry{}, nil
+	}
+
+	query := `
+		SELECT request_id, cloud, service, COALESCE(normalized_service, ''), COALESCE(display_name, ''), COALESCE(config, '{}')
+		FROM pr_request_service_items
+		WHERE request_id = ANY($1)
+		ORDER BY request_id ASC, position ASC
+	`
+	rows, err := DB.Query(query, pq.Array(requestIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[int][]ServiceBundleEntry, len(requestIDs))
+	for rows.Next() {
+		var requestID int
+		var entry ServiceBundleEntry
+		var configJSON string
+		if err := rows.Scan(&requestID, &entry.Cloud, &entry.Service, &entry.NormalizedService, &entry.DisplayName, &configJSON); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(configJSON) != "" {
+			var decoded map[string]interface{}
+			if err := json.Unmarshal([]byte(configJSON), &decoded); err == nil {
+				entry.Config = decoded
+			}
+		}
+		if entry.Config == nil {
+			entry.Config = map[string]interface{}{}
+		}
+		out[requestID] = append(out[requestID], entry)
+	}
+
+	return out, nil
+}
+
+func hydrateRequestBundleMetadataBatch(requests []PRRequest) []PRRequest {
+	if len(requests) == 0 {
+		return requests
+	}
+
+	requestIDs := make([]int, 0, len(requests))
+	for _, req := range requests {
+		if req.ID > 0 {
+			requestIDs = append(requestIDs, req.ID)
+		}
+	}
+
+	itemMap, err := loadRequestServiceItemsMap(requestIDs)
+	if err != nil {
+		itemMap = map[int][]ServiceBundleEntry{}
+	}
+
+	for index := range requests {
+		if entries := itemMap[requests[index].ID]; len(entries) > 0 {
+			applyRequestBundleEntries(&requests[index], entries)
+			continue
+		}
+		hydrateRequestBundleMetadata(&requests[index])
+	}
+	return requests
 }
 
 // UpdatePRRequestStatus sets status and updated_at for a request
@@ -1631,11 +1818,10 @@ func GetPRRequests(team, env, cloud string, projectID int, statusFilter, priorit
 		if dueDate.Valid {
 			req.DueDate = &dueDate.Time
 		}
-		hydrateRequestBundleMetadata(&req)
 		requests = append(requests, req)
 	}
 
-	return requests, nil
+	return hydrateRequestBundleMetadataBatch(requests), nil
 }
 
 // GetPRRequestByApplicationID retrieves a request by application_id (most recent if multiple)
@@ -1678,7 +1864,11 @@ func GetPRRequestByApplicationID(appID string) *PRRequest {
 	if dueDate.Valid {
 		r.DueDate = &dueDate.Time
 	}
-	hydrateRequestBundleMetadata(&r)
+	if entries, err := loadRequestServiceItems(r.ID); err == nil && len(entries) > 0 {
+		applyRequestBundleEntries(&r, entries)
+	} else {
+		hydrateRequestBundleMetadata(&r)
+	}
 	return &r
 }
 
@@ -1723,7 +1913,11 @@ func GetPRRequestByID(id int) (*PRRequest, error) {
 	if dueDate.Valid {
 		req.DueDate = &dueDate.Time
 	}
-	hydrateRequestBundleMetadata(&req)
+	if entries, err := loadRequestServiceItems(req.ID); err == nil && len(entries) > 0 {
+		applyRequestBundleEntries(&req, entries)
+	} else {
+		hydrateRequestBundleMetadata(&req)
+	}
 	return &req, nil
 }
 
@@ -1779,7 +1973,7 @@ func GetPRRequestsByAssignedTo(assigneeID int, limit, offset int) ([]PRRequest, 
 		}
 		requests = append(requests, req)
 	}
-	return requests, nil
+	return hydrateRequestBundleMetadataBatch(requests), nil
 }
 
 // WorkloadItem is a request with assignee info for the DevOps manager workload view

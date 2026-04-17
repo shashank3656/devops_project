@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"sort"
@@ -91,10 +92,18 @@ func CreateGitHubPR(branchName, filePath string, content []byte, applicationID s
 		AppendGitHubLog("file_create", fmt.Sprintf("File %s does not exist, creating it", filePath), filePath)
 	}
 
+	mergedContent := content
+	if sha != nil {
+		mergedContent, err = maybeMergeGitHubRequestContent(filePath, fileContent, content)
+		if err != nil {
+			return "", fmt.Errorf("failed to prepare request content: %w", err)
+		}
+	}
+
 	// 4. Create or update file
 	opts := &github.RepositoryContentFileOptions{
 		Message: github.String(fmt.Sprintf("Add/Update infra config: %s", filePath)),
-		Content: content,
+		Content: mergedContent,
 		Branch:  github.String(branchName),
 	}
 	if sha != nil {
@@ -153,6 +162,283 @@ func CreateGitHubPR(branchName, filePath string, content []byte, applicationID s
 	log.Printf("Created PR #%d: %s", createdPR.GetNumber(), createdPR.GetHTMLURL())
 	AppendGitHubLog("pr_created", fmt.Sprintf("Created PR #%d: %s", createdPR.GetNumber(), createdPR.GetHTMLURL()), createdPR.GetHTMLURL())
 	return createdPR.GetHTMLURL(), nil
+}
+
+var storageBucketConfigFields = []string{
+	"bucket_name",
+	"region",
+	"storage_class",
+	"soft_delete_policy",
+	"versioning_enabled",
+	"bucket_retention_policy_enabled",
+	"object_retention_enabled",
+	"encryption_type",
+	"kms_key_name",
+}
+
+func maybeMergeGitHubRequestContent(filePath string, existingFile *github.RepositoryContent, content []byte) ([]byte, error) {
+	if existingFile == nil || !strings.HasSuffix(strings.ToLower(strings.TrimSpace(filePath)), "request.json") {
+		return content, nil
+	}
+
+	existingContent, err := existingFile.GetContent()
+	if err != nil {
+		return nil, fmt.Errorf("decode existing request.json: %w", err)
+	}
+	if strings.TrimSpace(existingContent) == "" {
+		return content, nil
+	}
+
+	return mergeStorageBucketRequestContent([]byte(existingContent), content)
+}
+
+func mergeStorageBucketRequestContent(existingContent, newContent []byte) ([]byte, error) {
+	var existingPayload map[string]interface{}
+	if err := json.Unmarshal(existingContent, &existingPayload); err != nil {
+		return nil, fmt.Errorf("parse existing request payload: %w", err)
+	}
+
+	var newPayload map[string]interface{}
+	if err := json.Unmarshal(newContent, &newPayload); err != nil {
+		return nil, fmt.Errorf("parse new request payload: %w", err)
+	}
+
+	if !isGCPStorageBucketRequestPayload(newPayload) || !isGCPStorageBucketRequestPayload(existingPayload) {
+		return newContent, nil
+	}
+
+	mergedPayload := cloneJSONMap(existingPayload)
+	for key, value := range newPayload {
+		if key == "config" {
+			continue
+		}
+		mergedPayload[key] = value
+	}
+
+	existingConfig := extractRequestConfigMap(existingPayload)
+	newConfig := extractRequestConfigMap(newPayload)
+	mergedConfig := cloneJSONMap(existingConfig)
+
+	buckets, err := mergeStorageBucketEntries(mergedConfig, newConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	for key, value := range newConfig {
+		if key == "buckets" || isStorageBucketConfigField(key) {
+			continue
+		}
+		mergedConfig[key] = value
+	}
+
+	if len(buckets) > 0 {
+		mergedConfig["buckets"] = buckets
+		mergedConfig["bucket_count"] = len(buckets)
+		applyPrimaryStorageBucketFields(mergedConfig, buckets[len(buckets)-1])
+	}
+
+	mergedPayload["config"] = mergedConfig
+	return json.MarshalIndent(mergedPayload, "", "  ")
+}
+
+func isGCPStorageBucketRequestPayload(payload map[string]interface{}) bool {
+	if payload == nil {
+		return false
+	}
+	cloud := strings.ToLower(strings.TrimSpace(stringValue(payload["cloud"])))
+	service := normalizeStorageBucketServiceKey(stringValue(payload["service"]))
+	if cloud != "gcp" || service != "cloud-storage" {
+		return false
+	}
+
+	config := extractRequestConfigMap(payload)
+	if _, ok := storageBucketEntryFromConfig(config); ok {
+		return true
+	}
+	if raw, ok := config["buckets"]; ok && raw != nil {
+		return true
+	}
+	return false
+}
+
+func normalizeStorageBucketServiceKey(service string) string {
+	switch strings.TrimSpace(strings.ToLower(service)) {
+	case "storage", "cloud-storage", "cloud_storage", "cloud storage":
+		return "cloud-storage"
+	default:
+		return strings.TrimSpace(strings.ToLower(service))
+	}
+}
+
+func extractRequestConfigMap(payload map[string]interface{}) map[string]interface{} {
+	if payload == nil {
+		return map[string]interface{}{}
+	}
+	if rawConfig, ok := payload["config"].(map[string]interface{}); ok && rawConfig != nil {
+		return rawConfig
+	}
+	return map[string]interface{}{}
+}
+
+func mergeStorageBucketEntries(existingConfig, newConfig map[string]interface{}) ([]map[string]interface{}, error) {
+	existingEntries, err := collectStorageBucketEntries(existingConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	newEntry, ok := storageBucketEntryFromConfig(newConfig)
+	if !ok {
+		return existingEntries, nil
+	}
+	return upsertStorageBucketEntry(existingEntries, newEntry), nil
+}
+
+func collectStorageBucketEntries(config map[string]interface{}) ([]map[string]interface{}, error) {
+	entries := make([]map[string]interface{}, 0)
+	if config == nil {
+		return entries, nil
+	}
+
+	if rawBuckets, ok := config["buckets"]; ok && rawBuckets != nil {
+		normalized, err := normalizeStorageBucketEntries(rawBuckets)
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range normalized {
+			entries = upsertStorageBucketEntry(entries, entry)
+		}
+	}
+
+	if singleEntry, ok := storageBucketEntryFromConfig(config); ok {
+		entries = upsertStorageBucketEntry(entries, singleEntry)
+	}
+
+	return entries, nil
+}
+
+func normalizeStorageBucketEntries(raw any) ([]map[string]interface{}, error) {
+	switch value := raw.(type) {
+	case []map[string]interface{}:
+		out := make([]map[string]interface{}, 0, len(value))
+		for _, item := range value {
+			entry, ok := storageBucketEntryFromConfig(item)
+			if !ok {
+				continue
+			}
+			out = append(out, entry)
+		}
+		return out, nil
+	case []interface{}:
+		out := make([]map[string]interface{}, 0, len(value))
+		for index, item := range value {
+			itemMap, err := coerceJSONMap(item)
+			if err != nil {
+				return nil, fmt.Errorf("invalid storage bucket item %d", index+1)
+			}
+			entry, ok := storageBucketEntryFromConfig(itemMap)
+			if !ok {
+				continue
+			}
+			out = append(out, entry)
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("storage bucket list must be an array")
+	}
+}
+
+func coerceJSONMap(raw any) (map[string]interface{}, error) {
+	if rawMap, ok := raw.(map[string]interface{}); ok && rawMap != nil {
+		return rawMap, nil
+	}
+
+	bytes, err := json.Marshal(raw)
+	if err != nil {
+		return nil, err
+	}
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(bytes, &decoded); err != nil {
+		return nil, err
+	}
+	return decoded, nil
+}
+
+func storageBucketEntryFromConfig(config map[string]interface{}) (map[string]interface{}, bool) {
+	if config == nil {
+		return nil, false
+	}
+
+	bucketName := strings.TrimSpace(stringValue(config["bucket_name"]))
+	if bucketName == "" {
+		return nil, false
+	}
+
+	entry := map[string]interface{}{
+		"bucket_name": bucketName,
+	}
+	for _, field := range storageBucketConfigFields {
+		if field == "bucket_name" {
+			continue
+		}
+		if value, ok := config[field]; ok && value != nil {
+			entry[field] = value
+		}
+	}
+	return entry, true
+}
+
+func upsertStorageBucketEntry(entries []map[string]interface{}, entry map[string]interface{}) []map[string]interface{} {
+	if entry == nil {
+		return entries
+	}
+
+	targetName := strings.ToLower(strings.TrimSpace(stringValue(entry["bucket_name"])))
+	if targetName == "" {
+		return entries
+	}
+
+	clonedEntry := cloneJSONMap(entry)
+	for index, existing := range entries {
+		if strings.ToLower(strings.TrimSpace(stringValue(existing["bucket_name"]))) == targetName {
+			entries[index] = clonedEntry
+			return entries
+		}
+	}
+	return append(entries, clonedEntry)
+}
+
+func applyPrimaryStorageBucketFields(config map[string]interface{}, entry map[string]interface{}) {
+	if config == nil {
+		return
+	}
+
+	for _, field := range storageBucketConfigFields {
+		if value, ok := entry[field]; ok {
+			config[field] = value
+		} else {
+			delete(config, field)
+		}
+	}
+}
+
+func isStorageBucketConfigField(field string) bool {
+	for _, name := range storageBucketConfigFields {
+		if name == field {
+			return true
+		}
+	}
+	return false
+}
+
+func cloneJSONMap(source map[string]interface{}) map[string]interface{} {
+	if source == nil {
+		return map[string]interface{}{}
+	}
+	cloned := make(map[string]interface{}, len(source))
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func CreateGitHubPRWithFiles(branchName string, files map[string][]byte, title, body string) (string, error) {

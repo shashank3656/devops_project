@@ -279,6 +279,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		Config:        string(content),
 		CreatedBy:     userIDPtr,
 	}
+	applyRequestBundleEntries(prRequest, serviceBundleEntries)
 
 	if err := SavePRRequest(prRequest); err != nil {
 		log.Printf("Warning: failed to save PR request to database: %v", err)
@@ -457,6 +458,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		Config:        string(content),
 		CreatedBy:     userIDPtr,
 	}
+	applyRequestBundleEntries(prRequest, serviceBundleEntries)
 	if err := SavePRRequest(prRequest); err != nil {
 		log.Printf("Failed to save request: %v", err)
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to save request", nil)
