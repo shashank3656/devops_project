@@ -308,7 +308,7 @@ services:
       - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
       - GITHUB_OWNER=${GITHUB_OWNER:-ngsops}
       - GITHUB_REPO=${GITHUB_REPO:-Application_Onboarding}
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-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}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-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}
       - BASE_BRANCH=${BASE_BRANCH:-main}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/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}
       - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL}
@@ -364,7 +364,7 @@ services:
       - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
       - GITHUB_OWNER=${GITHUB_OWNER:-ngsops}
       - GITHUB_REPO=${GITHUB_REPO:-Application_Onboarding}
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-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}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-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}
       - BASE_BRANCH=${BASE_BRANCH:-main}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/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}
       - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL}
