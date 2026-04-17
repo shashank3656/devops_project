@@ -27,10 +27,17 @@ func canonicalizeRequestBundlePayload(payload InfraRequest) ([]ServiceBundleEntr
 		return nil, nil
 	}
 
-	rawBundle, hasBundle := payload["service_bundle"]
+	target, targetIsNested := resolveRequestBundleTarget(payload)
+	rawBundle, hasBundle := target["service_bundle"]
 	if !hasBundle || rawBundle == nil {
-		delete(payload, "bundle_mode")
-		delete(payload, "bundle_summary")
+		delete(target, "bundle_mode")
+		delete(target, "bundle_summary")
+		delete(target, "service_bundle")
+		if targetIsNested {
+			delete(payload, "bundle_mode")
+			delete(payload, "bundle_summary")
+			delete(payload, "service_bundle")
+		}
 		return nil, nil
 	}
 
@@ -45,11 +52,21 @@ func canonicalizeRequestBundlePayload(payload InfraRequest) ([]ServiceBundleEntr
 	primary := entries[0]
 	payload["cloud"] = primary.Cloud
 	payload["service"] = primary.Service
-	payload["bundle_mode"] = len(entries) > 1
-	payload["service_bundle"] = entries
-	payload["bundle_summary"] = buildRequestBundleSummary(entries)
+	target["bundle_mode"] = len(entries) > 1
+	target["service_bundle"] = entries
+	target["bundle_summary"] = buildRequestBundleSummary(entries)
 
 	return entries, nil
+}
+
+func resolveRequestBundleTarget(payload InfraRequest) (map[string]interface{}, bool) {
+	if payload == nil {
+		return nil, false
+	}
+	if rawConfig, ok := payload["config"].(map[string]interface{}); ok && rawConfig != nil {
+		return rawConfig, true
+	}
+	return payload, false
 }
 
 func normalizeServiceBundleEntries(raw any) ([]ServiceBundleEntry, error) {
@@ -173,23 +190,13 @@ func hydrateRequestBundleMetadata(req *PRRequest) {
 		return
 	}
 
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(req.Config), &payload); err != nil {
-		return
-	}
-
-	if bundleMode, ok := payload["bundle_mode"].(bool); ok {
-		req.BundleMode = bundleMode
-	}
-	entries, err := normalizeServiceBundleEntries(payload["service_bundle"])
+	entries, err := extractServiceBundleEntriesFromConfig(req.Config)
 	if err != nil || len(entries) == 0 {
 		return
 	}
-
-	req.ServiceBundle = entries
-	req.BundleSummary = buildRequestBundleSummary(entries)
-	if len(entries) > 1 {
-		req.BundleMode = true
+	applyRequestBundleEntries(req, entries)
+	if req.ID > 0 && DB != nil {
+		_ = replaceRequestServiceItems(req.ID, req)
 	}
 }
 
@@ -227,4 +234,78 @@ func validateProjectBundleRequestForUser(userID, projectID int, teamNameOrSlug, 
 func stringValue(raw any) string {
 	value, _ := raw.(string)
 	return value
+}
+
+func extractServiceBundleEntriesFromConfig(rawConfig string) ([]ServiceBundleEntry, error) {
+	if strings.TrimSpace(rawConfig) == "" {
+		return nil, nil
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(rawConfig), &payload); err != nil {
+		return nil, err
+	}
+	return extractServiceBundleEntriesFromPayload(payload)
+}
+
+func extractServiceBundleEntriesFromPayload(payload map[string]interface{}) ([]ServiceBundleEntry, error) {
+	if payload == nil {
+		return nil, nil
+	}
+
+	if rawBundle, ok := payload["service_bundle"]; ok && rawBundle != nil {
+		return normalizeServiceBundleEntries(rawBundle)
+	}
+	if rawConfig, ok := payload["config"].(map[string]interface{}); ok && rawConfig != nil {
+		if rawBundle, ok := rawConfig["service_bundle"]; ok && rawBundle != nil {
+			return normalizeServiceBundleEntries(rawBundle)
+		}
+	}
+	return nil, nil
+}
+
+func requestServiceEntriesForPersistence(req *PRRequest) ([]ServiceBundleEntry, error) {
+	if req == nil {
+		return nil, nil
+	}
+
+	if len(req.ServiceBundle) > 0 {
+		return normalizeServiceBundleEntries(req.ServiceBundle)
+	}
+
+	entries, err := extractServiceBundleEntriesFromConfig(req.Config)
+	if err != nil {
+		return nil, err
+	}
+	if len(entries) > 0 {
+		return entries, nil
+	}
+
+	if strings.TrimSpace(req.Cloud) == "" || strings.TrimSpace(req.Service) == "" {
+		return nil, nil
+	}
+
+	return []ServiceBundleEntry{
+		{
+			Cloud:   strings.TrimSpace(req.Cloud),
+			Service: strings.TrimSpace(req.Service),
+			Config:  map[string]interface{}{},
+		},
+	}, nil
+}
+
+func applyRequestBundleEntries(req *PRRequest, entries []ServiceBundleEntry) {
+	if req == nil {
+		return
+	}
+	if len(entries) == 0 {
+		req.ServiceBundle = nil
+		req.BundleSummary = nil
+		req.BundleMode = false
+		return
+	}
+
+	req.ServiceBundle = entries
+	req.BundleSummary = buildRequestBundleSummary(entries)
+	req.BundleMode = len(entries) > 1
 }

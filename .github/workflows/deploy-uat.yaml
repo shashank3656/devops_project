@@ -2,6 +2,15 @@ name: Deploy UAT
 
 on:
   workflow_dispatch:
+    inputs:
+      request_id:
+        description: Optional request id to mark completed after successful deployment
+        required: false
+        type: string
+      application_id:
+        description: Optional application id to mark completed after successful deployment
+        required: false
+        type: string
   pull_request:
     branches:
       - uat
@@ -25,4 +34,7 @@ jobs:
     with:
       environment_name: uat
       public_api_url: ${{ vars.NEXT_PUBLIC_API_URL_UAT || vars.NEXT_PUBLIC_API_URL }}
+      backend_api_url: ${{ vars.BACKEND_API_URL_UAT || vars.BACKEND_API_URL }}
+      request_id: ${{ github.event_name == 'workflow_dispatch' && inputs.request_id || '' }}
+      application_id: ${{ github.event_name == 'workflow_dispatch' && inputs.application_id || '' }}
     secrets: inherit

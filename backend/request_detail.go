@@ -158,6 +158,7 @@ func handleRequestClone(w http.ResponseWriter, r *http.Request, id int, req *PRR
 		Config:        req.Config,
 		CreatedBy:     createdBy,
 	}
+	applyRequestBundleEntries(newReq, req.ServiceBundle)
 	if err := SavePRRequest(newReq); err != nil {
 		log.Printf("Clone: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -209,6 +210,7 @@ func handleRequestResubmit(w http.ResponseWriter, r *http.Request, id int, req *
 		Config:        req.Config,
 		CreatedBy:     req.CreatedBy,
 	}
+	applyRequestBundleEntries(newReq, req.ServiceBundle)
 	if err := SavePRRequest(newReq); err != nil {
 		log.Printf("Resubmit: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -339,6 +341,17 @@ func handleRequestUpdateDraft(w http.ResponseWriter, r *http.Request, id int, re
 	}
 	if err := UpdatePRRequestFull(id, config, priority, dueDate, "draft"); err != nil {
 		log.Printf("Update draft: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	updatedReq := &PRRequest{
+		ID:      id,
+		Cloud:   req.Cloud,
+		Service: req.Service,
+		Config:  config,
+	}
+	if err := replaceRequestServiceItems(id, updatedReq); err != nil {
+		log.Printf("Update draft service items: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
