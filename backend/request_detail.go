@@ -155,7 +155,7 @@ func handleRequestClone(w http.ResponseWriter, r *http.Request, id int, req *PRR
 		Branch:        branchName,
 		FilePath:      filePath,
 		Status:        "draft",
-		Config:        req.Config,
+		Config:        ensureRequestConfigApplicationID(req.Config, appID),
 		CreatedBy:     createdBy,
 	}
 	applyRequestBundleEntries(newReq, req.ServiceBundle)
@@ -207,7 +207,7 @@ func handleRequestResubmit(w http.ResponseWriter, r *http.Request, id int, req *
 		Branch:        branchName,
 		FilePath:      filePath,
 		Status:        "draft",
-		Config:        req.Config,
+		Config:        ensureRequestConfigApplicationID(req.Config, appID),
 		CreatedBy:     req.CreatedBy,
 	}
 	applyRequestBundleEntries(newReq, req.ServiceBundle)
@@ -319,6 +319,7 @@ func handleRequestUpdateDraft(w http.ResponseWriter, r *http.Request, id int, re
 			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
 			return
 		}
+		ensureRequestPayloadApplicationID(payload, req.ApplicationID)
 		content, err := json.MarshalIndent(payload, "", "  ")
 		if err == nil {
 			config = string(content)

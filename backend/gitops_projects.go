@@ -326,7 +326,7 @@ func buildGitOpsProjectSummary(project GitOpsCatalogProject, requests []PRReques
 		GroupID:                project.GroupID,
 		ProjectKey:             fmt.Sprintf("project/%s/%s", projectCodeKey, teamSlugKey),
 		RepoRoot:               project.RepoRoot,
-		LiveRequestPathPattern: fmt.Sprintf("project/%s/%s/<cloud>/envs/<env>/<service>/request.json", projectCodeKey, teamSlugKey),
+		LiveRequestPathPattern: fmt.Sprintf("project/%s/%s/<cloud>/envs/<env>/<service>/<request-id>/request.json", projectCodeKey, teamSlugKey),
 		ManifestPathPattern:    fmt.Sprintf("%s/<env>/<component>.json", project.RepoRoot),
 		BranchPattern:          fmt.Sprintf("project/%s/%s/<cloud>/<env>/<service>/<request-id>", projectCodeKey, teamSlugKey),
 		DefaultEnvironment:     defaultEnv,

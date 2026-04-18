@@ -9188,3 +9188,68 @@ body {
 .portal-toolbar__item .date-input-wrap__button {
   right: 12px;
 }
+
+.devops-ticket-bundle-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  background: rgba(8, 47, 73, 0.24);
+  color: #a5f3fc;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.devops-approval-workspace__bundle-surface {
+  gap: 14px;
+}
+
+.devops-approval-workspace__bundle-copy {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.devops-approval-workspace__bundle-groups {
+  display: grid;
+  gap: 16px;
+}
+
+.devops-approval-workspace__bundle-group {
+  display: grid;
+  gap: 12px;
+}
+
+.devops-approval-workspace__bundle-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.devops-approval-workspace__bundle-group-count {
+  font-size: 12px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.devops-approval-workspace__bundle-path {
+  display: block;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.48);
+  color: #93c5fd;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

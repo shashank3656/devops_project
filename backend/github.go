@@ -35,12 +35,29 @@ func CreateGitHubPR(branchName, filePath string, content []byte, applicationID s
 		return "", fmt.Errorf("GITHUB_TOKEN environment variable is required")
 	}
 
+	if applicationID != "" {
+		normalizedContent, err := ensureRequestContentApplicationID(content, applicationID)
+		if err != nil {
+			return "", fmt.Errorf("failed to normalize request content: %w", err)
+		}
+		content = normalizedContent
+	}
+
 	// Create authenticated GitHub client using token
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: GitHubToken},
 	)
 	tc := oauth2.NewClient(ctx, ts)
 	client := github.NewClient(tc)
+
+	title, bodyStr := buildInfrastructurePRTitleAndBody(branchName, filePath, applicationID)
+	bundleFiles, err := buildBundledRequestFiles(filePath, content)
+	if err != nil {
+		return "", fmt.Errorf("failed to build bundled request files: %w", err)
+	}
+	if len(bundleFiles) > 0 {
+		return CreateGitHubPRWithFiles(branchName, bundleFiles, title, bodyStr)
+	}
 
 	// 1. Get base branch
 	baseRef, _, err := client.Git.GetRef(
@@ -135,16 +152,6 @@ func CreateGitHubPR(branchName, filePath string, content []byte, applicationID s
 	}
 
 	// 6. Create new PR
-	bodyStr := fmt.Sprintf("Auto-generated infrastructure request\n\n**Team:** %s\n**Environment:** %s\n**File:** %s",
-		extractTeamFromBranch(branchName), extractEnvFromBranch(branchName), filePath)
-	if applicationID != "" {
-		bodyStr = fmt.Sprintf("Auto-generated infrastructure request\n\n**Application ID:** %s\n**Team:** %s\n**Environment:** %s\n**File:** %s",
-			applicationID, extractTeamFromBranch(branchName), extractEnvFromBranch(branchName), filePath)
-	}
-	title := fmt.Sprintf("Infrastructure: %s", branchName)
-	if applicationID != "" {
-		title = fmt.Sprintf("Infrastructure: %s [%s]", branchName, applicationID)
-	}
 	pr := &github.NewPullRequest{
 		Title: github.String(title),
 		Head:  github.String(branchName),
@@ -162,6 +169,58 @@ func CreateGitHubPR(branchName, filePath string, content []byte, applicationID s
 	log.Printf("Created PR #%d: %s", createdPR.GetNumber(), createdPR.GetHTMLURL())
 	AppendGitHubLog("pr_created", fmt.Sprintf("Created PR #%d: %s", createdPR.GetNumber(), createdPR.GetHTMLURL()), createdPR.GetHTMLURL())
 	return createdPR.GetHTMLURL(), nil
+}
+
+func buildInfrastructurePRTitleAndBody(branchName, filePath, applicationID string) (string, string) {
+	bodyStr := fmt.Sprintf("Auto-generated infrastructure request\n\n**Team:** %s\n**Environment:** %s\n**File:** %s",
+		extractTeamFromBranch(branchName), extractEnvFromBranch(branchName), filePath)
+	if applicationID != "" {
+		bodyStr = fmt.Sprintf("Auto-generated infrastructure request\n\n**Application ID:** %s\n**Team:** %s\n**Environment:** %s\n**File:** %s",
+			applicationID, extractTeamFromBranch(branchName), extractEnvFromBranch(branchName), filePath)
+	}
+	title := fmt.Sprintf("Infrastructure: %s", branchName)
+	if applicationID != "" {
+		title = fmt.Sprintf("Infrastructure: %s [%s]", branchName, applicationID)
+	}
+	return title, bodyStr
+}
+
+func ensureRequestContentApplicationID(content []byte, applicationID string) ([]byte, error) {
+	if strings.TrimSpace(applicationID) == "" || len(content) == 0 {
+		return content, nil
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		return content, nil
+	}
+	ensureRequestPayloadApplicationID(payload, applicationID)
+	return json.MarshalIndent(payload, "", "  ")
+}
+
+func ensureRequestConfigApplicationID(config string, applicationID string) string {
+	if strings.TrimSpace(config) == "" || strings.TrimSpace(applicationID) == "" {
+		return config
+	}
+
+	updated, err := ensureRequestContentApplicationID([]byte(config), applicationID)
+	if err != nil {
+		return config
+	}
+	return string(updated)
+}
+
+func ensureRequestPayloadApplicationID(payload map[string]interface{}, applicationID string) {
+	if payload == nil || strings.TrimSpace(applicationID) == "" {
+		return
+	}
+
+	payload["application_id"] = applicationID
+	config := extractRequestConfigMap(payload)
+	if len(config) > 0 {
+		config["application_id"] = applicationID
+		payload["config"] = config
+	}
 }
 
 var storageBucketConfigFields = []string{
@@ -190,6 +249,153 @@ func maybeMergeGitHubRequestContent(filePath string, existingFile *github.Reposi
 	}
 
 	return mergeStorageBucketRequestContent([]byte(existingContent), content)
+}
+
+func buildBundledRequestFiles(baseFilePath string, content []byte) (map[string][]byte, error) {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		return nil, nil
+	}
+
+	entries, err := extractServiceBundleEntriesFromPayload(payload)
+	if err != nil || len(entries) == 0 {
+		return nil, err
+	}
+
+	projectPathKey, teamPathKey, fallbackEnv, requestPathKey, err := splitRequestFileScope(baseFilePath)
+	if err != nil {
+		return nil, err
+	}
+	if env := strings.TrimSpace(stringValue(payload["env"])); env != "" {
+		fallbackEnv = env
+	}
+
+	groupedEntries := make(map[string][]ServiceBundleEntry)
+	for _, entry := range entries {
+		groupEnv := bundleEntryEnvironment(entry, fallbackEnv)
+		groupPath := fmt.Sprintf(
+			"project/%s/%s/%s/envs/%s/%s/%s/request.json",
+			projectPathKey,
+			teamPathKey,
+			normalizePathSegment(entry.Cloud, "cloud"),
+			normalizePathSegment(groupEnv, "env"),
+			normalizePathSegment(normalizeRequestServicePathKey(entry.Cloud, entry.Service), "service"),
+			normalizePathSegment(requestPathKey, "request"),
+		)
+		groupedEntries[groupPath] = append(groupedEntries[groupPath], entry)
+	}
+
+	files := make(map[string][]byte, len(groupedEntries))
+	for path, group := range groupedEntries {
+		groupPayload, err := buildGroupedRequestPayload(payload, group, bundleEntryEnvironment(group[0], fallbackEnv))
+		if err != nil {
+			return nil, err
+		}
+		groupContent, err := json.MarshalIndent(groupPayload, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+		files[path] = groupContent
+	}
+
+	return files, nil
+}
+
+func splitRequestFileScope(filePath string) (projectPathKey, teamPathKey, fallbackEnv, requestPathKey string, err error) {
+	parts := strings.Split(strings.TrimSpace(filePath), "/")
+	if len(parts) >= 9 && parts[0] == "project" && parts[4] == "envs" {
+		return parts[1], parts[2], parts[5], parts[7], nil
+	}
+	if len(parts) >= 8 && parts[0] == "project" && parts[4] == "envs" {
+		return parts[1], parts[2], parts[5], "request", nil
+	}
+	return "", "", "", "", fmt.Errorf("invalid request file path: %s", filePath)
+}
+
+func buildGroupedRequestPayload(basePayload map[string]interface{}, entries []ServiceBundleEntry, env string) (map[string]interface{}, error) {
+	groupPayload, err := deepCloneJSONMap(basePayload)
+	if err != nil {
+		return nil, err
+	}
+	if len(entries) == 0 {
+		return groupPayload, nil
+	}
+
+	primary := entries[0]
+	groupPayload["env"] = env
+	groupPayload["cloud"] = primary.Cloud
+	groupPayload["service"] = primary.Service
+
+	config := cloneJSONMap(extractRequestConfigMap(groupPayload))
+	delete(config, "bundle_mode")
+	delete(config, "bundle_summary")
+	delete(config, "service_bundle")
+	delete(config, "env")
+
+	if normalizeStorageBucketServiceKey(primary.Service) == "cloud-storage" {
+		for _, field := range storageBucketConfigFields {
+			delete(config, field)
+		}
+		if len(entries) == 1 {
+			for key, value := range cloneJSONMap(entries[0].Config) {
+				if key == "env" {
+					continue
+				}
+				config[key] = value
+			}
+		} else {
+			buckets := make([]map[string]interface{}, 0, len(entries))
+			for _, entry := range entries {
+				if bucketEntry, ok := storageBucketEntryFromConfig(entry.Config); ok {
+					buckets = append(buckets, bucketEntry)
+				}
+			}
+			config["buckets"] = buckets
+			config["bucket_count"] = len(buckets)
+		}
+		groupPayload["config"] = config
+		return groupPayload, nil
+	}
+
+	if len(entries) == 1 {
+		for key, value := range cloneJSONMap(entries[0].Config) {
+			if key == "env" {
+				continue
+			}
+			config[key] = value
+		}
+		groupPayload["config"] = config
+		return groupPayload, nil
+	}
+
+	groupConfigEntries := make([]ServiceBundleEntry, 0, len(entries))
+	for _, entry := range entries {
+		cloned := entry
+		cloned.Config = cloneJSONMap(entry.Config)
+		delete(cloned.Config, "env")
+		groupConfigEntries = append(groupConfigEntries, cloned)
+	}
+	config["service_bundle"] = groupConfigEntries
+	groupPayload["config"] = config
+	if _, err := canonicalizeRequestBundlePayload(groupPayload); err != nil {
+		return nil, err
+	}
+	return groupPayload, nil
+}
+
+func deepCloneJSONMap(source map[string]interface{}) (map[string]interface{}, error) {
+	if source == nil {
+		return map[string]interface{}{}, nil
+	}
+	bytes, err := json.Marshal(source)
+	if err != nil {
+		return nil, err
+	}
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(bytes, &decoded); err != nil {
+		return nil, err
+	}
+	return decoded, nil
 }
 
 func mergeStorageBucketRequestContent(existingContent, newContent []byte) ([]byte, error) {
@@ -508,9 +714,17 @@ func CreateGitHubPRWithFiles(branchName string, files map[string][]byte, title, 
 			AppendGitHubLog("file_create", fmt.Sprintf("File %s does not exist, creating it", filePath), filePath)
 		}
 
+		mergedContent := content
+		if sha != nil {
+			mergedContent, err = maybeMergeGitHubRequestContent(filePath, fileContent, content)
+			if err != nil {
+				return "", fmt.Errorf("failed to prepare request content for %s: %w", filePath, err)
+			}
+		}
+
 		opts := &github.RepositoryContentFileOptions{
 			Message: github.String(fmt.Sprintf("Add/Update infra config: %s", filePath)),
-			Content: content,
+			Content: mergedContent,
 			Branch:  github.String(branchName),
 		}
 		if sha != nil {

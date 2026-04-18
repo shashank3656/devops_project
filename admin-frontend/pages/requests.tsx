@@ -53,6 +53,7 @@ interface PRRequest {
   pr_url: string;
   branch?: string;
   file_path?: string;
+  application_id?: string;
   status: string;
   config?: string;
   created_at: string;
@@ -79,6 +80,15 @@ interface RequestComment {
   username: string;
   body: string;
   created_at: string;
+}
+
+interface ServiceBundleEntry {
+  cloud: string;
+  service: string;
+  normalized_service?: string;
+  display_name?: string;
+  env?: string;
+  config?: Record<string, any>;
 }
 
 function getPreviewRiskClass(level?: string): string {
@@ -111,6 +121,71 @@ function isAccessRequest(req: PRRequest | null | undefined): boolean {
   } catch {
     return false;
   }
+}
+
+function getRequestServiceBundle(req: Pick<PRRequest, 'config'> | null | undefined): ServiceBundleEntry[] {
+  if (!req?.config) return [];
+  try {
+    const parsed = JSON.parse(req.config) as { config?: { service_bundle?: unknown } };
+    const serviceBundle = parsed?.config?.service_bundle;
+    return Array.isArray(serviceBundle) ? (serviceBundle as ServiceBundleEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeBundlePathSegment(value: string | number | undefined | null, fallback: string): string {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || fallback;
+}
+
+function normalizeBundleServicePathKey(cloud: string, service: string): string {
+  const normalizedCloud = cloud.trim().toLowerCase();
+  const normalizedService = service.trim().toLowerCase();
+  if (normalizedCloud === 'gcp') {
+    if (normalizedService === 'cloud-storage' || normalizedService === 'storage') return 'storage';
+    if (normalizedService === 'cloud-sql' || normalizedService === 'cloudsql') return 'cloudsql';
+  }
+  return normalizedService || 'service';
+}
+
+function formatBundleEnvironmentLabel(entry: ServiceBundleEntry, req: PRRequest | null | undefined): string {
+  const rawEnv = entry.env || entry.config?.env || req?.env || 'env';
+  return rawEnv.trim() ? rawEnv.trim().toUpperCase() : 'ENV';
+}
+
+function buildBundleTargetPath(req: PRRequest, entry: ServiceBundleEntry): string {
+  const projectKey = normalizeBundlePathSegment(req.project_code || req.project_name, 'project');
+  const teamKey = normalizeBundlePathSegment(req.team, 'team');
+  const cloudKey = normalizeBundlePathSegment(entry.cloud || req.cloud, 'cloud');
+  const envKey = normalizeBundlePathSegment(entry.env || entry.config?.env || req.env, 'env');
+  const serviceKey = normalizeBundlePathSegment(
+    normalizeBundleServicePathKey(entry.cloud || req.cloud, entry.normalized_service || entry.service),
+    'service',
+  );
+  const applicationKey = normalizeBundlePathSegment(req.application_id, 'application-id');
+  return `project/${projectKey}/${teamKey}/${cloudKey}/envs/${envKey}/${serviceKey}/${applicationKey}/request.json`;
+}
+
+function groupServiceBundleByEnvironment(serviceBundle: ServiceBundleEntry[], req: PRRequest | null | undefined) {
+  const groups = new Map<string, ServiceBundleEntry[]>();
+  for (const entry of serviceBundle) {
+    const environment = formatBundleEnvironmentLabel(entry, req);
+    const existing = groups.get(environment);
+    if (existing) existing.push(entry);
+    else groups.set(environment, [entry]);
+  }
+  return Array.from(groups.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([environment, entries]) => ({ environment, entries }));
+}
+
+function getRequestBundleCount(req: Pick<PRRequest, 'config'> | null | undefined): number {
+  return getRequestServiceBundle(req).length;
 }
 
 export default function AdminRequests() {
@@ -154,6 +229,8 @@ export default function AdminRequests() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [timeline, setTimeline] = useState<{ id: number; kind: string; action: string; username: string; details: string; body?: string; created_at: string }[]>([]);
   const detailRequestIsAccess = isAccessRequest(detailRequest);
+  const detailServiceBundle = getRequestServiceBundle(detailRequest);
+  const detailServiceBundleGroups = groupServiceBundleByEnvironment(detailServiceBundle, detailRequest);
   const activeFilterCount = [
     team.trim(),
     projectId,
@@ -1079,7 +1156,9 @@ export default function AdminRequests() {
                       </tr>
                     </thead>
                     <tbody>
-                      {requests.map((req) => (
+                      {requests.map((req) => {
+                        const bundleCount = getRequestBundleCount(req);
+                        return (
                         <tr key={req.id} className="admin-requests-table__row" style={{ cursor: 'pointer' }} onClick={() => openDetail(req)}>
                           <td className="admin-requests-table__checkbox-cell" onClick={(e) => e.stopPropagation()}>
                             <input
@@ -1103,6 +1182,9 @@ export default function AdminRequests() {
                           <td>
                             <div className="admin-requests-table__primary">
                               <strong>{req.service}</strong>
+                            {bundleCount > 1 ? (
+                              <span className="admin-requests-table__bundle-badge">{bundleCount} services</span>
+                            ) : null}
                             {isAccessRequest(req) ? (
                               <span className="admin-requests-table__meta">Access request</span>
                             ) : null}
@@ -1188,7 +1270,7 @@ export default function AdminRequests() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>
@@ -1516,6 +1598,43 @@ export default function AdminRequests() {
                     >
                       Reject
                     </button>
+                  </div>
+                )}
+
+                {detailServiceBundle.length > 1 && (
+                  <div className="admin-request-detail-modal__section admin-request-detail-modal__section--muted">
+                    <div className="admin-request-detail-modal__section-head">
+                      <strong>Service bundle</strong>
+                    </div>
+                    <p className="admin-request-detail-modal__empty-copy">
+                      This request includes multiple services under one shared review flow. Each bundled service can still land in its own environment-specific target file.
+                    </p>
+                    <div className="admin-request-detail-modal__bundle-groups">
+                      {detailServiceBundleGroups.map((group) => (
+                        <div key={group.environment} className="admin-request-detail-modal__bundle-group">
+                          <div className="admin-request-detail-modal__bundle-group-head">
+                            <strong>{group.environment}</strong>
+                            <span className="admin-request-detail-modal__bundle-group-count">
+                              {group.entries.length} service{group.entries.length === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                          <div className="portal-detail-grid admin-request-detail-modal__summary-grid">
+                            {group.entries.map((entry, index) => (
+                              <article key={`${group.environment}-${entry.cloud}-${entry.service}-${index}`} className="portal-detail-card">
+                                <span className="admin-request-detail-modal__summary-label">Service {index + 1}</span>
+                                <strong className="portal-detail-card__value">{entry.display_name || entry.service}</strong>
+                                <p className="admin-request-detail-modal__empty-copy">
+                                  {group.environment} · {(entry.cloud || detailRequest.cloud || 'cloud').toUpperCase()}
+                                </p>
+                                <code className="admin-request-detail-modal__bundle-path">
+                                  {buildBundleTargetPath(detailRequest, entry)}
+                                </code>
+                              </article>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 

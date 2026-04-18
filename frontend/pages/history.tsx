@@ -51,6 +51,7 @@ interface ApprovalContext {
 }
 
 interface ServiceBundleEntry {
+  env?: string;
   cloud: string;
   service: string;
   normalized_service?: string;
@@ -158,6 +159,7 @@ function getRequestServiceBundle(req: PRRequest | null | undefined): ServiceBund
       const service = typeof record.service === 'string' ? record.service.trim() : '';
       if (!cloud || !service) return [];
       const bundle: ServiceBundleEntry = {
+        env: typeof record.env === 'string' ? record.env : typeof record.config?.env === 'string' ? record.config.env : undefined,
         cloud,
         service,
         normalized_service: typeof record.normalized_service === 'string' ? record.normalized_service : undefined,
@@ -169,6 +171,59 @@ function getRequestServiceBundle(req: PRRequest | null | undefined): ServiceBund
   } catch {
     return [];
   }
+}
+
+function normalizeHistoryPathSegment(value: string | undefined, fallback: string): string {
+  const normalized = (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || fallback;
+}
+
+function normalizeHistoryServicePathKey(cloud: string, service: string): string {
+  const normalizedCloud = cloud.trim().toLowerCase();
+  const normalizedService = service.trim().toLowerCase();
+  if (normalizedCloud === 'gcp') {
+    if (normalizedService === 'cloud-storage' || normalizedService === 'storage') return 'storage';
+    if (normalizedService === 'cloud-sql' || normalizedService === 'cloudsql') return 'cloudsql';
+  }
+  return normalizedService || 'service';
+}
+
+function buildBundleTargetPath(req: PRRequest, entry: ServiceBundleEntry): string {
+  const projectKey = normalizeHistoryPathSegment(req.project_code || req.project_name || '', 'project');
+  const teamKey = normalizeHistoryPathSegment(req.team, 'team');
+  const cloudKey = normalizeHistoryPathSegment(entry.cloud || req.cloud, 'cloud');
+  const envKey = normalizeHistoryPathSegment(entry.env || entry.config?.env || req.env, 'env');
+  const serviceKey = normalizeHistoryPathSegment(
+    normalizeHistoryServicePathKey(entry.cloud || req.cloud, entry.normalized_service || entry.service),
+    'service',
+  );
+  const applicationKey = normalizeHistoryPathSegment(req.application_id, 'application-id');
+  return `project/${projectKey}/${teamKey}/${cloudKey}/envs/${envKey}/${serviceKey}/${applicationKey}/request.json`;
+}
+
+function formatBundleEnvironmentLabel(entry: ServiceBundleEntry, req: PRRequest | null | undefined): string {
+  const rawEnv = entry.env || entry.config?.env || req?.env || 'env';
+  return rawEnv.trim() ? rawEnv.trim().toUpperCase() : 'ENV';
+}
+
+function groupServiceBundleByEnvironment(serviceBundle: ServiceBundleEntry[], req: PRRequest | null | undefined) {
+  const groups = new Map<string, ServiceBundleEntry[]>();
+  for (const entry of serviceBundle) {
+    const envLabel = formatBundleEnvironmentLabel(entry, req);
+    const existing = groups.get(envLabel);
+    if (existing) {
+      existing.push(entry);
+    } else {
+      groups.set(envLabel, [entry]);
+    }
+  }
+  return Array.from(groups.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([environment, entries]) => ({ environment, entries }));
 }
 
 function buildRequestBundleSummary(serviceBundle: ServiceBundleEntry[]): RequestBundleSummary | null {
@@ -269,6 +324,7 @@ export default function History() {
   const detailRequestIsAccess = isAccessRequest(detailRequest);
   const detailStatusMeta = detailRequest ? getRequestStatusMeta(detailRequest.status) : null;
   const detailServiceBundle = getRequestServiceBundle(detailRequest);
+  const detailServiceBundleGroups = groupServiceBundleByEnvironment(detailServiceBundle, detailRequest);
   const activeFilterCount = [
     filterValue.trim(),
     projectId,
@@ -1265,7 +1321,7 @@ export default function History() {
                           <div className="history-table__primary">
                             <strong>{req.service}</strong>
                             {req.bundle_summary && req.bundle_summary.count > 1 ? (
-                              <span className="history-table__meta">{req.bundle_summary.count} services bundled</span>
+                              <span className="history-table__bundle-badge">{req.bundle_summary.count} services</span>
                             ) : null}
                           </div>
                         </td>
@@ -1472,7 +1528,7 @@ export default function History() {
                       <div className="history-detail-modal__notice history-detail-modal__notice--spaced">
                         <strong className="history-detail-modal__notice-title">Current repo layout</strong>
                         <p className="history-detail-modal__notice-copy">
-                          Requests now write to <code>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/envs/&lt;env&gt;/&lt;service&gt;/request.json</code> and use a matching <code>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/&lt;env&gt;/&lt;service&gt;/&lt;request-id&gt;</code> branch.
+                          Requests now write to <code>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/envs/&lt;env&gt;/&lt;service&gt;/&lt;request-id&gt;/request.json</code> and use a matching <code>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/&lt;env&gt;/&lt;service&gt;/&lt;request-id&gt;</code> branch.
                         </p>
                       </div>
                     )}
@@ -1482,13 +1538,34 @@ export default function History() {
                           <strong>Service bundle</strong>
                         </div>
                         <p className="history-detail-modal__empty-copy">
-                          This request groups multiple services under one shared project, team, and environment review flow.
+                          This request groups multiple services under one shared project and team review flow, while each bundled service can still target its own environment.
                         </p>
-                        <div className="history-detail-modal__tags">
-                          {detailServiceBundle.map((entry, index) => (
-                            <span key={`${entry.cloud}-${entry.service}-${index}`} className="history-detail-modal__tag">
-                              {index + 1}. {entry.display_name || entry.service} · {entry.cloud.toUpperCase()}
-                            </span>
+                        <div className="history-detail-modal__bundle-groups">
+                          {detailServiceBundleGroups.map((group) => (
+                            <div key={group.environment} className="history-detail-modal__bundle-group">
+                              <div className="history-detail-modal__bundle-group-head">
+                                <strong>{group.environment}</strong>
+                                <span className="history-detail-modal__bundle-group-count">
+                                  {group.entries.length} service{group.entries.length === 1 ? '' : 's'}
+                                </span>
+                              </div>
+                              <div className="portal-detail-grid history-detail-modal__summary-grid">
+                                {group.entries.map((entry, index) => (
+                                  <article key={`${group.environment}-${entry.cloud}-${entry.service}-${index}`} className="portal-detail-card">
+                                    <span className="history-detail-modal__summary-label">Service {index + 1}</span>
+                                    <strong className="portal-detail-card__value">
+                                      {entry.display_name || entry.service}
+                                    </strong>
+                                    <p className="history-detail-modal__empty-copy">
+                                      {group.environment} · {(entry.cloud || detailRequest.cloud || 'cloud').toUpperCase()}
+                                    </p>
+                                    <code className="request-builder__bundle-path request-builder__bundle-path--summary">
+                                      {buildBundleTargetPath(detailRequest, entry)}
+                                    </code>
+                                  </article>
+                                ))}
+                              </div>
+                            </div>
                           ))}
                         </div>
                       </div>
