@@ -7,12 +7,14 @@ func TestCanonicalizeRequestBundlePayloadNestedConfig(t *testing.T) {
 		"team":    "platform",
 		"env":     "dev",
 		"cloud":   "gcp",
-		"service": "cloud-storage",
+		"service": "storage",
 		"config": map[string]interface{}{
+			"bucket_name": "team-dev-bucket",
 			"service_bundle": []interface{}{
 				map[string]interface{}{
+					"env":                "dev",
 					"cloud":              "gcp",
-					"service":            "cloud-storage",
+					"service":            "storage",
 					"normalized_service": "cloud-storage",
 					"display_name":       "Cloud Storage Bucket",
 					"config": map[string]interface{}{
@@ -20,6 +22,7 @@ func TestCanonicalizeRequestBundlePayloadNestedConfig(t *testing.T) {
 					},
 				},
 				map[string]interface{}{
+					"env":                "dev",
 					"cloud":              "gcp",
 					"service":            "cloud-sql",
 					"normalized_service": "cloud-sql",
@@ -56,6 +59,19 @@ func TestCanonicalizeRequestBundlePayloadNestedConfig(t *testing.T) {
 	}
 	if _, ok := config["bundle_summary"].(*RequestBundleSummary); !ok {
 		t.Fatal("config bundle_summary should be set")
+	}
+	if _, ok := config["bucket_name"]; ok {
+		t.Fatal("config bucket_name should be pruned when service_bundle is present")
+	}
+	rawBundle, ok := config["service_bundle"].([]ServiceBundleEntry)
+	if !ok || len(rawBundle) != 2 {
+		t.Fatal("config service_bundle should be normalized into []ServiceBundleEntry")
+	}
+	if rawBundle[0].Service != "cloud-storage" {
+		t.Fatalf("primary bundled service = %q, want %q", rawBundle[0].Service, "cloud-storage")
+	}
+	if rawBundle[0].Env != "dev" {
+		t.Fatalf("primary bundled env = %q, want %q", rawBundle[0].Env, "dev")
 	}
 }
 
@@ -94,5 +110,24 @@ func TestExtractServiceBundleEntriesFromConfigNestedConfig(t *testing.T) {
 	}
 	if entries[1].Service != "cloud-sql" {
 		t.Fatalf("second service = %q, want %q", entries[1].Service, "cloud-sql")
+	}
+}
+
+func TestNormalizeRequestServiceKey(t *testing.T) {
+	cases := []struct {
+		cloud   string
+		service string
+		want    string
+	}{
+		{cloud: "gcp", service: "storage", want: "cloud-storage"},
+		{cloud: "gcp", service: "cloudsql", want: "cloud-sql"},
+		{cloud: "gcp", service: "compute", want: "compute-engine"},
+		{cloud: "aws", service: "s3", want: "s3"},
+	}
+
+	for _, tc := range cases {
+		if got := normalizeRequestServiceKey(tc.cloud, tc.service); got != tc.want {
+			t.Fatalf("normalizeRequestServiceKey(%q, %q) = %q, want %q", tc.cloud, tc.service, got, tc.want)
+		}
 	}
 }

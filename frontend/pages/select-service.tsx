@@ -42,11 +42,21 @@ interface ProjectOption {
 
 interface BundledServiceDraft {
   id: string;
+  env: string;
   cloud: string;
   service: string;
   normalizedService: string;
   displayName: string;
   formValues: Record<string, any>;
+}
+
+interface BundledServiceSummaryEntry {
+  id: string;
+  title: string;
+  detail: string;
+  gitPath: string;
+  isCurrentDraft: boolean;
+  envLabel: string;
 }
 
 const VALID_CLOUDS = ['aws', 'gcp', 'azure'];
@@ -83,6 +93,30 @@ function formatEnvironmentLabel(value: string): string {
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
+}
+
+function normalizePathPreviewSegment(value: string, fallback: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || fallback;
+}
+
+function groupBundledServiceSummaryByEnvironment(entries: BundledServiceSummaryEntry[]) {
+  const groups = new Map<string, BundledServiceSummaryEntry[]>();
+  for (const entry of entries) {
+    const existing = groups.get(entry.envLabel);
+    if (existing) {
+      existing.push(entry);
+    } else {
+      groups.set(entry.envLabel, [entry]);
+    }
+  }
+  return Array.from(groups.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([environment, services]) => ({ environment, services }));
 }
 
 function parsePositiveIntParam(value: unknown): number | null {
@@ -273,6 +307,15 @@ function normalizeServiceKey(cloud: string, serviceKey: string): string {
   return aliases[normalized] || normalized;
 }
 
+function normalizeServicePathPreviewKey(cloud: string, serviceKey: string): string {
+  const normalizedService = normalizeServiceKey(cloud, serviceKey);
+  if (cloud === 'gcp') {
+    if (normalizedService === 'cloud-storage') return 'storage';
+    if (normalizedService === 'cloud-sql') return 'cloudsql';
+  }
+  return normalizedService;
+}
+
 function getServiceDisplayName(cloud: string, serviceKey: string): string {
   if (!cloud || !serviceKey) return serviceKey;
   if (cloud === 'aws') return awsServices[serviceKey]?.displayName || serviceKey;
@@ -415,6 +458,10 @@ export default function SelectService() {
   const availableTeams = selectedProject
     ? teams.filter((option) => selectedProject.team_access.some((access) => access.team_id === option.id))
     : teams;
+  const selectedTeamOption =
+    availableTeams.find((option) => option.slug === team) ||
+    teams.find((option) => option.slug === team) ||
+    null;
 
   const availableEnvironments = (() => {
     if (!selectedProject) return normalizeEnvironmentValues(environments.map((item) => item.value));
@@ -498,15 +545,17 @@ export default function SelectService() {
   };
 
   const buildBundledServiceDraft = (
+    draftEnv: string,
     draftCloud: string,
     draftService: string,
     values: Record<string, any>,
     draftId?: string,
   ): BundledServiceDraft | null => {
-    if (!draftCloud || !draftService) return null;
+    if (!draftEnv || !draftCloud || !draftService) return null;
     const normalized = normalizeServiceKey(draftCloud, draftService);
     return {
       id: draftId || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      env: draftEnv,
       cloud: draftCloud,
       service: draftService,
       normalizedService: normalized,
@@ -527,9 +576,9 @@ export default function SelectService() {
   };
 
   const addCurrentServiceToBundle = () => {
-    const nextDraft = buildBundledServiceDraft(cloud, service, formValues);
+    const nextDraft = buildBundledServiceDraft(env, cloud, service, formValues);
     if (!nextDraft) {
-      toast('Choose a cloud and service before adding another one.', 'error');
+      toast('Choose the environment, cloud, and service before adding another one.', 'error');
       return;
     }
 
@@ -632,12 +681,12 @@ export default function SelectService() {
   );
 
   const submitRequest = async (asDraft: boolean) => {
-    const currentDraft = buildBundledServiceDraft(cloud, service, formValues);
+    const currentDraft = buildBundledServiceDraft(env, cloud, service, formValues);
     const requestServices = currentDraft ? [...bundledServices, currentDraft] : [...bundledServices];
     const primaryService = requestServices[0];
 
-    if (!projectId || !team || !env || !primaryService) {
-      setError('Choose the project, team, environment, and at least one service first.');
+    if (!projectId || !team || !primaryService) {
+      setError('Choose the project, team, and at least one service first.');
       return;
     }
 
@@ -653,17 +702,25 @@ export default function SelectService() {
 
     try {
       const serviceBundlePayload = requestServices.map((entry) => ({
+        env: entry.env,
         cloud: entry.cloud,
         service: entry.service,
         normalized_service: entry.normalizedService,
         display_name: entry.displayName,
         config: entry.formValues,
       }));
+      const isBundledRequest = serviceBundlePayload.length > 1;
+      const sharedConfig = isBundledRequest
+        ? {
+            bundle_mode: true,
+            service_bundle: serviceBundlePayload,
+          }
+        : { ...primaryService.formValues };
 
       const payload = {
         project_id: projectId,
         team,
-        env,
+        env: primaryService.env,
         cloud: primaryService.cloud,
         service: primaryService.service,
         client_name: clientName || undefined,
@@ -671,26 +728,7 @@ export default function SelectService() {
         due_date: dueDate || undefined,
         draft: asDraft,
         initial_comment: initialComment.trim() || undefined,
-        config: isIamFlow
-          ? {
-              request_type: 'iam',
-              ...primaryService.formValues,
-              ...(serviceBundlePayload.length > 1
-                ? {
-                    bundle_mode: true,
-                    service_bundle: serviceBundlePayload,
-                  }
-                : {}),
-            }
-          : {
-              ...primaryService.formValues,
-              ...(serviceBundlePayload.length > 1
-                ? {
-                    bundle_mode: true,
-                    service_bundle: serviceBundlePayload,
-                  }
-                : {}),
-            }
+        config: isIamFlow ? { request_type: 'iam', ...sharedConfig } : sharedConfig
       };
 
       const response = await fetch(`${apiUrl}/api/request`, {
@@ -736,7 +774,7 @@ export default function SelectService() {
 
   const serviceConfig = getServiceConfig();
   const availableServices = getAvailableServices();
-  const currentServiceDraft = buildBundledServiceDraft(cloud, service, formValues, 'current-draft');
+  const currentServiceDraft = buildBundledServiceDraft(env, cloud, service, formValues, 'current-draft');
   const requestServices = currentServiceDraft ? [...bundledServices, currentServiceDraft] : bundledServices;
   const primaryBundledService = requestServices[0] || null;
   const selectedServiceLabel = currentServiceDraft
@@ -744,8 +782,8 @@ export default function SelectService() {
     : primaryBundledService
       ? `${requestServices.length} service${requestServices.length === 1 ? '' : 's'} selected`
       : 'Not chosen yet';
-  const requestReady = !!(projectId && team && env && requestServices.length > 0);
-  const canSubmitRequest = loading || !projectId || !team || !env || requestServices.length === 0 || canCreatePR !== true;
+  const requestReady = !!(projectId && team && requestServices.length > 0);
+  const canSubmitRequest = loading || !projectId || !team || requestServices.length === 0 || canCreatePR !== true;
   const multiServiceMode = requestServices.length > 1;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -886,12 +924,44 @@ export default function SelectService() {
       ]
     : [];
   const reviewImpactNotes = normalizedService ? getReviewImpactNotes(normalizedService) : [];
-  const bundledServiceSummary = requestServices.map((entry, index) => ({
+  const bundledServiceSummary: BundledServiceSummaryEntry[] = requestServices.map((entry, index) => ({
     id: entry.id,
     title: `${index + 1}. ${entry.displayName}`,
-    detail: `${entry.cloud.toUpperCase()} · ${getServiceIdentityPreview(entry)}`,
+    detail: `${formatEnvironmentLabel(entry.env)} · ${entry.cloud.toUpperCase()} · ${getServiceIdentityPreview(entry)}`,
+    envLabel: formatEnvironmentLabel(entry.env),
+    gitPath: `project/${
+      normalizePathPreviewSegment(selectedProject?.code || selectedProject?.name || '', 'project')
+    }/${
+      normalizePathPreviewSegment(selectedTeamOption?.slug || team || '', 'team')
+    }/${
+      normalizePathPreviewSegment(entry.cloud, 'cloud')
+    }/envs/${
+      normalizePathPreviewSegment(entry.env, 'env')
+    }/${
+      normalizePathPreviewSegment(normalizeServicePathPreviewKey(entry.cloud, entry.normalizedService || entry.service), 'service')
+    }/<application-id>/request.json`,
     isCurrentDraft: currentServiceDraft?.id === entry.id,
   }));
+  const bundledServiceSummaryGroups = groupBundledServiceSummaryByEnvironment(bundledServiceSummary);
+  const bundledServiceCardGroups = Array.from(
+    requestServices.reduce((groups, entry, index) => {
+      const environment = formatEnvironmentLabel(entry.env);
+      const existing = groups.get(environment);
+      const card = {
+        entry,
+        index,
+        gitPath: bundledServiceSummary[index]?.gitPath || '',
+      };
+      if (existing) {
+        existing.push(card);
+      } else {
+        groups.set(environment, [card]);
+      }
+      return groups;
+    }, new Map<string, Array<{ entry: BundledServiceDraft; index: number; gitPath: string }>>()),
+  )
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([environment, services]) => ({ environment, services }));
 
   return (
     <>
@@ -1194,7 +1264,7 @@ export default function SelectService() {
                     <div className="request-builder__section-header">
                       <h2>Step 3.5: Build the service bundle</h2>
                       <p>
-                        Keep the project, team, and environment shared once, then add one or more service cards under the same request.
+                        Keep the project and team shared once. Each service card captures the environment selected when you add it.
                       </p>
                     </div>
                     <div className="request-builder__bundle-actions">
@@ -1208,7 +1278,7 @@ export default function SelectService() {
                             + Add another service
                           </button>
                           <span className="request-builder__bundle-hint">
-                            Add this service card, then choose the next cloud and service below the same shared request.
+                            Add this service card, then you can change environment, cloud, or service before adding the next one.
                           </span>
                         </>
                       ) : (
@@ -1227,36 +1297,50 @@ export default function SelectService() {
                       </div>
                     )}
                     {requestServices.length > 0 && (
-                      <div className="request-builder__bundle-list">
-                        {requestServices.map((entry, index) => (
-                          <article
-                            key={entry.id}
-                            className={`request-builder__bundle-card${
-                              currentServiceDraft?.id === entry.id ? ' request-builder__bundle-card--draft' : ''
-                            }`}
-                          >
-                            <div className="request-builder__bundle-card-header">
-                              <div>
-                                <span className="request-builder__summary-label">Service {index + 1}</span>
-                                <h3>{entry.displayName}</h3>
-                              </div>
-                              <div className="request-builder__bundle-meta">
-                                <span className="request-builder__bundle-pill">{entry.cloud.toUpperCase()}</span>
-                                {currentServiceDraft?.id === entry.id ? (
-                                  <span className="request-builder__bundle-pill request-builder__bundle-pill--draft">Current draft</span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="btn btn-secondary btn-sm"
-                                    onClick={() => removeBundledService(entry.id)}
-                                  >
-                                    Remove
-                                  </button>
-                                )}
-                              </div>
+                      <div className="request-builder__bundle-card-groups">
+                        {bundledServiceCardGroups.map((group) => (
+                          <div key={group.environment} className="request-builder__bundle-card-group">
+                            <div className="request-builder__bundle-card-group-head">
+                              <strong>{group.environment}</strong>
+                              <span className="request-builder__bundle-card-group-count">
+                                {group.services.length} service{group.services.length === 1 ? '' : 's'}
+                              </span>
                             </div>
-                            <p className="request-builder__bundle-detail">{getServiceIdentityPreview(entry)}</p>
-                          </article>
+                            <div className="request-builder__bundle-list">
+                              {group.services.map(({ entry, index, gitPath }) => (
+                                <article
+                                  key={entry.id}
+                                  className={`request-builder__bundle-card${
+                                    currentServiceDraft?.id === entry.id ? ' request-builder__bundle-card--draft' : ''
+                                  }`}
+                                >
+                                  <div className="request-builder__bundle-card-header">
+                                    <div>
+                                      <span className="request-builder__summary-label">Service {index + 1}</span>
+                                      <h3>{entry.displayName}</h3>
+                                    </div>
+                                    <div className="request-builder__bundle-meta">
+                                      <span className="request-builder__bundle-pill">{formatEnvironmentLabel(entry.env)}</span>
+                                      <span className="request-builder__bundle-pill">{entry.cloud.toUpperCase()}</span>
+                                      {currentServiceDraft?.id === entry.id ? (
+                                        <span className="request-builder__bundle-pill request-builder__bundle-pill--draft">Current draft</span>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="btn btn-secondary btn-sm"
+                                          onClick={() => removeBundledService(entry.id)}
+                                        >
+                                          Remove
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <p className="request-builder__bundle-detail">{getServiceIdentityPreview(entry)}</p>
+                                  <code className="request-builder__bundle-path">{gitPath}</code>
+                                </article>
+                              ))}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     )}
@@ -1329,13 +1413,17 @@ export default function SelectService() {
                     </div>
                     <div className="request-builder__summary-item">
                       <span className="request-builder__summary-label">Environment</span>
-                      <span className="request-builder__summary-value">{env || 'Not chosen yet'}</span>
+                      <span className="request-builder__summary-value">
+                        {requestServices.length > 0
+                          ? Array.from(new Set(requestServices.map((entry) => formatEnvironmentLabel(entry.env)))).join(' · ')
+                          : env || 'Not chosen yet'}
+                      </span>
                     </div>
                     <div className="request-builder__summary-item">
                       <span className="request-builder__summary-label">{targetSummaryLabel}</span>
                       <span className="request-builder__summary-value">
                         {primaryBundledService
-                          ? `${primaryBundledService.cloud.toUpperCase()} · ${primaryBundledService.displayName}`
+                          ? `${formatEnvironmentLabel(primaryBundledService.env)} · ${primaryBundledService.cloud.toUpperCase()} · ${primaryBundledService.displayName}`
                           : 'Not chosen yet'}
                       </span>
                     </div>
@@ -1403,18 +1491,34 @@ export default function SelectService() {
                   <div className="request-builder__summary">
                     <h3>Services in this request</h3>
                     <p>Review the service bundle before you save or send it.</p>
-                    <div className="request-builder__service-summary-groups">
-                      {bundledServiceSummary.map((entry) => (
-                        <div key={entry.id} className="request-builder__service-summary-group">
-                          <div className="request-builder__service-summary-header">
-                            <strong>{entry.title}</strong>
-                            <p>{entry.isCurrentDraft ? 'Current service draft' : 'Added to the shared request bundle'}</p>
+                    <div className="request-builder__bundle-summary-groups">
+                      {bundledServiceSummaryGroups.map((group) => (
+                        <div key={group.environment} className="request-builder__bundle-summary-group">
+                          <div className="request-builder__bundle-summary-head">
+                            <strong>{group.environment}</strong>
+                            <span className="request-builder__bundle-summary-count">
+                              {group.services.length} service{group.services.length === 1 ? '' : 's'}
+                            </span>
                           </div>
-                          <div className="request-builder__summary-list">
-                            <div className="request-builder__summary-item">
-                              <span className="request-builder__summary-label">Target</span>
-                              <span className="request-builder__summary-value">{entry.detail}</span>
-                            </div>
+                          <div className="request-builder__service-summary-groups">
+                            {group.services.map((entry) => (
+                              <div key={entry.id} className="request-builder__service-summary-group">
+                                <div className="request-builder__service-summary-header">
+                                  <strong>{entry.title}</strong>
+                                  <p>{entry.isCurrentDraft ? 'Current service draft' : 'Added to the shared request bundle'}</p>
+                                </div>
+                                <div className="request-builder__summary-list">
+                                  <div className="request-builder__summary-item">
+                                    <span className="request-builder__summary-label">Target</span>
+                                    <span className="request-builder__summary-value">{entry.detail}</span>
+                                  </div>
+                                  <div className="request-builder__summary-item">
+                                    <span className="request-builder__summary-label">Git path</span>
+                                    <code className="request-builder__bundle-path request-builder__bundle-path--summary">{entry.gitPath}</code>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       ))}

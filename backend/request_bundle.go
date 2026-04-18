@@ -8,6 +8,7 @@ import (
 )
 
 type ServiceBundleEntry struct {
+	Env               string                 `json:"env,omitempty"`
 	Cloud             string                 `json:"cloud"`
 	Service           string                 `json:"service"`
 	NormalizedService string                 `json:"normalized_service,omitempty"`
@@ -55,6 +56,7 @@ func canonicalizeRequestBundlePayload(payload InfraRequest) ([]ServiceBundleEntr
 	target["bundle_mode"] = len(entries) > 1
 	target["service_bundle"] = entries
 	target["bundle_summary"] = buildRequestBundleSummary(entries)
+	prunePrimaryServiceConfigFieldsForBundle(target, entries)
 
 	return entries, nil
 }
@@ -104,7 +106,9 @@ func normalizeServiceBundleEntryFromMap(item map[string]interface{}) (ServiceBun
 	entry := ServiceBundleEntry{}
 
 	cloud, _ := item["cloud"].(string)
+	env, _ := item["env"].(string)
 	service, _ := item["service"].(string)
+	entry.Env = strings.TrimSpace(env)
 	entry.Cloud = strings.TrimSpace(cloud)
 	entry.Service = strings.TrimSpace(service)
 	entry.NormalizedService = strings.TrimSpace(stringValue(item["normalized_service"]))
@@ -132,6 +136,7 @@ func normalizeServiceBundleEntryFromMap(item map[string]interface{}) (ServiceBun
 
 func normalizeServiceBundleEntry(entry ServiceBundleEntry) (ServiceBundleEntry, error) {
 	entry.Cloud = strings.TrimSpace(entry.Cloud)
+	entry.Env = strings.TrimSpace(entry.Env)
 	entry.Service = strings.TrimSpace(entry.Service)
 	entry.NormalizedService = strings.TrimSpace(entry.NormalizedService)
 	entry.DisplayName = strings.TrimSpace(entry.DisplayName)
@@ -142,8 +147,24 @@ func normalizeServiceBundleEntry(entry ServiceBundleEntry) (ServiceBundleEntry, 
 	if entry.Service == "" {
 		return ServiceBundleEntry{}, fmt.Errorf("service is required")
 	}
+	normalizedService := normalizeRequestServiceKey(entry.Cloud, entry.Service)
+	if normalizedService == "" {
+		normalizedService = normalizeRequestServiceKey(entry.Cloud, entry.NormalizedService)
+	}
+	if normalizedService != "" {
+		entry.Service = normalizedService
+		entry.NormalizedService = normalizedService
+	} else if entry.NormalizedService == "" {
+		entry.NormalizedService = entry.Service
+	}
 	if entry.Config == nil {
 		entry.Config = map[string]interface{}{}
+	}
+	if entry.Env == "" {
+		entry.Env = strings.TrimSpace(stringValue(entry.Config["env"]))
+	}
+	if entry.Env != "" {
+		entry.Config["env"] = entry.Env
 	}
 	return entry, nil
 }
@@ -220,7 +241,14 @@ func validateProjectBundleRequestForUser(userID, projectID int, teamNameOrSlug, 
 
 	var primaryValidation *ProjectRequestValidation
 	for _, entry := range entries {
-		validation, err := validateProjectRequestForUser(userID, projectID, teamNameOrSlug, environment, entry.Cloud, entry.Service)
+		validation, err := validateProjectRequestForUser(
+			userID,
+			projectID,
+			teamNameOrSlug,
+			bundleEntryEnvironment(entry, environment),
+			entry.Cloud,
+			entry.Service,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -231,9 +259,68 @@ func validateProjectBundleRequestForUser(userID, projectID int, teamNameOrSlug, 
 	return primaryValidation, nil
 }
 
+func bundleEntryEnvironment(entry ServiceBundleEntry, fallback string) string {
+	if env := strings.TrimSpace(entry.Env); env != "" {
+		return env
+	}
+	if entry.Config != nil {
+		if env := strings.TrimSpace(stringValue(entry.Config["env"])); env != "" {
+			return env
+		}
+	}
+	return strings.TrimSpace(fallback)
+}
+
 func stringValue(raw any) string {
 	value, _ := raw.(string)
 	return value
+}
+
+func normalizeRequestServiceKey(cloud, service string) string {
+	cloud = strings.TrimSpace(strings.ToLower(cloud))
+	service = strings.TrimSpace(strings.ToLower(service))
+
+	switch cloud {
+	case "gcp":
+		switch service {
+		case "storage", "cloud-storage", "cloud_storage", "cloud storage":
+			return "cloud-storage"
+		case "cloudsql", "cloud-sql", "cloud_sql", "cloud sql":
+			return "cloud-sql"
+		case "compute", "compute-engine", "compute_engine", "compute engine":
+			return "compute-engine"
+		}
+	}
+
+	return strings.TrimSpace(service)
+}
+
+func normalizeRequestServicePathKey(cloud, service string) string {
+	normalized := normalizeRequestServiceKey(cloud, service)
+	switch strings.TrimSpace(strings.ToLower(cloud)) {
+	case "gcp":
+		switch normalized {
+		case "cloud-storage":
+			return "storage"
+		case "cloud-sql":
+			return "cloudsql"
+		}
+	}
+	return normalized
+}
+
+func prunePrimaryServiceConfigFieldsForBundle(target map[string]interface{}, entries []ServiceBundleEntry) {
+	if target == nil || len(entries) <= 1 {
+		return
+	}
+
+	primaryConfig := entries[0].Config
+	for key := range primaryConfig {
+		if key == "service_bundle" || key == "bundle_summary" || key == "bundle_mode" {
+			continue
+		}
+		delete(target, key)
+	}
 }
 
 func extractServiceBundleEntriesFromConfig(rawConfig string) ([]ServiceBundleEntry, error) {

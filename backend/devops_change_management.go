@@ -1205,7 +1205,7 @@ func createRollbackConsoleRequest(managerID, sourceRequestID, historyID int, rea
 		Branch:        branchName,
 		FilePath:      filePath,
 		Status:        "draft",
-		Config:        configToRestore,
+		Config:        ensureRequestConfigApplicationID(configToRestore, appID),
 		CreatedBy:     &managerID,
 	}
 	if err := SavePRRequest(newRequest); err != nil {

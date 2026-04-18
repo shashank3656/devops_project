@@ -78,7 +78,7 @@ func handleRequestPromote(w http.ResponseWriter, r *http.Request, id int, req *P
 		Branch:        branchName,
 		FilePath:      filePath,
 		Status:        "draft",
-		Config:        req.Config,
+		Config:        ensureRequestConfigApplicationID(req.Config, appID),
 		CreatedBy:     createdBy,
 	}
 	if err := SavePRRequest(newReq); err != nil {

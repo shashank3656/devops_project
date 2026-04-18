@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  allowedDevOrigins: ['35.232.98.25', 'localhost', '127.0.0.1'],
+  allowedDevOrigins: ['34.31.194.178', 'localhost', '127.0.0.1'],
   async headers() {
     return [
       {

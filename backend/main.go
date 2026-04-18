@@ -230,6 +230,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	ensureRequestPayloadApplicationID(payload, appID)
 
 	// Marshal payload with indentation for readability after defaults/validation are applied.
 	content, err := json.MarshalIndent(payload, "", "  ")
@@ -423,6 +424,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 			payload["client_name"] = clientName
 		}
 	}
+	ensureRequestPayloadApplicationID(payload, appID)
 	content, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "error processing request", nil)

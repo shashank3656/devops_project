@@ -191,9 +191,9 @@ func BuildRequestGitArtifacts(projectID *int, teamNameOrSlug, cloud, env, servic
 	teamPathKey := ResolveTeamSlugKey(teamNameOrSlug)
 	cloudPathKey := normalizePathSegment(cloud, "cloud")
 	envPathKey := normalizePathSegment(env, "env")
-	servicePathKey := normalizePathSegment(service, "service")
+	servicePathKey := normalizePathSegment(normalizeRequestServicePathKey(cloud, service), "service")
 	requestKey := normalizePathSegment(requestApplicationID, "request")
-	filePath = fmt.Sprintf("project/%s/%s/%s/envs/%s/%s/request.json", projectPathKey, teamPathKey, cloudPathKey, envPathKey, servicePathKey)
+	filePath = fmt.Sprintf("project/%s/%s/%s/envs/%s/%s/%s/request.json", projectPathKey, teamPathKey, cloudPathKey, envPathKey, servicePathKey, requestKey)
 	branchName = fmt.Sprintf("project/%s/%s/%s/%s/%s/%s", projectPathKey, teamPathKey, cloudPathKey, envPathKey, servicePathKey, requestKey)
 	return filePath, branchName
 }

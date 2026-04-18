@@ -162,6 +162,15 @@ interface ProjectSummary {
   code: string;
 }
 
+interface ServiceBundleEntry {
+  cloud: string;
+  service: string;
+  normalized_service?: string;
+  display_name?: string;
+  env?: string;
+  config?: Record<string, any>;
+}
+
 function getPreviewRiskClass(level?: string): string {
   switch (level) {
     case 'high':
@@ -192,6 +201,71 @@ function isAccessRequest(request: Pick<TicketRow, 'config'> | null | undefined):
   } catch {
     return false;
   }
+}
+
+function getRequestServiceBundle(request: Pick<TicketRow, 'config'> | null | undefined): ServiceBundleEntry[] {
+  if (!request?.config) return [];
+  try {
+    const parsed = JSON.parse(request.config) as { config?: { service_bundle?: unknown } };
+    const serviceBundle = parsed?.config?.service_bundle;
+    return Array.isArray(serviceBundle) ? (serviceBundle as ServiceBundleEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeBundlePathSegment(value: string | number | undefined | null, fallback: string): string {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || fallback;
+}
+
+function normalizeBundleServicePathKey(cloud: string, service: string): string {
+  const normalizedCloud = cloud.trim().toLowerCase();
+  const normalizedService = service.trim().toLowerCase();
+  if (normalizedCloud === 'gcp') {
+    if (normalizedService === 'cloud-storage' || normalizedService === 'storage') return 'storage';
+    if (normalizedService === 'cloud-sql' || normalizedService === 'cloudsql') return 'cloudsql';
+  }
+  return normalizedService || 'service';
+}
+
+function formatBundleEnvironmentLabel(entry: ServiceBundleEntry, request: TicketDetail | null | undefined): string {
+  const rawEnv = entry.env || entry.config?.env || request?.env || 'env';
+  return rawEnv.trim() ? rawEnv.trim().toUpperCase() : 'ENV';
+}
+
+function buildBundleTargetPath(request: TicketDetail, entry: ServiceBundleEntry): string {
+  const projectKey = normalizeBundlePathSegment(request.project_code || request.project_name, 'project');
+  const teamKey = normalizeBundlePathSegment(request.team, 'team');
+  const cloudKey = normalizeBundlePathSegment(entry.cloud || request.cloud, 'cloud');
+  const envKey = normalizeBundlePathSegment(entry.env || entry.config?.env || request.env, 'env');
+  const serviceKey = normalizeBundlePathSegment(
+    normalizeBundleServicePathKey(entry.cloud || request.cloud, entry.normalized_service || entry.service),
+    'service',
+  );
+  const applicationKey = normalizeBundlePathSegment(request.application_id, 'application-id');
+  return `project/${projectKey}/${teamKey}/${cloudKey}/envs/${envKey}/${serviceKey}/${applicationKey}/request.json`;
+}
+
+function groupServiceBundleByEnvironment(serviceBundle: ServiceBundleEntry[], request: TicketDetail | null | undefined) {
+  const groups = new Map<string, ServiceBundleEntry[]>();
+  for (const entry of serviceBundle) {
+    const environment = formatBundleEnvironmentLabel(entry, request);
+    const existing = groups.get(environment);
+    if (existing) existing.push(entry);
+    else groups.set(environment, [entry]);
+  }
+  return Array.from(groups.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([environment, entries]) => ({ environment, entries }));
+}
+
+function getRequestBundleCount(request: Pick<TicketRow, 'config'> | null | undefined): number {
+  return getRequestServiceBundle(request).length;
 }
 
 export default function DevOpsTickets() {
@@ -228,6 +302,8 @@ export default function DevOpsTickets() {
   const [actioning, setActioning] = useState<'approve' | 'reject' | null>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
   const detailRequestIsAccess = isAccessRequest(detailRequest);
+  const detailServiceBundle = getRequestServiceBundle(detailRequest);
+  const detailServiceBundleGroups = groupServiceBundleByEnvironment(detailServiceBundle, detailRequest);
   const limit = 20;
 
   const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
@@ -693,7 +769,9 @@ export default function DevOpsTickets() {
                         </tr>
                       </thead>
                       <tbody>
-                        {requests.map((req) => (
+                        {requests.map((req) => {
+                          const bundleCount = getRequestBundleCount(req);
+                          return (
                           <tr
                             key={req.id}
                             className={detailId === req.id ? 'devops-tickets-table__row--active' : ''}
@@ -716,6 +794,9 @@ export default function DevOpsTickets() {
                             <td>
                               <div className="devops-ticket-primary">
                                 <strong>{req.service}</strong>
+                              {bundleCount > 1 ? (
+                                <span className="devops-ticket-bundle-badge">{bundleCount} services</span>
+                              ) : null}
                               {isAccessRequest(req) ? (
                                 <span className="devops-ticket-meta">Access request</span>
                               ) : null}
@@ -746,7 +827,7 @@ export default function DevOpsTickets() {
                             </td>
                             <td className="devops-ticket-updated"><span className="devops-ticket-meta">{formatDateTime(req.updated_at)}</span></td>
                           </tr>
-                        ))}
+                        )})}
                       </tbody>
                     </table>
                   </div>
@@ -862,7 +943,7 @@ export default function DevOpsTickets() {
                           <div className="devops-approval-workspace__meta-item">
                             <span className="devops-approval-workspace__meta-label">Config path</span>
                             <strong>{detailRequest.file_path || 'Not set'}</strong>
-                            <small>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/envs/&lt;env&gt;/&lt;service&gt;/request.json</small>
+                            <small>project/&lt;project-code&gt;/&lt;team-slug&gt;/&lt;cloud&gt;/envs/&lt;env&gt;/&lt;service&gt;/&lt;application-id&gt;/request.json</small>
                           </div>
                           <div className="devops-approval-workspace__meta-item">
                             <span className="devops-approval-workspace__meta-label">Created</span>
@@ -995,6 +1076,46 @@ export default function DevOpsTickets() {
                           <div className="devops-approval-workspace__reason">
                             <span className="devops-approval-workspace__meta-label">Reject reason</span>
                             <p>{detailRequest.reject_reason}</p>
+                          </div>
+                        )}
+
+                        {detailServiceBundle.length > 1 && (
+                          <div className="portal-surface portal-surface--tight devops-approval-workspace__bundle-surface">
+                            <div className="portal-surface__header">
+                              <div>
+                                <span className="portal-surface__eyebrow">Service Bundle</span>
+                                <h3 className="portal-surface__title">Target file layout</h3>
+                              </div>
+                            </div>
+                            <p className="devops-approval-workspace__bundle-copy">
+                              This request carries multiple services. Review the exact per-environment target files before approving the delivery path.
+                            </p>
+                            <div className="devops-approval-workspace__bundle-groups">
+                              {detailServiceBundleGroups.map((group) => (
+                                <div key={group.environment} className="devops-approval-workspace__bundle-group">
+                                  <div className="devops-approval-workspace__bundle-group-head">
+                                    <strong>{group.environment}</strong>
+                                    <span className="devops-approval-workspace__bundle-group-count">
+                                      {group.entries.length} service{group.entries.length === 1 ? '' : 's'}
+                                    </span>
+                                  </div>
+                                  <div className="portal-detail-grid">
+                                    {group.entries.map((entry, index) => (
+                                      <article key={`${group.environment}-${entry.cloud}-${entry.service}-${index}`} className="portal-detail-card">
+                                        <span className="devops-approval-workspace__meta-label">Service {index + 1}</span>
+                                        <strong className="portal-detail-card__value">{entry.display_name || entry.service}</strong>
+                                        <p className="devops-approval-workspace__bundle-copy">
+                                          {group.environment} · {(entry.cloud || detailRequest.cloud || 'cloud').toUpperCase()}
+                                        </p>
+                                        <code className="devops-approval-workspace__bundle-path">
+                                          {buildBundleTargetPath(detailRequest, entry)}
+                                        </code>
+                                      </article>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
 
