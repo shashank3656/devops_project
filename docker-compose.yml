@@ -97,7 +97,7 @@
 #       - config/.env
 #     environment:
 #       - NODE_ENV=development
-#       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.31.194.178:8080}
+#       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://136.113.66.112:8080}
 #       - WATCHPACK_POLLING=true
 #     volumes:
 #       # Mount source code for hot reload
@@ -128,14 +128,14 @@
 #       - config/.env 
 #     environment:
 #       - NODE_ENV=production
-#       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.31.194.178:8080}
+#       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://136.113.66.112:8080}
 #     depends_on:
 #       backend-prod:
 #         condition: service_healthy
 #       postgres:
 #         condition: service_healthy
 #     healthcheck:
-#       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://34.31.194.178:3000"]
+#       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://136.113.66.112:3000"]
 #       interval: 30s
 #       timeout: 10s
 #       retries: 3
@@ -159,7 +159,7 @@
 #       - "3001:3001"
 #     environment:
 #       - NODE_ENV=production
-#       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.31.194.178:8080}
+#       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://136.113.66.112:8080}
 #     depends_on:
 #       - backend
 #     restart: unless-stopped
@@ -179,7 +179,7 @@
 #       - "3001:3001"
 #     environment:
 #       - NODE_ENV=production
-#       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.31.194.178:8080}
+#       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://136.113.66.112:8080}
 #     depends_on:
 #       - backend-prod
 #     restart: unless-stopped
@@ -312,8 +312,8 @@ services:
       - BASE_BRANCH=${BASE_BRANCH:-main}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/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}
       - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL}
-      - FRONTEND_URL=${FRONTEND_URL:-http://34.31.194.178:3000}
-      - DEVOPS_FRONTEND_URL=${DEVOPS_FRONTEND_URL:-http://34.31.194.178:3002}
+      - FRONTEND_URL=${FRONTEND_URL:-http://136.113.66.112:3000}
+      - DEVOPS_FRONTEND_URL=${DEVOPS_FRONTEND_URL:-http://136.113.66.112:3002}
       - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_DB=${REDIS_DB:-0}
@@ -368,8 +368,8 @@ services:
       - BASE_BRANCH=${BASE_BRANCH:-main}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/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}
       - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL}
-      - FRONTEND_URL=${FRONTEND_URL:-http://34.31.194.178:3000}
-      - DEVOPS_FRONTEND_URL=${DEVOPS_FRONTEND_URL:-http://34.31.194.178:3002}
+      - FRONTEND_URL=${FRONTEND_URL:-http://136.113.66.112:3000}
+      - DEVOPS_FRONTEND_URL=${DEVOPS_FRONTEND_URL:-http://136.113.66.112:3002}
       - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_DB=${REDIS_DB:-0}
@@ -414,7 +414,7 @@ services:
       - config/.env
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.31.194.178:8080}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://136.113.66.112:8080}
       - NEXT_IGNORE_INCORRECT_LOCKFILE=true
       - WATCHPACK_POLLING=true
     volumes:
@@ -446,12 +446,12 @@ services:
       - config/.env 
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.31.194.178:8080}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://136.113.66.112:8080}
     depends_on:
       backend-prod:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://34.31.194.178:3000"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://136.113.66.112:3000"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -469,13 +469,13 @@ services:
       context: ./admin-frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.31.194.178:8080}
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://136.113.66.112:8080}
     container_name: infra-admin-frontend
     ports:
       - "3001:3001"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.31.194.178:8080}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://136.113.66.112:8080}
     depends_on:
       - backend
     restart: unless-stopped
@@ -489,13 +489,13 @@ services:
       context: ./admin-frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.31.194.178:8080}
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://136.113.66.112:8080}
     container_name: infra-admin-frontend
     ports:
       - "3001:3001"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.31.194.178:8080}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://136.113.66.112:8080}
     depends_on:
       - backend-prod
     restart: unless-stopped
@@ -511,7 +511,7 @@ services:
       context: ./devops-frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.31.194.178:8080}
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://136.113.66.112:8080}
     container_name: infra-devops-frontend
     ports:
       - "3002:3002"
@@ -519,11 +519,11 @@ services:
       - config/.env
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://34.31.194.178:8080}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://136.113.66.112:8080}
     depends_on:
       - backend
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://34.31.194.178:3002"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://136.113.66.112:3002"]
       interval: 30s
       timeout: 10s
       retries: 3
