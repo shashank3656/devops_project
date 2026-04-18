@@ -1874,8 +1874,11 @@ func validateProjectRequestForUser(userID, projectID int, teamNameOrSlug, enviro
 	}
 
 	serviceAllowed := false
+	requestedServiceKey := normalizeRequestServiceKey(cloud, service)
 	for _, allowedService := range project.Services {
-		if allowedService.Cloud == strings.ToLower(strings.TrimSpace(cloud)) && allowedService.Service == strings.ToLower(strings.TrimSpace(service)) {
+		allowedCloudKey := strings.ToLower(strings.TrimSpace(allowedService.Cloud))
+		allowedServiceKey := normalizeRequestServiceKey(allowedService.Cloud, allowedService.Service)
+		if allowedCloudKey == strings.ToLower(strings.TrimSpace(cloud)) && allowedServiceKey == requestedServiceKey {
 			serviceAllowed = true
 			break
 		}
