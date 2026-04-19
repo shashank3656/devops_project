@@ -58,6 +58,13 @@ func canonicalizeRequestBundlePayload(payload InfraRequest) ([]ServiceBundleEntr
 	}
 	payload["cloud"] = primary.Cloud
 	payload["service"] = primary.Service
+	if len(entries) == 1 {
+		flattenSingleBundleEntryConfigToTarget(target, entries[0])
+		if targetIsNested {
+			payload["config"] = target
+		}
+		return entries, nil
+	}
 	target["bundle_mode"] = len(entries) > 1
 	target["service_bundle"] = entries
 	target["bundle_summary"] = buildRequestBundleSummary(entries)
@@ -110,6 +117,21 @@ func serviceBundleEntryConfigHasMeaningfulFields(config map[string]interface{}) 
 		}
 	}
 	return false
+}
+
+func flattenSingleBundleEntryConfigToTarget(target map[string]interface{}, entry ServiceBundleEntry) {
+	if target == nil {
+		return
+	}
+	delete(target, "bundle_mode")
+	delete(target, "bundle_summary")
+	delete(target, "service_bundle")
+	for key, value := range cloneJSONMap(entry.Config) {
+		if key == "env" {
+			continue
+		}
+		target[key] = value
+	}
 }
 
 func resolveRequestBundleTarget(payload InfraRequest) (map[string]interface{}, bool) {
@@ -429,9 +451,10 @@ func requestServiceEntriesForPersistence(req *PRRequest) ([]ServiceBundleEntry, 
 
 	return []ServiceBundleEntry{
 		{
+			Env:     strings.TrimSpace(req.Env),
 			Cloud:   strings.TrimSpace(req.Cloud),
 			Service: strings.TrimSpace(req.Service),
-			Config:  map[string]interface{}{},
+			Config:  extractPrimaryRequestConfigMap(req.Config),
 		},
 	}, nil
 }
@@ -496,10 +519,14 @@ func normalizeStoredRequestBundleConfig(req *PRRequest, preferredEntries []Servi
 		}
 		payload["cloud"] = primary.Cloud
 		payload["service"] = primary.Service
-		target["bundle_mode"] = len(entries) > 1
-		target["service_bundle"] = entries
-		target["bundle_summary"] = buildRequestBundleSummary(entries)
-		prunePrimaryServiceConfigFieldsForBundle(target, entries)
+		if len(entries) == 1 {
+			flattenSingleBundleEntryConfigToTarget(target, entries[0])
+		} else {
+			target["bundle_mode"] = len(entries) > 1
+			target["service_bundle"] = entries
+			target["bundle_summary"] = buildRequestBundleSummary(entries)
+			prunePrimaryServiceConfigFieldsForBundle(target, entries)
+		}
 		if targetIsNested {
 			payload["config"] = target
 		}
@@ -512,4 +539,21 @@ func normalizeStoredRequestBundleConfig(req *PRRequest, preferredEntries []Servi
 	}
 	normalizedConfig := string(normalizedBytes)
 	return normalizedConfig, entries, normalizedConfig != req.Config, nil
+}
+
+func extractPrimaryRequestConfigMap(rawConfig string) map[string]interface{} {
+	if strings.TrimSpace(rawConfig) == "" {
+		return map[string]interface{}{}
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(rawConfig), &payload); err != nil {
+		return map[string]interface{}{}
+	}
+
+	config := cloneJSONMap(extractRequestConfigMap(payload))
+	delete(config, "bundle_mode")
+	delete(config, "bundle_summary")
+	delete(config, "service_bundle")
+	return config
 }

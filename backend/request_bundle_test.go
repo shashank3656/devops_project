@@ -264,11 +264,107 @@ func TestCanonicalizeRequestBundlePayloadHydratesSingleEntryConfig(t *testing.T)
 	if !ok {
 		t.Fatal("payload config should remain a map")
 	}
-	rawBundle, ok := config["service_bundle"].([]ServiceBundleEntry)
-	if !ok || len(rawBundle) != 1 {
-		t.Fatal("config service_bundle should contain 1 normalized entry")
+	if _, ok := config["service_bundle"]; ok {
+		t.Fatal("config service_bundle should be removed for a single-service request")
 	}
-	if got := stringValue(rawBundle[0].Config["bucket_name"]); got != "setuops-terraform-dev" {
-		t.Fatalf("stored bundle entry bucket_name = %q, want setuops-terraform-dev", got)
+	if _, ok := config["bundle_summary"]; ok {
+		t.Fatal("config bundle_summary should be removed for a single-service request")
+	}
+	if _, ok := config["bundle_mode"]; ok {
+		t.Fatal("config bundle_mode should be removed for a single-service request")
+	}
+}
+
+func TestNormalizeStoredRequestBundleConfigFlattensSingleEntryBundle(t *testing.T) {
+	req := &PRRequest{
+		Env:           "dev",
+		Cloud:         "gcp",
+		Service:       "cloud-storage",
+		ApplicationID: "APP123XYZ9",
+		Config: `{
+			"application_id": "APP123XYZ9",
+			"env": "dev",
+			"cloud": "gcp",
+			"service": "cloud-storage",
+			"config": {
+				"application_id": "APP123XYZ9",
+				"bucket_name": "setuops-terraform-dev",
+				"region": "asia-east2",
+				"storage_class": "STANDARD",
+				"service_bundle": [
+					{
+						"cloud": "gcp",
+						"service": "cloud-storage",
+						"normalized_service": "cloud-storage"
+					}
+				]
+			}
+		}`,
+	}
+
+	normalizedConfig, entries, changed, err := normalizeStoredRequestBundleConfig(req, nil)
+	if err != nil {
+		t.Fatalf("normalizeStoredRequestBundleConfig() error = %v", err)
+	}
+	if !changed {
+		t.Fatal("normalizeStoredRequestBundleConfig() should flatten legacy single-entry bundle payload")
+	}
+	if len(entries) != 1 {
+		t.Fatalf("normalizeStoredRequestBundleConfig() entries = %d, want 1", len(entries))
+	}
+	if got := stringValue(entries[0].Config["bucket_name"]); got != "setuops-terraform-dev" {
+		t.Fatalf("entry config bucket_name = %q, want setuops-terraform-dev", got)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(normalizedConfig), &payload); err != nil {
+		t.Fatalf("normalized config should remain valid json: %v", err)
+	}
+	config, ok := payload["config"].(map[string]interface{})
+	if !ok {
+		t.Fatal("normalized config should retain nested config map")
+	}
+	if _, ok := config["service_bundle"]; ok {
+		t.Fatal("config.service_bundle should be removed for single-service requests")
+	}
+	if _, ok := config["bundle_summary"]; ok {
+		t.Fatal("config.bundle_summary should be removed for single-service requests")
+	}
+	if _, ok := config["bundle_mode"]; ok {
+		t.Fatal("config.bundle_mode should be removed for single-service requests")
+	}
+	if got := stringValue(config["bucket_name"]); got != "setuops-terraform-dev" {
+		t.Fatalf("config.bucket_name = %q, want setuops-terraform-dev", got)
+	}
+}
+
+func TestRequestServiceEntriesForPersistenceKeepsSingleServiceConfig(t *testing.T) {
+	req := &PRRequest{
+		Env:     "dev",
+		Cloud:   "gcp",
+		Service: "cloud-storage",
+		Config: `{
+			"application_id": "APP123XYZ9",
+			"env": "dev",
+			"cloud": "gcp",
+			"service": "cloud-storage",
+			"config": {
+				"application_id": "APP123XYZ9",
+				"bucket_name": "setuops-terraform-dev",
+				"region": "asia-east2",
+				"storage_class": "STANDARD"
+			}
+		}`,
+	}
+
+	entries, err := requestServiceEntriesForPersistence(req)
+	if err != nil {
+		t.Fatalf("requestServiceEntriesForPersistence() error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("requestServiceEntriesForPersistence() entries = %d, want 1", len(entries))
+	}
+	if got := stringValue(entries[0].Config["bucket_name"]); got != "setuops-terraform-dev" {
+		t.Fatalf("entry config bucket_name = %q, want setuops-terraform-dev", got)
 	}
 }
