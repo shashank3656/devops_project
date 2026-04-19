@@ -292,7 +292,7 @@ export default function NewProjectPage() {
       }
       const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(getString(data.error, 'Failed to save project'));
+        throw new Error(getString(data.cause) || getString(data.error, 'Failed to save project'));
       }
       setNotice('Project created.');
       setForm(createEmptyForm());

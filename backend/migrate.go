@@ -952,6 +952,25 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_request_incidents_team_id ON request_incidents(team_id)")
 
+	// Migration 46: native request service bundle items
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS pr_request_service_items (
+			id SERIAL PRIMARY KEY,
+			request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			position INTEGER NOT NULL,
+			cloud VARCHAR(50) NOT NULL,
+			service VARCHAR(100) NOT NULL,
+			normalized_service VARCHAR(100) NOT NULL DEFAULT '',
+			display_name VARCHAR(160) NOT NULL DEFAULT '',
+			config TEXT NOT NULL DEFAULT '{}',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(request_id, position)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_request_service_items_request_id ON pr_request_service_items(request_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_request_service_items_request_position ON pr_request_service_items(request_id, position)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }

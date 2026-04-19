@@ -40,6 +40,25 @@ interface ProjectOption {
   team_access: ProjectTeamAccess[];
 }
 
+interface BundledServiceDraft {
+  id: string;
+  env: string;
+  cloud: string;
+  service: string;
+  normalizedService: string;
+  displayName: string;
+  formValues: Record<string, any>;
+}
+
+interface BundledServiceSummaryEntry {
+  id: string;
+  title: string;
+  detail: string;
+  gitPath: string;
+  isCurrentDraft: boolean;
+  envLabel: string;
+}
+
 const VALID_CLOUDS = ['aws', 'gcp', 'azure'];
 const ENV_LABEL_OVERRIDES: Record<string, string> = {
   dev: 'Development',
@@ -76,6 +95,30 @@ function formatEnvironmentLabel(value: string): string {
     .join(' ');
 }
 
+function normalizePathPreviewSegment(value: string, fallback: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || fallback;
+}
+
+function groupBundledServiceSummaryByEnvironment(entries: BundledServiceSummaryEntry[]) {
+  const groups = new Map<string, BundledServiceSummaryEntry[]>();
+  for (const entry of entries) {
+    const existing = groups.get(entry.envLabel);
+    if (existing) {
+      existing.push(entry);
+    } else {
+      groups.set(entry.envLabel, [entry]);
+    }
+  }
+  return Array.from(groups.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([environment, services]) => ({ environment, services }));
+}
+
 function parsePositiveIntParam(value: unknown): number | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -83,6 +126,201 @@ function parsePositiveIntParam(value: unknown): number | null {
   const parsed = Number(trimmed);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
   return parsed;
+}
+
+function formatToggleState(value: unknown): string {
+  return value === true ? 'Enabled' : 'Disabled';
+}
+
+function formatDefaultValue(value: string | number | boolean | undefined): string {
+  if (value === undefined) return '';
+  if (typeof value === 'boolean') return value ? 'Enabled' : 'Disabled';
+  return String(value);
+}
+
+function shouldRenderFieldDescription(description: string | undefined): boolean {
+  if (!description) return false;
+  return !description.startsWith('Recommended default:') && !description.startsWith('Default:');
+}
+
+function formatServiceFieldSummaryValue(field: ServiceField, value: unknown): string {
+  const resolvedValue = value === '' || value === undefined || value === null ? field.defaultValue : value;
+  if (resolvedValue === '' || resolvedValue === undefined || resolvedValue === null) {
+    return field.required ? 'Not set yet' : '';
+  }
+  if (field.type === 'boolean') {
+    return resolvedValue === true ? 'Enabled' : 'Disabled';
+  }
+  if (typeof resolvedValue === 'number') {
+    return String(resolvedValue);
+  }
+  return String(resolvedValue);
+}
+
+function getResourceNameGuidance(field: ServiceField, value: unknown): { tone: 'ok' | 'warning'; text: string } | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const trimmed = value.trim();
+
+  const lowercaseKebabPattern = /^[a-z][a-z0-9-]{1,61}$/;
+  const bucketPattern = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
+
+  if (field.name === 'bucket_name') {
+    if (!bucketPattern.test(trimmed) || trimmed.includes('..') || trimmed.includes('.-') || trimmed.includes('-.')) {
+      return {
+        tone: 'warning',
+        text: 'Bucket names should stay lowercase and use only numbers, letters, dots, and hyphens. Avoid spaces, underscores, and repeated separators.',
+      };
+    }
+    return {
+      tone: 'ok',
+      text: 'Bucket name format looks valid for a standard GCS bucket request.',
+    };
+  }
+
+  if (field.name === 'kms_key_name') {
+    if (!/^projects\/[^/]+\/locations\/[^/]+\/keyRings\/[^/]+\/cryptoKeys\/[^/]+$/.test(trimmed)) {
+      return {
+        tone: 'warning',
+        text: 'Use the full CMEK resource path: projects/<project>/locations/<region>/keyRings/<ring>/cryptoKeys/<key>.',
+      };
+    }
+    return {
+      tone: 'ok',
+      text: 'CMEK key path format looks good.',
+    };
+  }
+
+  if (['cluster_name', 'instance_name', 'db_instance_name', 'network_name', 'vpc_name', 'node_group_name'].includes(field.name)) {
+    if (!lowercaseKebabPattern.test(trimmed)) {
+      return {
+        tone: 'warning',
+        text: 'Use a lowercase kebab-case name so it is easier for infra, audit, and ops teams to work with later.',
+      };
+    }
+    return {
+      tone: 'ok',
+      text: 'Name format looks clean and operator-friendly.',
+    };
+  }
+
+  return null;
+}
+
+function getSectionExample(service: string, sectionTitle: string): string {
+  const examples: Record<string, Record<string, string>> = {
+    'cloud-storage': {
+      'Bucket basics': 'Example: app-artifacts bucket in asia-east2 with STANDARD storage.',
+      'Protection and retention': 'Example: keep soft delete on default, leave versioning off unless recovery is required.',
+      Encryption: 'Example: stay on Google-managed encryption unless a team-specific CMEK key is required.',
+    },
+    gke: {
+      'Cluster settings': 'Example: regional cluster on 1.28 for a shared application platform.',
+      Placement: 'Example: asia-east2 regional footprint with the default zone spread.',
+      'Maintenance and scaling': 'Example: evening maintenance window with autoscaling tuned for optimization.',
+      'Node pool': 'Example: e2-standard-4 nodes with balanced disks and autoscaling enabled.',
+    },
+    'compute-engine': {
+      'Core setup': 'Example: one application VM with the standard Ubuntu image.',
+      Placement: 'Example: place the VM close to the main app or data dependency.',
+      'Sizing and capacity': 'Example: start with e2-medium and a 20 GB disk, then scale if usage grows.',
+    },
+    'cloud-sql': {
+      'Core setup': 'Example: one shared database instance for the service team.',
+      'Database settings': 'Example: PostgreSQL with the team-approved engine version and database name.',
+      Placement: 'Example: keep the database in the same region as the main workload.',
+      'Sizing and capacity': 'Example: start small, then grow tier and disk only when needed.',
+    },
+    vpc: {
+      'Core setup': 'Example: one dedicated network lane for the application boundary.',
+      Networking: 'Example: regional routing with manual subnet control for stricter ownership.',
+    },
+    ec2: {
+      'Core setup': 'Example: a single application EC2 instance for a small internal workload.',
+      'Sizing and capacity': 'Example: start on t2.micro unless the workload already needs more headroom.',
+      'Access and bootstrap': 'Example: only add a key pair when the image bootstrap does not already cover access.',
+    },
+    eks: {
+      'Cluster settings': 'Example: a team-owned EKS cluster pinned to the validated Kubernetes version.',
+      'Node pool': 'Example: one main node group with standard instance sizing for app workloads.',
+      'Sizing and capacity': 'Example: begin with a narrow autoscaling range and widen it only when traffic proves the need.',
+    },
+    rds: {
+      'Core setup': 'Example: one managed PostgreSQL instance for the application service.',
+      'Database settings': 'Example: keep the engine and version aligned with the team platform baseline.',
+      'Sizing and capacity': 'Example: start with a small class and 20 GB unless expected usage is already known.',
+    },
+  };
+
+  return examples[service]?.[sectionTitle] || '';
+}
+
+function getReviewImpactNotes(service: string): string[] {
+  const notes: Record<string, string[]> = {
+    'cloud-storage': [
+      'Reviewers usually check naming, data location, retention, and encryption posture first.',
+      'CMEK requests often need one extra review because key ownership and access have to line up.',
+    ],
+    gke: [
+      'Reviewers usually check environment fit, Kubernetes version, and autoscaling posture first.',
+      'Node size and maintenance window choices often affect both cost and operational approval.',
+    ],
+    'compute-engine': [
+      'Reviewers usually check image baseline, machine size, and placement.',
+      'Instance naming and zone choice matter because they shape later operations and ownership.',
+    ],
+    'cloud-sql': [
+      'Reviewers usually check engine version, region alignment, and sizing.',
+      'Database requests often get extra attention when the version differs from the platform baseline.',
+    ],
+    vpc: [
+      'Reviewers usually check CIDR ownership, DNS posture, and routing mode.',
+      'Network requests often affect other teams, so clear naming and scope help approvals move faster.',
+    ],
+    ec2: [
+      'Reviewers usually check instance purpose, image baseline, and machine size.',
+      'Key pair and AMI choices can trigger follow-up questions if they differ from the standard pattern.',
+    ],
+    eks: [
+      'Reviewers usually check Kubernetes version, node group posture, and scaling limits.',
+      'Cluster requests often need stronger business context because they create a broader operational surface.',
+    ],
+    rds: [
+      'Reviewers usually check engine choice, version, storage, and class.',
+      'Database sizing and engine changes are common approval slow-downs when the impact is not explained clearly.',
+    ],
+  };
+
+  return notes[service] || ['Reviewers will usually check the core setup, placement, and main configuration choices for this request.'];
+}
+
+function normalizeServiceKey(cloud: string, serviceKey: string): string {
+  if (cloud !== 'gcp') return serviceKey;
+
+  const normalized = serviceKey.trim().toLowerCase();
+  const aliases: Record<string, string> = {
+    storage: 'cloud-storage',
+    'cloud-storage': 'cloud-storage',
+    cloudsql: 'cloud-sql',
+    'cloud-sql': 'cloud-sql',
+  };
+
+  return aliases[normalized] || normalized;
+}
+
+function normalizeServicePathPreviewKey(cloud: string, serviceKey: string): string {
+  const normalizedService = normalizeServiceKey(cloud, serviceKey);
+  if (cloud === 'gcp') {
+    if (normalizedService === 'cloud-storage') return 'storage';
+    if (normalizedService === 'cloud-sql') return 'cloudsql';
+  }
+  return normalizedService;
+}
+
+function getServiceDisplayName(cloud: string, serviceKey: string): string {
+  if (!cloud || !serviceKey) return serviceKey;
+  if (cloud === 'aws') return awsServices[serviceKey]?.displayName || serviceKey;
+  if (cloud === 'gcp') return gcpServices[normalizeServiceKey(cloud, serviceKey)]?.displayName || serviceKey;
+  return serviceKey;
 }
 
 export default function SelectService() {
@@ -100,6 +338,7 @@ export default function SelectService() {
   const [cloud, setCloud] = useState('');
   const [service, setService] = useState('');
   const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const [bundledServices, setBundledServices] = useState<BundledServiceDraft[]>([]);
   const [loading, setLoading] = useState(false);
   const [prUrl, setPrUrl] = useState('');
   const [error, setError] = useState('');
@@ -219,6 +458,10 @@ export default function SelectService() {
   const availableTeams = selectedProject
     ? teams.filter((option) => selectedProject.team_access.some((access) => access.team_id === option.id))
     : teams;
+  const selectedTeamOption =
+    availableTeams.find((option) => option.slug === team) ||
+    teams.find((option) => option.slug === team) ||
+    null;
 
   const availableEnvironments = (() => {
     if (!selectedProject) return normalizeEnvironmentValues(environments.map((item) => item.value));
@@ -252,7 +495,7 @@ export default function SelectService() {
       return awsServices[service];
     }
     if (cloud === 'gcp' && service) {
-      return gcpServices[service];
+      return gcpServices[normalizeServiceKey(cloud, service)];
     }
     return null;
   };
@@ -299,6 +542,51 @@ export default function SelectService() {
       ...prev,
       [fieldName]: value
     }));
+  };
+
+  const buildBundledServiceDraft = (
+    draftEnv: string,
+    draftCloud: string,
+    draftService: string,
+    values: Record<string, any>,
+    draftId?: string,
+  ): BundledServiceDraft | null => {
+    if (!draftEnv || !draftCloud || !draftService) return null;
+    const normalized = normalizeServiceKey(draftCloud, draftService);
+    return {
+      id: draftId || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      env: draftEnv,
+      cloud: draftCloud,
+      service: draftService,
+      normalizedService: normalized,
+      displayName: getServiceDisplayName(draftCloud, draftService),
+      formValues: { ...values },
+    };
+  };
+
+  const getServiceIdentityPreview = (draft: BundledServiceDraft): string => {
+    const identityFieldNames = ['bucket_name', 'cluster_name', 'instance_name', 'db_instance_name', 'network_name', 'vpc_name'];
+    const identityField = Object.entries(draft.formValues).find(([key, value]) => identityFieldNames.includes(key) && value);
+    if (identityField?.[1]) return String(identityField[1]);
+    return 'Configuration in progress';
+  };
+
+  const removeBundledService = (draftId: string) => {
+    setBundledServices((prev) => prev.filter((item) => item.id !== draftId));
+  };
+
+  const addCurrentServiceToBundle = () => {
+    const nextDraft = buildBundledServiceDraft(env, cloud, service, formValues);
+    if (!nextDraft) {
+      toast('Choose the environment, cloud, and service before adding another one.', 'error');
+      return;
+    }
+
+    setBundledServices((prev) => [...prev, nextDraft]);
+    setCloud('');
+    setService('');
+    setFormValues({});
+    toast(`${nextDraft.displayName} added to this request bundle.`, 'success');
   };
 
   const renderField = (field: ServiceField) => {
@@ -362,9 +650,43 @@ export default function SelectService() {
     }
   };
 
+  const renderConfiguredField = (field: ServiceField) => (
+    <div key={field.name} className="form-group">
+      {field.type !== 'boolean' && (
+        <label className="label">
+          {field.label} {field.required && <span style={{ color: 'var(--error-color)' }}>*</span>}
+        </label>
+      )}
+      {renderField(field)}
+      {(field.defaultValue !== undefined || field.description) && (
+        <div className="request-builder__field-meta">
+          {field.defaultValue !== undefined && (
+            <span className="request-builder__field-default">
+              Recommended default: {formatDefaultValue(field.defaultValue)}
+            </span>
+          )}
+          {shouldRenderFieldDescription(field.description) && <p className="request-builder__note">{field.description}</p>}
+        </div>
+      )}
+      {getResourceNameGuidance(field, formValues[field.name]) && (
+        <div
+          className={`request-builder__validation-hint request-builder__validation-hint--${
+            getResourceNameGuidance(field, formValues[field.name])?.tone || 'ok'
+          }`}
+        >
+          {getResourceNameGuidance(field, formValues[field.name])?.text}
+        </div>
+      )}
+    </div>
+  );
+
   const submitRequest = async (asDraft: boolean) => {
-    if (!projectId || !team || !env || !cloud || !service) {
-      setError('Choose a project, team, environment, cloud, and service first.');
+    const currentDraft = buildBundledServiceDraft(env, cloud, service, formValues);
+    const requestServices = currentDraft ? [...bundledServices, currentDraft] : [...bundledServices];
+    const primaryService = requestServices[0];
+
+    if (!projectId || !team || !primaryService) {
+      setError('Choose the project, team, and at least one service first.');
       return;
     }
 
@@ -379,18 +701,34 @@ export default function SelectService() {
     if (token && token !== 'undefined') headers['Authorization'] = `Bearer ${token}`;
 
     try {
+      const serviceBundlePayload = requestServices.map((entry) => ({
+        env: entry.env,
+        cloud: entry.cloud,
+        service: entry.normalizedService || entry.service,
+        normalized_service: entry.normalizedService,
+        display_name: entry.displayName,
+        config: entry.formValues,
+      }));
+      const isBundledRequest = serviceBundlePayload.length > 1;
+      const sharedConfig = isBundledRequest
+        ? {
+            bundle_mode: true,
+            service_bundle: serviceBundlePayload,
+          }
+        : { ...primaryService.formValues };
+
       const payload = {
         project_id: projectId,
         team,
-        env,
-        cloud,
-        service,
+        env: primaryService.env,
+        cloud: primaryService.cloud,
+        service: primaryService.normalizedService || primaryService.service,
         client_name: clientName || undefined,
         priority,
         due_date: dueDate || undefined,
         draft: asDraft,
         initial_comment: initialComment.trim() || undefined,
-        config: isIamFlow ? { request_type: 'iam', ...formValues } : formValues
+        config: isIamFlow ? { request_type: 'iam', ...sharedConfig } : sharedConfig
       };
 
       const response = await fetch(`${apiUrl}/api/request`, {
@@ -434,19 +772,27 @@ export default function SelectService() {
     }
   };
 
-  const canSubmitRequest =
-    loading || !projectId || !team || !env || !cloud || !service || canCreatePR !== true;
+  const serviceConfig = getServiceConfig();
+  const availableServices = getAvailableServices();
+  const currentServiceDraft = buildBundledServiceDraft(env, cloud, service, formValues, 'current-draft');
+  const requestServices = currentServiceDraft ? [...bundledServices, currentServiceDraft] : bundledServices;
+  const primaryBundledService = requestServices[0] || null;
+  const selectedServiceLabel = currentServiceDraft
+    ? currentServiceDraft.displayName
+    : primaryBundledService
+      ? `${requestServices.length} service${requestServices.length === 1 ? '' : 's'} selected`
+      : 'Not chosen yet';
+  const requestReady = !!(projectId && team && requestServices.length > 0);
+  const canSubmitRequest = loading || !projectId || !team || requestServices.length === 0 || canCreatePR !== true;
+  const multiServiceMode = requestServices.length > 1;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     submitRequest(false);
   };
 
-  const serviceConfig = getServiceConfig();
-  const availableServices = getAvailableServices();
-  const selectedServiceLabel = service ? (serviceConfig?.displayName || service) : 'Not chosen yet';
-  const requiredServiceFieldCount = serviceConfig?.fields.filter((field) => field.required).length ?? 0;
-  const requestReady = !!(projectId && team && env && cloud && service);
+  const normalizedService = service ? normalizeServiceKey(cloud, service) : '';
+  const isGcpStorageBucket = cloud === 'gcp' && normalizedService === 'cloud-storage';
   const pageTitle = isIamFlow ? 'Create an access request' : 'Create a request';
   const pageSubtitle = isIamFlow
     ? 'Start with the basics first. Then choose the cloud area related to the access change. The form only asks for the extra details reviewers need.'
@@ -471,6 +817,151 @@ export default function SelectService() {
     ? 'These choices are currently shaping this access request.'
     : 'These are the choices currently driving this request.';
   const targetSummaryLabel = isIamFlow ? 'Cloud and request target' : 'Cloud and service';
+  const bucketPolicySummary = isGcpStorageBucket
+    ? [
+        { label: 'Storage bucket name', value: String(formValues.bucket_name || 'Not set yet') },
+        { label: 'Region', value: String(formValues.region || 'asia-east2') },
+        { label: 'Storage class', value: String(formValues.storage_class || 'STANDARD') },
+        { label: 'Soft delete policy', value: String(formValues.soft_delete_policy || 'Default') },
+        { label: 'Object versioning', value: formatToggleState(formValues.versioning_enabled) },
+        { label: 'Bucket retention policy', value: formatToggleState(formValues.bucket_retention_policy_enabled) },
+        { label: 'Object retention', value: formatToggleState(formValues.object_retention_enabled) },
+        { label: 'Encryption type', value: String(formValues.encryption_type || 'Google-managed') },
+        ...(formValues.encryption_type === 'Customer-managed (CMEK)' && formValues.kms_key_name
+          ? [{ label: 'CMEK key resource', value: String(formValues.kms_key_name) }]
+          : []),
+      ]
+    : [];
+  const visibleServiceFields = serviceConfig
+    ? serviceConfig.fields.filter((field) => {
+        if (!field.showWhen) return true;
+        return formValues[field.showWhen.field] === field.showWhen.equals;
+      })
+    : [];
+  const requiredServiceFieldCount = visibleServiceFields.filter((field) => field.required).length;
+  const sectionDescriptions: Record<string, string> = {
+    'Core setup': 'Start with the resource identity and the minimum information needed to create it.',
+    'Placement': 'Choose where the resource should live.',
+    'Sizing and capacity': 'Set capacity, compute size, or storage allocation.',
+    'Access and bootstrap': 'Capture bootstrap or access-related details only when they are needed.',
+    'Networking': 'Define DNS, subnetwork, or routing behavior.',
+    'Cluster settings': 'Choose the main cluster posture and defaults.',
+    'Node pool': 'Configure worker shape, disk posture, and node scaling.',
+    'Maintenance and scaling': 'Control upgrades, autoscaling, and maintenance windows.',
+    'Database settings': 'Choose the database engine and runtime settings.',
+    'Bucket basics': 'Start with the bucket identity, region, and storage class.',
+    'Protection and retention': 'Decide how deletion, recovery, and retention should behave for this resource.',
+    'Encryption': 'Choose how data should be encrypted at rest.',
+  };
+  const serviceFieldSections = Array.from(
+    visibleServiceFields.reduce((groups, field) => {
+      const sectionName = field.section || 'Configuration';
+      const existing = groups.get(sectionName);
+      if (existing) {
+        existing.push(field);
+      } else {
+        groups.set(sectionName, [field]);
+      }
+      return groups;
+    }, new Map<string, ServiceField[]>()),
+  ).map(([title, fields]) => ({
+    title,
+    description: sectionDescriptions[title] || 'Review and complete the fields in this section.',
+    fields,
+  }));
+  const serviceSummarySections = serviceFieldSections
+    .map((section) => ({
+      title: section.title,
+      description: section.description,
+      items: section.fields
+        .map((field) => ({
+          label: field.label,
+          value: formatServiceFieldSummaryValue(field, formValues[field.name]),
+        }))
+        .filter((item) => item.value),
+    }))
+    .filter((section) => section.items.length > 0);
+  const primaryIdentityField =
+    visibleServiceFields.find((field) => ['bucket_name', 'cluster_name', 'instance_name', 'db_instance_name', 'network_name', 'vpc_name'].includes(field.name)) ||
+    visibleServiceFields.find((field) => field.required) ||
+    null;
+  const placementField =
+    visibleServiceFields.find((field) => ['region', 'zone', 'location'].includes(field.name)) || null;
+  const postureFields = visibleServiceFields.filter((field) =>
+    ['storage_class', 'encryption_type', 'instance_type', 'machine_type', 'tier', 'routing_mode', 'kubernetes_version', 'database_version'].includes(field.name),
+  );
+  const serviceBlueprintCards = service
+    ? [
+        {
+          icon: 'Build',
+          label: 'Resource',
+          value: primaryIdentityField
+            ? `${selectedServiceLabel} · ${formatServiceFieldSummaryValue(primaryIdentityField, formValues[primaryIdentityField.name])}`
+            : selectedServiceLabel,
+          detail: 'Primary resource identity',
+        },
+        {
+          icon: 'Pin',
+          label: 'Placement',
+          value: placementField
+            ? `${String(formValues[placementField.name] || placementField.defaultValue || 'Pending selection')} · ${env || 'environment pending'}`
+            : `${cloud ? cloud.toUpperCase() : 'Cloud pending'} · ${env || 'environment pending'}`,
+          detail: 'Where this resource will live',
+        },
+        {
+          icon: 'Shield',
+          label: 'Posture',
+          value:
+            postureFields.length > 0
+              ? postureFields
+                  .slice(0, 2)
+                  .map((field) => formatServiceFieldSummaryValue(field, formValues[field.name]))
+                  .filter(Boolean)
+                  .join(' · ') || 'Defaults in progress'
+              : serviceSummarySections[0]?.items.slice(0, 2).map((item) => item.value).join(' · ') || 'Defaults in progress',
+          detail: 'Key settings before review',
+        },
+      ]
+    : [];
+  const reviewImpactNotes = normalizedService ? getReviewImpactNotes(normalizedService) : [];
+  const bundledServiceSummary: BundledServiceSummaryEntry[] = requestServices.map((entry, index) => ({
+    id: entry.id,
+    title: `${index + 1}. ${entry.displayName}`,
+    detail: `${formatEnvironmentLabel(entry.env)} · ${entry.cloud.toUpperCase()} · ${getServiceIdentityPreview(entry)}`,
+    envLabel: formatEnvironmentLabel(entry.env),
+    gitPath: `project/${
+      normalizePathPreviewSegment(selectedProject?.code || selectedProject?.name || '', 'project')
+    }/${
+      normalizePathPreviewSegment(selectedTeamOption?.slug || team || '', 'team')
+    }/${
+      normalizePathPreviewSegment(entry.cloud, 'cloud')
+    }/envs/${
+      normalizePathPreviewSegment(entry.env, 'env')
+    }/${
+      normalizePathPreviewSegment(normalizeServicePathPreviewKey(entry.cloud, entry.normalizedService || entry.service), 'service')
+    }/<application-id>/request.json`,
+    isCurrentDraft: currentServiceDraft?.id === entry.id,
+  }));
+  const bundledServiceSummaryGroups = groupBundledServiceSummaryByEnvironment(bundledServiceSummary);
+  const bundledServiceCardGroups = Array.from(
+    requestServices.reduce((groups, entry, index) => {
+      const environment = formatEnvironmentLabel(entry.env);
+      const existing = groups.get(environment);
+      const card = {
+        entry,
+        index,
+        gitPath: bundledServiceSummary[index]?.gitPath || '',
+      };
+      if (existing) {
+        existing.push(card);
+      } else {
+        groups.set(environment, [card]);
+      }
+      return groups;
+    }, new Map<string, Array<{ entry: BundledServiceDraft; index: number; gitPath: string }>>()),
+  )
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([environment, services]) => ({ environment, services }));
 
   return (
     <>
@@ -538,6 +1029,8 @@ export default function SelectService() {
                       setEnv('');
                       setCloud('');
                       setService('');
+                      setFormValues({});
+                      setBundledServices([]);
                     }}
                     required
                   >
@@ -690,7 +1183,10 @@ export default function SelectService() {
                   >
                     <option value="">{!projectId ? 'Choose project first' : !cloud ? 'Choose cloud first' : 'Choose service'}</option>
                     {availableServices.map(svc => {
-                      const config = cloud === 'aws' ? awsServices[svc] : gcpServices[svc];
+                      const config =
+                        cloud === 'aws'
+                          ? awsServices[svc]
+                          : gcpServices[normalizeServiceKey(cloud, svc)];
                       return (
                         <option key={svc} value={svc}>
                           {config?.displayName || svc}
@@ -724,17 +1220,130 @@ export default function SelectService() {
                       </span>
                     )}
                   </h3>
-                  {serviceConfig.fields.map(field => (
-                    <div key={field.name} className="form-group">
-                      {field.type !== 'boolean' && (
-                        <label className="label">
-                          {field.label} {field.required && <span style={{ color: 'var(--error-color)' }}>*</span>}
-                        </label>
+                  {isGcpStorageBucket && (
+                    <div className="request-builder__service-spotlight">
+                      <strong>Bucket defaults</strong>
+                      <p>
+                        Start with the standard bucket posture, then turn on only the protections you need. Soft delete stays on the default
+                        policy, versioning and retention stay disabled unless you enable them, and encryption uses Google-managed keys by default.
+                      </p>
+                    </div>
+                  )}
+                  {serviceFieldSections.length > 0 ? (
+                    <div className="request-builder__service-groups">
+                      {serviceFieldSections.map((section) => (
+                        <section key={section.title} className="request-builder__service-group">
+                          <div className="request-builder__service-group-header">
+                            <strong>{section.title}</strong>
+                            <p>{section.description}</p>
+                            {normalizedService && getSectionExample(normalizedService, section.title) && (
+                              <div className="request-builder__service-example">
+                                {getSectionExample(normalizedService, section.title)}
+                              </div>
+                            )}
+                          </div>
+                          <div
+                            className={`request-builder__grid${
+                              section.fields.length === 1 ? ' request-builder__grid--single' : ''
+                            }`}
+                          >
+                            {section.fields.map((field) => renderConfiguredField(field))}
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+                  ) : (
+                    visibleServiceFields.map((field) => renderConfiguredField(field))
+                  )}
+                    </div>
+                  </section>
+                )}
+
+                {(requestServices.length > 0 || serviceConfig) && (
+                  <section className="request-builder__section">
+                    <div className="request-builder__section-header">
+                      <h2>Step 3.5: Build the service bundle</h2>
+                      <p>
+                        Keep the project and team shared once. Each service card captures the environment selected when you add it.
+                      </p>
+                    </div>
+                    <div className="request-builder__bundle-actions">
+                      {currentServiceDraft ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={addCurrentServiceToBundle}
+                          >
+                            + Add another service
+                          </button>
+                          <span className="request-builder__bundle-hint">
+                            Add this service card, then you can change environment, cloud, or service before adding the next one.
+                          </span>
+                        </>
+                      ) : (
+                        <span className="request-builder__bundle-hint">
+                          Start by choosing a cloud and service, then add it to the request bundle.
+                        </span>
                       )}
-                      {renderField(field)}
                     </div>
-                  ))}
-                    </div>
+                    {multiServiceMode && (
+                      <div className="request-builder__service-spotlight">
+                        <strong>Bundle request mode</strong>
+                        <p>
+                          This request now carries multiple services. We will keep the first service as the primary request key for the
+                          current backend flow and attach the full service bundle in the request config for review.
+                        </p>
+                      </div>
+                    )}
+                    {requestServices.length > 0 && (
+                      <div className="request-builder__bundle-card-groups">
+                        {bundledServiceCardGroups.map((group) => (
+                          <div key={group.environment} className="request-builder__bundle-card-group">
+                            <div className="request-builder__bundle-card-group-head">
+                              <strong>{group.environment}</strong>
+                              <span className="request-builder__bundle-card-group-count">
+                                {group.services.length} service{group.services.length === 1 ? '' : 's'}
+                              </span>
+                            </div>
+                            <div className="request-builder__bundle-list">
+                              {group.services.map(({ entry, index, gitPath }) => (
+                                <article
+                                  key={entry.id}
+                                  className={`request-builder__bundle-card${
+                                    currentServiceDraft?.id === entry.id ? ' request-builder__bundle-card--draft' : ''
+                                  }`}
+                                >
+                                  <div className="request-builder__bundle-card-header">
+                                    <div>
+                                      <span className="request-builder__summary-label">Service {index + 1}</span>
+                                      <h3>{entry.displayName}</h3>
+                                    </div>
+                                    <div className="request-builder__bundle-meta">
+                                      <span className="request-builder__bundle-pill">{formatEnvironmentLabel(entry.env)}</span>
+                                      <span className="request-builder__bundle-pill">{entry.cloud.toUpperCase()}</span>
+                                      {currentServiceDraft?.id === entry.id ? (
+                                        <span className="request-builder__bundle-pill request-builder__bundle-pill--draft">Current draft</span>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="btn btn-secondary btn-sm"
+                                          onClick={() => removeBundledService(entry.id)}
+                                        >
+                                          Remove
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <p className="request-builder__bundle-detail">{getServiceIdentityPreview(entry)}</p>
+                                  <code className="request-builder__bundle-path">{gitPath}</code>
+                                </article>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </section>
                 )}
 
@@ -804,15 +1413,27 @@ export default function SelectService() {
                     </div>
                     <div className="request-builder__summary-item">
                       <span className="request-builder__summary-label">Environment</span>
-                      <span className="request-builder__summary-value">{env || 'Not chosen yet'}</span>
+                      <span className="request-builder__summary-value">
+                        {requestServices.length > 0
+                          ? Array.from(new Set(requestServices.map((entry) => formatEnvironmentLabel(entry.env)))).join(' · ')
+                          : env || 'Not chosen yet'}
+                      </span>
                     </div>
                     <div className="request-builder__summary-item">
                       <span className="request-builder__summary-label">{targetSummaryLabel}</span>
-                      <span className="request-builder__summary-value">{cloud ? `${cloud.toUpperCase()} · ${selectedServiceLabel}` : 'Not chosen yet'}</span>
+                      <span className="request-builder__summary-value">
+                        {primaryBundledService
+                          ? `${formatEnvironmentLabel(primaryBundledService.env)} · ${primaryBundledService.cloud.toUpperCase()} · ${primaryBundledService.displayName}`
+                          : 'Not chosen yet'}
+                      </span>
                     </div>
                     <div className="request-builder__summary-item">
-                      <span className="request-builder__summary-label">Extra fields</span>
-                      <span className="request-builder__summary-value">{serviceConfig ? `${requiredServiceFieldCount} required field${requiredServiceFieldCount === 1 ? '' : 's'} for this service` : service ? 'No extra fields required' : 'Choose a service to see'}</span>
+                      <span className="request-builder__summary-label">Services in this request</span>
+                      <span className="request-builder__summary-value">
+                        {requestServices.length > 0
+                          ? `${requestServices.length} service${requestServices.length === 1 ? '' : 's'} selected`
+                          : 'Choose a service to see'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -839,6 +1460,111 @@ export default function SelectService() {
                     </div>
                   </div>
                 </div>
+
+                {serviceBlueprintCards.length > 0 && (
+                  <div className="request-builder__summary">
+                    <h3>What this request creates</h3>
+                    <p>A quick operator view of the resource, where it lands, and the main settings going into review.</p>
+                    <div className="request-builder__blueprint-grid">
+                      {serviceBlueprintCards.map((card) => (
+                        <div key={card.label} className="request-builder__blueprint-card">
+                          <span className="request-builder__blueprint-icon">{card.icon}</span>
+                          <span className="request-builder__summary-label">{card.label}</span>
+                          <strong className="request-builder__blueprint-value">{card.value}</strong>
+                          <span className="request-builder__blueprint-detail">{card.detail}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {reviewImpactNotes.length > 0 && (
+                      <div className="request-builder__impact-list">
+                        {reviewImpactNotes.map((note) => (
+                          <div key={note} className="request-builder__impact-item">
+                            {note}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {bundledServiceSummary.length > 0 && (
+                  <div className="request-builder__summary">
+                    <h3>Services in this request</h3>
+                    <p>Review the service bundle before you save or send it.</p>
+                    <div className="request-builder__bundle-summary-groups">
+                      {bundledServiceSummaryGroups.map((group) => (
+                        <div key={group.environment} className="request-builder__bundle-summary-group">
+                          <div className="request-builder__bundle-summary-head">
+                            <strong>{group.environment}</strong>
+                            <span className="request-builder__bundle-summary-count">
+                              {group.services.length} service{group.services.length === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                          <div className="request-builder__service-summary-groups">
+                            {group.services.map((entry) => (
+                              <div key={entry.id} className="request-builder__service-summary-group">
+                                <div className="request-builder__service-summary-header">
+                                  <strong>{entry.title}</strong>
+                                  <p>{entry.isCurrentDraft ? 'Current service draft' : 'Added to the shared request bundle'}</p>
+                                </div>
+                                <div className="request-builder__summary-list">
+                                  <div className="request-builder__summary-item">
+                                    <span className="request-builder__summary-label">Target</span>
+                                    <span className="request-builder__summary-value">{entry.detail}</span>
+                                  </div>
+                                  <div className="request-builder__summary-item">
+                                    <span className="request-builder__summary-label">Git path</span>
+                                    <code className="request-builder__bundle-path request-builder__bundle-path--summary">{entry.gitPath}</code>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {bucketPolicySummary.length > 0 && (
+                  <div className="request-builder__summary">
+                    <h3>Bucket configuration</h3>
+                    <p>These are the current storage bucket settings that will be sent for review.</p>
+                    <div className="request-builder__summary-list">
+                      {bucketPolicySummary.map((item) => (
+                        <div key={item.label} className="request-builder__summary-item">
+                          <span className="request-builder__summary-label">{item.label}</span>
+                          <span className="request-builder__summary-value">{item.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!isGcpStorageBucket && serviceSummarySections.length > 0 && (
+                  <div className="request-builder__summary">
+                    <h3>{selectedServiceLabel} configuration</h3>
+                    <p>These are the service-specific values that will be sent for review.</p>
+                    <div className="request-builder__service-summary-groups">
+                      {serviceSummarySections.map((section) => (
+                        <div key={section.title} className="request-builder__service-summary-group">
+                          <div className="request-builder__service-summary-header">
+                            <strong>{section.title}</strong>
+                            <p>{section.description}</p>
+                          </div>
+                          <div className="request-builder__summary-list">
+                            {section.items.map((item) => (
+                              <div key={`${section.title}-${item.label}`} className="request-builder__summary-item">
+                                <span className="request-builder__summary-label">{item.label}</span>
+                                <span className="request-builder__summary-value">{item.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </aside>
             </div>
           </div>

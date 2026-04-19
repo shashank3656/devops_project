@@ -53,8 +53,10 @@ interface PRRequest {
   pr_url: string;
   branch?: string;
   file_path?: string;
+  application_id?: string;
   status: string;
   config?: string;
+  service_bundle?: ServiceBundleEntry[];
   created_at: string;
   updated_at?: string;
   created_by_username?: string;
@@ -79,6 +81,41 @@ interface RequestComment {
   username: string;
   body: string;
   created_at: string;
+}
+
+interface ServiceBundleEntry {
+  cloud: string;
+  service: string;
+  normalized_service?: string;
+  display_name?: string;
+  env?: string;
+  config?: Record<string, any>;
+}
+
+interface BundleNormalizationItem {
+  request_id: number;
+  application_id?: string;
+  team: string;
+  before_env: string;
+  after_env?: string;
+  before_cloud: string;
+  after_cloud?: string;
+  before_service: string;
+  after_service?: string;
+  bundle_count: number;
+  config_changed: boolean;
+  service_items_synced: boolean;
+  error?: string;
+}
+
+interface BundleNormalizationPreview {
+  dry_run: boolean;
+  scanned: number;
+  bundled_requests: number;
+  config_changes_needed: number;
+  service_items_synced: number;
+  errors: number;
+  items: BundleNormalizationItem[];
 }
 
 function getPreviewRiskClass(level?: string): string {
@@ -111,6 +148,74 @@ function isAccessRequest(req: PRRequest | null | undefined): boolean {
   } catch {
     return false;
   }
+}
+
+function getRequestServiceBundle(req: (Pick<PRRequest, 'config'> & { service_bundle?: ServiceBundleEntry[] }) | null | undefined): ServiceBundleEntry[] {
+  if (Array.isArray(req?.service_bundle) && req.service_bundle.length > 0) {
+    return req.service_bundle.filter((entry) => entry && entry.cloud && entry.service);
+  }
+  if (!req?.config) return [];
+  try {
+    const parsed = JSON.parse(req.config) as { service_bundle?: unknown; config?: { service_bundle?: unknown } };
+    const serviceBundle = parsed?.service_bundle ?? parsed?.config?.service_bundle;
+    return Array.isArray(serviceBundle) ? (serviceBundle as ServiceBundleEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeBundlePathSegment(value: string | number | undefined | null, fallback: string): string {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || fallback;
+}
+
+function normalizeBundleServicePathKey(cloud: string, service: string): string {
+  const normalizedCloud = cloud.trim().toLowerCase();
+  const normalizedService = service.trim().toLowerCase();
+  if (normalizedCloud === 'gcp') {
+    if (normalizedService === 'cloud-storage' || normalizedService === 'storage') return 'storage';
+    if (normalizedService === 'cloud-sql' || normalizedService === 'cloudsql') return 'cloudsql';
+  }
+  return normalizedService || 'service';
+}
+
+function formatBundleEnvironmentLabel(entry: ServiceBundleEntry, req: PRRequest | null | undefined): string {
+  const rawEnv = entry.env || entry.config?.env || req?.env || 'env';
+  return rawEnv.trim() ? rawEnv.trim().toUpperCase() : 'ENV';
+}
+
+function buildBundleTargetPath(req: PRRequest, entry: ServiceBundleEntry): string {
+  const projectKey = normalizeBundlePathSegment(req.project_code || req.project_name, 'project');
+  const teamKey = normalizeBundlePathSegment(req.team, 'team');
+  const cloudKey = normalizeBundlePathSegment(entry.cloud || req.cloud, 'cloud');
+  const envKey = normalizeBundlePathSegment(entry.env || entry.config?.env || req.env, 'env');
+  const serviceKey = normalizeBundlePathSegment(
+    normalizeBundleServicePathKey(entry.cloud || req.cloud, entry.normalized_service || entry.service),
+    'service',
+  );
+  const applicationKey = normalizeBundlePathSegment(req.application_id, 'application-id');
+  return `project/${projectKey}/${teamKey}/${cloudKey}/envs/${envKey}/${serviceKey}/${applicationKey}/request.json`;
+}
+
+function groupServiceBundleByEnvironment(serviceBundle: ServiceBundleEntry[], req: PRRequest | null | undefined) {
+  const groups = new Map<string, ServiceBundleEntry[]>();
+  for (const entry of serviceBundle) {
+    const environment = formatBundleEnvironmentLabel(entry, req);
+    const existing = groups.get(environment);
+    if (existing) existing.push(entry);
+    else groups.set(environment, [entry]);
+  }
+  return Array.from(groups.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([environment, entries]) => ({ environment, entries }));
+}
+
+function getRequestBundleCount(req: Pick<PRRequest, 'config'> | null | undefined): number {
+  return getRequestServiceBundle(req).length;
 }
 
 export default function AdminRequests() {
@@ -153,7 +258,12 @@ export default function AdminRequests() {
   const [bulkStatusValue, setBulkStatusValue] = useState('');
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [timeline, setTimeline] = useState<{ id: number; kind: string; action: string; username: string; details: string; body?: string; created_at: string }[]>([]);
+  const [bundleNormalizationPreview, setBundleNormalizationPreview] = useState<BundleNormalizationPreview | null>(null);
+  const [bundleNormalizationLoading, setBundleNormalizationLoading] = useState(false);
+  const [bundleNormalizationApplying, setBundleNormalizationApplying] = useState(false);
   const detailRequestIsAccess = isAccessRequest(detailRequest);
+  const detailServiceBundle = getRequestServiceBundle(detailRequest);
+  const detailServiceBundleGroups = groupServiceBundleByEnvironment(detailServiceBundle, detailRequest);
   const activeFilterCount = [
     team.trim(),
     projectId,
@@ -267,6 +377,73 @@ export default function AdminRequests() {
     }
     fetchRequests({ offset });
   }, [token, router, offset]);
+
+  const runBundleNormalizationPreview = async () => {
+    setBundleNormalizationLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/request-bundle-normalization?limit=100`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setBundleNormalizationPreview({
+          dry_run: Boolean(data?.dry_run),
+          scanned: typeof data?.scanned === 'number' ? data.scanned : 0,
+          bundled_requests: typeof data?.bundled_requests === 'number' ? data.bundled_requests : 0,
+          config_changes_needed: typeof data?.config_changes_needed === 'number' ? data.config_changes_needed : 0,
+          service_items_synced: typeof data?.service_items_synced === 'number' ? data.service_items_synced : 0,
+          errors: typeof data?.errors === 'number' ? data.errors : 0,
+          items: Array.isArray(data?.items) ? data.items : [],
+        });
+      } else {
+        setError(data?.error || 'Failed to preview legacy bundle cleanup');
+      }
+    } catch (_) {
+      setError('Failed to preview legacy bundle cleanup');
+    } finally {
+      setBundleNormalizationLoading(false);
+    }
+  };
+
+  const applyBundleNormalization = async () => {
+    if (!confirm('Apply legacy bundle normalization to old multi-service requests now?')) return;
+    setBundleNormalizationApplying(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/request-bundle-normalization?limit=100`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setBundleNormalizationPreview({
+          dry_run: Boolean(data?.dry_run),
+          scanned: typeof data?.scanned === 'number' ? data.scanned : 0,
+          bundled_requests: typeof data?.bundled_requests === 'number' ? data.bundled_requests : 0,
+          config_changes_needed: typeof data?.config_changes_needed === 'number' ? data.config_changes_needed : 0,
+          service_items_synced: typeof data?.service_items_synced === 'number' ? data.service_items_synced : 0,
+          errors: typeof data?.errors === 'number' ? data.errors : 0,
+          items: Array.isArray(data?.items) ? data.items : [],
+        });
+        fetchRequests({ offset });
+        if (detailRequest?.id) {
+          fetch(`${apiUrl}/api/admin/requests/${detailRequest.id}`, { headers: { Authorization: `Bearer ${token}` } })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => {
+              if (d?.request) setDetailRequest((prev) => (prev ? { ...prev, ...d.request } : d.request));
+            })
+            .catch(() => {});
+        }
+      } else {
+        setError(data?.error || 'Failed to apply legacy bundle cleanup');
+      }
+    } catch (_) {
+      setError('Failed to apply legacy bundle cleanup');
+    } finally {
+      setBundleNormalizationApplying(false);
+    }
+  };
 
   useEffect(() => {
     const idParam = router.query.id;
@@ -797,6 +974,96 @@ export default function AdminRequests() {
             </div>
           )}
 
+          <section className="admin-maintenance-card">
+            <div className="admin-maintenance-card__header">
+              <div>
+                <span className="portal-page__eyebrow">Legacy bundle cleanup</span>
+                <h2 className="admin-maintenance-card__title">Normalize older multi-service request JSON</h2>
+                <p className="admin-maintenance-card__copy">
+                  Preview and apply the backend cleanup for older bundled requests so the stored JSON, primary request identity, and service items all line up with the newer request shape.
+                </p>
+              </div>
+              <div className="admin-maintenance-card__actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={runBundleNormalizationPreview}
+                  disabled={bundleNormalizationLoading || bundleNormalizationApplying}
+                >
+                  {bundleNormalizationLoading ? 'Previewing…' : 'Preview cleanup'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={applyBundleNormalization}
+                  disabled={bundleNormalizationLoading || bundleNormalizationApplying}
+                >
+                  {bundleNormalizationApplying ? 'Applying…' : 'Apply cleanup'}
+                </button>
+              </div>
+            </div>
+
+            {bundleNormalizationPreview ? (
+              <div className="admin-maintenance-card__body">
+                <div className="admin-maintenance-card__summary">
+                  <div className="admin-maintenance-card__metric">
+                    <strong>{bundleNormalizationPreview.scanned}</strong>
+                    <span>Scanned</span>
+                  </div>
+                  <div className="admin-maintenance-card__metric">
+                    <strong>{bundleNormalizationPreview.bundled_requests}</strong>
+                    <span>Bundled requests</span>
+                  </div>
+                  <div className="admin-maintenance-card__metric">
+                    <strong>{bundleNormalizationPreview.config_changes_needed}</strong>
+                    <span>Config fixes</span>
+                  </div>
+                  <div className="admin-maintenance-card__metric">
+                    <strong>{bundleNormalizationPreview.service_items_synced}</strong>
+                    <span>Item syncs</span>
+                  </div>
+                  <div className="admin-maintenance-card__metric">
+                    <strong>{bundleNormalizationPreview.errors}</strong>
+                    <span>Errors</span>
+                  </div>
+                </div>
+
+                <div className="admin-maintenance-card__status">
+                  {bundleNormalizationPreview.dry_run
+                    ? 'Preview only. Nothing has been changed yet.'
+                    : 'Cleanup applied. Requests shown here were normalized and their bundled service items were synced.'}
+                </div>
+
+                {bundleNormalizationPreview.items.length > 0 ? (
+                  <div className="admin-maintenance-card__list">
+                    {bundleNormalizationPreview.items.slice(0, 8).map((item) => (
+                      <article key={item.request_id} className="admin-maintenance-card__item">
+                        <div className="admin-maintenance-card__item-head">
+                          <strong>#{item.request_id}</strong>
+                          {item.application_id ? <span>{item.application_id}</span> : null}
+                          <span>{item.team}</span>
+                        </div>
+                        <p className="admin-maintenance-card__item-copy">
+                          {item.before_env}/{item.before_cloud}/{item.before_service}
+                          {' -> '}
+                          {item.after_env || item.before_env}/{item.after_cloud || item.before_cloud}/{item.after_service || item.before_service}
+                        </p>
+                        <div className="admin-maintenance-card__item-meta">
+                          <span>{item.bundle_count} services</span>
+                          <span>{item.config_changed ? 'Config updated' : 'Config already clean'}</span>
+                          <span>{item.service_items_synced ? 'Service items synced' : 'Service items pending'}</span>
+                          {item.error ? <span className="admin-maintenance-card__item-error">{item.error}</span> : null}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="admin-maintenance-card__empty">No bundled requests were found in the scanned set.</p>
+                )}
+              </div>
+            ) : null}
+          </section>
+
           {error && requests.length > 0 && (
             <div className="alert alert-error" role="alert">
               {error}
@@ -1079,7 +1346,9 @@ export default function AdminRequests() {
                       </tr>
                     </thead>
                     <tbody>
-                      {requests.map((req) => (
+                      {requests.map((req) => {
+                        const bundleCount = getRequestBundleCount(req);
+                        return (
                         <tr key={req.id} className="admin-requests-table__row" style={{ cursor: 'pointer' }} onClick={() => openDetail(req)}>
                           <td className="admin-requests-table__checkbox-cell" onClick={(e) => e.stopPropagation()}>
                             <input
@@ -1103,6 +1372,9 @@ export default function AdminRequests() {
                           <td>
                             <div className="admin-requests-table__primary">
                               <strong>{req.service}</strong>
+                            {bundleCount > 1 ? (
+                              <span className="admin-requests-table__bundle-badge">{bundleCount} services</span>
+                            ) : null}
                             {isAccessRequest(req) ? (
                               <span className="admin-requests-table__meta">Access request</span>
                             ) : null}
@@ -1188,7 +1460,7 @@ export default function AdminRequests() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>
@@ -1516,6 +1788,43 @@ export default function AdminRequests() {
                     >
                       Reject
                     </button>
+                  </div>
+                )}
+
+                {detailServiceBundle.length > 1 && (
+                  <div className="admin-request-detail-modal__section admin-request-detail-modal__section--muted">
+                    <div className="admin-request-detail-modal__section-head">
+                      <strong>Service bundle</strong>
+                    </div>
+                    <p className="admin-request-detail-modal__empty-copy">
+                      This request includes multiple services under one shared review flow. Each bundled service can still land in its own environment-specific target file.
+                    </p>
+                    <div className="admin-request-detail-modal__bundle-groups">
+                      {detailServiceBundleGroups.map((group) => (
+                        <div key={group.environment} className="admin-request-detail-modal__bundle-group">
+                          <div className="admin-request-detail-modal__bundle-group-head">
+                            <strong>{group.environment}</strong>
+                            <span className="admin-request-detail-modal__bundle-group-count">
+                              {group.entries.length} service{group.entries.length === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                          <div className="portal-detail-grid admin-request-detail-modal__summary-grid">
+                            {group.entries.map((entry, index) => (
+                              <article key={`${group.environment}-${entry.cloud}-${entry.service}-${index}`} className="portal-detail-card">
+                                <span className="admin-request-detail-modal__summary-label">Service {index + 1}</span>
+                                <strong className="portal-detail-card__value">{entry.display_name || entry.service}</strong>
+                                <p className="admin-request-detail-modal__empty-copy">
+                                  {group.environment} · {(entry.cloud || detailRequest.cloud || 'cloud').toUpperCase()}
+                                </p>
+                                <code className="admin-request-detail-modal__bundle-path">
+                                  {buildBundleTargetPath(detailRequest, entry)}
+                                </code>
+                              </article>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 

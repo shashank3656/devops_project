@@ -7,6 +7,14 @@ on:
         description: Release notes for this production deployment
         required: true
         type: string
+      request_id:
+        description: Optional request id to mark completed after successful deployment
+        required: false
+        type: string
+      application_id:
+        description: Optional application id to mark completed after successful deployment
+        required: false
+        type: string
   push:
     branches:
       - master
@@ -22,5 +30,8 @@ jobs:
     with:
       environment_name: prod
       public_api_url: ${{ vars.NEXT_PUBLIC_API_URL_PROD || vars.NEXT_PUBLIC_API_URL }}
+      backend_api_url: ${{ vars.BACKEND_API_URL_PROD || vars.BACKEND_API_URL }}
+      request_id: ${{ github.event_name == 'workflow_dispatch' && inputs.request_id || '' }}
+      application_id: ${{ github.event_name == 'workflow_dispatch' && inputs.application_id || '' }}
       release_notes: ${{ github.event_name == 'workflow_dispatch' && inputs.release_notes || format('Automated production deployment for {0}', github.sha) }}
     secrets: inherit
