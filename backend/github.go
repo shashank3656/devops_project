@@ -333,9 +333,6 @@ func buildGroupedRequestPayload(basePayload map[string]interface{}, entries []Se
 	delete(config, "env")
 
 	if normalizeStorageBucketServiceKey(primary.Service) == "cloud-storage" {
-		for _, field := range storageBucketConfigFields {
-			delete(config, field)
-		}
 		if len(entries) == 1 {
 			for key, value := range cloneJSONMap(entries[0].Config) {
 				if key == "env" {
@@ -344,6 +341,9 @@ func buildGroupedRequestPayload(basePayload map[string]interface{}, entries []Se
 				config[key] = value
 			}
 		} else {
+			for _, field := range storageBucketConfigFields {
+				delete(config, field)
+			}
 			buckets := make([]map[string]interface{}, 0, len(entries))
 			for _, entry := range entries {
 				if bucketEntry, ok := storageBucketEntryFromConfig(entry.Config); ok {
