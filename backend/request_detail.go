@@ -135,7 +135,8 @@ func handleRequestClone(w http.ResponseWriter, r *http.Request, id int, req *PRR
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	filePath, branchName := BuildRequestGitArtifacts(req.ProjectID, req.Team, req.Cloud, req.Env, req.Service, appID)
+	primaryCloud, primaryService := primaryRequestService(req)
+	filePath, branchName := BuildRequestGitArtifacts(req.ProjectID, req.Team, primaryCloud, req.Env, primaryService, appID)
 	createdBy := req.CreatedBy
 	if createdBy == nil && userID > 0 {
 		createdBy = &userID
@@ -144,8 +145,8 @@ func handleRequestClone(w http.ResponseWriter, r *http.Request, id int, req *PRR
 		ProjectID:     req.ProjectID,
 		Team:          req.Team,
 		Env:           req.Env,
-		Cloud:         req.Cloud,
-		Service:       req.Service,
+		Cloud:         primaryCloud,
+		Service:       primaryService,
 		ClientName:    req.ClientName,
 		ApplicationID: appID,
 		Priority:      req.Priority,
@@ -154,9 +155,10 @@ func handleRequestClone(w http.ResponseWriter, r *http.Request, id int, req *PRR
 		Branch:        branchName,
 		FilePath:      filePath,
 		Status:        "draft",
-		Config:        req.Config,
+		Config:        ensureRequestConfigApplicationID(req.Config, appID),
 		CreatedBy:     createdBy,
 	}
+	applyRequestBundleEntries(newReq, req.ServiceBundle)
 	if err := SavePRRequest(newReq); err != nil {
 		log.Printf("Clone: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -189,13 +191,14 @@ func handleRequestResubmit(w http.ResponseWriter, r *http.Request, id int, req *
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	filePath, branchName := BuildRequestGitArtifacts(req.ProjectID, req.Team, req.Cloud, req.Env, req.Service, appID)
+	primaryCloud, primaryService := primaryRequestService(req)
+	filePath, branchName := BuildRequestGitArtifacts(req.ProjectID, req.Team, primaryCloud, req.Env, primaryService, appID)
 	newReq := &PRRequest{
 		ProjectID:     req.ProjectID,
 		Team:          req.Team,
 		Env:           req.Env,
-		Cloud:         req.Cloud,
-		Service:       req.Service,
+		Cloud:         primaryCloud,
+		Service:       primaryService,
 		ClientName:    req.ClientName,
 		ApplicationID: appID,
 		Priority:      req.Priority,
@@ -204,9 +207,10 @@ func handleRequestResubmit(w http.ResponseWriter, r *http.Request, id int, req *
 		Branch:        branchName,
 		FilePath:      filePath,
 		Status:        "draft",
-		Config:        req.Config,
+		Config:        ensureRequestConfigApplicationID(req.Config, appID),
 		CreatedBy:     req.CreatedBy,
 	}
+	applyRequestBundleEntries(newReq, req.ServiceBundle)
 	if err := SavePRRequest(newReq); err != nil {
 		log.Printf("Resubmit: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -311,6 +315,11 @@ func handleRequestUpdateDraft(w http.ResponseWriter, r *http.Request, id int, re
 	if c, ok := payload["config"].(string); ok && c != "" {
 		config = c
 	} else if len(payload) > 0 {
+		if _, err := canonicalizeRequestBundlePayload(payload); err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
+			return
+		}
+		ensureRequestPayloadApplicationID(payload, req.ApplicationID)
 		content, err := json.MarshalIndent(payload, "", "  ")
 		if err == nil {
 			config = string(content)
@@ -333,6 +342,17 @@ func handleRequestUpdateDraft(w http.ResponseWriter, r *http.Request, id int, re
 	}
 	if err := UpdatePRRequestFull(id, config, priority, dueDate, "draft"); err != nil {
 		log.Printf("Update draft: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	updatedReq := &PRRequest{
+		ID:      id,
+		Cloud:   req.Cloud,
+		Service: req.Service,
+		Config:  config,
+	}
+	if err := replaceRequestServiceItems(id, updatedReq); err != nil {
+		log.Printf("Update draft service items: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

@@ -961,7 +961,7 @@ func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, *promotionGa
 		Branch:        branchName,
 		FilePath:      filePath,
 		Status:        "draft",
-		Config:        req.Config,
+		Config:        ensureRequestConfigApplicationID(req.Config, appID),
 		CreatedBy:     createdBy,
 	}
 	if err := SavePRRequest(newReq); err != nil {

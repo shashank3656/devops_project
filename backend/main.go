@@ -116,6 +116,11 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		encodeJSON(w, errorResponse)
 		return
 	}
+	serviceBundleEntries, err := canonicalizeRequestBundlePayload(payload)
+	if err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
+		return
+	}
 
 	// Validate required fields
 	if err := validatePayload(payload); err != nil {
@@ -198,20 +203,6 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	clientName, _ := payload["client_name"].(string)
 	payload["client_name"] = clientName
 
-	// Marshal payload with indentation for readability
-	content, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		log.Printf("Error marshaling JSON: %v", err)
-		w.Header().Set("Content-Type", "application/json")
-		errorResponse := map[string]interface{}{
-			"error":  "error processing request",
-			"status": "error",
-		}
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeJSON(w, errorResponse)
-		return
-	}
-
 	log.Printf("Creating PR for: team=%s, env=%s, cloud=%s, service=%s", team, env, cloud, service)
 
 	appID, appErr := GenerateApplicationID()
@@ -228,6 +219,33 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		return nil
 	}(), team, cloud, env, service, appID)
 
+	// Save to database (use authenticated user ID)
+	var userIDPtr *int
+	if userID > 0 {
+		userIDPtr = &userID
+	}
+	if projectID > 0 {
+		if _, err := validateProjectBundleRequestForUser(userID, projectID, team, env, cloud, service, serviceBundleEntries); err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
+			return
+		}
+	}
+	ensureRequestPayloadApplicationID(payload, appID)
+
+	// Marshal payload with indentation for readability after defaults/validation are applied.
+	content, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		log.Printf("Error marshaling JSON: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		errorResponse := map[string]interface{}{
+			"error":  "error processing request",
+			"status": "error",
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		encodeJSON(w, errorResponse)
+		return
+	}
+
 	prURL, err := CreateGitHubPR(branchName, filePath, content, appID)
 	if err != nil {
 		log.Printf("Error creating PR: %v", err)
@@ -239,18 +257,6 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		encodeJSON(w, errorResponse)
 		return
-	}
-
-	// Save to database (use authenticated user ID)
-	var userIDPtr *int
-	if userID > 0 {
-		userIDPtr = &userID
-	}
-	if projectID > 0 {
-		if _, err := validateProjectRequestForUser(userID, projectID, team, env, cloud, service); err != nil {
-			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
-			return
-		}
 	}
 
 	prRequest := &PRRequest{
@@ -274,6 +280,7 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		Config:        string(content),
 		CreatedBy:     userIDPtr,
 	}
+	applyRequestBundleEntries(prRequest, serviceBundleEntries)
 
 	if err := SavePRRequest(prRequest); err != nil {
 		log.Printf("Warning: failed to save PR request to database: %v", err)
@@ -331,6 +338,11 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	var payload InfraRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
+		return
+	}
+	serviceBundleEntries, err := canonicalizeRequestBundlePayload(payload)
+	if err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
 		return
 	}
 	if err := validatePayload(payload); err != nil {
@@ -392,12 +404,6 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	}(), team, cloud, env, service, appID)
-	content, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "error processing request", nil)
-		return
-	}
-
 	if DB == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
@@ -408,15 +414,21 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		userIDPtr = &userID
 	}
 	if projectID > 0 {
-		validation, err := validateProjectRequestForUser(userID, projectID, team, env, cloud, service)
+		validation, err := validateProjectBundleRequestForUser(userID, projectID, team, env, cloud, service, serviceBundleEntries)
 		if err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
 			return
 		}
-		if clientName == "" {
+		if clientName == "" && validation != nil {
 			clientName = validation.Project.Name
 			payload["client_name"] = clientName
 		}
+	}
+	ensureRequestPayloadApplicationID(payload, appID)
+	content, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "error processing request", nil)
+		return
 	}
 	status := "pending_devops_approval"
 	if !draft && userID > 0 {
@@ -448,6 +460,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		Config:        string(content),
 		CreatedBy:     userIDPtr,
 	}
+	applyRequestBundleEntries(prRequest, serviceBundleEntries)
 	if err := SavePRRequest(prRequest); err != nil {
 		log.Printf("Failed to save request: %v", err)
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to save request", nil)
@@ -589,6 +602,7 @@ func main() {
 	http.HandleFunc("/api/admin/projects/", adminProjectDetailHandler)
 	http.HandleFunc("/api/admin/templates", adminTemplatesRouter)
 	http.HandleFunc("/api/admin/templates/", adminTemplatesRouter)
+	http.HandleFunc("/api/admin/request-bundle-normalization", adminRequestBundleNormalizationHandler)
 	http.HandleFunc("/api/devops/me", devopsMeHandler)
 	http.HandleFunc("/api/devops/my-teams", devopsMyTeamsHandler)
 	http.HandleFunc("/api/devops/teams/", devopsTeamsRouter)
@@ -615,10 +629,29 @@ func main() {
 	http.HandleFunc("/api/devops/k8s-connections", devopsK8sConnectionsHandler)
 	http.HandleFunc("/api/devops/k8s-overview", devopsK8sOverviewHandler)
 	http.HandleFunc("/api/devops/k8s-clusters", devopsK8sClustersHandler)
+	http.HandleFunc("/api/devops/k8s-cluster-detail", devopsK8sClusterDetailHandler)
 	http.HandleFunc("/api/devops/k8s-workloads", devopsK8sWorkloadsHandler)
+	http.HandleFunc("/api/devops/k8s-rollout-detail", devopsK8sRolloutDetailHandler)
+	http.HandleFunc("/api/devops/k8s-pods", devopsK8sPodsHandler)
+	http.HandleFunc("/api/devops/k8s-pod-detail", devopsK8sPodDetailHandler)
+	http.HandleFunc("/api/devops/k8s-activity", devopsK8sActivityHandler)
+	http.HandleFunc("/api/devops/k8s-pod-exec-profile", devopsK8sPodExecProfileHandler)
+	http.HandleFunc("/api/devops/k8s-logs", devopsK8sLogsHandler)
+	http.HandleFunc("/api/devops/k8s-log-stream", devopsK8sLogStreamHandler)
+	http.HandleFunc("/api/devops/k8s-log-attach", devopsK8sLogAttachHandler)
 	http.HandleFunc("/api/devops/k8s-services", devopsK8sServicesHandler)
+	http.HandleFunc("/api/devops/k8s-ingresses", devopsK8sIngressesHandler)
+	http.HandleFunc("/api/devops/k8s-ingress-detail", devopsK8sIngressDetailHandler)
+	http.HandleFunc("/api/devops/k8s-secrets", devopsK8sSecretsHandler)
 	http.HandleFunc("/api/devops/k8s-configmaps", devopsK8sConfigMapsHandler)
 	http.HandleFunc("/api/devops/k8s-storage", devopsK8sStorageHandler)
+	http.HandleFunc("/api/devops/k8s-events", devopsK8sEventsHandler)
+	http.HandleFunc("/api/devops/k8s-certificates", devopsK8sCertificatesHandler)
+	http.HandleFunc("/api/devops/k8s-workload-actions", devopsK8sWorkloadActionsHandler)
+	http.HandleFunc("/api/devops/k8s-terminal-launch", devopsK8sTerminalLaunchHandler)
+	http.HandleFunc("/api/devops/k8s-terminal-session", devopsK8sTerminalSessionHandler)
+	http.HandleFunc("/api/devops/k8s-terminal-attach", devopsK8sTerminalAttachHandler)
+	http.HandleFunc("/api/devops/k8s-terminal-command", devopsK8sTerminalCommandHandler)
 	http.HandleFunc("/api/devops/runbooks", devopsRunbooksHandler)
 	http.HandleFunc("/api/devops/runbooks/", devopsRunbookDetailHandler)
 	http.HandleFunc("/api/devops/incidents", devopsIncidentsHandler)
@@ -696,6 +729,8 @@ func main() {
 	log.Println("  POST /api/admin/requests/:id/approve - Approve request, create PR (admin only)")
 	log.Println("  POST /api/admin/requests/:id/reject  - Reject request (admin only)")
 	log.Println("  PATCH /api/admin/requests/:id/status - Set status in_progress|completed|rejected (admin only)")
+	log.Println("  GET  /api/admin/request-bundle-normalization - Preview legacy bundle normalization (admin only)")
+	log.Println("  POST /api/admin/request-bundle-normalization - Apply legacy bundle normalization (admin only)")
 	log.Println("  GET  /api/admin/stats     - Dashboard stats for all PRs (admin only)")
 	log.Println("  GET  /health         - Health check")
 	log.Println("  GET  /swagger.json    - OpenAPI spec")

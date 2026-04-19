@@ -647,7 +647,7 @@ func createProjectCatalog(input ProjectCatalogInput, createdBy *int) (*ProjectCa
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := dbTimeoutContext()
+	ctx, cancel := dbTransactionTimeoutContext()
 	defer cancel()
 	tx, err := DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -692,7 +692,7 @@ func updateProjectCatalog(projectID int, input ProjectCatalogInput, updatedBy *i
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := dbTimeoutContext()
+	ctx, cancel := dbTransactionTimeoutContext()
 	defer cancel()
 	tx, err := DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -1874,8 +1874,11 @@ func validateProjectRequestForUser(userID, projectID int, teamNameOrSlug, enviro
 	}
 
 	serviceAllowed := false
+	requestedServiceKey := normalizeRequestServiceKey(cloud, service)
 	for _, allowedService := range project.Services {
-		if allowedService.Cloud == strings.ToLower(strings.TrimSpace(cloud)) && allowedService.Service == strings.ToLower(strings.TrimSpace(service)) {
+		allowedCloudKey := strings.ToLower(strings.TrimSpace(allowedService.Cloud))
+		allowedServiceKey := normalizeRequestServiceKey(allowedService.Cloud, allowedService.Service)
+		if allowedCloudKey == strings.ToLower(strings.TrimSpace(cloud)) && allowedServiceKey == requestedServiceKey {
 			serviceAllowed = true
 			break
 		}
@@ -2129,9 +2132,15 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		createdBy := &userID
-		project, err := createProjectCatalog(input, createdBy)
+		project, err := retryDBOnceIfConnError("createProjectCatalog", func() (*ProjectCatalog, error) {
+			return createProjectCatalog(input, createdBy)
+		})
 		if err != nil {
-			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
+			if isTransientDBConnError(err) {
+				writeAPIError(w, r, http.StatusServiceUnavailable, "Database temporarily unavailable. Please retry in a moment.", err)
+				return
+			}
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -2249,9 +2258,15 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
 			return
 		}
-		project, err := updateProjectCatalog(projectID, input, &userID)
+		project, err := retryDBOnceIfConnError("updateProjectCatalog", func() (*ProjectCatalog, error) {
+			return updateProjectCatalog(projectID, input, &userID)
+		})
 		if err != nil {
-			writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
+			if isTransientDBConnError(err) {
+				writeAPIError(w, r, http.StatusServiceUnavailable, "Database temporarily unavailable. Please retry in a moment.", err)
+				return
+			}
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

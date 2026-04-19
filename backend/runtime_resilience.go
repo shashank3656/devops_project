@@ -833,6 +833,14 @@ func dbTimeoutContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), timeout)
 }
 
+func dbTransactionTimeoutContext() (context.Context, context.CancelFunc) {
+	timeout := DBTxTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	return context.WithTimeout(context.Background(), timeout)
+}
+
 func queryRowsWithTimeout(query string, args ...any) (*sql.Rows, context.CancelFunc, error) {
 	ctx, cancel := dbTimeoutContext()
 	start := time.Now()

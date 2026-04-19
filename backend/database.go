@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
@@ -15,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	pq "github.com/lib/pq"
 	"golang.org/x/crypto/pbkdf2"
 )
 
@@ -190,9 +191,9 @@ func BuildRequestGitArtifacts(projectID *int, teamNameOrSlug, cloud, env, servic
 	teamPathKey := ResolveTeamSlugKey(teamNameOrSlug)
 	cloudPathKey := normalizePathSegment(cloud, "cloud")
 	envPathKey := normalizePathSegment(env, "env")
-	servicePathKey := normalizePathSegment(service, "service")
+	servicePathKey := normalizePathSegment(normalizeRequestServicePathKey(cloud, service), "service")
 	requestKey := normalizePathSegment(requestApplicationID, "request")
-	filePath = fmt.Sprintf("project/%s/%s/%s/envs/%s/%s/request.json", projectPathKey, teamPathKey, cloudPathKey, envPathKey, servicePathKey)
+	filePath = fmt.Sprintf("project/%s/%s/%s/envs/%s/%s/%s/request.json", projectPathKey, teamPathKey, cloudPathKey, envPathKey, servicePathKey, requestKey)
 	branchName = fmt.Sprintf("project/%s/%s/%s/%s/%s/%s", projectPathKey, teamPathKey, cloudPathKey, envPathKey, servicePathKey, requestKey)
 	return filePath, branchName
 }
@@ -314,31 +315,34 @@ func attachSSLRootCert(dsn string, sslRootCert string) (string, string) {
 var DB *sql.DB
 
 type PRRequest struct {
-	ID                  int        `json:"id"`
-	ProjectID           *int       `json:"project_id,omitempty"`
-	ProjectName         string     `json:"project_name,omitempty"`
-	ProjectCode         string     `json:"project_code,omitempty"`
-	Team                string     `json:"team"`
-	Env                 string     `json:"env"`
-	Cloud               string     `json:"cloud"`
-	Service             string     `json:"service"`
-	ClientName          string     `json:"client_name"`
-	ApplicationID       string     `json:"application_id"` // unique 10-char alphanumeric, used in branch/PR
-	Priority            string     `json:"priority"`       // low, medium, high, critical
-	DueDate             *time.Time `json:"due_date"`
-	PRURL               string     `json:"pr_url"`
-	Branch              string     `json:"branch"`
-	FilePath            string     `json:"file_path"`
-	Status              string     `json:"status"` // draft, pending_user_manager_approval, pending_devops_approval, pending_approval, in_progress, completed, rejected
-	RejectReason        string     `json:"reject_reason"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
-	CreatedBy           *int       `json:"created_by"`
-	CreatedByUsername   string     `json:"created_by_username,omitempty"` // set in history for "who raised" when view=team
-	AssignedTo          *int       `json:"assigned_to"`                   // DevOps user assigned after PR creation (by priority)
-	Config              string     `json:"config"`
-	TerraformPlanOutput string     `json:"terraform_plan_output,omitempty"` // Terraform plan/apply output from CI (display in UI)
-	JiraTicketID        string     `json:"jira_ticket_id,omitempty"`        // Jira/ticketing integration
+	ID                  int                   `json:"id"`
+	ProjectID           *int                  `json:"project_id,omitempty"`
+	ProjectName         string                `json:"project_name,omitempty"`
+	ProjectCode         string                `json:"project_code,omitempty"`
+	Team                string                `json:"team"`
+	Env                 string                `json:"env"`
+	Cloud               string                `json:"cloud"`
+	Service             string                `json:"service"`
+	ClientName          string                `json:"client_name"`
+	ApplicationID       string                `json:"application_id"` // unique 10-char alphanumeric, used in branch/PR
+	Priority            string                `json:"priority"`       // low, medium, high, critical
+	DueDate             *time.Time            `json:"due_date"`
+	PRURL               string                `json:"pr_url"`
+	Branch              string                `json:"branch"`
+	FilePath            string                `json:"file_path"`
+	Status              string                `json:"status"` // draft, pending_user_manager_approval, pending_devops_approval, pending_approval, in_progress, completed, rejected
+	RejectReason        string                `json:"reject_reason"`
+	CreatedAt           time.Time             `json:"created_at"`
+	UpdatedAt           time.Time             `json:"updated_at"`
+	CreatedBy           *int                  `json:"created_by"`
+	CreatedByUsername   string                `json:"created_by_username,omitempty"` // set in history for "who raised" when view=team
+	AssignedTo          *int                  `json:"assigned_to"`                   // DevOps user assigned after PR creation (by priority)
+	Config              string                `json:"config"`
+	BundleMode          bool                  `json:"bundle_mode,omitempty"`
+	ServiceBundle       []ServiceBundleEntry  `json:"service_bundle,omitempty"`
+	BundleSummary       *RequestBundleSummary `json:"bundle_summary,omitempty"`
+	TerraformPlanOutput string                `json:"terraform_plan_output,omitempty"` // Terraform plan/apply output from CI (display in UI)
+	JiraTicketID        string                `json:"jira_ticket_id,omitempty"`        // Jira/ticketing integration
 }
 
 // RequestComment is a comment on a PR request
@@ -573,6 +577,38 @@ func InitDB() error {
 	return nil
 }
 
+// isTransientDBConnError reports stale pool connections or network blips that often succeed on retry.
+// It is not for SQL validation or unique-constraint failures.
+func isTransientDBConnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "bad connection") ||
+		strings.Contains(s, "driver: bad connection") ||
+		strings.Contains(s, "connection reset") ||
+		strings.Contains(s, "broken pipe") ||
+		strings.Contains(s, "connection refused") ||
+		strings.Contains(s, "no connection to the server") ||
+		strings.Contains(s, "server closed the connection") ||
+		strings.Contains(s, "connection timed out") ||
+		strings.Contains(s, "i/o timeout") ||
+		strings.Contains(s, "conn busy")
+}
+
+// retryDBOnceIfConnError runs fn once; on a transient connection error it logs and runs fn again.
+func retryDBOnceIfConnError[T any](label string, fn func() (T, error)) (T, error) {
+	v, err := fn()
+	if err == nil {
+		return v, nil
+	}
+	if !isTransientDBConnError(err) {
+		return v, err
+	}
+	log.Printf("[DB] %s: transient connection error, retrying once: %v", label, err)
+	return fn()
+}
+
 // createTables creates the necessary database tables
 func createTables() error {
 	// Users table
@@ -606,6 +642,21 @@ func createTables() error {
 		created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);`
+
+	requestServiceItemsTable := `
+	CREATE TABLE IF NOT EXISTS pr_request_service_items (
+		id SERIAL PRIMARY KEY,
+		request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+		position INTEGER NOT NULL,
+		cloud VARCHAR(50) NOT NULL,
+		service VARCHAR(100) NOT NULL,
+		normalized_service VARCHAR(100) NOT NULL DEFAULT '',
+		display_name VARCHAR(160) NOT NULL DEFAULT '',
+		config TEXT NOT NULL DEFAULT '{}',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(request_id, position)
 	);`
 
 	// GitHub logs table (for activity stream)
@@ -647,6 +698,8 @@ func createTables() error {
 		"CREATE INDEX IF NOT EXISTS idx_pr_requests_cloud ON pr_requests(cloud);",
 		"CREATE INDEX IF NOT EXISTS idx_pr_requests_created_by ON pr_requests(created_by);",
 		"CREATE INDEX IF NOT EXISTS idx_pr_requests_created_at ON pr_requests(created_at DESC);",
+		"CREATE INDEX IF NOT EXISTS idx_pr_request_service_items_request_id ON pr_request_service_items(request_id);",
+		"CREATE INDEX IF NOT EXISTS idx_pr_request_service_items_request_position ON pr_request_service_items(request_id, position);",
 		"CREATE INDEX IF NOT EXISTS idx_github_logs_created_at ON github_logs(created_at DESC);",
 		"CREATE INDEX IF NOT EXISTS idx_teams_slug ON teams(slug);",
 		"CREATE INDEX IF NOT EXISTS idx_team_members_team_id ON team_members(team_id);",
@@ -659,6 +712,9 @@ func createTables() error {
 
 	if _, err := DB.Exec(prRequestsTable); err != nil {
 		return fmt.Errorf("failed to create pr_requests table: %w", err)
+	}
+	if _, err := DB.Exec(requestServiceItemsTable); err != nil {
+		return fmt.Errorf("failed to create pr_request_service_items table: %w", err)
 	}
 
 	if _, err := DB.Exec(githubLogsTable); err != nil {
@@ -789,10 +845,192 @@ func SavePRRequest(req *PRRequest) error {
 	if err != nil {
 		return fmt.Errorf("failed to save PR request: %w", err)
 	}
+	if err := replaceRequestServiceItems(req.ID, req); err != nil {
+		return fmt.Errorf("failed to save request service items: %w", err)
+	}
 	_ = SaveRequestConfigHistory(req.ID, req.Config, "initial")
 	invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
 	refreshRequestSummaryViewAsync()
 	return nil
+}
+
+func replaceRequestServiceItems(requestID int, req *PRRequest) error {
+	if DB == nil || requestID <= 0 {
+		return nil
+	}
+
+	entries, err := requestServiceEntriesForPersistence(req)
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+
+	tx, err := DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err := tx.Exec("DELETE FROM pr_request_service_items WHERE request_id = $1", requestID); err != nil {
+		return err
+	}
+
+	for index, entry := range entries {
+		configJSON := "{}"
+		if entry.Config != nil {
+			if bytes, err := json.Marshal(entry.Config); err == nil {
+				configJSON = string(bytes)
+			} else {
+				return fmt.Errorf("marshal request service item config: %w", err)
+			}
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO pr_request_service_items
+				(request_id, position, cloud, service, normalized_service, display_name, config)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			requestID,
+			index+1,
+			entry.Cloud,
+			entry.Service,
+			entry.NormalizedService,
+			entry.DisplayName,
+			configJSON,
+		); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	tx = nil
+	return nil
+}
+
+func loadRequestServiceItems(requestID int) ([]ServiceBundleEntry, error) {
+	if DB == nil || requestID <= 0 {
+		return nil, nil
+	}
+
+	rows, err := DB.Query(`
+		SELECT cloud, service, COALESCE(normalized_service, ''), COALESCE(display_name, ''), COALESCE(config, '{}')
+		FROM pr_request_service_items
+		WHERE request_id = $1
+		ORDER BY position ASC
+	`, requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	entries := make([]ServiceBundleEntry, 0)
+	for rows.Next() {
+		var entry ServiceBundleEntry
+		var configJSON string
+		if err := rows.Scan(&entry.Cloud, &entry.Service, &entry.NormalizedService, &entry.DisplayName, &configJSON); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(configJSON) != "" {
+			var decoded map[string]interface{}
+			if err := json.Unmarshal([]byte(configJSON), &decoded); err == nil {
+				entry.Config = decoded
+			}
+		}
+		if entry.Config == nil {
+			entry.Config = map[string]interface{}{}
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+func loadRequestServiceItemsMap(requestIDs []int) (map[int][]ServiceBundleEntry, error) {
+	if DB == nil || len(requestIDs) == 0 {
+		return map[int][]ServiceBundleEntry{}, nil
+	}
+
+	query := `
+		SELECT request_id, cloud, service, COALESCE(normalized_service, ''), COALESCE(display_name, ''), COALESCE(config, '{}')
+		FROM pr_request_service_items
+		WHERE request_id = ANY($1)
+		ORDER BY request_id ASC, position ASC
+	`
+	rows, err := DB.Query(query, pq.Array(requestIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[int][]ServiceBundleEntry, len(requestIDs))
+	for rows.Next() {
+		var requestID int
+		var entry ServiceBundleEntry
+		var configJSON string
+		if err := rows.Scan(&requestID, &entry.Cloud, &entry.Service, &entry.NormalizedService, &entry.DisplayName, &configJSON); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(configJSON) != "" {
+			var decoded map[string]interface{}
+			if err := json.Unmarshal([]byte(configJSON), &decoded); err == nil {
+				entry.Config = decoded
+			}
+		}
+		if entry.Config == nil {
+			entry.Config = map[string]interface{}{}
+		}
+		out[requestID] = append(out[requestID], entry)
+	}
+
+	return out, nil
+}
+
+func BackfillPRRequestNormalizedConfig(id int, config string) error {
+	if DB == nil || id <= 0 || strings.TrimSpace(config) == "" {
+		return nil
+	}
+	_, err := DB.Exec("UPDATE pr_requests SET config = $1 WHERE id = $2", config, id)
+	return err
+}
+
+func hydrateRequestBundleMetadataBatch(requests []PRRequest) []PRRequest {
+	if len(requests) == 0 {
+		return requests
+	}
+
+	requestIDs := make([]int, 0, len(requests))
+	for _, req := range requests {
+		if req.ID > 0 {
+			requestIDs = append(requestIDs, req.ID)
+		}
+	}
+
+	itemMap, err := loadRequestServiceItemsMap(requestIDs)
+	if err != nil {
+		itemMap = map[int][]ServiceBundleEntry{}
+	}
+
+	for index := range requests {
+		if entries := itemMap[requests[index].ID]; len(entries) > 0 {
+			if normalizedConfig, normalizedEntries, changed, err := normalizeStoredRequestBundleConfig(&requests[index], entries); err == nil && len(normalizedEntries) > 0 {
+				requests[index].Config = normalizedConfig
+				applyRequestBundleEntries(&requests[index], normalizedEntries)
+				if changed && requests[index].ID > 0 {
+					_ = BackfillPRRequestNormalizedConfig(requests[index].ID, normalizedConfig)
+				}
+				continue
+			}
+			applyRequestBundleEntries(&requests[index], entries)
+			continue
+		}
+		hydrateRequestBundleMetadata(&requests[index])
+	}
+	return requests
 }
 
 // UpdatePRRequestStatus sets status and updated_at for a request
@@ -1599,7 +1837,7 @@ func GetPRRequests(team, env, cloud string, projectID int, statusFilter, priorit
 		requests = append(requests, req)
 	}
 
-	return requests, nil
+	return hydrateRequestBundleMetadataBatch(requests), nil
 }
 
 // GetPRRequestByApplicationID retrieves a request by application_id (most recent if multiple)
@@ -1641,6 +1879,11 @@ func GetPRRequestByApplicationID(appID string) *PRRequest {
 	}
 	if dueDate.Valid {
 		r.DueDate = &dueDate.Time
+	}
+	if entries, err := loadRequestServiceItems(r.ID); err == nil && len(entries) > 0 {
+		applyRequestBundleEntries(&r, entries)
+	} else {
+		hydrateRequestBundleMetadata(&r)
 	}
 	return &r
 }
@@ -1685,6 +1928,11 @@ func GetPRRequestByID(id int) (*PRRequest, error) {
 	}
 	if dueDate.Valid {
 		req.DueDate = &dueDate.Time
+	}
+	if entries, err := loadRequestServiceItems(req.ID); err == nil && len(entries) > 0 {
+		applyRequestBundleEntries(&req, entries)
+	} else {
+		hydrateRequestBundleMetadata(&req)
 	}
 	return &req, nil
 }
@@ -1741,7 +1989,7 @@ func GetPRRequestsByAssignedTo(assigneeID int, limit, offset int) ([]PRRequest, 
 		}
 		requests = append(requests, req)
 	}
-	return requests, nil
+	return hydrateRequestBundleMetadataBatch(requests), nil
 }
 
 // WorkloadItem is a request with assignee info for the DevOps manager workload view
