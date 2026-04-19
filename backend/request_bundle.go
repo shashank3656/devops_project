@@ -51,6 +51,10 @@ func canonicalizeRequestBundlePayload(payload InfraRequest) ([]ServiceBundleEntr
 	}
 
 	primary := entries[0]
+	primaryEnv := bundleEntryEnvironment(primary, stringValue(payload["env"]))
+	if primaryEnv != "" {
+		payload["env"] = primaryEnv
+	}
 	payload["cloud"] = primary.Cloud
 	payload["service"] = primary.Service
 	target["bundle_mode"] = len(entries) > 1
@@ -211,13 +215,17 @@ func hydrateRequestBundleMetadata(req *PRRequest) {
 		return
 	}
 
-	entries, err := extractServiceBundleEntriesFromConfig(req.Config)
+	normalizedConfig, entries, changed, err := normalizeStoredRequestBundleConfig(req, nil)
 	if err != nil || len(entries) == 0 {
 		return
 	}
+	req.Config = normalizedConfig
 	applyRequestBundleEntries(req, entries)
 	if req.ID > 0 && DB != nil {
 		_ = replaceRequestServiceItems(req.ID, req)
+		if changed {
+			_ = BackfillPRRequestNormalizedConfig(req.ID, normalizedConfig)
+		}
 	}
 }
 
@@ -395,4 +403,65 @@ func applyRequestBundleEntries(req *PRRequest, entries []ServiceBundleEntry) {
 	req.ServiceBundle = entries
 	req.BundleSummary = buildRequestBundleSummary(entries)
 	req.BundleMode = len(entries) > 1
+	primary := entries[0]
+	if primaryEnv := bundleEntryEnvironment(primary, req.Env); primaryEnv != "" {
+		req.Env = primaryEnv
+	}
+	if strings.TrimSpace(primary.Cloud) != "" {
+		req.Cloud = primary.Cloud
+	}
+	if strings.TrimSpace(primary.Service) != "" {
+		req.Service = primary.Service
+	}
+}
+
+func normalizeStoredRequestBundleConfig(req *PRRequest, preferredEntries []ServiceBundleEntry) (string, []ServiceBundleEntry, bool, error) {
+	if req == nil || strings.TrimSpace(req.Config) == "" {
+		return "", nil, false, nil
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(req.Config), &payload); err != nil {
+		return "", nil, false, err
+	}
+
+	entries := preferredEntries
+	if len(entries) == 0 {
+		var err error
+		entries, err = canonicalizeRequestBundlePayload(payload)
+		if err != nil {
+			return "", nil, false, err
+		}
+		if len(entries) == 0 {
+			return req.Config, nil, false, nil
+		}
+	} else {
+		normalizedEntries, err := normalizeServiceBundleEntries(entries)
+		if err != nil {
+			return "", nil, false, err
+		}
+		entries = normalizedEntries
+		target, targetIsNested := resolveRequestBundleTarget(payload)
+		primary := entries[0]
+		if primaryEnv := bundleEntryEnvironment(primary, stringValue(payload["env"])); primaryEnv != "" {
+			payload["env"] = primaryEnv
+		}
+		payload["cloud"] = primary.Cloud
+		payload["service"] = primary.Service
+		target["bundle_mode"] = len(entries) > 1
+		target["service_bundle"] = entries
+		target["bundle_summary"] = buildRequestBundleSummary(entries)
+		prunePrimaryServiceConfigFieldsForBundle(target, entries)
+		if targetIsNested {
+			payload["config"] = target
+		}
+	}
+
+	ensureRequestPayloadApplicationID(payload, req.ApplicationID)
+	normalizedBytes, err := json.Marshal(payload)
+	if err != nil {
+		return "", nil, false, err
+	}
+	normalizedConfig := string(normalizedBytes)
+	return normalizedConfig, entries, normalizedConfig != req.Config, nil
 }

@@ -990,6 +990,14 @@ func loadRequestServiceItemsMap(requestIDs []int) (map[int][]ServiceBundleEntry,
 	return out, nil
 }
 
+func BackfillPRRequestNormalizedConfig(id int, config string) error {
+	if DB == nil || id <= 0 || strings.TrimSpace(config) == "" {
+		return nil
+	}
+	_, err := DB.Exec("UPDATE pr_requests SET config = $1 WHERE id = $2", config, id)
+	return err
+}
+
 func hydrateRequestBundleMetadataBatch(requests []PRRequest) []PRRequest {
 	if len(requests) == 0 {
 		return requests
@@ -1009,6 +1017,14 @@ func hydrateRequestBundleMetadataBatch(requests []PRRequest) []PRRequest {
 
 	for index := range requests {
 		if entries := itemMap[requests[index].ID]; len(entries) > 0 {
+			if normalizedConfig, normalizedEntries, changed, err := normalizeStoredRequestBundleConfig(&requests[index], entries); err == nil && len(normalizedEntries) > 0 {
+				requests[index].Config = normalizedConfig
+				applyRequestBundleEntries(&requests[index], normalizedEntries)
+				if changed && requests[index].ID > 0 {
+					_ = BackfillPRRequestNormalizedConfig(requests[index].ID, normalizedConfig)
+				}
+				continue
+			}
 			applyRequestBundleEntries(&requests[index], entries)
 			continue
 		}

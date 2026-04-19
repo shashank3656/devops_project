@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestCanonicalizeRequestBundlePayloadNestedConfig(t *testing.T) {
 	payload := InfraRequest{
@@ -129,5 +132,87 @@ func TestNormalizeRequestServiceKey(t *testing.T) {
 		if got := normalizeRequestServiceKey(tc.cloud, tc.service); got != tc.want {
 			t.Fatalf("normalizeRequestServiceKey(%q, %q) = %q, want %q", tc.cloud, tc.service, got, tc.want)
 		}
+	}
+}
+
+func TestNormalizeStoredRequestBundleConfigLegacyBundle(t *testing.T) {
+	req := &PRRequest{
+		Env:           "uat",
+		Cloud:         "gcp",
+		Service:       "storage",
+		ApplicationID: "APP123XYZ9",
+		Config: `{
+			"team": "devteam",
+			"env": "uat",
+			"cloud": "gcp",
+			"service": "storage",
+			"config": {
+				"bucket_name": "legacy-primary-bucket",
+				"region": "asia-east2",
+				"storage_class": "STANDARD",
+				"service_bundle": [
+					{
+						"env": "dev",
+						"cloud": "gcp",
+						"service": "storage",
+						"display_name": "Cloud Storage Bucket",
+						"config": {"bucket_name": "team-dev-bucket"}
+					},
+					{
+						"env": "uat",
+						"cloud": "gcp",
+						"service": "cloudsql",
+						"display_name": "Cloud SQL",
+						"config": {"instance_name": "team-uat-sql"}
+					}
+				]
+			}
+		}`,
+	}
+
+	normalizedConfig, entries, changed, err := normalizeStoredRequestBundleConfig(req, nil)
+	if err != nil {
+		t.Fatalf("normalizeStoredRequestBundleConfig() error = %v", err)
+	}
+	if !changed {
+		t.Fatal("normalizeStoredRequestBundleConfig() should mark legacy payload as changed")
+	}
+	if len(entries) != 2 {
+		t.Fatalf("normalizeStoredRequestBundleConfig() entries = %d, want 2", len(entries))
+	}
+	if entries[0].Service != "cloud-storage" {
+		t.Fatalf("first bundled service = %q, want %q", entries[0].Service, "cloud-storage")
+	}
+	if entries[1].Service != "cloud-sql" {
+		t.Fatalf("second bundled service = %q, want %q", entries[1].Service, "cloud-sql")
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(normalizedConfig), &payload); err != nil {
+		t.Fatalf("normalized config should remain valid json: %v", err)
+	}
+	if got := payload["application_id"]; got != "APP123XYZ9" {
+		t.Fatalf("top-level application_id = %v, want APP123XYZ9", got)
+	}
+	if got := payload["env"]; got != "dev" {
+		t.Fatalf("top-level env = %v, want dev", got)
+	}
+	if got := payload["service"]; got != "cloud-storage" {
+		t.Fatalf("top-level service = %v, want cloud-storage", got)
+	}
+
+	config, ok := payload["config"].(map[string]interface{})
+	if !ok {
+		t.Fatal("normalized config should retain nested config map")
+	}
+	if got := config["application_id"]; got != "APP123XYZ9" {
+		t.Fatalf("config.application_id = %v, want APP123XYZ9", got)
+	}
+	if _, ok := config["bucket_name"]; ok {
+		t.Fatal("config.bucket_name should be pruned for legacy multi-service bundle")
+	}
+	serviceBundle, ok := config["service_bundle"].([]interface{})
+	if !ok || len(serviceBundle) != 2 {
+		t.Fatal("config.service_bundle should contain 2 normalized entries")
 	}
 }
