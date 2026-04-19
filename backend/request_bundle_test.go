@@ -216,3 +216,59 @@ func TestNormalizeStoredRequestBundleConfigLegacyBundle(t *testing.T) {
 		t.Fatal("config.service_bundle should contain 2 normalized entries")
 	}
 }
+
+func TestCanonicalizeRequestBundlePayloadHydratesSingleEntryConfig(t *testing.T) {
+	payload := InfraRequest{
+		"team":    "devteam",
+		"env":     "dev",
+		"cloud":   "gcp",
+		"service": "storage",
+		"config": map[string]interface{}{
+			"bucket_name":                     "setuops-terraform-dev",
+			"region":                          "asia-east2",
+			"storage_class":                   "STANDARD",
+			"soft_delete_policy":              "Default",
+			"versioning_enabled":              false,
+			"bucket_retention_policy_enabled": false,
+			"object_retention_enabled":        false,
+			"encryption_type":                 "Google-managed",
+			"kms_key_name":                    "",
+			"service_bundle": []interface{}{
+				map[string]interface{}{
+					"cloud":              "gcp",
+					"service":            "cloud-storage",
+					"normalized_service": "cloud-storage",
+				},
+			},
+		},
+	}
+
+	entries, err := canonicalizeRequestBundlePayload(payload)
+	if err != nil {
+		t.Fatalf("canonicalizeRequestBundlePayload() error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("canonicalizeRequestBundlePayload() entries = %d, want 1", len(entries))
+	}
+	if got := stringValue(entries[0].Config["bucket_name"]); got != "setuops-terraform-dev" {
+		t.Fatalf("entry config bucket_name = %q, want setuops-terraform-dev", got)
+	}
+	if got := stringValue(entries[0].Config["region"]); got != "asia-east2" {
+		t.Fatalf("entry config region = %q, want asia-east2", got)
+	}
+	if got := stringValue(entries[0].Config["storage_class"]); got != "STANDARD" {
+		t.Fatalf("entry config storage_class = %q, want STANDARD", got)
+	}
+
+	config, ok := payload["config"].(map[string]interface{})
+	if !ok {
+		t.Fatal("payload config should remain a map")
+	}
+	rawBundle, ok := config["service_bundle"].([]ServiceBundleEntry)
+	if !ok || len(rawBundle) != 1 {
+		t.Fatal("config service_bundle should contain 1 normalized entry")
+	}
+	if got := stringValue(rawBundle[0].Config["bucket_name"]); got != "setuops-terraform-dev" {
+		t.Fatalf("stored bundle entry bucket_name = %q, want setuops-terraform-dev", got)
+	}
+}

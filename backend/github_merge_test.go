@@ -272,3 +272,73 @@ func TestBuildBundledRequestFilesBuildsSingleFileForSameTarget(t *testing.T) {
 		t.Fatalf("len(config.buckets) = %d, want 2", len(rawBuckets))
 	}
 }
+
+func TestBuildBundledRequestFilesPreservesSingleStorageConfigWithoutEntryConfig(t *testing.T) {
+	baseFilePath := "project/setuops/devteam/gcp/envs/dev/storage/sgztnjfhbd/request.json"
+	content := []byte(`{
+	  "application_id": "SGZtnJFHBD",
+	  "client_name": "SetuOps",
+	  "cloud": "gcp",
+	  "config": {
+	    "application_id": "SGZtnJFHBD",
+	    "bucket_name": "setuops-terraform-dev",
+	    "bucket_retention_policy_enabled": false,
+	    "bundle_mode": false,
+	    "bundle_summary": {
+	      "count": 1,
+	      "clouds": ["gcp"],
+	      "services": ["cloud-storage"]
+	    },
+	    "encryption_type": "Google-managed",
+	    "kms_key_name": "",
+	    "object_retention_enabled": false,
+	    "region": "asia-east2",
+	    "service_bundle": [
+	      {
+	        "cloud": "gcp",
+	        "service": "cloud-storage",
+	        "normalized_service": "cloud-storage"
+	      }
+	    ],
+	    "soft_delete_policy": "Default",
+	    "storage_class": "STANDARD",
+	    "versioning_enabled": false
+	  },
+	  "draft": true,
+	  "due_date": "2026-04-20",
+	  "env": "dev",
+	  "priority": "medium",
+	  "project_id": 12,
+	  "service": "cloud-storage",
+	  "team": "devteam"
+	}`)
+
+	files, err := buildBundledRequestFiles(baseFilePath, content)
+	if err != nil {
+		t.Fatalf("buildBundledRequestFiles returned error: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("len(files) = %d, want 1", len(files))
+	}
+
+	groupedPath := "project/setuops/devteam/gcp/envs/dev/storage/sgztnjfhbd/request.json"
+	groupedContent, ok := files[groupedPath]
+	if !ok {
+		t.Fatalf("expected grouped file %q to be generated", groupedPath)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(groupedContent, &payload); err != nil {
+		t.Fatalf("grouped payload invalid JSON: %v", err)
+	}
+	config, _ := payload["config"].(map[string]interface{})
+	if got := stringValue(config["bucket_name"]); got != "setuops-terraform-dev" {
+		t.Fatalf("config.bucket_name = %q, want setuops-terraform-dev", got)
+	}
+	if got := stringValue(config["region"]); got != "asia-east2" {
+		t.Fatalf("config.region = %q, want asia-east2", got)
+	}
+	if got := stringValue(config["storage_class"]); got != "STANDARD" {
+		t.Fatalf("config.storage_class = %q, want STANDARD", got)
+	}
+}

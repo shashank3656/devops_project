@@ -49,6 +49,7 @@ func canonicalizeRequestBundlePayload(payload InfraRequest) ([]ServiceBundleEntr
 	if len(entries) == 0 {
 		return nil, fmt.Errorf("service_bundle must include at least one service")
 	}
+	entries = hydrateSingleBundleEntryConfigFromTarget(target, entries)
 
 	primary := entries[0]
 	primaryEnv := bundleEntryEnvironment(primary, stringValue(payload["env"]))
@@ -63,6 +64,52 @@ func canonicalizeRequestBundlePayload(payload InfraRequest) ([]ServiceBundleEntr
 	prunePrimaryServiceConfigFieldsForBundle(target, entries)
 
 	return entries, nil
+}
+
+func hydrateSingleBundleEntryConfigFromTarget(target map[string]interface{}, entries []ServiceBundleEntry) []ServiceBundleEntry {
+	if target == nil || len(entries) != 1 {
+		return entries
+	}
+
+	entry := entries[0]
+	if serviceBundleEntryConfigHasMeaningfulFields(entry.Config) {
+		return entries
+	}
+
+	hydratedConfig := map[string]interface{}{}
+	for key, value := range cloneJSONMap(target) {
+		switch key {
+		case "service_bundle", "bundle_summary", "bundle_mode":
+			continue
+		default:
+			hydratedConfig[key] = value
+		}
+	}
+	if entry.Env != "" {
+		hydratedConfig["env"] = entry.Env
+	}
+	entry.Config = hydratedConfig
+
+	normalizedEntry, err := normalizeServiceBundleEntry(entry)
+	if err != nil {
+		return entries
+	}
+	return []ServiceBundleEntry{normalizedEntry}
+}
+
+func serviceBundleEntryConfigHasMeaningfulFields(config map[string]interface{}) bool {
+	if len(config) == 0 {
+		return false
+	}
+	for key := range config {
+		switch key {
+		case "", "env", "application_id", "service_bundle", "bundle_summary", "bundle_mode":
+			continue
+		default:
+			return true
+		}
+	}
+	return false
 }
 
 func resolveRequestBundleTarget(payload InfraRequest) (map[string]interface{}, bool) {
@@ -442,6 +489,7 @@ func normalizeStoredRequestBundleConfig(req *PRRequest, preferredEntries []Servi
 		}
 		entries = normalizedEntries
 		target, targetIsNested := resolveRequestBundleTarget(payload)
+		entries = hydrateSingleBundleEntryConfigFromTarget(target, entries)
 		primary := entries[0]
 		if primaryEnv := bundleEntryEnvironment(primary, stringValue(payload["env"])); primaryEnv != "" {
 			payload["env"] = primaryEnv
