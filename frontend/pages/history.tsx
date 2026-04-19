@@ -150,9 +150,10 @@ function getRequestServiceBundle(req: PRRequest | null | undefined): ServiceBund
   }
   if (!req.config) return [];
   try {
-    const parsed = JSON.parse(req.config) as { service_bundle?: unknown };
-    if (!Array.isArray(parsed.service_bundle)) return [];
-    return parsed.service_bundle.flatMap((entry) => {
+    const parsed = JSON.parse(req.config) as { service_bundle?: unknown; config?: { service_bundle?: unknown } };
+    const serviceBundle = parsed.service_bundle ?? parsed.config?.service_bundle;
+    if (!Array.isArray(serviceBundle)) return [];
+    return serviceBundle.flatMap((entry) => {
       if (!entry || typeof entry !== 'object') return [];
       const record = entry as Record<string, any>;
       const cloud = typeof record.cloud === 'string' ? record.cloud.trim() : '';

@@ -704,7 +704,7 @@ export default function SelectService() {
       const serviceBundlePayload = requestServices.map((entry) => ({
         env: entry.env,
         cloud: entry.cloud,
-        service: entry.service,
+        service: entry.normalizedService || entry.service,
         normalized_service: entry.normalizedService,
         display_name: entry.displayName,
         config: entry.formValues,
@@ -722,7 +722,7 @@ export default function SelectService() {
         team,
         env: primaryService.env,
         cloud: primaryService.cloud,
-        service: primaryService.service,
+        service: primaryService.normalizedService || primaryService.service,
         client_name: clientName || undefined,
         priority,
         due_date: dueDate || undefined,

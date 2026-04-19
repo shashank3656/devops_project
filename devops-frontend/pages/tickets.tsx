@@ -203,11 +203,14 @@ function isAccessRequest(request: Pick<TicketRow, 'config'> | null | undefined):
   }
 }
 
-function getRequestServiceBundle(request: Pick<TicketRow, 'config'> | null | undefined): ServiceBundleEntry[] {
+function getRequestServiceBundle(request: (Pick<TicketRow, 'config'> & { service_bundle?: ServiceBundleEntry[] }) | null | undefined): ServiceBundleEntry[] {
+  if (Array.isArray(request?.service_bundle) && request.service_bundle.length > 0) {
+    return request.service_bundle.filter((entry) => entry && entry.cloud && entry.service);
+  }
   if (!request?.config) return [];
   try {
-    const parsed = JSON.parse(request.config) as { config?: { service_bundle?: unknown } };
-    const serviceBundle = parsed?.config?.service_bundle;
+    const parsed = JSON.parse(request.config) as { service_bundle?: unknown; config?: { service_bundle?: unknown } };
+    const serviceBundle = parsed?.service_bundle ?? parsed?.config?.service_bundle;
     return Array.isArray(serviceBundle) ? (serviceBundle as ServiceBundleEntry[]) : [];
   } catch {
     return [];
