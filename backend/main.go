@@ -678,6 +678,8 @@ func main() {
 	http.HandleFunc("/api/devops/gitops/manage/access/", devopsGitOpsAccessDeleteHandler)
 	http.HandleFunc("/api/devops/templates", devopsTemplatesRouter)
 	http.HandleFunc("/api/devops/templates/", devopsTemplatesRouter)
+	http.HandleFunc("/api/devops/architecture-diagram", devopsArchitectureDiagramRouter)
+	http.HandleFunc("/api/devops/architecture-diagram/", devopsArchitectureDiagramRouter)
 	http.HandleFunc("/api/devops/credential-audit", devopsCredentialAuditHandler)
 	http.HandleFunc("/api/devops/expiry-tracker/actions", devopsExpiryTrackerActionsHandler)
 	http.HandleFunc("/api/webhooks/github", githubWebhookHandler)

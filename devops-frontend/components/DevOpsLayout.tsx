@@ -23,6 +23,7 @@ import {
   IconFileText,
   IconChevronRight,
   IconChevronDown,
+  IconDiagram,
 } from './Icons';
 import SupportHub from './SupportHub';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
@@ -97,6 +98,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/team': 'Team',
   '/credential-audit': 'Secrets',
   '/profile': 'Profile',
+  '/architecture-diagram': 'Diagram → Infra',
+  '/architecture-diagram/new': 'New Diagram Job',
 };
 
 function getPageTitle(pathname: string): string {
@@ -368,6 +371,7 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
     { href: '/dashboard', label: 'Overview', Icon: IconTickets },
     { href: '/tickets', label: 'Requests', Icon: IconTickets },
     { href: '/templates', label: 'Request Templates', Icon: IconTemplates },
+    { href: '/architecture-diagram', label: 'Diagram → Infra', Icon: IconDiagram },
     { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
   ];
   if (isManager) {

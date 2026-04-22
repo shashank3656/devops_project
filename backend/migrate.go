@@ -971,6 +971,37 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_request_service_items_request_id ON pr_request_service_items(request_id)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_request_service_items_request_position ON pr_request_service_items(request_id, position)")
 
+	// Migration 47: architecture diagram -> terraform generator jobs
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS architecture_diagram_jobs (
+			id SERIAL PRIMARY KEY,
+			project_name VARCHAR(200) NOT NULL,
+			environment VARCHAR(40) NOT NULL,
+			cloud VARCHAR(40) NOT NULL,
+			region VARCHAR(80) NOT NULL DEFAULT '',
+			due_date VARCHAR(40),
+			notes TEXT NOT NULL DEFAULT '',
+			image_filename VARCHAR(255) NOT NULL DEFAULT '',
+			image_mime VARCHAR(120) NOT NULL DEFAULT '',
+			image_size INTEGER NOT NULL DEFAULT 0,
+			detected_components JSONB NOT NULL DEFAULT '[]'::jsonb,
+			detection_source VARCHAR(40) NOT NULL DEFAULT 'heuristic',
+			terraform_code TEXT NOT NULL DEFAULT '',
+			status VARCHAR(30) NOT NULL DEFAULT 'pending',
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_architecture_diagram_jobs_project ON architecture_diagram_jobs(project_name)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_architecture_diagram_jobs_created_by ON architecture_diagram_jobs(created_by)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_architecture_diagram_jobs_created_at ON architecture_diagram_jobs(created_at)")
+
+	// Migration 48: persist storage bucket reference + public URL for uploaded diagrams
+	_, _ = DB.Exec(`ALTER TABLE architecture_diagram_jobs ADD COLUMN IF NOT EXISTS image_bucket VARCHAR(160) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE architecture_diagram_jobs ADD COLUMN IF NOT EXISTS image_object_key VARCHAR(512) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE architecture_diagram_jobs ADD COLUMN IF NOT EXISTS image_url VARCHAR(1024) NOT NULL DEFAULT ''`)
+
 	log.Println("Database schema is up to date")
 	return nil
 }
