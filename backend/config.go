@@ -58,6 +58,26 @@ var (
 	OpenTelemetryInsecure      = getEnvBool("OTEL_EXPORTER_OTLP_INSECURE", true)
 	OpenTelemetrySampleRatio   = getEnvFloat("OTEL_TRACES_SAMPLER_RATIO", 1.0)
 	OpenTelemetryMetricSeconds = getEnvDurationSeconds("OTEL_METRICS_EXPORT_INTERVAL_SECONDS", 30*time.Second)
+
+	// Idle Resources / FinOps
+	CloudSecretKeyB64    = getEnv("CLOUD_SECRET_KEY", "")
+	IdleRetentionDays    = getEnvInt("IDLE_RETENTION_DAYS", 90)
+	IdleAIProvider       = getEnv("IDLE_AI_PROVIDER", "none")
+	IdleAIModel          = getEnv("IDLE_AI_MODEL", "")
+	OpenAIAPIKey         = getEnv("OPENAI_API_KEY", "")
+	OpenAIBaseURL        = getEnv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+	AnthropicAPIKey      = getEnv("ANTHROPIC_API_KEY", "")
+	AnthropicBaseURL     = getEnv("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1")
+	GoogleAIAPIKey       = getEnv("GOOGLE_AI_API_KEY", "")
+	GoogleAIBaseURL      = getEnv("GOOGLE_AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
+	OllamaBaseURL        = getEnv("OLLAMA_BASE_URL", "http://localhost:11434")
+	BedrockRegion        = getEnv("BEDROCK_REGION", "us-east-1")
+
+	// Jira (Cloud) — optional; remediation can open tickets when configured.
+	JiraURL     = getEnv("JIRA_URL", "")
+	JiraEmail   = getEnv("JIRA_EMAIL", "")
+	JiraToken   = getEnv("JIRA_TOKEN", "")
+	JiraProject = getEnv("JIRA_PROJECT", "")
 )
 
 func getEnv(key, defaultValue string) string {

@@ -971,6 +971,207 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_request_service_items_request_id ON pr_request_service_items(request_id)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_request_service_items_request_position ON pr_request_service_items(request_id, position)")
 
+	// Migration 47: Idle Resources / FinOps dashboard (multi-cloud)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS cloud_accounts (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(160) NOT NULL,
+			cloud VARCHAR(20) NOT NULL,
+			auth_method VARCHAR(40) NOT NULL,
+			default_regions TEXT[] NOT NULL DEFAULT '{}',
+			default_currency VARCHAR(8) NOT NULL DEFAULT 'USD',
+			retention_days INTEGER,
+			ai_provider VARCHAR(40),
+			ai_model VARCHAR(120),
+			status VARCHAR(20) NOT NULL DEFAULT 'active',
+			last_test_at TIMESTAMP,
+			last_test_status VARCHAR(20),
+			last_test_message TEXT,
+			last_scan_id INTEGER,
+			last_scan_at TIMESTAMP,
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_cloud_accounts_cloud ON cloud_accounts(cloud)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_cloud_accounts_status ON cloud_accounts(status)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS cloud_account_secrets (
+			account_id INTEGER PRIMARY KEY REFERENCES cloud_accounts(id) ON DELETE CASCADE,
+			ciphertext BYTEA NOT NULL,
+			nonce BYTEA NOT NULL,
+			rotated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS idle_scans (
+			id SERIAL PRIMARY KEY,
+			account_id INTEGER NOT NULL REFERENCES cloud_accounts(id) ON DELETE CASCADE,
+			cloud VARCHAR(20) NOT NULL,
+			regions TEXT[] NOT NULL DEFAULT '{}',
+			scope TEXT[] NOT NULL DEFAULT '{}',
+			thresholds JSONB NOT NULL DEFAULT '{}'::jsonb,
+			ai_provider VARCHAR(40),
+			ai_model VARCHAR(120),
+			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			progress JSONB NOT NULL DEFAULT '{}'::jsonb,
+			totals JSONB NOT NULL DEFAULT '{}'::jsonb,
+			error_log JSONB NOT NULL DEFAULT '[]'::jsonb,
+			error_message TEXT,
+			raw_artifact_url TEXT,
+			triggered_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			started_at TIMESTAMP,
+			finished_at TIMESTAMP,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_scans_account_id ON idle_scans(account_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_scans_status ON idle_scans(status)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_scans_created_at ON idle_scans(created_at DESC)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS idle_resources (
+			id BIGSERIAL PRIMARY KEY,
+			scan_id INTEGER NOT NULL REFERENCES idle_scans(id) ON DELETE CASCADE,
+			account_id INTEGER NOT NULL REFERENCES cloud_accounts(id) ON DELETE CASCADE,
+			cloud VARCHAR(20) NOT NULL,
+			service VARCHAR(60) NOT NULL,
+			region VARCHAR(60) NOT NULL,
+			resource_id VARCHAR(400) NOT NULL,
+			name VARCHAR(400) NOT NULL DEFAULT '',
+			tags JSONB NOT NULL DEFAULT '{}'::jsonb,
+			state VARCHAR(60) NOT NULL DEFAULT '',
+			created_at_remote TIMESTAMP,
+			metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
+			cost_estimate_usd NUMERIC(14,2) NOT NULL DEFAULT 0,
+			reason TEXT NOT NULL DEFAULT '',
+			severity VARCHAR(10) NOT NULL DEFAULT 'low',
+			console_url TEXT,
+			ai_rank INTEGER,
+			ai_recommendation TEXT,
+			ai_confidence NUMERIC(4,2),
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_resources_scan_id ON idle_resources(scan_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_resources_account_id ON idle_resources(account_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_resources_service ON idle_resources(service)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_resources_severity ON idle_resources(severity)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_resources_resource_id ON idle_resources(resource_id)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS idle_ai_rankings (
+			id SERIAL PRIMARY KEY,
+			scan_id INTEGER NOT NULL REFERENCES idle_scans(id) ON DELETE CASCADE,
+			provider VARCHAR(40) NOT NULL,
+			model VARCHAR(120) NOT NULL,
+			prompt_hash VARCHAR(80) NOT NULL,
+			prompt_excerpt TEXT NOT NULL DEFAULT '',
+			response_raw TEXT NOT NULL DEFAULT '',
+			ranked_count INTEGER NOT NULL DEFAULT 0,
+			triggered_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_ai_rankings_scan_id ON idle_ai_rankings(scan_id)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS idle_resource_exceptions (
+			id SERIAL PRIMARY KEY,
+			account_id INTEGER NOT NULL REFERENCES cloud_accounts(id) ON DELETE CASCADE,
+			resource_id VARCHAR(400) NOT NULL,
+			reason TEXT NOT NULL DEFAULT '',
+			expires_at TIMESTAMP,
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(account_id, resource_id)
+		)
+	`)
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS idle_audit_log (
+			id BIGSERIAL PRIMARY KEY,
+			account_id INTEGER REFERENCES cloud_accounts(id) ON DELETE SET NULL,
+			scan_id INTEGER REFERENCES idle_scans(id) ON DELETE SET NULL,
+			actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			action VARCHAR(60) NOT NULL,
+			details JSONB NOT NULL DEFAULT '{}'::jsonb,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_audit_log_account_id ON idle_audit_log(account_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_audit_log_created_at ON idle_audit_log(created_at DESC)")
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS idle_settings (
+			id INTEGER PRIMARY KEY DEFAULT 1,
+			retention_days INTEGER NOT NULL DEFAULT 90,
+			purge_raw_artifacts BOOLEAN NOT NULL DEFAULT TRUE,
+			purge_resources BOOLEAN NOT NULL DEFAULT FALSE,
+			default_ai_provider VARCHAR(40) NOT NULL DEFAULT 'none',
+			default_ai_model VARCHAR(120) NOT NULL DEFAULT '',
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			CHECK (id = 1)
+		)
+	`)
+	_, _ = DB.Exec(`INSERT INTO idle_settings (id) VALUES (1) ON CONFLICT DO NOTHING`)
+
+	// Migration 48: Idle scan schedules
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS idle_schedules (
+			id SERIAL PRIMARY KEY,
+			account_id INTEGER NOT NULL REFERENCES cloud_accounts(id) ON DELETE CASCADE,
+			name VARCHAR(160) NOT NULL DEFAULT 'Default schedule',
+			cadence VARCHAR(20) NOT NULL DEFAULT 'daily',
+			hour_utc INTEGER NOT NULL DEFAULT 4,
+			regions TEXT[] NOT NULL DEFAULT '{}',
+			scope TEXT[] NOT NULL DEFAULT '{}',
+			ai_provider VARCHAR(40),
+			ai_model VARCHAR(120),
+			enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			last_run_at TIMESTAMP,
+			last_scan_id INTEGER REFERENCES idle_scans(id) ON DELETE SET NULL,
+			last_run_status VARCHAR(20),
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			CHECK (cadence IN ('hourly','daily','weekly')),
+			CHECK (hour_utc BETWEEN 0 AND 23)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_schedules_account_id ON idle_schedules(account_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_schedules_enabled ON idle_schedules(enabled)")
+
+	// Migration 49: Idle remediation records
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS idle_remediations (
+			id SERIAL PRIMARY KEY,
+			scan_id INTEGER NOT NULL REFERENCES idle_scans(id) ON DELETE CASCADE,
+			account_id INTEGER NOT NULL REFERENCES cloud_accounts(id) ON DELETE CASCADE,
+			target VARCHAR(20) NOT NULL,
+			resource_ids TEXT[] NOT NULL DEFAULT '{}',
+			estimated_savings_usd NUMERIC(12,2) NOT NULL DEFAULT 0,
+			cleanup_tf_url TEXT,
+			pr_url TEXT,
+			ticket_url TEXT,
+			ticket_key VARCHAR(40),
+			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			error_message TEXT,
+			notes TEXT,
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			completed_at TIMESTAMP,
+			CHECK (target IN ('download','github_pr','jira_ticket'))
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_remediations_scan_id ON idle_remediations(scan_id)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_idle_remediations_account_id ON idle_remediations(account_id)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }

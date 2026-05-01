@@ -23,6 +23,7 @@ import {
   IconFileText,
   IconChevronRight,
   IconChevronDown,
+  IconLeaf,
 } from './Icons';
 import SupportHub from './SupportHub';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
@@ -97,6 +98,9 @@ const PAGE_TITLES: Record<string, string> = {
   '/team': 'Team',
   '/credential-audit': 'Secrets',
   '/profile': 'Profile',
+  '/idle-resources': 'Idle Resources',
+  '/idle-resources/accounts/new': 'Connect Cloud Account',
+  '/idle-resources/settings': 'Idle Resources Settings',
 };
 
 function getPageTitle(pathname: string): string {
@@ -369,6 +373,7 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
     { href: '/tickets', label: 'Requests', Icon: IconTickets },
     { href: '/templates', label: 'Request Templates', Icon: IconTemplates },
     { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
+    { href: '/idle-resources', label: 'Idle Resources', Icon: IconLeaf },
   ];
   if (isManager) {
     primaryNavItems.splice(1, 0, { href: '/approval-center', label: 'Approvals', Icon: IconShield });

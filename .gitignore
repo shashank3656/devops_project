@@ -17,6 +17,12 @@ build/
 *.so
 *.dylib
 
+# Compiled Go binaries (rebuild via `go build`)
+backend/infra-backend
+backend/devops-backend
+*.test
+*.out
+
 # IDE
 .vscode/
 .idea/
