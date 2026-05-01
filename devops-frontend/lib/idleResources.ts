@@ -142,12 +142,8 @@ export const idle = {
   cancelScan: (apiUrl: string, id: number) => api<{ status: string }>(apiUrl, `/scans/${id}/cancel`, { method: 'POST' }),
   rerankScan: (apiUrl: string, id: number, body: { provider?: string; model?: string }) => api<{ status: string; provider: string; model: string; ranked_count: number; error?: string }>(apiUrl, `/scans/${id}/rerank`, { method: 'POST', body: JSON.stringify(body) }),
   listResources: (apiUrl: string, scanId: number, params: { service?: string; severity?: string; region?: string; q?: string; limit?: number } = {}) => {
-    const q = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== '' && v !== null) q.append(k, String(v));
-    });
-    const qs = q.toString();
-    return api<{ status: string; resources: IdleResource[] }>(apiUrl, `/scans/${scanId}/resources${qs ? `?${qs}` : ''}`);
+    const qs = buildQueryString(params);
+    return api<{ status: string; resources: IdleResource[] }>(apiUrl, `/scans/${scanId}/resources${qs}`);
   },
   exportCsvUrl: (apiUrl: string, scanId: number) => `${apiUrl.replace(/\/$/, '')}/api/devops/idle/scans/${scanId}/resources.csv`,
   exportXlsxUrl: (apiUrl: string, scanId: number) => `${apiUrl.replace(/\/$/, '')}/api/devops/idle/scans/${scanId}/resources.xlsx`,
@@ -173,14 +169,22 @@ export const idle = {
   },
 
   listAudit: (apiUrl: string, params: { account_id?: number; limit?: number } = {}) => {
-    const q = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== '' && v !== null) q.append(k, String(v));
-    });
-    const qs = q.toString();
-    return api<{ status: string; entries: IdleAuditEntry[] }>(apiUrl, `/audit${qs ? `?${qs}` : ''}`);
+    const qs = buildQueryString(params);
+    return api<{ status: string; entries: IdleAuditEntry[] }>(apiUrl, `/audit${qs}`);
   },
 };
+
+function buildQueryString(params: Record<string, unknown>): string {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null) continue;
+    const s = String(v);
+    if (s === '') continue;
+    q.append(k, s);
+  }
+  const out = q.toString();
+  return out ? `?${out}` : '';
+}
 
 export interface IdleSchedule {
   id: number;
