@@ -10,7 +10,7 @@ const DEVOPS_TOKEN_KEY = 'devops_token';
 
 export default function IdleAuditPage() {
   const router = useRouter();
-  const { apiUrl } = useApiUrl();
+  const apiUrl = useApiUrl();
   const [entries, setEntries] = useState<IdleAuditEntry[]>([]);
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);
   const [accountFilter, setAccountFilter] = useState('');

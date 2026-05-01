@@ -12,7 +12,7 @@ export default function AccountDetail() {
   const router = useRouter();
   const { id } = router.query;
   const accountId = Number(id);
-  const { apiUrl } = useApiUrl();
+  const apiUrl = useApiUrl();
   const [account, setAccount] = useState<CloudAccount | null>(null);
   const [scans, setScans] = useState<IdleScan[]>([]);
   const [opts, setOpts] = useState<IdleOptions | null>(null);

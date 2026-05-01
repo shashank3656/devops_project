@@ -10,7 +10,7 @@ const DEVOPS_TOKEN_KEY = 'devops_token';
 
 export default function IdleSettingsPage() {
   const router = useRouter();
-  const { apiUrl } = useApiUrl();
+  const apiUrl = useApiUrl();
   const [settings, setSettings] = useState<IdleSettings | null>(null);
   const [opts, setOpts] = useState<IdleOptions | null>(null);
   const [error, setError] = useState('');

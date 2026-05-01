@@ -20,7 +20,7 @@ export default function ScanDetail() {
   const router = useRouter();
   const { id } = router.query;
   const scanId = Number(id);
-  const { apiUrl } = useApiUrl();
+  const apiUrl = useApiUrl();
   const [scan, setScan] = useState<IdleScan | null>(null);
   const [resources, setResources] = useState<IdleResource[]>([]);
   const [loading, setLoading] = useState(true);

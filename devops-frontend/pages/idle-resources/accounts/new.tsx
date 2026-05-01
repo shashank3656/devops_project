@@ -9,7 +9,7 @@ const DEVOPS_TOKEN_KEY = 'devops_token';
 
 export default function NewCloudAccount() {
   const router = useRouter();
-  const { apiUrl } = useApiUrl();
+  const apiUrl = useApiUrl();
   const [opts, setOpts] = useState<IdleOptions | null>(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);

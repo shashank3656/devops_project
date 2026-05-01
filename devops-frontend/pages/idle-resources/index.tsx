@@ -17,7 +17,7 @@ const DEVOPS_TOKEN_KEY = 'devops_token';
 
 export default function IdleResourcesIndex() {
   const router = useRouter();
-  const { apiUrl } = useApiUrl();
+  const apiUrl = useApiUrl();
   const [accounts, setAccounts] = useState<CloudAccount[]>([]);
   const [scans, setScans] = useState<IdleScan[]>([]);
   const [summary, setSummary] = useState<IdleSummary | null>(null);
