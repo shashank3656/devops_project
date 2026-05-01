@@ -266,6 +266,10 @@ version: '3.8'
 # Development (hot reload, includes admin-frontend; use override so admin-frontend uses dev backend):
 #   docker-compose --profile dev -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 #
+# Optional local LLM for Idle ranking (Ollama). Enable with profile `ollama` and set IDLE_AI_PROVIDER=ollama:
+#   docker-compose --profile dev --profile ollama up -d --build
+# Backends default OLLAMA_BASE_URL to http://ollama:11434 so the in-stack service is reachable from containers.
+#
 # Environment variables: config/.env (copy from config/.env.example)
 
 services:
@@ -284,6 +288,23 @@ services:
     restart: unless-stopped
     networks:
       - infra-network
+
+  # Local LLM (Ollama) — optional profile `ollama`. Pull models after start, e.g.:
+  #   docker compose exec ollama ollama pull llama3.2
+  # On Linux with NVIDIA GPU, add `deploy.resources.reservations.devices` (see:
+  #   https://github.com/ollama/ollama/blob/main/README.md )
+  ollama:
+    image: ollama/ollama:latest
+    container_name: infra-ollama
+    ports:
+      - "${OLLAMA_HOST_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - infra-network
+    profiles:
+      - ollama
 
   # Development Backend (with hot reload)
   backend:
@@ -328,7 +349,7 @@ services:
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.anthropic.com/v1}
       - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY:-}
       - GOOGLE_AI_BASE_URL=${GOOGLE_AI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://localhost:11434}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://34.63.122.157:11434}
       - BEDROCK_REGION=${BEDROCK_REGION:-us-east-1}
       - JIRA_URL=${JIRA_URL:-}
       - JIRA_EMAIL=${JIRA_EMAIL:-}
@@ -400,7 +421,7 @@ services:
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.anthropic.com/v1}
       - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY:-}
       - GOOGLE_AI_BASE_URL=${GOOGLE_AI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://localhost:11434}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
       - BEDROCK_REGION=${BEDROCK_REGION:-us-east-1}
       - JIRA_URL=${JIRA_URL:-}
       - JIRA_EMAIL=${JIRA_EMAIL:-}
@@ -596,6 +617,7 @@ services:
 
 volumes:
   redis_data:
+  ollama_data:
 
 networks:
   infra-network:
