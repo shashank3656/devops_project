@@ -304,7 +304,7 @@ services:
     networks:
       - infra-network
     profiles:
-      - ollama
+      - dev
 
   # Development Backend (with hot reload)
   backend:
