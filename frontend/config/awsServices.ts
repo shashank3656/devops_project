@@ -66,6 +66,24 @@ export const awsServices: Record<string, AWSService> = {
       { name: 'allocated_storage', label: 'Allocated Storage (GB)', type: 'number', defaultValue: 20, section: 'Sizing and capacity', description: 'Recommended default: 20 GB' },
       { name: 'db_name', label: 'Database Name', type: 'text', placeholder: 'mydb', section: 'Database settings' }
     ]
+  },
+  'elasticache': {
+    name: 'elasticache',
+    displayName: 'ElastiCache / Redis',
+    fields: [
+      { name: 'cluster_name', label: 'Cluster Name', type: 'text', required: true, placeholder: 'app-cache', section: 'Core setup' },
+      { name: 'engine', label: 'Engine', type: 'select', required: true, options: ['redis', 'valkey'], defaultValue: 'redis', section: 'Core setup' },
+      { name: 'node_type', label: 'Node Type', type: 'select', required: true, options: ['cache.t3.micro', 'cache.t3.small'], defaultValue: 'cache.t3.micro', section: 'Sizing and capacity' }
+    ]
+  },
+  'alb': {
+    name: 'alb',
+    displayName: 'Application Load Balancer',
+    fields: [
+      { name: 'name', label: 'Load balancer name', type: 'text', required: true, placeholder: 'public-api', section: 'Core setup' },
+      { name: 'scheme', label: 'Scheme', type: 'select', required: true, options: ['internet-facing', 'internal'], defaultValue: 'internet-facing', section: 'Networking' },
+      { name: 'target_port', label: 'Target port', type: 'number', defaultValue: 443, section: 'Networking' }
+    ]
   }
 };
 

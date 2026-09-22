@@ -24,6 +24,7 @@ import {
 } from './Icons';
 import SupportHub from './SupportHub';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
+import { CommandPalette } from '@infragate/ui';
 
 const THEME_KEY = 'infra-portal-theme';
 const SIDEBAR_COLLAPSED_KEY = 'infra-admin-sidebar-collapsed';
@@ -80,20 +81,23 @@ interface PendingRequest {
   created_at: string;
 }
 
-const NAV_ITEMS: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
-  { href: '/dashboard', label: 'Dashboard', Icon: IconDashboard },
-  { href: '/approval-center', label: 'Approval Center', Icon: IconShield },
-  { href: '/project-governance', label: 'Project Governance', Icon: IconTrendingUp },
+const PRIMARY_NAV: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
+  { href: '/dashboard', label: 'Overview', Icon: IconDashboard },
+  { href: '/approval-center', label: 'Approvals', Icon: IconShield },
   { href: '/requests', label: 'Requests', Icon: IconRequests },
-  { href: '/sla', label: 'SLA Dashboard', Icon: IconTrendingUp },
-  { href: '/teams', label: 'Teams', Icon: IconTeams },
-  { href: '/team-ownership', label: 'Team Ownership', Icon: IconLayers },
-  { href: '/users', label: 'Users', Icon: IconUsers },
+  { href: '/users', label: 'People', Icon: IconUsers },
   { href: '/projects', label: 'Projects', Icon: IconProjects },
+];
+
+const MORE_NAV: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
+  { href: '/project-governance', label: 'Project Setup', Icon: IconTrendingUp },
+  { href: '/sla', label: 'Service Levels', Icon: IconTrendingUp },
+  { href: '/teams', label: 'Teams', Icon: IconTeams },
+  { href: '/team-ownership', label: 'Team Access', Icon: IconLayers },
   { href: '/access-review', label: 'Access Review', Icon: IconShield },
   { href: '/activity', label: 'Activity', Icon: IconActivity },
   { href: '/templates', label: 'Templates', Icon: IconTemplates },
-  { href: '/webhooks', label: 'Webhooks', Icon: IconWebhook },
+  { href: '/webhooks', label: 'Integrations', Icon: IconWebhook },
 ];
 
 function getAdminIdentity(): { initials: string; label: string } {
@@ -137,6 +141,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const [profileLabel, setProfileLabel] = useState('Admin Operator');
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
+  const [moreNavOpen, setMoreNavOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -162,6 +167,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }, []);
 
   const token = getAdminToken();
+  const moreNavActive = MORE_NAV.some(({ href }) => pathname === href || pathname.startsWith(`${href}/`));
+
+  useEffect(() => {
+    if (moreNavActive) setMoreNavOpen(true);
+  }, [moreNavActive]);
 
   useEffect(() => {
     const currentToken = getAdminToken();
@@ -334,7 +344,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         <div className="admin-sidebar-shell__body">
           <nav className="admin-sidebar-shell__nav">
             {!sidebarCollapsed && <span className="admin-sidebar-shell__nav-title">Modules</span>}
-            {NAV_ITEMS.map(({ href, label, Icon }) => {
+            {PRIMARY_NAV.map(({ href, label, Icon }) => {
               const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
               const badge = getSidebarBadge(href);
               return (
@@ -350,6 +360,28 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 </Link>
               );
             })}
+            {!sidebarCollapsed && (
+              <div className="admin-sidebar-shell__section">
+                <button
+                  type="button"
+                  className="admin-sidebar-shell__link"
+                  onClick={() => setMoreNavOpen((open) => !open)}
+                >
+                  <span className="admin-sidebar-shell__label">More</span>
+                </button>
+                {moreNavOpen && MORE_NAV.map(({ href, label, Icon }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`admin-sidebar-shell__link ${pathname === href || pathname.startsWith(href) ? 'admin-sidebar-shell__link--active' : ''}`}
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Icon className="admin-sidebar-shell__icon" />
+                    <span className="admin-sidebar-shell__label">{label}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
           </nav>
 
           {!sidebarCollapsed && (
@@ -563,6 +595,19 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
         <main className="admin-main-shell__content">{children}</main>
       </div>
+      <CommandPalette
+        apiUrl={apiUrl}
+        token={token}
+        commands={[
+          { id: 'overview', label: 'Overview', href: '/dashboard' },
+          { id: 'approvals', label: 'Approvals', href: '/approval-center' },
+          { id: 'requests', label: 'Requests', href: '/requests' },
+          { id: 'people', label: 'People', href: '/users' },
+          { id: 'projects', label: 'Projects', href: '/projects' },
+          { id: 'templates', label: 'Templates', href: '/templates' },
+          { id: 'webhooks', label: 'Integrations', href: '/webhooks' },
+        ]}
+      />
       <SupportHub
         open={supportOpen}
         initialTab={supportTab}
@@ -572,6 +617,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         currentTitle={pageTitle}
         articles={supportArticles}
         quickPrompts={supportQuickPrompts}
+        apiUrl={apiUrl}
+        token={token}
         externalDocsHref={process.env.NEXT_PUBLIC_DOCS_URL || ''}
         escalationActions={[
           {

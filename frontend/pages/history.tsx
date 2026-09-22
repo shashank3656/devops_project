@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { useToast } from '../context/ToastContext';
 import CalendarDateInput from '../components/CalendarDateInput';
+import RequestPRImpact from '../components/RequestPRImpact';
 
 import { maskSensitiveJson } from '../lib/maskSensitive';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
@@ -1725,6 +1726,7 @@ export default function History() {
                           Open pull request →
                         </a>
                       ) : null}
+                      <RequestPRImpact apiUrl={apiUrl} token={typeof window === 'undefined' ? null : localStorage.getItem('token')} requestId={detailRequest.id} />
                       <button
                         type="button"
                         onClick={() => applyAsTemplate(detailRequest)}

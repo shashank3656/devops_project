@@ -3,6 +3,8 @@ import Head from 'next/head';
 import { useEffect } from 'react';
 import { ADMIN_SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
+import '../../shared-ui/tokens.css';
+import '../../shared-ui/workspace.css';
 
 const API_OVERRIDE_KEY = 'admin_api_url_override';
 const BUILT_API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080').replace(/\/+$/, '');

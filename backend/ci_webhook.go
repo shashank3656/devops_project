@@ -82,6 +82,18 @@ func ciWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	log.Printf("[CI Webhook] request_id=%d status=%s normalized=%s completed=%t", req.ID, payload.Status, normalizedStatus, markedCompleted)
+	deployStatus := ""
+	switch normalizedStatus {
+	case "merge_success", "merge_pipeline_success", "merge_succeeded":
+		deployStatus = "merged"
+	case "apply_success", "apply_completed", "deploy_success", "deployment_success":
+		deployStatus = "applied"
+	case "apply_failed", "deploy_failed":
+		deployStatus = "failed"
+	}
+	if deployStatus != "" {
+		refreshPRImpactForRequest(req, deployStatus)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeCIWebhookJSON(w, map[string]interface{}{
 		"status":            "ok",

@@ -342,6 +342,8 @@ export default function SelectService() {
   const [loading, setLoading] = useState(false);
   const [prUrl, setPrUrl] = useState('');
   const [error, setError] = useState('');
+  const [costWarning, setCostWarning] = useState('');
+  const [costAllowed, setCostAllowed] = useState(true);
   const [canCreatePR, setCanCreatePR] = useState<boolean | null>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -366,6 +368,31 @@ export default function SelectService() {
     if (envParam) setEnv((e) => e || envParam);
     if (serviceParam) setService((s) => s || serviceParam);
   }, [router.isReady, router.query.project_id, router.query.cloud, router.query.env, router.query.service]);
+
+  useEffect(() => {
+    if (!cloud || !service) {
+      setCostWarning('');
+      setCostAllowed(true);
+      return;
+    }
+    const token = localStorage.getItem('token');
+    const params = new URLSearchParams({ cloud, service, env: env || 'dev' });
+    if (projectId) params.set('project_id', String(projectId));
+    const instanceType = String(formValues.instance_type || formValues.instance_class || formValues.node_type || '');
+    if (instanceType) params.set('instance_type', instanceType);
+    fetch(`${apiUrl}/api/cost-guardrail?${params}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        setCostWarning(data?.warning || (typeof data?.estimated_monthly === 'number' ? `Estimated $${data.estimated_monthly}/mo` : ''));
+        setCostAllowed(data?.allowed !== false);
+      })
+      .catch(() => {
+        setCostWarning('');
+        setCostAllowed(true);
+      });
+  }, [apiUrl, cloud, service, env, projectId, formValues]);
 
   // Fetch template or saved config and prefill form
   useEffect(() => {
@@ -687,6 +714,10 @@ export default function SelectService() {
 
     if (!projectId || !team || !primaryService) {
       setError('Choose the project, team, and at least one service first.');
+      return;
+    }
+    if (!asDraft && !costAllowed) {
+      setError(costWarning || 'This estimate exceeds the project monthly budget.');
       return;
     }
 
@@ -1151,6 +1182,7 @@ export default function SelectService() {
                       Check pricing estimate
                     </button>
                   )}
+                  {costWarning ? <p className="ig-muted" style={{ marginTop: 8 }}>{costWarning}</p> : null}
                   <div className="request-builder__grid" style={{ marginTop: cloud || service ? 16 : 0 }}>
                 <div className="form-group">
                   <label className="label">Cloud provider *</label>

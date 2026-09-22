@@ -22,6 +22,8 @@ interface SupportHubProps {
   quickPrompts: string[];
   externalDocsHref?: string;
   escalationActions?: SupportAction[];
+  apiUrl?: string;
+  token?: string | null;
 }
 
 function matchesRoute(article: SupportArticle, currentPath: string): boolean {
@@ -115,6 +117,8 @@ export default function SupportHub({
   quickPrompts,
   externalDocsHref,
   escalationActions = [],
+  apiUrl,
+  token,
 }: SupportHubProps) {
   const [activeTab, setActiveTab] = useState<SupportTab>(initialTab);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -194,9 +198,30 @@ export default function SupportHub({
     const question = (seed ?? input).trim();
     if (!question) return;
     const userMessage: ChatMessage = { id: `user-${Date.now()}`, role: 'user', text: question };
-    const assistantMessage = buildReply(question, portalName, articles, currentPath, currentTitle);
-    setMessages((current) => [...current, userMessage, assistantMessage]);
+    setMessages((current) => [...current, userMessage]);
     setInput('');
+    const fallback = buildReply(question, portalName, articles, currentPath, currentTitle);
+    if (!apiUrl || !token) {
+      setMessages((current) => [...current, fallback]);
+      return;
+    }
+    fetch(`${apiUrl.replace(/\/+$/, '')}/api/copilot`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: question,
+        path: currentPath,
+        title: currentTitle,
+        portal: portalName,
+        context: { article: contextArticle?.title },
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const text = typeof data?.reply === 'string' && data.reply.trim() ? data.reply : fallback.text;
+        setMessages((current) => [...current, { id: `assistant-${Date.now()}`, role: 'assistant', text, actions: fallback.actions }]);
+      })
+      .catch(() => setMessages((current) => [...current, fallback]));
   };
 
   return (

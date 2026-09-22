@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import DevOpsLayout from '../components/DevOpsLayout';
+import RequestPRImpact from '../components/RequestPRImpact';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
 import { asRecord, getString } from '../lib/payload';
@@ -1146,6 +1147,7 @@ export default function DevOpsTickets() {
                               Open PR
                             </a>
                           ) : null}
+                          <RequestPRImpact apiUrl={apiUrl} token={typeof window === 'undefined' ? null : localStorage.getItem(DEVOPS_TOKEN_KEY)} requestId={detailRequest.id} />
                           <a href={`/incidents`} className="btn btn-secondary btn-sm">
                             Incident panel
                           </a>

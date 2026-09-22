@@ -89,6 +89,9 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 		case "promote":
 			handleRequestPromote(w, r, id, req, userID)
 			return
+		case "pr-impact":
+			requestPRImpactHandler(w, r, id, userID)
+			return
 		case "timeline":
 			handleRequestTimeline(w, r, id, userID)
 			return

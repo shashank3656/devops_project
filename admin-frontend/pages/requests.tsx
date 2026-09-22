@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import AdminLayout from '../components/AdminLayout';
+import RequestPRImpact from '../components/RequestPRImpact';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
 
 interface BlockedByItem {
@@ -1596,6 +1597,12 @@ export default function AdminRequests() {
                     </article>
                   ) : null}
                 </div>
+
+                <RequestPRImpact
+                  apiUrl={apiUrl}
+                  token={typeof window === 'undefined' ? null : localStorage.getItem('admin_token')}
+                  requestId={detailRequest.id}
+                />
 
                 {(detailRequest.branch || detailRequest.file_path) && (
                   <div className="admin-request-detail-modal__notice">

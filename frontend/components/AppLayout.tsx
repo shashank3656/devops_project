@@ -9,18 +9,16 @@ import {
   IconBell,
   IconHome,
   IconPlus,
-  IconTemplates,
   IconProjects,
   IconHistory,
   IconUsers,
-  IconChevronRight,
-  IconChevronDown,
   IconMenu,
   IconHelpCircle,
   IconFileText,
 } from './Icons';
 import SupportHub from './SupportHub';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
+import { CommandPalette } from '@infragate/ui';
 
 const THEME_KEY = 'user-portal-theme';
 const SIDEBAR_COLLAPSED_KEY = 'user-portal-sidebar-collapsed';
@@ -125,7 +123,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileInitials, setProfileInitials] = useState('U');
   const [profileLabel, setProfileLabel] = useState('Portal User');
-  const [newRequestExpanded, setNewRequestExpanded] = useState(false);
   const [teamCheck, setTeamCheck] = useState<'loading' | 'ok' | 'forbidden'>('loading');
   const [updatedRequestsCount, setUpdatedRequestsCount] = useState(0);
   const [pendingManagerApprovalCount, setPendingManagerApprovalCount] = useState(0);
@@ -331,14 +328,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     router.push('/login');
   };
 
-  const newRequestExpandedByPath = pathname.startsWith('/create-infrastructure');
-  const effectiveNewRequestExpanded = newRequestExpanded || newRequestExpandedByPath;
   const baseNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
-    { href: '/home', label: 'Dashboard', Icon: IconHome },
-    { href: '/my-projects', label: 'My Projects', Icon: IconProjects },
-    { href: '/templates', label: 'Templates', Icon: IconTemplates },
-    { href: '/history', label: 'Request History', Icon: IconHistory },
-    { href: '/incidents', label: 'Incidents', Icon: IconAlertCircle },
+    { href: '/home', label: 'Home', Icon: IconHome },
+    { href: '/create-infrastructure', label: 'New request', Icon: IconPlus },
+    { href: '/history', label: 'My requests', Icon: IconHistory },
+    { href: '/my-projects', label: 'Projects', Icon: IconProjects },
+    { href: '/incidents', label: 'Help', Icon: IconAlertCircle },
   ];
 
   if (hasManagedTeams) {
@@ -429,68 +424,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <div className="user-sidebar-shell__body">
           <nav className="user-sidebar-shell__nav">
             {!sidebarCollapsed && <span className="user-sidebar-shell__nav-title">Modules</span>}
-            {baseNavItems.filter((item) => item.href === '/home').map(({ href, label, Icon }) => {
-              const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`user-sidebar-shell__link ${isActive ? 'user-sidebar-shell__link--active' : ''}`}
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  <Icon className="user-sidebar-shell__icon" />
-                  {!sidebarCollapsed && <span className="user-sidebar-shell__label">{label}</span>}
-                </Link>
-              );
-            })}
-
-            {!sidebarCollapsed && (
-              <div className="user-sidebar-shell__expandable">
-                <button
-                  type="button"
-                  className={`user-sidebar-shell__link user-sidebar-shell__expandable-trigger ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar-shell__link--active' : ''}`}
-                  onClick={() => setNewRequestExpanded(!effectiveNewRequestExpanded)}
-                >
-                  <IconPlus className="user-sidebar-shell__icon" />
-                  <span className="user-sidebar-shell__label">Create Infrastructure</span>
-                  <span className="user-sidebar-shell__chevron">
-                    {effectiveNewRequestExpanded ? <IconChevronDown /> : <IconChevronRight />}
-                  </span>
-                </button>
-
-                {effectiveNewRequestExpanded && (
-                  <div className="user-sidebar-shell__sub">
-                    <Link
-                      href="/create-infrastructure/iam"
-                      className={`user-sidebar-shell__sublink ${pathname === '/create-infrastructure/iam' || pathname.startsWith('/create-infrastructure/iam/') ? 'user-sidebar-shell__sublink--active' : ''}`}
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      IAM
-                    </Link>
-                    <Link
-                      href="/create-infrastructure/new"
-                      className={`user-sidebar-shell__sublink ${pathname === '/create-infrastructure/new' || pathname.startsWith('/create-infrastructure/new') || pathname === '/select-service' || pathname === '/custom-json' || pathname === '/aws' ? 'user-sidebar-shell__sublink--active' : ''}`}
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      Create Infrastructure
-                    </Link>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {sidebarCollapsed && (
-              <Link
-                href="/create-infrastructure"
-                className={`user-sidebar-shell__link ${pathname.startsWith('/create-infrastructure') ? 'user-sidebar-shell__link--active' : ''}`}
-                onClick={() => setMobileMenuOpen(false)}
-                title="Create Infrastructure"
-              >
-                <IconPlus className="user-sidebar-shell__icon" />
-              </Link>
-            )}
-
-            {baseNavItems.filter((item) => item.href !== '/home').map(({ href, label, Icon }) => {
+            {baseNavItems.map(({ href, label, Icon }) => {
               const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
               const badge = href === '/history' ? requestActivityBadge : null;
               return (
@@ -712,6 +646,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
         <main className="user-main-shell__content">{children}</main>
       </div>
+      <CommandPalette
+        apiUrl={apiUrl}
+        token={typeof window === 'undefined' ? null : localStorage.getItem('token')}
+        commands={[
+          { id: 'home', label: 'Home', href: '/home', hint: 'Overview' },
+          { id: 'new', label: 'New request', href: '/create-infrastructure', hint: 'Golden paths' },
+          { id: 'history', label: 'My requests', href: '/history' },
+          { id: 'projects', label: 'Projects', href: '/my-projects' },
+          { id: 'help', label: 'Help tickets', href: '/incidents' },
+          { id: 'templates', label: 'Templates', href: '/templates' },
+        ]}
+      />
       <SupportHub
         open={supportOpen}
         initialTab={supportTab}
@@ -721,6 +667,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         currentTitle={pageTitle}
         articles={supportArticles}
         quickPrompts={supportQuickPrompts}
+        apiUrl={apiUrl}
+        token={typeof window === 'undefined' ? null : localStorage.getItem('token')}
         externalDocsHref={process.env.NEXT_PUBLIC_DOCS_URL || ''}
         escalationActions={[
           {
