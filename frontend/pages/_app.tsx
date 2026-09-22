@@ -6,8 +6,10 @@ import AppLayout from '../components/AppLayout';
 import { ToastProvider } from '../context/ToastContext';
 import { SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
+import '../../shared-ui/tokens.css';
+import '../../shared-ui/workspace.css';
 
-const AUTHED_PATHS = ['/home', '/create-infrastructure', '/templates', '/select-service', '/custom-json', '/history', '/profile', '/my-teams', '/request-success'];
+const AUTHED_PATHS = ['/home', '/create-infrastructure', '/templates', '/select-service', '/custom-json', '/history', '/profile', '/my-teams', '/my-projects', '/incidents', '/request-success'];
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();

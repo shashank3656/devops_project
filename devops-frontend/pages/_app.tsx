@@ -4,6 +4,8 @@ import { useEffect } from 'react';
 import { ApiUrlProvider } from '../context/ApiUrlContext';
 import { DEVOPS_SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
+import '../../shared-ui/tokens.css';
+import '../../shared-ui/workspace.css';
 
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {

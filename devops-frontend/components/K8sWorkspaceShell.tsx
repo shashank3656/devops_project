@@ -1,5 +1,6 @@
 import { useRouter } from 'next/router';
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { readQueryString } from '../lib/k8sWorkspace';
 
 interface K8sWorkspaceShellProps {
@@ -37,15 +38,40 @@ export default function K8sWorkspaceShell({
     query.project_id ? { label: 'Project', value: `#${query.project_id}` } : null,
   ].filter(Boolean) as Array<{ label: string; value: string }>;
 
+  const tabs = [
+    { href: '/k8s', label: 'Cluster' },
+    { href: '/k8s/workloads', label: 'Workloads' },
+    { href: '/k8s/pods', label: 'Pods' },
+    { href: '/k8s/logs', label: 'Logs' },
+    { href: '/k8s/events', label: 'Events' },
+    { href: '/k8s/services', label: 'Services' },
+    { href: '/k8s/ingresses', label: 'Ingress' },
+    { href: '/k8s/storage', label: 'Storage' },
+    { href: '/k8s/certificates', label: 'TLS' },
+    { href: '/k8s/onboard', label: 'Onboard' },
+  ];
+
   return (
     <div className="portal-page">
       <div className="portal-page__header">
         <div>
-          <span className="portal-page__eyebrow">Kubernetes Engine</span>
+          <span className="portal-page__eyebrow">Kubernetes</span>
           <h1 className="portal-page__title">{title}</h1>
           <p className="portal-page__subtitle">{subtitle}</p>
         </div>
       </div>
+      <nav className="ig-k8s-tabs" aria-label="Kubernetes sections">
+        {tabs.map((tab) => {
+          const active = tab.href === '/k8s'
+            ? router.pathname === '/k8s'
+            : router.pathname === tab.href || router.pathname.startsWith(`${tab.href}/`);
+          return (
+            <Link key={tab.href} href={tab.href} className={active ? 'is-active' : ''}>
+              {tab.label}
+            </Link>
+          );
+        })}
+      </nav>
 
       <div className="k8s-workspace k8s-workspace--content-only">
         <div className="k8s-workspace__content k8s-workspace__content--solo">

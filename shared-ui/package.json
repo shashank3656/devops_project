@@ -1,0 +1,11 @@
+{
+  "name": "@infragate/ui",
+  "private": true,
+  "version": "0.1.0",
+  "main": "index.ts",
+  "types": "index.ts",
+  "peerDependencies": {
+    "next": ">=14",
+    "react": ">=18"
+  }
+}

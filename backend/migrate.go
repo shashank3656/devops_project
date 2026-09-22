@@ -971,6 +971,45 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_request_service_items_request_id ON pr_request_service_items(request_id)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_request_service_items_request_position ON pr_request_service_items(request_id, position)")
 
+	// Migration 47: PR impact briefs, project budgets, on-call, and deployment freezes
+	_, _ = DB.Exec(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS monthly_budget_usd INTEGER NOT NULL DEFAULT 0`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS pr_request_impact (
+			request_id INTEGER PRIMARY KEY REFERENCES pr_requests(id) ON DELETE CASCADE,
+			pr_number INTEGER,
+			payload TEXT NOT NULL DEFAULT '{}',
+			score INTEGER NOT NULL DEFAULT 0,
+			risk_level VARCHAR(20) NOT NULL DEFAULT 'low',
+			deploy_status VARCHAR(40) NOT NULL DEFAULT 'open',
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_request_impact_risk ON pr_request_impact(risk_level, score DESC)")
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS oncall_rotations (
+			id SERIAL PRIMARY KEY,
+			team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			starts_at TIMESTAMP NOT NULL,
+			ends_at TIMESTAMP NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_oncall_rotations_window ON oncall_rotations(starts_at, ends_at)")
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS deployment_freezes (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+			environment VARCHAR(80) NOT NULL DEFAULT 'prod',
+			reason TEXT NOT NULL DEFAULT '',
+			starts_at TIMESTAMP NOT NULL,
+			ends_at TIMESTAMP NOT NULL,
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_deployment_freezes_window ON deployment_freezes(starts_at, ends_at)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }

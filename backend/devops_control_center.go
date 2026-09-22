@@ -925,6 +925,15 @@ func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, *promotionGa
 	if nextEnvironment == "" {
 		return nil, nil, fmt.Errorf("request is already at the highest environment")
 	}
+	if strings.EqualFold(nextEnvironment, "prod") {
+		if reason := activeFreezeReason(); reason != "" {
+			return nil, nil, fmt.Errorf("production freeze is active: %s", reason)
+		}
+		brief := loadOrBuildPRImpact(req)
+		if strings.EqualFold(brief.RiskLevel, "high") && !brief.Acknowledged {
+			return nil, nil, fmt.Errorf("high-risk PR impact brief must be acknowledged before promoting to prod")
+		}
+	}
 
 	gate, err := evaluatePromotionGateForRequest(req)
 	if err != nil {

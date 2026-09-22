@@ -8965,9 +8965,10 @@ body {
     width: 100%;
   }
 
-.devops-approval-filter-bar__select,
-.devops-approval-filter-bar__controls .btn {
-  width: 100%;
+  .devops-approval-filter-bar__select,
+  .devops-approval-filter-bar__controls .btn {
+    width: 100%;
+  }
 }
 
 .devops-incident-strip {
