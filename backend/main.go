@@ -614,6 +614,7 @@ func main() {
 	http.HandleFunc("/api/admin/request-bundle-normalization", adminRequestBundleNormalizationHandler)
 	http.HandleFunc("/api/devops/workspace", devopsWorkspaceHandler)
 	http.HandleFunc("/api/devops/pr-impact", devopsPRImpactHandler)
+	http.HandleFunc("/api/devops/deploy-intelligence", devopsDeployIntelligenceHandler)
 	http.HandleFunc("/api/devops/prs/", devopsPRNumberImpactHandler)
 	http.HandleFunc("/api/devops/oncall", devopsOncallHandler)
 	http.HandleFunc("/api/devops/freezes", devopsFreezesHandler)

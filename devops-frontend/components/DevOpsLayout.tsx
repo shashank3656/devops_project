@@ -81,6 +81,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/incident-workspace': 'Incident Notes',
   '/access-overrides': 'Access Exceptions',
   '/promotions': 'Promotions',
+  '/deploy-intelligence': 'Deploy intelligence',
   '/rollback-console': 'Rollback',
   '/gate-approvals': 'Approval History',
   '/gate-policies': 'Approval Rules',
@@ -376,6 +377,7 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
   const advancedNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = isManager
     ? [
         { href: '/promotions', label: 'Promotions', Icon: IconArrowUpRight },
+        { href: '/deploy-intelligence', label: 'Deploy intel', Icon: IconArrowUpRight },
         { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
         { href: '/approval-sla', label: 'Approval Timing', Icon: IconShield },
         { href: '/ops-command-center', label: 'Operations', Icon: IconAlertTriangle },
@@ -747,6 +749,7 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
           { id: 'logs', label: 'Logs', href: '/k8s/logs' },
           { id: 'rollback', label: 'Rollback', href: '/rollback-console' },
           { id: 'promotions', label: 'Promotions', href: '/promotions' },
+          { id: 'deploy-intel', label: 'Deploy intelligence', href: '/deploy-intelligence' },
         ]}
       />
       <SupportHub
