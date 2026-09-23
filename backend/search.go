@@ -55,7 +55,7 @@ func searchCatalog(query string, user *User) []searchHit {
 		ORDER BY updated_at DESC
 		LIMIT $2
 	`, like, limit); err == nil {
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var id int
 			var team, env, cloud, service, status, prURL string
@@ -77,7 +77,7 @@ func searchCatalog(query string, user *User) []searchHit {
 		WHERE LOWER(name) LIKE $1 OR LOWER(code) LIKE $1
 		ORDER BY updated_at DESC LIMIT $2
 	`, like, 5); err == nil {
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var id int
 			var name, code, status string
@@ -102,7 +102,7 @@ func searchCatalog(query string, user *User) []searchHit {
 		   OR CAST(id AS TEXT) ILIKE $1
 		ORDER BY updated_at DESC LIMIT $2
 	`, like, 5); err == nil {
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var id int
 			var number, title, status string
@@ -129,7 +129,7 @@ func searchCatalog(query string, user *User) []searchHit {
 			WHERE LOWER(name) LIKE $1 OR LOWER(COALESCE(cloud, '')) LIKE $1
 			ORDER BY id DESC LIMIT 4
 		`, like); err == nil {
-			defer rows.Close()
+			defer func() { _ = rows.Close() }()
 			for rows.Next() {
 				var id int
 				var name string

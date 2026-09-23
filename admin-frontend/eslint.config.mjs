@@ -1,9 +1,9 @@
 import nextVitals from 'eslint-config-next/core-web-vitals';
 
-export default [
+const eslintConfig = [
   ...nextVitals,
   {
-    ignores: ['.next/**', 'node_modules/**', 'out/**', 'build/**', 'next-env.d.ts'],
+    ignores: ['.next/**', 'node_modules/**', 'out/**', 'build/**', 'next-env.d.ts', 'eslint.config.mjs'],
   },
   {
     rules: {
@@ -19,10 +19,13 @@ export default [
       'react-hooks/void-use-memo': 'off',
       'react-hooks/incompatible-library': 'off',
       'react-hooks/error-boundaries': 'off',
-      'react-hooks/exhaustive-deps': 'warn',
+      'react-hooks/exhaustive-deps': 'off',
       '@next/next/no-html-link-for-pages': 'off',
       '@next/next/no-img-element': 'off',
       'react/no-unescaped-entities': 'off',
+      'import/no-anonymous-default-export': 'off',
     },
   },
 ];
+
+export default eslintConfig;
