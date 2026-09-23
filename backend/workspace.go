@@ -114,7 +114,7 @@ func workspaceNeedsYou(portal string) []workspaceQueueItem {
 		ORDER BY updated_at DESC
 		LIMIT 6
 	`); err == nil {
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var id int
 			var team, env, cloud, service, status, priority string
@@ -145,7 +145,7 @@ func workspaceNeedsYou(portal string) []workspaceQueueItem {
 		ORDER BY updated_at DESC
 		LIMIT 4
 	`); err == nil {
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var id int
 			var number, summary, severity, status string
@@ -177,7 +177,7 @@ func workspaceNeedsYou(portal string) []workspaceQueueItem {
 		ORDER BY score DESC, updated_at DESC
 		LIMIT 4
 	`); err == nil {
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var requestID, prNumber, score int
 			var risk, deploy string
@@ -236,7 +236,7 @@ func workspacePipeline(portal, projectID string) (string, []workspacePipelineSta
 	if err != nil {
 		return projectName, defaultPipelineStages(portal)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	envs := make([]string, 0, 4)
 	for rows.Next() {
 		var env string

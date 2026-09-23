@@ -345,7 +345,7 @@ func listOncallRotations() []oncallRotation {
 	if err != nil {
 		return out
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	now := time.Now()
 	for rows.Next() {
 		var item oncallRotation
@@ -375,7 +375,7 @@ func listDeploymentFreezes() []deploymentFreeze {
 	if err != nil {
 		return out
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	now := time.Now()
 	for rows.Next() {
 		var item deploymentFreeze
