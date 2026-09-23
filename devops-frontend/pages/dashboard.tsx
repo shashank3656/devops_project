@@ -31,7 +31,7 @@ export default function DevOpsDashboard() {
   const [activeFreeze, setActiveFreeze] = useState('');
   const [rotations, setRotations] = useState<OncallRotation[]>([]);
 
-  const tokenHeaders = () => {
+  const tokenHeaders = (): Record<string, string> => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
