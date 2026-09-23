@@ -18,9 +18,8 @@ import {
 } from './Icons';
 import SupportHub from './SupportHub';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
-import { CommandPalette } from '@infragate/ui';
+import { CommandPalette, SearchTrigger, ThemeToggle, getTheme, setTheme, type ThemeMode } from '@infragate/ui';
 
-const THEME_KEY = 'user-portal-theme';
 const SIDEBAR_COLLAPSED_KEY = 'user-portal-sidebar-collapsed';
 const HISTORY_LAST_SEEN_KEY = 'user_history_last_seen';
 const NOTIFY_POLL_MS = 30000;
@@ -31,18 +30,12 @@ export function getApiUrl(): string {
   return apiUrl;
 }
 
-export function getStoredTheme(): 'light' | 'dark' {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(THEME_KEY, 'dark');
-    document.documentElement.setAttribute('data-theme', 'dark');
-  }
-  return 'dark';
+export function getStoredTheme(): ThemeMode {
+  return getTheme();
 }
 
-export function setStoredTheme(_theme: 'light' | 'dark') {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(THEME_KEY, 'dark');
-  document.documentElement.setAttribute('data-theme', 'dark');
+export function setStoredTheme(theme: ThemeMode) {
+  setTheme(theme);
 }
 
 const PAGE_TITLES: Record<string, string> = {
@@ -139,10 +132,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     const identity = getUserIdentity();
     setProfileInitials(identity.initials);
     setProfileLabel(identity.label);
-  }, []);
-
-  useEffect(() => {
-    getStoredTheme();
   }, []);
 
   useEffect(() => {
@@ -404,6 +393,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="user-layout user-layout-sidebar user-shell">
+      <a className="ig-skip-link" href="#main-content">
+        Skip to content
+      </a>
       <aside className={`user-sidebar-shell ${sidebarCollapsed ? 'user-sidebar-shell--collapsed' : ''} ${mobileMenuOpen ? 'user-sidebar-shell--mobile-open' : ''}`}>
         <div className="user-sidebar-shell__header">
           <button
@@ -422,7 +414,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           )}
         </div>
         <div className="user-sidebar-shell__body">
-          <nav className="user-sidebar-shell__nav">
+          <nav className="user-sidebar-shell__nav" aria-label="Primary">
             {!sidebarCollapsed && <span className="user-sidebar-shell__nav-title">Modules</span>}
             {baseNavItems.map(({ href, label, Icon }) => {
               const isActive = pathname === href || (href !== '/home' && pathname.startsWith(href));
@@ -433,6 +425,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   href={href}
                   className={`user-sidebar-shell__link ${isActive ? 'user-sidebar-shell__link--active' : ''}`}
                   onClick={() => setMobileMenuOpen(false)}
+                  aria-current={isActive ? 'page' : undefined}
+                  aria-label={sidebarCollapsed ? label : undefined}
+                  title={sidebarCollapsed ? label : undefined}
                 >
                   <Icon className="user-sidebar-shell__icon" />
                   {!sidebarCollapsed && <span className="user-sidebar-shell__label">{label}</span>}
@@ -521,6 +516,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </div>
 
           <div className="user-topbar__right">
+            <SearchTrigger placeholder="Search requests, projects…" />
             <div className="user-topbar__actions">
               <button
                 type="button"
@@ -537,6 +533,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               </button>
               <span className="user-topbar__workspace">{profileLabel}</span>
               <span className="user-topbar__role">{hasManagedTeams ? 'Lead' : 'Requester'}</span>
+              <ThemeToggle />
               <div className="user-topbar__notify-wrap" ref={notifyRef}>
                 <button
                   type="button"
@@ -644,7 +641,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="user-main-shell__content">{children}</main>
+        <main id="main-content" tabIndex={-1} className="user-main-shell__content ig-page">
+          {children}
+        </main>
       </div>
       <CommandPalette
         apiUrl={apiUrl}

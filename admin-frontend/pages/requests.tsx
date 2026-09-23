@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import {
+  BulkBar,
+  DataTable,
+  InspectorDrawer,
+  UndoToaster,
+  formatRelativeTime,
+  useUndoQueue,
+  type DataTableColumn,
+  type RowKey,
+} from '@infragate/ui';
 import AdminLayout from '../components/AdminLayout';
 import RequestPRImpact from '../components/RequestPRImpact';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
@@ -237,9 +247,9 @@ export default function AdminRequests() {
   const [atRiskOnly, setAtRiskOnly] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [offset, setOffset] = useState(0);
-  const [actioningId, setActioningId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [bulkActioning, setBulkActioning] = useState(false);
+  const [pendingDecisions, setPendingDecisions] = useState<Record<number, string>>({});
+  const undoQueue = useUndoQueue(6000);
   const [detailRequest, setDetailRequest] = useState<PRRequest | null>(null);
   const [detailComments, setDetailComments] = useState<RequestComment[]>([]);
   const [commentBody, setCommentBody] = useState('');
@@ -282,6 +292,7 @@ export default function AdminRequests() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
 
+  const detailSeq = useRef(0);
   const filtersRef = useRef<{ team: string; projectId: string; env: string; cloud: string; search: string; status: string; priority: string; sortBy: string; sortOrder: string; atRiskOnly: boolean }>({ team: '', projectId: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false });
 
   useEffect(() => {
@@ -378,6 +389,10 @@ export default function AdminRequests() {
     }
     fetchRequests({ offset });
   }, [token, router, offset]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [offset, team, projectId, env, cloud, statusFilter, priorityFilter, sortBy, sortOrder, atRiskOnly]);
 
   const runBundleNormalizationPreview = async () => {
     setBundleNormalizationLoading(true);
@@ -546,74 +561,97 @@ export default function AdminRequests() {
   const canApproveOrReject = (s: string) =>
     s === 'pending_approval' || s === 'pending_user_manager_approval' || s === 'pending_devops_approval';
   const pendingIds = requests.filter((r) => canApproveOrReject(r.status)).map((r) => r.id);
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+  const selectedPendingIds = Array.from<number>(selectedIds).filter((id) => pendingIds.includes(id) && !pendingDecisions[id]);
+
+  const sendAdminAction = async (method: 'POST' | 'PATCH', path: string, body?: unknown) => {
+    const res = await fetch(`${apiUrl}${path}`, {
+      method,
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+    if (Array.isArray(data?.failed) && data.failed.length > 0) {
+      throw new Error(`Could not update ${data.failed.map((id: number) => `#${id}`).join(', ')}. The rest were applied.`);
+    }
+    return data;
+  };
+
+  const setPendingFor = (ids: number[], label: string | null) => {
+    setPendingDecisions((prev) => {
+      const next = { ...prev };
+      ids.forEach((id) => {
+        if (label) next[id] = label;
+        else delete next[id];
+      });
       return next;
     });
   };
-  const toggleSelectAllPending = () => {
-    if (selectedIds.size >= pendingIds.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(pendingIds));
-  };
-  const toggleSelectAll = () => {
-    if (selectedIds.size >= requests.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(requests.map((r) => r.id)));
-  };
 
-  const handleBulkApprove = async () => {
-    const ids = Array.from(selectedIds).filter((id) => pendingIds.includes(id));
+  // Decisions are held client-side for the undo window; nothing reaches the backend until it closes.
+  const scheduleDecision = ({
+    ids,
+    label,
+    message,
+    commit,
+    restoreSelection = false,
+  }: {
+    ids: number[];
+    label: string;
+    message: string;
+    commit: () => Promise<unknown>;
+    restoreSelection?: boolean;
+  }) => {
     if (ids.length === 0) return;
-    setBulkActioning(true);
     setError('');
-    try {
-      const res = await fetch(`${apiUrl}/api/admin/requests/bulk-approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ ids }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setSelectedIds(new Set());
+    setPendingFor(ids, label);
+    undoQueue.schedule({
+      message,
+      commit: async () => {
+        await commit();
+      },
+      revert: () => {
+        setPendingFor(ids, null);
+        if (restoreSelection) setSelectedIds(new Set(ids));
+      },
+      onError: (err) => {
+        setError(err instanceof Error ? err.message : 'The change could not be applied');
         fetchRequests({ offset });
-      } else {
-        setError(data.error || 'Bulk approve failed');
-      }
-    } catch (_) {
-      setError('Bulk approve failed');
-    } finally {
-      setBulkActioning(false);
-    }
+      },
+      onCommitted: () => {
+        setPendingFor(ids, null);
+        fetchRequests({ offset });
+      },
+    });
   };
 
-  const handleBulkReject = async () => {
-    const ids = Array.from(selectedIds).filter((id) => pendingIds.includes(id));
+  const handleBulkApprove = () => {
+    const ids = selectedPendingIds;
+    if (ids.length === 0) return;
+    setSelectedIds(new Set());
+    scheduleDecision({
+      ids,
+      label: 'Approving',
+      message: `Approved ${ids.length} request${ids.length === 1 ? '' : 's'}`,
+      commit: () => sendAdminAction('POST', '/api/admin/requests/bulk-approve', { ids }),
+      restoreSelection: true,
+    });
+  };
+
+  const handleBulkReject = () => {
+    const ids = selectedPendingIds;
     if (ids.length === 0) return;
     const reasonInput = window.prompt(`Reject ${ids.length} request(s)? Add a reason (optional, visible to users):`);
     if (reasonInput === null) return;
-    if (!confirm(`Reject ${ids.length} request(s)? This cannot be undone.`)) return;
-    setBulkActioning(true);
-    setError('');
-    try {
-      const res = await fetch(`${apiUrl}/api/admin/requests/bulk-reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ ids, reason: reasonInput.trim() }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setSelectedIds(new Set());
-        fetchRequests({ offset });
-      } else {
-        setError(data.error || 'Bulk reject failed');
-      }
-    } catch (_) {
-      setError('Bulk reject failed');
-    } finally {
-      setBulkActioning(false);
-    }
+    setSelectedIds(new Set());
+    scheduleDecision({
+      ids,
+      label: 'Rejecting',
+      message: `Rejected ${ids.length} request${ids.length === 1 ? '' : 's'}`,
+      commit: () => sendAdminAction('POST', '/api/admin/requests/bulk-reject', { ids, reason: reasonInput.trim() }),
+      restoreSelection: true,
+    });
   };
 
   const saveTerraformOutput = async () => {
@@ -637,6 +675,9 @@ export default function AdminRequests() {
   };
 
   const openDetail = async (req: PRRequest) => {
+    detailSeq.current += 1;
+    const seq = detailSeq.current;
+    const isCurrent = () => seq === detailSeq.current;
     addRecentRequestId(req.id);
     setDetailRequest(req);
     setDetailComments([]);
@@ -647,21 +688,31 @@ export default function AdminRequests() {
     setCommentBody('');
     fetch(`${apiUrl}/api/request/${req.id}/timeline`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setTimeline(Array.isArray(d?.timeline) ? d.timeline : []))
-      .catch(() => setTimeline([]));
+      .then((d) => {
+        if (isCurrent()) setTimeline(Array.isArray(d?.timeline) ? d.timeline : []);
+      })
+      .catch(() => {
+        if (isCurrent()) setTimeline([]);
+      });
     fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.json())
-      .then((d) => setDetailComments(Array.isArray(d?.comments) ? d.comments : []))
+      .then((d) => {
+        if (isCurrent()) setDetailComments(Array.isArray(d?.comments) ? d.comments : []);
+      })
       .catch(() => {});
     fetch(`${apiUrl}/api/admin/requests/${req.id}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.ok ? res.json() : null)
       .then((d) => {
-        if (d?.request) {
-          setDetailRequest((prev) => prev ? { ...prev, ...d.request } : d.request);
-          setTerraformOutputEdit(d.request?.terraform_plan_output || '');
-        }
+        if (!isCurrent() || !d?.request) return;
+        setDetailRequest((prev) => (prev && prev.id === req.id ? { ...prev, ...d.request } : prev));
+        setTerraformOutputEdit(d.request?.terraform_plan_output || '');
       })
       .catch(() => {});
+  };
+
+  const closeDetail = () => {
+    detailSeq.current += 1;
+    setDetailRequest(null);
   };
 
   const addComment = async () => {
@@ -697,24 +748,12 @@ export default function AdminRequests() {
       );
       if (!ok) return;
     }
-    setActioningId(id);
-    setError('');
-    try {
-      const res = await fetch(`${apiUrl}/api/admin/requests/${id}/approve`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        fetchRequests({ offset });
-      } else {
-        setError(data.error || 'Failed to approve');
-      }
-    } catch (_) {
-      setError('Failed to approve');
-    } finally {
-      setActioningId(null);
-    }
+    scheduleDecision({
+      ids: [id],
+      label: 'Approving',
+      message: `Approved request #${id}`,
+      commit: () => sendAdminAction('POST', `/api/admin/requests/${id}/approve`),
+    });
   };
 
   const handleSaveJira = async () => {
@@ -740,54 +779,30 @@ export default function AdminRequests() {
     }
   };
 
-  const handleBulkStatus = async () => {
-    if (!bulkStatusValue || selectedIds.size === 0) return;
-    setBulkActioning(true);
-    setError('');
-    try {
-      const res = await fetch(`${apiUrl}/api/admin/requests/bulk-status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ ids: Array.from(selectedIds), status: bulkStatusValue }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        fetchRequests({ offset });
-        setSelectedIds(new Set());
-        setBulkStatusValue('');
-      } else {
-        setError(data.error || 'Bulk status update failed');
-      }
-    } catch (_) {
-      setError('Bulk status update failed');
-    } finally {
-      setBulkActioning(false);
-    }
+  const handleBulkStatus = () => {
+    const ids = Array.from<number>(selectedIds).filter((id) => !pendingDecisions[id]);
+    if (!bulkStatusValue || ids.length === 0) return;
+    const status = bulkStatusValue;
+    setSelectedIds(new Set());
+    setBulkStatusValue('');
+    scheduleDecision({
+      ids,
+      label: `→ ${statusLabel(status)}`,
+      message: `Moved ${ids.length} request${ids.length === 1 ? '' : 's'} to ${statusLabel(status).toLowerCase()}`,
+      commit: () => sendAdminAction('POST', '/api/admin/requests/bulk-status', { ids, status }),
+      restoreSelection: true,
+    });
   };
 
-  const handleReject = async (id: number) => {
+  const handleReject = (id: number) => {
     const reasonInput = window.prompt('Reject this request? Add a reason (optional, visible to the user):');
-    if (reasonInput === null) return; // user cancelled
-    setActioningId(id);
-    setError('');
-    try {
-      const res = await fetch(`${apiUrl}/api/admin/requests/${id}/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ reason: reasonInput.trim() }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        fetchRequests({ offset });
-        if (detailRequest?.id === id) setDetailRequest(null);
-      } else {
-        setError(data.error || 'Failed to reject');
-      }
-    } catch (_) {
-      setError('Failed to reject');
-    } finally {
-      setActioningId(null);
-    }
+    if (reasonInput === null) return;
+    scheduleDecision({
+      ids: [id],
+      label: 'Rejecting',
+      message: `Rejected request #${id}`,
+      commit: () => sendAdminAction('POST', `/api/admin/requests/${id}/reject`, { reason: reasonInput.trim() }),
+    });
   };
 
   const handleClone = async (id: number) => {
@@ -884,27 +899,148 @@ export default function AdminRequests() {
     }
   };
 
-  const handleSetStatus = async (id: number, status: string) => {
-    setActioningId(id);
-    setError('');
-    try {
-      const res = await fetch(`${apiUrl}/api/admin/requests/${id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        fetchRequests({ offset });
-      } else {
-        setError(data.error || 'Failed to update status');
-      }
-    } catch (_) {
-      setError('Failed to update status');
-    } finally {
-      setActioningId(null);
-    }
+  const handleSetStatus = (id: number, status: string) => {
+    scheduleDecision({
+      ids: [id],
+      label: `→ ${statusLabel(status)}`,
+      message: `Marked request #${id} ${statusLabel(status).toLowerCase()}`,
+      commit: () => sendAdminAction('PATCH', `/api/admin/requests/${id}/status`, { status }),
+    });
   };
+
+  const handleSortChange = (key: string) => {
+    const nextOrder = sortBy === key && sortOrder === 'desc' ? 'asc' : 'desc';
+    filtersRef.current = { ...filtersRef.current, sortBy: key, sortOrder: nextOrder };
+    setSortBy(key);
+    setSortOrder(nextOrder);
+    setOffset(0);
+    fetchRequests({ sortBy: key, sortOrder: nextOrder, offset: 0 });
+  };
+
+  const requestColumns: DataTableColumn<PRRequest>[] = [
+    {
+      id: 'request',
+      header: 'Request',
+      cell: (req) => {
+        const bundleCount = getRequestBundleCount(req);
+        return (
+          <div className="ig-cell-stack">
+            <span className="ig-cell-title">{req.service || 'Request'}</span>
+            <span className="ig-cell-meta">
+              <span className="ig-mono">#{req.id}</span>
+              {bundleCount > 1 ? ` · ${bundleCount} services` : ''}
+              {isAccessRequest(req) ? ' · Access' : ''}
+              {req.created_by_username ? ` · ${req.created_by_username}` : ''}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'project',
+      header: 'Project',
+      cell: (req) =>
+        req.project_name ? (
+          <div className="ig-cell-stack">
+            <span>{req.project_name}</span>
+            <span className="ig-cell-meta">{req.team}</span>
+          </div>
+        ) : (
+          <span>{req.team || '—'}</span>
+        ),
+    },
+    {
+      id: 'target',
+      header: 'Target',
+      cell: (req) => (
+        <span className="ig-cell-chips">
+          <span className="ig-chip">{req.env || '—'}</span>
+          <span className="ig-chip ig-chip--muted">{(req.cloud || '—').toUpperCase()}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'priority',
+      header: 'Priority',
+      sortable: true,
+      cell: (req) => (
+        <span className={`ig-priority ig-priority--${(req.priority || 'medium').toLowerCase()}`}>{req.priority || 'medium'}</span>
+      ),
+    },
+    {
+      id: 'due_date',
+      header: 'Due',
+      sortable: true,
+      cell: (req) => (
+        <div className="ig-cell-stack">
+          <span className="ig-cell-meta">{req.due_date ? new Date(req.due_date).toLocaleDateString() : '—'}</span>
+          {req.due_status === 'overdue' ? <span className="ig-badge ig-badge--danger">Overdue</span> : null}
+          {req.due_status === 'due_soon' ? <span className="ig-badge ig-badge--medium">Due in 24h</span> : null}
+        </div>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (req) =>
+        pendingDecisions[req.id] ? (
+          <span className="ig-badge ig-badge--info">{pendingDecisions[req.id]}…</span>
+        ) : (
+          <span className="status-badge" data-status={req.status}>
+            {statusLabel(req.status)}
+          </span>
+        ),
+    },
+    {
+      id: 'created_at',
+      header: 'Created',
+      sortable: true,
+      cell: (req) => (
+        <span className="ig-cell-meta" title={new Date(req.created_at).toLocaleString()}>
+          {formatRelativeTime(req.created_at) || new Date(req.created_at).toLocaleDateString()}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      header: <span className="ig-sr-only">Actions</span>,
+      align: 'right',
+      cell: (req) => (
+        <div className="ig-row-actions">
+          {canApproveOrReject(req.status) ? (
+            <>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={Boolean(pendingDecisions[req.id])}
+                onClick={() => handleApprove(req.id)}
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                disabled={Boolean(pendingDecisions[req.id])}
+                onClick={() => handleReject(req.id)}
+              >
+                Reject
+              </button>
+            </>
+          ) : null}
+          {req.status === 'in_progress' ? (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={Boolean(pendingDecisions[req.id])}
+              onClick={() => handleSetStatus(req.id, 'completed')}
+            >
+              Complete
+            </button>
+          ) : null}
+        </div>
+      ),
+    },
+  ];
 
   const totalPages = Math.ceil(total / limit) || 1;
   const currentPage = Math.floor(offset / limit) + 1;
@@ -1237,14 +1373,8 @@ export default function AdminRequests() {
             ) : null}
           </form>
 
-          <div className="card">
-            {loading ? (
-              <div className="admin-queue-state admin-queue-state--loading">
-                <div className="admin-queue-state__spinner" />
-                <h3 className="admin-queue-state__title">Loading requests</h3>
-                <p className="admin-queue-state__copy">We’re pulling the latest request queue for you now.</p>
-              </div>
-            ) : error && requests.length === 0 ? (
+          <div className="card ig-table-card">
+            {!loading && error && requests.length === 0 ? (
               <div className="admin-queue-state admin-queue-state--error">
                 <div className="admin-queue-state__icon" aria-hidden>!</div>
                 <h3 className="admin-queue-state__title">We couldn’t load this queue</h3>
@@ -1255,216 +1385,38 @@ export default function AdminRequests() {
                   </button>
                 </div>
               </div>
-            ) : requests.length === 0 ? (
-              <div className="admin-queue-state admin-queue-state--empty">
-                <div className="admin-queue-state__icon" aria-hidden>⋯</div>
-                <h3 className="admin-queue-state__title">No requests match these filters</h3>
-                <p className="admin-queue-state__copy">
-                  Try clearing one or two filters to bring the queue back into view.
-                </p>
-                <div className="admin-queue-state__actions">
-                  <button type="button" className="btn btn-secondary" onClick={handleClearFilters}>
-                    Clear filters
-                  </button>
-                </div>
-              </div>
             ) : (
               <>
-                <div className="admin-requests-bulk-bar">
-                  {pendingIds.length > 0 && (
-                    <>
-                    <label className="admin-requests-bulk-bar__toggle">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.size === pendingIds.length && pendingIds.length > 0}
-                        onChange={toggleSelectAllPending}
-                      />
-                      Select all pending ({pendingIds.length})
-                    </label>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      disabled={selectedIds.size === 0 || bulkActioning}
-                      onClick={handleBulkApprove}
-                    >
-                      {bulkActioning ? '…' : `Approve selected (${selectedIds.size})`}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      disabled={selectedIds.size === 0 || bulkActioning}
-                      onClick={handleBulkReject}
-                    >
-                      Reject selected
-                    </button>
-                    </>
-                  )}
-                  <label className="admin-requests-bulk-bar__toggle">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.size === requests.length && requests.length > 0}
-                      onChange={toggleSelectAll}
-                    />
-                    Select all ({requests.length})
-                  </label>
-                  <span className="admin-requests-bulk-bar__status">
-                    <select
-                      value={bulkStatusValue}
-                      onChange={(e) => setBulkStatusValue(e.target.value)}
-                      className="input"
-                    >
-                      <option value="">Bulk status…</option>
-                      <option value="in_progress">In progress</option>
-                      <option value="completed">Completed</option>
-                      <option value="rejected">Rejected</option>
-                    </select>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      disabled={selectedIds.size === 0 || !bulkStatusValue || bulkActioning}
-                      onClick={handleBulkStatus}
-                    >
-                      Apply
-                    </button>
-                  </span>
-                </div>
-                <div className="table-wrap">
-                  <table className="admin-requests-table">
-                    <thead>
-                      <tr>
-                        <th className="admin-requests-table__select-col" title="Select">☐</th>
-                        <th>Request #</th>
-                        <th>Project</th>
-                        <th>Team</th>
-                        <th>Env</th>
-                        <th>Cloud</th>
-                        <th>Service</th>
-                        <th>Priority</th>
-                        <th>Due</th>
-                        <th>Status</th>
-                        <th>Created</th>
-                        <th className="admin-requests-table__actions-col">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {requests.map((req) => {
-                        const bundleCount = getRequestBundleCount(req);
-                        return (
-                        <tr key={req.id} className="admin-requests-table__row" style={{ cursor: 'pointer' }} onClick={() => openDetail(req)}>
-                          <td className="admin-requests-table__checkbox-cell" onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={selectedIds.has(req.id)}
-                              onChange={() => toggleSelect(req.id)}
-                            />
-                          </td>
-                          <td><span className="admin-requests-table__request-id">#{req.id}</span></td>
-                          <td>
-                            {req.project_name ? (
-                              <div className="admin-requests-table__primary">
-                                <strong>{req.project_name}</strong>
-                                {req.project_code ? <span className="admin-requests-table__meta">{req.project_code}</span> : null}
-                              </div>
-                            ) : '—'}
-                          </td>
-                          <td>{req.team}</td>
-                          <td><span className="admin-requests-table__pill admin-requests-table__pill--env">{req.env}</span></td>
-                          <td><span className={`admin-requests-table__pill admin-requests-table__pill--cloud admin-requests-table__pill--cloud-${(req.cloud || '').toLowerCase()}`}>{req.cloud}</span></td>
-                          <td>
-                            <div className="admin-requests-table__primary">
-                              <strong>{req.service}</strong>
-                            {bundleCount > 1 ? (
-                              <span className="admin-requests-table__bundle-badge">{bundleCount} services</span>
-                            ) : null}
-                            {isAccessRequest(req) ? (
-                              <span className="admin-requests-table__meta">Access request</span>
-                            ) : null}
-                            </div>
-                          </td>
-                          <td><span className={`admin-requests-table__pill admin-requests-table__pill--priority admin-requests-table__pill--priority-${(req.priority || 'medium').toLowerCase()}`}>{req.priority || '—'}</span></td>
-                          <td>
-                            <div className="admin-requests-table__due">
-                              <span className="admin-requests-table__meta">{req.due_date ? new Date(req.due_date).toLocaleDateString() : '—'}</span>
-                            {req.due_status === 'overdue' && (
-                              <span className="admin-requests-table__due-badge admin-requests-table__due-badge--overdue">Overdue</span>
-                            )}
-                            {req.due_status === 'due_soon' && (
-                              <span className="admin-requests-table__due-badge admin-requests-table__due-badge--soon">Due in 24h</span>
-                            )}
-                            </div>
-                          </td>
-                          <td>
-                            <span className="status-badge" data-status={req.status}>
-                              {statusLabel(req.status)}
-                            </span>
-                          </td>
-                          <td>
-                            <span className="admin-requests-table__meta">{new Date(req.created_at).toLocaleString()}</span>
-                          </td>
-                          <td className="admin-requests-table__actions-cell" onClick={(e) => e.stopPropagation()}>
-                            <div className="admin-requests-table__actions">
-                              {req.status === 'pending_approval' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="btn btn-primary btn-sm"
-                                    disabled={actioningId !== null}
-                                    onClick={() => handleApprove(req.id)}
-                                  >
-                                    {actioningId === req.id ? '…' : 'Approve'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn btn-danger btn-sm"
-                                    disabled={actioningId !== null}
-                                    onClick={() => handleReject(req.id)}
-                                  >
-                                    Reject
-                                  </button>
-                                </>
-                              )}
-                              {req.status === 'in_progress' && (
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-sm"
-                                  disabled={actioningId !== null}
-                                  onClick={() => handleSetStatus(req.id, 'completed')}
-                                >
-                                  {actioningId === req.id ? '…' : 'Mark completed'}
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                className="btn btn-secondary btn-sm"
-                                disabled={actioningId !== null || cloningId !== null}
-                                onClick={(e) => { e.stopPropagation(); handleClone(req.id); }}
-                                title="Clone as new draft"
-                              >
-                                {cloningId === req.id ? '…' : 'Clone'}
-                              </button>
-                              {['completed', 'in_progress'].includes(req.status) && (
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-sm"
-                                  disabled={promotingId !== null}
-                                  onClick={(e) => { e.stopPropagation(); handlePromote(req.id); }}
-                                  title="Promote to next environment"
-                                >
-                                  {promotingId === req.id ? '…' : 'Promote'}
-                                </button>
-                              )}
-                              {req.pr_url ? (
-                                <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">
-                                  Open PR
-                                </a>
-                              ) : null}
-                            </div>
-                          </td>
-                        </tr>
-                      )})}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable<PRRequest>
+                  label="Requests"
+                  columns={requestColumns}
+                  rows={requests}
+                  rowKey={(req) => req.id}
+                  loading={loading}
+                  selectable
+                  selectedKeys={selectedIds as Set<RowKey>}
+                  onSelectionChange={(next) => setSelectedIds(new Set(Array.from(next).map(Number)))}
+                  isRowSelectable={(req) => !pendingDecisions[req.id]}
+                  activeKey={detailRequest?.id ?? null}
+                  onRowOpen={(req) => openDetail(req)}
+                  sort={{ key: sortBy, direction: sortOrder === 'asc' ? 'asc' : 'desc' }}
+                  onSortChange={handleSortChange}
+                  rowClassName={(req) => (pendingDecisions[req.id] ? 'is-pending' : undefined)}
+                  rowVersion={(req) => req.status}
+                  empty={
+                    <div className="ig-table-empty">
+                      <strong>No requests match these filters</strong>
+                      <p>Clear a filter or two to bring the queue back.</p>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={handleClearFilters}>
+                        Clear filters
+                      </button>
+                    </div>
+                  }
+                />
+                <p className="ig-table-hint">
+                  <span className="ig-kbd">J</span>/<span className="ig-kbd">K</span> move · <span className="ig-kbd">Enter</span> open ·{' '}
+                  <span className="ig-kbd">X</span> select · <span className="ig-kbd">Esc</span> close
+                </p>
                 <div className="admin-requests-pagination">
                   <span className="admin-requests-pagination__info">
                     Page {currentPage} of {totalPages} ({total} total)
@@ -1492,39 +1444,77 @@ export default function AdminRequests() {
             )}
           </div>
 
-          {detailRequest && (
-            <div
-              role="dialog"
-              aria-modal="true"
-              className="modal-overlay admin-request-detail-modal"
-              onClick={() => setDetailRequest(null)}
+          <BulkBar count={selectedIds.size} noun="request" onClear={() => setSelectedIds(new Set())}>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={selectedPendingIds.length === 0}
+              onClick={handleBulkApprove}
+              title={selectedPendingIds.length === 0 ? 'None of the selected requests are waiting for approval' : undefined}
             >
-              <div
-                className="modal admin-request-detail-modal__dialog"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="admin-request-detail-modal__header">
-                  <div className="admin-request-detail-modal__title-wrap">
-                    <span className="admin-request-detail-modal__eyebrow">
-                      {detailRequestIsAccess ? 'Access request' : 'Request'}
-                    </span>
-                    <h3 className="admin-request-detail-modal__title">
-                      {detailRequestIsAccess ? `Access request #${detailRequest.id}` : `Request #${detailRequest.id}`}
-                    </h3>
-                    <p className="admin-request-detail-modal__subtitle">
-                      Review request context, repo placement, approval signals, and the latest discussion without leaving the queue.
-                    </p>
-                  </div>
-                  <div className="admin-request-detail-modal__header-actions">
-                    <span className="status-badge" data-status={detailRequest.status}>
-                      {statusLabel(detailRequest.status)}
-                    </span>
-                    <button type="button" className="btn btn-secondary" onClick={() => setDetailRequest(null)}>
-                      Close
-                    </button>
-                  </div>
-                </div>
+              Approve{selectedPendingIds.length > 0 && selectedPendingIds.length !== selectedIds.size ? ` ${selectedPendingIds.length}` : ''}
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={selectedPendingIds.length === 0} onClick={handleBulkReject}>
+              Reject
+            </button>
+            <select
+              value={bulkStatusValue}
+              onChange={(e) => setBulkStatusValue(e.target.value)}
+              className="input ig-bulkbar__select"
+              aria-label="Set status for selected requests"
+            >
+              <option value="">Set status…</option>
+              <option value="in_progress">In progress</option>
+              <option value="completed">Completed</option>
+              <option value="rejected">Rejected</option>
+            </select>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={!bulkStatusValue} onClick={handleBulkStatus}>
+              Apply
+            </button>
+          </BulkBar>
 
+          <UndoToaster
+            entries={undoQueue.entries}
+            onUndo={undoQueue.undo}
+            onCommit={(id) => void undoQueue.commitNow(id)}
+            onUndoLatest={undoQueue.undoLatest}
+          />
+
+          {detailRequest && (
+            <InspectorDrawer
+              open
+              onClose={closeDetail}
+              resetKey={detailRequest.id}
+              label={`Request ${detailRequest.id} details`}
+              eyebrow={detailRequestIsAccess ? 'Access request' : 'Request'}
+              title={
+                <>
+                  <span className="ig-mono">#{detailRequest.id}</span> {detailRequest.service || ''}
+                </>
+              }
+              subtitle={[detailRequest.project_name, detailRequest.team, detailRequest.env].filter(Boolean).join(' · ')}
+              headerActions={
+                pendingDecisions[detailRequest.id] ? (
+                  <span className="ig-badge ig-badge--info">{pendingDecisions[detailRequest.id]}…</span>
+                ) : (
+                  <span className="status-badge" data-status={detailRequest.status}>
+                    {statusLabel(detailRequest.status)}
+                  </span>
+                )
+              }
+              footer={
+                canApproveOrReject(detailRequest.status) && !pendingDecisions[detailRequest.id] ? (
+                  <>
+                    <button type="button" className="btn btn-secondary" onClick={() => handleReject(detailRequest.id)}>
+                      Reject
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={() => handleApprove(detailRequest.id)}>
+                      Approve
+                    </button>
+                  </>
+                ) : undefined
+              }
+            >
                 <div className="portal-detail-grid admin-request-detail-modal__summary-grid">
                   {detailRequest.project_name ? (
                     <article className="portal-detail-card">
@@ -1777,27 +1767,6 @@ export default function AdminRequests() {
                   </div>
                 )}
 
-                {canApproveOrReject(detailRequest.status) && (
-                  <div className="admin-request-detail-modal__decision-row">
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      disabled={actioningId !== null}
-                      onClick={() => handleApprove(detailRequest.id)}
-                    >
-                      {actioningId === detailRequest.id ? '…' : 'Approve'}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      disabled={actioningId !== null}
-                      onClick={() => handleReject(detailRequest.id)}
-                    >
-                      Reject
-                    </button>
-                  </div>
-                )}
-
                 {detailServiceBundle.length > 1 && (
                   <div className="admin-request-detail-modal__section admin-request-detail-modal__section--muted">
                     <div className="admin-request-detail-modal__section-head">
@@ -1991,8 +1960,7 @@ export default function AdminRequests() {
                     </button>
                   </div>
                 </div>
-              </div>
-            </div>
+            </InspectorDrawer>
           )}
         </div>
       </AdminLayout>

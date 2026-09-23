@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import {
+  BulkBar,
+  DataTable,
+  InspectorDrawer,
+  UndoToaster,
+  formatRelativeTime,
+  useUndoQueue,
+  type DataTableColumn,
+  type RowKey,
+} from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import RequestPRImpact from '../components/RequestPRImpact';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -294,6 +304,7 @@ export default function DevOpsTickets() {
   const [recentIds, setRecentIds] = useState<number[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const detailSeq = useRef(0);
   const [detailRequest, setDetailRequest] = useState<TicketDetail | null>(null);
   const [detailComments, setDetailComments] = useState<RequestComment[]>([]);
   const [detailTimeline, setDetailTimeline] = useState<RequestTimelineEvent[]>([]);
@@ -303,8 +314,10 @@ export default function DevOpsTickets() {
   const [commentBody, setCommentBody] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
-  const [actioning, setActioning] = useState<'approve' | 'reject' | null>(null);
-  const workspaceRef = useRef<HTMLDivElement>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [pendingDecisions, setPendingDecisions] = useState<Record<number, string>>({});
+  const [actionError, setActionError] = useState('');
+  const undoQueue = useUndoQueue(6000);
   const detailRequestIsAccess = isAccessRequest(detailRequest);
   const detailServiceBundle = getRequestServiceBundle(detailRequest);
   const detailServiceBundleGroups = groupServiceBundleByEnvironment(detailServiceBundle, detailRequest);
@@ -372,6 +385,9 @@ export default function DevOpsTickets() {
 
   const loadDetail = async (id: number, syncUrl = true) => {
     if (!token) return;
+    detailSeq.current += 1;
+    const seq = detailSeq.current;
+    const isStale = () => seq !== detailSeq.current;
     setDetailId(id);
     setDetailLoading(true);
     setDetailError('');
@@ -392,6 +408,7 @@ export default function DevOpsTickets() {
       const detailData = asRecord(await detailRes.json());
       const commentsData = commentsRes.ok ? asRecord(await commentsRes.json().catch(() => ({}))) : {};
       const timelineData = timelineRes.ok ? asRecord(await timelineRes.json().catch(() => ({}))) : {};
+      if (isStale()) return;
 
       const detailRequestData = asRecord(detailData.request);
       setDetailRequest((detailData.request as TicketDetail | null) || null);
@@ -406,22 +423,21 @@ export default function DevOpsTickets() {
       if (syncUrl) {
         router.replace(`/tickets?id=${id}`, undefined, { shallow: true });
       }
-
-      setTimeout(() => {
-        workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 0);
     } catch (error) {
+      if (isStale()) return;
       const message = error instanceof Error ? error.message : 'Failed to load request';
       setDetailError(message);
       setDetailRequest(null);
       setDetailComments([]);
       setDetailTimeline([]);
     } finally {
-      setDetailLoading(false);
+      if (!isStale()) setDetailLoading(false);
     }
   };
 
   const closeDetail = () => {
+    detailSeq.current += 1;
+    setDetailLoading(false);
     setDetailId(null);
     setDetailRequest(null);
     setDetailComments([]);
@@ -466,36 +482,200 @@ export default function DevOpsTickets() {
     }
   };
 
-  const handleDecision = async (action: 'approve' | 'reject') => {
-    if (!token || !detailRequest) return;
-    setActioning(action);
+  const sendDevopsAction = async (path: string, body?: unknown) => {
+    const res = await fetch(`${apiUrl}${path}`, {
+      method: 'POST',
+      keepalive: true,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const data = asRecord(await res.json().catch(() => ({})));
+    if (!res.ok) throw new Error(getString(data.error, `Request failed (${res.status})`));
+    if (Array.isArray(data.errors) && data.errors.length > 0) {
+      throw new Error(`Some requests were not updated: ${(data.errors as string[]).join('; ')}`);
+    }
+    return data;
+  };
+
+  const setPendingFor = (ids: number[], label: string | null) => {
+    setPendingDecisions((prev) => {
+      const next = { ...prev };
+      ids.forEach((id) => {
+        if (label) next[id] = label;
+        else delete next[id];
+      });
+      return next;
+    });
+  };
+
+  // Decisions are held client-side for the undo window; nothing reaches the backend until it closes.
+  const scheduleDecision = (ids: number[], label: string, message: string, commit: () => Promise<unknown>, restoreSelection = false) => {
+    if (ids.length === 0) return;
     setDetailError('');
     setDetailNotice('');
-    try {
-      const res = await fetch(`${apiUrl}/api/devops/requests/${detailRequest.id}/${action}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: action === 'reject' ? JSON.stringify({ reason: rejectReason.trim() }) : undefined,
-      });
-      const data = asRecord(await res.json().catch(() => ({})));
-      if (!res.ok) {
-        setDetailError(getString(data.error, `Failed to ${action} request`));
-        return;
-      }
-      setDetailNotice(getString(data.message, `Request ${action}d.`));
-      if (action === 'reject') setRejectReason('');
-      fetchTickets();
-      await loadDetail(detailRequest.id, false);
-      window.dispatchEvent(new CustomEvent('devops-notifications-refresh'));
-    } catch (_) {
-      setDetailError(`Failed to ${action} request`);
-    } finally {
-      setActioning(null);
-    }
+    setActionError('');
+    setPendingFor(ids, label);
+    undoQueue.schedule({
+      message,
+      commit: async () => {
+        await commit();
+      },
+      revert: () => {
+        setPendingFor(ids, null);
+        if (restoreSelection) setSelectedIds(new Set(ids));
+      },
+      onError: (err) => {
+        const text = err instanceof Error ? err.message : 'The change could not be applied';
+        setActionError(text);
+        fetchTickets();
+      },
+      onCommitted: () => {
+        setPendingFor(ids, null);
+        fetchTickets();
+        if (detailId && ids.includes(detailId)) void loadDetail(detailId, false);
+        window.dispatchEvent(new CustomEvent('devops-notifications-refresh'));
+      },
+    });
   };
+
+  const handleDecision = (action: 'approve' | 'reject') => {
+    if (!token || !detailRequest) return;
+    const id = detailRequest.id;
+    const reason = rejectReason.trim();
+    if (action === 'reject') setRejectReason('');
+    scheduleDecision(
+      [id],
+      action === 'approve' ? 'Approving' : 'Rejecting',
+      `${action === 'approve' ? 'Approved' : 'Rejected'} request #${id}`,
+      () => sendDevopsAction(`/api/devops/requests/${id}/${action}`, action === 'reject' ? { reason } : undefined),
+    );
+  };
+
+  const isDevopsPending = (row: { id: number; status: string }) => row.status === 'pending_devops_approval' && !pendingDecisions[row.id];
+  const selectedActionableIds = Array.from<number>(selectedIds).filter((id) => {
+    const row = requests.find((req) => req.id === id);
+    return row ? isDevopsPending(row) : false;
+  });
+
+  const handleBulk = (action: 'approve' | 'reject') => {
+    const ids = selectedActionableIds.slice(0, 50);
+    if (ids.length === 0) return;
+    let reason = '';
+    if (action === 'reject') {
+      const input = window.prompt(`Reject ${ids.length} request(s)? Add a reason (optional, visible to requesters):`);
+      if (input === null) return;
+      reason = input.trim();
+    }
+    setSelectedIds(new Set());
+    scheduleDecision(
+      ids,
+      action === 'approve' ? 'Approving' : 'Rejecting',
+      `${action === 'approve' ? 'Approved' : 'Rejected'} ${ids.length} request${ids.length === 1 ? '' : 's'}`,
+      () => sendDevopsAction(`/api/devops/requests/bulk-${action}`, { ids, reason }),
+      true,
+    );
+  };
+
+  const handleSortChange = (key: string) => {
+    if (sortBy === key) setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
+    else {
+      setSortBy(key);
+      setSortOrder('desc');
+    }
+    setOffset(0);
+  };
+
+  const ticketColumns: DataTableColumn<TicketRow>[] = [
+    {
+      id: 'request',
+      header: 'Request',
+      cell: (req) => {
+        const bundleCount = getRequestBundleCount(req);
+        return (
+          <div className="ig-cell-stack">
+            <span className="ig-cell-title">{req.service || 'Request'}</span>
+            <span className="ig-cell-meta">
+              <span className="ig-mono">#{req.id}</span>
+              {bundleCount > 1 ? ` · ${bundleCount} services` : ''}
+              {isAccessRequest(req) ? ' · Access' : ''}
+              {req.created_by_username ? ` · ${req.created_by_username}` : ''}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'project',
+      header: 'Project',
+      cell: (req) => (
+        <div className="ig-cell-stack">
+          <span>{req.project_name || 'Not set'}</span>
+          <span className="ig-cell-meta">{req.team}</span>
+        </div>
+      ),
+    },
+    {
+      id: 'target',
+      header: 'Target',
+      cell: (req) => (
+        <span className="ig-cell-chips">
+          <span className="ig-chip">{req.env || '—'}</span>
+          <span className="ig-chip ig-chip--muted">{(req.cloud || '—').toUpperCase()}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'priority',
+      header: 'Priority',
+      sortable: true,
+      cell: (req) => (
+        <span className={`ig-priority ig-priority--${(req.priority || 'medium').toLowerCase()}`}>{req.priority || 'medium'}</span>
+      ),
+    },
+    {
+      id: 'due_date',
+      header: 'Due',
+      sortable: true,
+      cell: (req) => (
+        <div className="ig-cell-stack">
+          <span className="ig-cell-meta">{formatDateOnly(req.due_date)}</span>
+          {req.due_status === 'overdue' ? <span className="ig-badge ig-badge--danger">Overdue</span> : null}
+          {req.due_status === 'due_soon' ? <span className="ig-badge ig-badge--medium">Due in 24h</span> : null}
+        </div>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (req) =>
+        pendingDecisions[req.id] ? (
+          <span className="ig-badge ig-badge--info">{pendingDecisions[req.id]}…</span>
+        ) : (
+          <span className={`ticket-status ${getStatusBadgeClass(req.status)}`}>{formatStatus(req.status)}</span>
+        ),
+    },
+    {
+      id: 'updated_at',
+      header: 'Updated',
+      sortable: true,
+      cell: (req) => (
+        <span className="ig-cell-meta" title={formatDateTime(req.updated_at)}>
+          {formatRelativeTime(req.updated_at) || formatDateTime(req.updated_at)}
+        </span>
+      ),
+    },
+    {
+      id: 'pr',
+      header: <span className="ig-sr-only">Pull request</span>,
+      align: 'right',
+      cell: (req) =>
+        req.pr_url ? (
+          <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">
+            PR ↗
+          </a>
+        ) : null,
+    },
+  ];
 
   useEffect(() => {
     if (!token) {
@@ -503,6 +683,7 @@ export default function DevOpsTickets() {
       return;
     }
     fetchTickets();
+    setSelectedIds(new Set());
   }, [token, router, apiUrl, idFilter, team, projectId, cloud, status, search, requester, sortBy, sortOrder, atRisk, offset]);
 
   useEffect(() => {
@@ -716,13 +897,13 @@ export default function DevOpsTickets() {
             )}
           </div>
 
-          {loading ? (
-            <div className="portal-table-state portal-table-state--loading">
-              <div className="devops-tickets-spinner" />
-              <h3 className="portal-table-state__title">Loading requests</h3>
-              <p className="portal-table-state__copy">We’re refreshing the DevOps queue for you now.</p>
+          {actionError ? (
+            <div className="alert alert-error" role="alert">
+              {actionError}
             </div>
-          ) : listError ? (
+          ) : null}
+
+          {!loading && listError ? (
             <div className="portal-table-state portal-table-state--error">
               <div className="portal-table-state__icon" aria-hidden>!</div>
               <h3 className="portal-table-state__title">We couldn’t load this queue</h3>
@@ -739,104 +920,38 @@ export default function DevOpsTickets() {
                 <span>Showing {requests.length} of {total} requests</span>
                 <span>Open a row to work the request without leaving this page.</span>
               </div>
-              <div className="devops-tickets-table-card card">
-                {requests.length === 0 ? (
-                  <div className="portal-table-state portal-table-state--empty">
-                    <div className="portal-table-state__icon" aria-hidden>⋯</div>
-                    <h3 className="portal-table-state__title">No requests match these filters</h3>
-                    <p className="portal-table-state__copy">
-                      Clear one or two filters to bring the request queue back into view.
-                    </p>
-                    <div className="portal-table-state__actions">
-                      <button type="button" className="btn btn-secondary" onClick={clearFilters}>
+              <div className="devops-tickets-table-card card ig-table-card">
+                <DataTable<TicketRow>
+                  label="DevOps request queue"
+                  columns={ticketColumns}
+                  rows={requests}
+                  rowKey={(req) => req.id}
+                  loading={loading}
+                  selectable
+                  selectedKeys={selectedIds as Set<RowKey>}
+                  onSelectionChange={(next) => setSelectedIds(new Set(Array.from(next).map(Number)))}
+                  isRowSelectable={isDevopsPending}
+                  activeKey={detailId}
+                  onRowOpen={(req) => void loadDetail(req.id)}
+                  sort={{ key: sortBy, direction: sortOrder === 'asc' ? 'asc' : 'desc' }}
+                  onSortChange={handleSortChange}
+                  rowClassName={(req) => (pendingDecisions[req.id] ? 'is-pending' : undefined)}
+                  rowVersion={(req) => req.status}
+                  empty={
+                    <div className="ig-table-empty">
+                      <strong>No requests match these filters</strong>
+                      <p>Clear a filter or two to bring the queue back.</p>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters}>
                         Clear filters
                       </button>
                     </div>
-                  </div>
-                ) : (
-                  <div className="devops-tickets-table-wrap">
-                    <table className="devops-tickets-table">
-                      <thead>
-                        <tr>
-                          <th>Request #</th>
-                          <th>Project</th>
-                          <th>Team</th>
-                          <th>Env</th>
-                          <th>Cloud</th>
-                          <th>Service / target</th>
-                          <th>Requester</th>
-                          <th>Priority</th>
-                          <th>Due</th>
-                          <th>Status</th>
-                          <th>PR</th>
-                          <th>Updated</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {requests.map((req) => {
-                          const bundleCount = getRequestBundleCount(req);
-                          return (
-                          <tr
-                            key={req.id}
-                            className={detailId === req.id ? 'devops-tickets-table__row--active' : ''}
-                            onClick={() => loadDetail(req.id)}
-                          >
-                            <td><code className="devops-ticket-id">#{req.id}</code></td>
-                            <td>
-                              {req.project_name ? (
-                                <div className="devops-ticket-primary">
-                                  <strong>{req.project_name}</strong>
-                                  {req.project_code ? <span className="devops-ticket-meta">{req.project_code}</span> : null}
-                                </div>
-                              ) : (
-                                <span style={{ color: 'var(--text-muted)' }}>Not set</span>
-                              )}
-                            </td>
-                            <td>{req.team}</td>
-                            <td><span className="devops-ticket-env">{req.env}</span></td>
-                            <td><span className={`devops-ticket-cloud devops-ticket-cloud--${(req.cloud || '').toLowerCase()}`}>{req.cloud}</span></td>
-                            <td>
-                              <div className="devops-ticket-primary">
-                                <strong>{req.service}</strong>
-                              {bundleCount > 1 ? (
-                                <span className="devops-ticket-bundle-badge">{bundleCount} services</span>
-                              ) : null}
-                              {isAccessRequest(req) ? (
-                                <span className="devops-ticket-meta">Access request</span>
-                              ) : null}
-                              </div>
-                            </td>
-                            <td><span className="devops-ticket-meta">{req.created_by_username || 'Not available'}</span></td>
-                            <td><span className={`devops-ticket-priority devops-ticket-priority--${(req.priority || 'medium').toLowerCase()}`}>{req.priority || 'medium'}</span></td>
-                            <td>
-                              <span className="devops-ticket-due">
-                                <span className="devops-ticket-meta">{formatDateOnly(req.due_date)}</span>
-                                {req.due_status === 'overdue' && <span className="devops-ticket-due-badge devops-ticket-due-badge--overdue">Overdue</span>}
-                                {req.due_status === 'due_soon' && <span className="devops-ticket-due-badge devops-ticket-due-badge--soon">Due in 24h</span>}
-                              </span>
-                            </td>
-                            <td><span className={`ticket-status ${getStatusBadgeClass(req.status)}`}>{formatStatus(req.status)}</span></td>
-                            <td>
-                              {req.pr_url ? (
-                                <a
-                                  href={req.pr_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="devops-ticket-pr-link"
-                                  onClick={(event) => event.stopPropagation()}
-                                >
-                                  View PR
-                                </a>
-                              ) : <span className="devops-ticket-meta">Pending</span>}
-                            </td>
-                            <td className="devops-ticket-updated"><span className="devops-ticket-meta">{formatDateTime(req.updated_at)}</span></td>
-                          </tr>
-                        )})}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                  }
+                />
               </div>
+              <p className="ig-table-hint">
+                <span className="ig-kbd">J</span>/<span className="ig-kbd">K</span> move · <span className="ig-kbd">Enter</span> open ·{' '}
+                <span className="ig-kbd">X</span> select · <span className="ig-kbd">Esc</span> close
+              </p>
               {requests.length > 0 && total > limit && (
                 <div className="devops-tickets-pagination">
                   <span className="devops-tickets-pagination-info">
@@ -855,28 +970,51 @@ export default function DevOpsTickets() {
             </>
           )}
 
+          <BulkBar count={selectedIds.size} noun="request" onClear={() => setSelectedIds(new Set())}>
+            <button type="button" className="btn btn-primary btn-sm" disabled={selectedActionableIds.length === 0} onClick={() => handleBulk('approve')}>
+              Approve
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={selectedActionableIds.length === 0} onClick={() => handleBulk('reject')}>
+              Reject
+            </button>
+          </BulkBar>
+
+          <UndoToaster
+            entries={undoQueue.entries}
+            onUndo={undoQueue.undo}
+            onCommit={(id) => void undoQueue.commitNow(id)}
+            onUndoLatest={undoQueue.undoLatest}
+          />
+
           {(detailId || detailLoading || detailRequest) && (
-            <section ref={workspaceRef} className="portal-surface devops-approval-workspace">
-              <div className="portal-surface__header devops-approval-workspace__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Request Workspace</span>
-                  <h2 className="portal-surface__title">
-                    {detailRequest ? (detailRequestIsAccess ? `Access request #${detailRequest.id}` : `Request #${detailRequest.id}`) : 'Loading request'}
-                  </h2>
-                  <p className="portal-surface__subtitle">
-                    Review request context, dependency pressure, comments, and timeline without leaving the requests queue.
-                  </p>
-                </div>
-                <div className="portal-page__actions devops-approval-workspace__top-actions">
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={refreshDetail} disabled={detailLoading}>
+            <InspectorDrawer
+              open
+              onClose={closeDetail}
+              resetKey={detailRequest?.id ?? null}
+              label="Request details"
+              eyebrow={detailRequestIsAccess ? 'Access request' : 'Request'}
+              title={
+                detailRequest ? (
+                  <>
+                    <span className="ig-mono">#{detailRequest.id}</span> {detailRequest.service}
+                  </>
+                ) : (
+                  'Loading request'
+                )
+              }
+              subtitle={detailRequest ? [detailRequest.project_name, detailRequest.team, detailRequest.env].filter(Boolean).join(' · ') : undefined}
+              headerActions={
+                <>
+                  {detailRequest && pendingDecisions[detailRequest.id] ? (
+                    <span className="ig-badge ig-badge--info">{pendingDecisions[detailRequest.id]}…</span>
+                  ) : null}
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={refreshDetail} disabled={detailLoading}>
                     Refresh
                   </button>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={closeDetail}>
-                    Close
-                  </button>
-                </div>
-              </div>
-
+                </>
+              }
+            >
+              <div className="devops-approval-workspace">
               {detailLoading && !detailRequest ? (
                 <div className="empty-state">Loading approval workspace...</div>
               ) : (
@@ -1179,17 +1317,17 @@ export default function DevOpsTickets() {
                             type="button"
                             className="btn btn-primary"
                             onClick={() => handleDecision('approve')}
-                            disabled={!canActOnDetail || actioning !== null}
+                            disabled={!canActOnDetail || Boolean(pendingDecisions[detailRequest.id])}
                           >
-                            {actioning === 'approve' ? 'Approving...' : 'Approve'}
+                            Approve
                           </button>
                           <button
                             type="button"
                             className="btn btn-secondary"
                             onClick={() => handleDecision('reject')}
-                            disabled={!canActOnDetail || actioning !== null}
+                            disabled={!canActOnDetail || Boolean(pendingDecisions[detailRequest.id])}
                           >
-                            {actioning === 'reject' ? 'Rejecting...' : 'Reject'}
+                            Reject
                           </button>
                         </div>
                       </section>
@@ -1269,7 +1407,8 @@ export default function DevOpsTickets() {
                   )}
                 </>
               )}
-            </section>
+              </div>
+            </InspectorDrawer>
           )}
         </div>
       </DevOpsLayout>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { AuthPipeline, ThemeToggle } from '@infragate/ui';
 import { useToast } from '../context/ToastContext';
 import { asRecord, getString } from '../lib/payload';
 import { SITE_NAME } from '../lib/site';
@@ -39,11 +40,6 @@ export default function Login() {
       localStorage.removeItem('token');
       localStorage.removeItem('isAuthenticated');
     }
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    localStorage.setItem('user-portal-theme', 'dark');
   }, []);
 
   useEffect(() => {
@@ -205,20 +201,18 @@ export default function Login() {
       <div className="login-page">
         <div className="login-page__left">
           <div className="login-page__brand">
-            <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">{SITE_NAME}</h1>
+            <img src="/logo.svg" alt={SITE_NAME} width={44} height={44} className="login-page__logo" />
+            <h1 className="login-page__title">Ship infrastructure without the ticket queue.</h1>
             <p className="login-page__tagline">
-              Cloud-agnostic infrastructure management. Self-service requests for your team.
+              Pick a golden path, see the cost up front, and track your request from dev to prod.
             </p>
-          </div>
-          <div className="login-page__decor">
-            <div className="login-page__blob login-page__blob--1" />
-            <div className="login-page__blob login-page__blob--2" />
-            <div className="login-page__blob login-page__blob--3" />
+            <AuthPipeline />
           </div>
         </div>
         <div className="login-page__right">
           <div className="login-page__card">
+            <ThemeToggle />
+            <span className="ig-portal-pill">User portal</span>
             <h2 className="login-page__card-title">Welcome back</h2>
             <p className="login-page__card-subtitle">Sign in to your account</p>
             {error && (

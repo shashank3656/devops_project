@@ -1,42 +1,73 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type workspaceQueueItem struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Meta  string `json:"meta"`
-	Href  string `json:"href"`
-	Tone  string `json:"tone,omitempty"`
+	ID     string `json:"id"`
+	Kind   string `json:"kind,omitempty"`
+	Title  string `json:"title"`
+	Meta   string `json:"meta"`
+	Ref    string `json:"ref,omitempty"`
+	Href   string `json:"href"`
+	Action string `json:"action,omitempty"`
+	Tone   string `json:"tone,omitempty"`
+	At     string `json:"at,omitempty"`
 }
 
 type workspacePipelineStage struct {
-	Env     string `json:"env"`
-	Status  string `json:"status"`
+	Env       string `json:"env"`
+	Status    string `json:"status"`
+	Summary   string `json:"summary"`
+	Href      string `json:"href,omitempty"`
+	Active    bool   `json:"active,omitempty"`
+	Blocked   bool   `json:"blocked,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+type workspaceActivity struct {
+	ID      string `json:"id"`
+	Actor   string `json:"actor,omitempty"`
 	Summary string `json:"summary"`
+	Detail  string `json:"detail,omitempty"`
 	Href    string `json:"href,omitempty"`
-	Active  bool   `json:"active,omitempty"`
-	Blocked bool   `json:"blocked,omitempty"`
+	Tone    string `json:"tone,omitempty"`
+	At      string `json:"at,omitempty"`
+
+	sortAt time.Time
 }
 
 type workspacePayload struct {
 	Title    string               `json:"title"`
 	Subtitle string               `json:"subtitle"`
+	Viewer   string               `json:"viewer,omitempty"`
 	NeedsYou []workspaceQueueItem `json:"needs_you"`
 	Pipeline struct {
 		ProjectName string                   `json:"project_name,omitempty"`
 		Stages      []workspacePipelineStage `json:"stages"`
 	} `json:"pipeline"`
+	Activity []workspaceActivity `json:"activity"`
 }
 
 func meWorkspaceHandler(w http.ResponseWriter, r *http.Request) {
-	writeWorkspace(w, r, "user")
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		handleOptions(w, r)
+		return
+	}
+	userID, _, ok := requireSignedIn(w, r)
+	if !ok {
+		return
+	}
+	writeWorkspace(w, r, "user", userID)
 }
 
 func adminWorkspaceHandler(w http.ResponseWriter, r *http.Request) {
@@ -45,10 +76,11 @@ func adminWorkspaceHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireAdmin(w, r); !ok {
+	userID, ok := requireAdmin(w, r)
+	if !ok {
 		return
 	}
-	writeWorkspace(w, r, "admin")
+	writeWorkspace(w, r, "admin", userID)
 }
 
 func devopsWorkspaceHandler(w http.ResponseWriter, r *http.Request) {
@@ -57,39 +89,36 @@ func devopsWorkspaceHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
-	writeWorkspace(w, r, "devops")
+	writeWorkspace(w, r, "devops", userID)
 }
 
-func writeWorkspace(w http.ResponseWriter, r *http.Request, portal string) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		handleOptions(w, r)
-		return
-	}
+func writeWorkspace(w http.ResponseWriter, r *http.Request, portal string, viewerID int) {
 	if r.Method != http.MethodGet {
 		writeMethodNotAllowed(w, r, http.MethodGet)
 		return
 	}
-	if portal == "user" {
-		if _, _, ok := requireSignedIn(w, r); !ok {
-			return
-		}
-	}
-	payload := buildWorkspacePayload(portal, r.URL.Query().Get("project_id"))
+	payload := buildWorkspacePayload(portal, r.URL.Query().Get("project_id"), viewerID)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "workspace": payload})
 }
 
-func buildWorkspacePayload(portal, projectID string) workspacePayload {
+func buildWorkspacePayload(portal, projectID string, viewerID int) workspacePayload {
 	payload := workspacePayload{
 		Title:    "What needs attention",
-		Subtitle: "Approvals, risky merges, and the environment path for the selected project.",
+		Subtitle: "Your requests, reviews, and the environment path for your latest project.",
 	}
-	payload.NeedsYou = workspaceNeedsYou(portal)
-	payload.Pipeline.ProjectName, payload.Pipeline.Stages = workspacePipeline(portal, projectID)
+	if viewerID > 0 && DB != nil {
+		if user, err := GetUserByID(viewerID); err == nil && user != nil {
+			payload.Viewer = user.Username
+		}
+	}
+	payload.NeedsYou = workspaceNeedsYou(portal, viewerID)
+	payload.Pipeline.ProjectName, payload.Pipeline.Stages = workspacePipeline(portal, projectID, viewerID)
+	payload.Activity = workspaceRecentActivity(portal, viewerID)
 	switch portal {
 	case "admin":
 		payload.Title = "Governance queue"
@@ -101,110 +130,31 @@ func buildWorkspacePayload(portal, projectID string) workspacePayload {
 	return payload
 }
 
-func workspaceNeedsYou(portal string) []workspaceQueueItem {
+func workspaceNeedsYou(portal string, viewerID int) []workspaceQueueItem {
 	items := make([]workspaceQueueItem, 0, 12)
 	if DB == nil {
 		return items
 	}
 
-	if rows, err := DB.Query(`
-		SELECT id, team, env, cloud, service, status, COALESCE(priority, 'medium')
-		FROM pr_requests
-		WHERE status IN ('pending_approval', 'pending_user_manager_approval', 'pending_devops_approval')
-		ORDER BY updated_at DESC
-		LIMIT 6
-	`); err == nil {
-		defer func() { _ = rows.Close() }()
-		for rows.Next() {
-			var id int
-			var team, env, cloud, service, status, priority string
-			if err := rows.Scan(&id, &team, &env, &cloud, &service, &status, &priority); err != nil {
-				continue
-			}
-			href := "/history?id=" + strconv.Itoa(id)
-			if portal == "admin" {
-				href = "/approval-center"
-			}
-			if portal == "devops" {
-				href = "/approval-center"
-			}
-			items = append(items, workspaceQueueItem{
-				ID:    fmt.Sprintf("approval-%d", id),
-				Title: fmt.Sprintf("%s %s waiting", cloud, service),
-				Meta:  strings.Join([]string{team, env, strings.ReplaceAll(status, "_", " ")}, " · "),
-				Href:  href,
-				Tone:  toneFromPriority(priority),
-			})
-		}
+	if portal == "user" {
+		items = append(items, workspaceUserQueue(viewerID)...)
+	} else {
+		items = append(items, workspaceApprovalQueue(portal)...)
+	}
+	items = append(items, workspaceIncidentQueue(portal, viewerID)...)
+	if portal != "user" {
+		items = append(items, workspaceRiskyPRQueue(portal)...)
 	}
 
-	if rows, err := DB.Query(`
-		SELECT id, COALESCE(incident_number, ''), COALESCE(summary, ''), COALESCE(severity, 'medium'), COALESCE(status, 'open')
-		FROM request_incidents
-		WHERE LOWER(COALESCE(status, 'open')) NOT IN ('closed', 'resolved')
-		ORDER BY updated_at DESC
-		LIMIT 4
-	`); err == nil {
-		defer func() { _ = rows.Close() }()
-		for rows.Next() {
-			var id int
-			var number, summary, severity, status string
-			if err := rows.Scan(&id, &number, &summary, &severity, &status); err != nil {
-				continue
-			}
-			label := number
-			if label == "" {
-				label = formatIncidentNumber(id)
-			}
-			href := "/incidents"
-			if portal == "devops" {
-				href = "/incidents"
-			}
-			items = append(items, workspaceQueueItem{
-				ID:    fmt.Sprintf("incident-%d", id),
-				Title: strings.TrimSpace(label + " " + summary),
-				Meta:  severity + " · " + status,
-				Href:  href,
-				Tone:  "high",
-			})
-		}
-	}
-
-	if rows, err := DB.Query(`
-		SELECT request_id, pr_number, score, risk_level, COALESCE(deploy_status, '')
-		FROM pr_request_impact
-		WHERE LOWER(risk_level) IN ('high', 'medium')
-		ORDER BY score DESC, updated_at DESC
-		LIMIT 4
-	`); err == nil {
-		defer func() { _ = rows.Close() }()
-		for rows.Next() {
-			var requestID, prNumber, score int
-			var risk, deploy string
-			if err := rows.Scan(&requestID, &prNumber, &score, &risk, &deploy); err != nil {
-				continue
-			}
-			href := "/history?id=" + strconv.Itoa(requestID)
-			if portal == "devops" {
-				href = "/tickets?id=" + strconv.Itoa(requestID)
-			}
-			items = append(items, workspaceQueueItem{
-				ID:    fmt.Sprintf("pr-%d", requestID),
-				Title: fmt.Sprintf("PR #%d production impact", prNumber),
-				Meta:  fmt.Sprintf("%s risk · %d/100 · %s", risk, score, deploy),
-				Href:  href,
-				Tone:  risk,
-			})
-		}
-	}
-
-	if activeFreezeReason() != "" {
+	if reason := activeFreezeReason(); reason != "" {
 		items = append([]workspaceQueueItem{{
-			ID:    "freeze-active",
-			Title: "Production freeze is active",
-			Meta:  activeFreezeReason(),
-			Href:  portalFreezeHref(portal),
-			Tone:  "danger",
+			ID:     "freeze-active",
+			Kind:   "freeze",
+			Title:  "Production freeze is active",
+			Meta:   reason,
+			Href:   portalFreezeHref(portal),
+			Action: "View",
+			Tone:   "danger",
 		}}, items...)
 	}
 
@@ -214,7 +164,237 @@ func workspaceNeedsYou(portal string) []workspaceQueueItem {
 	return items
 }
 
-func workspacePipeline(portal, projectID string) (string, []workspacePipelineStage) {
+func workspaceApprovalQueue(portal string) []workspaceQueueItem {
+	items := make([]workspaceQueueItem, 0, 6)
+	rows, err := DB.Query(`
+		SELECT id, team, env, cloud, service, status, COALESCE(priority, 'medium'), updated_at
+		FROM pr_requests
+		WHERE status IN ('pending_approval', 'pending_user_manager_approval', 'pending_devops_approval')
+		ORDER BY updated_at DESC
+		LIMIT 6
+	`)
+	if err != nil {
+		return items
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int
+		var team, env, cloud, service, status, priority string
+		var updated sql.NullTime
+		if err := rows.Scan(&id, &team, &env, &cloud, &service, &status, &priority, &updated); err != nil {
+			continue
+		}
+		items = append(items, workspaceQueueItem{
+			ID:     fmt.Sprintf("approval-%d", id),
+			Kind:   "approval",
+			Title:  fmt.Sprintf("%s · %s (%s)", service, strings.ToUpper(cloud), env),
+			Meta:   strings.Join([]string{team, workspaceStatusPhrase(status)}, " · "),
+			Ref:    workspaceRequestRef(id),
+			Href:   workspaceRequestHref(portal, id, true),
+			Action: "Review",
+			Tone:   toneFromPriority(priority),
+			At:     workspaceTime(updated),
+		})
+	}
+	return items
+}
+
+func workspaceUserQueue(viewerID int) []workspaceQueueItem {
+	items := make([]workspaceQueueItem, 0, 10)
+	if viewerID <= 0 {
+		return items
+	}
+
+	if rows, err := DB.Query(`
+		SELECT DISTINCT r.id, r.team, r.env, r.service, COALESCE(u.username, ''), r.updated_at
+		FROM pr_requests r
+		LEFT JOIN users u ON u.id = r.created_by
+		WHERE r.status = 'pending_user_manager_approval'
+		AND r.created_by IS NOT NULL
+		AND r.created_by <> $1
+		AND (
+			EXISTS (SELECT 1 FROM users mu WHERE mu.id = r.created_by AND mu.manager_id = $1)
+			OR EXISTS (
+				SELECT 1 FROM team_members m1
+				INNER JOIN teams t ON t.id = m1.team_id AND COALESCE(t.team_type,'portal') = 'portal' AND (t.name = r.team OR t.slug = r.team)
+				INNER JOIN team_members m2 ON m2.team_id = t.id AND m2.role = 'manager' AND m2.user_id = $1
+				WHERE m1.user_id = r.created_by
+			)
+		)
+		ORDER BY r.updated_at DESC
+		LIMIT 6
+	`, viewerID); err == nil {
+		for rows.Next() {
+			var id int
+			var team, env, service, requester string
+			var updated sql.NullTime
+			if err := rows.Scan(&id, &team, &env, &service, &requester, &updated); err != nil {
+				continue
+			}
+			meta := team + " · needs your approval"
+			if requester != "" {
+				meta = requester + " · " + meta
+			}
+			items = append(items, workspaceQueueItem{
+				ID:     fmt.Sprintf("manager-%d", id),
+				Kind:   "approval",
+				Title:  fmt.Sprintf("%s (%s)", service, env),
+				Meta:   meta,
+				Ref:    workspaceRequestRef(id),
+				Href:   workspaceRequestHref("user", id, false),
+				Action: "Review",
+				Tone:   "medium",
+				At:     workspaceTime(updated),
+			})
+		}
+		_ = rows.Close()
+	}
+
+	if rows, err := DB.Query(`
+		SELECT id, env, service, status, COALESCE(reject_reason, ''), updated_at
+		FROM pr_requests
+		WHERE created_by = $1
+		AND (
+			status IN ('draft', 'pending_approval', 'pending_user_manager_approval', 'pending_devops_approval', 'in_progress')
+			OR (status = 'rejected' AND updated_at >= NOW() - INTERVAL '14 days')
+		)
+		ORDER BY CASE WHEN status = 'rejected' THEN 0 WHEN status = 'draft' THEN 1 ELSE 2 END, updated_at DESC
+		LIMIT 6
+	`, viewerID); err == nil {
+		for rows.Next() {
+			var id int
+			var env, service, status, rejectReason string
+			var updated sql.NullTime
+			if err := rows.Scan(&id, &env, &service, &status, &rejectReason, &updated); err != nil {
+				continue
+			}
+			item := workspaceQueueItem{
+				ID:     fmt.Sprintf("mine-%d", id),
+				Kind:   "waiting",
+				Title:  fmt.Sprintf("%s (%s)", service, env),
+				Meta:   workspaceStatusPhrase(status),
+				Ref:    workspaceRequestRef(id),
+				Href:   workspaceRequestHref("user", id, false),
+				Action: "View",
+				Tone:   "info",
+				At:     workspaceTime(updated),
+			}
+			switch status {
+			case "rejected":
+				item.Kind = "rejected"
+				item.Action = "Fix"
+				item.Tone = "danger"
+				if reason := strings.TrimSpace(rejectReason); reason != "" {
+					item.Meta = "Rejected · " + truncateWorkspaceText(reason, 80)
+				}
+			case "draft":
+				item.Kind = "draft"
+				item.Action = "Continue"
+				item.Tone = "medium"
+			}
+			items = append(items, item)
+		}
+		_ = rows.Close()
+	}
+	return items
+}
+
+func workspaceIncidentQueue(portal string, viewerID int) []workspaceQueueItem {
+	items := make([]workspaceQueueItem, 0, 4)
+	query := `
+		SELECT i.id, COALESCE(i.summary, ''), COALESCE(i.severity, 'medium'), COALESCE(i.status, 'open'), i.updated_at
+		FROM request_incidents i
+		WHERE LOWER(COALESCE(i.status, 'open')) NOT IN ('closed', 'resolved')
+		ORDER BY i.updated_at DESC
+		LIMIT 4
+	`
+	args := []interface{}{}
+	if portal == "user" {
+		if viewerID <= 0 {
+			return items
+		}
+		query = `
+			SELECT i.id, COALESCE(i.summary, ''), COALESCE(i.severity, 'medium'), COALESCE(i.status, 'open'), i.updated_at
+			FROM request_incidents i
+			INNER JOIN pr_requests r ON r.id = i.request_id
+			WHERE LOWER(COALESCE(i.status, 'open')) NOT IN ('closed', 'resolved')
+			AND r.created_by = $1
+			ORDER BY i.updated_at DESC
+			LIMIT 4
+		`
+		args = append(args, viewerID)
+	}
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		return items
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int
+		var summary, severity, status string
+		var updated sql.NullTime
+		if err := rows.Scan(&id, &summary, &severity, &status, &updated); err != nil {
+			continue
+		}
+		title := strings.TrimSpace(summary)
+		if title == "" {
+			title = "Open incident"
+		}
+		items = append(items, workspaceQueueItem{
+			ID:     fmt.Sprintf("incident-%d", id),
+			Kind:   "incident",
+			Title:  truncateWorkspaceText(title, 90),
+			Meta:   severity + " severity · " + strings.ReplaceAll(status, "_", " "),
+			Ref:    formatIncidentNumber(id),
+			Href:   "/incidents",
+			Action: "Open",
+			Tone:   "high",
+			At:     workspaceTime(updated),
+		})
+	}
+	return items
+}
+
+func workspaceRiskyPRQueue(portal string) []workspaceQueueItem {
+	items := make([]workspaceQueueItem, 0, 4)
+	rows, err := DB.Query(`
+		SELECT request_id, COALESCE(pr_number, 0), score, risk_level, COALESCE(deploy_status, ''), updated_at
+		FROM pr_request_impact
+		WHERE LOWER(risk_level) IN ('high', 'medium')
+		ORDER BY score DESC, updated_at DESC
+		LIMIT 4
+	`)
+	if err != nil {
+		return items
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var requestID, prNumber, score int
+		var risk, deploy string
+		var updated sql.NullTime
+		if err := rows.Scan(&requestID, &prNumber, &score, &risk, &deploy, &updated); err != nil {
+			continue
+		}
+		meta := fmt.Sprintf("%s risk · %d/100", risk, score)
+		if deploy != "" {
+			meta += " · " + strings.ReplaceAll(deploy, "_", " ")
+		}
+		items = append(items, workspaceQueueItem{
+			ID:     fmt.Sprintf("pr-%d", requestID),
+			Kind:   "pr_risk",
+			Title:  fmt.Sprintf("PR #%d production impact", prNumber),
+			Meta:   meta,
+			Ref:    workspaceRequestRef(requestID),
+			Href:   workspaceRequestHref(portal, requestID, false),
+			Action: "Inspect",
+			Tone:   strings.ToLower(risk),
+			At:     workspaceTime(updated),
+		})
+	}
+	return items
+}
+
+func workspacePipeline(portal, projectID string, viewerID int) (string, []workspacePipelineStage) {
 	stages := make([]workspacePipelineStage, 0, 4)
 	if DB == nil {
 		return "", stages
@@ -225,18 +405,27 @@ func workspacePipeline(portal, projectID string) (string, []workspacePipelineSta
 		id = n
 		_ = DB.QueryRow("SELECT name FROM projects WHERE id = $1", n).Scan(&projectName)
 	} else {
-		_ = DB.QueryRow("SELECT id, name FROM projects WHERE status = 'active' ORDER BY updated_at DESC LIMIT 1").Scan(&id, &projectName)
+		if portal == "user" && viewerID > 0 {
+			_ = DB.QueryRow(`
+				SELECT p.id, p.name FROM pr_requests r
+				INNER JOIN projects p ON p.id = r.project_id
+				WHERE r.created_by = $1
+				ORDER BY r.updated_at DESC LIMIT 1
+			`, viewerID).Scan(&id, &projectName)
+		}
+		if id == 0 {
+			_ = DB.QueryRow("SELECT id, name FROM projects WHERE status = 'active' ORDER BY updated_at DESC LIMIT 1").Scan(&id, &projectName)
+		}
 	}
 	if id == 0 {
 		return projectName, defaultPipelineStages(portal)
 	}
 	rows, err := DB.Query(`
-		SELECT environment FROM project_environments WHERE project_id = $1 ORDER BY environment
+		SELECT environment FROM project_environments WHERE project_id = $1
 	`, id)
 	if err != nil {
 		return projectName, defaultPipelineStages(portal)
 	}
-	defer func() { _ = rows.Close() }()
 	envs := make([]string, 0, 4)
 	for rows.Next() {
 		var env string
@@ -244,45 +433,147 @@ func workspacePipeline(portal, projectID string) (string, []workspacePipelineSta
 			envs = append(envs, env)
 		}
 	}
+	_ = rows.Close()
 	if len(envs) == 0 {
 		envs = []string{"dev", "uat", "prod"}
 	}
+	envs = sortEnvironments(envs)
+	freezeActive := activeFreezeReason() != ""
 	for _, env := range envs {
 		var latestStatus, service string
 		var requestID int
+		var updated sql.NullTime
 		_ = DB.QueryRow(`
-			SELECT id, status, service FROM pr_requests
+			SELECT id, status, service, updated_at FROM pr_requests
 			WHERE project_id = $1 AND LOWER(env) = LOWER($2)
 			ORDER BY updated_at DESC LIMIT 1
-		`, id, env).Scan(&requestID, &latestStatus, &service)
+		`, id, env).Scan(&requestID, &latestStatus, &service, &updated)
 		if latestStatus == "" {
 			latestStatus = "idle"
 		}
 		href := ""
 		if requestID > 0 {
-			href = "/history?id=" + strconv.Itoa(requestID)
-			if portal == "devops" {
-				href = "/tickets?id=" + strconv.Itoa(requestID)
-			}
-			if portal == "admin" {
-				href = "/requests?id=" + strconv.Itoa(requestID)
-			}
+			href = workspaceRequestHref(portal, requestID, false)
 		}
 		summary := "No recent change"
 		if service != "" {
 			summary = service + " · " + strings.ReplaceAll(latestStatus, "_", " ")
 		}
-		blocked := strings.Contains(strings.ToLower(latestStatus), "reject") || envEqualsProd(env) && activeFreezeReason() != ""
+		blocked := strings.Contains(strings.ToLower(latestStatus), "reject") || (envEqualsProd(env) && freezeActive)
 		stages = append(stages, workspacePipelineStage{
-			Env:     env,
-			Status:  strings.ReplaceAll(latestStatus, "_", " "),
-			Summary: summary,
-			Href:    href,
-			Active:  latestStatus == "in_progress" || latestStatus == "pending_devops_approval",
-			Blocked: blocked,
+			Env:       env,
+			Status:    strings.ReplaceAll(latestStatus, "_", " "),
+			Summary:   summary,
+			Href:      href,
+			Active:    latestStatus == "in_progress" || latestStatus == "pending_devops_approval",
+			Blocked:   blocked,
+			UpdatedAt: workspaceTime(updated),
 		})
 	}
 	return projectName, stages
+}
+
+func workspaceRecentActivity(portal string, viewerID int) []workspaceActivity {
+	events := make([]workspaceActivity, 0, 12)
+	if DB == nil {
+		return events
+	}
+	if portal == "user" && viewerID <= 0 {
+		return events
+	}
+
+	requestQuery := `
+		SELECT r.id, r.service, r.env, COALESCE(r.status, ''), COALESCE(u.username, ''), r.updated_at
+		FROM pr_requests r
+		LEFT JOIN users u ON u.id = r.created_by
+		ORDER BY r.updated_at DESC
+		LIMIT 8
+	`
+	incidentQuery := `
+		SELECT i.id, COALESCE(i.summary, ''), COALESCE(i.status, 'open'), i.updated_at
+		FROM request_incidents i
+		ORDER BY i.updated_at DESC
+		LIMIT 4
+	`
+	args := []interface{}{}
+	if portal == "user" {
+		requestQuery = `
+			SELECT r.id, r.service, r.env, COALESCE(r.status, ''), COALESCE(u.username, ''), r.updated_at
+			FROM pr_requests r
+			LEFT JOIN users u ON u.id = r.created_by
+			WHERE r.created_by = $1
+			ORDER BY r.updated_at DESC
+			LIMIT 8
+		`
+		incidentQuery = `
+			SELECT i.id, COALESCE(i.summary, ''), COALESCE(i.status, 'open'), i.updated_at
+			FROM request_incidents i
+			INNER JOIN pr_requests r ON r.id = i.request_id
+			WHERE r.created_by = $1
+			ORDER BY i.updated_at DESC
+			LIMIT 4
+		`
+		args = append(args, viewerID)
+	}
+
+	if rows, err := DB.Query(requestQuery, args...); err == nil {
+		for rows.Next() {
+			var id int
+			var service, env, status, actor string
+			var updated sql.NullTime
+			if err := rows.Scan(&id, &service, &env, &status, &actor, &updated); err != nil {
+				continue
+			}
+			events = append(events, workspaceActivity{
+				ID:      fmt.Sprintf("request-%d", id),
+				Actor:   actor,
+				Summary: workspaceRequestRef(id) + " " + workspaceStatusPhrase(status),
+				Detail:  strings.Join(nonEmptyStrings(service, env, workspaceByline(actor)), " · "),
+				Href:    workspaceRequestHref(portal, id, false),
+				Tone:    workspaceStatusTone(status),
+				At:      workspaceTime(updated),
+				sortAt:  updated.Time,
+			})
+		}
+		_ = rows.Close()
+	}
+
+	if rows, err := DB.Query(incidentQuery, args...); err == nil {
+		for rows.Next() {
+			var id int
+			var summary, status string
+			var updated sql.NullTime
+			if err := rows.Scan(&id, &summary, &status, &updated); err != nil {
+				continue
+			}
+			tone := "high"
+			if s := strings.ToLower(status); s == "resolved" || s == "closed" {
+				tone = "ok"
+			}
+			events = append(events, workspaceActivity{
+				ID:      fmt.Sprintf("incident-%d", id),
+				Summary: "Incident " + formatIncidentNumber(id) + " " + strings.ReplaceAll(strings.ToLower(status), "_", " "),
+				Detail:  truncateWorkspaceText(summary, 80),
+				Href:    "/incidents",
+				Tone:    tone,
+				At:      workspaceTime(updated),
+				sortAt:  updated.Time,
+			})
+		}
+		_ = rows.Close()
+	}
+
+	return sortWorkspaceActivity(events, 8)
+}
+
+func sortWorkspaceActivity(events []workspaceActivity, limit int) []workspaceActivity {
+	sort.SliceStable(events, func(i, j int) bool {
+		return events[i].sortAt.After(events[j].sortAt)
+	})
+	if limit > 0 && len(events) > limit {
+		return events[:limit]
+	}
+	return events
 }
 
 func defaultPipelineStages(portal string) []workspacePipelineStage {
@@ -292,6 +583,96 @@ func defaultPipelineStages(portal string) []workspacePipelineStage {
 		{Env: "uat", Status: "idle", Summary: "Waiting on a promotion"},
 		{Env: "prod", Status: "idle", Summary: "Production is quiet"},
 	}
+}
+
+func workspaceRequestRef(id int) string {
+	return fmt.Sprintf("REQ-%d", id)
+}
+
+func workspaceRequestHref(portal string, id int, approval bool) string {
+	switch portal {
+	case "admin":
+		if approval {
+			return "/approval-center"
+		}
+		return "/requests?id=" + strconv.Itoa(id)
+	case "devops":
+		if approval {
+			return "/approval-center"
+		}
+		return "/tickets?id=" + strconv.Itoa(id)
+	default:
+		return "/history?id=" + strconv.Itoa(id)
+	}
+}
+
+func workspaceStatusPhrase(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "draft":
+		return "saved as draft"
+	case "pending_user_manager_approval":
+		return "waiting on manager"
+	case "pending_devops_approval", "pending_approval":
+		return "waiting on DevOps"
+	case "in_progress":
+		return "being provisioned"
+	case "completed":
+		return "completed"
+	case "rejected":
+		return "rejected"
+	case "cancelled", "canceled":
+		return "cancelled"
+	case "":
+		return "updated"
+	default:
+		return strings.ReplaceAll(strings.ToLower(status), "_", " ")
+	}
+}
+
+func workspaceStatusTone(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "completed":
+		return "ok"
+	case "rejected", "failed":
+		return "danger"
+	case "pending_user_manager_approval", "pending_devops_approval", "pending_approval":
+		return "medium"
+	default:
+		return "info"
+	}
+}
+
+func workspaceByline(actor string) string {
+	if strings.TrimSpace(actor) == "" {
+		return ""
+	}
+	return "by " + actor
+}
+
+func workspaceTime(t sql.NullTime) string {
+	if !t.Valid || t.Time.IsZero() {
+		return ""
+	}
+	return t.Time.UTC().Format(time.RFC3339)
+}
+
+func nonEmptyStrings(values ...string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if s := strings.TrimSpace(v); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func truncateWorkspaceText(value string, max int) string {
+	value = strings.TrimSpace(value)
+	runes := []rune(value)
+	if max <= 0 || len(runes) <= max {
+		return value
+	}
+	return strings.TrimSpace(string(runes[:max-1])) + "…"
 }
 
 func toneFromPriority(priority string) string {

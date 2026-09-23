@@ -23,11 +23,10 @@ import {
 } from './Icons';
 import SupportHub from './SupportHub';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
-import { CommandPalette } from '@infragate/ui';
+import { CommandPalette, SearchTrigger, ThemeToggle } from '@infragate/ui';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
-const DEVOPS_THEME_KEY = 'infra-portal-theme';
 const SIDEBAR_COLLAPSED_KEY = 'devops-sidebar-collapsed';
 const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@setuops.example';
 
@@ -165,8 +164,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     try {
       const u = localStorage.getItem(DEVOPS_USER_KEY);
       if (u) setUser(JSON.parse(u));
-      localStorage.setItem(DEVOPS_THEME_KEY, 'dark');
-      document.documentElement.setAttribute('data-theme', 'dark');
       const c = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
       setSidebarCollapsed(c === 'true');
     } catch (_) {}
@@ -430,6 +427,9 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
 
   return (
     <div className="devops-layout devops-layout-sidebar">
+      <a className="ig-skip-link" href="#main-content">
+        Skip to content
+      </a>
       <aside
         className={`devops-sidebar-new ${sidebarCollapsed ? 'devops-sidebar-new--collapsed' : ''} ${mobileMenuOpen ? 'devops-sidebar-new--mobile-open' : ''}`}
       >
@@ -450,7 +450,7 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
           )}
         </div>
         <div className="devops-sidebar-new__body">
-          <nav className="devops-sidebar-new__nav">
+          <nav className="devops-sidebar-new__nav" aria-label="Primary">
             {!sidebarCollapsed && <span className="devops-sidebar-new__nav-title">Modules</span>}
             {primaryNavItems.map(({ href, label, Icon }) => {
               const isActive = href === '/k8s'
@@ -463,6 +463,9 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
                   href={href}
                   className={`devops-sidebar-new__link ${isActive ? 'devops-sidebar-new__link--active' : ''}`}
                   onClick={() => setMobileMenuOpen(false)}
+                  aria-current={isActive ? 'page' : undefined}
+                  aria-label={sidebarCollapsed ? label : undefined}
+                  title={sidebarCollapsed ? label : undefined}
                 >
                   <Icon className="devops-sidebar-new__icon" />
                   {!sidebarCollapsed && <span className="devops-sidebar-new__label">{label}</span>}
@@ -494,6 +497,7 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
                           href={href}
                           className={`devops-sidebar-new__link ${isActive ? 'devops-sidebar-new__link--active' : ''}`}
                           onClick={() => setMobileMenuOpen(false)}
+                          aria-current={isActive ? 'page' : undefined}
                         >
                           <Icon className="devops-sidebar-new__icon" />
                           <span className="devops-sidebar-new__label">{label}</span>
@@ -582,6 +586,7 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
             </span>
           </div>
           <div className="devops-navbar__right">
+            <SearchTrigger placeholder="Search tickets, services, pods…" />
             <div className="devops-navbar__actions">
               <button
                 type="button"
@@ -598,6 +603,7 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
               </button>
               {user && <span className="devops-navbar__username">{user.username}</span>}
               <span className="devops-navbar__role">{roleLabel}</span>
+              <ThemeToggle />
               {isManager && (
                 <div className="devops-navbar__notify-wrap" ref={notifyRef}>
                   <button
@@ -702,7 +708,9 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
             </div>
           </div>
         </header>
-        <main className="devops-main-new">{children}</main>
+        <main id="main-content" tabIndex={-1} className="devops-main-new ig-page">
+          {children}
+        </main>
       </div>
       <CommandPalette
         apiUrl={apiUrl}

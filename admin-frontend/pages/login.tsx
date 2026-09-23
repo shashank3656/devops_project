@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { AuthPipeline, ThemeToggle } from '@infragate/ui';
 import { asRecord, getString } from '../lib/payload';
 
 const API_OVERRIDE_KEY = 'admin_api_url_override';
@@ -20,8 +21,6 @@ export default function AdminLogin() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    localStorage.setItem('infra-portal-theme', 'dark');
     const existingToken = (localStorage.getItem('admin_token') || '').trim();
     if (!existingToken || existingToken === 'undefined' || existingToken === 'null' || !/^\d+:\d+$/.test(existingToken)) {
       localStorage.removeItem('admin_token');
@@ -178,20 +177,18 @@ export default function AdminLogin() {
       <div className="login-page">
         <div className="login-page__left">
           <div className="login-page__brand">
-            <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">Admin</h1>
+            <img src="/logo.svg" alt="SetuOps" width={44} height={44} className="login-page__logo" />
+            <h1 className="login-page__title">Govern every environment from one place.</h1>
             <p className="login-page__tagline">
-              Cloud-agnostic infrastructure management. Secure, self-service, and audit-ready.
+              Teams, access, policies and audit trails — secure, self-service and review-ready.
             </p>
-          </div>
-          <div className="login-page__decor">
-            <div className="login-page__blob login-page__blob--1" />
-            <div className="login-page__blob login-page__blob--2" />
-            <div className="login-page__blob login-page__blob--3" />
+            <AuthPipeline />
           </div>
         </div>
         <div className="login-page__right">
           <div className="login-page__card">
+            <ThemeToggle />
+            <span className="ig-portal-pill">Admin console</span>
             <h2 className="login-page__card-title">Welcome back</h2>
             <p className="login-page__card-subtitle">
               Sign in with your admin account

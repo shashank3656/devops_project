@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
+import { OPEN_PALETTE_EVENT } from './theme';
 import type { PaletteCommand, SearchHit } from './types';
 
 interface CommandPaletteProps {
@@ -29,8 +30,13 @@ export default function CommandPalette({ apiUrl, token, commands }: CommandPalet
       }
       if (inField && !open) return;
     };
+    const onOpen = () => setOpen(true);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener(OPEN_PALETTE_EVENT, onOpen);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener(OPEN_PALETTE_EVENT, onOpen);
+    };
   }, [open]);
 
   useEffect(() => {

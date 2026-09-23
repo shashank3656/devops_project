@@ -11,11 +11,13 @@ const emptyWorkspace: WorkspacePayload = {
   subtitle: 'Pending requests and the current release path.',
   needs_you: [],
   pipeline: { stages: [] },
+  activity: [],
 };
 
 export default function AdminDashboard() {
   const router = useRouter();
   const [workspace, setWorkspace] = useState<WorkspacePayload>(emptyWorkspace);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem('admin_token');
@@ -28,7 +30,8 @@ export default function AdminDashboard() {
       .then((data) => {
         if (data?.workspace) setWorkspace(data.workspace);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [router]);
 
   return (
@@ -39,10 +42,12 @@ export default function AdminDashboard() {
       <AdminLayout>
         <WorkspaceHome
           payload={workspace}
+          loading={loading}
+          activityHref="/activity"
           actions={
             <>
-              <Link href="/approval-center" className="btn btn-primary">Approvals</Link>
               <Link href="/requests" className="btn btn-secondary">Requests</Link>
+              <Link href="/approval-center" className="btn btn-primary">Approvals</Link>
             </>
           }
         />

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { BulkBar, DataTable, type DataTableColumn, type RowKey } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -257,11 +258,93 @@ export default function DevOpsProjectsPage() {
     setActivePanel('onboard');
   };
 
-  const toggleProjectSelection = (projectID: number) => {
-    setSelectedProjectIds((current) =>
-      current.includes(projectID) ? current.filter((id) => id !== projectID) : [...current, projectID],
-    );
-  };
+  const selectedProjectKeys = useMemo(() => new Set<RowKey>(selectedProjectIds), [selectedProjectIds]);
+
+  const projectColumns: DataTableColumn<ProjectOption>[] = [
+    {
+      id: 'project',
+      header: 'Project',
+      cell: (project) => (
+        <div className="ig-cell-stack">
+          <span className="ig-cell-title">{project.name}</span>
+          <span className="ig-cell-meta">
+            <span className="ig-mono">{project.code}</span> · {project.owner_team || 'No owner team'}
+          </span>
+        </div>
+      ),
+    },
+    {
+      id: 'stage',
+      header: 'Stage',
+      cell: (project) => (
+        <div className="ig-cell-stack">
+          <span className={`ig-chip ig-chip--${project.onboarding_stage === 'ready' ? 'low' : project.status === 'active' ? 'medium' : 'muted'}`}>
+            {(project.onboarding_stage || 'configured').replace(/_/g, ' ')}
+          </span>
+          {project.status !== 'active' ? <span className="ig-cell-meta">{project.status}</span> : null}
+        </div>
+      ),
+    },
+    {
+      id: 'services',
+      header: 'Services',
+      cell: (project) => (
+        <span className="ig-cell-chips">
+          {project.services.length === 0 ? <span className="ig-cell-meta">None yet</span> : null}
+          {project.services.map((service) => (
+            <span key={`${service.cloud}:${service.service}`} className="ig-chip ig-chip--muted">
+              {service.cloud}:{service.service}
+            </span>
+          ))}
+        </span>
+      ),
+    },
+    {
+      id: 'access',
+      header: 'Team access',
+      cell: (project) => (
+        <div className="ig-cell-stack">
+          {project.team_access.length === 0 ? <span className="ig-cell-meta">No teams mapped</span> : null}
+          {project.team_access.map((access) => (
+            <span key={access.team_id} className="ig-cell-meta">
+              <span className="ig-cell-title">{access.team_name || access.team_slug}</span> · {access.environments.join(' / ')}
+            </span>
+          ))}
+        </div>
+      ),
+    },
+    {
+      id: 'approvals',
+      header: 'Approval rules',
+      cell: (project) =>
+        project.approval_rules?.length ? (
+          <div className="ig-cell-stack">
+            {project.approval_rules.map((rule) => (
+              <span key={rule.environment} className="ig-cell-meta">
+                <strong>{rule.environment}</strong>: {[rule.require_manager_approval ? 'manager' : '', rule.require_devops_approval ? 'DevOps' : 'admin'].filter(Boolean).join(' + ')}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span className="ig-cell-meta">Default</span>
+        ),
+    },
+    {
+      id: 'actions',
+      header: <span className="ig-sr-only">Actions</span>,
+      align: 'right',
+      cell: (project) => (
+        <div className="ig-row-actions">
+          <Link href={`/projects/${project.id}`} className="btn btn-secondary btn-sm">
+            View
+          </Link>
+          <Link href={`/projects/${project.id}/edit`} className="btn btn-secondary btn-sm">
+            Edit
+          </Link>
+        </div>
+      ),
+    },
+  ];
 
   const toggleBulkTeam = (teamID: number) => {
     setBulkTeamIds((current) =>
@@ -738,7 +821,7 @@ export default function DevOpsProjectsPage() {
         )}
 
         {activePanel === 'bulk-access' && (
-          <section className="portal-surface">
+          <section id="bulk-access-panel" className="portal-surface">
           <div className="portal-surface__header">
             <div>
               <span className="portal-surface__eyebrow">Bulk access</span>
@@ -805,65 +888,44 @@ export default function DevOpsProjectsPage() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="empty-state">Loading projects...</div>
-          ) : error && projects.length === 0 ? (
-            <div className="empty-state">{error}</div>
-          ) : projects.length === 0 ? (
-            <div className="empty-state">No projects onboarded yet.</div>
+          {!loading && error && projects.length === 0 ? (
+            <div className="alert alert-error" role="alert">{error}</div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="templates-table">
-                <thead>
-                  <tr>
-                    <th>Select</th>
-                    <th>Project</th>
-                    <th>Owner team</th>
-                    <th>Environments</th>
-                    <th>Clouds</th>
-                    <th>Services</th>
-                    <th>Approval rules</th>
-                    <th>Team access</th>
-                    <th>Status</th>
-                    <th>Stage</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {projects.map((project) => (
-                    <tr key={project.id}>
-                      <td>
-                        <input type="checkbox" checked={selectedProjectIds.includes(project.id)} onChange={() => toggleProjectSelection(project.id)} />
-                      </td>
-                      <td>
-                        <strong>{project.name}</strong>
-                        <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{project.code}</div>
-                      </td>
-                      <td>{project.owner_team || 'Not set'}</td>
-                      <td>{project.environments.join(', ')}</td>
-                      <td>{project.clouds.join(', ')}</td>
-                      <td>{project.services.map((service) => `${service.cloud}:${service.service}`).join(', ')}</td>
-                      <td>{project.approval_rules?.map((rule) => `${rule.environment}:${rule.require_manager_approval ? 'mgr' : 'no-mgr'}/${rule.require_devops_approval ? 'devops' : 'admin'}`).join(', ') || 'Default'}</td>
-                      <td>{project.team_access.map((access) => `${access.team_name || access.team_slug} (${access.environments.join('/')})`).join(', ')}</td>
-                      <td>{project.status}</td>
-                      <td>{project.onboarding_stage || 'configured'}</td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <Link href={`/projects/${project.id}`} className="btn btn-secondary btn-sm">
-                            View
-                          </Link>
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void router.push(`/projects/${project.id}/edit`)}>
-                            Edit
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable<ProjectOption>
+              label="Managed projects"
+              columns={projectColumns}
+              rows={projects}
+              rowKey={(project) => project.id}
+              loading={loading}
+              skeletonRows={6}
+              selectable
+              selectedKeys={selectedProjectKeys}
+              onSelectionChange={(next) => setSelectedProjectIds(Array.from(next).map(Number))}
+              onRowOpen={(project) => void router.push(`/projects/${project.id}`)}
+              empty={
+                <div className="ig-table-empty">
+                  <strong>No projects onboarded yet</strong>
+                  <p>Onboard a project to make it requestable by its mapped teams.</p>
+                </div>
+              }
+            />
           )}
         </section>
+
+        <BulkBar count={selectedProjectIds.length} noun="project" onClear={() => setSelectedProjectIds([])}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              setActivePanel('bulk-access');
+              window.requestAnimationFrame(() =>
+                document.getElementById('bulk-access-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+              );
+            }}
+          >
+            Edit team access
+          </button>
+        </BulkBar>
       </div>
     </DevOpsLayout>
   );

@@ -24,9 +24,8 @@ import {
 } from './Icons';
 import SupportHub from './SupportHub';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
-import { CommandPalette } from '@infragate/ui';
+import { CommandPalette, ThemeToggle } from '@infragate/ui';
 
-const THEME_KEY = 'infra-portal-theme';
 const SIDEBAR_COLLAPSED_KEY = 'infra-admin-sidebar-collapsed';
 const NOTIFY_POLL_MS = 30000;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -150,13 +149,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     const identity = getAdminIdentity();
     setProfileInitials(identity.initials);
     setProfileLabel(identity.label);
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(THEME_KEY, 'dark');
-      document.documentElement.setAttribute('data-theme', 'dark');
-    } catch (_) {}
   }, []);
 
   useEffect(() => {
@@ -324,6 +316,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="admin-layout admin-layout-sidebar admin-shell">
+      <a className="ig-skip-link" href="#main-content">
+        Skip to content
+      </a>
       <aside className={`admin-sidebar-shell ${sidebarCollapsed ? 'admin-sidebar-shell--collapsed' : ''} ${mobileMenuOpen ? 'admin-sidebar-shell--mobile-open' : ''}`}>
         <div className="admin-sidebar-shell__header">
           <button
@@ -342,7 +337,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           )}
         </div>
         <div className="admin-sidebar-shell__body">
-          <nav className="admin-sidebar-shell__nav">
+          <nav className="admin-sidebar-shell__nav" aria-label="Primary">
             {!sidebarCollapsed && <span className="admin-sidebar-shell__nav-title">Modules</span>}
             {PRIMARY_NAV.map(({ href, label, Icon }) => {
               const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
@@ -353,6 +348,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   href={href}
                   className={`admin-sidebar-shell__link ${isActive ? 'admin-sidebar-shell__link--active' : ''}`}
                   onClick={() => setMobileMenuOpen(false)}
+                  aria-current={isActive ? 'page' : undefined}
+                  aria-label={sidebarCollapsed ? label : undefined}
+                  title={sidebarCollapsed ? label : undefined}
                 >
                   <Icon className="admin-sidebar-shell__icon" />
                   {!sidebarCollapsed && <span className="admin-sidebar-shell__label">{label}</span>}
@@ -366,6 +364,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   type="button"
                   className="admin-sidebar-shell__link"
                   onClick={() => setMoreNavOpen((open) => !open)}
+                  aria-expanded={moreNavOpen}
                 >
                   <span className="admin-sidebar-shell__label">More</span>
                 </button>
@@ -375,6 +374,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     href={href}
                     className={`admin-sidebar-shell__link ${pathname === href || pathname.startsWith(href) ? 'admin-sidebar-shell__link--active' : ''}`}
                     onClick={() => setMobileMenuOpen(false)}
+                    aria-current={pathname === href || pathname.startsWith(href) ? 'page' : undefined}
                   >
                     <Icon className="admin-sidebar-shell__icon" />
                     <span className="admin-sidebar-shell__label">{label}</span>
@@ -492,6 +492,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               </button>
               <span className="admin-topbar__workspace">{profileLabel}</span>
               <span className="admin-topbar__role">Admin</span>
+              <ThemeToggle />
             </div>
 
             <div className="admin-topbar__notify-wrap" ref={notifyRef}>
@@ -593,7 +594,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="admin-main-shell__content">{children}</main>
+        <main id="main-content" tabIndex={-1} className="admin-main-shell__content ig-page">
+          {children}
+        </main>
       </div>
       <CommandPalette
         apiUrl={apiUrl}
