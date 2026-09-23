@@ -1,4 +1,5 @@
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
@@ -214,6 +215,9 @@ export default function DevOpsPromotionsPage() {
   const [revokingId, setRevokingId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [recentMerges, setRecentMerges] = useState<
+    { pr_number: number; title: string; commit_count: number; risk_level: string; score: number; request_id?: number }[]
+  >([]);
 
   const activeProjectID = useMemo(() => parsePositiveIntQuery(router.query.project_id), [router.query.project_id]);
   const activeRequestID = useMemo(() => parsePositiveIntQuery(router.query.request_id), [router.query.request_id]);
@@ -262,6 +266,27 @@ export default function DevOpsPromotionsPage() {
 
   useEffect(() => {
     void loadData();
+  }, [apiUrl]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    fetch(`${apiUrl}/api/devops/deploy-intelligence?limit=5`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const rows = Array.isArray(data?.events) ? data.events : [];
+        setRecentMerges(
+          rows.map((row: Record<string, unknown>) => ({
+            pr_number: typeof row.pr_number === 'number' ? row.pr_number : 0,
+            title: typeof row.title === 'string' ? row.title : '',
+            commit_count: typeof row.commit_count === 'number' ? row.commit_count : 0,
+            risk_level: typeof row.risk_level === 'string' ? row.risk_level : 'low',
+            score: typeof row.score === 'number' ? row.score : 0,
+            request_id: typeof row.request_id === 'number' ? row.request_id : undefined,
+          })),
+        );
+      })
+      .catch(() => {});
   }, [apiUrl]);
 
   const approveGate = async (item: PromotionItem) => {
@@ -456,6 +481,52 @@ export default function DevOpsPromotionsPage() {
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
+
+        <section className="portal-surface">
+          <div className="portal-surface__header">
+            <div>
+              <span className="portal-surface__eyebrow">Deploy</span>
+              <h2 className="portal-surface__title">Recent merges to main</h2>
+              <p className="portal-surface__subtitle">
+                Pull requests merged on the onboarded GitHub repo are scored for commit volume, diff size, and sensitive paths.
+              </p>
+            </div>
+            <Link href="/deploy-intelligence" className="btn btn-secondary btn-sm">
+              Open deploy intelligence
+            </Link>
+          </div>
+          {recentMerges.length === 0 ? (
+            <p className="portal-surface__subtitle" style={{ margin: 0 }}>
+              No merge analyses recorded yet. Point the GitHub <code>pull_request</code> webhook at your InfraGate API.
+            </p>
+          ) : (
+            <ul className="ig-policy__findings" style={{ margin: 0 }}>
+              {recentMerges.map((merge) => (
+                <li key={merge.pr_number} className="ig-policy__finding">
+                  <span className={`ig-chip ig-chip--${merge.risk_level === 'high' ? 'danger' : merge.risk_level === 'medium' ? 'medium' : 'low'}`}>
+                    {merge.risk_level}
+                  </span>
+                  <div className="ig-policy__finding-body">
+                    <strong>
+                      PR #{merge.pr_number}
+                      {merge.title ? `: ${merge.title}` : ''}
+                    </strong>
+                    <span>
+                      {merge.commit_count} commit(s) · score {merge.score}
+                      {merge.request_id ? (
+                        <>
+                          {' '}
+                          · <Link href={`/tickets?id=${merge.request_id}`}>Request #{merge.request_id}</Link>
+                        </>
+                      ) : null}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
         {hasActiveFilters ? (
           <div className="alert alert-info">
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>

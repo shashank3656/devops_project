@@ -149,14 +149,14 @@ func loadOrBuildPRImpact(req *PRRequest) prImpactBrief {
 }
 
 func refreshPRImpactForRequest(req *PRRequest, deployStatus string) prImpactBrief {
-	brief := buildPRImpactFromRequest(req)
-	if deployStatus != "" {
-		brief.DeployStatus = deployStatus
+	owner, repo, number, _ := parseGitHubPRURL(req.PRURL)
+	if owner == "" {
+		owner = GitHubOwner
 	}
-	enrichPRImpactFromGitHub(&brief, req)
-	scorePRImpact(&brief, req)
-	_ = savePRImpactBrief(brief)
-	return brief
+	if repo == "" {
+		repo = GitHubRepo
+	}
+	return analyzeGitHubPullRequest(owner, repo, number, req, deployStatus)
 }
 
 func buildPRImpactFromRequest(req *PRRequest) prImpactBrief {
@@ -524,34 +524,7 @@ func loadPRImpactBrief(requestID int) (prImpactBrief, bool) {
 }
 
 func handleGitHubPullRequestEvent(payload map[string]interface{}) {
-	pr, _ := payload["pull_request"].(map[string]interface{})
-	if pr == nil {
-		return
-	}
-	htmlURL, _ := pr["html_url"].(string)
-	action, _ := payload["action"].(string)
-	merged, _ := pr["merged"].(bool)
-	number := 0
-	switch n := pr["number"].(type) {
-	case float64:
-		number = int(n)
-	case int:
-		number = n
-	}
-	req := findRequestByPRNumber(number)
-	if req == nil && htmlURL != "" {
-		req = findRequestByPRURL(htmlURL)
-	}
-	if req == nil {
-		return
-	}
-	deploy := ""
-	if merged || action == "closed" && merged {
-		deploy = "merged"
-	} else if action == "opened" || action == "synchronize" {
-		deploy = "open"
-	}
-	refreshPRImpactForRequest(req, deploy)
+	processGitHubPullRequestWebhook(payload)
 }
 
 func findRequestByPRURL(raw string) *PRRequest {

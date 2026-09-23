@@ -1073,6 +1073,35 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_request_lifetimes_expires ON pr_request_lifetimes(expires_at) WHERE decommission_request_id IS NULL")
 
+	// Migration 52: merge-to-main deploy intelligence for onboarded GitHub repos
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS repo_deploy_events (
+			id SERIAL PRIMARY KEY,
+			repo_owner VARCHAR(120) NOT NULL,
+			repo_name VARCHAR(200) NOT NULL,
+			pr_number INTEGER NOT NULL,
+			request_id INTEGER REFERENCES pr_requests(id) ON DELETE SET NULL,
+			title TEXT NOT NULL DEFAULT '',
+			author VARCHAR(120) NOT NULL DEFAULT '',
+			base_branch VARCHAR(120) NOT NULL DEFAULT '',
+			head_branch VARCHAR(120) NOT NULL DEFAULT '',
+			merged_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			commit_count INTEGER NOT NULL DEFAULT 0,
+			file_count INTEGER NOT NULL DEFAULT 0,
+			additions INTEGER NOT NULL DEFAULT 0,
+			deletions INTEGER NOT NULL DEFAULT 0,
+			score INTEGER NOT NULL DEFAULT 0,
+			risk_level VARCHAR(20) NOT NULL DEFAULT 'low',
+			summary TEXT NOT NULL DEFAULT '',
+			pr_url TEXT NOT NULL DEFAULT '',
+			payload TEXT NOT NULL DEFAULT '{}',
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(repo_owner, repo_name, pr_number)
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_repo_deploy_events_merged ON repo_deploy_events(merged_at DESC)")
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_repo_deploy_events_risk ON repo_deploy_events(risk_level, score DESC)")
+
 	log.Println("Database schema is up to date")
 	return nil
 }
