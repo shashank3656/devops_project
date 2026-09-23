@@ -2,12 +2,16 @@ import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect } from 'react';
+import { installApiUrlRewrite } from '@infragate/ui';
 import AppLayout from '../components/AppLayout';
 import { ToastProvider } from '../context/ToastContext';
 import { SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
 import '../../shared-ui/tokens.css';
 import '../../shared-ui/workspace.css';
+
+// Must run before any page fetches (child effects run before this component's effects).
+installApiUrlRewrite(process.env.NEXT_PUBLIC_API_URL);
 
 const AUTHED_PATHS = ['/home', '/create-infrastructure', '/templates', '/select-service', '/custom-json', '/history', '/profile', '/my-teams', '/my-projects', '/incidents', '/request-success'];
 

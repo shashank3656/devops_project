@@ -1,6 +1,7 @@
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { useEffect } from 'react';
+import { installApiUrlRewrite } from '@infragate/ui';
 import { ADMIN_SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
 import '../../shared-ui/tokens.css';
@@ -8,6 +9,9 @@ import '../../shared-ui/workspace.css';
 
 const API_OVERRIDE_KEY = 'admin_api_url_override';
 const BUILT_API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080').replace(/\/+$/, '');
+
+// Must run before any page fetches (child effects run before this component's effects).
+installApiUrlRewrite(BUILT_API_URL);
 
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {

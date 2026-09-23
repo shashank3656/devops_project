@@ -239,8 +239,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${NEXT_PUBLIC_API_URL}" ]; then
-            echo "::warning::NEXT_PUBLIC_API_URL is not set; using http://localhost:8080 for this image build"
-            echo "NEXT_PUBLIC_API_URL=http://localhost:8080" >> "$GITHUB_ENV"
+            echo "::warning::NEXT_PUBLIC_API_URL is not set; using https://backend-api-production-ed.up.railway.app for this image build"
+            echo "NEXT_PUBLIC_API_URL=https://backend-api-production-ed.up.railway.app" >> "$GITHUB_ENV"
           fi
 
       - name: Build local image
