@@ -12,6 +12,7 @@ const emptyWorkspace: WorkspacePayload = {
   subtitle: 'Promotions, incidents, and production-impacting PRs.',
   needs_you: [],
   pipeline: { stages: [] },
+  activity: [],
 };
 
 interface OncallRotation {
@@ -27,6 +28,7 @@ export default function DevOpsDashboard() {
   const router = useRouter();
   const apiUrl = useApiUrl();
   const [workspace, setWorkspace] = useState<WorkspacePayload>(emptyWorkspace);
+  const [loading, setLoading] = useState(true);
   const [freezeReason, setFreezeReason] = useState('');
   const [activeFreeze, setActiveFreeze] = useState('');
   const [rotations, setRotations] = useState<OncallRotation[]>([]);
@@ -58,7 +60,8 @@ export default function DevOpsDashboard() {
       .then((data) => {
         if (data?.workspace) setWorkspace(data.workspace);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
     loadOpsControls();
   }, [apiUrl, router]);
 
@@ -111,35 +114,54 @@ export default function DevOpsDashboard() {
       <DevOpsLayout>
         <WorkspaceHome
           payload={workspace}
+          loading={loading}
+          activityHref="/tickets"
           actions={
             <>
-              <Link href="/tickets" className="btn btn-primary">Requests</Link>
               <Link href="/promotions" className="btn btn-secondary">Promotions</Link>
+              <Link href="/tickets" className="btn btn-primary">Requests</Link>
+            </>
+          }
+          aside={
+            <>
+              <section className="ig-home-panel ig-home-ops" aria-label="On-call">
+                <span className="ig-home-ops__label">On-call</span>
+                <h3 className="ig-home-ops__title">
+                  <span className={`ig-dot ${pagingNow ? 'ig-dot--ok' : ''}`} aria-hidden />
+                  {pagingNow ? `${pagingNow.username || 'Someone'} is on call` : 'No one is on call'}
+                </h3>
+                <p className="ig-home-ops__copy">
+                  {pagingNow?.team_name ? `${pagingNow.team_name} rotation` : 'Take the next eight-hour shift.'}
+                </p>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={takeOncall}>Take on-call</button>
+              </section>
+              <section className="ig-home-panel ig-home-ops" aria-label="Change freeze">
+                <span className="ig-home-ops__label">Change freeze</span>
+                <h3 className="ig-home-ops__title">
+                  <span className={`ig-dot ${activeFreeze ? 'ig-dot--danger' : ''}`} aria-hidden />
+                  {activeFreeze ? 'Production freeze is active' : 'No freeze window'}
+                </h3>
+                <p className="ig-home-ops__copy">
+                  {activeFreeze || 'Pause promotions to production while you investigate.'}
+                </p>
+                {activeFreeze ? (
+                  <button type="button" className="btn btn-danger btn-sm" onClick={endFreeze}>End freeze</button>
+                ) : (
+                  <div className="ig-home-ops__row">
+                    <input
+                      className="input"
+                      placeholder="Reason (optional)"
+                      aria-label="Freeze reason"
+                      value={freezeReason}
+                      onChange={(e) => setFreezeReason(e.target.value)}
+                    />
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={startFreeze}>Start</button>
+                  </div>
+                )}
+              </section>
             </>
           }
         />
-        <section className="ig-queue" style={{ marginTop: 32 }}>
-          <span className="ig-eyebrow">On-call</span>
-          <h2>{pagingNow ? `${pagingNow.username || 'Someone'} is paging now` : 'No one is on call'}</h2>
-          <p className="ig-muted">
-            {pagingNow?.team_name ? `${pagingNow.team_name} rotation` : 'Take the next eight-hour shift from this queue.'}
-          </p>
-          <div className="portal-page__actions" style={{ marginTop: 16 }}>
-            <button type="button" className="btn btn-secondary" onClick={takeOncall}>Take on-call</button>
-          </div>
-        </section>
-        <section className="ig-queue" style={{ marginTop: 32 }}>
-          <span className="ig-eyebrow">Change freeze</span>
-          <h2>{activeFreeze ? 'Production freeze is active' : 'No freeze window'}</h2>
-          <p className="ig-muted">{activeFreeze || 'Start a freeze when production should not receive promotions.'}</p>
-          <div className="portal-page__actions" style={{ marginTop: 16 }}>
-            <input className="input" placeholder="Freeze reason" value={freezeReason} onChange={(e) => setFreezeReason(e.target.value)} />
-            <button type="button" className="btn btn-secondary" onClick={startFreeze}>Start freeze</button>
-            {activeFreeze ? (
-              <button type="button" className="btn btn-secondary" onClick={endFreeze}>End freeze</button>
-            ) : null}
-          </div>
-        </section>
       </DevOpsLayout>
     </>
   );

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
+import { DataTable, formatRelativeTime, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -28,7 +30,79 @@ interface ApprovalRequest {
   created_by_username?: string;
 }
 
+function ticketHref(request: ApprovalRequest): string {
+  return `/tickets?id=${request.id}${request.project_id ? `&project_id=${request.project_id}` : ''}`;
+}
+
+const DUE_CHIPS: Record<string, { tone: string; label: string }> = {
+  overdue: { tone: 'danger', label: 'Overdue' },
+  due_soon: { tone: 'medium', label: 'Due soon' },
+};
+
+const reviewColumns: DataTableColumn<ApprovalRequest>[] = [
+  {
+    id: 'request',
+    header: 'Request',
+    cell: (request) => (
+      <div className="ig-cell-stack">
+        <span className="ig-cell-title">
+          <span className="ig-mono">#{request.id}</span> {request.service}
+        </span>
+        <span className="ig-cell-meta">{request.created_by_username || 'Unknown requester'}</span>
+      </div>
+    ),
+  },
+  {
+    id: 'project',
+    header: 'Project',
+    cell: (request) => (
+      <div className="ig-cell-stack">
+        <span>{request.project_name || 'No project'}</span>
+        <span className="ig-cell-meta">{[request.project_code, request.team].filter(Boolean).join(' · ')}</span>
+      </div>
+    ),
+  },
+  {
+    id: 'target',
+    header: 'Target',
+    cell: (request) => (
+      <span className="ig-cell-chips">
+        <span className="ig-chip">{request.env}</span>
+        <span className="ig-chip ig-chip--muted">{request.cloud}</span>
+      </span>
+    ),
+  },
+  {
+    id: 'due',
+    header: 'Due',
+    cell: (request) => {
+      const due = request.due_status ? DUE_CHIPS[request.due_status] : undefined;
+      return due ? <span className={`ig-chip ig-chip--${due.tone}`}>{due.label}</span> : <span className="ig-cell-meta">On track</span>;
+    },
+  },
+  {
+    id: 'created_at',
+    header: 'Created',
+    cell: (request) => (
+      <span className="ig-cell-meta" title={new Date(request.created_at).toLocaleString()}>
+        {formatRelativeTime(request.created_at)}
+      </span>
+    ),
+  },
+  {
+    id: 'open',
+    header: <span className="ig-sr-only">Open</span>,
+    align: 'right',
+    cell: (request) => (
+      <Link href={ticketHref(request)} className="btn btn-secondary btn-sm">
+        Review
+      </Link>
+    ),
+  },
+];
+
 export default function DevOpsApprovalCenter() {
+  const router = useRouter();
   const apiUrl = useApiUrl();
   const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
@@ -202,60 +276,22 @@ export default function DevOpsApprovalCenter() {
                 </p>
               </div>
             </div>
-            {loading ? (
-              <div className="portal-empty"><p>Loading requests...</p></div>
-            ) : requests.length === 0 ? (
-              <div className="portal-empty"><p>No requests are waiting in this view.</p></div>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Request #</th>
-                      <th>Project</th>
-                      <th>Team</th>
-                      <th>Env</th>
-                      <th>Cloud / Service</th>
-                      <th>Requester</th>
-                      <th>Created</th>
-                      <th>Due status</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {requests.map((request) => {
-                      const href = `/tickets?id=${request.id}${request.project_id ? `&project_id=${request.project_id}` : ''}`;
-                      return (
-                        <tr key={request.id}>
-                          <td>#{request.id}</td>
-                          <td>
-                            {request.project_name ? (
-                              <div>
-                                <strong>{request.project_name}</strong>
-                                {request.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{request.project_code}</div> : null}
-                              </div>
-                            ) : (
-                              'No project'
-                            )}
-                          </td>
-                          <td>{request.team}</td>
-                          <td>{request.env}</td>
-                          <td>{request.cloud} / {request.service}</td>
-                          <td>{request.created_by_username || '-'}</td>
-                          <td>{new Date(request.created_at).toLocaleString()}</td>
-                          <td>{request.due_status ? (request.due_status === 'overdue' ? 'Overdue' : 'Due soon') : 'On track'}</td>
-                          <td>
-                            <Link href={href} className="btn btn-secondary btn-sm">
-                              View details
-                            </Link>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <DataTable<ApprovalRequest>
+              label="Requests waiting for platform review"
+              columns={reviewColumns}
+              rows={requests}
+              rowKey={(request) => request.id}
+              loading={loading}
+              skeletonRows={6}
+              onRowOpen={(request) => router.push(ticketHref(request))}
+              rowClassName={(request) => (request.due_status === 'overdue' ? 'is-overdue' : undefined)}
+              empty={
+                <div className="ig-table-empty">
+                  <strong>Queue is clear</strong>
+                  <p>No requests are waiting for platform review{selectedProject ? ` in ${selectedProject.name}` : ''}.</p>
+                </div>
+              }
+            />
           </section>
 
         </div>

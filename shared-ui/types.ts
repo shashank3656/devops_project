@@ -1,11 +1,19 @@
 export type RiskLevel = 'low' | 'medium' | 'high';
 
+export type Tone = RiskLevel | 'ok' | 'info' | 'danger';
+
+export type QueueKind = 'approval' | 'incident' | 'pr_risk' | 'freeze' | 'rejected' | 'draft' | 'waiting';
+
 export interface QueueItem {
   id: string;
+  kind?: QueueKind | string;
   title: string;
   meta: string;
+  ref?: string;
   href: string;
-  tone?: RiskLevel | 'ok' | 'info' | 'danger';
+  action?: string;
+  tone?: Tone;
+  at?: string;
 }
 
 export interface PipelineStage {
@@ -15,6 +23,17 @@ export interface PipelineStage {
   href?: string;
   active?: boolean;
   blocked?: boolean;
+  updated_at?: string;
+}
+
+export interface ActivityItem {
+  id: string;
+  actor?: string;
+  summary: string;
+  detail?: string;
+  href?: string;
+  tone?: Tone;
+  at?: string;
 }
 
 export interface SearchHit {
@@ -81,12 +100,43 @@ export interface PRImpactBriefData {
   acknowledged?: boolean;
 }
 
+export interface CostEstimate {
+  estimated_monthly: number;
+  estimate_low?: number;
+  estimate_high?: number;
+  estimate_basis?: string;
+  estimate_exact?: boolean;
+  currency?: string;
+  budget_monthly?: number;
+  budget_used_pct?: number;
+  allowed?: boolean;
+  warning?: string;
+  risk_level?: RiskLevel;
+  impact_notes?: string[];
+  approval_path?: string[];
+  calculator_url?: string;
+}
+
+export interface GoldenPath {
+  id: string;
+  title: string;
+  summary: string;
+  cloud?: string;
+  service?: string;
+  href: string;
+  icon?: string;
+  review?: string;
+  advanced?: boolean;
+}
+
 export interface WorkspacePayload {
   title: string;
   subtitle: string;
+  viewer?: string;
   needs_you: QueueItem[];
   pipeline: {
     project_name?: string;
     stages: PipelineStage[];
   };
+  activity?: ActivityItem[];
 }

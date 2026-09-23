@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { DataTable, InspectorDrawer, formatRelativeTime, type DataTableColumn } from '@infragate/ui';
 import { useToast } from '../context/ToastContext';
 import CalendarDateInput from '../components/CalendarDateInput';
 import RequestPRImpact from '../components/RequestPRImpact';
@@ -319,7 +320,6 @@ export default function History() {
   const [blockedBy, setBlockedBy] = useState<number[]>([]);
   const [newDepId, setNewDepId] = useState('');
   const [addingDep, setAddingDep] = useState(false);
-  const [selectedRowIndex, setSelectedRowIndex] = useState(0);
   const [presets, setPresets] = useState<FilterPreset[]>([]);
   const [presetName, setPresetName] = useState('');
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -357,6 +357,7 @@ export default function History() {
   };
   const [timelineLoading, setTimelineLoading] = useState(false);
   const rawConfigByRequestId = useRef<Record<number, string>>({});
+  const detailSeq = useRef(0);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -403,10 +404,6 @@ export default function History() {
     }
     fetchHistory();
   }, [filterType, filterValue, projectId, page, viewMode, statusFilter, fromDate, toDate]);
-
-  useEffect(() => {
-    setSelectedRowIndex(0);
-  }, [requests.length, page]);
 
   useEffect(() => {
     try {
@@ -543,7 +540,16 @@ export default function History() {
     toast('History refreshed', 'success');
   };
 
+  const closeDetail = () => {
+    detailSeq.current += 1;
+    setDetailLoading(false);
+    setDetailRequest(null);
+  };
+
   const openDetail = async (req: PRRequest) => {
+    detailSeq.current += 1;
+    const seq = detailSeq.current;
+    const isStale = () => seq !== detailSeq.current;
     setDetailRequest(null);
     setCanApproveByManager(false);
     setComments([]);
@@ -565,8 +571,10 @@ export default function History() {
         fetch(`${apiUrl}/api/request/${req.id}/comments`, { headers }),
         fetch(`${apiUrl}/api/request/${req.id}/tags`, { headers })
       ]);
+      if (isStale()) return;
       if (detailRes.ok) {
         const data = await detailRes.json();
+        if (isStale()) return;
         const full = withBundleMetadata(data.request || req);
         addRecentRequestId(full.id);
         setCanApproveByManager(Boolean(data.can_approve_by_manager));
@@ -584,22 +592,26 @@ export default function History() {
       }
       if (commentsRes.ok) {
         const cData = await commentsRes.json();
+        if (isStale()) return;
         setComments(Array.isArray(cData?.comments) ? cData.comments : []);
       }
       const timelineRes = await fetch(`${apiUrl}/api/request/${req.id}/timeline`, { headers });
       if (timelineRes.ok) {
         const tData = await timelineRes.json();
+        if (isStale()) return;
         setTimeline(Array.isArray(tData?.timeline) ? tData.timeline : []);
       }
       if (tagsRes.ok) {
         const tData = await tagsRes.json();
+        if (isStale()) return;
         setTags(Array.isArray(tData?.tags) ? tData.tags : []);
       }
     } catch (_) {
+      if (isStale()) return;
       addRecentRequestId(req.id);
       setDetailRequest(withBundleMetadata(req));
     } finally {
-      setDetailLoading(false);
+      if (!isStale()) setDetailLoading(false);
     }
   };
 
@@ -956,33 +968,6 @@ export default function History() {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
-  // j/k keyboard shortcuts for list navigation (j=down, k=up, Enter=open)
-  const sortedRequestsRef = useRef<PRRequest[]>([]);
-  const selectedRowIndexRef = useRef(0);
-  sortedRequestsRef.current = sortedRequests;
-  selectedRowIndexRef.current = selectedRowIndex;
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable) return;
-      const list = sortedRequestsRef.current;
-      const idx = selectedRowIndexRef.current;
-      if (list.length === 0) return;
-      if (e.key === 'j' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        setSelectedRowIndex((i) => Math.min(i + 1, list.length - 1));
-      } else if (e.key === 'k' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        setSelectedRowIndex((i) => Math.max(i - 1, 0));
-      } else if (e.key === 'Enter' && idx >= 0 && idx < list.length) {
-        e.preventDefault();
-        openDetail(list[idx]);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { 
@@ -993,6 +978,99 @@ export default function History() {
       minute: '2-digit'
     });
   };
+
+  const handleSortChange = (key: string) => {
+    if (sortBy === key) setSortDesc((desc) => !desc);
+    else {
+      setSortBy(key as typeof sortBy);
+      setSortDesc(true);
+    }
+  };
+
+  const isOwner = (req: PRRequest) => currentUserId == null || req.created_by === currentUserId;
+
+  const historyColumns: DataTableColumn<PRRequest>[] = [
+    {
+      id: 'id',
+      header: 'Request',
+      sortable: true,
+      cell: (req) => (
+        <div className="ig-cell-stack">
+          <span className="ig-cell-title">{req.service || 'Request'}</span>
+          <span className="ig-cell-meta">
+            <span className="ig-mono">#{req.id}</span>
+            {req.bundle_summary && req.bundle_summary.count > 1 ? ` · ${req.bundle_summary.count} services` : ''}
+            {isAccessRequest(req) ? ' · Access' : ''}
+            {viewMode === 'team' && req.created_by_username ? ` · ${req.created_by_username}` : ''}
+          </span>
+        </div>
+      ),
+    },
+    {
+      id: 'team',
+      header: 'Project',
+      sortable: true,
+      cell: (req) => (
+        <div className="ig-cell-stack">
+          <span>{req.project_name || '—'}</span>
+          <span className="ig-cell-meta">{req.team}</span>
+        </div>
+      ),
+    },
+    {
+      id: 'cloud',
+      header: 'Target',
+      sortable: true,
+      cell: (req) => (
+        <span className="ig-cell-chips">
+          <span className="ig-chip">{req.env || '—'}</span>
+          <span className="ig-chip ig-chip--muted">{(req.cloud || '—').toUpperCase()}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (req) => {
+        const meta = getRequestStatusMeta(req.status);
+        return <span className={`status-badge ${meta.tone}`}>{meta.label}</span>;
+      },
+    },
+    {
+      id: 'created_at',
+      header: 'Created',
+      sortable: true,
+      cell: (req) => (
+        <span className="ig-cell-meta" title={formatDate(req.created_at)}>
+          {formatRelativeTime(req.created_at) || formatDate(req.created_at)}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      header: <span className="ig-sr-only">Actions</span>,
+      align: 'right',
+      cell: (req) => (
+        <div className="ig-row-actions">
+          {req.pr_url ? (
+            <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">
+              PR ↗
+            </a>
+          ) : null}
+          {isOwner(req) && ['completed', 'in_progress'].includes(req.status) ? (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => promoteRequest(req.id)} title="Promote to next environment">
+              Promote
+            </button>
+          ) : null}
+          {isOwner(req) ? (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => cloneRequest(req.id)} title="Clone as new draft">
+              Clone
+            </button>
+          ) : null}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <>
@@ -1221,14 +1299,8 @@ export default function History() {
         </div>
 
           {/* Table */}
-          <div className="card history-table-card">
-            {loading ? (
-              <div className="history-state history-state--loading">
-                <div className="history-loading-spinner" />
-                <h3 className="history-state__title">Loading requests</h3>
-                <p className="history-state__copy">We’re pulling the latest request activity for you now.</p>
-              </div>
-            ) : error ? (
+          <div className="card history-table-card ig-table-card">
+            {!loading && error ? (
               <div className="history-state history-state--error">
                 <div className="history-state__icon" aria-hidden>!</div>
                 <h3 className="history-state__title">We couldn’t load your requests</h3>
@@ -1239,158 +1311,45 @@ export default function History() {
                   </button>
                 </div>
               </div>
-            ) : requests.length === 0 ? (
-              <div className="history-state history-state--empty">
-                <div className="history-state__icon" aria-hidden>⋯</div>
-                <h3 className="history-state__title">
-                  {filterValue ? 'No requests match this search.' : 'No requests yet.'}
-                </h3>
-                {!filterValue && (
-                  <p className="history-state__copy">
-                    Start a new request, or use Advanced JSON if you already have a prepared payload.
-                  </p>
-                )}
-                {filterValue ? (
-                  <button
-                    onClick={() => { setFilterValue(''); setProjectId(''); setPage(0); }}
-                    className="btn btn-secondary"
-                  >
-                    Clear filters
-                  </button>
-                ) : (
-                  <div className="history-state__actions">
-                    <button onClick={() => router.push('/select-service')} className="btn btn-primary">
-                      New request
-                    </button>
-                    <button onClick={() => router.push('/custom-json')} className="btn btn-secondary">
-                      Advanced JSON
-                    </button>
-                  </div>
-                )}
-              </div>
             ) : (
-              <div className="history-table-wrap">
+              <>
                 {viewMode === 'team' && (
-                  <p style={{ padding: '12px 16px 0', margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>
-                    Showing requests from you and your team. Use <strong>Raised by</strong> to see who submitted each one.
-                  </p>
+                  <p className="ig-table-note">Showing requests from you and your team. The requester is listed under each request.</p>
                 )}
-                <table className="history-table">
-                  <thead>
-                    <tr>
-                      <th>Request #</th>
-                      <th>Project</th>
-                      <th>Team</th>
-                      {viewMode === 'team' && <th>Raised by</th>}
-                      <th>Environment</th>
-                      <th>Cloud</th>
-                      <th>Service</th>
-                      <th>Status</th>
-                      <th>Created</th>
-                      <th>Pull request</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedRequests.map((req, idx) => (
-                      <tr
-                        key={req.id}
-                        onClick={() => { setSelectedRowIndex(idx); openDetail(req); }}
-                        className={idx === selectedRowIndex ? 'history-table__row history-table__row--active' : 'history-table__row'}
-                      >
-                        <td className="history-table__cell">
-                          <span className="history-table__request-id">#{req.id}</span>
-                        </td>
-                        <td className="history-table__cell">
-                          {req.project_name ? (
-                            <div className="history-table__primary">
-                              <strong>{req.project_name}</strong>
-                              {req.project_code ? <span className="history-table__meta">{req.project_code}</span> : null}
-                            </div>
-                          ) : '—'}
-                        </td>
-                        <td className="history-table__cell">{req.team}</td>
-                        {viewMode === 'team' && (
-                          <td className="history-table__cell"><span className="history-table__meta">{req.created_by_username || '—'}</span></td>
-                        )}
-                        <td className="history-table__cell">
-                          <span className="history-table__pill history-table__pill--env">{req.env}</span>
-                        </td>
-                        <td className="history-table__cell">
-                          <span className={`history-table__pill history-table__pill--cloud history-table__pill--cloud-${(req.cloud || '').toLowerCase()}`}>{req.cloud}</span>
-                        </td>
-                        <td className="history-table__cell">
-                          <div className="history-table__primary">
-                            <strong>{req.service}</strong>
-                            {req.bundle_summary && req.bundle_summary.count > 1 ? (
-                              <span className="history-table__bundle-badge">{req.bundle_summary.count} services</span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="history-table__cell">
-                          <span className={`status-badge ${getRequestStatusMeta(req.status).tone}`}>
-                            {getRequestStatusMeta(req.status).label}
-                          </span>
-                        </td>
-                        <td className="history-table__cell">
-                          <span className="history-table__date">{formatDate(req.created_at)}</span>
-                        </td>
-                        <td className="history-table__cell">
-                          {req.pr_url ? (
-                            <a 
-                              href={req.pr_url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="history-table__link"
-                            >
-                              Open PR →
-                            </a>
-                          ) : (
-                            <span className="history-table__placeholder">—</span>
-                          )}
-                        </td>
-                        <td className="history-table__cell history-table__cell--actions" onClick={(e) => e.stopPropagation()}>
-                          <div className="history-table__actions">
-                            {(currentUserId == null || req.created_by === currentUserId) && (
-                              <button
-                                type="button"
-                                className="btn btn-secondary btn-sm history-table__action-btn"
-                                onClick={() => cloneRequest(req.id)}
-                                title="Clone as new draft"
-                              >
-                                Clone
-                              </button>
-                            )}
-                            {(currentUserId == null || req.created_by === currentUserId) &&
-                             ['completed', 'in_progress'].includes(req.status) && (
-                              <button
-                                type="button"
-                                className="btn btn-secondary btn-sm history-table__action-btn"
-                                onClick={() => promoteRequest(req.id)}
-                                title="Promote to next environment"
-                              >
-                                Promote
-                              </button>
-                            )}
-                            {CANCELLABLE_STATUSES.includes(req.status) &&
-                             (currentUserId == null || req.created_by === currentUserId) && (
-                              <button
-                                type="button"
-                                className="btn btn-secondary btn-sm history-table__action-btn"
-                                onClick={() => cancelRequest(req.id)}
-                              >
-                                Cancel
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                <DataTable<PRRequest>
+                  label="My requests"
+                  columns={historyColumns}
+                  rows={sortedRequests}
+                  rowKey={(req) => req.id}
+                  loading={loading}
+                  skeletonRows={PAGE_SIZE}
+                  activeKey={detailRequest?.id ?? null}
+                  onRowOpen={(req) => void openDetail(req)}
+                  sort={{ key: sortBy, direction: sortDesc ? 'desc' : 'asc' }}
+                  onSortChange={handleSortChange}
+                  rowVersion={(req) => req.status}
+                  empty={
+                    <div className="ig-table-empty">
+                      <strong>{activeFilterCount > 0 ? 'No requests match these filters' : 'No requests yet'}</strong>
+                      <p>
+                        {activeFilterCount > 0
+                          ? 'Clear a filter or two to see more.'
+                          : 'Start a new request, or use Advanced JSON if you already have a prepared payload.'}
+                      </p>
+                      {activeFilterCount > 0 ? (
+                        <button type="button" onClick={clearFilters} className="btn btn-secondary btn-sm">
+                          Clear filters
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => router.push('/create-infrastructure')} className="btn btn-primary btn-sm">
+                          New request
+                        </button>
+                      )}
+                    </div>
+                  }
+                />
+              </>
             )}
-
             {/* Pagination */}
             {!loading && !error && totalCount > 0 && (
               <div className="history-pagination">
@@ -1422,38 +1381,35 @@ export default function History() {
 
           {/* View Details Modal */}
           {(detailRequest !== null || detailLoading) && (
-            <div className="modal-overlay" onClick={() => !detailLoading && setDetailRequest(null)}>
-              <div
-                onClick={e => e.stopPropagation()}
-                className="modal history-detail-modal history-detail-modal__dialog"
-              >
+            <InspectorDrawer
+              open
+              onClose={closeDetail}
+              resetKey={detailRequest?.id ?? null}
+              label="Request details"
+              eyebrow={detailRequestIsAccess ? 'Access request' : 'Request'}
+              title={
+                detailRequest ? (
+                  <>
+                    <span className="ig-mono">#{detailRequest.id}</span> {detailRequest.service}
+                  </>
+                ) : (
+                  'Loading request…'
+                )
+              }
+              subtitle={detailRequest ? [detailRequest.project_name, detailRequest.team, detailRequest.env].filter(Boolean).join(' · ') : undefined}
+              headerActions={
+                detailStatusMeta ? <span className={`status-badge ${detailStatusMeta.tone}`}>{detailStatusMeta.label}</span> : null
+              }
+            >
                 {detailLoading ? (
-                  <div className="history-detail-modal__loading">Loading request details...</div>
+                  <div className="ig-drawer-loading" aria-busy="true">
+                    <span className="ig-skeleton ig-skeleton--line" style={{ width: '40%' }} />
+                    <span className="ig-skeleton ig-skeleton--line" />
+                    <span className="ig-skeleton ig-skeleton--line" style={{ width: '75%' }} />
+                    <span className="ig-skeleton ig-skeleton--line" style={{ width: '60%' }} />
+                  </div>
                 ) : detailRequest ? (
                   <>
-                    <div className="history-detail-modal__header">
-                      <div className="history-detail-modal__title-wrap">
-                        <span className="history-detail-modal__eyebrow">
-                          {detailRequestIsAccess ? 'Access request' : 'Request'}
-                        </span>
-                        <h3 className="modal-title history-detail-modal__title">
-                          {detailRequestIsAccess ? `Access request #${detailRequest.id}` : `Request #${detailRequest.id}`}
-                        </h3>
-                        <p className="history-detail-modal__subtitle">
-                          Review the current status, important request details, and the latest updates in one place.
-                        </p>
-                      </div>
-                      <div className="history-detail-modal__header-actions">
-                        {detailStatusMeta ? (
-                          <span className={`status-badge ${detailStatusMeta.tone}`}>
-                            {detailStatusMeta.label}
-                          </span>
-                        ) : null}
-                        <button onClick={() => setDetailRequest(null)} className="btn btn-secondary">
-                          Close
-                        </button>
-                      </div>
-                    </div>
                     <div className="portal-detail-grid history-detail-modal__summary-grid">
                       {detailRequest.project_name ? (
                         <article className="portal-detail-card">
@@ -2076,8 +2032,7 @@ export default function History() {
                     )}
                   </>
                 ) : null}
-              </div>
-            </div>
+            </InspectorDrawer>
           )}
       </div>
     </>

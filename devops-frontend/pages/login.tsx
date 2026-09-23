@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { AuthPipeline, ThemeToggle } from '@infragate/ui';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord } from '../lib/payload';
 
@@ -30,11 +31,6 @@ export default function DevOpsLogin() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sso, setSso] = useState<PublicSSOState>({ enabled: false, mode: 'disabled', provider: 'none', login_url: '' });
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    localStorage.setItem('infra-portal-theme', 'dark');
-  }, []);
 
   useEffect(() => {
     fetch(`${apiUrl}/api/public/sso/options?portal=devops`)
@@ -133,20 +129,18 @@ export default function DevOpsLogin() {
       <div className="login-page">
         <div className="login-page__left">
           <div className="login-page__brand">
-            <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">DevOps</h1>
+            <img src="/logo.svg" alt="SetuOps" width={44} height={44} className="login-page__logo" />
+            <h1 className="login-page__title">Approve, deploy and recover with confidence.</h1>
             <p className="login-page__tagline">
-              Approve and manage infrastructure requests. Users are created from the Admin portal.
+              Every request, promotion and rollback in one calm control room.
             </p>
-          </div>
-          <div className="login-page__decor">
-            <div className="login-page__blob login-page__blob--1" />
-            <div className="login-page__blob login-page__blob--2" />
-            <div className="login-page__blob login-page__blob--3" />
+            <AuthPipeline />
           </div>
         </div>
         <div className="login-page__right">
           <div className="login-page__card">
+            <ThemeToggle />
+            <span className="ig-portal-pill">DevOps console</span>
             <h2 className="login-page__card-title">Welcome back</h2>
             <p className="login-page__card-subtitle">Sign in with your DevOps account</p>
             {error && (

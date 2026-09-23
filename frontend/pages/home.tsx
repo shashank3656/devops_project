@@ -11,11 +11,13 @@ const emptyWorkspace: WorkspacePayload = {
   subtitle: 'Your requests, reviews, and environment path.',
   needs_you: [],
   pipeline: { stages: [] },
+  activity: [],
 };
 
 export default function Home() {
   const router = useRouter();
   const [workspace, setWorkspace] = useState<WorkspacePayload>(emptyWorkspace);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!localStorage.getItem('isAuthenticated')) {
@@ -30,7 +32,8 @@ export default function Home() {
       .then((data) => {
         if (data?.workspace) setWorkspace(data.workspace);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [router]);
 
   return (
@@ -40,10 +43,12 @@ export default function Home() {
       </Head>
       <WorkspaceHome
         payload={workspace}
+        loading={loading}
+        activityHref="/history"
         actions={
           <>
-            <Link href="/create-infrastructure" className="btn btn-primary">New request</Link>
             <Link href="/history" className="btn btn-secondary">My requests</Link>
+            <Link href="/create-infrastructure" className="btn btn-primary">New request</Link>
           </>
         }
       />

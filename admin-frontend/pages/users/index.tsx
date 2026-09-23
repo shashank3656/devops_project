@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { DataTable, type DataTableColumn, type DataTableSort } from '@infragate/ui';
 import AdminLayout from '../../components/AdminLayout';
 
 interface DevopsProfile {
@@ -33,6 +34,8 @@ export default function UsersList() {
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<DataTableSort>({ key: 'username', direction: 'asc' });
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -105,6 +108,89 @@ export default function UsersList() {
     }
   };
 
+  const userTypeLabel = (u: User) => (u.user_type === 'devops_user' ? 'DevOps user' : 'Portal user');
+
+  const visibleUsers = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const filtered = needle
+      ? users.filter((u) =>
+          [u.username, u.email, u.role || 'viewer', userTypeLabel(u)].some((value) => value.toLowerCase().includes(needle)),
+        )
+      : users;
+    const valueFor = (u: User) => {
+      if (sort.key === 'type') return userTypeLabel(u);
+      if (sort.key === 'role') return u.role || 'viewer';
+      if (sort.key === 'verified') return u.verified ? '1' : '0';
+      if (sort.key === 'email') return u.email;
+      return u.username;
+    };
+    const direction = sort.direction === 'asc' ? 1 : -1;
+    return [...filtered].sort((a, b) => valueFor(a).localeCompare(valueFor(b)) * direction);
+  }, [users, query, sort]);
+
+  const handleSortChange = (key: string) => {
+    setSort((current) =>
+      current.key === key ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' },
+    );
+  };
+
+  const userColumns: DataTableColumn<User>[] = [
+    {
+      id: 'username',
+      header: 'User',
+      sortable: true,
+      cell: (u) => (
+        <div className="ig-cell-stack">
+          <span className="ig-cell-title">{u.username}</span>
+          <span className="ig-cell-meta">{u.email}</span>
+        </div>
+      ),
+    },
+    {
+      id: 'type',
+      header: 'Type',
+      sortable: true,
+      cell: (u) => (
+        <div className="ig-cell-stack">
+          <span>{userTypeLabel(u)}</span>
+          {u.user_type === 'devops_user' && (u.devops_profile?.is_manager || u.devops_profile?.level) ? (
+            <span className="ig-cell-meta">
+              {[u.devops_profile?.is_manager ? 'Manager' : '', u.devops_profile?.level || ''].filter(Boolean).join(' · ')}
+            </span>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      id: 'role',
+      header: 'Role',
+      sortable: true,
+      cell: (u) => <span className={`role-badge role-badge--${u.role || 'viewer'}`}>{u.role || 'viewer'}</span>,
+    },
+    {
+      id: 'verified',
+      header: 'Verified',
+      sortable: true,
+      cell: (u) =>
+        u.verified ? <span className="ig-cell-meta">Verified</span> : <span className="ig-priority ig-priority--high">Not verified</span>,
+    },
+    {
+      id: 'actions',
+      header: <span className="ig-sr-only">Actions</span>,
+      align: 'right',
+      cell: (u) => (
+        <div className="ig-row-actions">
+          <Link href={`/users/${u.id}/edit`} className="btn btn-secondary btn-sm">
+            Edit
+          </Link>
+          <button type="button" className="btn btn-danger btn-sm" onClick={() => setUserToDelete(u)} aria-label={`Delete ${u.username}`}>
+            Delete
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <>
       <Head>
@@ -153,77 +239,57 @@ export default function UsersList() {
             </div>
           </div>
 
-          <div className="portal-surface portal-surface--table">
-            {error && (
-              <div className="alert alert-error" role="alert">
-                {error}
-              </div>
-            )}
-            {successMessage && (
-              <div className="alert alert-info admin-users-index__success" role="alert">
-                {successMessage}
-              </div>
-            )}
-            {loading ? (
-              <div className="empty-state admin-users-index__empty">Loading users...</div>
-            ) : users.length === 0 ? (
-              <div className="empty-state">
-                <p>No users are onboarded yet.</p>
-              </div>
-            ) : (
-              <div className="table-wrap">
-                <table className="users-table">
-                  <thead>
-                    <tr>
-                      <th>Username</th>
-                      <th>Email</th>
-                      <th>Type</th>
-                      <th>Role</th>
-                      <th>Verified</th>
-                      <th className="th-actions">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((u) => (
-                      <tr key={u.id}>
-                        <td className="td-username">{u.username}</td>
-                        <td className="td-email">{u.email}</td>
-                        <td>
-                          <span className="admin-users-index__type">
-                            {u.user_type === 'devops_user' ? 'DevOps user' : 'Portal user'}
-                          </span>
-                          {u.user_type === 'devops_user' && u.devops_profile?.is_manager && (
-                            <span className="admin-users-index__type-flag">(Manager)</span>
-                          )}
-                          {u.user_type === 'devops_user' && u.devops_profile?.level && (
-                            <span className="admin-users-index__type-level">/ {u.devops_profile.level}</span>
-                          )}
-                        </td>
-                        <td>
-                          <span className={`role-badge role-badge--${u.role || 'viewer'}`}>
-                            {u.role || 'viewer'}
-                          </span>
-                        </td>
-                        <td>{u.verified ? 'Yes' : 'No'}</td>
-                        <td className="td-actions">
-                          <Link href={`/users/${u.id}/edit`} className="btn btn-secondary btn-sm">
-                            Edit
-                          </Link>
-                          <button
-                            type="button"
-                            className="btn btn-danger btn-sm"
-                            onClick={() => setUserToDelete(u)}
-                            aria-label={`Delete ${u.username}`}
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          {error && (
+            <div className="alert alert-error" role="alert">
+              {error}
+            </div>
+          )}
+          {successMessage && (
+            <div className="alert alert-info admin-users-index__success" role="status">
+              {successMessage}
+            </div>
+          )}
+
+          <div className="ig-table-toolbar">
+            <input
+              type="search"
+              className="input ig-table-toolbar__search"
+              placeholder="Search name, email, role or type"
+              aria-label="Search users"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <span className="ig-table-toolbar__count">
+              {loading ? 'Loading…' : `${visibleUsers.length} of ${users.length} users`}
+            </span>
+          </div>
+
+          <div className="card ig-table-card">
+            <DataTable<User>
+              label="Users"
+              columns={userColumns}
+              rows={visibleUsers}
+              rowKey={(u) => u.id}
+              loading={loading}
+              skeletonRows={6}
+              onRowOpen={(u) => router.push(`/users/${u.id}/edit`)}
+              sort={sort}
+              onSortChange={handleSortChange}
+              empty={
+                <div className="ig-table-empty">
+                  <strong>{query ? 'No users match this search' : 'No users are onboarded yet'}</strong>
+                  {query ? (
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setQuery('')}>
+                      Clear search
+                    </button>
+                  ) : (
+                    <Link href="/users/new" className="btn btn-primary btn-sm">
+                      Create portal user
+                    </Link>
+                  )}
+                </div>
+              }
+            />
           </div>
         </div>
 
@@ -236,7 +302,7 @@ export default function UsersList() {
               }
             }}
             onKeyDown={(event) => {
-              if ((event.key === 'Escape' || event.key === 'Enter' || event.key === ' ') && !deleting) {
+              if (event.key === 'Escape' && !deleting) {
                 setUserToDelete(null);
               }
             }}
