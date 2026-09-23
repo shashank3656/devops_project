@@ -18,7 +18,7 @@ import {
 } from './Icons';
 import SupportHub from './SupportHub';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
-import { CommandPalette, SearchTrigger, ThemeToggle, getTheme, setTheme, type ThemeMode } from '@infragate/ui';
+import { CommandPalette, MobileTabBar, SearchTrigger, ThemeToggle, getTheme, setTheme, type ThemeMode } from '@infragate/ui';
 
 const SIDEBAR_COLLAPSED_KEY = 'user-portal-sidebar-collapsed';
 const HISTORY_LAST_SEEN_KEY = 'user_history_last_seen';
@@ -645,6 +645,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+      <MobileTabBar
+        tabs={baseNavItems.slice(0, 4).map((item) => ({
+          ...item,
+          label: item.href === '/create-infrastructure' ? 'New' : item.href === '/history' ? 'Requests' : item.label,
+          active: pathname === item.href || (item.href !== '/home' && pathname.startsWith(item.href)),
+          badge: item.href === '/history' ? requestActivityBadge : null,
+        }))}
+        onMore={() => setMobileMenuOpen((open) => !open)}
+        moreOpen={mobileMenuOpen}
+        MoreIcon={IconMenu}
+      />
       <CommandPalette
         apiUrl={apiUrl}
         token={typeof window === 'undefined' ? null : localStorage.getItem('token')}

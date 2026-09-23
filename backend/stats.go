@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func statsHandler(w http.ResponseWriter, r *http.Request) {
@@ -123,5 +124,6 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 		"can_approve_by_manager": canApproveByManager,
 		"depends_on":             dependsOn,
 		"blocked_by":             blockedBy,
+		"lifetime":               buildRequestLifetime(req, time.Now()),
 	})
 }

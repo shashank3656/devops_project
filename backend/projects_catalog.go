@@ -2201,6 +2201,17 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if len(pathParts) > 1 && pathParts[1] == "health" {
+		if r.Method != "GET" {
+			writeMethodNotAllowed(w, r)
+			return
+		}
+		if _, ok := requireDevopsUser(w, r); !ok {
+			return
+		}
+		handleProjectHealth(w, r, projectID)
+		return
+	}
 	if len(pathParts) > 1 && pathParts[1] == "lifecycle" {
 		if r.Method != "POST" {
 			writeMethodNotAllowed(w, r)

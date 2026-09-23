@@ -3,13 +3,23 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import {
   BulkBar,
+  CostCheckCard,
   DataTable,
+  Day2Banner,
   InspectorDrawer,
+  PlanReviewCard,
+  PolicyChecksCard,
+  SavedViews,
   UndoToaster,
   formatRelativeTime,
   useUndoQueue,
   type DataTableColumn,
+  type PlanReview,
+  type PolicyCheckSummary,
+  type RequestCostCheck,
+  type RequestOperation,
   type RowKey,
+  type SavedView,
 } from '@infragate/ui';
 import AdminLayout from '../components/AdminLayout';
 import RequestPRImpact from '../components/RequestPRImpact';
@@ -77,7 +87,35 @@ interface PRRequest {
   blocked_by_with_status?: BlockedByItem[];
   cost_risk_preview?: CostRiskPreview | null;
   approval_context?: ApprovalContext | null;
+  plan_review?: PlanReview | null;
+  policy_checks?: PolicyCheckSummary | null;
+  cost_check?: RequestCostCheck | null;
+  operation?: RequestOperation | null;
 }
+
+interface AdminRequestFilters {
+  team: string;
+  projectId: string;
+  env: string;
+  cloud: string;
+  search: string;
+  status: string;
+  priority: string;
+  sortBy: string;
+  sortOrder: string;
+  atRiskOnly: boolean;
+}
+
+const DEFAULT_ADMIN_FILTERS: AdminRequestFilters = {
+  team: '', projectId: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false,
+};
+
+const ADMIN_VIEW_PRESETS: SavedView<AdminRequestFilters>[] = [
+  { name: 'Waiting for review', filters: { ...DEFAULT_ADMIN_FILTERS, status: 'pending_approval' } },
+  { name: 'Prod, waiting', filters: { ...DEFAULT_ADMIN_FILTERS, env: 'prod', status: 'pending_approval' } },
+  { name: 'Overdue or due soon', filters: { ...DEFAULT_ADMIN_FILTERS, atRiskOnly: true, sortBy: 'due_date', sortOrder: 'asc' } },
+  { name: 'High priority', filters: { ...DEFAULT_ADMIN_FILTERS, priority: 'high' } },
+];
 
 interface ProjectSummary {
   id: number;
@@ -531,22 +569,28 @@ export default function AdminRequests() {
     fetchRequests({ team: teamVal, projectId: projectVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal, offset: 0 });
   };
 
-  const handleClearFilters = () => {
-    filtersRef.current = { team: '', projectId: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false };
-    setTeam('');
-    setProjectId('');
-    setEnv('');
-    setCloud('');
-    setSearch('');
-    setStatusFilter('');
-    setPriorityFilter('');
-    setSortBy('created_at');
-    setSortOrder('desc');
-    setAtRiskOnly(false);
-    setShowAdvancedFilters(false);
+  const applyFilterSet = (next: AdminRequestFilters) => {
+    filtersRef.current = { ...next };
+    setTeam(next.team);
+    setProjectId(next.projectId);
+    setEnv(next.env);
+    setCloud(next.cloud);
+    setSearch(next.search);
+    setStatusFilter(next.status);
+    setPriorityFilter(next.priority);
+    setSortBy(next.sortBy);
+    setSortOrder(next.sortOrder);
+    setAtRiskOnly(next.atRiskOnly);
+    setShowAdvancedFilters(Boolean(next.env || next.cloud || next.priority || next.atRiskOnly));
     setOffset(0);
-    router.replace('/requests', undefined, { shallow: true });
-    fetchRequests({ team: '', projectId: '', env: '', cloud: '', search: '', status: '', priority: '', sortBy: 'created_at', sortOrder: 'desc', atRiskOnly: false, offset: 0 });
+    router.replace(next.search ? `/requests?${new URLSearchParams({ q: next.search })}` : '/requests', undefined, { shallow: true });
+    fetchRequests({ ...next, offset: 0 });
+  };
+
+  const handleClearFilters = () => applyFilterSet(DEFAULT_ADMIN_FILTERS);
+
+  const currentFilters: AdminRequestFilters = {
+    team, projectId, env, cloud, search, status: statusFilter, priority: priorityFilter, sortBy, sortOrder, atRiskOnly,
   };
 
   const statusLabel = (s: string) =>
@@ -666,12 +710,34 @@ export default function AdminRequests() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setDetailRequest((prev) => prev ? { ...prev, terraform_plan_output: terraformOutputEdit } : null);
+        void refreshPlanReview(detailRequest.id);
       } else {
         setError(data.error || 'Failed to save');
       }
     } finally {
       setTerraformSaving(false);
     }
+  };
+
+  const refreshPlanReview = async (id: number) => {
+    const res = await fetch(`${apiUrl}/api/admin/requests/${id}`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+    const data = res && res.ok ? await res.json().catch(() => null) : null;
+    const review = data?.request?.plan_review as PlanReview | undefined;
+    if (review) setDetailRequest((prev) => (prev && prev.id === id ? { ...prev, plan_review: review } : prev));
+  };
+
+  const acknowledgePlan = async (planHash: string, note: string) => {
+    if (!detailRequest) return;
+    const id = detailRequest.id;
+    const res = await fetch(`${apiUrl}/api/admin/requests/${id}/plan-review/acknowledge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ plan_hash: planHash, note }),
+    });
+    const data = await res.json().catch(() => ({}));
+    const review = data?.plan_review as PlanReview | undefined;
+    if (review) setDetailRequest((prev) => (prev && prev.id === id ? { ...prev, plan_review: review } : prev));
+    if (!res.ok) throw new Error(data?.error || 'Could not save the acknowledgement.');
   };
 
   const openDetail = async (req: PRRequest) => {
@@ -1207,6 +1273,14 @@ export default function AdminRequests() {
             </div>
           )}
 
+          <SavedViews<AdminRequestFilters>
+            storageKey="infragate.admin.requests.views"
+            current={currentFilters}
+            onApply={applyFilterSet}
+            presets={ADMIN_VIEW_PRESETS}
+            canSave={activeFilterCount > 0}
+          />
+
           <form onSubmit={handleFilter} className="admin-request-filter">
             <div className="admin-request-filter__bar">
               <label className="admin-request-filter__pill">
@@ -1587,6 +1661,11 @@ export default function AdminRequests() {
                     </article>
                   ) : null}
                 </div>
+
+                <Day2Banner operation={detailRequest.operation} />
+                <PlanReviewCard review={detailRequest.plan_review} env={detailRequest.env} onAcknowledge={acknowledgePlan} />
+                <PolicyChecksCard summary={detailRequest.policy_checks} />
+                <CostCheckCard check={detailRequest.cost_check} />
 
                 <RequestPRImpact
                   apiUrl={apiUrl}

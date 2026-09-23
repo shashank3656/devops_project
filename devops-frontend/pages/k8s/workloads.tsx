@@ -1,7 +1,8 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
@@ -13,6 +14,19 @@ import {
   readQueryString,
   triggerK8sWorkloadAction,
 } from '../../lib/k8sWorkspace';
+
+type WorkloadRow = K8sWorkloadsData['items'][number];
+
+function workloadRowKey(item: WorkloadRow) {
+  return `${item.cluster_name}-${item.namespace}-${item.name}`;
+}
+
+function workloadTone(status: string) {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === 'healthy') return 'low';
+  if (normalized === 'failed' || normalized === 'critical' || normalized === 'unavailable') return 'danger';
+  return 'medium';
+}
 
 export default function DevOpsK8sWorkloadsPage() {
   const apiUrl = useApiUrl();
@@ -241,6 +255,105 @@ export default function DevOpsK8sWorkloadsPage() {
     }
   };
 
+  const rolloutHref = (item: WorkloadRow) =>
+    buildK8sHref(`/k8s/workloads/${encodeURIComponent(item.name)}/rollout`, {
+      project_id: projectId || String(projectIdByRowKey.get(workloadRowKey(item)) || ''),
+      cluster_name: item.cluster_name,
+      namespace: item.namespace,
+      environment: environment || undefined,
+      workload_name: item.name,
+    });
+
+  const scaleTarget = isManager && scaleTargetKey
+    ? visibleRows.find((item) => workloadRowKey(item) === scaleTargetKey) || null
+    : null;
+  const scaleBusy = scaleTarget ? submittingKey === scaleTargetKey : false;
+
+  const columns: DataTableColumn<WorkloadRow>[] = [
+    {
+      id: 'workload',
+      header: 'Workload',
+      cell: (item) => (
+        <Link className="ig-cell-stack ig-cell-link" href={rolloutHref(item)}>
+          <span className="ig-cell-title">{item.name}</span>
+          <span className="ig-cell-meta">{item.image || 'No image detail'} · Open rollout view</span>
+        </Link>
+      ),
+    },
+    { id: 'namespace', header: 'Namespace', cell: (item) => item.namespace },
+    { id: 'cpu_util', header: 'CPU util.', align: 'right', className: 'ig-cell-num', cell: (item) => `${item.cpu_utilization_pct}%` },
+    { id: 'cpu_hours', header: 'CPU hours', align: 'right', className: 'ig-cell-num', cell: (item) => item.cpu_hours },
+    { id: 'memory_gb', header: 'Memory (GB)', align: 'right', className: 'ig-cell-num', cell: (item) => item.memory_utilization_gb },
+    { id: 'memory_hours', header: 'Memory hours', align: 'right', className: 'ig-cell-num', cell: (item) => item.memory_hours },
+    {
+      id: 'ready',
+      header: 'Ready',
+      align: 'right',
+      className: 'ig-cell-num',
+      cell: (item) => `${item.ready_replicas}/${item.updated_replicas}`,
+    },
+    { id: 'cluster', header: 'Cluster', cell: (item) => item.cluster_name },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (item) => <span className={`ig-chip ig-chip--${workloadTone(item.status)}`}>{item.status}</span>,
+    },
+  ];
+
+  if (isManager) {
+    columns.push({
+      id: 'actions',
+      header: 'Actions',
+      className: 'k8s-action-cell',
+      cell: (item) => {
+        const rowKey = workloadRowKey(item);
+        const actionBusy = submittingKey === rowKey;
+        const canRunActions = (projectIdByRowKey.get(rowKey) || 0) > 0;
+        return (
+          <div className="ig-cell-stack">
+            <div className="k8s-action-buttons">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={actionBusy || !canRunActions}
+                onClick={() => handleRestart(rowKey, item)}
+              >
+                {actionBusy ? 'Working...' : 'Restart'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={actionBusy || !canRunActions}
+                onClick={() => {
+                  setNotice('');
+                  setError('');
+                  setScaleTargetKey(rowKey);
+                  setScaleReplicas(String(item.replicas));
+                }}
+              >
+                Scale
+              </button>
+              <Link className="btn btn-secondary btn-sm" href={buildScopedHref(`/k8s/workloads/${encodeURIComponent(item.name)}/rollout`, item)}>
+                Rollout
+              </Link>
+              {item.status.toLowerCase() !== 'healthy' ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={actionBusy || !canRunActions}
+                  onClick={() => handleResumeRollout(rowKey, item)}
+                >
+                  Resume rollout
+                </button>
+              ) : null}
+            </div>
+            {!canRunActions ? <span className="ig-cell-meta">Choose a project-scoped cluster to run actions.</span> : null}
+          </div>
+        );
+      },
+    });
+  }
+
   return (
     <>
       <Head>
@@ -376,160 +489,62 @@ export default function DevOpsK8sWorkloadsPage() {
               </div>
             </div>
 
-            <div className="table-scroll">
-              <table className="templates-table k8s-data-table">
-                <thead>
-                  <tr>
-                    <th>Workload</th>
-                    <th>Namespace</th>
-                    <th>CPU util.</th>
-                    <th>CPU hours</th>
-                    <th>Memory (GB)</th>
-                    <th>Memory hours</th>
-                    <th>Ready</th>
-                    <th>Cluster</th>
-                    <th>Status</th>
-                    {isManager ? <th>Actions</th> : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((item) => {
-                    const rowKey = `${item.cluster_name}-${item.namespace}-${item.name}`;
-                    const actionBusy = submittingKey === rowKey;
-                    const canRunActions = (projectIdByRowKey.get(rowKey) || 0) > 0;
-                    return (
-                      <Fragment key={rowKey}>
-                        <tr key={rowKey}>
-                          <td>
-                            <Link
-                              className="k8s-link-cell"
-                              href={buildK8sHref(`/k8s/workloads/${encodeURIComponent(item.name)}/rollout`, {
-                                project_id: projectId || String(projectIdByRowKey.get(rowKey) || ''),
-                                cluster_name: item.cluster_name,
-                                namespace: item.namespace,
-                                environment: environment || undefined,
-                                workload_name: item.name,
-                              })}
-                            >
-                              <div className="k8s-link-cell__title">{item.name}</div>
-                              <div className="k8s-link-cell__meta">{item.image || 'No image detail'} · Open rollout view</div>
-                            </Link>
-                          </td>
-                          <td>{item.namespace}</td>
-                          <td>{item.cpu_utilization_pct}%</td>
-                          <td>{item.cpu_hours}</td>
-                          <td>{item.memory_utilization_gb}</td>
-                          <td>{item.memory_hours}</td>
-                          <td>
-                            {item.ready_replicas}/{item.updated_replicas}
-                          </td>
-                          <td>{item.cluster_name}</td>
-                          <td>
-                            <span className="portal-pill">{item.status}</span>
-                          </td>
-                          {isManager ? (
-                            <td className="k8s-action-cell">
-                              <div className="k8s-action-buttons">
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-sm"
-                                  disabled={actionBusy || !canRunActions}
-                                  onClick={() => handleRestart(rowKey, item)}
-                                >
-                                  {actionBusy ? 'Working...' : 'Restart'}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary btn-sm"
-                                  disabled={actionBusy || !canRunActions}
-                                  onClick={() => {
-                                    setNotice('');
-                                    setError('');
-                                    setScaleTargetKey(rowKey);
-                                    setScaleReplicas(String(item.replicas));
-                                  }}
-                                >
-                                  Scale
-                                </button>
-                                <Link className="btn btn-secondary btn-sm" href={buildScopedHref(`/k8s/workloads/${encodeURIComponent(item.name)}/rollout`, item)}>
-                                  Rollout
-                                </Link>
-                                {item.status.toLowerCase() !== 'healthy' ? (
-                                  <button
-                                    type="button"
-                                    className="btn btn-secondary btn-sm"
-                                    disabled={actionBusy || !canRunActions}
-                                    onClick={() => handleResumeRollout(rowKey, item)}
-                                  >
-                                    Resume rollout
-                                  </button>
-                                ) : null}
-                              </div>
-                              {!canRunActions ? (
-                                <div className="k8s-link-cell__meta">Choose a project-scoped cluster to run actions.</div>
-                              ) : null}
-                            </td>
-                          ) : null}
-                        </tr>
-                        {isManager && scaleTargetKey === rowKey ? (
-                          <tr className="k8s-inline-action-row">
-                            <td colSpan={10}>
-                              <div className="k8s-inline-action">
-                                <div className="k8s-inline-action__copy">
-                                  <strong>Scale {item.name}</strong>
-                                  <p>Queue a replica update for this workload without leaving the cluster workspace.</p>
-                                </div>
-                                <div className="k8s-inline-action__controls">
-                                  <label className="k8s-inline-action__label">
-                                    <span>Replicas</span>
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      className="input k8s-inline-action__input"
-                                      value={scaleReplicas}
-                                      onChange={(event) => setScaleReplicas(event.target.value)}
-                                    />
-                                  </label>
-                                  <div className="k8s-inline-action__actions">
-                                    <button
-                                      type="button"
-                                      className="btn btn-secondary btn-sm"
-                                      disabled={actionBusy}
-                                      onClick={() => handleScaleSubmit(rowKey, item)}
-                                    >
-                                      {actionBusy ? 'Applying...' : 'Apply scale'}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn btn-secondary btn-sm"
-                                      disabled={actionBusy}
-                                      onClick={() => {
-                                        setScaleTargetKey('');
-                                        setScaleReplicas('');
-                                      }}
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        ) : null}
-                      </Fragment>
-                    );
-                  })}
-                  {!loading && visibleRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={isManager ? 10 : 9}>
-                        <div className="portal-empty">
-                          <p>No workloads match the current filters.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            {scaleTarget ? (
+              <div className="ig-legacy-inline-action" role="region" aria-label={`Scale ${scaleTarget.name}`}>
+                <div className="k8s-inline-action">
+                  <div className="k8s-inline-action__copy">
+                    <strong>Scale {scaleTarget.name}</strong>
+                    <p>Queue a replica update for this workload without leaving the cluster workspace.</p>
+                  </div>
+                  <div className="k8s-inline-action__controls">
+                    <label className="k8s-inline-action__label">
+                      <span>Replicas</span>
+                      <input
+                        type="number"
+                        min={0}
+                        className="input k8s-inline-action__input"
+                        value={scaleReplicas}
+                        onChange={(event) => setScaleReplicas(event.target.value)}
+                        autoFocus
+                      />
+                    </label>
+                    <div className="k8s-inline-action__actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={scaleBusy}
+                        onClick={() => handleScaleSubmit(scaleTargetKey, scaleTarget)}
+                      >
+                        {scaleBusy ? 'Applying...' : 'Apply scale'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={scaleBusy}
+                        onClick={() => {
+                          setScaleTargetKey('');
+                          setScaleReplicas('');
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="ig-legacy-table">
+              <DataTable<WorkloadRow>
+                label="Deployment workloads"
+                columns={columns}
+                rows={visibleRows}
+                rowKey={workloadRowKey}
+                loading={loading}
+                rowClassName={(item) => (scaleTarget && workloadRowKey(item) === scaleTargetKey ? 'is-active' : undefined)}
+                onRowOpen={(item) => void router.push(rolloutHref(item))}
+                empty={<EmptyState title="No workloads found" body="No workloads match the current filters." />}
+              />
             </div>
           </section>
         </K8sWorkspaceShell>

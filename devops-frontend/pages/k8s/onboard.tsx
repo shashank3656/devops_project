@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
@@ -17,6 +18,56 @@ import {
   readQueryString,
   saveK8sConnection,
 } from '../../lib/k8sWorkspace';
+
+type ConnectionRow = K8sOnboardingData['connections'][number];
+
+function connectionHref(connection: ConnectionRow) {
+  return buildK8sHref('/k8s/workloads', {
+    project_id: connection.project_id,
+    cluster_name: connection.cluster_name,
+    environment: connection.environment,
+  });
+}
+
+const CONNECTION_COLUMNS: DataTableColumn<ConnectionRow>[] = [
+  {
+    id: 'cluster',
+    header: 'K8s cluster',
+    cell: (connection) => (
+      <Link href={connectionHref(connection)} className="ig-cell-stack ig-cell-link">
+        <span className="ig-cell-title">{connection.cluster_name}</span>
+        <span className="ig-cell-meta">{connection.cluster_endpoint}</span>
+      </Link>
+    ),
+  },
+  {
+    id: 'project',
+    header: 'Project',
+    cell: (connection) => (
+      <div className="ig-cell-stack">
+        <span className="ig-cell-title">{connection.project_name}</span>
+        <span className="ig-cell-meta">{connection.project_code}</span>
+      </div>
+    ),
+  },
+  { id: 'cloud', header: 'Cloud', cell: (connection) => connection.cloud.toUpperCase() },
+  {
+    id: 'environment',
+    header: 'Environment',
+    cell: (connection) => <span className="ig-chip ig-chip--muted">{connection.environment.toUpperCase()}</span>,
+  },
+  { id: 'auth_mode', header: 'Auth mode', cell: (connection) => connection.auth_mode },
+  {
+    id: 'credential',
+    header: 'Credential',
+    cell: (connection) => (
+      <span className={`ig-chip ig-chip--${connection.has_auth_credential ? 'low' : 'medium'}`}>
+        {connection.has_auth_credential ? 'Configured' : 'Missing'}
+      </span>
+    ),
+  },
+  { id: 'updated', header: 'Updated', cell: (connection) => <span className="ig-cell-meta">{formatDateTime(connection.updated_at)}</span> },
+];
 
 function createEmptyForm(): K8sConnectionPayload {
   return {

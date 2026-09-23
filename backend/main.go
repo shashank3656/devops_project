@@ -533,6 +533,7 @@ func main() {
 		}
 		// Ensure default admin exists (credentials from env or admin/admin123)
 		EnsureDefaultAdmin()
+		startLifecycleScheduler()
 	}
 	InitRuntimeResilience()
 
@@ -637,6 +638,7 @@ func main() {
 	http.HandleFunc("/api/devops/service-heatmap", devopsServiceHeatmapHandler)
 	http.HandleFunc("/api/devops/change-risk", devopsChangeRiskHandler)
 	http.HandleFunc("/api/devops/environment-drift", devopsEnvironmentDriftHandler)
+	http.HandleFunc("/api/devops/environment-drift/fix", devopsEnvironmentDriftFixHandler)
 	http.HandleFunc("/api/devops/ops-command-center", devopsOpsCommandCenterHandler)
 	http.HandleFunc("/api/devops/project-dependencies", devopsProjectDependenciesHandler)
 	http.HandleFunc("/api/devops/k8s-connections", devopsK8sConnectionsHandler)

@@ -3232,6 +3232,517 @@ html[data-theme] .ig-table tr.is-changed .ig-chip:not(.ig-chip--muted) {
   .ig-home .ig-home-queue__row { animation-delay: 0ms !important; }
 }
 
+/* ── 16f. Saved views ──────────────────────────────────────────────────── */
+.ig-views {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+}
+
+.ig-views__label {
+  margin-right: 2px;
+  color: var(--ig-muted);
+  font-size: var(--ig-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ig-views__chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--ig-border);
+  border-radius: 999px;
+  background: var(--ig-surface);
+  transition: border-color var(--ig-duration) var(--ig-ease), background-color var(--ig-duration) var(--ig-ease);
+}
+
+.ig-views__chip:hover { border-color: var(--ig-border-strong); }
+.ig-views__chip.is-active { border-color: var(--ig-accent-border); background: var(--ig-accent-soft); }
+
+html[data-theme] .ig-views__apply,
+html[data-theme] .ig-views__remove,
+html[data-theme] .ig-views__save {
+  border: 0;
+  background: transparent;
+  color: var(--ig-text-2);
+  font: inherit;
+  font-size: var(--ig-text-sm);
+  cursor: pointer;
+}
+
+html[data-theme] .ig-views__apply { padding: 4px 12px; border-radius: 999px; }
+html[data-theme] .ig-views__chip.is-active .ig-views__apply { color: var(--ig-accent-text); font-weight: 500; }
+html[data-theme] .ig-views__remove { padding: 0 10px 0 0; color: var(--ig-muted); line-height: 1; }
+html[data-theme] .ig-views__remove:hover { color: var(--ig-danger); }
+html[data-theme] .ig-views__save { padding: 4px 8px; color: var(--ig-accent-text); }
+
+html[data-theme] .ig-views__apply:focus-visible,
+html[data-theme] .ig-views__remove:focus-visible,
+html[data-theme] .ig-views__save:focus-visible { outline: none; box-shadow: var(--ig-focus-ring); }
+
+.ig-views__form { display: inline-flex; align-items: center; gap: 6px; }
+html[data-theme] .ig-views__input { min-height: 30px; width: 180px; padding: 4px 10px; font-size: var(--ig-text-sm); }
+
+/* ── 16g. Project delivery health ──────────────────────────────────────── */
+.ig-chip--neutral { color: var(--ig-muted); background: var(--ig-surface-2); }
+
+.ig-health {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--ig-border);
+  border-radius: var(--ig-radius-lg);
+  background: var(--ig-surface);
+}
+
+.ig-health__title { margin: 4px 0 0; font-size: var(--ig-text-lg); font-weight: 600; color: var(--ig-text); }
+.ig-health__empty { margin: 0; color: var(--ig-muted); font-size: var(--ig-text-sm); }
+
+.ig-health__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ig-health__metric {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--ig-border);
+  border-radius: var(--ig-radius);
+  background: var(--ig-surface-2);
+}
+
+.ig-health__metric-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ig-health__label { color: var(--ig-text-2); font-size: var(--ig-text-sm); font-weight: 500; }
+.ig-health__value { color: var(--ig-text); font-size: var(--ig-text-2xl); font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.ig-health__trend { color: var(--ig-muted); font-size: var(--ig-text-xs); }
+.ig-health__trend--better { color: var(--ig-success); }
+.ig-health__trend--worse { color: var(--ig-danger); }
+
+.ig-health__scorecard { display: grid; gap: 10px; }
+.ig-health__score-head { display: flex; align-items: baseline; justify-content: space-between; }
+.ig-health__score { font-size: var(--ig-text-lg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ig-health__score--good { color: var(--ig-success); }
+.ig-health__score--fair { color: var(--ig-warning); }
+.ig-health__score--poor { color: var(--ig-danger); }
+
+.ig-health__bar { height: 6px; border-radius: 999px; background: var(--ig-surface-2); overflow: hidden; }
+.ig-health__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ig-accent);
+  transition: width var(--ig-duration-slow) var(--ig-ease);
+}
+
+.ig-health__checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ig-health__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--ig-border);
+  border-radius: var(--ig-radius);
+}
+
+.ig-health__check:not(.is-passed) { border-color: var(--ig-warning-soft, var(--ig-border-strong)); }
+
+.ig-health__mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ig-warning);
+  background: var(--ig-warning-soft, var(--ig-surface-2));
+}
+
+.ig-health__check.is-passed .ig-health__mark { color: var(--ig-success); background: var(--ig-success-soft, var(--ig-surface-2)); }
+
+.ig-health__check-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.ig-health__check-body strong { color: var(--ig-text); font-size: var(--ig-text-sm); font-weight: 500; }
+.ig-health__check-body span { color: var(--ig-muted); font-size: var(--ig-text-xs); }
+
+html[data-theme] .ig-health__fix {
+  flex: none;
+  align-self: center;
+  color: var(--ig-accent-text);
+  font-size: var(--ig-text-sm);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+html[data-theme] .ig-health__fix:hover { text-decoration: underline; }
+
+.ig-health__of { color: var(--ig-muted); font-size: var(--ig-text-sm); font-weight: 400; }
+.ig-health__note { margin: 0; color: var(--ig-muted); font-size: var(--ig-text-sm); }
+.ig-health__bar--budget { display: flex; }
+.ig-health__bar--budget > span { border-radius: 0; }
+.ig-health__bar--budget > span.is-warn { background: var(--ig-warning); }
+.ig-health__bar--budget > span.is-over { background: var(--ig-danger); }
+.ig-health__bar--budget > span.is-pending {
+  background: repeating-linear-gradient(135deg, var(--ig-accent-soft) 0 4px, var(--ig-accent-border) 4px 8px);
+}
+
+.ig-cost { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.ig-cost dt { color: var(--ig-muted); font-size: var(--ig-text-xs); }
+.ig-cost dd { margin: 2px 0 0; color: var(--ig-text); font-size: var(--ig-text-lg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ig-cost dd.is-up { color: var(--ig-warning); }
+.ig-cost dd.is-down { color: var(--ig-success); }
+.ig-cost__note { margin: 0; color: var(--ig-muted); font-size: var(--ig-text-xs); }
+
+@media (max-width: 1100px) {
+  .ig-health__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .ig-health__metrics,
+  .ig-health__checks { grid-template-columns: 1fr; }
+}
+
+/* ── 16l. Legacy page polish ── */
+/* DataTable dropped into older portal-surface sections, which have padding and no card frame of their own */
+.ig-legacy-table {
+  margin-top: 16px;
+  border: 1px solid var(--ig-border);
+  border-radius: var(--ig-radius-lg);
+  background: var(--ig-surface);
+  overflow: hidden;
+}
+
+.ig-table__empty .ig-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+}
+.ig-table__empty .ig-empty strong { color: var(--ig-text); font-size: var(--ig-text-md); }
+.ig-table__empty .ig-empty p { margin: 0; }
+
+.ig-cell-link { color: inherit; text-decoration: none; }
+.ig-cell-link:hover { text-decoration: none; }
+.ig-cell-link:hover .ig-cell-title,
+.ig-cell-link:focus-visible .ig-cell-title {
+  color: var(--ig-accent-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ig-cell-wrap {
+  display: block;
+  min-width: 220px;
+  max-width: 520px;
+  white-space: normal;
+  line-height: 1.45;
+}
+
+.ig-cell-num { font-variant-numeric: tabular-nums; }
+
+.ig-cell-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* Inline action form that used to be an expanded table row */
+.ig-legacy-inline-action {
+  margin-top: 16px;
+  border: 1px solid var(--ig-accent-border);
+  border-radius: var(--ig-radius-lg);
+  background: var(--ig-accent-soft);
+  overflow: hidden;
+}
+.ig-legacy-inline-action .k8s-inline-action { border-top: 0; background: transparent; }
+
+/* Cloud → service → template tree rendered as flat DataTable rows */
+html[data-theme] .ig-table tbody tr.ig-tree-row--cloud td { background: var(--ig-surface-2); }
+html[data-theme] .ig-table tbody tr.ig-tree-row--cloud td:first-child { box-shadow: inset 2px 0 0 var(--ig-accent-border); }
+.ig-tree-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ig-tree-cell--service { padding-left: 18px; }
+.ig-tree-cell--template { padding-left: 40px; }
+.ig-tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ig-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ig-tree-toggle:focus-visible { outline: none; box-shadow: var(--ig-focus-ring); border-radius: 4px; }
+.ig-tree-toggle__chevron { width: 14px; color: var(--ig-muted); text-align: center; }
+
+/* ── 16k. Phone tab bar ────────────────────────────────────────────────── */
+.ig-tabbar { display: none; }
+
+@media (max-width: 768px) {
+  .ig-tabbar {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 55;
+    display: grid;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--ig-border);
+    background: color-mix(in srgb, var(--ig-surface) 92%, transparent);
+    backdrop-filter: blur(12px);
+  }
+  .ig-tabbar__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    min-height: 48px;
+    padding: 4px 2px;
+    border: 0;
+    border-radius: var(--ig-radius);
+    background: none;
+    color: var(--ig-muted);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ig-tabbar__item:focus-visible { outline: 2px solid var(--ig-accent); outline-offset: -2px; }
+  .ig-tabbar__item--active { color: var(--ig-accent-text); }
+  .ig-tabbar__item--active .ig-tabbar__icon-wrap { background: var(--ig-accent-soft); }
+  .ig-tabbar__icon-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 26px;
+    border-radius: 999px;
+    transition: background var(--ig-duration) var(--ig-ease);
+  }
+  .ig-tabbar__icon { width: 20px; height: 20px; }
+  .ig-tabbar__label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ig-tabbar__badge {
+    position: absolute;
+    top: -3px;
+    right: 2px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--ig-danger);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+    text-align: center;
+  }
+  body:has(.ig-tabbar) main.ig-page { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+  body:has(.ig-tabbar) .ig-bulkbar,
+  body:has(.ig-tabbar) .ig-undo { bottom: calc(76px + env(safe-area-inset-bottom)); }
+  body:has(.ig-tabbar) .ig-toasts { bottom: calc(72px + env(safe-area-inset-bottom)); }
+}
+
+/* ── 16j. Request lifecycle (resize, decommission, expiry) ───────────── */
+.ig-lifecycle {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--ig-border);
+  border-radius: var(--ig-radius-lg);
+  background: var(--ig-surface);
+}
+.ig-lifecycle__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ig-lifecycle__row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ig-lifecycle__label { color: var(--ig-text-2); font-size: var(--ig-text-sm); }
+.ig-lifecycle__note,
+.ig-lifecycle__hint { margin: 0; color: var(--ig-text-2); font-size: var(--ig-text-sm); line-height: 1.5; }
+.ig-lifecycle__hint { color: var(--ig-muted); font-size: var(--ig-text-xs); }
+.ig-lifecycle__select,
+.ig-lifecycle__textarea {
+  padding: 6px 10px;
+  border: 1px solid var(--ig-border);
+  border-radius: var(--ig-radius);
+  background: var(--ig-surface-2);
+  color: var(--ig-text);
+  font: inherit;
+  font-size: var(--ig-text-sm);
+}
+.ig-lifecycle__textarea { width: 100%; resize: vertical; }
+.ig-lifecycle__select:focus-visible,
+.ig-lifecycle__textarea:focus-visible { outline: 2px solid var(--ig-accent); outline-offset: 1px; }
+.ig-lifecycle__confirm {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--ig-danger);
+  border-radius: var(--ig-radius);
+  background: var(--ig-danger-soft);
+}
+.ig-lifecycle__danger { color: var(--ig-danger); }
+.ig-lifecycle__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ig-accent-text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ── 16i. Policy checks (shares the .ig-plan card frame) ───────────────── */
+.ig-policy__tool { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--ig-border); }
+.ig-policy__tool-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ig-policy__tool-head strong { color: var(--ig-text); font-size: var(--ig-text-sm); font-weight: 600; }
+.ig-policy__counts { color: var(--ig-muted); font-size: var(--ig-text-xs); font-variant-numeric: tabular-nums; }
+.ig-policy__findings { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ig-policy__finding { display: flex; align-items: flex-start; gap: 10px; }
+.ig-policy__finding .ig-chip { flex: none; min-width: 64px; justify-content: center; text-transform: capitalize; }
+.ig-policy__finding-body { display: grid; gap: 2px; min-width: 0; color: var(--ig-text-2); font-size: var(--ig-text-sm); }
+.ig-policy__finding-body code { color: var(--ig-muted); font-size: var(--ig-text-xs); overflow-wrap: anywhere; }
+
+/* ── 16h. Drift fix ────────────────────────────────────────────────────── */
+.ig-drift,
+.ig-drift__other { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+
+.ig-drift__pair {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--ig-border);
+  border-left: 3px solid var(--ig-warning);
+  border-radius: var(--ig-radius);
+  background: var(--ig-surface-2);
+}
+
+.ig-drift__body { display: grid; gap: 6px; min-width: 0; }
+.ig-drift__body strong { color: var(--ig-text); font-weight: 500; }
+.ig-drift__details { margin: 0; padding-left: 18px; color: var(--ig-text-2); font-size: var(--ig-text-sm); }
+.ig-drift__done { margin: 0; color: var(--ig-success); font-size: var(--ig-text-sm); }
+.ig-drift__other { margin-top: 12px; }
+.ig-drift__other li { display: flex; align-items: baseline; gap: 10px; color: var(--ig-text-2); font-size: var(--ig-text-sm); }
+.ig-drift__other .ig-chip { flex: none; }
+
+@media (max-width: 640px) {
+  .ig-drift__pair { flex-direction: column; }
+}
+
+/* ── 16e. Terraform plan review ────────────────────────────────────────── */
+.ig-plan {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--ig-border);
+  border-radius: var(--ig-radius-lg);
+  background: var(--ig-surface);
+}
+
+.ig-plan--blocking {
+  border-color: var(--ig-danger);
+  box-shadow: inset 3px 0 0 var(--ig-danger);
+}
+
+.ig-plan__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ig-plan__empty { margin: 0; color: var(--ig-muted); font-size: var(--ig-text-sm); }
+
+.ig-plan__counts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.ig-plan__count {
+  padding: 8px 10px;
+  border-radius: var(--ig-radius);
+  background: var(--ig-surface-2);
+}
+
+.ig-plan__count dt { color: var(--ig-muted); font-size: var(--ig-text-xs); }
+.ig-plan__count dd { margin: 2px 0 0; color: var(--ig-text); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ig-plan__count--create dd { color: var(--ig-success); }
+.ig-plan__count--update dd { color: var(--ig-info); }
+.ig-plan__count--replace dd { color: var(--ig-warning); }
+.ig-plan__count--destroy dd { color: var(--ig-danger); }
+
+.ig-plan__changes {
+  display: grid;
+  gap: 2px;
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.ig-plan__change {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 6px;
+  border-radius: var(--ig-radius-sm);
+  font-size: var(--ig-text-sm);
+}
+
+.ig-plan__change code { overflow-wrap: anywhere; color: var(--ig-text-2); }
+
+.ig-plan__action {
+  flex: none;
+  width: 58px;
+  color: var(--ig-muted);
+  font-size: var(--ig-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ig-plan__change--destroy { background: var(--ig-danger-soft); }
+.ig-plan__change--destroy .ig-plan__action { color: var(--ig-danger); }
+.ig-plan__change--replace { background: var(--ig-warning-soft); }
+.ig-plan__change--replace .ig-plan__action { color: var(--ig-warning); }
+.ig-plan__change--create .ig-plan__action { color: var(--ig-success); }
+.ig-plan__change--update .ig-plan__action { color: var(--ig-info); }
+.ig-plan__more { padding: 4px 6px; color: var(--ig-muted); font-size: var(--ig-text-xs); }
+
+.ig-plan__ack { margin: 0; color: var(--ig-text-2); font-size: var(--ig-text-sm); }
+.ig-plan__gate { display: grid; gap: 10px; padding-top: 4px; border-top: 1px solid var(--ig-border); }
+.ig-plan__gate .btn { justify-self: start; }
+.ig-plan__warning { margin: 0; color: var(--ig-text-2); font-size: var(--ig-text-sm); line-height: 1.5; }
+.ig-plan__confirm { display: flex; align-items: flex-start; gap: 8px; color: var(--ig-text); font-size: var(--ig-text-sm); cursor: pointer; }
+.ig-plan__confirm input { margin-top: 3px; accent-color: var(--ig-danger); }
+.ig-plan__error { margin: 0; color: var(--ig-danger); font-size: var(--ig-text-sm); }
+
+@media (max-width: 600px) {
+  .ig-plan__counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* ── 17. Motion ────────────────────────────────────────────────────────── */
 @keyframes ig-shimmer {
   from { background-position: 200% 0; }

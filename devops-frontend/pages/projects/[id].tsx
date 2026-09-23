@@ -2,7 +2,9 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { ProjectHealthCard, type ProjectHealth } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
+import DriftFixPanel from '../../components/DriftFixPanel';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { asRecord, getString } from '../../lib/payload';
 
@@ -804,6 +806,37 @@ export default function DevOpsProjectDetailPage() {
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
   const [lifecycleAction, setLifecycleAction] = useState('');
+  const [health, setHealth] = useState<ProjectHealth | null>(null);
+  const [healthLoading, setHealthLoading] = useState(true);
+  const [healthError, setHealthError] = useState('');
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    const projectId = parsePositiveIntParam(router.query.id);
+    if (!token || !projectId) return;
+    let cancelled = false;
+    setHealthLoading(true);
+    setHealthError('');
+    fetch(`${apiUrl}/api/devops/projects/${projectId}/health`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        const data = asRecord(await res.json().catch(() => ({})));
+        if (!res.ok) throw new Error(getString(data.error, 'Could not load delivery health'));
+        if (!cancelled) setHealth((data.health as ProjectHealth) || null);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setHealth(null);
+          setHealthError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setHealthLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl, router.isReady, router.query.id]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -945,6 +978,19 @@ export default function DevOpsProjectDetailPage() {
                 <p className="portal-stat-card__copy">{project.environments.join(', ')}</p>
               </article>
             </section>
+
+            <ProjectHealthCard
+              health={health}
+              loading={healthLoading}
+              error={healthError}
+              renderLink={(href, children) => (
+                <Link href={href} className="ig-health__fix">
+                  {children}
+                </Link>
+              )}
+            />
+
+            <DriftFixPanel projectId={project.id} />
 
             <section className="portal-surface">
               <div className="portal-surface__header">

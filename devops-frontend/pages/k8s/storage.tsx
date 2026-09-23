@@ -1,10 +1,50 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { fetchK8sStorage, K8sStorageData, readQueryString } from '../../lib/k8sWorkspace';
+
+type StorageRow = K8sStorageData['items'][number];
+
+function storageTone(status: string) {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === 'bound' || normalized === 'available' || normalized === 'healthy') return 'low';
+  if (normalized === 'failed' || normalized === 'lost') return 'danger';
+  if (normalized === 'pending' || normalized === 'released') return 'medium';
+  return 'neutral';
+}
+
+const STORAGE_COLUMNS: DataTableColumn<StorageRow>[] = [
+  {
+    id: 'volume',
+    header: 'Volume',
+    cell: (item) => (
+      <div className="ig-cell-stack">
+        <span className="ig-cell-title">{item.name}</span>
+        <span className="ig-cell-meta">{item.type || 'Unknown type'}</span>
+      </div>
+    ),
+  },
+  { id: 'namespace', header: 'Namespace', cell: (item) => item.namespace },
+  { id: 'storage_class', header: 'Storage class', cell: (item) => item.storage_class || '—' },
+  { id: 'capacity', header: 'Capacity', align: 'right', className: 'ig-cell-num', cell: (item) => item.capacity || '—' },
+  { id: 'access_mode', header: 'Access mode', cell: (item) => item.access_mode || '—' },
+  { id: 'claim', header: 'Claim', cell: (item) => item.claim || '—' },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: (item) => <span className={`ig-chip ig-chip--${storageTone(item.status || '')}`}>{item.status || 'unknown'}</span>,
+  },
+  {
+    id: 'mounted_by',
+    header: 'Mounted by',
+    cell: (item) => (item.mounted_by ? item.mounted_by : <span className="ig-chip ig-chip--neutral">Not mounted</span>),
+  },
+  { id: 'cluster', header: 'Cluster', cell: (item) => item.cluster_name },
+];
 
 export default function DevOpsK8sStoragePage() {
   const apiUrl = useApiUrl();
@@ -214,49 +254,15 @@ export default function DevOpsK8sStoragePage() {
               </div>
             </div>
 
-            <div className="table-scroll">
-              <table className="templates-table k8s-data-table">
-                <thead>
-                  <tr>
-                    <th>Volume</th>
-                    <th>Namespace</th>
-                    <th>Storage class</th>
-                    <th>Capacity</th>
-                    <th>Access mode</th>
-                    <th>Claim</th>
-                    <th>Status</th>
-                    <th>Mounted by</th>
-                    <th>Cluster</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((item) => (
-                    <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}>
-                      <td>
-                        <div className="k8s-link-cell__title">{item.name}</div>
-                        <div className="k8s-link-cell__meta">{item.type || 'Unknown type'}</div>
-                      </td>
-                      <td>{item.namespace}</td>
-                      <td>{item.storage_class || '—'}</td>
-                      <td>{item.capacity || '—'}</td>
-                      <td>{item.access_mode || '—'}</td>
-                      <td>{item.claim || '—'}</td>
-                      <td><span className="portal-pill">{item.status || 'unknown'}</span></td>
-                      <td>{item.mounted_by || 'Not mounted'}</td>
-                      <td>{item.cluster_name}</td>
-                    </tr>
-                  ))}
-                  {!loading && visibleRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={9}>
-                        <div className="portal-empty">
-                          <p>No storage items match the current filters.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            <div className="ig-legacy-table">
+              <DataTable<StorageRow>
+                label="Persistent volumes and claims"
+                columns={STORAGE_COLUMNS}
+                rows={visibleRows}
+                rowKey={(item) => `${item.cluster_name}-${item.namespace}-${item.name}`}
+                loading={loading}
+                empty={<EmptyState title="No storage found" body="No storage items match the current filters." />}
+              />
             </div>
           </section>
         </K8sWorkspaceShell>

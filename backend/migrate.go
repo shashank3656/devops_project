@@ -1010,6 +1010,69 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_deployment_freezes_window ON deployment_freezes(starts_at, ends_at)")
 
+	// Migration 48: acknowledgements of destructive Terraform plans, tied to one plan by hash
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS pr_request_plan_reviews (
+			request_id INTEGER PRIMARY KEY REFERENCES pr_requests(id) ON DELETE CASCADE,
+			plan_hash VARCHAR(64) NOT NULL,
+			acknowledged_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			acknowledged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			note TEXT NOT NULL DEFAULT ''
+		)
+	`)
+
+	// Migration 49: policy and security scan results per request and tool
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS pr_request_policy_checks (
+			request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			tool VARCHAR(40) NOT NULL,
+			passed INTEGER NOT NULL DEFAULT 0,
+			failed INTEGER NOT NULL DEFAULT 0,
+			blocking INTEGER NOT NULL DEFAULT 0,
+			truncated BOOLEAN NOT NULL DEFAULT FALSE,
+			findings TEXT NOT NULL DEFAULT '[]',
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (request_id, tool)
+		)
+	`)
+
+	// Migration 50: Infracost monthly cost per request
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS pr_request_costs (
+			request_id INTEGER PRIMARY KEY REFERENCES pr_requests(id) ON DELETE CASCADE,
+			currency VARCHAR(8) NOT NULL DEFAULT 'USD',
+			monthly_cost DOUBLE PRECISION NOT NULL DEFAULT 0,
+			past_monthly_cost DOUBLE PRECISION NOT NULL DEFAULT 0,
+			diff_monthly_cost DOUBLE PRECISION NOT NULL DEFAULT 0,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+
+	// Migration 51: day-2 operations (resize / decommission) and temporary-environment expiry
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS pr_request_operations (
+			request_id INTEGER PRIMARY KEY REFERENCES pr_requests(id) ON DELETE CASCADE,
+			operation VARCHAR(20) NOT NULL,
+			source_request_id INTEGER NOT NULL REFERENCES pr_requests(id) ON DELETE CASCADE,
+			reason TEXT NOT NULL DEFAULT '',
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_request_operations_source ON pr_request_operations(source_request_id, operation)")
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS pr_request_lifetimes (
+			request_id INTEGER PRIMARY KEY REFERENCES pr_requests(id) ON DELETE CASCADE,
+			expires_at TIMESTAMP NOT NULL,
+			set_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			extended_count INTEGER NOT NULL DEFAULT 0,
+			decommission_request_id INTEGER REFERENCES pr_requests(id) ON DELETE SET NULL,
+			sweep_claimed_at TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_pr_request_lifetimes_expires ON pr_request_lifetimes(expires_at) WHERE decommission_request_id IS NULL")
+
 	log.Println("Database schema is up to date")
 	return nil
 }

@@ -1,19 +1,50 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { fetchK8sCertificates, K8sCertificatesData, readQueryString } from '../../lib/k8sWorkspace';
 
+type CertificateRow = K8sCertificatesData['items'][number];
+
 function certificateTone(status: string) {
   const normalized = status.trim().toLowerCase();
-  if (normalized === 'healthy' || normalized === 'ready') return 'k8s-data-pill k8s-data-pill--healthy';
-  if (normalized === 'warning') return 'k8s-data-pill k8s-data-pill--warning';
-  if (normalized === 'expiring') return 'k8s-data-pill k8s-data-pill--expiring';
-  if (normalized === 'critical' || normalized === 'expired') return 'k8s-data-pill k8s-data-pill--critical';
-  return 'k8s-data-pill';
+  if (normalized === 'healthy' || normalized === 'ready') return 'low';
+  if (normalized === 'warning' || normalized === 'expiring') return 'medium';
+  if (normalized === 'critical' || normalized === 'expired') return 'danger';
+  return 'neutral';
 }
+
+const CERTIFICATE_COLUMNS: DataTableColumn<CertificateRow>[] = [
+  {
+    id: 'certificate',
+    header: 'Certificate',
+    cell: (item) => (
+      <div className="ig-cell-stack">
+        <span className="ig-cell-title">{item.name}</span>
+        <span className="ig-cell-meta">{item.managed_by || 'cert-manager'}</span>
+      </div>
+    ),
+  },
+  { id: 'secret', header: 'Secret', cell: (item) => item.secret_name || '—' },
+  { id: 'hosts', header: 'Hosts', cell: (item) => item.hosts || '—' },
+  { id: 'issuer', header: 'Issuer', cell: (item) => item.issuer || '—' },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: (item) => <span className={`ig-chip ig-chip--${certificateTone(item.status)}`}>{item.status || 'unknown'}</span>,
+  },
+  {
+    id: 'expires',
+    header: 'Expires',
+    cell: (item) => (item.expires_at ? new Date(item.expires_at).toLocaleDateString() : '—'),
+  },
+  { id: 'days_left', header: 'Days left', align: 'right', className: 'ig-cell-num', cell: (item) => item.days_remaining },
+  { id: 'namespace', header: 'Namespace', cell: (item) => item.namespace },
+  { id: 'cluster', header: 'Cluster', cell: (item) => item.cluster_name },
+];
 
 export default function DevOpsK8sCertificatesPage() {
   const apiUrl = useApiUrl();
@@ -223,53 +254,15 @@ export default function DevOpsK8sCertificatesPage() {
               </div>
             </div>
 
-            <div className="table-scroll">
-              <table className="templates-table k8s-data-table">
-                <thead>
-                  <tr>
-                    <th>Certificate</th>
-                    <th>Secret</th>
-                    <th>Hosts</th>
-                    <th>Issuer</th>
-                    <th>Status</th>
-                    <th>Expires</th>
-                    <th>Days left</th>
-                    <th>Namespace</th>
-                    <th>Cluster</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((item) => (
-                    <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}>
-                      <td>
-                        <div className="k8s-link-cell__title">{item.name}</div>
-                        <div className="k8s-link-cell__meta">{item.managed_by || 'cert-manager'}</div>
-                      </td>
-                      <td>{item.secret_name || '—'}</td>
-                      <td>{item.hosts || '—'}</td>
-                      <td>{item.issuer || '—'}</td>
-                      <td>
-                        <span className={certificateTone(item.status)}>
-                          {item.status || 'unknown'}
-                        </span>
-                      </td>
-                      <td>{item.expires_at ? new Date(item.expires_at).toLocaleDateString() : '—'}</td>
-                      <td>{item.days_remaining}</td>
-                      <td>{item.namespace}</td>
-                      <td>{item.cluster_name}</td>
-                    </tr>
-                  ))}
-                  {!loading && visibleRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={9}>
-                        <div className="portal-empty">
-                          <p>No certificates match the current filters.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            <div className="ig-legacy-table">
+              <DataTable<CertificateRow>
+                label="Certificate watchlist"
+                columns={CERTIFICATE_COLUMNS}
+                rows={visibleRows}
+                rowKey={(item) => `${item.cluster_name}-${item.namespace}-${item.name}`}
+                loading={loading}
+                empty={<EmptyState title="No certificates found" body="No certificates match the current filters." />}
+              />
             </div>
           </section>
         </K8sWorkspaceShell>
