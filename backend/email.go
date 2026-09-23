@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"net"
 	"net/mail"
 	"net/smtp"
 	"os"
@@ -13,6 +14,11 @@ import (
 	"strings"
 	"time"
 	"unicode"
+)
+
+const (
+	smtpDialTimeout    = 10 * time.Second
+	smtpSessionTimeout = 30 * time.Second
 )
 
 func sanitizeEmailHeaderValue(value, field string) (string, error) {
@@ -132,7 +138,7 @@ func SendEmail(to, subject, body string) error {
 
 	log.Printf("[Email] Sending to=%s subject=%q host=%s port=%d useTLS=%v", to, subject, host, port, useTLS)
 
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	boundary := fmt.Sprintf("boundary_%d", time.Now().UnixNano())
 	htmlBody := buildEscapedEmailHTML(subject, escapedBody)
 	msg := buildMIMEMessage(from, to, subject, escapedBody, htmlBody, boundary)
@@ -145,22 +151,43 @@ func SendEmail(to, subject, body string) error {
 		log.Printf("[Email] No SMTP auth (SMTP_USER or SMTP_PASSWORD empty)")
 	}
 
-	if useTLS && port == 587 {
-		tlsConfig := &tls.Config{ServerName: host, InsecureSkipVerify: false}
-		conn, err := tls.Dial("tcp", addr, tlsConfig)
-		if err != nil {
-			log.Printf("[Email] TLS dial failed to %s: %v", addr, err)
-			return fmt.Errorf("TLS dial: %w", err)
+	if useTLS {
+		tlsConfig := &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}
+		dialer := &net.Dialer{Timeout: smtpDialTimeout}
+
+		var conn net.Conn
+		// 465 is implicit TLS (SMTPS). Every other port (587, 25, 2525) starts in
+		// plaintext and must be upgraded with STARTTLS before AUTH.
+		if port == 465 {
+			conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
+		} else {
+			conn, err = dialer.Dial("tcp", addr)
 		}
-		defer conn.Close()
-		log.Printf("[Email] TLS connection established")
+		if err != nil {
+			log.Printf("[Email] Dial failed to %s: %v", addr, err)
+			return fmt.Errorf("smtp dial: %w", err)
+		}
+		_ = conn.SetDeadline(time.Now().Add(smtpSessionTimeout))
+		defer func() { _ = conn.Close() }()
 
 		client, err := smtp.NewClient(conn, host)
 		if err != nil {
 			log.Printf("[Email] SMTP NewClient failed: %v", err)
 			return fmt.Errorf("smtp client: %w", err)
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
+
+		if port != 465 {
+			if ok, _ := client.Extension("STARTTLS"); !ok {
+				log.Printf("[Email] %s does not advertise STARTTLS", addr)
+				return fmt.Errorf("smtp: server %s does not support STARTTLS", addr)
+			}
+			if err := client.StartTLS(tlsConfig); err != nil {
+				log.Printf("[Email] STARTTLS failed on %s: %v", addr, err)
+				return fmt.Errorf("smtp starttls: %w", err)
+			}
+		}
+		log.Printf("[Email] TLS connection established (port %d)", port)
 
 		if auth != nil {
 			if err := client.Auth(auth); err != nil {
