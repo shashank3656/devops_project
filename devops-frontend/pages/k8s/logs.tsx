@@ -1,21 +1,44 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { fetchK8sLogs, formatDateTime, K8sLogsData, readQueryString, streamK8sLogAttach } from '../../lib/k8sWorkspace';
 
+type LogRow = K8sLogsData['items'][number];
+
 function logTone(level: string) {
   const normalized = level.toLowerCase();
-  if (normalized === 'info' || normalized === 'normal') {
-    return 'k8s-data-pill k8s-data-pill--normal';
-  }
-  if (normalized === 'warning' || normalized === 'warn') {
-    return 'k8s-data-pill k8s-data-pill--warning';
-  }
-  return 'k8s-data-pill';
+  if (normalized === 'info' || normalized === 'normal') return 'low';
+  if (normalized === 'warning' || normalized === 'warn') return 'medium';
+  if (normalized === 'error' || normalized === 'fatal' || normalized === 'critical') return 'danger';
+  return 'neutral';
 }
+
+const LOG_COLUMNS: DataTableColumn<LogRow>[] = [
+  { id: 'time', header: 'Time', cell: (item) => <span className="ig-cell-meta">{formatDateTime(item.timestamp)}</span> },
+  {
+    id: 'level',
+    header: 'Level',
+    cell: (item) => <span className={`ig-chip ig-chip--${logTone(item.level || 'info')}`}>{item.level || 'info'}</span>,
+  },
+  {
+    id: 'workload',
+    header: 'Workload',
+    cell: (item) => (
+      <div className="ig-cell-stack">
+        <span className="ig-cell-title">{item.name || 'Workload'}</span>
+        <span className="ig-cell-meta">{item.namespace}</span>
+      </div>
+    ),
+  },
+  { id: 'container', header: 'Container', cell: (item) => item.container || 'main' },
+  { id: 'namespace', header: 'Namespace', cell: (item) => item.namespace },
+  { id: 'cluster', header: 'Cluster', cell: (item) => item.cluster_name },
+  { id: 'message', header: 'Message', cell: (item) => <span className="ig-cell-wrap ig-mono">{item.message}</span> },
+];
 
 function logMatchesSearch(query: string, item: K8sLogsData['items'][number]) {
   if (!query) return true;
@@ -344,47 +367,15 @@ export default function DevOpsK8sLogsPage() {
               </div>
             </div>
 
-            <div className="table-scroll">
-              <table className="templates-table k8s-data-table">
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>Level</th>
-                    <th>Workload</th>
-                    <th>Container</th>
-                    <th>Namespace</th>
-                    <th>Cluster</th>
-                    <th>Message</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((item) => (
-                    <tr key={`${item.cluster_name}-${item.namespace}-${item.name}-${item.container}-${item.timestamp}`}>
-                      <td>{formatDateTime(item.timestamp)}</td>
-                      <td><span className={`portal-pill ${logTone(item.level)}`}>{item.level || 'info'}</span></td>
-                      <td>
-                        <div className="k8s-link-cell">
-                          <span className="k8s-link-cell__title">{item.name || 'Workload'}</span>
-                          <span className="k8s-link-cell__meta">{item.namespace}</span>
-                        </div>
-                      </td>
-                      <td>{item.container || 'main'}</td>
-                      <td>{item.namespace}</td>
-                      <td>{item.cluster_name}</td>
-                      <td>{item.message}</td>
-                    </tr>
-                  ))}
-                  {!loading && visibleRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={7}>
-                        <div className="portal-empty">
-                          <p>No logs match the current cluster, namespace, and level filters.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            <div className="ig-legacy-table">
+              <DataTable<LogRow>
+                label="Workload logs"
+                columns={LOG_COLUMNS}
+                rows={visibleRows}
+                rowKey={getLogKey}
+                loading={loading}
+                empty={<EmptyState title="No logs found" body="No logs match the current cluster, namespace, and level filters." />}
+              />
             </div>
           </section>
         </K8sWorkspaceShell>

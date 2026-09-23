@@ -5,6 +5,9 @@ export { formatRelativeTime, greetingFor, initialsFor } from './time';
 export { default as ActivityFeed } from './ActivityFeed';
 export { default as BulkBar } from './BulkBar';
 export { default as CommandPalette } from './CommandPalette';
+export { default as CostCheckCard, formatMoney } from './CostCheckCard';
+export { default as Day2Banner } from './Day2Banner';
+export { default as MobileTabBar, type MobileTab } from './MobileTabBar';
 export { default as DataTable, type DataTableColumn, type DataTableSort, type RowKey } from './DataTable';
 export { default as InspectorDrawer } from './InspectorDrawer';
 export { default as UndoToaster } from './UndoToaster';
@@ -13,7 +16,11 @@ export { default as EmptyState } from './EmptyState';
 export { default as EnvironmentPipeline } from './EnvironmentPipeline';
 export { default as EstimatePanel } from './EstimatePanel';
 export { default as PageHeader } from './PageHeader';
+export { default as PlanReviewCard } from './PlanReviewCard';
+export { default as PolicyChecksCard } from './PolicyChecksCard';
 export { default as PRImpactBrief } from './PRImpactBrief';
+export { default as ProjectHealthCard } from './ProjectHealthCard';
+export { default as SavedViews, type SavedView } from './SavedViews';
 export { default as SegmentedControl, type SegmentedOption } from './SegmentedControl';
 export { default as StatusChip } from './StatusChip';
 export { default as Stepper, type StepperStep } from './Stepper';
@@ -22,11 +29,25 @@ export { default as WorkspaceHome } from './WorkspaceHome';
 export type {
   ActivityItem,
   CostEstimate,
+  DoraBand,
+  DoraMetric,
   GoldenPath,
+  IdleCandidate,
   PaletteCommand,
   PipelineStage,
+  PlanChange,
+  PlanReview,
+  PolicyCheckSummary,
+  PolicyFinding,
+  PolicyToolResult,
   PRImpactBriefData,
+  ProjectCostSummary,
+  ProjectHealth,
   QueueItem,
+  RequestCostCheck,
+  RequestLifetime,
+  RequestOperation,
+  ScorecardCheck,
   SearchHit,
   Tone,
   WorkspacePayload,

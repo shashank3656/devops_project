@@ -24,7 +24,7 @@ import {
 } from './Icons';
 import SupportHub from './SupportHub';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
-import { CommandPalette, ThemeToggle } from '@infragate/ui';
+import { CommandPalette, MobileTabBar, ThemeToggle } from '@infragate/ui';
 
 const SIDEBAR_COLLAPSED_KEY = 'infra-admin-sidebar-collapsed';
 const NOTIFY_POLL_MS = 30000;
@@ -598,6 +598,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+      <MobileTabBar
+        tabs={PRIMARY_NAV.slice(0, 4).map((item) => ({
+          ...item,
+          active: pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href)),
+          badge: getSidebarBadge(item.href),
+        }))}
+        onMore={() => setMobileMenuOpen((open) => !open)}
+        moreOpen={mobileMenuOpen}
+        MoreIcon={IconMenu}
+      />
       <CommandPalette
         apiUrl={apiUrl}
         token={token}

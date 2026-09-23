@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { DataTable, InspectorDrawer, formatRelativeTime, type DataTableColumn } from '@infragate/ui';
+import { DataTable, InspectorDrawer, formatRelativeTime, type DataTableColumn, type RequestLifetime } from '@infragate/ui';
 import { useToast } from '../context/ToastContext';
 import CalendarDateInput from '../components/CalendarDateInput';
 import RequestPRImpact from '../components/RequestPRImpact';
+import RequestLifecyclePanel from '../components/RequestLifecyclePanel';
 
 import { maskSensitiveJson } from '../lib/maskSensitive';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
@@ -318,6 +319,7 @@ export default function History() {
   const [timeline, setTimeline] = useState<{ id: number; kind: string; action: string; username: string; details: string; body?: string; created_at: string }[]>([]);
   const [dependsOn, setDependsOn] = useState<number[]>([]);
   const [blockedBy, setBlockedBy] = useState<number[]>([]);
+  const [lifetime, setLifetime] = useState<RequestLifetime | null>(null);
   const [newDepId, setNewDepId] = useState('');
   const [addingDep, setAddingDep] = useState(false);
   const [presets, setPresets] = useState<FilterPreset[]>([]);
@@ -556,6 +558,7 @@ export default function History() {
     setTags([]);
     setDependsOn([]);
     setBlockedBy([]);
+    setLifetime(null);
     setConfigHistory([]);
     setShowConfigHistory(false);
     setNewTag('');
@@ -580,6 +583,7 @@ export default function History() {
         setCanApproveByManager(Boolean(data.can_approve_by_manager));
         setDependsOn(Array.isArray(data.depends_on) ? data.depends_on : []);
         setBlockedBy(Array.isArray(data.blocked_by) ? data.blocked_by : []);
+        setLifetime(data.lifetime || null);
         if (full.config) {
           rawConfigByRequestId.current[full.id] = full.config;
           setDetailRequest({ ...full, config: maskSensitiveJson(full.config) });
@@ -1732,6 +1736,21 @@ export default function History() {
                         )}
                       </div>
                     </div>
+                    {!detailRequestIsAccess && (
+                      <RequestLifecyclePanel
+                        apiUrl={apiUrl}
+                        requestId={detailRequest.id}
+                        status={detailRequest.status}
+                        lifetime={lifetime}
+                        canManage={currentUserId == null || detailRequest.created_by === currentUserId}
+                        onLifetimeChange={setLifetime}
+                        onRequestCreated={(id) => {
+                          fetchHistory();
+                          setDetailRequest(null);
+                          openDetail({ id } as PRRequest);
+                        }}
+                      />
+                    )}
                     {showConfigHistory && detailRequest && (
                       <div className="history-detail-modal__section history-detail-modal__section--muted">
                         <div className="history-detail-modal__section-head">

@@ -23,7 +23,7 @@ import {
 } from './Icons';
 import SupportHub from './SupportHub';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
-import { CommandPalette, SearchTrigger, ThemeToggle } from '@infragate/ui';
+import { CommandPalette, MobileTabBar, SearchTrigger, ThemeToggle, type MobileTab } from '@infragate/ui';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -425,6 +425,22 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
     return null;
   };
 
+  const isNavActive = (href: string) =>
+    href === '/k8s' ? k8sNavActive : pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+  const mobileTabs: MobileTab[] = (isManager
+    ? [
+        { href: '/dashboard', label: 'Overview', Icon: IconTickets },
+        { href: '/tickets', label: 'Requests', Icon: IconTickets },
+        { href: '/approval-center', label: 'Approvals', Icon: IconShield },
+        { href: '/incidents', label: 'Incidents', Icon: IconAlertTriangle },
+      ]
+    : [
+        { href: '/dashboard', label: 'Overview', Icon: IconTickets },
+        { href: '/tickets', label: 'Requests', Icon: IconTickets },
+        { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
+      ]
+  ).map((tab) => ({ ...tab, active: isNavActive(tab.href), badge: getSidebarBadge(tab.href) }));
+
   return (
     <div className="devops-layout devops-layout-sidebar">
       <a className="ig-skip-link" href="#main-content">
@@ -712,6 +728,12 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
           {children}
         </main>
       </div>
+      <MobileTabBar
+        tabs={mobileTabs}
+        onMore={() => setMobileMenuOpen((open) => !open)}
+        moreOpen={mobileMenuOpen}
+        MoreIcon={IconMenu}
+      />
       <CommandPalette
         apiUrl={apiUrl}
         token={typeof window === 'undefined' ? null : localStorage.getItem(DEVOPS_TOKEN_KEY)}

@@ -2,17 +2,20 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { buildK8sHref, fetchK8sIngresses, K8sIngressesData, readQueryString } from '../../lib/k8sWorkspace';
 
+type IngressRow = K8sIngressesData['items'][number];
+
 function ingressTone(status: string) {
   const normalized = status.trim().toLowerCase();
-  if (normalized === 'healthy' || normalized === 'ready') return 'k8s-data-pill k8s-data-pill--healthy';
-  if (normalized === 'expiring' || normalized === 'warning') return 'k8s-data-pill k8s-data-pill--expiring';
-  if (normalized === 'critical' || normalized === 'blocked') return 'k8s-data-pill k8s-data-pill--critical';
-  return 'k8s-data-pill';
+  if (normalized === 'healthy' || normalized === 'ready') return 'low';
+  if (normalized === 'expiring' || normalized === 'warning') return 'medium';
+  if (normalized === 'critical' || normalized === 'blocked') return 'danger';
+  return 'neutral';
 }
 
 export default function DevOpsK8sIngressesPage() {
@@ -93,6 +96,52 @@ export default function DevOpsK8sIngressesPage() {
     }),
     [visibleRows],
   );
+
+  const ingressHref = (item: IngressRow) =>
+    buildK8sHref(`/k8s/ingresses/${encodeURIComponent(item.name)}`, {
+      project_id: projectId || undefined,
+      cluster_name: item.cluster_name,
+      namespace: item.namespace,
+      environment: environment || undefined,
+      ingress_name: item.name,
+    });
+
+  const columns: DataTableColumn<IngressRow>[] = [
+    {
+      id: 'ingress',
+      header: 'Ingress',
+      cell: (item) => (
+        <Link className="ig-cell-stack ig-cell-link" href={ingressHref(item)}>
+          <span className="ig-cell-title">{item.name}</span>
+          <span className="ig-cell-meta">{item.host || 'No hostname recorded'} · Open route detail</span>
+        </Link>
+      ),
+    },
+    { id: 'namespace', header: 'Namespace', cell: (item) => item.namespace },
+    { id: 'host', header: 'Host', cell: (item) => item.host || '—' },
+    { id: 'paths', header: 'Paths', cell: (item) => <span className="ig-mono">{item.paths || '—'}</span> },
+    { id: 'tls_secret', header: 'TLS Secret', cell: (item) => item.tls_secret || '—' },
+    {
+      id: 'certificate',
+      header: 'Certificate',
+      cell: (item) => (
+        <span className={`ig-chip ig-chip--${ingressTone(item.certificate_status || item.status)}`}>
+          {item.certificate_status || 'unknown'}
+        </span>
+      ),
+    },
+    {
+      id: 'exposure',
+      header: 'Exposure',
+      cell: (item) => <span className="ig-chip ig-chip--muted">{item.exposure || 'internal'}</span>,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (item) => <span className={`ig-chip ig-chip--${ingressTone(item.status)}`}>{item.status || 'unknown'}</span>,
+    },
+    { id: 'cluster', header: 'Cluster', cell: (item) => item.cluster_name },
+  ];
 
   return (
     <>
@@ -223,64 +272,16 @@ export default function DevOpsK8sIngressesPage() {
               </div>
             </div>
 
-            <div className="table-scroll">
-              <table className="templates-table k8s-data-table">
-                <thead>
-                  <tr>
-                    <th>Ingress</th>
-                    <th>Namespace</th>
-                    <th>Host</th>
-                    <th>Paths</th>
-                    <th>TLS Secret</th>
-                    <th>Certificate</th>
-                    <th>Exposure</th>
-                    <th>Status</th>
-                    <th>Cluster</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((item) => (
-                    <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}>
-                      <td>
-                        <Link
-                          className="k8s-link-cell"
-                          href={buildK8sHref(`/k8s/ingresses/${encodeURIComponent(item.name)}`, {
-                            project_id: projectId || undefined,
-                            cluster_name: item.cluster_name,
-                            namespace: item.namespace,
-                            environment: environment || undefined,
-                            ingress_name: item.name,
-                          })}
-                        >
-                          <div className="k8s-link-cell__title">{item.name}</div>
-                          <div className="k8s-link-cell__meta">{item.host || 'No hostname recorded'} · Open route detail</div>
-                        </Link>
-                      </td>
-                      <td>{item.namespace}</td>
-                      <td>{item.host || '—'}</td>
-                      <td>{item.paths || '—'}</td>
-                      <td>{item.tls_secret || '—'}</td>
-                      <td>
-                        <span className={ingressTone(item.certificate_status || item.status)}>
-                          {item.certificate_status || 'unknown'}
-                        </span>
-                      </td>
-                      <td>{item.exposure || 'internal'}</td>
-                      <td>{item.status || 'unknown'}</td>
-                      <td>{item.cluster_name}</td>
-                    </tr>
-                  ))}
-                  {!loading && visibleRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={9}>
-                        <div className="portal-empty">
-                          <p>No ingress routes match the current filters.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            <div className="ig-legacy-table">
+              <DataTable<IngressRow>
+                label="Ingress routes"
+                columns={columns}
+                rows={visibleRows}
+                rowKey={(item) => `${item.cluster_name}-${item.namespace}-${item.name}`}
+                loading={loading}
+                onRowOpen={(item) => void router.push(ingressHref(item))}
+                empty={<EmptyState title="No ingress routes found" body="No ingress routes match the current filters." />}
+              />
             </div>
           </section>
         </K8sWorkspaceShell>

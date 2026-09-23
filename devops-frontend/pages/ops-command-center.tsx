@@ -897,6 +897,9 @@ export default function OpsCommandCenterPage() {
                             <span className="portal-pill">{item.state} · score {item.drift_score}</span>
                           </div>
                           <p style={{ marginTop: 8, color: 'var(--color-text-muted)' }}>{item.summary}</p>
+                          <Link href={`/projects/${item.project_id}#drift`} className="btn btn-secondary btn-sm">
+                            Review and fix drift
+                          </Link>
                         </article>
                       ))}
                     </div>

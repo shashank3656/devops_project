@@ -777,7 +777,7 @@ func devopsBulkActionHandler(w http.ResponseWriter, r *http.Request, managerID i
 			continue
 		}
 		if action == "bulk-approve" {
-			prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
+			prURL, err := createPullRequestForRequest(req)
 			if err != nil {
 				errs = append(errs, fmt.Sprintf("#%d: %v", id, err))
 				continue
@@ -858,6 +858,10 @@ func devopsRequestDetailHandler(w http.ResponseWriter, id int) {
 		"jira_ticket_id":        req.JiraTicketID,
 		"cost_risk_preview":     BuildCostRiskPreview(req),
 		"approval_context":      BuildRequestApprovalContext(req),
+		"plan_review":           buildPlanReview(req),
+		"policy_checks":         buildPolicyCheckSummary(req.ID),
+		"cost_check":            buildRequestCostCheck(req),
+		"operation":             loadRequestOperation(req.ID),
 	}
 	dependsOn, _ := GetRequestDependencies(id)
 	blockedBy, _ := GetRequestsThatDependOn(id)
@@ -1000,6 +1004,13 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	case "comments":
 		devopsRequestCommentsHandler(w, r, id, managerID)
 		return
+	case "plan-review":
+		if len(parts) == 3 && parts[2] == "acknowledge" {
+			handlePlanReviewAcknowledge(w, r, req, managerID, "devops_manager")
+			return
+		}
+		http.NotFound(w, r)
+		return
 	case "timeline":
 		if r.Method != "GET" {
 			writeMethodNotAllowed(w, r)
@@ -1025,7 +1036,7 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			encodeDevopsJSON(w, map[string]interface{}{"error": "only pending_devops_approval requests can be approved", "status": "error"})
 			return
 		}
-		prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
+		prURL, err := createPullRequestForRequest(req)
 		if err != nil {
 			log.Printf("DevOps approve: create PR failed: %v", err)
 			w.Header().Set("Content-Type", "application/json")

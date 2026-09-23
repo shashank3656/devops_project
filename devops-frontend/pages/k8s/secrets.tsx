@@ -1,18 +1,52 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { fetchK8sSecrets, K8sSecretsData, readQueryString } from '../../lib/k8sWorkspace';
 
+type SecretRow = K8sSecretsData['items'][number];
+
 function secretTone(status: string) {
   const normalized = status.trim().toLowerCase();
-  if (normalized === 'healthy') return 'k8s-data-pill k8s-data-pill--healthy';
-  if (normalized === 'expiring' || normalized === 'warning') return 'k8s-data-pill k8s-data-pill--expiring';
-  if (normalized === 'critical') return 'k8s-data-pill k8s-data-pill--critical';
-  return 'k8s-data-pill';
+  if (normalized === 'healthy') return 'low';
+  if (normalized === 'expiring' || normalized === 'warning') return 'medium';
+  if (normalized === 'critical') return 'danger';
+  return 'neutral';
 }
+
+const SECRET_COLUMNS: DataTableColumn<SecretRow>[] = [
+  {
+    id: 'secret',
+    header: 'Secret',
+    cell: (item) => (
+      <div className="ig-cell-stack">
+        <span className="ig-cell-title">{item.name}</span>
+        <span className="ig-cell-meta">{item.type || 'Opaque secret'}</span>
+      </div>
+    ),
+  },
+  { id: 'namespace', header: 'Namespace', cell: (item) => item.namespace },
+  { id: 'type', header: 'Type', cell: (item) => item.type || '—' },
+  { id: 'managed_by', header: 'Managed by', cell: (item) => item.managed_by || 'manual' },
+  { id: 'keys', header: 'Keys', align: 'right', className: 'ig-cell-num', cell: (item) => item.key_count },
+  { id: 'bound_to', header: 'Bound to', cell: (item) => item.bound_to || '—' },
+  {
+    id: 'certificate',
+    header: 'Certificate',
+    cell: (item) => (
+      <span className={`ig-chip ig-chip--${secretTone(item.certificate_status)}`}>{item.certificate_status || 'n/a'}</span>
+    ),
+  },
+  {
+    id: 'expires',
+    header: 'Expires',
+    cell: (item) => (item.expires_at ? new Date(item.expires_at).toLocaleDateString() : '—'),
+  },
+  { id: 'cluster', header: 'Cluster', cell: (item) => item.cluster_name },
+];
 
 export default function DevOpsK8sSecretsPage() {
   const apiUrl = useApiUrl();
@@ -222,53 +256,15 @@ export default function DevOpsK8sSecretsPage() {
               </div>
             </div>
 
-            <div className="table-scroll">
-              <table className="templates-table k8s-data-table">
-                <thead>
-                  <tr>
-                    <th>Secret</th>
-                    <th>Namespace</th>
-                    <th>Type</th>
-                    <th>Managed by</th>
-                    <th>Keys</th>
-                    <th>Bound to</th>
-                    <th>Certificate</th>
-                    <th>Expires</th>
-                    <th>Cluster</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((item) => (
-                    <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}>
-                      <td>
-                        <div className="k8s-link-cell__title">{item.name}</div>
-                        <div className="k8s-link-cell__meta">{item.type || 'Opaque secret'}</div>
-                      </td>
-                      <td>{item.namespace}</td>
-                      <td>{item.type || '—'}</td>
-                      <td>{item.managed_by || 'manual'}</td>
-                      <td>{item.key_count}</td>
-                      <td>{item.bound_to || '—'}</td>
-                      <td>
-                        <span className={secretTone(item.certificate_status)}>
-                          {item.certificate_status || 'n/a'}
-                        </span>
-                      </td>
-                      <td>{item.expires_at ? new Date(item.expires_at).toLocaleDateString() : '—'}</td>
-                      <td>{item.cluster_name}</td>
-                    </tr>
-                  ))}
-                  {!loading && visibleRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={9}>
-                        <div className="portal-empty">
-                          <p>No secrets match the current filters.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            <div className="ig-legacy-table">
+              <DataTable<SecretRow>
+                label="Runtime secrets"
+                columns={SECRET_COLUMNS}
+                rows={visibleRows}
+                rowKey={(item) => `${item.cluster_name}-${item.namespace}-${item.name}`}
+                loading={loading}
+                empty={<EmptyState title="No secrets found" body="No secrets match the current filters." />}
+              />
             </div>
           </section>
         </K8sWorkspaceShell>

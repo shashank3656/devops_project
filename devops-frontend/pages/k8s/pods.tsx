@@ -2,10 +2,20 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { buildK8sHref, fetchK8sPods, K8sPodsData, readQueryString } from '../../lib/k8sWorkspace';
+
+type PodRow = K8sPodsData['items'][number];
+
+function podTone(status: string) {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === 'running' || normalized === 'succeeded' || normalized === 'completed') return 'low';
+  if (['failed', 'error', 'crashloopbackoff', 'oomkilled', 'imagepullbackoff', 'errimagepull'].includes(normalized)) return 'danger';
+  return 'medium';
+}
 
 function podMatchesSearch(
   query: string,
@@ -91,6 +101,38 @@ export default function DevOpsK8sPodsPage() {
   );
 
   const scopeProjectId = projectId || String(data?.selected_project_id || '');
+
+  const podHref = (item: PodRow) =>
+    buildK8sHref(`/k8s/pods/${encodeURIComponent(item.name)}`, {
+      project_id: scopeProjectId || undefined,
+      cluster_name: item.cluster_name,
+      namespace: item.namespace,
+      environment: environment || undefined,
+    });
+
+  const columns: DataTableColumn<PodRow>[] = [
+    {
+      id: 'pod',
+      header: 'Pod',
+      cell: (item) => (
+        <Link className="ig-cell-stack ig-cell-link" href={podHref(item)}>
+          <span className="ig-cell-title">{item.name}</span>
+          <span className="ig-cell-meta">{item.cluster_name}</span>
+        </Link>
+      ),
+    },
+    { id: 'namespace', header: 'Namespace', cell: (item) => item.namespace },
+    { id: 'deployment', header: 'Deployment', cell: (item) => item.deployment || '—' },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (item) => <span className={`ig-chip ig-chip--${podTone(item.status)}`}>{item.status}</span>,
+    },
+    { id: 'restarts', header: 'Restarts', align: 'right', className: 'ig-cell-num', cell: (item) => item.restarts },
+    { id: 'node', header: 'Node', cell: (item) => item.node || '—' },
+    { id: 'age', header: 'Age', cell: (item) => item.age || '—' },
+    { id: 'cluster', header: 'Cluster', cell: (item) => item.cluster_name },
+  ];
 
   return (
     <>
@@ -210,57 +252,16 @@ export default function DevOpsK8sPodsPage() {
               </div>
             </div>
 
-            <div className="table-scroll">
-              <table className="templates-table k8s-data-table">
-                <thead>
-                  <tr>
-                    <th>Pod</th>
-                    <th>Namespace</th>
-                    <th>Deployment</th>
-                    <th>Status</th>
-                    <th>Restarts</th>
-                    <th>Node</th>
-                    <th>Age</th>
-                    <th>Cluster</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((item) => (
-                    <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}>
-                      <td>
-                        <Link
-                          className="k8s-link-cell"
-                          href={buildK8sHref(`/k8s/pods/${encodeURIComponent(item.name)}`, {
-                            project_id: scopeProjectId || undefined,
-                            cluster_name: item.cluster_name,
-                            namespace: item.namespace,
-                            environment: environment || undefined,
-                          })}
-                        >
-                          <span className="k8s-link-cell__title">{item.name}</span>
-                          <span className="k8s-link-cell__meta">{item.cluster_name}</span>
-                        </Link>
-                      </td>
-                      <td>{item.namespace}</td>
-                      <td>{item.deployment || '—'}</td>
-                      <td><span className={`portal-pill ${item.status.toLowerCase() === 'running' ? 'k8s-data-pill k8s-data-pill--normal' : 'k8s-data-pill k8s-data-pill--warning'}`}>{item.status}</span></td>
-                      <td>{item.restarts}</td>
-                      <td>{item.node || '—'}</td>
-                      <td>{item.age || '—'}</td>
-                      <td>{item.cluster_name}</td>
-                    </tr>
-                  ))}
-                  {!loading && visibleRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={8}>
-                        <div className="portal-empty">
-                          <p>No pods match the current filters.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            <div className="ig-legacy-table">
+              <DataTable<PodRow>
+                label="Runtime pods"
+                columns={columns}
+                rows={visibleRows}
+                rowKey={(item) => `${item.cluster_name}-${item.namespace}-${item.name}`}
+                loading={loading}
+                onRowOpen={(item) => void router.push(podHref(item))}
+                empty={<EmptyState title="No pods found" body="No pods match the current filters." />}
+              />
             </div>
           </section>
         </K8sWorkspaceShell>

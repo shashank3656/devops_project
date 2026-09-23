@@ -1,5 +1,135 @@
 export type RiskLevel = 'low' | 'medium' | 'high';
 
+export interface RequestOperation {
+  operation: 'resize' | 'decommission';
+  source_request_id: number;
+  reason?: string;
+  created_at: string;
+}
+
+export interface RequestLifetime {
+  expires_at?: string;
+  days_left: number;
+  extended_count: number;
+  can_set_lifetime: boolean;
+  decommission_request_id?: number;
+  operation?: RequestOperation;
+}
+
+export interface PolicyFinding {
+  rule: string;
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info' | 'unknown';
+  resource?: string;
+  message: string;
+  file?: string;
+}
+
+export interface PolicyToolResult {
+  tool: string;
+  passed: number;
+  failed: number;
+  blocking: number;
+  findings: PolicyFinding[];
+  truncated: boolean;
+  updated_at?: string;
+}
+
+export interface PolicyCheckSummary {
+  state: 'none' | 'pass' | 'warn' | 'fail';
+  passed: number;
+  failed: number;
+  blocking: number;
+  tools: PolicyToolResult[];
+}
+
+export type DoraBand = 'elite' | 'high' | 'medium' | 'low' | 'none';
+
+export interface DoraMetric {
+  key: 'deploy_frequency' | 'lead_time' | 'change_failure_rate' | 'time_to_restore';
+  label: string;
+  value: number;
+  previous: number;
+  unit: 'per_week' | 'hours' | 'percent';
+  band: DoraBand;
+  samples: number;
+  lower_is_better: boolean;
+}
+
+export interface ScorecardCheck {
+  key: string;
+  label: string;
+  passed: boolean;
+  detail: string;
+  href?: string;
+}
+
+export interface RequestCostCheck {
+  has_infracost: boolean;
+  currency: string;
+  monthly_cost: number;
+  past_monthly_cost: number;
+  diff_monthly_cost: number;
+  estimate: number;
+  estimate_low: number;
+  estimate_high: number;
+  estimate_basis: string;
+  variance: 'within' | 'above' | 'below' | 'unknown';
+  updated_at?: string;
+}
+
+export interface IdleCandidate {
+  request_id: number;
+  environment: string;
+  service: string;
+  monthly_cost: number;
+  days_idle: number;
+}
+
+export interface ProjectCostSummary {
+  currency: string;
+  budget_monthly: number;
+  committed_monthly: number;
+  pending_monthly: number;
+  projected_monthly: number;
+  percent_used: number;
+  projected_percent: number;
+  alert_level: 'none' | 'warn' | 'over';
+  tracked_requests: number;
+  idle_candidates: IdleCandidate[];
+}
+
+export interface ProjectHealth {
+  window_days: number;
+  metrics: DoraMetric[];
+  scorecard: ScorecardCheck[];
+  score: number;
+  cost?: ProjectCostSummary;
+}
+
+export interface PlanChange {
+  address: string;
+  action: 'create' | 'update' | 'destroy' | 'replace' | 'read';
+}
+
+export interface PlanReview {
+  has_plan: boolean;
+  no_changes: boolean;
+  import: number;
+  add: number;
+  change: number;
+  destroy: number;
+  replace: number;
+  destroy_only: number;
+  changes: PlanChange[];
+  truncated: boolean;
+  plan_hash?: string;
+  requires_ack: boolean;
+  acknowledged: boolean;
+  acknowledged_by?: string;
+  acknowledged_at?: string;
+  ack_note?: string;
+}
+
 export type Tone = RiskLevel | 'ok' | 'info' | 'danger';
 
 export type QueueKind = 'approval' | 'incident' | 'pr_risk' | 'freeze' | 'rejected' | 'draft' | 'waiting';

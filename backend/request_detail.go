@@ -98,6 +98,12 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 		case "dependencies":
 			handleRequestDependencies(w, r, id, req, userID)
 			return
+		case "lifetime":
+			handleRequestLifetime(w, r, id, req, userID)
+			return
+		case "day2":
+			handleRequestDay2(w, r, id, req, userID)
+			return
 		}
 	}
 

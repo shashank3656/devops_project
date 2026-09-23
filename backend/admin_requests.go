@@ -574,7 +574,7 @@ func adminBulkApproveHandler(w http.ResponseWriter, r *http.Request) {
 			failed = append(failed, id)
 			continue
 		}
-		prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
+		prURL, err := createPullRequestForRequest(req)
 		if err != nil {
 			log.Printf("Bulk approve id %d: %v", id, err)
 			failed = append(failed, id)
@@ -762,6 +762,10 @@ func adminRequestDetailHandler(w http.ResponseWriter, r *http.Request, id int) {
 		"jira_ticket_id":        req.JiraTicketID,
 		"cost_risk_preview":     BuildCostRiskPreview(req),
 		"approval_context":      BuildRequestApprovalContext(req),
+		"plan_review":           buildPlanReview(req),
+		"policy_checks":         buildPolicyCheckSummary(req.ID),
+		"cost_check":            buildRequestCostCheck(req),
+		"operation":             loadRequestOperation(req.ID),
 	}
 	dependsOn, _ := GetRequestDependencies(id)
 	blockedBy, _ := GetRequestsThatDependOn(id)
@@ -861,6 +865,13 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch action {
+	case "plan-review":
+		if len(parts) == 3 && parts[2] == "acknowledge" {
+			handlePlanReviewAcknowledge(w, r, req, adminID, "admin")
+			return
+		}
+		http.NotFound(w, r)
+		return
 	case "approve":
 		if r.Method != "POST" {
 			writeMethodNotAllowed(w, r)
@@ -884,7 +895,7 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// pending_approval or pending_devops_approval: create PR and assign
-		prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
+		prURL, err := createPullRequestForRequest(req)
 		if err != nil {
 			log.Printf("Admin approve: create PR failed: %v", err)
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to create PR", err)
@@ -987,6 +998,9 @@ func adminRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		AppendAuditLog(adminIDPtr, "request_plan_output", "pr_request", strconv.Itoa(id), "terraform plan/output updated")
+		withPlan := *req
+		withPlan.TerraformPlanOutput = body.Output
+		go publishPlanReviewStatus(&withPlan, buildPlanReview(&withPlan))
 		w.Header().Set("Content-Type", "application/json")
 		encodeAdminJSON(w, map[string]interface{}{"status": "ok", "message": "Terraform output updated"})
 		return

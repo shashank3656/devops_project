@@ -3,13 +3,23 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import {
   BulkBar,
+  CostCheckCard,
   DataTable,
+  Day2Banner,
   InspectorDrawer,
+  PlanReviewCard,
+  PolicyChecksCard,
+  SavedViews,
   UndoToaster,
   formatRelativeTime,
   useUndoQueue,
   type DataTableColumn,
+  type PlanReview,
+  type PolicyCheckSummary,
+  type RequestCostCheck,
+  type RequestOperation,
   type RowKey,
+  type SavedView,
 } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import RequestPRImpact from '../components/RequestPRImpact';
@@ -28,6 +38,29 @@ const STATUS_OPTIONS = [
   { value: 'in_progress', label: 'In progress' },
   { value: 'completed', label: 'Completed' },
   { value: 'rejected', label: 'Rejected' },
+];
+
+interface TicketFilters {
+  idFilter: string;
+  team: string;
+  projectId: string;
+  cloud: string;
+  status: string;
+  search: string;
+  requester: string;
+  sortBy: string;
+  sortOrder: string;
+  atRisk: boolean;
+}
+
+const DEFAULT_TICKET_FILTERS: TicketFilters = {
+  idFilter: '', team: '', projectId: '', cloud: '', status: '', search: '', requester: '', sortBy: 'created_at', sortOrder: 'desc', atRisk: false,
+};
+
+const TICKET_VIEW_PRESETS: SavedView<TicketFilters>[] = [
+  { name: 'Needs DevOps review', filters: { ...DEFAULT_TICKET_FILTERS, status: 'pending_devops_approval' } },
+  { name: 'Overdue or due soon', filters: { ...DEFAULT_TICKET_FILTERS, atRisk: true, sortBy: 'due_date', sortOrder: 'asc' } },
+  { name: 'In progress', filters: { ...DEFAULT_TICKET_FILTERS, status: 'in_progress', sortBy: 'updated_at' } },
 ];
 
 function getStatusBadgeClass(status: string): string {
@@ -146,6 +179,10 @@ interface TicketDetail extends TicketRow {
   blocked_by_with_status?: BlockedByItem[];
   cost_risk_preview?: CostRiskPreview | null;
   approval_context?: ApprovalContext | null;
+  plan_review?: PlanReview | null;
+  policy_checks?: PolicyCheckSummary | null;
+  cost_check?: RequestCostCheck | null;
+  operation?: RequestOperation | null;
 }
 
 interface RequestComment {
@@ -454,6 +491,21 @@ export default function DevOpsTickets() {
     await loadDetail(detailId, false);
   };
 
+  const acknowledgePlan = async (planHash: string, note: string) => {
+    if (!token || !detailRequest) return;
+    const id = detailRequest.id;
+    const res = await fetch(`${apiUrl}/api/devops/requests/${id}/plan-review/acknowledge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ plan_hash: planHash, note }),
+    });
+    const data = asRecord(await res.json().catch(() => ({})));
+    const review = data.plan_review as PlanReview | undefined;
+    if (review) setDetailRequest((prev) => (prev && prev.id === id ? { ...prev, plan_review: review } : prev));
+    if (!res.ok) throw new Error(getString(data.error, 'Could not save the acknowledgement.'));
+    setDetailNotice('Destructive plan acknowledged. The pull request can merge once its other checks pass.');
+  };
+
   const submitComment = async () => {
     if (!token || !detailRequest || !commentBody.trim()) return;
     setCommentSubmitting(true);
@@ -731,20 +783,24 @@ export default function DevOpsTickets() {
     loadDetail(id);
   };
 
-  const clearFilters = () => {
-    setIdFilter('');
-    setTeam('');
-    setProjectId('');
-    setCloud('');
-    setStatus('');
-    setSearch('');
-    setRequester('');
-    setSortBy('created_at');
-    setSortOrder('desc');
-    setAtRisk(false);
+  const applyFilterSet = (next: TicketFilters) => {
+    setIdFilter(next.idFilter);
+    setTeam(next.team);
+    setProjectId(next.projectId);
+    setCloud(next.cloud);
+    setStatus(next.status);
+    setSearch(next.search);
+    setRequester(next.requester);
+    setSortBy(next.sortBy);
+    setSortOrder(next.sortOrder);
+    setAtRisk(next.atRisk);
     setOffset(0);
-    setFilterExpanded(false);
+    setFilterExpanded(Boolean(next.team || next.cloud || next.requester || next.atRisk || next.sortBy !== 'created_at' || next.sortOrder !== 'desc'));
   };
+
+  const clearFilters = () => applyFilterSet(DEFAULT_TICKET_FILTERS);
+
+  const currentFilters: TicketFilters = { idFilter, team, projectId, cloud, status, search, requester, sortBy, sortOrder, atRisk };
 
   return (
     <>
@@ -778,6 +834,14 @@ export default function DevOpsTickets() {
               </p>
             </div>
           </div>
+
+          <SavedViews<TicketFilters>
+            storageKey="infragate.devops.tickets.views"
+            current={currentFilters}
+            onApply={applyFilterSet}
+            presets={TICKET_VIEW_PRESETS}
+            canSave={activeFilterCount > 0}
+          />
 
           <div className="devops-filter-ribbon card">
             <div className="devops-filter-ribbon__bar">
@@ -1021,6 +1085,15 @@ export default function DevOpsTickets() {
                 <>
                   {detailError && <div className="alert alert-error">{detailError}</div>}
                   {detailNotice && <div className="devops-approval-workspace__notice">{detailNotice}</div>}
+
+                  {detailRequest ? (
+                    <>
+                      <Day2Banner operation={detailRequest.operation} />
+                      <PlanReviewCard review={detailRequest.plan_review} env={detailRequest.env} onAcknowledge={acknowledgePlan} />
+                      <PolicyChecksCard summary={detailRequest.policy_checks} />
+                      <CostCheckCard check={detailRequest.cost_check} />
+                    </>
+                  ) : null}
 
                   {detailRequest && (
                     <div className="devops-approval-workspace__grid">

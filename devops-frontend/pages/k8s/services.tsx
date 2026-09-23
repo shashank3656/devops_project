@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
@@ -481,6 +482,44 @@ export default function DevOpsK8sServicesPage() {
     };
   }, [selectedServiceKey, serviceRuntimeTrace]);
 
+  const serviceColumns: DataTableColumn<K8sServiceRow>[] = [
+    {
+      id: 'service',
+      header: 'Service',
+      cell: (item) => (
+        <div className="ig-cell-stack">
+          <Link
+            href={buildK8sHref(`/k8s/services/${encodeURIComponent(item.name)}`, {
+              project_id: projectId || undefined,
+              cluster_name: item.cluster_name || undefined,
+              namespace: item.namespace || undefined,
+              environment: environment || undefined,
+            })}
+            className="ig-cell-link"
+          >
+            <span className="ig-cell-title">{item.name}</span>
+          </Link>
+          <span className="ig-cell-meta">{item.selector || 'No selector'}</span>
+        </div>
+      ),
+    },
+    { id: 'namespace', header: 'Namespace', cell: (item) => item.namespace },
+    { id: 'type', header: 'Type', cell: (item) => item.type || '—' },
+    { id: 'cluster_ip', header: 'Cluster IP', cell: (item) => <span className="ig-mono">{item.cluster_ip || '—'}</span> },
+    { id: 'external_ip', header: 'External IP', cell: (item) => <span className="ig-mono">{item.external_ip || '—'}</span> },
+    { id: 'ingress', header: 'Ingress', cell: (item) => item.ingress_host || '—' },
+    { id: 'ports', header: 'Ports', cell: (item) => <span className="ig-mono">{item.ports || '—'}</span> },
+    {
+      id: 'exposure',
+      header: 'Exposure',
+      cell: (item) => {
+        const exposure = item.exposure || 'internal';
+        return <span className={`ig-chip ig-chip--${exposure.toLowerCase() === 'internal' ? 'muted' : 'info'}`}>{exposure}</span>;
+      },
+    },
+    { id: 'cluster', header: 'Cluster', cell: (item) => item.cluster_name },
+  ];
+
   return (
     <>
       <Head>
@@ -899,68 +938,17 @@ export default function DevOpsK8sServicesPage() {
               </section>
             ) : null}
 
-            <div className="table-scroll">
-              <table className="templates-table k8s-data-table">
-                <thead>
-                  <tr>
-                    <th>Service</th>
-                    <th>Namespace</th>
-                    <th>Type</th>
-                    <th>Cluster IP</th>
-                    <th>External IP</th>
-                    <th>Ingress</th>
-                    <th>Ports</th>
-                    <th>Exposure</th>
-                    <th>Cluster</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((item) => {
-                    const rowKey = buildServiceKey(item);
-                    return (
-                      <tr
-                        key={`${item.cluster_name}-${item.namespace}-${item.name}`}
-                        className={selectedServiceKey === rowKey ? 'is-clickable is-active' : 'is-clickable'}
-                        onClick={() => setSelectedServiceKey(rowKey)}
-                      >
-                        <td>
-                          <Link
-                            href={buildK8sHref(`/k8s/services/${encodeURIComponent(item.name)}`, {
-                              project_id: projectId || undefined,
-                              cluster_name: item.cluster_name || undefined,
-                              namespace: item.namespace || undefined,
-                              environment: environment || undefined,
-                            })}
-                            className="k8s-link-cell__title"
-                          >
-                            {item.name}
-                          </Link>
-                          <div className="k8s-link-cell__meta">{item.selector || 'No selector'}</div>
-                        </td>
-                        <td>{item.namespace}</td>
-                        <td>{item.type || '—'}</td>
-                        <td>{item.cluster_ip || '—'}</td>
-                        <td>{item.external_ip || '—'}</td>
-                        <td>{item.ingress_host || '—'}</td>
-                        <td>{item.ports || '—'}</td>
-                        <td>
-                          <span className="portal-pill">{item.exposure || 'internal'}</span>
-                        </td>
-                        <td>{item.cluster_name}</td>
-                      </tr>
-                    );
-                  })}
-                  {!loading && visibleRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={9}>
-                        <div className="portal-empty">
-                          <p>No services match the current filters.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            <div className="ig-legacy-table">
+              <DataTable<K8sServiceRow>
+                label="Cluster services"
+                columns={serviceColumns}
+                rows={visibleRows}
+                rowKey={buildServiceKey}
+                loading={loading}
+                activeKey={selectedServiceKey || null}
+                onRowOpen={(item) => setSelectedServiceKey(buildServiceKey(item))}
+                empty={<EmptyState title="No services found" body="No services match the current filters." />}
+              />
             </div>
           </section>
         </K8sWorkspaceShell>
