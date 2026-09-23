@@ -36,30 +36,30 @@ type prImpactFactor struct {
 }
 
 type prImpactBrief struct {
-	RequestID          int              `json:"request_id,omitempty"`
-	PRNumber           int              `json:"pr_number,omitempty"`
-	PRURL              string           `json:"pr_url,omitempty"`
-	Title              string           `json:"title,omitempty"`
-	Author             string           `json:"author,omitempty"`
-	BaseBranch         string           `json:"base_branch,omitempty"`
-	HeadBranch         string           `json:"head_branch,omitempty"`
-	MergeState         string           `json:"merge_state,omitempty"`
-	DeployStatus       string           `json:"deploy_status,omitempty"`
-	CommitCount        int              `json:"commit_count"`
-	FileCount          int              `json:"file_count"`
-	Additions          int              `json:"additions"`
-	Deletions          int              `json:"deletions"`
-	Environment        string           `json:"environment,omitempty"`
-	NextEnvironment    string           `json:"next_environment,omitempty"`
-	BlastRadius        []string         `json:"blast_radius"`
-	Score              int              `json:"score"`
-	RiskLevel          string           `json:"risk_level"`
-	Summary            string           `json:"summary"`
-	RecommendedAction  string           `json:"recommended_action"`
-	Factors            []prImpactFactor `json:"factors"`
-	Commits            []prImpactCommit `json:"commits,omitempty"`
-	Files              []prImpactFile   `json:"files,omitempty"`
-	Acknowledged       bool             `json:"acknowledged,omitempty"`
+	RequestID         int              `json:"request_id,omitempty"`
+	PRNumber          int              `json:"pr_number,omitempty"`
+	PRURL             string           `json:"pr_url,omitempty"`
+	Title             string           `json:"title,omitempty"`
+	Author            string           `json:"author,omitempty"`
+	BaseBranch        string           `json:"base_branch,omitempty"`
+	HeadBranch        string           `json:"head_branch,omitempty"`
+	MergeState        string           `json:"merge_state,omitempty"`
+	DeployStatus      string           `json:"deploy_status,omitempty"`
+	CommitCount       int              `json:"commit_count"`
+	FileCount         int              `json:"file_count"`
+	Additions         int              `json:"additions"`
+	Deletions         int              `json:"deletions"`
+	Environment       string           `json:"environment,omitempty"`
+	NextEnvironment   string           `json:"next_environment,omitempty"`
+	BlastRadius       []string         `json:"blast_radius"`
+	Score             int              `json:"score"`
+	RiskLevel         string           `json:"risk_level"`
+	Summary           string           `json:"summary"`
+	RecommendedAction string           `json:"recommended_action"`
+	Factors           []prImpactFactor `json:"factors"`
+	Commits           []prImpactCommit `json:"commits,omitempty"`
+	Files             []prImpactFile   `json:"files,omitempty"`
+	Acknowledged      bool             `json:"acknowledged,omitempty"`
 }
 
 var prURLPattern = regexp.MustCompile(`github\.com/([^/]+)/([^/]+)/pull/(\d+)`)
@@ -87,7 +87,6 @@ func requestPRImpactHandler(w http.ResponseWriter, r *http.Request, requestID, u
 	brief := loadOrBuildPRImpact(req)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "impact": brief})
-	_ = userID
 }
 
 func devopsPRImpactHandler(w http.ResponseWriter, r *http.Request) {

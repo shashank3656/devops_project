@@ -11,14 +11,14 @@ import (
 )
 
 type oncallRotation struct {
-	ID        int       `json:"id"`
-	TeamID    *int      `json:"team_id,omitempty"`
-	TeamName  string    `json:"team_name,omitempty"`
-	UserID    int       `json:"user_id"`
-	Username  string    `json:"username,omitempty"`
-	StartsAt  time.Time `json:"starts_at"`
-	EndsAt    time.Time `json:"ends_at"`
-	Active    bool      `json:"active"`
+	ID       int       `json:"id"`
+	TeamID   *int      `json:"team_id,omitempty"`
+	TeamName string    `json:"team_name,omitempty"`
+	UserID   int       `json:"user_id"`
+	Username string    `json:"username,omitempty"`
+	StartsAt time.Time `json:"starts_at"`
+	EndsAt   time.Time `json:"ends_at"`
+	Active   bool      `json:"active"`
 }
 
 type deploymentFreeze struct {

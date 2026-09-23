@@ -26,11 +26,11 @@ type workspacePipelineStage struct {
 }
 
 type workspacePayload struct {
-	Title     string `json:"title"`
-	Subtitle  string `json:"subtitle"`
-	NeedsYou  []workspaceQueueItem `json:"needs_you"`
-	Pipeline  struct {
-		ProjectName string                    `json:"project_name,omitempty"`
+	Title    string               `json:"title"`
+	Subtitle string               `json:"subtitle"`
+	NeedsYou []workspaceQueueItem `json:"needs_you"`
+	Pipeline struct {
+		ProjectName string                   `json:"project_name,omitempty"`
 		Stages      []workspacePipelineStage `json:"stages"`
 	} `json:"pipeline"`
 }
