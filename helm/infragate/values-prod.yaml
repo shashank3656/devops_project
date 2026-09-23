@@ -10,30 +10,36 @@ backend:
     APP_ENV: prod
     BASE_BRANCH: master
     OTEL_SERVICE_ENV: prod
+    FRONTEND_URL: https://devopsproject-frontend-production.up.railway.app
+    ADMIN_FRONTEND_URL: https://devopsproject-admin-frontend-production.up.railway.app
+    DEVOPS_FRONTEND_URL: https://devopsproject-devops-frontend-production.up.railway.app
+    NEXT_PUBLIC_API_URL: https://backend-api-production-ed.up.railway.app
+    REDIS_ADDR: redis-production-75cbc.up.railway.app:6379
+    REDIS_URL: redis://redis-production-75cbc.up.railway.app:6379
 
 frontends:
   user:
     replicaCount: 2
     ingress:
-      host: portal.example.com
+      host: devopsproject-frontend-production.up.railway.app
     env:
-      NEXT_PUBLIC_API_URL: https://api.example.com
+      NEXT_PUBLIC_API_URL: https://backend-api-production-ed.up.railway.app
   admin:
     replicaCount: 2
     ingress:
-      host: admin.example.com
+      host: devopsproject-admin-frontend-production.up.railway.app
     env:
-      NEXT_PUBLIC_API_URL: https://api.example.com
+      NEXT_PUBLIC_API_URL: https://backend-api-production-ed.up.railway.app
   devops:
     replicaCount: 2
     ingress:
-      host: devops.example.com
+      host: devopsproject-devops-frontend-production.up.railway.app
     env:
-      NEXT_PUBLIC_API_URL: https://api.example.com
+      NEXT_PUBLIC_API_URL: https://backend-api-production-ed.up.railway.app
 
 ingress:
   frontend:
     className: nginx
   backend:
     className: nginx
-    host: api.example.com
+    host: backend-api-production-ed.up.railway.app
