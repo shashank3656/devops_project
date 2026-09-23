@@ -7,6 +7,7 @@ RUN npm install
 COPY shared-ui /shared-ui
 COPY devops-frontend/ ./
 COPY shared-ui ./shared-ui
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
 
 FROM node:20-alpine

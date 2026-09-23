@@ -12,6 +12,7 @@ COPY shared-ui /shared-ui
 COPY frontend/ ./
 COPY shared-ui ./shared-ui
 
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
 
 # ---------- Runtime stage ----------

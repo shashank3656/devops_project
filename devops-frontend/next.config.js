@@ -1,4 +1,15 @@
-const { withSharedUi } = require('../shared-ui/next.cjs');
+const fs = require('fs');
+const path = require('path');
+
+function sharedUiHelper() {
+  const nested = path.join(__dirname, 'shared-ui', 'next.cjs');
+  if (fs.existsSync(nested)) return nested;
+  const parent = path.join(__dirname, '..', 'shared-ui', 'next.cjs');
+  if (fs.existsSync(parent)) return parent;
+  return '/shared-ui/next.cjs';
+}
+
+const { withSharedUi } = require(sharedUiHelper());
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

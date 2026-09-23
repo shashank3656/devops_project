@@ -15,7 +15,7 @@
     "incremental": true,
     "paths": {
       "*": ["./*"],
-      "@infragate/ui": ["../shared-ui/index.ts"],
+      "@infragate/ui": ["./shared-ui/index.ts", "../shared-ui/index.ts"],
       "react": ["./node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
       "next/link": ["./node_modules/next/link.d.ts"],

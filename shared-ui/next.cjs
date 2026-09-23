@@ -10,14 +10,29 @@ function sharedUiDir(fromDir) {
   return sibling;
 }
 
+function turbopackUiAlias(fromDir) {
+  if (fs.existsSync(path.join(fromDir, 'shared-ui', 'index.ts'))) return './shared-ui';
+  return '../shared-ui';
+}
+
 function withSharedUi(nextConfig, fromDir) {
   const absAlias = sharedUiDir(fromDir);
+  const relativeUi = turbopackUiAlias(fromDir);
   return {
     ...nextConfig,
     transpilePackages: [...(nextConfig.transpilePackages || []), 'shared-ui', '@infragate/ui'],
     experimental: {
       ...(nextConfig.experimental || {}),
       externalDir: true,
+    },
+    // Next.js 16 defaults to Turbopack for `next build`. A webpack() plugin without
+    // a turbopack key is a hard error unless --webpack/--turbopack is passed.
+    turbopack: {
+      ...(nextConfig.turbopack || {}),
+      resolveAlias: {
+        ...((nextConfig.turbopack && nextConfig.turbopack.resolveAlias) || {}),
+        '@infragate/ui': relativeUi,
+      },
     },
     webpack: (config, options) => {
       const reactDir = path.resolve(fromDir, 'node_modules/react');
