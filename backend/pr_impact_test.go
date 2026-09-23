@@ -4,15 +4,15 @@ import "testing"
 
 func TestCategorizeChangedPath(t *testing.T) {
 	tests := map[string]string{
-		"helm/infragate/values.yaml":     "helm",
-		"k8s/deployments/api.yaml":       "kubernetes",
-		"infra/main.tf":                  "terraform",
-		"policies/iam-role.json":         "iam",
-		"cluster-secret.yaml":            "secrets",
-		"docs/README.md":                 "docs",
-		"ingress/public.yaml":            "ingress",
-		"migrations/20240101.sql":        "database",
-		"frontend/pages/home.tsx":        "code",
+		"helm/infragate/values.yaml": "helm",
+		"k8s/deployments/api.yaml":   "kubernetes",
+		"infra/main.tf":              "terraform",
+		"policies/iam-role.json":     "iam",
+		"cluster-secret.yaml":        "secrets",
+		"docs/README.md":             "docs",
+		"ingress/public.yaml":        "ingress",
+		"migrations/20240101.sql":    "database",
+		"frontend/pages/home.tsx":    "code",
 	}
 	for path, want := range tests {
 		if got := categorizeChangedPath(path); got != want {

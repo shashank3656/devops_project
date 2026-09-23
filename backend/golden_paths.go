@@ -7,13 +7,13 @@ import (
 )
 
 type goldenPath struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Summary     string `json:"summary"`
-	Cloud       string `json:"cloud"`
-	Service     string `json:"service"`
-	Href        string `json:"href"`
-	Advanced    bool   `json:"advanced,omitempty"`
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Summary  string `json:"summary"`
+	Cloud    string `json:"cloud"`
+	Service  string `json:"service"`
+	Href     string `json:"href"`
+	Advanced bool   `json:"advanced,omitempty"`
 }
 
 func goldenPaths() []goldenPath {
@@ -104,16 +104,16 @@ func costGuardrailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":             "ok",
-		"estimated_monthly":  estimate,
-		"currency":           "USD",
-		"budget_monthly":     budget,
-		"allowed":            allowed,
-		"warning":            warning,
-		"instance_type":      instance,
-		"cloud":              cloud,
-		"service":            service,
-		"env":                env,
+		"status":            "ok",
+		"estimated_monthly": estimate,
+		"currency":          "USD",
+		"budget_monthly":    budget,
+		"allowed":           allowed,
+		"warning":           warning,
+		"instance_type":     instance,
+		"cloud":             cloud,
+		"service":           service,
+		"env":               env,
 	})
 }
 
