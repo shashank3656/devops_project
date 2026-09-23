@@ -79,17 +79,17 @@ jobs:
             image_suffix: backend
             needs_api_url: false
           - service: frontend
-            context: ./frontend
+            context: .
             dockerfile: ./frontend/Dockerfile
             image_suffix: frontend
             needs_api_url: true
           - service: admin-frontend
-            context: ./admin-frontend
+            context: .
             dockerfile: ./admin-frontend/Dockerfile
             image_suffix: admin-frontend
             needs_api_url: true
           - service: devops-frontend
-            context: ./devops-frontend
+            context: .
             dockerfile: ./devops-frontend/Dockerfile
             image_suffix: devops-frontend
             needs_api_url: true
@@ -283,6 +283,7 @@ jobs:
           fi
 
       - name: Login to GHCR
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -290,6 +291,7 @@ jobs:
           password: ${{ github.token }}
 
       - name: Push image tags
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail

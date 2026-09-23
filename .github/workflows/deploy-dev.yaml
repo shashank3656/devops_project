@@ -13,6 +13,8 @@ on:
         type: string
   pull_request:
     branches:
+      - master
+      - main
       - dev
       - feature/**
       - feat/cicd-fixes

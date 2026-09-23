@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - master
+      - main
       - dev
       - feature/**
     types: [opened, synchronize, reopened, ready_for_review]
@@ -380,12 +381,62 @@ jobs:
           echo "status=success" >> $GITHUB_OUTPUT
 
   # ─────────────────────────────────────────────
-  # JOB 4: SLACK NOTIFICATION
+  # JOB 4: DOCKER IMAGE BUILD
+  # ─────────────────────────────────────────────
+  docker-build:
+    name: 🐳 Build Images
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: backend
+            context: ./backend
+            dockerfile: ./backend/Dockerfile
+            needs_api_url: false
+          - service: frontend
+            context: .
+            dockerfile: ./frontend/Dockerfile
+            needs_api_url: true
+          - service: admin-frontend
+            context: .
+            dockerfile: ./admin-frontend/Dockerfile
+            needs_api_url: true
+          - service: devops-frontend
+            context: .
+            dockerfile: ./devops-frontend/Dockerfile
+            needs_api_url: true
+    outputs:
+      status: ${{ steps.set-status.outputs.status }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.service }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          load: true
+          push: false
+          tags: infragate-${{ matrix.service }}:pr
+          build-args: NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || 'http://localhost:8080' }}
+
+      - name: Set Image Build Status
+        id: set-status
+        run: echo "status=success" >> $GITHUB_OUTPUT
+
+  # ─────────────────────────────────────────────
+  # JOB 5: SLACK NOTIFICATION
   # ─────────────────────────────────────────────
   notify-slack:
     name: 📣 Slack Notification
     runs-on: ubuntu-latest
-    needs: [lint, semgrep, codeql]
+    needs: [lint, semgrep, codeql, docker-build]
     if: always() && (github.event_name != 'pull_request' || startsWith(github.head_ref, 'feature/'))
 
     steps:
@@ -395,13 +446,14 @@ jobs:
           LINT="${{ needs.lint.outputs.status }}"
           SEMGREP="${{ needs.semgrep.outputs.status }}"
           CODEQL="${{ needs.codeql.result }}"
+          IMAGES="${{ needs.docker-build.result }}"
 
-          if [ "$LINT" = "success" ] && [ "$SEMGREP" = "success" ] && { [ "$CODEQL" = "success" ] || [ "$CODEQL" = "skipped" ]; }; then
+          if [ "$LINT" = "success" ] && [ "$SEMGREP" = "success" ] && { [ "$CODEQL" = "success" ] || [ "$CODEQL" = "skipped" ]; } && { [ "$IMAGES" = "success" ] || [ "$IMAGES" = "skipped" ]; }; then
             echo "color=#22c55e" >> $GITHUB_OUTPUT
             echo "emoji=✅" >> $GITHUB_OUTPUT
             echo "title=All PR Checks Passed" >> $GITHUB_OUTPUT
             echo "status=PASSED" >> $GITHUB_OUTPUT
-          elif [ "$LINT" = "failure" ] || [ "$CODEQL" = "failure" ]; then
+          elif [ "$LINT" = "failure" ] || [ "$CODEQL" = "failure" ] || [ "$IMAGES" = "failure" ]; then
             echo "color=#ef4444" >> $GITHUB_OUTPUT
             echo "emoji=❌" >> $GITHUB_OUTPUT
             echo "title=PR Checks Failed" >> $GITHUB_OUTPUT
@@ -485,7 +537,7 @@ jobs:
                         },
                         {
                           "type": "mrkdwn",
-                          "text": "*⏱️ Run Duration:*\n`~${{ github.run_number }} min`"
+                          "text": "*🐳 Docker Images:*\n${{ needs.docker-build.result == 'success' && '✅ Built' || '❌ Build Failed' }}"
                         }
                       ]
                     },
