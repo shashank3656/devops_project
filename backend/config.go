@@ -1,8 +1,11 @@
 package main
 
 import (
+	"log"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -29,6 +32,9 @@ var (
 	// FrontendURL - base URL for user frontend (for password reset links). Default: http://localhost:3000
 	FrontendURL = getEnv("FRONTEND_URL", "http://localhost:3000")
 
+	// AdminFrontendURL - base URL for admin frontend.
+	AdminFrontendURL = getEnv("ADMIN_FRONTEND_URL", "http://localhost:3001")
+
 	// DevOpsFrontendURL - base URL for DevOps frontend (for DevOps password reset links). Default: http://localhost:3002
 	DevOpsFrontendURL = getEnv("DEVOPS_FRONTEND_URL", "http://localhost:3002")
 
@@ -36,16 +42,16 @@ var (
 	WebhookApproveURL = getEnv("WEBHOOK_APPROVE_URL", "")
 
 	// Redis / runtime reliability
-	RedisAddr               = getEnv("REDIS_ADDR", "")
-	RedisPassword           = getEnv("REDIS_PASSWORD", "")
-	RedisDB                 = getEnvInt("REDIS_DB", 0)
-	RedisCacheTTL           = getEnvDurationSeconds("REDIS_CACHE_TTL_SECONDS", 90*time.Second)
-	RedisQueueName          = getEnv("REDIS_QUEUE_NAME", "infra:jobs")
-	RedisJobPollTimeout     = getEnvDurationSeconds("REDIS_JOB_POLL_TIMEOUT_SECONDS", 5*time.Second)
-	DBQueryTimeout          = getEnvDurationSeconds("DB_QUERY_TIMEOUT_SECONDS", 5*time.Second)
+	RedisAddr           = getEnv("REDIS_ADDR", "")
+	RedisPassword       = getEnv("REDIS_PASSWORD", "")
+	RedisDB             = getEnvInt("REDIS_DB", 0)
+	RedisCacheTTL       = getEnvDurationSeconds("REDIS_CACHE_TTL_SECONDS", 90*time.Second)
+	RedisQueueName      = getEnv("REDIS_QUEUE_NAME", "infra:jobs")
+	RedisJobPollTimeout = getEnvDurationSeconds("REDIS_JOB_POLL_TIMEOUT_SECONDS", 5*time.Second)
+	DBQueryTimeout      = getEnvDurationSeconds("DB_QUERY_TIMEOUT_SECONDS", 5*time.Second)
 	// DBTxTimeout applies to multi-statement transactions (e.g. project catalog create/update).
 	// Keep higher than DBQueryTimeout when using remote Postgres / poolers.
-	DBTxTimeout = getEnvDurationSeconds("DB_TX_TIMEOUT_SECONDS", 30*time.Second)
+	DBTxTimeout             = getEnvDurationSeconds("DB_TX_TIMEOUT_SECONDS", 30*time.Second)
 	SlowQueryThreshold      = getEnvDurationMilliseconds("DB_SLOW_QUERY_MS", 750*time.Millisecond)
 	RequestLogSlowThreshold = getEnvDurationMilliseconds("REQUEST_LOG_SLOW_MS", 500*time.Millisecond)
 
@@ -59,6 +65,70 @@ var (
 	OpenTelemetrySampleRatio   = getEnvFloat("OTEL_TRACES_SAMPLER_RATIO", 1.0)
 	OpenTelemetryMetricSeconds = getEnvDurationSeconds("OTEL_METRICS_EXPORT_INTERVAL_SECONDS", 30*time.Second)
 )
+
+func init() {
+	applyRedisURLFromEnv()
+}
+
+func reloadConfigFromEnv() {
+	GitHubOwner = getEnv("GITHUB_OWNER", "YOUR_GITHUB_USERNAME_OR_ORG")
+	GitHubRepo = getEnv("GITHUB_REPO", "infra-live")
+	GitHubToken = getEnv("GITHUB_TOKEN", "")
+	BaseBranch = getEnv("BASE_BRANCH", "main")
+	CIWebhookSecret = getEnv("CI_WEBHOOK_SECRET", "")
+	SlackWebhookURL = getEnv("SLACK_WEBHOOK_URL", "")
+	TeamsWebhookURL = getEnv("TEAMS_WEBHOOK_URL", "")
+	OpsNotificationWebhookURL = getEnv("OPS_NOTIFICATION_WEBHOOK_URL", "")
+	FrontendURL = getEnv("FRONTEND_URL", "http://localhost:3000")
+	AdminFrontendURL = getEnv("ADMIN_FRONTEND_URL", "http://localhost:3001")
+	DevOpsFrontendURL = getEnv("DEVOPS_FRONTEND_URL", "http://localhost:3002")
+	WebhookApproveURL = getEnv("WEBHOOK_APPROVE_URL", "")
+	RedisAddr = getEnv("REDIS_ADDR", "")
+	RedisPassword = getEnv("REDIS_PASSWORD", "")
+	RedisDB = getEnvInt("REDIS_DB", 0)
+	applyRedisURLFromEnv()
+	RedisCacheTTL = getEnvDurationSeconds("REDIS_CACHE_TTL_SECONDS", 90*time.Second)
+	RedisQueueName = getEnv("REDIS_QUEUE_NAME", "infra:jobs")
+	RedisJobPollTimeout = getEnvDurationSeconds("REDIS_JOB_POLL_TIMEOUT_SECONDS", 5*time.Second)
+	DBQueryTimeout = getEnvDurationSeconds("DB_QUERY_TIMEOUT_SECONDS", 5*time.Second)
+	DBTxTimeout = getEnvDurationSeconds("DB_TX_TIMEOUT_SECONDS", 30*time.Second)
+	SlowQueryThreshold = getEnvDurationMilliseconds("DB_SLOW_QUERY_MS", 750*time.Millisecond)
+	RequestLogSlowThreshold = getEnvDurationMilliseconds("REQUEST_LOG_SLOW_MS", 500*time.Millisecond)
+	OpenTelemetryEnabled = getEnvBool("OTEL_ENABLED", true)
+	OpenTelemetryServiceName = getEnv("OTEL_SERVICE_NAME", "infra-backend")
+	OpenTelemetryServiceEnv = getEnv("OTEL_SERVICE_ENV", getEnv("APP_ENV", "local"))
+	OpenTelemetryServiceVer = getEnv("OTEL_SERVICE_VERSION", getEnv("APP_VERSION", "dev"))
+	OpenTelemetryEndpoint = getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+	OpenTelemetryInsecure = getEnvBool("OTEL_EXPORTER_OTLP_INSECURE", true)
+	OpenTelemetrySampleRatio = getEnvFloat("OTEL_TRACES_SAMPLER_RATIO", 1.0)
+	OpenTelemetryMetricSeconds = getEnvDurationSeconds("OTEL_METRICS_EXPORT_INTERVAL_SECONDS", 30*time.Second)
+}
+
+func applyRedisURLFromEnv() {
+	raw := strings.TrimSpace(os.Getenv("REDIS_URL"))
+	if raw == "" {
+		raw = strings.TrimSpace(os.Getenv("REDIS_PRIVATE_URL"))
+	}
+	if raw == "" {
+		return
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || strings.TrimSpace(parsed.Host) == "" {
+		log.Printf("[Redis] ignoring invalid REDIS_URL: %v", err)
+		return
+	}
+	RedisAddr = parsed.Host
+	if parsed.User != nil {
+		if password, ok := parsed.User.Password(); ok {
+			RedisPassword = password
+		}
+	}
+	if dbPath := strings.TrimPrefix(parsed.Path, "/"); dbPath != "" {
+		if db, convErr := strconv.Atoi(dbPath); convErr == nil {
+			RedisDB = db
+		}
+	}
+}
 
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {

@@ -393,7 +393,7 @@ jobs:
       matrix:
         include:
           - service: backend
-            context: ./backend
+            context: .
             dockerfile: ./backend/Dockerfile
             needs_api_url: false
           - service: frontend

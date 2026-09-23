@@ -28,8 +28,8 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
+      context: .
+      dockerfile: backend/Dockerfile.dev
     container_name: infra-backend-dev
     ports:
       - "8080:8080"
@@ -40,10 +40,12 @@ services:
       - DB_CONN_MAX_IDLE_TIME_MINUTES=1
       - DB_MAX_OPEN_CONNS=15
       - DB_MAX_IDLE_CONNS=3
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
-      - DEVOPS_FRONTEND_URL=${DEVOPS_FRONTEND_URL:-http://localhost:3002}
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
-      - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
+      - FRONTEND_URL=http://localhost:3000
+      - ADMIN_FRONTEND_URL=http://localhost:3001
+      - DEVOPS_FRONTEND_URL=http://localhost:3002
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - REDIS_ADDR=redis:6379
+      - REDIS_URL=
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_DB=${REDIS_DB:-0}
       - REDIS_CACHE_TTL_SECONDS=${REDIS_CACHE_TTL_SECONDS:-90}
@@ -56,6 +58,7 @@ services:
       - DB_SSLROOTCERT=/app/certs/prod-ca-2021.crt
     volumes:
       - ./backend:/app
+      - ./config:/app/config:ro
       - ./prod-ca-2021.crt:/app/certs/prod-ca-2021.crt:ro
       - /app/vendor
     command: sh -c "go mod download && go run -mod=mod ."
@@ -70,17 +73,24 @@ services:
 
   backend-prod:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: infra-backend
     ports:
       - "8080:8080"
     env_file:
       - config/.env
     environment:
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
-      - DEVOPS_FRONTEND_URL=${DEVOPS_FRONTEND_URL:-http://localhost:3002}
-      - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
+      - DB_CONN_MAX_LIFETIME_MINUTES=2
+      - DB_CONN_MAX_IDLE_TIME_MINUTES=1
+      - DB_MAX_OPEN_CONNS=15
+      - DB_MAX_IDLE_CONNS=3
+      - FRONTEND_URL=http://localhost:3000
+      - ADMIN_FRONTEND_URL=http://localhost:3001
+      - DEVOPS_FRONTEND_URL=http://localhost:3002
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - REDIS_ADDR=redis:6379
+      - REDIS_URL=
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_DB=${REDIS_DB:-0}
       - REDIS_CACHE_TTL_SECONDS=${REDIS_CACHE_TTL_SECONDS:-90}
@@ -92,6 +102,7 @@ services:
       - REQUEST_LOG_SLOW_MS=${REQUEST_LOG_SLOW_MS:-500}
       - DB_SSLROOTCERT=/app/certs/prod-ca-2021.crt
     volumes:
+      - ./config:/app/config:ro
       - ./prod-ca-2021.crt:/app/certs/prod-ca-2021.crt:ro
     depends_on:
       redis:
@@ -121,7 +132,7 @@ services:
       - config/.env
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
       - NEXT_IGNORE_INCORRECT_LOCKFILE=true
       - WATCHPACK_POLLING=true
     volumes:
@@ -144,7 +155,7 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+        - NEXT_PUBLIC_API_URL=http://localhost:8080
     container_name: infra-frontend
     ports:
       - "3000:3000"
@@ -152,7 +163,7 @@ services:
       - config/.env
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
     depends_on:
       backend-prod:
         condition: service_healthy
@@ -174,13 +185,13 @@ services:
       context: .
       dockerfile: admin-frontend/Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+        - NEXT_PUBLIC_API_URL=http://localhost:8080
     container_name: infra-admin-frontend
     ports:
       - "3001:3001"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
     depends_on:
       - backend
     restart: unless-stopped
@@ -194,13 +205,13 @@ services:
       context: .
       dockerfile: admin-frontend/Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+        - NEXT_PUBLIC_API_URL=http://localhost:8080
     container_name: infra-admin-frontend
     ports:
       - "3001:3001"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
     depends_on:
       - backend-prod
     restart: unless-stopped
@@ -214,7 +225,7 @@ services:
       context: .
       dockerfile: devops-frontend/Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+        - NEXT_PUBLIC_API_URL=http://localhost:8080
     container_name: infra-devops-frontend
     ports:
       - "3002:3002"
@@ -222,7 +233,7 @@ services:
       - config/.env
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
     depends_on:
       - backend
     healthcheck:
@@ -242,7 +253,7 @@ services:
       context: .
       dockerfile: devops-frontend/Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+        - NEXT_PUBLIC_API_URL=http://localhost:8080
     container_name: infra-devops-frontend
     ports:
       - "3002:3002"
@@ -250,7 +261,7 @@ services:
       - config/.env
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
     depends_on:
       - backend-prod
     healthcheck:

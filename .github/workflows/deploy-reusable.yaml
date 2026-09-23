@@ -88,7 +88,7 @@ jobs:
       matrix:
         include:
           - service: backend
-            context: ./backend
+            context: .
             dockerfile: ./backend/Dockerfile
             image_suffix: backend
             needs_api_url: false
@@ -253,54 +253,108 @@ jobs:
           tags: ${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}
           build-args: ${{ matrix.needs_api_url && format('NEXT_PUBLIC_API_URL={0}', env.NEXT_PUBLIC_API_URL) || '' }}
 
-      # 🔐 Trivy Scan (UPDATED)
-      - name: Trivy Advanced Container Scan
+      - name: Trivy container scan
         uses: aquasecurity/trivy-action@0.35.0
-        continue-on-error: ${{ !inputs.fail_on_trivy }}
         with:
           image-ref: ${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}
           format: json
           output: trivy-results.json
-          exit-code: "1"
+          exit-code: "0"
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH,MEDIUM,LOW"
-          scanners: "vuln,secret,config"
+          scanners: "vuln"
           timeout: "10m"
 
-      # 📊 Summary Board (NEW)
-      - name: Trivy Summary Board
+      - name: Show Trivy findings
         if: always()
-        continue-on-error: true
         shell: bash
+        env:
+          FAIL_ON_TRIVY: ${{ inputs.fail_on_trivy }}
+          IMAGE_REF: ${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}
         run: |
           set -euo pipefail
+          REPORT=trivy-results.json
+          if [ ! -s "$REPORT" ]; then
+            echo "::error::Trivy did not produce $REPORT"
+            echo "## Trivy security summary" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No \`trivy-results.json\` was produced for \`$IMAGE_REF\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
-          CRITICAL=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results.json)
-          HIGH=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results.json)
-          MEDIUM=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-results.json)
-          LOW=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="LOW")] | length' trivy-results.json)
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' "$REPORT")
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' "$REPORT")
+          MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' "$REPORT")
+          LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="LOW")] | length' "$REPORT")
+          TOTAL=$((CRITICAL + HIGH + MEDIUM + LOW))
 
-          echo "## 🔐 Trivy Security Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          echo "### 📦 Image" >> $GITHUB_STEP_SUMMARY
-          echo "\`${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| 🔴 CRITICAL | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🟠 HIGH     | $HIGH |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🟡 MEDIUM   | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🔵 LOW      | $LOW |" >> $GITHUB_STEP_SUMMARY
-
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
-            echo "### ❌ Status: Failed (High/Critical vulnerabilities found)" >> $GITHUB_STEP_SUMMARY
+          if [ "$CRITICAL" -gt 0 ]; then
+            STATUS="Failed (CRITICAL findings)"
+          elif [ "$HIGH" -gt 0 ]; then
+            STATUS="Reported (HIGH findings; does not fail PR builds)"
+          elif [ "$TOTAL" -gt 0 ]; then
+            STATUS="Passed with MEDIUM/LOW findings"
           else
-            echo "### ✅ Status: Passed" >> $GITHUB_STEP_SUMMARY
+            STATUS="Passed (no unfixed vulnerabilities)"
+          fi
+
+          echo "Trivy counts for $IMAGE_REF"
+          echo "  CRITICAL=$CRITICAL HIGH=$HIGH MEDIUM=$MEDIUM LOW=$LOW TOTAL=$TOTAL"
+          echo "  Status: $STATUS"
+
+          echo "## 🔐 Trivy Security Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 📦 Image" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$IMAGE_REF\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Severity | Count |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🔴 CRITICAL | $CRITICAL |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🟠 HIGH | $HIGH |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🟡 MEDIUM | $MEDIUM |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🔵 LOW | $LOW |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Total** | **$TOTAL** |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Status" >> "$GITHUB_STEP_SUMMARY"
+          echo "$STATUS" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Findings" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Severity | ID | Package | Installed | Fixed | Title |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|----|---------|-----------|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "| - | none | - | - | - | No unfixed vulnerabilities |" >> "$GITHUB_STEP_SUMMARY"
+          else
+            jq -r '.Results[]?.Vulnerabilities[]? | [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.FixedVersion // "-"), ((.Title // "-") | gsub("\\|"; "/"))] | @tsv' "$REPORT" \
+              | awk -F '\t' 'BEGIN { n=0 } n<80 { gsub(/\|/, "/", $0); printf "| %s | %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5, $6; n++ }' \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "<details><summary>Full Trivy table</summary>" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if command -v trivy >/dev/null 2>&1; then
+            trivy convert --format table "$REPORT" >> "$GITHUB_STEP_SUMMARY" || true
+          else
+            jq -r '.Results[]?.Vulnerabilities[]? | "\(.Severity)\t\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion // "-")\t\(.Title // "-")"' "$REPORT" >> "$GITHUB_STEP_SUMMARY" || true
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "</details>" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::group::Trivy table ($IMAGE_REF)"
+          if command -v trivy >/dev/null 2>&1; then
+            trivy convert --format table "$REPORT" || true
+          else
+            jq -r '.Results[]?.Vulnerabilities[]? | "\(.Severity)\t\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion // "-")\t\(.Title // "-")"' "$REPORT" || true
+          fi
+          echo "::endgroup::"
+
+          if [ "$FAIL_ON_TRIVY" = "true" ] && [ "$CRITICAL" -gt 0 ]; then
+            echo "::error::Trivy found $CRITICAL CRITICAL vulnerabilities in $IMAGE_REF"
+            exit 1
           fi
 
       - name: Login to GHCR

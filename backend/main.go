@@ -491,6 +491,9 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	loadBackendEnvFiles()
+	reloadConfigFromEnv()
+
 	otelShutdown, otelErr := initOpenTelemetry(context.Background())
 	if otelErr != nil {
 		log.Printf("[OTEL] initialization failed: %v", otelErr)
@@ -701,7 +704,12 @@ func main() {
 	http.HandleFunc("/swagger.json", swaggerHandler)
 	http.HandleFunc("/api-docs", swaggerUIHandler)
 
-	log.Println("Backend server starting on :8080")
+	addr := listenAddr()
+	log.Printf("Backend server starting on %s", addr)
+	log.Printf("Public API URL: %s", strings.TrimRight(os.Getenv("NEXT_PUBLIC_API_URL"), "/"))
+	log.Printf("Frontend URL: %s", FrontendURL)
+	log.Printf("Admin frontend URL: %s", AdminFrontendURL)
+	log.Printf("DevOps frontend URL: %s", DevOpsFrontendURL)
 	if SlackWebhookURL != "" {
 		log.Println("Slack notifications: enabled")
 	} else {
@@ -748,9 +756,20 @@ func main() {
 	log.Println("  GET  /swagger.json    - OpenAPI spec")
 	log.Println("  GET  /api-docs       - Swagger UI")
 
-	if err := http.ListenAndServe(":8080", withObservability(withRecovery(http.DefaultServeMux))); err != nil {
+	if err := http.ListenAndServe(addr, withObservability(withRecovery(http.DefaultServeMux))); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
+}
+
+func listenAddr() string {
+	port := strings.TrimSpace(os.Getenv("PORT"))
+	if port == "" {
+		port = "8080"
+	}
+	if strings.HasPrefix(port, ":") {
+		return port
+	}
+	return ":" + port
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
