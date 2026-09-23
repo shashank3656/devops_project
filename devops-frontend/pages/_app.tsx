@@ -1,11 +1,15 @@
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { useEffect } from 'react';
+import { installApiUrlRewrite } from '@infragate/ui';
 import { ApiUrlProvider } from '../context/ApiUrlContext';
 import { DEVOPS_SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
 import '../../shared-ui/tokens.css';
 import '../../shared-ui/workspace.css';
+
+// Must run before any page fetches (child effects run before this component's effects).
+installApiUrlRewrite(process.env.NEXT_PUBLIC_API_URL);
 
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {

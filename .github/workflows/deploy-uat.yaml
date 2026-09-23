@@ -33,7 +33,7 @@ jobs:
     uses: ./.github/workflows/deploy-reusable.yaml
     with:
       environment_name: uat
-      public_api_url: ${{ vars.NEXT_PUBLIC_API_URL_UAT || vars.NEXT_PUBLIC_API_URL || 'http://localhost:8080' }}
+      public_api_url: ${{ vars.NEXT_PUBLIC_API_URL_UAT || vars.NEXT_PUBLIC_API_URL || 'https://backend-api-production-ed.up.railway.app' }}
       backend_api_url: ${{ vars.BACKEND_API_URL_UAT || vars.BACKEND_API_URL }}
       request_id: ${{ github.event_name == 'workflow_dispatch' && inputs.request_id || '' }}
       application_id: ${{ github.event_name == 'workflow_dispatch' && inputs.application_id || '' }}

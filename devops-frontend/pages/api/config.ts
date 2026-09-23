@@ -1,11 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 /**
- * Returns the backend API URL from the server environment.
- * This allows the DevOps frontend to use the container's NEXT_PUBLIC_API_URL at runtime
- * (set by docker-compose env_file / environment) so it connects to the same backend as other frontends.
+ * Returns the backend API URL from the server environment at request time.
+ * Keys are read dynamically so Next.js does not inline the build-time value.
  */
 export default function handler(_req: NextApiRequest, res: NextApiResponse) {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-  res.status(200).json({ apiUrl: apiUrl.replace(/\/$/, '') });
+  const env = process.env as Record<string, string | undefined>;
+  const keys = ['BACKEND_API_URL', 'API_URL', 'NEXT_PUBLIC_API_URL'];
+  const runtimeUrl = keys.map((key) => (env[key] || '').trim()).find(Boolean);
+  const apiUrl = runtimeUrl || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+  res.status(200).json({ apiUrl: apiUrl.replace(/\/+$/, '') });
 }

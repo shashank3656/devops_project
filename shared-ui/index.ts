@@ -1,3 +1,4 @@
+export { installApiUrlRewrite, resolveRuntimeApiUrl, RAILWAY_PRODUCTION_API_URL } from './apiRuntime';
 export { default as CommandPalette } from './CommandPalette';
 export { default as EmptyState } from './EmptyState';
 export { default as EnvironmentPipeline } from './EnvironmentPipeline';
