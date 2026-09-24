@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
-import AppLayout, { getApiUrl } from '../components/AppLayout';
 import { asRecord, getString } from '../lib/payload';
 import { SITE_NAME } from '../lib/site';
 
@@ -18,15 +16,18 @@ interface Incident {
   request_service?: string;
   request_cloud?: string;
   request_status?: string;
-  team_id?: number | null;
   team_name?: string;
   severity: string;
   status: string;
-  escalation_level: string;
-  owner_user_id?: number | null;
   owner_username?: string;
   summary: string;
   notes: string;
+  source?: string;
+  fingerprint?: string;
+  suspected_change_id?: number;
+  suspected_change_number?: string;
+  service?: string;
+  environment?: string;
   created_at: string;
   updated_at: string;
 }
@@ -47,15 +48,18 @@ function normalizeIncidents(value: unknown): Incident[] {
       request_service: typeof item.request_service === 'string' ? item.request_service : '',
       request_cloud: typeof item.request_cloud === 'string' ? item.request_cloud : '',
       request_status: typeof item.request_status === 'string' ? item.request_status : '',
-      team_id: typeof item.team_id === 'number' ? item.team_id : null,
       team_name: typeof item.team_name === 'string' ? item.team_name : '',
       severity: typeof item.severity === 'string' ? item.severity : 'medium',
       status: typeof item.status === 'string' ? item.status : 'open',
-      escalation_level: typeof item.escalation_level === 'string' ? item.escalation_level : 'monitoring',
-      owner_user_id: typeof item.owner_user_id === 'number' ? item.owner_user_id : null,
       owner_username: typeof item.owner_username === 'string' ? item.owner_username : '',
       summary: typeof item.summary === 'string' ? item.summary : '',
       notes: typeof item.notes === 'string' ? item.notes : '',
+      source: typeof item.source === 'string' ? item.source : 'ticket',
+      fingerprint: typeof item.fingerprint === 'string' ? item.fingerprint : '',
+      suspected_change_id: typeof item.suspected_change_id === 'number' ? item.suspected_change_id : undefined,
+      suspected_change_number: typeof item.suspected_change_number === 'string' ? item.suspected_change_number : '',
+      service: typeof item.service === 'string' ? item.service : '',
+      environment: typeof item.environment === 'string' ? item.environment : '',
       created_at: typeof item.created_at === 'string' ? item.created_at : '',
       updated_at: typeof item.updated_at === 'string' ? item.updated_at : '',
     };
@@ -73,21 +77,33 @@ function getIncidentReference(incident: Pick<Incident, 'id' | 'incident_number'>
   return incident.incident_number || `INC${String(incident.id).padStart(7, '0')}`;
 }
 
+function parseProjectID(value: string | string[] | undefined): number {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
+}
+
 export default function UserIncidentsPage() {
   const router = useRouter();
-  const apiUrl = getApiUrl();
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeStatus, setActiveStatus] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const projectID = parseProjectID(router.query.project_id);
+  const environment = Array.isArray(router.query.environment) ? router.query.environment[0] : router.query.environment || '';
 
   const filteredIncidents = useMemo(() => {
-    if (activeStatus === 'all') return incidents;
-    return incidents.filter((incident) => incident.status === activeStatus);
-  }, [activeStatus, incidents]);
+    return incidents.filter((incident) => {
+      if (activeStatus !== 'all' && incident.status !== activeStatus) return false;
+      if (sourceFilter !== 'all' && (incident.source || 'ticket') !== sourceFilter) return false;
+      return true;
+    });
+  }, [activeStatus, incidents, sourceFilter]);
 
-  const openCount = useMemo(() => incidents.filter((incident) => incident.status !== 'resolved').length, [incidents]);
-  const criticalCount = useMemo(() => incidents.filter((incident) => incident.severity === 'critical').length, [incidents]);
+  const openCount = useMemo(() => incidents.filter((incident) => incident.status !== 'resolved' && incident.status !== 'closed').length, [incidents]);
+  const criticalCount = useMemo(() => incidents.filter((incident) => incident.severity === 'critical' || incident.severity === 'high').length, [incidents]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -100,7 +116,10 @@ export default function UserIncidentsPage() {
       setLoading(true);
       setError('');
       try {
-        const res = await fetch(`${apiUrl}/api/me/incidents`, {
+        const params = new URLSearchParams();
+        if (projectID) params.set('project_id', String(projectID));
+        if (environment) params.set('environment', environment);
+        const res = await fetch(`${apiUrl}/api/me/incidents?${params.toString()}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.status === 401 || res.status === 403) {
@@ -120,10 +139,10 @@ export default function UserIncidentsPage() {
     };
 
     void fetchIncidents();
-  }, [apiUrl, router]);
+  }, [apiUrl, router, projectID, environment]);
 
   return (
-    <AppLayout>
+    <>
       <Head>
         <title>Incidents - {SITE_NAME}</title>
       </Head>
@@ -131,19 +150,19 @@ export default function UserIncidentsPage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Operational Response</span>
-            <h1 className="portal-page__title">Assigned Incidents</h1>
+            <span className="portal-page__eyebrow">Operations</span>
+            <h1 className="portal-page__title">Incidents</h1>
             <p className="portal-page__subtitle">
-              Review incidents assigned to you, track escalation state, and jump back to the related infrastructure request.
+              Alert, ticket, and change-regression incidents assigned to you or on your projects.
             </p>
           </div>
         </div>
 
         <section className="portal-stat-grid notification-summary-grid">
           <article className="portal-stat-card">
-            <span className="portal-stat-card__label">Assigned</span>
+            <span className="portal-stat-card__label">Visible</span>
             <span className="portal-stat-card__value">{incidents.length}</span>
-            <p className="portal-stat-card__copy">Incidents currently assigned to your account.</p>
+            <p className="portal-stat-card__copy">Incidents on your projects plus ones assigned to you.</p>
           </article>
           <article className="portal-stat-card">
             <span className="portal-stat-card__label">Active</span>
@@ -151,9 +170,9 @@ export default function UserIncidentsPage() {
             <p className="portal-stat-card__copy">Incidents that still need attention or follow-up.</p>
           </article>
           <article className="portal-stat-card">
-            <span className="portal-stat-card__label">Critical</span>
+            <span className="portal-stat-card__label">High / critical</span>
             <span className="portal-stat-card__value">{criticalCount}</span>
-            <p className="portal-stat-card__copy">Critical incidents currently assigned to you.</p>
+            <p className="portal-stat-card__copy">Highest-severity incidents in this catalog.</p>
           </article>
         </section>
 
@@ -162,16 +181,12 @@ export default function UserIncidentsPage() {
         <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
-              <span className="portal-surface__eyebrow">Queue</span>
+              <span className="portal-surface__eyebrow">Catalog</span>
               <h2 className="portal-surface__title">Incident workload</h2>
-              <p className="portal-surface__subtitle">Use the status filter to narrow the incidents that need action right now.</p>
+              <p className="portal-surface__subtitle">Filter by status or source to find alerts, tickets, or regressions.</p>
             </div>
             <div className="portal-page__actions">
-              <label className="label" htmlFor="incident-status-filter">
-                Status
-              </label>
               <select
-                id="incident-status-filter"
                 className="input incidents-page__filter"
                 value={activeStatus}
                 onChange={(event) => setActiveStatus(event.target.value)}
@@ -182,11 +197,22 @@ export default function UserIncidentsPage() {
                 <option value="mitigating">Mitigating</option>
                 <option value="resolved">Resolved</option>
               </select>
+              <select
+                className="input incidents-page__filter"
+                value={sourceFilter}
+                onChange={(event) => setSourceFilter(event.target.value)}
+              >
+                <option value="all">All sources</option>
+                <option value="alert">Alert</option>
+                <option value="ticket">Ticket</option>
+                <option value="change_regression">Change regression</option>
+                <option value="manual">Manual</option>
+              </select>
             </div>
           </div>
 
           {loading ? (
-            <div className="empty-state">Loading assigned incidents...</div>
+            <div className="empty-state">Loading incidents...</div>
           ) : filteredIncidents.length === 0 ? (
             <div className="empty-state">No incidents match the current filter.</div>
           ) : (
@@ -195,48 +221,34 @@ export default function UserIncidentsPage() {
                 <thead>
                   <tr>
                     <th>Incident</th>
-                    <th>Project</th>
+                    <th>Source</th>
                     <th>Severity</th>
                     <th>Status</th>
-                    <th>Team</th>
-                    <th>Summary</th>
+                    <th>Project</th>
+                    <th>Change</th>
                     <th>Updated</th>
-                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredIncidents.map((incident) => (
-                    <tr key={incident.id}>
+                    <tr key={incident.id} style={{ cursor: 'pointer' }} onClick={() => void router.push(`/incidents/${incident.id}`)}>
                       <td>
                         <div>
                           <strong>{getIncidentReference(incident)}</strong>
                           <div className="incidents-page__meta">
-                            {[incident.request_service || 'service', incident.request_env || '', incident.request_cloud || '']
+                            {[incident.service || incident.request_service || 'service', incident.environment || incident.request_env || '']
                               .filter(Boolean)
                               .join(' · ')}
                           </div>
+                          <div className="incidents-page__notes">{incident.summary || 'No summary yet'}</div>
                         </div>
                       </td>
-                      <td>{incident.project_name ? `${incident.project_name} (${incident.project_code})` : 'No project'}</td>
+                      <td>{incident.source || 'ticket'}</td>
                       <td>{incident.severity}</td>
                       <td>{incident.status}</td>
-                      <td>{incident.team_name || incident.request_team || 'No team'}</td>
-                      <td>
-                        <div>
-                          <strong>{incident.summary || 'No summary yet'}</strong>
-                          {incident.notes ? (
-                            <div className="incidents-page__notes">
-                              {incident.notes}
-                            </div>
-                          ) : null}
-                        </div>
-                      </td>
+                      <td>{incident.project_name ? `${incident.project_name} (${incident.project_code})` : 'No project'}</td>
+                      <td>{incident.suspected_change_number || '—'}</td>
                       <td>{formatTimestamp(incident.updated_at)}</td>
-                      <td>
-                        <Link href={`/history?id=${incident.request_id}`} className="btn btn-secondary btn-sm">
-                          Open request
-                        </Link>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -245,6 +257,6 @@ export default function UserIncidentsPage() {
           )}
         </section>
       </div>
-    </AppLayout>
+    </>
   );
 }

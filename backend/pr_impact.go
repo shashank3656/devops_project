@@ -490,7 +490,15 @@ func openIncidentCountForRequest(req *PRRequest) int {
 	}
 	var count int
 	if req.ProjectID != nil {
-		_ = DB.QueryRow(`SELECT COUNT(*) FROM request_incidents WHERE project_id = $1 AND LOWER(status) NOT IN ('closed', 'resolved')`, *req.ProjectID).Scan(&count)
+		_ = DB.QueryRow(`
+			SELECT COUNT(*) FROM request_incidents
+			WHERE project_id = $1
+			  AND LOWER(status) IN ('open', 'investigating', 'mitigating')
+			  AND (
+			    COALESCE(source,'ticket') NOT IN ('alert', 'change_regression')
+			    OR LOWER(severity) IN ('high', 'critical')
+			  )
+		`, *req.ProjectID).Scan(&count)
 		return count
 	}
 	_ = DB.QueryRow(`SELECT COUNT(*) FROM request_incidents WHERE request_id = $1 AND LOWER(status) NOT IN ('closed', 'resolved')`, req.ID).Scan(&count)

@@ -59,7 +59,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/templates': 'Request Templates',
   '/my-projects': 'Projects',
   '/history': 'My Requests',
-  '/incidents': 'Help Tickets',
+  '/incidents': 'Incidents',
+  '/changes': 'Changes',
   '/my-teams': 'My Teams',
   '/profile': 'Profile',
 };
@@ -384,7 +385,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         ...(hasManagedTeams ? [{ href: '/my-teams', label: 'Teams' }] : []),
       ],
     },
-    { href: '/incidents', label: 'Help', Icon: IconAlertCircle },
+    {
+      href: '/changes',
+      label: 'Operations',
+      Icon: IconAlertCircle,
+      children: [
+        { href: '/changes', label: 'Changes' },
+        { href: '/incidents', label: 'Incidents' },
+      ],
+    },
   ];
 
   if (teamCheck === 'loading') {
@@ -723,7 +732,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         tabs={baseNavItems.slice(0, 4).map((item) => ({
           ...item,
           label: item.href === '/create-infrastructure' ? 'New' : item.href === '/history' ? 'Requests' : item.label,
-          active: pathname === item.href || (item.href !== '/home' && pathname.startsWith(item.href)),
+          active:
+            pathname === item.href
+            || Boolean(item.children?.some((child) => pathname === child.href || pathname.startsWith(`${child.href}/`)))
+            || (item.href !== '/home' && pathname.startsWith(item.href)),
           badge: item.href === '/history' ? requestActivityBadge : null,
         }))}
         onMore={() => setMobileMenuOpen((open) => !open)}
@@ -738,7 +750,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           { id: 'new', label: 'New request', href: '/create-infrastructure', hint: 'Golden paths' },
           { id: 'history', label: 'My requests', href: '/history' },
           { id: 'projects', label: 'Projects', href: '/my-projects' },
-          { id: 'help', label: 'Help tickets', href: '/incidents' },
+          { id: 'changes', label: 'Change requests', href: '/changes' },
+          { id: 'incidents', label: 'Incidents', href: '/incidents' },
           { id: 'templates', label: 'Templates', href: '/templates' },
         ]}
       />
@@ -759,6 +772,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             label: 'Email platform support',
             externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`SetuOps support: ${pageTitle}`)}`,
           },
+          { label: 'Open change requests', href: '/changes' },
           { label: 'Open incidents', href: '/incidents' },
           { label: 'Open request history', href: '/history' },
         ]}

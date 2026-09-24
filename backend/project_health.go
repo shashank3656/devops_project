@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/csv"
 	"fmt"
 	"math"
@@ -141,6 +142,10 @@ func loadDoraWindow(projectID int, from, to time.Time) (doraWindow, error) {
 	rows.Close()
 	cancel()
 
+	if err := addChangeRequestDoraSamples(&window, projectID, from, to); err != nil {
+		return window, err
+	}
+
 	var failures int
 	err = queryRowContext(`
 		SELECT COUNT(DISTINCT r.id)
@@ -174,6 +179,48 @@ func loadDoraWindow(projectID int, from, to time.Time) (doraWindow, error) {
 		}
 	}
 	return window, rows.Err()
+}
+
+func addChangeRequestDoraSamples(window *doraWindow, projectID int, from, to time.Time) error {
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT c.id, c.created_at, c.updated_at, LOWER(COALESCE(c.status,'')), c.request_id
+		  FROM change_requests c
+		 WHERE c.project_id = $1 AND c.updated_at >= $2 AND c.updated_at < $3
+		   AND LOWER(COALESCE(c.status,'')) IN ('implemented', 'monitoring', 'closed', 'failed')
+	`, projectID, from, to)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return nil
+		}
+		return err
+	}
+	defer cancel()
+	defer rows.Close()
+	for rows.Next() {
+		var id int
+		var createdAt, updatedAt time.Time
+		var status string
+		var requestID sql.NullInt64
+		if err := rows.Scan(&id, &createdAt, &updatedAt, &status, &requestID); err != nil {
+			return err
+		}
+		if requestID.Valid {
+			continue
+		}
+		window.deployments++
+		if updatedAt.After(createdAt) {
+			window.leadHours = append(window.leadHours, updatedAt.Sub(createdAt).Hours())
+		}
+		var linked int
+		_ = queryRowContext(`
+			SELECT COUNT(*) FROM request_incidents
+			 WHERE suspected_change_id = $1 AND LOWER(severity) IN ('high', 'critical')
+		`, id).Scan(&linked)
+		if status == "failed" || linked > 0 {
+			window.failures++
+		}
+	}
+	return rows.Err()
 }
 
 func buildDoraMetrics(current, previous doraWindow, windowDays int) []doraMetric {

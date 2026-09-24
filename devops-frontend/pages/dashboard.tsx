@@ -32,6 +32,10 @@ export default function DevOpsDashboard() {
   const [freezeReason, setFreezeReason] = useState('');
   const [activeFreeze, setActiveFreeze] = useState('');
   const [rotations, setRotations] = useState<OncallRotation[]>([]);
+  const [healthWatching, setHealthWatching] = useState(0);
+  const [healthRegressions, setHealthRegressions] = useState(0);
+  const [healthHighRisk, setHealthHighRisk] = useState(0);
+  const [healthBurned, setHealthBurned] = useState(0);
 
   const tokenHeaders = (): Record<string, string> => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -46,6 +50,15 @@ export default function DevOpsDashboard() {
     fetch(`${apiUrl}/api/devops/oncall`, { headers: tokenHeaders() })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setRotations(Array.isArray(data?.rotations) ? data.rotations : []))
+      .catch(() => {});
+    fetch(`${apiUrl}/api/devops/health`, { headers: tokenHeaders() })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        setHealthWatching(data?.health?.summary?.watching || 0);
+        setHealthRegressions(data?.health?.summary?.regressions || 0);
+        setHealthHighRisk(data?.health?.summary?.high_risk_alerts || 0);
+        setHealthBurned(data?.health?.summary?.burned_slos || 0);
+      })
       .catch(() => {});
   };
 
@@ -124,6 +137,17 @@ export default function DevOpsDashboard() {
           }
           aside={
             <>
+              <section className="ig-home-panel ig-home-ops" aria-label="Health">
+                <span className="ig-home-ops__label">Health</span>
+                <h3 className="ig-home-ops__title">
+                  <span className={`ig-dot ${healthRegressions || healthHighRisk ? 'ig-dot--danger' : 'ig-dot--ok'}`} aria-hidden />
+                  {healthRegressions > 0 ? `${healthRegressions} change-linked alert${healthRegressions === 1 ? '' : 's'}` : 'No post-deploy regressions'}
+                </h3>
+                <p className="ig-home-ops__copy">
+                  {healthWatching} watching · {healthHighRisk} SEV1/SEV2 · {healthBurned} burned SLO{healthBurned === 1 ? '' : 's'}
+                </p>
+                <Link href="/health" className="btn btn-secondary btn-sm">Open health</Link>
+              </section>
               <section className="ig-home-panel ig-home-ops" aria-label="On-call">
                 <span className="ig-home-ops__label">On-call</span>
                 <h3 className="ig-home-ops__title">

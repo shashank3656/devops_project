@@ -1174,6 +1174,156 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_deploy_intel_acks_pr ON deploy_intel_acks (repo_owner, repo_name, pr_number)`)
 
+	// Migration 59: change requests + alert-sourced incidents + inbound webhook sources
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ALTER COLUMN request_id DROP NOT NULL`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS source VARCHAR(40) NOT NULL DEFAULT 'ticket'`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS fingerprint VARCHAR(240) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS alert_source VARCHAR(80) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS dashboard_url TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS suspected_change_id INTEGER`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS service VARCHAR(200) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS environment VARCHAR(80) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS occurrence_count INTEGER NOT NULL DEFAULT 1`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_request_incidents_source ON request_incidents(source)`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_request_incidents_fingerprint ON request_incidents(alert_source, fingerprint)`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_request_incidents_service_env ON request_incidents(service, environment)`)
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS change_requests (
+			id SERIAL PRIMARY KEY,
+			change_number VARCHAR(20) NOT NULL DEFAULT '',
+			project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+			service VARCHAR(200) NOT NULL DEFAULT '',
+			environment VARCHAR(80) NOT NULL DEFAULT 'unspecified',
+			repo VARCHAR(400) NOT NULL,
+			pr_number INTEGER NOT NULL DEFAULT 0,
+			pr_url TEXT NOT NULL DEFAULT '',
+			sha VARCHAR(80) NOT NULL,
+			previous_sha VARCHAR(80) NOT NULL DEFAULT '',
+			title TEXT NOT NULL DEFAULT '',
+			author VARCHAR(200) NOT NULL DEFAULT '',
+			summary TEXT NOT NULL DEFAULT '',
+			files_json TEXT NOT NULL DEFAULT '[]',
+			pipeline_url TEXT NOT NULL DEFAULT '',
+			change_type VARCHAR(40) NOT NULL DEFAULT 'standard',
+			status VARCHAR(40) NOT NULL DEFAULT 'implementing',
+			watch_minutes INTEGER NOT NULL DEFAULT 120,
+			watch_started_at TIMESTAMP,
+			watch_until TIMESTAMP,
+			baseline_json TEXT NOT NULL DEFAULT '',
+			latest_metrics_json TEXT NOT NULL DEFAULT '',
+			request_id INTEGER REFERENCES pr_requests(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(repo, sha, environment)
+		)
+	`)
+	_, _ = DB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_change_requests_number ON change_requests(change_number) WHERE change_number <> ''`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_change_requests_project ON change_requests(project_id)`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_change_requests_status ON change_requests(status)`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_change_requests_service_env ON change_requests(service, environment)`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_change_requests_created ON change_requests(created_at DESC)`)
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS inbound_webhook_sources (
+			id SERIAL PRIMARY KEY,
+			kind VARCHAR(40) NOT NULL,
+			name VARCHAR(160) NOT NULL,
+			secret TEXT NOT NULL DEFAULT '',
+			enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_inbound_webhook_sources_kind ON inbound_webhook_sources(kind, enabled)`)
+
+	// Migration 60: post-deploy watcher samples and per-service SLOs
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS baseline_json TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS latest_metrics_json TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS change_watch_samples (
+			id SERIAL PRIMARY KEY,
+			change_id INTEGER NOT NULL REFERENCES change_requests(id) ON DELETE CASCADE,
+			taken_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			p95_ms DOUBLE PRECISION NOT NULL DEFAULT 0,
+			error_ratio DOUBLE PRECISION NOT NULL DEFAULT 0,
+			saturation DOUBLE PRECISION NOT NULL DEFAULT 0,
+			source VARCHAR(80) NOT NULL DEFAULT 'webhook',
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_change_watch_samples_change ON change_watch_samples(change_id, taken_at DESC)`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS service_slos (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+			service VARCHAR(200) NOT NULL,
+			environment VARCHAR(80) NOT NULL DEFAULT '',
+			latency_p95_ms DOUBLE PRECISION NOT NULL DEFAULT 0,
+			error_ratio DOUBLE PRECISION NOT NULL DEFAULT 0.01,
+			saturation DOUBLE PRECISION NOT NULL DEFAULT 0.8,
+			window_days INTEGER NOT NULL DEFAULT 30,
+			freeze_on_budget BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_service_slos_scope ON service_slos (LOWER(service), LOWER(environment), COALESCE(project_id, 0))`)
+
+	// Migration 61: ITSM extras — service map, problems, major incidents, CAB
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS cab_status VARCHAR(40) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS cab_window_start TIMESTAMP`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS cab_window_end TIMESTAMP`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS linked_incident_id INTEGER`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS cab_approved_by INTEGER`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS cab_approved_at TIMESTAMP`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS major BOOLEAN NOT NULL DEFAULT FALSE`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS status_note TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS slack_thread TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS problem_id INTEGER`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS service_map (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+			service VARCHAR(200) NOT NULL,
+			repo VARCHAR(400) NOT NULL DEFAULT '',
+			environment VARCHAR(80) NOT NULL DEFAULT '',
+			grafana_uid VARCHAR(120) NOT NULL DEFAULT '',
+			promql TEXT NOT NULL DEFAULT '',
+			dashboard_url TEXT NOT NULL DEFAULT '',
+			team VARCHAR(200) NOT NULL DEFAULT '',
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_service_map_scope ON service_map (LOWER(service), LOWER(environment), COALESCE(project_id, 0))`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_service_map_repo ON service_map (LOWER(repo))`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS problem_records (
+			id SERIAL PRIMARY KEY,
+			problem_number VARCHAR(20) NOT NULL DEFAULT '',
+			fingerprint VARCHAR(240) NOT NULL,
+			service VARCHAR(200) NOT NULL DEFAULT '',
+			environment VARCHAR(80) NOT NULL DEFAULT '',
+			summary TEXT NOT NULL DEFAULT '',
+			status VARCHAR(40) NOT NULL DEFAULT 'open',
+			occurrence_count INTEGER NOT NULL DEFAULT 1,
+			first_seen_at TIMESTAMP,
+			last_seen_at TIMESTAMP,
+			project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_problem_records_fingerprint ON problem_records (fingerprint) WHERE fingerprint <> ''`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_problem_records_status ON problem_records (status)`)
+
+	// Leftover P1/P3/P4: alert silence window and optional metrics pull URL
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS silenced_until TIMESTAMP`)
+	_, _ = DB.Exec(`ALTER TABLE service_map ADD COLUMN IF NOT EXISTS metrics_url TEXT NOT NULL DEFAULT ''`)
+
 	log.Println("Database schema is up to date")
 	return nil
 }

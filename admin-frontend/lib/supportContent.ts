@@ -93,4 +93,19 @@ export const supportArticles: SupportArticle[] = [
       { label: 'Open activity', href: '/activity' },
     ],
   },
+  {
+    id: 'changes-incidents',
+    category: 'Operations',
+    title: 'Review change requests and incidents',
+    summary: 'Changes and Incidents show application deploys and alert-driven issues across projects.',
+    content:
+      'Change Requests are created by CI when code merges to main. Incidents appear from Grafana or logging alerts, tickets, or post-deploy regressions. Admin can review both catalogs and jump between a change and any linked incident. DevOps still owns CAB, close, and queue edits. Use Integrations to manage inbound webhook sources.',
+    keywords: ['change', 'change request', 'incident', 'alert', 'grafana', 'deploy', 'chg', 'inc'],
+    routePrefixes: ['/changes', '/incidents', '/webhooks'],
+    actions: [
+      { label: 'Open change requests', href: '/changes' },
+      { label: 'Open incidents', href: '/incidents' },
+      { label: 'Open integrations', href: '/webhooks' },
+    ],
+  },
 ];

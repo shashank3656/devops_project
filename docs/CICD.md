@@ -137,6 +137,8 @@ Set these in repository or environment secrets.
 | --- | --- |
 | `SMTP_PASSWORD` | SMTP auth |
 | `CI_WEBHOOK_SECRET` | CI webhook auth |
+| `CHANGE_WEBHOOK_SECRET` | App merge change-request webhook auth |
+| `ALERT_WEBHOOK_SECRET` | Grafana / logger incident webhook auth |
 | `SNYK_TOKEN` | Optional Snyk authentication for dependency scanning |
 | `SLACK_WEBHOOK_URL` | Success/failure notifications |
 | `TEAMS_WEBHOOK_URL` | Teams integration |
@@ -204,6 +206,10 @@ Use repository variables for shared defaults or environment variables when they 
 | `OTEL_TRACES_SAMPLER_RATIO` | Trace sample ratio |
 | `OTEL_METRICS_EXPORT_INTERVAL_SECONDS` | Metrics export interval |
 | `ALLOW_START_WITHOUT_DB` | Backend startup override for non-DB environments |
+
+## Change and alert webhooks
+
+After merge to `main`, CI should POST `/api/webhooks/change` with `X-CI-Secret` or `X-Hub-Signature-256`. Idempotency is `repo + sha + environment`. Grafana, Alertmanager, or a logger POSTs `/api/webhooks/alerts`. Optional post-deploy samples go to `/api/webhooks/watch-metrics`. Do not store these secrets in git.
 
 ## Helm Values Files
 

@@ -19,6 +19,10 @@ var (
 
 	// CIWebhookSecret - secret for CI to authenticate when posting pipeline status
 	CIWebhookSecret = getEnv("CI_WEBHOOK_SECRET", "")
+	// ChangeWebhookSecret - optional dedicated secret for POST /api/webhooks/change
+	ChangeWebhookSecret = getEnv("CHANGE_WEBHOOK_SECRET", "")
+	// AlertWebhookSecret - optional dedicated secret for POST /api/webhooks/alerts
+	AlertWebhookSecret = getEnv("ALERT_WEBHOOK_SECRET", "")
 
 	// SlackWebhookURL - optional Slack incoming webhook for notifications
 	SlackWebhookURL = getEnv("SLACK_WEBHOOK_URL", "")
@@ -76,6 +80,8 @@ func reloadConfigFromEnv() {
 	GitHubToken = getEnv("GITHUB_TOKEN", "")
 	BaseBranch = getEnv("BASE_BRANCH", "main")
 	CIWebhookSecret = getEnv("CI_WEBHOOK_SECRET", "")
+	ChangeWebhookSecret = getEnv("CHANGE_WEBHOOK_SECRET", "")
+	AlertWebhookSecret = getEnv("ALERT_WEBHOOK_SECRET", "")
 	SlackWebhookURL = getEnv("SLACK_WEBHOOK_URL", "")
 	TeamsWebhookURL = getEnv("TEAMS_WEBHOOK_URL", "")
 	OpsNotificationWebhookURL = getEnv("OPS_NOTIFICATION_WEBHOOK_URL", "")
