@@ -2220,6 +2220,14 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		devopsProjectInfraSettingsHandler(w, r, projectID)
 		return
 	}
+	if len(pathParts) > 1 && pathParts[1] == "risk-paths" {
+		pathID := 0
+		if len(pathParts) > 2 {
+			pathID, _ = strconv.Atoi(strings.TrimSpace(pathParts[2]))
+		}
+		devopsProjectRiskPathsHandler(w, r, projectID, pathID)
+		return
+	}
 	if len(pathParts) > 1 && pathParts[1] == "lifecycle" {
 		if r.Method != "POST" {
 			writeMethodNotAllowed(w, r)

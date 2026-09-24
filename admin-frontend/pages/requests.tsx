@@ -93,6 +93,17 @@ interface PRRequest {
   policy_checks?: PolicyCheckSummary | null;
   cost_check?: RequestCostCheck | null;
   operation?: RequestOperation | null;
+  last_merge?: {
+    pr_number: number;
+    title: string;
+    risk_level: string;
+    score: number;
+    pr_url?: string;
+    merged_at?: string;
+    repo_owner?: string;
+    repo_name?: string;
+    change_brief?: { headline?: string; risk_because?: string[] };
+  } | null;
 }
 
 interface AdminRequestFilters {
@@ -530,6 +541,16 @@ export default function AdminRequests() {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
+    if (res.status === 428 && data?.high_risk_merge_required) {
+      const headline = data?.change_brief?.headline ? String(data.change_brief.headline) : '';
+      const err = new Error(data?.error || 'High-risk merge acknowledgement required') as Error & {
+        highRiskMergeRequired?: boolean;
+        changeBriefHeadline?: string;
+      };
+      err.highRiskMergeRequired = true;
+      err.changeBriefHeadline = headline;
+      throw err;
+    }
     if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
     if (Array.isArray(data?.failed) && data.failed.length > 0) {
       throw new Error(`Could not update ${data.failed.map((id: number) => `#${id}`).join(', ')}. The rest were applied.`);
@@ -733,7 +754,18 @@ export default function AdminRequests() {
       ids: [id],
       label: 'Approving',
       message: `Approved request #${id}`,
-      commit: () => sendAdminAction('POST', `/api/admin/requests/${id}/approve`),
+      commit: async () => {
+        try {
+          await sendAdminAction('POST', `/api/admin/requests/${id}/approve`);
+        } catch (err) {
+          const gateErr = err as Error & { highRiskMergeRequired?: boolean; changeBriefHeadline?: string };
+          if (!gateErr.highRiskMergeRequired) throw err;
+          const headline = gateErr.changeBriefHeadline ? `\n\nChanging: ${gateErr.changeBriefHeadline}` : '';
+          const ok = window.confirm(`${gateErr.message}${headline}\n\nAcknowledge the high-risk merge and approve anyway?`);
+          if (!ok) throw err;
+          await sendAdminAction('POST', `/api/admin/requests/${id}/approve`, { high_risk_merge_acknowledged: true });
+        }
+      },
     });
   };
 
@@ -814,11 +846,24 @@ export default function AdminRequests() {
     setPromotingId(id);
     setError('');
     try {
-      const res = await fetch(`${apiUrl}/api/request/${id}/promote`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
+      const postPromote = (body?: unknown) =>
+        fetch(`${apiUrl}/api/request/${id}/promote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+      let res = await postPromote();
+      let data = await res.json().catch(() => ({}));
+      if (res.status === 428 && data?.high_risk_merge_required) {
+        const headline = data?.change_brief?.headline ? `\n\nChanging: ${data.change_brief.headline}` : '';
+        const ok = window.confirm(`${data.error || 'High-risk merge recorded.'}${headline}\n\nAcknowledge the change brief and promote anyway?`);
+        if (!ok) {
+          setError(data.error || 'Promotion cancelled');
+          return;
+        }
+        res = await postPromote({ high_risk_merge_acknowledged: true });
+        data = await res.json().catch(() => ({}));
+      }
       if (res.ok) {
         fetchRequests({ offset });
         if (detailRequest?.id === id) setDetailRequest(null);
@@ -1503,6 +1548,21 @@ export default function AdminRequests() {
                 <PlanReviewCard review={detailRequest.plan_review} env={detailRequest.env} onAcknowledge={acknowledgePlan} />
                 <PolicyChecksCard summary={detailRequest.policy_checks} />
                 <CostCheckCard check={detailRequest.cost_check} />
+
+                {detailRequest.last_merge ? (
+                  <div className="admin-request-detail-modal__notice">
+                    <strong className="admin-request-detail-modal__notice-title">Last recorded merge</strong>
+                    <p className="admin-request-detail-modal__notice-copy">
+                      PR #{detailRequest.last_merge.pr_number} · {detailRequest.last_merge.risk_level} · score {detailRequest.last_merge.score}
+                      {detailRequest.last_merge.change_brief?.headline ? ` · ${detailRequest.last_merge.change_brief.headline}` : ''}
+                    </p>
+                    {detailRequest.last_merge.pr_url ? (
+                      <a href={detailRequest.last_merge.pr_url} target="_blank" rel="noopener noreferrer">
+                        Open merge on GitHub
+                      </a>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 <RequestPRImpact
                   apiUrl={apiUrl}

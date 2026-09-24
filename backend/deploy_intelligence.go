@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -12,26 +11,29 @@ import (
 )
 
 type repoDeployEvent struct {
-	ID          int           `json:"id"`
-	RepoOwner   string        `json:"repo_owner"`
-	RepoName    string        `json:"repo_name"`
-	PRNumber    int           `json:"pr_number"`
-	RequestID   *int          `json:"request_id,omitempty"`
-	Title       string        `json:"title"`
-	Author      string        `json:"author"`
-	BaseBranch  string        `json:"base_branch"`
-	HeadBranch  string        `json:"head_branch"`
-	MergedAt    time.Time     `json:"merged_at"`
-	CommitCount int           `json:"commit_count"`
-	FileCount   int           `json:"file_count"`
-	Additions   int           `json:"additions"`
-	Deletions   int           `json:"deletions"`
-	Score       int           `json:"score"`
-	RiskLevel   string        `json:"risk_level"`
-	Summary     string        `json:"summary"`
-	PRURL       string                 `json:"pr_url"`
-	Impact      prImpactBrief          `json:"impact"`
-	OpenPR      *deployIntelOpenPRMeta `json:"open_pr,omitempty"`
+	ID            int                       `json:"id"`
+	RepoOwner     string                    `json:"repo_owner"`
+	RepoName      string                    `json:"repo_name"`
+	PRNumber      int                       `json:"pr_number"`
+	RequestID     *int                      `json:"request_id,omitempty"`
+	Title         string                    `json:"title"`
+	Author        string                    `json:"author"`
+	BaseBranch    string                    `json:"base_branch"`
+	HeadBranch    string                    `json:"head_branch"`
+	MergedAt      time.Time                 `json:"merged_at"`
+	CommitCount   int                       `json:"commit_count"`
+	FileCount     int                       `json:"file_count"`
+	Additions     int                       `json:"additions"`
+	Deletions     int                       `json:"deletions"`
+	Score         int                       `json:"score"`
+	RiskLevel     string                    `json:"risk_level"`
+	Summary       string                    `json:"summary"`
+	PRURL         string                    `json:"pr_url"`
+	Impact        prImpactBrief             `json:"impact"`
+	OpenPR        *deployIntelOpenPRMeta    `json:"open_pr,omitempty"`
+	ChangeBrief   *deployIntelChangeBrief   `json:"change_brief,omitempty"`
+	GitHubPost    *deployIntelGitHubPost    `json:"github_post,omitempty"`
+	SimilarMerges []deployIntelSimilarMerge `json:"similar_merges,omitempty"`
 }
 
 func isProductionBaseBranch(ref string) bool {
@@ -70,6 +72,8 @@ func analyzeGitHubPullRequest(owner, repo string, number int, req *PRRequest, de
 	}
 	enrichPRImpactFromGitHub(&brief, req, owner, repo)
 	scorePRImpact(&brief, req)
+	attachChangeBrief(&brief)
+	attachSimilarPastMerges(&brief, owner, repo)
 	if req != nil && req.ID > 0 {
 		_ = savePRImpactBrief(brief)
 	}
@@ -155,8 +159,13 @@ func listRepoDeployEvents(owner, repo string, limit int) ([]repoDeployEvent, err
 		if payload != "" {
 			_ = json.Unmarshal([]byte(payload), &ev.Impact)
 		}
+		if ev.Impact.ChangeBrief == nil {
+			attachChangeBrief(&ev.Impact)
+		}
+		ev.ChangeBrief = ev.Impact.ChangeBrief
 		out = append(out, ev)
 	}
+	attachSimilarMergesToEvents(out)
 	return out, nil
 }
 
@@ -192,19 +201,39 @@ func processGitHubPullRequestWebhook(payload map[string]interface{}) {
 		refreshPRImpactForRequest(req, deploy)
 	}
 
-	if !merged || !isProductionBaseBranch(baseRef) {
-		return
-	}
 	if owner == "" || repo == "" {
 		owner, repo = GitHubOwner, GitHubRepo
 	}
-	if !repoIsOnboarded(owner, repo) {
+	if !deployIntelGitHubAccessAllowed(owner, repo) {
+		return
+	}
+
+	headSHA := ""
+	if head, ok := pr["head"].(map[string]interface{}); ok {
+		headSHA, _ = head["sha"].(string)
+	}
+
+	if action == "opened" || action == "synchronize" || action == "reopened" || action == "ready_for_review" {
+		brief := analyzeGitHubPullRequest(owner, repo, number, req, "open")
+		brief.MergeState = "open"
+		brief.DeployStatus = "open"
+		posted := postDeployIntelGitHubBrief(owner, repo, number, headSHA, brief)
+		if posted.Error != "" {
+			log.Printf("[deploy-intel] github brief for open PR #%d: %s", number, posted.Error)
+		}
+	}
+
+	if !merged || !isProductionBaseBranch(baseRef) {
 		return
 	}
 
 	brief := analyzeGitHubPullRequest(owner, repo, number, req, "merged")
 	brief.MergeState = "merged"
 	brief.DeployStatus = "merged"
+	if req != nil {
+		brief.RequestID = req.ID
+	}
+	_ = postDeployIntelGitHubBrief(owner, repo, number, headSHA, brief)
 
 	mergedAt := time.Now().UTC()
 	if mergedAtRaw, ok := pr["merged_at"].(string); ok && strings.TrimSpace(mergedAtRaw) != "" {
@@ -221,6 +250,7 @@ func processGitHubPullRequestWebhook(payload map[string]interface{}) {
 		log.Printf("[deploy-intel] save merge #%d: %v", number, err)
 		return
 	}
+	notifyHighRiskMergeIfNeeded(owner, repo, brief)
 	details := fmt.Sprintf("PR #%d merged to %s · risk=%s score=%d commits=%d", number, baseRef, brief.RiskLevel, brief.Score, brief.CommitCount)
 	AppendGitHubLog("deploy_merge_analyzed", details, htmlURL)
 	if reqID != nil {
@@ -258,6 +288,10 @@ func intFromAny(value interface{}) int {
 }
 
 func latestHighRiskMergeForRequest(requestID int, within time.Duration) (*repoDeployEvent, error) {
+	return lookupLatestMergeForRequest(requestID, within, true)
+}
+
+func lookupLatestMergeForRequest(requestID int, within time.Duration, highRiskOnly bool) (*repoDeployEvent, error) {
 	if DB == nil || requestID <= 0 {
 		return nil, nil
 	}
@@ -265,35 +299,77 @@ func latestHighRiskMergeForRequest(requestID int, within time.Duration) (*repoDe
 		within = 14 * 24 * time.Hour
 	}
 	cutoff := time.Now().UTC().Add(-within)
+	riskClause := ""
+	if highRiskOnly {
+		riskClause = "AND lower(risk_level) = 'high'"
+	}
 	row := DB.QueryRow(`
 		SELECT id, repo_owner, repo_name, pr_number, request_id, title, author, base_branch, head_branch,
 		       merged_at, commit_count, file_count, additions, deletions, score, risk_level, summary, pr_url, payload
 		  FROM repo_deploy_events
 		 WHERE request_id = $1
-		   AND lower(risk_level) = 'high'
 		   AND merged_at >= $2
+		   `+riskClause+`
 		 ORDER BY merged_at DESC
 		 LIMIT 1
 	`, requestID, cutoff)
-	var ev repoDeployEvent
-	var reqID *int
-	var payload string
-	err := row.Scan(
-		&ev.ID, &ev.RepoOwner, &ev.RepoName, &ev.PRNumber, &reqID, &ev.Title, &ev.Author,
-		&ev.BaseBranch, &ev.HeadBranch, &ev.MergedAt, &ev.CommitCount, &ev.FileCount,
-		&ev.Additions, &ev.Deletions, &ev.Score, &ev.RiskLevel, &ev.Summary, &ev.PRURL, &payload,
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
+	ev, err := scanRepoDeployEvent(row)
+	if err != nil || ev != nil {
+		return ev, err
+	}
+	req, _ := GetPRRequestByID(requestID)
+	if req == nil {
+		return nil, nil
+	}
+	owner, repo, number, _ := parseGitHubPRURL(req.PRURL)
+	if owner == "" || repo == "" {
+		identity := githubIdentityForRequest(req)
+		owner, repo = identity.Owner, identity.Name
+	}
+	if number > 0 && owner != "" && repo != "" {
+		row = DB.QueryRow(`
+			SELECT id, repo_owner, repo_name, pr_number, request_id, title, author, base_branch, head_branch,
+			       merged_at, commit_count, file_count, additions, deletions, score, risk_level, summary, pr_url, payload
+			  FROM repo_deploy_events
+			 WHERE pr_number = $1
+			   AND lower(repo_owner) = lower($2)
+			   AND lower(repo_name) = lower($3)
+			   AND merged_at >= $4
+			   `+riskClause+`
+			 ORDER BY merged_at DESC
+			 LIMIT 1
+		`, number, owner, repo, cutoff)
+		ev, err = scanRepoDeployEvent(row)
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
+		if ev != nil && (ev.RequestID == nil || *ev.RequestID == 0) {
+			linkDeployEventToRequest(ev.ID, requestID)
+			ev.RequestID = &requestID
+		}
+		return ev, nil
 	}
-	ev.RequestID = reqID
-	if payload != "" {
-		_ = json.Unmarshal([]byte(payload), &ev.Impact)
+	if strings.TrimSpace(req.PRURL) == "" {
+		return nil, nil
 	}
-	return &ev, nil
+	row = DB.QueryRow(`
+		SELECT id, repo_owner, repo_name, pr_number, request_id, title, author, base_branch, head_branch,
+		       merged_at, commit_count, file_count, additions, deletions, score, risk_level, summary, pr_url, payload
+		  FROM repo_deploy_events
+		 WHERE pr_url = $1
+		   AND merged_at >= $2
+		   `+riskClause+`
+		 ORDER BY merged_at DESC
+		 LIMIT 1
+	`, strings.TrimSpace(req.PRURL), cutoff)
+	return scanRepoDeployEvent(row)
+}
+
+func linkDeployEventToRequest(eventID, requestID int) {
+	if DB == nil || eventID <= 0 || requestID <= 0 {
+		return
+	}
+	_, _ = DB.Exec(`UPDATE repo_deploy_events SET request_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND request_id IS NULL`, eventID, requestID)
 }
 
 func applyHighRiskMergePromotionCheck(decision *promotionGateDecision, requestID int, targetEnvironment string) {
@@ -307,22 +383,48 @@ func applyHighRiskMergePromotionCheck(decision *promotionGateDecision, requestID
 	if err != nil || ev == nil {
 		return
 	}
+	if hasDeployIntelAck(ev.RepoOwner, ev.RepoName, ev.PRNumber) {
+		brief := changeBriefFromDeployEvent(ev)
+		detail := fmt.Sprintf(
+			"PR #%d merged to %s on %s with high change risk (score %d). Exception already acknowledged.",
+			ev.PRNumber, ev.BaseBranch, ev.MergedAt.Format("2006-01-02"), ev.Score,
+		)
+		if brief != nil && strings.TrimSpace(brief.Headline) != "" {
+			detail += " " + brief.Headline
+		}
+		decision.Checks = append(decision.Checks, deploymentGateCheck{
+			Key:         "recent_high_risk_merge",
+			Label:       "Recent high-risk merge",
+			Status:      "ok",
+			Detail:      detail,
+			PRURL:       ev.PRURL,
+			ChangeBrief: brief,
+		})
+		return
+	}
+	brief := changeBriefFromDeployEvent(ev)
+	headline := strings.TrimSpace(ev.Summary)
+	if brief != nil && strings.TrimSpace(brief.Headline) != "" {
+		headline = brief.Headline
+	}
 	detail := fmt.Sprintf(
 		"PR #%d merged to %s on %s with high change risk (score %d). %s",
 		ev.PRNumber,
 		ev.BaseBranch,
 		ev.MergedAt.Format("2006-01-02"),
 		ev.Score,
-		strings.TrimSpace(ev.Summary),
+		headline,
 	)
 	if ev.PRURL != "" {
 		detail += " " + ev.PRURL
 	}
 	check := deploymentGateCheck{
-		Key:    "recent_high_risk_merge",
-		Label:  "Recent high-risk merge",
-		Status: "attention",
-		Detail: detail,
+		Key:         "recent_high_risk_merge",
+		Label:       "Recent high-risk merge",
+		Status:      "attention",
+		Detail:      detail,
+		PRURL:       ev.PRURL,
+		ChangeBrief: brief,
 	}
 	decision.Checks = append(decision.Checks, check)
 	decision.AttentionCheckCount++
@@ -373,9 +475,10 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		encodeJSON(w, map[string]interface{}{
-			"status":               "ok",
-			"repos":                summaries,
-			"future_capabilities":  deployIntelFutureCapabilities,
+			"status":              "ok",
+			"repos":               summaries,
+			"projects":            listDeployIntelProjectOptions(),
+			"future_capabilities": deployIntelFutureCapabilities,
 		})
 		return
 	}
@@ -406,6 +509,7 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	refreshNumber, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("refresh_pr")))
+	var refreshPost *deployIntelGitHubPost
 	if refreshNumber > 0 && section != "open" && repoIsOnboarded(owner, repo) {
 		req := findRequestByPRNumber(refreshNumber)
 		brief := analyzeGitHubPullRequest(owner, repo, refreshNumber, req, "merged")
@@ -415,6 +519,9 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 			reqID = &req.ID
 		}
 		_ = saveRepoDeployEvent(owner, repo, time.Now().UTC(), brief, reqID)
+		posted := postDeployIntelGitHubBrief(owner, repo, refreshNumber, "", brief)
+		refreshPost = &posted
+		notifyHighRiskMergeIfNeeded(owner, repo, brief)
 	}
 
 	repoSummary := buildDeployIntelRepoSummary(deployIntelRepo{
@@ -439,6 +546,37 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			if events == nil {
 				events = []repoDeployEvent{}
+			}
+		}
+		if refreshNumber > 0 {
+			for i := range events {
+				if events[i].PRNumber != refreshNumber {
+					continue
+				}
+				posted := postDeployIntelGitHubBrief(owner, repo, refreshNumber, "", events[i].Impact)
+				refreshPost = &posted
+				events[i].GitHubPost = &posted
+				if posted.Error != "" {
+					if githubFetch.Error == "" {
+						githubFetch.Error = posted.Error
+					}
+				}
+				if events[i].OpenPR != nil {
+					for j := range events[i].OpenPR.Checks {
+						if events[i].OpenPR.Checks[j].Key != "deploy_intel" {
+							continue
+						}
+						events[i].OpenPR.Checks[j].Present = posted.CheckPosted
+						if posted.CheckPosted {
+							events[i].OpenPR.Checks[j].Status = "ok"
+							events[i].OpenPR.Checks[j].Detail = "Posted change brief to GitHub."
+						} else if posted.CommentPosted {
+							events[i].OpenPR.Checks[j].Status = "unknown"
+							events[i].OpenPR.Checks[j].Detail = "PR comment posted; check run needs GitHub App permissions."
+						}
+					}
+				}
+				break
 			}
 		}
 	} else {
@@ -481,6 +619,9 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 		if githubFetch.Error != "" {
 			payload["github_error"] = githubFetch.Error
 		}
+	}
+	if refreshPost != nil {
+		payload["github_post"] = refreshPost
 	}
 	encodeJSON(w, payload)
 }

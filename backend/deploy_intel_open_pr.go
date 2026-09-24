@@ -30,26 +30,27 @@ type deployIntelPreviewLink struct {
 }
 
 type deployIntelOpenPRMeta struct {
-	IsDraft             bool                     `json:"is_draft"`
-	CreatedAt           *time.Time               `json:"created_at,omitempty"`
-	AgeDays             int                      `json:"age_days"`
-	ReviewSLA           string                   `json:"review_sla"` // ok, warning, breach
-	ReviewDetail        string                   `json:"review_detail,omitempty"`
-	Assignees           []string                 `json:"assignees,omitempty"`
-	RequestedReviewers  []string                 `json:"requested_reviewers,omitempty"`
+	IsDraft             bool                       `json:"is_draft"`
+	CreatedAt           *time.Time                 `json:"created_at,omitempty"`
+	AgeDays             int                        `json:"age_days"`
+	ReviewSLA           string                     `json:"review_sla"` // ok, warning, breach
+	ReviewDetail        string                     `json:"review_detail,omitempty"`
+	Assignees           []string                   `json:"assignees,omitempty"`
+	RequestedReviewers  []string                   `json:"requested_reviewers,omitempty"`
 	Checks              []deployIntelRequiredCheck `json:"checks,omitempty"`
-	PreviewEnvironments []deployIntelPreviewLink `json:"preview_environments,omitempty"`
-	SuggestTicket       bool                     `json:"suggest_ticket"`
-	SuggestTicketReason string                   `json:"suggest_ticket_reason,omitempty"`
+	PreviewEnvironments []deployIntelPreviewLink   `json:"preview_environments,omitempty"`
+	SuggestTicket       bool                       `json:"suggest_ticket"`
+	SuggestTicketReason string                     `json:"suggest_ticket_reason,omitempty"`
+	ConflictsWith       []int                      `json:"conflicts_with,omitempty"`
 }
 
 type openPRListOptions struct {
-	Limit            int
-	DeepPR           int
-	ProductionBase   string
-	BaseBranchOnly   bool
-	IncludeDrafts    bool
-	BatchDeep        bool
+	Limit          int
+	DeepPR         int
+	ProductionBase string
+	BaseBranchOnly bool
+	IncludeDrafts  bool
+	BatchDeep      bool
 }
 
 func parseOpenPRListOptions(r *http.Request, productionBase string) openPRListOptions {
@@ -136,6 +137,7 @@ func listInfragateChecksOnRef(ctx context.Context, client *github.Client, owner,
 	out := []deployIntelRequiredCheck{
 		{Key: "plan_review", Label: checkInfragatePlanReview, Required: true, Present: false, Status: "unknown"},
 		{Key: "policy", Label: checkInfragatePolicy, Required: true, Present: false, Status: "unknown"},
+		{Key: "deploy_intel", Label: checkInfragateDeployIntel, Required: false, Present: false, Status: "unknown"},
 	}
 	if client == nil || ref == "" {
 		return out
@@ -177,9 +179,12 @@ func listInfragateChecksOnRef(ctx context.Context, client *github.Client, owner,
 				out[i].Status = "unknown"
 				out[i].Detail = "Check state: " + state
 			}
-		} else {
+		} else if out[i].Required {
 			out[i].Status = "missing"
 			out[i].Detail = "Not reported on latest commit."
+		} else {
+			out[i].Status = "unknown"
+			out[i].Detail = "Change brief not posted yet."
 		}
 	}
 	return out
@@ -249,6 +254,7 @@ func buildOpenPRMeta(ctx context.Context, client *github.Client, owner, name str
 		Checks: []deployIntelRequiredCheck{
 			{Key: "plan_review", Label: checkInfragatePlanReview, Required: true, Status: "unknown"},
 			{Key: "policy", Label: checkInfragatePolicy, Required: true, Status: "unknown"},
+			{Key: "deploy_intel", Label: checkInfragateDeployIntel, Required: false, Status: "unknown"},
 		},
 	}
 	if t := pr.GetCreatedAt(); !t.IsZero() {
@@ -356,15 +362,47 @@ func enrichOpenPRBriefStats(ctx context.Context, client *github.Client, owner, n
 	brief.Additions = pr.GetAdditions()
 	brief.Deletions = pr.GetDeletions()
 	brief.CommitCount = countPullRequestCommits(subCtx, client, owner, name, number)
-	brief.FileCount = pr.GetChangedFiles()
-	if brief.FileCount <= 0 {
-		brief.FileCount = countPullRequestChangedFiles(subCtx, client, owner, name, number)
+	files := listOpenPRImpactFiles(subCtx, client, owner, name, number)
+	if len(files) > 0 {
+		brief.Files = files
+		brief.FileCount = len(files)
+		brief.BlastRadius = blastRadiusFromRequest(req, files)
+	} else {
+		brief.FileCount = pr.GetChangedFiles()
+		if brief.FileCount <= 0 {
+			brief.FileCount = countPullRequestChangedFiles(subCtx, client, owner, name, number)
+		}
 	}
 	brief.Summary = fmt.Sprintf(
 		"%d commit(s), %d file(s), +%d/-%d (live from GitHub). Open for full file list and CI check details.",
 		brief.CommitCount, brief.FileCount, brief.Additions, brief.Deletions,
 	)
 	scorePRImpact(brief, req)
+}
+
+func listOpenPRImpactFiles(ctx context.Context, client *github.Client, owner, name string, number int) []prImpactFile {
+	if client == nil || number <= 0 {
+		return nil
+	}
+	files, _, err := client.PullRequests.ListFiles(ctx, owner, name, number, &github.ListOptions{PerPage: 100})
+	if err != nil {
+		return nil
+	}
+	out := make([]prImpactFile, 0, len(files))
+	for _, file := range files {
+		if file == nil {
+			continue
+		}
+		path := file.GetFilename()
+		out = append(out, prImpactFile{
+			Path:      path,
+			Status:    file.GetStatus(),
+			Additions: file.GetAdditions(),
+			Deletions: file.GetDeletions(),
+			Category:  categorizeChangedPath(path),
+		})
+	}
+	return out
 }
 
 func attachOpenPRMeta(ctx context.Context, client *github.Client, owner, name string, pr *github.PullRequest, ev repoDeployEvent, deep bool) repoDeployEvent {
@@ -423,18 +461,14 @@ func runDeployIntelHighRiskOpenPRDigest(now time.Time) {
 		if err != nil {
 			continue
 		}
-		high := 0
 		for _, pr := range prs {
 			if !openPRMatchesFilters(pr, opts) {
 				continue
 			}
 			ev := repoDeployEventFromOpenPR(ctx, client, item.Owner, item.Name, pr, false)
 			if strings.EqualFold(ev.RiskLevel, "high") || ev.Score >= 70 {
-				high++
+				lines = append(lines, formatHighRiskOpenPRDigestLine(item.Owner, item.Name, ev))
 			}
-		}
-		if high > 0 {
-			lines = append(lines, fmt.Sprintf("• *%s/%s*: %d high-risk open PR(s) targeting %s", item.Owner, item.Name, high, base))
 		}
 	}
 	if len(lines) == 0 {
@@ -459,15 +493,17 @@ func devopsDeployIntelSuggestTicketHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var body struct {
-		Owner      string `json:"owner"`
-		Repo       string `json:"name"`
-		PRNumber   int    `json:"pr_number"`
-		Team       string `json:"team"`
-		Env        string `json:"env"`
-		Cloud      string `json:"cloud"`
-		Service    string `json:"service"`
-		ProjectID  *int   `json:"project_id"`
-		Priority   string `json:"priority"`
+		Owner        string   `json:"owner"`
+		Repo         string   `json:"name"`
+		PRNumber     int      `json:"pr_number"`
+		Team         string   `json:"team"`
+		Env          string   `json:"env"`
+		Cloud        string   `json:"cloud"`
+		Service      string   `json:"service"`
+		ProjectID    *int     `json:"project_id"`
+		Priority     string   `json:"priority"`
+		Acknowledged bool     `json:"acknowledged"`
+		Reasons      []string `json:"reasons"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
@@ -481,6 +517,32 @@ func devopsDeployIntelSuggestTicketHandler(w http.ResponseWriter, r *http.Reques
 	if !deployIntelGitHubAccessAllowed(owner, name) {
 		writeAPIError(w, r, http.StatusBadRequest, "repository is not enabled for deploy intelligence", nil)
 		return
+	}
+	brief := analyzeGitHubPullRequest(owner, name, body.PRNumber, nil, "open")
+	if strings.EqualFold(brief.RiskLevel, "high") || brief.Score >= 70 {
+		if !hasDeployIntelAck(owner, name, body.PRNumber) {
+			reasons := normalizeAckReasons(body.Reasons)
+			if !body.Acknowledged || len(reasons) == 0 {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusPreconditionRequired)
+				payload := map[string]interface{}{
+					"status":                   "error",
+					"error":                    "High-risk open PR requires an exception acknowledgement with reasons before creating a ticket.",
+					"high_risk_merge_required": true,
+					"ack_reasons_required":     true,
+					"change_brief":             brief.ChangeBrief,
+					"similar_merges":           brief.SimilarMerges,
+					"score":                    brief.Score,
+					"risk_level":               brief.RiskLevel,
+				}
+				_ = json.NewEncoder(w).Encode(payload)
+				return
+			}
+			if _, err := persistDeployIntelAck(owner, name, body.PRNumber, managerID, reasons); err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+		}
 	}
 	if existing := findRequestByPRNumber(body.PRNumber); existing != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -531,11 +593,11 @@ func devopsDeployIntelSuggestTicketHandler(w http.ResponseWriter, r *http.Reques
 	}
 	prURL := pr.GetHTMLURL()
 	configPayload, _ := json.Marshal(map[string]interface{}{
-		"source":        "deploy_intelligence",
-		"repo":          owner + "/" + name,
-		"pr_number":     body.PRNumber,
-		"created_by":    managerID,
-		"risk_note":     "Suggested from deploy intelligence open PR analysis.",
+		"source":     "deploy_intelligence",
+		"repo":       owner + "/" + name,
+		"pr_number":  body.PRNumber,
+		"created_by": managerID,
+		"risk_note":  "Suggested from deploy intelligence open PR analysis.",
 	})
 	req := &PRRequest{
 		ProjectID:     body.ProjectID,

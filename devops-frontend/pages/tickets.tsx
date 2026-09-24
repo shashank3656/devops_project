@@ -184,6 +184,23 @@ interface TicketDetail extends TicketRow {
   policy_checks?: PolicyCheckSummary | null;
   cost_check?: RequestCostCheck | null;
   operation?: RequestOperation | null;
+  last_merge?: {
+    pr_number: number;
+    title: string;
+    risk_level: string;
+    score: number;
+    pr_url?: string;
+    change_brief?: { headline?: string; risk_because?: string[]; changing?: { label: string; count: number }[] };
+    similar_merges?: { pr_number: number; title?: string; headline?: string; later_revert?: { pr_number: number } }[];
+  } | null;
+  high_risk_merge?: {
+    required?: boolean;
+    acknowledged?: boolean;
+    message?: string;
+    change_brief?: { headline?: string; risk_because?: string[]; changing?: { label: string; count: number }[] };
+    similar_merges?: { pr_number: number; title?: string; headline?: string; later_revert?: { pr_number: number } }[];
+    ack?: { username?: string; reasons?: string[]; created_at?: string };
+  } | null;
 }
 
 interface RequestComment {
@@ -352,6 +369,8 @@ export default function DevOpsTickets() {
   const [commentBody, setCommentBody] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [ackHighRiskMerge, setAckHighRiskMerge] = useState(false);
+  const [ackReasons, setAckReasons] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [pendingDecisions, setPendingDecisions] = useState<Record<number, string>>({});
   const [actionError, setActionError] = useState('');
@@ -460,6 +479,8 @@ export default function DevOpsTickets() {
       setDetailComments(Array.isArray(commentsData.comments) ? (commentsData.comments as RequestComment[]) : []);
       setDetailTimeline(Array.isArray(timelineData.timeline) ? (timelineData.timeline as RequestTimelineEvent[]) : []);
       setRejectReason(getString(detailRequestData.reject_reason));
+      setAckHighRiskMerge(false);
+      setAckReasons('');
       setCommentBody('');
 
       addRecentRequestId(id);
@@ -555,6 +576,17 @@ export default function DevOpsTickets() {
       err.runbookRequired = true;
       throw err;
     }
+    if (res.status === 428 && data.high_risk_merge_required) {
+      const brief = data.change_brief && typeof data.change_brief === 'object' ? (data.change_brief as Record<string, unknown>) : null;
+      const headline = brief && typeof brief.headline === 'string' ? brief.headline : '';
+      const err = new Error(getString(data.error, 'High-risk merge acknowledgement required')) as Error & {
+        highRiskMergeRequired?: boolean;
+        changeBriefHeadline?: string;
+      };
+      err.highRiskMergeRequired = true;
+      err.changeBriefHeadline = headline;
+      throw err;
+    }
     if (!res.ok) throw new Error(getString(data.error, `Request failed (${res.status})`));
     if (Array.isArray(data.errors) && data.errors.length > 0) {
       throw new Error(`Some requests were not updated: ${(data.errors as string[]).join('; ')}`);
@@ -614,15 +646,37 @@ export default function DevOpsTickets() {
       `${action === 'approve' ? 'Approved' : 'Rejected'} request #${id}`,
       async () => {
         try {
-          await sendDevopsAction(`/api/devops/requests/${id}/${action}`, action === 'reject' ? { reason } : undefined);
+          await sendDevopsAction(
+            `/api/devops/requests/${id}/${action}`,
+            action === 'reject'
+              ? { reason }
+              : ackHighRiskMerge
+                ? {
+                    high_risk_merge_acknowledged: true,
+                    ack_reasons: ackReasons.split('\n').map((line) => line.trim()).filter(Boolean),
+                  }
+                : undefined,
+          );
         } catch (err) {
-          const runbookErr = err as Error & { runbookRequired?: boolean };
-          if (action === 'approve' && runbookErr.runbookRequired) {
+          const gateErr = err as Error & { runbookRequired?: boolean; highRiskMergeRequired?: boolean; changeBriefHeadline?: string };
+          if (action === 'approve' && gateErr.runbookRequired) {
             const ok = window.confirm(
-              `${runbookErr.message}\n\nAcknowledge that the production runbook is linked (or add one under Guides) and approve anyway?`
+              `${gateErr.message}\n\nAcknowledge that the production runbook is linked (or add one under Guides) and approve anyway?`
             );
             if (!ok) throw err;
             await sendDevopsAction(`/api/devops/requests/${id}/${action}`, { runbook_acknowledged: true });
+            return;
+          }
+          if (action === 'approve' && gateErr.highRiskMergeRequired) {
+            const headline = gateErr.changeBriefHeadline ? `\n\nChanging: ${gateErr.changeBriefHeadline}` : '';
+            const ok = window.confirm(
+              `${gateErr.message}${headline}\n\nAcknowledge the high-risk merge change brief and approve anyway?`
+            );
+            if (!ok) throw err;
+            await sendDevopsAction(`/api/devops/requests/${id}/${action}`, {
+              high_risk_merge_acknowledged: true,
+              ack_reasons: ackReasons.split('\n').map((line) => line.trim()).filter(Boolean),
+            });
             return;
           }
           throw err;
@@ -1373,6 +1427,9 @@ export default function DevOpsTickets() {
                         {detailRequest.terraform_plan_output && (
                           <details className="devops-approval-workspace__details">
                             <summary>Terraform plan output</summary>
+                            <p className="portal-surface__subtitle" style={{ marginBottom: 8 }}>
+                              Compare add/change/destroy counts with the PR file list in the impact brief. Destroys and “plan 2 / PR 12 files” mismatches are flagged there.
+                            </p>
                             <pre className="devops-approval-workspace__code">{detailRequest.terraform_plan_output}</pre>
                           </details>
                         )}
@@ -1406,6 +1463,60 @@ export default function DevOpsTickets() {
                           </p>
                         </div>
 
+                        {detailRequest.high_risk_merge?.required || detailRequest.last_merge ? (
+                          <div className="admin-request-detail-modal__notice" style={{ marginBottom: 16 }}>
+                            <strong className="admin-request-detail-modal__notice-title">
+                              {detailRequest.high_risk_merge?.change_brief?.headline
+                                || detailRequest.last_merge?.change_brief?.headline
+                                || 'Recent merge'}
+                            </strong>
+                            <p className="admin-request-detail-modal__notice-copy">
+                              {detailRequest.high_risk_merge?.message
+                                || `Last merge PR #${detailRequest.last_merge?.pr_number} · ${detailRequest.last_merge?.risk_level} · score ${detailRequest.last_merge?.score}`}
+                            </p>
+                            {(detailRequest.high_risk_merge?.change_brief?.risk_because
+                              || detailRequest.last_merge?.change_brief?.risk_because
+                              || []).slice(0, 3).map((reason) => (
+                                <p key={reason} className="admin-request-detail-modal__notice-copy">{reason}</p>
+                              ))}
+                            {(detailRequest.high_risk_merge?.similar_merges
+                              || detailRequest.last_merge?.similar_merges
+                              || []).slice(0, 3).map((item) => (
+                                <p key={item.pr_number} className="admin-request-detail-modal__notice-copy">
+                                  Similar #{item.pr_number} {item.headline || item.title || ''}
+                                  {item.later_revert ? ` · later revert #${item.later_revert.pr_number}` : ''}
+                                </p>
+                              ))}
+                            {detailRequest.high_risk_merge?.ack ? (
+                              <p className="admin-request-detail-modal__notice-copy">
+                                Acknowledged by {detailRequest.high_risk_merge.ack.username || 'reviewer'}
+                                {detailRequest.high_risk_merge.ack.reasons?.length
+                                  ? `: ${detailRequest.high_risk_merge.ack.reasons.join('; ')}`
+                                  : ''}
+                              </p>
+                            ) : null}
+                            {canActOnDetail && detailRequest.high_risk_merge?.required ? (
+                              <>
+                                <label className="portal-toolbar__item" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={ackHighRiskMerge}
+                                    onChange={(event) => setAckHighRiskMerge(event.target.checked)}
+                                  />
+                                  <span>Acknowledge risks in this change brief</span>
+                                </label>
+                                <textarea
+                                  className="input devops-approval-workspace__textarea"
+                                  rows={3}
+                                  value={ackReasons}
+                                  onChange={(event) => setAckReasons(event.target.value)}
+                                  placeholder="Exception reasons (required)"
+                                />
+                              </>
+                            ) : null}
+                          </div>
+                        ) : null}
+
                         <label className="label" htmlFor="devops-reject-reason">Reject reason</label>
                         <textarea
                           id="devops-reject-reason"
@@ -1421,7 +1532,7 @@ export default function DevOpsTickets() {
                             type="button"
                             className="btn btn-primary"
                             onClick={() => handleDecision('approve')}
-                            disabled={!canActOnDetail || Boolean(pendingDecisions[detailRequest.id])}
+                            disabled={!canActOnDetail || Boolean(pendingDecisions[detailRequest.id]) || (Boolean(detailRequest.high_risk_merge?.required) && (!ackHighRiskMerge || !ackReasons.trim()))}
                           >
                             Approve
                           </button>

@@ -44,6 +44,8 @@ interface ManagedProject {
   slug: string;
   repo_root: string;
   base_branch: string;
+  github_owner?: string;
+  github_repo?: string;
   default_cloud: string;
   environments: string[];
   components: string[];
@@ -139,6 +141,8 @@ function normalizeManagedProjects(value: unknown): ManagedProject[] {
       slug: String(project.slug || ''),
       repo_root: String(project.repo_root || ''),
       base_branch: String(project.base_branch || 'main'),
+      github_owner: String(project.github_owner || ''),
+      github_repo: String(project.github_repo || ''),
       default_cloud: String(project.default_cloud || 'aws'),
       environments: Array.isArray(project.environments) ? project.environments.map((entry) => String(entry || '')) : [],
       components: Array.isArray(project.components) ? project.components.map((entry) => String(entry || '')) : [],
@@ -269,6 +273,8 @@ export default function GitOpsControlPage() {
   const [createCloud, setCreateCloud] = useState('aws');
   const [createEnvironments, setCreateEnvironments] = useState('dev, qa, prod');
   const [createComponents, setCreateComponents] = useState('networking, eks, rds');
+  const [createGithubOwner, setCreateGithubOwner] = useState('');
+  const [createGithubRepo, setCreateGithubRepo] = useState('');
   const [jsonProjectId, setJsonProjectId] = useState<number | null>(null);
   const [newJsonComponent, setNewJsonComponent] = useState('');
   const [accessProjectId, setAccessProjectId] = useState('');
@@ -283,6 +289,8 @@ export default function GitOpsControlPage() {
     setCreateCloud('aws');
     setCreateEnvironments('dev, qa, prod');
     setCreateComponents('networking, eks, rds');
+    setCreateGithubOwner('');
+    setCreateGithubRepo('');
   };
 
   const loadProjectIntoForm = (project: ManagedProject) => {
@@ -293,6 +301,8 @@ export default function GitOpsControlPage() {
     setCreateCloud(project.default_cloud || 'aws');
     setCreateEnvironments(project.environments.join(', '));
     setCreateComponents(project.components.join(', '));
+    setCreateGithubOwner(project.github_owner || '');
+    setCreateGithubRepo(project.github_repo || '');
     setJsonProjectId(null);
     setNewJsonComponent('');
   };
@@ -559,6 +569,8 @@ export default function GitOpsControlPage() {
             name: createName,
             slug: createSlug,
             default_cloud: createCloud,
+            github_owner: createGithubOwner.trim(),
+            github_repo: createGithubRepo.trim(),
             environments: createEnvironments.split(',').map((item) => item.trim()).filter(Boolean),
             components: createComponents.split(',').map((item) => item.trim()).filter(Boolean),
           }),
@@ -1175,6 +1187,15 @@ export default function GitOpsControlPage() {
                                 <input id="sidebar-gitops-slug" className="input" value={createSlug} onChange={(event) => setCreateSlug(event.target.value)} placeholder="payments-platform" disabled={!selectedPanelProject?.can_manage && editingProjectId !== null} />
                               </div>
                               <div className="form-group">
+                                <label className="label" htmlFor="sidebar-gitops-github-owner">GitHub owner</label>
+                                <input id="sidebar-gitops-github-owner" className="input" value={createGithubOwner} onChange={(event) => setCreateGithubOwner(event.target.value)} placeholder="org-or-user" disabled={!selectedPanelProject?.can_manage && editingProjectId !== null} />
+                              </div>
+                              <div className="form-group">
+                                <label className="label" htmlFor="sidebar-gitops-github-repo">GitHub repository</label>
+                                <input id="sidebar-gitops-github-repo" className="input" value={createGithubRepo} onChange={(event) => setCreateGithubRepo(event.target.value)} placeholder="infra-live" disabled={!selectedPanelProject?.can_manage && editingProjectId !== null} />
+                                <p className="form-help">Optional. Deploy intelligence and webhooks use this repo instead of the global GITHUB_OWNER/GITHUB_REPO.</p>
+                              </div>
+                              <div className="form-group">
                                 <label className="label" htmlFor="sidebar-gitops-cloud">Default Cloud</label>
                                 <select id="sidebar-gitops-cloud" className="input" value={createCloud} onChange={(event) => setCreateCloud(event.target.value)} disabled={!selectedPanelProject?.can_manage && editingProjectId !== null}>
                                   <option value="aws">aws</option>
@@ -1272,6 +1293,9 @@ export default function GitOpsControlPage() {
                                 <span className="portal-pill">Group ID {selectedPanelProject.group_id}</span>
                                 <span className="portal-pill">{selectedPanelProject.default_cloud || 'aws'}</span>
                                 <span className="portal-pill">{selectedPanelProject.base_branch}</span>
+                                {selectedPanelProject.github_owner && selectedPanelProject.github_repo ? (
+                                  <span className="portal-pill">{selectedPanelProject.github_owner}/{selectedPanelProject.github_repo}</span>
+                                ) : null}
                               </div>
                             </div>
 

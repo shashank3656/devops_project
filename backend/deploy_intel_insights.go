@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	checkInfragatePlanReview = "infragate/plan-review"
-	checkInfragatePolicy     = "infragate/policy"
+	checkInfragatePlanReview  = "infragate/plan-review"
+	checkInfragatePolicy      = "infragate/policy"
+	checkInfragateDeployIntel = "infragate/deploy-intel"
 )
 
 type deployIntelRequiredCheck struct {

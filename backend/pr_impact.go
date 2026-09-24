@@ -36,30 +36,33 @@ type prImpactFactor struct {
 }
 
 type prImpactBrief struct {
-	RequestID         int              `json:"request_id,omitempty"`
-	PRNumber          int              `json:"pr_number,omitempty"`
-	PRURL             string           `json:"pr_url,omitempty"`
-	Title             string           `json:"title,omitempty"`
-	Author            string           `json:"author,omitempty"`
-	BaseBranch        string           `json:"base_branch,omitempty"`
-	HeadBranch        string           `json:"head_branch,omitempty"`
-	MergeState        string           `json:"merge_state,omitempty"`
-	DeployStatus      string           `json:"deploy_status,omitempty"`
-	CommitCount       int              `json:"commit_count"`
-	FileCount         int              `json:"file_count"`
-	Additions         int              `json:"additions"`
-	Deletions         int              `json:"deletions"`
-	Environment       string           `json:"environment,omitempty"`
-	NextEnvironment   string           `json:"next_environment,omitempty"`
-	BlastRadius       []string         `json:"blast_radius"`
-	Score             int              `json:"score"`
-	RiskLevel         string           `json:"risk_level"`
-	Summary           string           `json:"summary"`
-	RecommendedAction string           `json:"recommended_action"`
-	Factors           []prImpactFactor `json:"factors"`
-	Commits           []prImpactCommit `json:"commits,omitempty"`
-	Files             []prImpactFile   `json:"files,omitempty"`
-	Acknowledged      bool             `json:"acknowledged,omitempty"`
+	RequestID         int                       `json:"request_id,omitempty"`
+	PRNumber          int                       `json:"pr_number,omitempty"`
+	PRURL             string                    `json:"pr_url,omitempty"`
+	Title             string                    `json:"title,omitempty"`
+	Author            string                    `json:"author,omitempty"`
+	BaseBranch        string                    `json:"base_branch,omitempty"`
+	HeadBranch        string                    `json:"head_branch,omitempty"`
+	MergeState        string                    `json:"merge_state,omitempty"`
+	DeployStatus      string                    `json:"deploy_status,omitempty"`
+	CommitCount       int                       `json:"commit_count"`
+	FileCount         int                       `json:"file_count"`
+	Additions         int                       `json:"additions"`
+	Deletions         int                       `json:"deletions"`
+	Environment       string                    `json:"environment,omitempty"`
+	NextEnvironment   string                    `json:"next_environment,omitempty"`
+	BlastRadius       []string                  `json:"blast_radius"`
+	Score             int                       `json:"score"`
+	RiskLevel         string                    `json:"risk_level"`
+	Summary           string                    `json:"summary"`
+	RecommendedAction string                    `json:"recommended_action"`
+	Factors           []prImpactFactor          `json:"factors"`
+	Commits           []prImpactCommit          `json:"commits,omitempty"`
+	Files             []prImpactFile            `json:"files,omitempty"`
+	Acknowledged      bool                      `json:"acknowledged,omitempty"`
+	ChangeBrief       *deployIntelChangeBrief   `json:"change_brief,omitempty"`
+	PlanDelta         *deployIntelPlanDelta     `json:"plan_delta,omitempty"`
+	SimilarMerges     []deployIntelSimilarMerge `json:"similar_merges,omitempty"`
 }
 
 var prURLPattern = regexp.MustCompile(`github\.com/([^/]+)/([^/]+)/pull/(\d+)`)
@@ -150,11 +153,14 @@ func loadOrBuildPRImpact(req *PRRequest) prImpactBrief {
 
 func refreshPRImpactForRequest(req *PRRequest, deployStatus string) prImpactBrief {
 	owner, repo, number, _ := parseGitHubPRURL(req.PRURL)
-	if owner == "" {
-		owner = GitHubOwner
-	}
-	if repo == "" {
-		repo = GitHubRepo
+	if owner == "" || repo == "" {
+		identity := githubIdentityForRequest(req)
+		if owner == "" {
+			owner = identity.Owner
+		}
+		if repo == "" {
+			repo = identity.Name
+		}
 	}
 	return analyzeGitHubPullRequest(owner, repo, number, req, deployStatus)
 }
@@ -362,12 +368,21 @@ func scorePRImpact(brief *prImpactBrief, req *PRRequest) {
 		score += 20
 		factors = append(factors, prImpactFactor{"freeze", "Production freeze is active", "high", 20, activeFreezeReason()})
 	}
+	for _, factor := range attachPlanDelta(brief, req) {
+		score += factor.Weight
+		factors = append(factors, factor)
+	}
+	for _, factor := range applyWatchlistFactors(brief, req) {
+		score += factor.Weight
+		factors = append(factors, factor)
+	}
 
 	brief.Score = clampChangeRiskScore(score)
 	brief.RiskLevel = classifyChangeRiskScore(brief.Score)
 	brief.Factors = factors
 	brief.RecommendedAction = recommendPRImpactAction(*brief)
 	brief.Summary = summarizePRImpact(*brief)
+	attachChangeBrief(brief)
 }
 
 func recommendPRImpactAction(brief prImpactBrief) string {

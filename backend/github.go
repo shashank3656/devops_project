@@ -29,7 +29,12 @@ func CheckGitHubConnectivity() (ok bool, err error) {
 }
 
 func CreateGitHubPR(branchName, filePath string, content []byte, applicationID string) (string, error) {
+	return createGitHubPROn(defaultGitHubRepoIdentity(), branchName, filePath, content, applicationID)
+}
+
+func createGitHubPROn(identity gitHubRepoIdentity, branchName, filePath string, content []byte, applicationID string) (string, error) {
 	ctx := context.Background()
+	owner, repo, base := writeCoords(identity)
 
 	if GitHubToken == "" {
 		return "", fmt.Errorf("GITHUB_TOKEN environment variable is required")
@@ -56,12 +61,12 @@ func CreateGitHubPR(branchName, filePath string, content []byte, applicationID s
 		return "", fmt.Errorf("failed to build bundled request files: %w", err)
 	}
 	if len(bundleFiles) > 0 {
-		return CreateGitHubPRWithFiles(branchName, bundleFiles, title, bodyStr)
+		return createGitHubPRWithFilesOn(identity, branchName, bundleFiles, title, bodyStr)
 	}
 
 	// 1. Get base branch
 	baseRef, _, err := client.Git.GetRef(
-		ctx, GitHubOwner, GitHubRepo, "refs/heads/"+BaseBranch,
+		ctx, owner, repo, "refs/heads/"+base,
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to get base branch: %w", err)
@@ -69,7 +74,7 @@ func CreateGitHubPR(branchName, filePath string, content []byte, applicationID s
 
 	// 2. Check if branch already exists
 	branchRef := "refs/heads/" + branchName
-	_, _, branchErr := client.Git.GetRef(ctx, GitHubOwner, GitHubRepo, branchRef)
+	_, _, branchErr := client.Git.GetRef(ctx, owner, repo, branchRef)
 
 	if branchErr == nil {
 		// Branch exists, we'll update it
@@ -83,7 +88,7 @@ func CreateGitHubPR(branchName, filePath string, content []byte, applicationID s
 				SHA: baseRef.Object.SHA,
 			},
 		}
-		_, _, err = client.Git.CreateRef(ctx, GitHubOwner, GitHubRepo, newRef)
+		_, _, err = client.Git.CreateRef(ctx, owner, repo, newRef)
 		if err != nil {
 			return "", fmt.Errorf("failed to create branch: %w", err)
 		}
@@ -93,7 +98,7 @@ func CreateGitHubPR(branchName, filePath string, content []byte, applicationID s
 
 	// 3. Check if file already exists to determine if we should create or update
 	fileContent, _, _, err := client.Repositories.GetContents(
-		ctx, GitHubOwner, GitHubRepo, filePath, &github.RepositoryContentGetOptions{
+		ctx, owner, repo, filePath, &github.RepositoryContentGetOptions{
 			Ref: branchName,
 		},
 	)
@@ -128,17 +133,17 @@ func CreateGitHubPR(branchName, filePath string, content []byte, applicationID s
 	}
 
 	_, _, err = client.Repositories.CreateFile(
-		ctx, GitHubOwner, GitHubRepo, filePath, opts,
+		ctx, owner, repo, filePath, opts,
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to create/update file: %w", err)
 	}
 
 	// 5. Check if PR already exists for this branch
-	prs, _, err := client.PullRequests.List(ctx, GitHubOwner, GitHubRepo, &github.PullRequestListOptions{
+	prs, _, err := client.PullRequests.List(ctx, owner, repo, &github.PullRequestListOptions{
 		State: "open",
-		Head:  fmt.Sprintf("%s:%s", GitHubOwner, branchName),
-		Base:  BaseBranch,
+		Head:  fmt.Sprintf("%s:%s", owner, branchName),
+		Base:  base,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to check existing PRs: %w", err)
@@ -155,12 +160,12 @@ func CreateGitHubPR(branchName, filePath string, content []byte, applicationID s
 	pr := &github.NewPullRequest{
 		Title: github.String(title),
 		Head:  github.String(branchName),
-		Base:  github.String(BaseBranch),
+		Base:  github.String(base),
 		Body:  github.String(bodyStr),
 	}
 
 	createdPR, _, err := client.PullRequests.Create(
-		ctx, GitHubOwner, GitHubRepo, pr,
+		ctx, owner, repo, pr,
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to create PR: %w", err)
@@ -648,7 +653,12 @@ func cloneJSONMap(source map[string]interface{}) map[string]interface{} {
 }
 
 func CreateGitHubPRWithFiles(branchName string, files map[string][]byte, title, body string) (string, error) {
+	return createGitHubPRWithFilesOn(defaultGitHubRepoIdentity(), branchName, files, title, body)
+}
+
+func createGitHubPRWithFilesOn(identity gitHubRepoIdentity, branchName string, files map[string][]byte, title, body string) (string, error) {
 	ctx := context.Background()
+	owner, repo, base := writeCoords(identity)
 
 	if GitHubToken == "" {
 		return "", fmt.Errorf("GITHUB_TOKEN environment variable is required")
@@ -664,14 +674,14 @@ func CreateGitHubPRWithFiles(branchName string, files map[string][]byte, title, 
 	client := github.NewClient(tc)
 
 	baseRef, _, err := client.Git.GetRef(
-		ctx, GitHubOwner, GitHubRepo, "refs/heads/"+BaseBranch,
+		ctx, owner, repo, "refs/heads/"+base,
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to get base branch: %w", err)
 	}
 
 	branchRef := "refs/heads/" + branchName
-	_, _, branchErr := client.Git.GetRef(ctx, GitHubOwner, GitHubRepo, branchRef)
+	_, _, branchErr := client.Git.GetRef(ctx, owner, repo, branchRef)
 	if branchErr == nil {
 		log.Printf("Branch %s already exists, updating it", branchName)
 		AppendGitHubLog("branch_exists", fmt.Sprintf("Branch %s already exists, updating it", branchName), branchName)
@@ -682,7 +692,7 @@ func CreateGitHubPRWithFiles(branchName string, files map[string][]byte, title, 
 				SHA: baseRef.Object.SHA,
 			},
 		}
-		_, _, err = client.Git.CreateRef(ctx, GitHubOwner, GitHubRepo, newRef)
+		_, _, err = client.Git.CreateRef(ctx, owner, repo, newRef)
 		if err != nil {
 			return "", fmt.Errorf("failed to create branch: %w", err)
 		}
@@ -699,7 +709,7 @@ func CreateGitHubPRWithFiles(branchName string, files map[string][]byte, title, 
 	for _, filePath := range paths {
 		content := files[filePath]
 		fileContent, _, _, err := client.Repositories.GetContents(
-			ctx, GitHubOwner, GitHubRepo, filePath, &github.RepositoryContentGetOptions{
+			ctx, owner, repo, filePath, &github.RepositoryContentGetOptions{
 				Ref: branchName,
 			},
 		)
@@ -732,16 +742,16 @@ func CreateGitHubPRWithFiles(branchName string, files map[string][]byte, title, 
 		}
 
 		if _, _, err := client.Repositories.CreateFile(
-			ctx, GitHubOwner, GitHubRepo, filePath, opts,
+			ctx, owner, repo, filePath, opts,
 		); err != nil {
 			return "", fmt.Errorf("failed to create/update file %s: %w", filePath, err)
 		}
 	}
 
-	prs, _, err := client.PullRequests.List(ctx, GitHubOwner, GitHubRepo, &github.PullRequestListOptions{
+	prs, _, err := client.PullRequests.List(ctx, owner, repo, &github.PullRequestListOptions{
 		State: "open",
-		Head:  fmt.Sprintf("%s:%s", GitHubOwner, branchName),
-		Base:  BaseBranch,
+		Head:  fmt.Sprintf("%s:%s", owner, branchName),
+		Base:  base,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to check existing PRs: %w", err)
@@ -762,12 +772,12 @@ func CreateGitHubPRWithFiles(branchName string, files map[string][]byte, title, 
 	pr := &github.NewPullRequest{
 		Title: github.String(title),
 		Head:  github.String(branchName),
-		Base:  github.String(BaseBranch),
+		Base:  github.String(base),
 		Body:  github.String(body),
 	}
 
 	createdPR, _, err := client.PullRequests.Create(
-		ctx, GitHubOwner, GitHubRepo, pr,
+		ctx, owner, repo, pr,
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to create PR: %w", err)
@@ -779,6 +789,22 @@ func CreateGitHubPRWithFiles(branchName string, files map[string][]byte, title, 
 }
 
 // Helper functions to extract team and env from branch name
+func writeCoords(identity gitHubRepoIdentity) (owner, repo, base string) {
+	owner = strings.TrimSpace(identity.Owner)
+	repo = strings.TrimSpace(identity.Name)
+	base = strings.TrimSpace(identity.BaseBranch)
+	if owner == "" {
+		owner = GitHubOwner
+	}
+	if repo == "" {
+		repo = GitHubRepo
+	}
+	if base == "" {
+		base = BaseBranch
+	}
+	return owner, repo, base
+}
+
 func extractTeamFromBranch(branchName string) string {
 	parts := strings.Split(branchName, "/")
 	if len(parts) >= 6 && strings.EqualFold(parts[0], "project") {

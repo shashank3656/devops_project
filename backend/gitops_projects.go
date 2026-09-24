@@ -48,6 +48,8 @@ type GitOpsProjectSummary struct {
 	GroupID                string                     `json:"group_id"`
 	ProjectKey             string                     `json:"project_key"`
 	RepoRoot               string                     `json:"repo_root"`
+	GitHubOwner            string                     `json:"github_owner,omitempty"`
+	GitHubRepo             string                     `json:"github_repo,omitempty"`
 	LiveRequestPathPattern string                     `json:"live_request_path_pattern"`
 	ManifestPathPattern    string                     `json:"manifest_path_pattern"`
 	BranchPattern          string                     `json:"branch_pattern"`
@@ -326,6 +328,8 @@ func buildGitOpsProjectSummary(project GitOpsCatalogProject, requests []PRReques
 		GroupID:                project.GroupID,
 		ProjectKey:             fmt.Sprintf("project/%s/%s", projectCodeKey, teamSlugKey),
 		RepoRoot:               project.RepoRoot,
+		GitHubOwner:            project.GitHubOwner,
+		GitHubRepo:             project.GitHubRepo,
 		LiveRequestPathPattern: fmt.Sprintf("project/%s/%s/<cloud>/envs/<env>/<service>/<request-id>/request.json", projectCodeKey, teamSlugKey),
 		ManifestPathPattern:    fmt.Sprintf("%s/<env>/<component>.json", project.RepoRoot),
 		BranchPattern:          fmt.Sprintf("project/%s/%s/<cloud>/<env>/<service>/<request-id>", projectCodeKey, teamSlugKey),

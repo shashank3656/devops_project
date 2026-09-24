@@ -813,6 +813,12 @@ export default function DevOpsProjectDetailPage() {
   const [defaultTtlDays, setDefaultTtlDays] = useState('');
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsNotice, setSettingsNotice] = useState('');
+  const [riskPaths, setRiskPaths] = useState<{ id: number; glob: string; label: string; weight: number }[]>([]);
+  const [riskGlob, setRiskGlob] = useState('infra/prod/**');
+  const [riskLabel, setRiskLabel] = useState('');
+  const [riskWeight, setRiskWeight] = useState('12');
+  const [riskSaving, setRiskSaving] = useState(false);
+  const [riskNotice, setRiskNotice] = useState('');
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -843,6 +849,26 @@ export default function DevOpsProjectDetailPage() {
       })
       .finally(() => {
         if (!cancelled) setHealthLoading(false);
+      });
+    fetch(`${apiUrl}/api/devops/projects/${projectId}/risk-paths`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        const data = asRecord(await res.json().catch(() => ({})));
+        if (!res.ok) throw new Error(getString(data.error, 'Could not load watchlist'));
+        const rows = Array.isArray(data.paths) ? data.paths : [];
+        if (!cancelled) {
+          setRiskPaths(rows.map((row) => {
+            const item = asRecord(row);
+            return {
+              id: Number(item.id) || 0,
+              glob: getString(item.glob),
+              label: getString(item.label),
+              weight: Number(item.weight) || 12,
+            };
+          }).filter((row) => row.id > 0));
+        }
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setRiskNotice(err.message);
       });
     return () => {
       cancelled = true;
@@ -1075,6 +1101,119 @@ export default function DevOpsProjectDetailPage() {
                   </label>
                   <button type="submit" className="btn btn-primary btn-sm" disabled={settingsSaving}>
                     {settingsSaving ? 'Saving…' : 'Save settings'}
+                  </button>
+                </form>
+              </section>
+            ) : null}
+
+            {project ? (
+              <section className="portal-surface" style={{ marginBottom: 24 }}>
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Deploy intel</span>
+                    <h2 className="portal-surface__title">Hot-path watchlist</h2>
+                    <p className="portal-surface__subtitle">
+                      Matching files raise the deploy-intel score. Use a prefix like <code>infra/prod/**</code>, a glob like <code>*/values.yaml</code>, or a substring such as <code>secret</code>.
+                    </p>
+                  </div>
+                </div>
+                {riskNotice ? <p className="portal-surface__subtitle">{riskNotice}</p> : null}
+                {riskPaths.length > 0 ? (
+                  <ul className="portal-list" style={{ marginBottom: 16 }}>
+                    {riskPaths.map((path) => (
+                      <li key={path.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                        <span>
+                          <code>{path.glob}</code>
+                          {path.label ? ` · ${path.label}` : ''}
+                          <span className="ig-cell-meta"> · weight {path.weight}</span>
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          disabled={riskSaving}
+                          onClick={async () => {
+                            const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                            if (!token) return;
+                            setRiskSaving(true);
+                            setRiskNotice('');
+                            try {
+                              const res = await fetch(`${apiUrl}/api/devops/projects/${project.id}/risk-paths/${path.id}`, {
+                                method: 'DELETE',
+                                headers: { Authorization: `Bearer ${token}` },
+                              });
+                              const data = asRecord(await res.json().catch(() => ({})));
+                              if (!res.ok) throw new Error(getString(data.error, 'Failed to remove path'));
+                              setRiskPaths((prev) => prev.filter((item) => item.id !== path.id));
+                            } catch (err) {
+                              setRiskNotice(err instanceof Error ? err.message : 'Failed to remove path');
+                            } finally {
+                              setRiskSaving(false);
+                            }
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="portal-surface__subtitle">No watchlisted paths yet.</p>
+                )}
+                <form
+                  className="portal-toolbar"
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                    if (!token) return;
+                    setRiskSaving(true);
+                    setRiskNotice('');
+                    try {
+                      const res = await fetch(`${apiUrl}/api/devops/projects/${project.id}/risk-paths`, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          glob: riskGlob,
+                          label: riskLabel,
+                          weight: parseInt(riskWeight, 10) || 12,
+                        }),
+                      });
+                      const data = asRecord(await res.json().catch(() => ({})));
+                      if (!res.ok) throw new Error(getString(data.error, 'Failed to add path'));
+                      const created = asRecord(data.path);
+                      if (Number(created.id) > 0) {
+                        setRiskPaths((prev) => [
+                          ...prev,
+                          {
+                            id: Number(created.id),
+                            glob: getString(created.glob, riskGlob),
+                            label: getString(created.label, riskLabel),
+                            weight: Number(created.weight) || 12,
+                          },
+                        ]);
+                      }
+                      setRiskLabel('');
+                      setRiskNotice('Watchlist path added.');
+                    } catch (err) {
+                      setRiskNotice(err instanceof Error ? err.message : 'Failed to add path');
+                    } finally {
+                      setRiskSaving(false);
+                    }
+                  }}
+                >
+                  <label className="portal-toolbar__item">
+                    <span className="credential-audit-label">Path glob</span>
+                    <input className="input" value={riskGlob} onChange={(e) => setRiskGlob(e.target.value)} placeholder="infra/prod/**" />
+                  </label>
+                  <label className="portal-toolbar__item">
+                    <span className="credential-audit-label">Label</span>
+                    <input className="input" value={riskLabel} onChange={(e) => setRiskLabel(e.target.value)} placeholder="Production Terraform" />
+                  </label>
+                  <label className="portal-toolbar__item">
+                    <span className="credential-audit-label">Weight</span>
+                    <input className="input" type="number" min={1} max={30} value={riskWeight} onChange={(e) => setRiskWeight(e.target.value)} />
+                  </label>
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={riskSaving || !riskGlob.trim()}>
+                    {riskSaving ? 'Saving…' : 'Add path'}
                   </button>
                 </form>
               </section>

@@ -869,6 +869,13 @@ func devopsRequestDetailHandler(w http.ResponseWriter, id int) {
 	resp["depends_on"] = dependsOn
 	resp["blocked_by"] = blockedBy
 	resp["blocked_by_with_status"] = blockedByWithStatus
+	highRiskGate := evaluateHighRiskMergeAck(req)
+	if highRiskGate.Required {
+		resp["high_risk_merge"] = highRiskGate
+	}
+	if lastMerge, err := latestMergeForRequest(id); err == nil && lastMerge != nil {
+		resp["last_merge"] = lastMerge
+	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeDevopsJSON(w, map[string]interface{}{"request": resp, "status": "ok"})
 }
@@ -1037,7 +1044,9 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var approveBody struct {
-			RunbookAcknowledged bool `json:"runbook_acknowledged"`
+			RunbookAcknowledged       bool     `json:"runbook_acknowledged"`
+			HighRiskMergeAcknowledged bool     `json:"high_risk_merge_acknowledged"`
+			AckReasons                []string `json:"ack_reasons"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&approveBody)
 		runbookGate := evaluateProdRunbookGate(req)
@@ -1045,12 +1054,20 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusPreconditionRequired)
 			encodeDevopsJSON(w, map[string]interface{}{
-				"status":            "error",
-				"error":             runbookGate.Message,
-				"runbook_required":  true,
-				"runbooks":          runbookGate.Runbooks,
+				"status":           "error",
+				"error":            runbookGate.Message,
+				"runbook_required": true,
+				"runbooks":         runbookGate.Runbooks,
 			})
 			return
+		}
+		highRiskGate := evaluateHighRiskMergeAck(req)
+		if highRiskGate.Required && !approveBody.HighRiskMergeAcknowledged {
+			writeHighRiskMergeAckRequired(w, highRiskGate)
+			return
+		}
+		if highRiskGate.Event != nil && (approveBody.HighRiskMergeAcknowledged || highRiskGate.Required) {
+			persistAckForGate(req, highRiskGate, managerID, approveBody.AckReasons)
 		}
 		prURL, err := createPullRequestForRequest(req)
 		if err != nil {

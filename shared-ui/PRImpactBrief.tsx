@@ -18,6 +18,39 @@ export default function PRImpactBrief({ brief, compact }: { brief: PRImpactBrief
         <div><strong>+{brief.additions}/-{brief.deletions}</strong>diff</div>
         <div><strong>{(brief.environment || 'n/a').toUpperCase()}</strong>lands in</div>
       </div>
+      {brief.change_brief?.headline ? (
+        <p className="ig-muted" style={{ marginTop: 12 }}>
+          Changing: {brief.change_brief.headline}
+          {brief.change_brief.multi_env ? ' · more than one environment' : ''}
+        </p>
+      ) : null}
+      {brief.plan_delta?.has_plan ? (
+        <p className="ig-muted" style={{ marginTop: 8 }}>
+          Plan vs PR: {brief.plan_delta.summary}
+        </p>
+      ) : null}
+      {brief.similar_merges?.length ? (
+        <ul className="ig-brief__list" style={{ marginTop: 8 }}>
+          {brief.similar_merges.map((item) => (
+            <li key={item.pr_number} className="ig-brief__row">
+              <div className="ig-brief__meta">
+                Similar: #{item.pr_number} {item.headline || item.title}
+                {item.overlap?.length ? ` · ${item.overlap.join(', ')}` : ''}
+                {item.later_revert ? ` · later revert #${item.later_revert.pr_number}` : ''}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {brief.change_brief?.risk_because?.length ? (
+        <ul className="ig-brief__list" style={{ marginTop: 8 }}>
+          {brief.change_brief.risk_because.map((reason) => (
+            <li key={reason} className="ig-brief__row">
+              <div className="ig-brief__meta">{reason}</div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <p className="ig-muted" style={{ marginTop: 12 }}>{brief.recommended_action}</p>
       {brief.blast_radius?.length ? (
         <p className="ig-muted">Blast radius: {brief.blast_radius.join(', ')}</p>

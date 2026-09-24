@@ -9,6 +9,7 @@ import {
   PRImpactBrief,
   SegmentedControl,
   type DataTableColumn,
+  type DeployIntelChangeBrief,
   type PRImpactBriefData,
 } from '@infragate/ui';
 import DevOpsLayout from '../../../components/DevOpsLayout';
@@ -29,6 +30,7 @@ interface OpenPRMeta {
   preview_environments?: { request_id: number; env: string; label: string; expires_at?: string }[];
   suggest_ticket?: boolean;
   suggest_ticket_reason?: string;
+  conflicts_with?: number[];
 }
 
 interface DeployEvent {
@@ -50,6 +52,22 @@ interface DeployEvent {
   pr_url: string;
   impact: PRImpactBriefData;
   open_pr?: OpenPRMeta;
+  change_brief?: DeployIntelChangeBrief;
+  similar_merges?: {
+    pr_number: number;
+    title: string;
+    headline?: string;
+    overlap?: string[];
+    later_revert?: { pr_number: number; title: string };
+    pr_url?: string;
+  }[];
+  github_post?: {
+    check_posted?: boolean;
+    comment_posted?: boolean;
+    check_name?: string;
+    conclusion?: string;
+    error?: string;
+  };
 }
 
 interface RepoSummary {
@@ -135,6 +153,9 @@ export default function DeployIntelligenceRepoPage() {
   const [includeDrafts, setIncludeDrafts] = useState(false);
   const [suggestingTicket, setSuggestingTicket] = useState(false);
   const [ticketMessage, setTicketMessage] = useState('');
+  const [ackReasons, setAckReasons] = useState('');
+  const [protecting, setProtecting] = useState(false);
+  const [protectMessage, setProtectMessage] = useState('');
 
   const load = async (refreshNumber?: number, options?: { batchDeep?: boolean }) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -187,23 +208,65 @@ export default function DeployIntelligenceRepoPage() {
     void load();
   }, [apiUrl, router.isReady, owner, repo, section, baseFilter, includeDrafts]);
 
-  const suggestTicket = async (prNumber: number) => {
+  const applyRecommendedProtection = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
+    const branch = insights?.branch_protection.base_branch || repoMeta?.base_branch || 'main';
+    const ok = window.confirm(
+      `Apply recommended InfraGate checks on ${owner}/${repo} branch ${branch}?\n\nThis will require infragate/plan-review and infragate/policy, and will create branch protection if it is missing.`,
+    );
+    if (!ok) return;
+    setProtecting(true);
+    setProtectMessage('');
+    try {
+      const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/protect-branch`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ owner, name: repo, base_branch: branch, confirm: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setProtectMessage(data?.error || 'Could not apply branch protection');
+        return;
+      }
+      setProtectMessage('Recommended branch protection applied.');
+      void load();
+    } catch {
+      setProtectMessage('Could not apply branch protection');
+    } finally {
+      setProtecting(false);
+    }
+  };
+
+  const suggestTicket = async (prNumber: number, acknowledged = false) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    const reasons = ackReasons.split('\n').map((line) => line.trim()).filter(Boolean);
     setSuggestingTicket(true);
     setTicketMessage('');
     try {
       const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/suggest-ticket`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ owner, name: repo, pr_number: prNumber }),
+        body: JSON.stringify({
+          owner,
+          name: repo,
+          pr_number: prNumber,
+          acknowledged,
+          reasons,
+        }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 428 && data?.ack_reasons_required) {
+        setTicketMessage(data?.error || 'Add exception reasons, then create the ticket.');
+        return;
+      }
       if (!res.ok) {
         setTicketMessage(data?.error || 'Could not create ticket');
         return;
       }
       setTicketMessage(data?.message || `Ticket #${data?.request_id} created`);
+      setAckReasons('');
       void load();
     } catch {
       setTicketMessage('Could not create ticket');
@@ -256,6 +319,36 @@ export default function DeployIntelligenceRepoPage() {
         cell: (row) => `+${row.additions}/-${row.deletions}`,
       },
       {
+        id: 'changing',
+        header: 'Changing',
+        cell: (row) => {
+          const brief = row.change_brief || row.impact?.change_brief;
+          return <span className="ig-cell-title">{brief?.headline || '—'}</span>;
+        },
+      },
+      {
+        id: 'risk-because',
+        header: 'Risk because',
+        cell: (row) => {
+          const reasons = row.change_brief?.risk_because || row.impact?.change_brief?.risk_because || [];
+          if (reasons.length === 0) return <span className="ig-cell-meta">—</span>;
+          return <span className="ig-cell-meta">{reasons[0]}</span>;
+        },
+      },
+      ...(section === 'open'
+        ? [
+            {
+              id: 'conflicts',
+              header: 'Stack',
+              cell: (row: DeployEvent) => {
+                const conflicts = row.open_pr?.conflicts_with || [];
+                if (conflicts.length === 0) return <span className="ig-cell-meta">—</span>;
+                return <span className="ig-cell-meta">#{conflicts.join(', #')}</span>;
+              },
+            } as DataTableColumn<DeployEvent>,
+          ]
+        : []),
+      {
         id: 'risk',
         header: 'Risk',
         cell: (row) => (
@@ -264,6 +357,29 @@ export default function DeployIntelligenceRepoPage() {
           </span>
         ),
       },
+      ...(section === 'open'
+        ? [
+            {
+              id: 'github-brief',
+              header: 'GitHub brief',
+              cell: (row: DeployEvent) => {
+                const posted = row.github_post;
+                const deployCheck = row.open_pr?.checks?.find((check) => check.key === 'deploy_intel');
+                if (posted?.comment_posted || posted?.check_posted) {
+                  return (
+                    <span className={`ig-chip ig-chip--${posted.check_posted ? 'ok' : 'info'}`}>
+                      {posted.check_posted ? 'Check + comment' : 'Comment posted'}
+                    </span>
+                  );
+                }
+                if (deployCheck?.status === 'ok') {
+                  return <span className="ig-chip ig-chip--ok">Posted</span>;
+                }
+                return <span className="ig-cell-meta">Open row to post</span>;
+              },
+            },
+          ]
+        : []),
       {
         id: 'when',
         header: section === 'merges' ? 'Merged' : 'Review SLA',
@@ -340,6 +456,9 @@ export default function DeployIntelligenceRepoPage() {
           factors: selected.impact?.factors || [],
           commits: selected.impact?.commits,
           files: selected.impact?.files,
+          change_brief: selected.change_brief || selected.impact?.change_brief,
+          plan_delta: selected.impact?.plan_delta,
+          similar_merges: selected.similar_merges || selected.impact?.similar_merges,
         }
       : null;
 
@@ -361,7 +480,7 @@ export default function DeployIntelligenceRepoPage() {
             </h1>
             <p className="portal-page__subtitle">
               {repoMeta?.setup_summary ||
-                'Analyze pull requests inside this onboarded repository—merged production merges and open PRs awaiting review.'}
+                'See what each pull request changes and why it is risky before merge or promotion.'}
             </p>
           </div>
           <div className="portal-page__actions">
@@ -407,6 +526,19 @@ export default function DeployIntelligenceRepoPage() {
                     <li key={rec}>{rec}</li>
                   ))}
                 </ul>
+              ) : null}
+              {insights.branch_protection.recommendations && insights.branch_protection.recommendations.length > 0 ? (
+                <div style={{ marginTop: 12 }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    disabled={protecting || !insights.branch_protection.github_configured}
+                    onClick={() => void applyRecommendedProtection()}
+                  >
+                    {protecting ? 'Applying…' : 'Apply recommended protection'}
+                  </button>
+                  {protectMessage ? <p className="portal-surface__subtitle" style={{ marginTop: 8 }}>{protectMessage}</p> : null}
+                </div>
               ) : null}
             </section>
 
@@ -588,9 +720,72 @@ export default function DeployIntelligenceRepoPage() {
       </div>
 
       <InspectorDrawer open={Boolean(selected)} title={selected ? `PR #${selected.pr_number}` : 'PR analysis'} onClose={() => setSelected(null)}>
+        {selected?.change_brief || selected?.impact?.change_brief ? (
+          <div className="portal-surface" style={{ marginBottom: 16 }}>
+            <span className="portal-surface__eyebrow">Change brief</span>
+            <h3 className="portal-surface__title" style={{ marginTop: 4 }}>
+              {(selected.change_brief || selected.impact.change_brief)?.headline}
+            </h3>
+            {(selected.change_brief || selected.impact.change_brief)?.multi_env ? (
+              <p className="portal-surface__subtitle">This PR touches more than one environment path.</p>
+            ) : null}
+            {(selected.change_brief || selected.impact.change_brief)?.changing?.length ? (
+              <ul className="portal-list" style={{ marginTop: 10 }}>
+                {(selected.change_brief || selected.impact.change_brief)!.changing.map((group) => (
+                  <li key={group.key}>
+                    {group.label} · {group.count} file{group.count === 1 ? '' : 's'}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {(selected.change_brief || selected.impact.change_brief)?.risk_because?.length ? (
+              <ul className="portal-list" style={{ marginTop: 10 }}>
+                {(selected.change_brief || selected.impact.change_brief)!.risk_because.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            ) : null}
+            {selected.impact?.plan_delta?.has_plan ? (
+              <p className="portal-surface__subtitle" style={{ marginTop: 10 }}>
+                Plan vs PR: {selected.impact.plan_delta.summary}
+              </p>
+            ) : null}
+            {(selected.similar_merges || selected.impact?.similar_merges)?.length ? (
+              <ul className="portal-list" style={{ marginTop: 10 }}>
+                {(selected.similar_merges || selected.impact?.similar_merges || []).map((item) => (
+                  <li key={item.pr_number}>
+                    Similar #{item.pr_number} {item.headline || item.title}
+                    {item.later_revert ? ` · later revert #${item.later_revert.pr_number}` : ''}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
         {selected?.open_pr ? (
           <div className="portal-surface" style={{ marginBottom: 16 }}>
+            {(() => {
+              const posted = selected.github_post;
+              const deployCheck = selected.open_pr.checks?.find((check) => check.key === 'deploy_intel');
+              const postedOk = Boolean(posted?.check_posted || posted?.comment_posted || deployCheck?.status === 'ok');
+              return (
+                <span className={`ig-chip ig-chip--${postedOk ? 'ok' : posted?.error ? 'danger' : 'neutral'}`} style={{ marginRight: 8 }}>
+                  {posted?.check_posted
+                    ? 'infragate/deploy-intel posted'
+                    : posted?.comment_posted
+                      ? 'PR comment posted'
+                      : postedOk
+                        ? 'GitHub brief posted'
+                        : 'GitHub brief not posted'}
+                </span>
+              );
+            })()}
             {selected.open_pr.is_draft ? <span className="ig-chip ig-chip--neutral">Draft</span> : null}
+            {selected.open_pr.conflicts_with && selected.open_pr.conflicts_with.length > 0 ? (
+              <p className="portal-surface__subtitle" style={{ marginTop: 8 }}>
+                Overlaps open PRs #{selected.open_pr.conflicts_with.join(', #')}
+              </p>
+            ) : null}
             {selected.open_pr.review_detail ? <p className="portal-surface__subtitle">{selected.open_pr.review_detail}</p> : null}
             {selected.open_pr.checks && selected.open_pr.checks.length > 0 ? (
               <ul className="portal-list">
@@ -616,15 +811,27 @@ export default function DeployIntelligenceRepoPage() {
               </ul>
             ) : null}
             {selected.open_pr.suggest_ticket && !selected.request_id ? (
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                style={{ marginTop: 12 }}
-                disabled={suggestingTicket}
-                onClick={() => void suggestTicket(selected.pr_number)}
-              >
-                {suggestingTicket ? 'Creating ticket…' : 'Create InfraGate ticket'}
-              </button>
+              <div style={{ marginTop: 12 }}>
+                <label className="portal-toolbar__item">
+                  <span className="credential-audit-label">Exception reasons (required for high risk)</span>
+                  <textarea
+                    className="input"
+                    rows={3}
+                    value={ackReasons}
+                    onChange={(event) => setAckReasons(event.target.value)}
+                    placeholder="Why this high-risk PR can proceed as a ticket"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  style={{ marginTop: 8 }}
+                  disabled={suggestingTicket}
+                  onClick={() => void suggestTicket(selected.pr_number, ackReasons.trim().length > 0)}
+                >
+                  {suggestingTicket ? 'Creating ticket…' : 'Create InfraGate ticket'}
+                </button>
+              </div>
             ) : null}
             {selected.open_pr.suggest_ticket_reason ? (
               <p className="portal-surface__subtitle" style={{ marginTop: 8 }}>
@@ -633,6 +840,14 @@ export default function DeployIntelligenceRepoPage() {
             ) : null}
             {ticketMessage ? <p className="portal-surface__subtitle">{ticketMessage}</p> : null}
           </div>
+        ) : null}
+        {selected?.github_post ? (
+          <p className="portal-surface__subtitle" style={{ marginBottom: 12 }}>
+            GitHub brief:{' '}
+            {selected.github_post.comment_posted ? 'comment posted' : 'comment not posted'}
+            {selected.github_post.check_posted ? ' · check posted' : ' · check needs GitHub App'}
+            {selected.github_post.error ? ` · ${selected.github_post.error}` : ''}
+          </p>
         ) : null}
         {brief ? <PRImpactBrief brief={brief} /> : null}
       </InspectorDrawer>

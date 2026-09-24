@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
@@ -52,6 +53,23 @@ func handleRequestPromote(w http.ResponseWriter, r *http.Request, id int, req *P
 	if nextEnvironment == "" {
 		writeAPIError(w, r, http.StatusBadRequest, "already at production; no next environment", nil)
 		return
+	}
+	var promoteBody struct {
+		HighRiskMergeAcknowledged bool     `json:"high_risk_merge_acknowledged"`
+		AckReasons                []string `json:"ack_reasons"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&promoteBody)
+	}
+	if isHighControlEnvironment(nextEnvironment) {
+		highRiskGate := evaluateHighRiskMergeAck(req)
+		if highRiskGate.Required && !promoteBody.HighRiskMergeAcknowledged {
+			writeHighRiskMergeAckRequired(w, highRiskGate)
+			return
+		}
+		if highRiskGate.Event != nil && (promoteBody.HighRiskMergeAcknowledged || highRiskGate.Required) {
+			persistAckForGate(req, highRiskGate, userID, promoteBody.AckReasons)
+		}
 	}
 	appID, err := GenerateApplicationID()
 	if err != nil {
