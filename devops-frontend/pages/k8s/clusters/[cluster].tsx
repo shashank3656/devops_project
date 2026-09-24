@@ -315,7 +315,7 @@ export default function DevOpsK8sClusterDetailPage() {
               <button type="button" className="btn btn-secondary" onClick={() => setRefreshKey((value) => value + 1)}>
                 {loading ? 'Refreshing...' : 'Refresh'}
               </button>
-              <Link href={buildK8sHref('/k8s/onboard', { project_id: scopeProjectId, environment: scopeEnvironment })} className="btn btn-primary">
+              <Link href={buildK8sHref('/k8s/onboard/new', { project_id: scopeProjectId, environment: scopeEnvironment })} className="btn btn-primary">
                 Onboard cluster
               </Link>
             </>

@@ -138,6 +138,11 @@ export default function AdminApprovalCenter() {
   }, [apiUrl, token]);
 
   useEffect(() => {
+    const fromQuery = typeof router.query.project_id === 'string' ? router.query.project_id : '';
+    setProjectId(fromQuery);
+  }, [router.query.project_id]);
+
+  useEffect(() => {
     if (!token) return;
     setLoading(true);
     setError('');

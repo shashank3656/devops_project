@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { DataTable, formatRelativeTime, type DataTableColumn } from '@infragate/ui';
+import ApprovalsSectionNav from '../components/ApprovalsSectionNav';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -123,6 +124,11 @@ export default function DevOpsApprovalCenter() {
   }, [apiUrl, token]);
 
   useEffect(() => {
+    const fromQuery = typeof router.query.project_id === 'string' ? router.query.project_id : '';
+    setProjectId(fromQuery);
+  }, [router.query.project_id]);
+
+  useEffect(() => {
     if (!token) return;
     setLoading(true);
     setError('');
@@ -187,6 +193,8 @@ export default function DevOpsApprovalCenter() {
               ) : null}
             </div>
           </header>
+
+          <ApprovalsSectionNav />
 
           <section className="devops-approval-strip">
             <div className="devops-approval-pill">

@@ -21,10 +21,22 @@ import {
   IconTrendingUp,
   IconHelpCircle,
   IconFileText,
+  IconChevronDown,
 } from './Icons';
 import SupportHub from './SupportHub';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
-import { CommandPalette, MobileTabBar, ThemeToggle } from '@infragate/ui';
+import {
+  CommandPalette,
+  MobileTabBar,
+  ScopeBar,
+  ThemeToggle,
+  normalizeScopeProjects,
+  queryToScope,
+  readWorkspaceScope,
+  scopeToQuery,
+  useWorkspaceScope,
+  type ScopeProject,
+} from '@infragate/ui';
 
 const SIDEBAR_COLLAPSED_KEY = 'infra-admin-sidebar-collapsed';
 const NOTIFY_POLL_MS = 30000;
@@ -82,25 +94,44 @@ interface PendingRequest {
   created_at: string;
 }
 
-const PRIMARY_NAV: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
+const PRIMARY_NAV: {
+  href: string;
+  label: string;
+  Icon: ComponentType<{ className?: string }>;
+  children?: { href: string; label: string }[];
+}[] = [
   { href: '/dashboard', label: 'Overview', Icon: IconDashboard },
   { href: '/approval-center', label: 'Approvals', Icon: IconShield },
   { href: '/requests', label: 'Requests', Icon: IconRequests },
-  { href: '/users', label: 'People', Icon: IconUsers },
-  { href: '/projects', label: 'Projects', Icon: IconProjects },
+  {
+    href: '/users',
+    label: 'People',
+    Icon: IconUsers,
+    children: [
+      { href: '/users', label: 'Users' },
+      { href: '/teams', label: 'Teams' },
+    ],
+  },
+  {
+    href: '/projects',
+    label: 'Projects',
+    Icon: IconProjects,
+    children: [
+      { href: '/projects', label: 'Catalog' },
+      { href: '/project-governance', label: 'Setup' },
+      { href: '/team-ownership', label: 'Access' },
+    ],
+  },
 ];
 
 const MORE_NAV: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
-  { href: '/project-governance', label: 'Project Setup', Icon: IconTrendingUp },
-  { href: '/sla', label: 'Service Levels', Icon: IconTrendingUp },
-  { href: '/teams', label: 'Teams', Icon: IconTeams },
-  { href: '/team-ownership', label: 'Team Access', Icon: IconLayers },
-  { href: '/access-review', label: 'Access Review', Icon: IconShield },
+  { href: '/sla', label: 'Service levels', Icon: IconTrendingUp },
+  { href: '/access-review', label: 'Access review', Icon: IconShield },
   { href: '/activity', label: 'Activity', Icon: IconActivity },
   { href: '/templates', label: 'Templates', Icon: IconTemplates },
   { href: '/webhooks', label: 'Integrations', Icon: IconWebhook },
   { href: '/maintenance', label: 'Maintenance', Icon: IconLayers },
-  { href: '/deploy-intelligence', label: 'Deploy Intel', Icon: IconActivity },
+  { href: '/deploy-intelligence', label: 'Deploy intel', Icon: IconActivity },
 ];
 
 function getAdminIdentity(): { initials: string; label: string } {
@@ -145,6 +176,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
   const [moreNavOpen, setMoreNavOpen] = useState(false);
+  const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
+  const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({});
+  const { scope, updateScope } = useWorkspaceScope();
+  const scopeHydrated = useRef(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -168,6 +203,28 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (moreNavActive) setMoreNavOpen(true);
   }, [moreNavActive]);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${apiUrl}/api/admin/projects`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setScopeProjects(normalizeScopeProjects(data?.projects)))
+      .catch(() => setScopeProjects([]));
+  }, [token]);
+
+  useEffect(() => {
+    if (!router.isReady || scopeHydrated.current) return;
+    scopeHydrated.current = true;
+    const fromQuery = queryToScope(router.query);
+    if (fromQuery.projectId || fromQuery.environment) {
+      updateScope(fromQuery);
+      return;
+    }
+    const stored = readWorkspaceScope();
+    if (stored.projectId || stored.environment) {
+      void router.replace({ pathname: router.pathname, query: { ...router.query, ...scopeToQuery(stored) } }, undefined, { shallow: true });
+    }
+  }, [router.isReady]);
 
   useEffect(() => {
     const currentToken = getAdminToken();
@@ -305,12 +362,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   const pageTitle = getPageTitle(pathname);
   const statusLabel = newRequestsCount > 0 ? `${newRequestsCount} pending requests` : 'No pending requests';
-  const sidebarStatusItems = [
-    { label: 'request-queue', tone: newRequestsCount > 0 ? 'warn' : 'ok', meta: newRequestsCount > 0 ? `${newRequestsCount} open` : 'clear' },
-    { label: 'access-control', tone: 'ok', meta: 'live' },
-    { label: 'webhook-relay', tone: 'ok', meta: 'ready' },
-  ];
-
   const getSidebarBadge = (href: string): string | null => {
     if (href === '/requests' && newRequestsCount > 0) {
       return newRequestsCount > 99 ? '99+' : String(newRequestsCount);
@@ -343,23 +394,55 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         <div className="admin-sidebar-shell__body">
           <nav className="admin-sidebar-shell__nav" aria-label="Primary">
             {!sidebarCollapsed && <span className="admin-sidebar-shell__nav-title">Modules</span>}
-            {PRIMARY_NAV.map(({ href, label, Icon }) => {
-              const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+            {PRIMARY_NAV.map(({ href, label, Icon, children }) => {
+              const childActive = Boolean(children?.some((child) => pathname === child.href || pathname.startsWith(`${child.href}/`)));
+              const isActive = childActive || pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
               const badge = getSidebarBadge(href);
+              const groupOpen = Boolean(openNavGroups[href]) || childActive;
               return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`admin-sidebar-shell__link ${isActive ? 'admin-sidebar-shell__link--active' : ''}`}
-                  onClick={() => setMobileMenuOpen(false)}
-                  aria-current={isActive ? 'page' : undefined}
-                  aria-label={sidebarCollapsed ? label : undefined}
-                  title={sidebarCollapsed ? label : undefined}
-                >
-                  <Icon className="admin-sidebar-shell__icon" />
-                  {!sidebarCollapsed && <span className="admin-sidebar-shell__label">{label}</span>}
-                  {!sidebarCollapsed && badge && <span className="admin-sidebar-shell__badge">{badge}</span>}
-                </Link>
+                <div key={href}>
+                  <div className="devops-sidebar-new__group-row">
+                    <Link
+                      href={href}
+                      className={`admin-sidebar-shell__link ${isActive ? 'admin-sidebar-shell__link--active' : ''}`}
+                      onClick={() => {
+                        if (children) setOpenNavGroups((current) => ({ ...current, [href]: true }));
+                        setMobileMenuOpen(false);
+                      }}
+                      aria-current={pathname === href ? 'page' : undefined}
+                      aria-label={sidebarCollapsed ? label : undefined}
+                      title={sidebarCollapsed ? label : undefined}
+                    >
+                      <Icon className="admin-sidebar-shell__icon" />
+                      {!sidebarCollapsed && <span className="admin-sidebar-shell__label">{label}</span>}
+                      {!sidebarCollapsed && badge && <span className="admin-sidebar-shell__badge">{badge}</span>}
+                    </Link>
+                    {children && !sidebarCollapsed ? (
+                      <button
+                        type="button"
+                        className={`devops-sidebar-new__chevron ${groupOpen ? 'devops-sidebar-new__chevron--open' : ''}`}
+                        aria-expanded={groupOpen}
+                        onClick={() => setOpenNavGroups((current) => ({ ...current, [href]: !current[href] }))}
+                      >
+                        <IconChevronDown />
+                      </button>
+                    ) : null}
+                  </div>
+                  {children && !sidebarCollapsed && groupOpen ? (
+                    <div className="admin-sidebar-shell__sub">
+                      {children.map((child) => (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          className={`admin-sidebar-shell__sublink ${pathname === child.href || pathname.startsWith(`${child.href}/`) ? 'is-active' : ''}`}
+                          onClick={() => setMobileMenuOpen(false)}
+                        >
+                          {child.label}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               );
             })}
             {!sidebarCollapsed && (
@@ -387,21 +470,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               </div>
             )}
           </nav>
-
-          {!sidebarCollapsed && (
-            <div className="admin-sidebar-shell__status-panel">
-              <span className="admin-sidebar-shell__status-title">Control Health</span>
-              <div className="admin-sidebar-shell__status-list">
-                {sidebarStatusItems.map((item) => (
-                  <div key={item.label} className="admin-sidebar-shell__status-item">
-                    <span className={`admin-sidebar-shell__status-dot admin-sidebar-shell__status-dot--${item.tone}`} aria-hidden />
-                    <span className="admin-sidebar-shell__status-name">{item.label}</span>
-                    <span className="admin-sidebar-shell__status-meta">{item.meta}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           <div className="admin-sidebar-shell__footer">
             <button
@@ -461,6 +529,19 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <span className="admin-topbar__kicker">SetuOps</span>
               <h1 className="admin-topbar__title">{pageTitle}</h1>
             </div>
+            <ScopeBar
+              projects={scopeProjects}
+              scope={scope}
+              onChange={(partial) => {
+                const next = updateScope(partial);
+                const query = { ...router.query };
+                if (next.projectId) query.project_id = next.projectId;
+                else delete query.project_id;
+                if (next.environment) query.environment = next.environment;
+                else delete query.environment;
+                void router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
+              }}
+            />
             <span className={`admin-topbar__status-chip ${newRequestsCount > 0 ? 'admin-topbar__status-chip--alert' : ''}`}>
               {statusLabel}
             </span>

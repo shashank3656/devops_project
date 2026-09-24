@@ -126,7 +126,7 @@ export default function RequestLifecyclePanel({ apiUrl, requestId, status, lifet
       ) : null}
       {canManage && delivered && !decommissionId && lifetime?.can_set_lifetime ? (
         <p className="ig-lifecycle__hint">
-          On expiry InfraGate opens a decommission request for approval. You get a reminder 3 days before.
+          On expiry SetuOps opens a decommission request for approval. You get a reminder 3 days before.
         </p>
       ) : null}
 

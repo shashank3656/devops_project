@@ -63,6 +63,8 @@ export default function DeployIntelligenceIndexPage() {
 
   const readyCount = repos.filter((repo) => repo.ready).length;
   const setupCount = repos.length - readyCount;
+  const openPrCount = repos.reduce((sum, repo) => sum + (repo.open_pr_count || 0), 0);
+  const mergeCount = repos.reduce((sum, repo) => sum + (repo.merge_count || 0), 0);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -88,12 +90,35 @@ export default function DeployIntelligenceIndexPage() {
               Onboarded GitHub repos and their deploy risk. Open a row to review merges and pull requests.
             </p>
           </div>
-          <Link href="/deploy-intelligence/onboard" className="di-cta">
-            Onboard repository
+          <Link href="/deploy-intelligence/onboard" className="btn btn-primary">
+            Onboard
           </Link>
         </header>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
+
+        <div className="k8s-summary-strip">
+          <div className="k8s-summary-card">
+            <span className="k8s-summary-card__label">Repos</span>
+            <strong className="k8s-summary-card__value">{repos.length}</strong>
+          </div>
+          <div className="k8s-summary-card">
+            <span className="k8s-summary-card__label">Ready</span>
+            <strong className="k8s-summary-card__value">{readyCount}</strong>
+          </div>
+          <div className="k8s-summary-card">
+            <span className="k8s-summary-card__label">Setup</span>
+            <strong className="k8s-summary-card__value">{setupCount}</strong>
+          </div>
+          <div className="k8s-summary-card">
+            <span className="k8s-summary-card__label">Open PRs</span>
+            <strong className="k8s-summary-card__value">{openPrCount}</strong>
+          </div>
+          <div className="k8s-summary-card">
+            <span className="k8s-summary-card__label">Merges</span>
+            <strong className="k8s-summary-card__value">{mergeCount}</strong>
+          </div>
+        </div>
 
         <div className="di-toolbar">
           <label className="di-search">
@@ -136,44 +161,53 @@ export default function DeployIntelligenceIndexPage() {
               <p className="di-empty-panel__copy">
                 Onboard a GitHub repository to start analyzing open and merged pull requests.
               </p>
-              <Link href="/deploy-intelligence/onboard" className="di-cta">
-                Onboard repository
+              <Link href="/deploy-intelligence/onboard" className="btn btn-primary">
+                Onboard
               </Link>
             </div>
           ) : visible.length === 0 ? (
             <p className="di-empty">No repositories match this filter.</p>
           ) : (
-            <>
-              <div className="di-table-head" aria-hidden>
-                <span>Name</span>
-                <span>Base</span>
-                <span>Open PRs</span>
-                <span>Merges</span>
-                <span>Last merge</span>
-                <span>State</span>
-              </div>
-              <ul className="di-rows">
-                {visible.map((repo) => (
-                  <li key={`${repo.owner}/${repo.name}`}>
-                    <Link
-                      href={`/deploy-intelligence/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`}
-                      className="di-row di-row--catalog"
-                    >
-                      <span className="di-row__name">
-                        {repo.owner}/{repo.name}
-                      </span>
-                      <span className="di-row__branch">{repo.base_branch || 'main'}</span>
-                      <span className="di-row__stat">{repo.open_pr_count}</span>
-                      <span className="di-row__stat">{repo.merge_count}</span>
-                      <span className="di-row__stat">{formatLastMerged(repo.last_merged_at)}</span>
-                      <span className={`di-row__status ${repo.ready ? 'is-ready' : 'is-setup'}`}>
-                        {repo.ready ? 'Ready' : 'Setup'}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </>
+            <div className="table-scroll">
+              <table className="templates-table k8s-data-table">
+                <thead>
+                  <tr>
+                    <th>Repository</th>
+                    <th>Base</th>
+                    <th>Open PRs</th>
+                    <th>Merges</th>
+                    <th>Last merge</th>
+                    <th>State</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((repo) => (
+                    <tr key={`${repo.owner}/${repo.name}`}>
+                      <td>
+                        <Link
+                          href={`/deploy-intelligence/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`}
+                          className="k8s-link-cell"
+                        >
+                          <span className="k8s-link-cell__title">
+                            {repo.owner}/{repo.name}
+                          </span>
+                          <span className="k8s-link-cell__meta">{repo.setup_summary || 'Open to review PRs and merges'}</span>
+                        </Link>
+                      </td>
+                      <td>{repo.base_branch || 'main'}</td>
+                      <td>{repo.open_pr_count}</td>
+                      <td>{repo.merge_count}</td>
+                      <td>{formatLastMerged(repo.last_merged_at)}</td>
+                      <td>
+                        <span className={`ig-chip ig-chip--${repo.ready ? 'low' : 'medium'}`}>
+                          {repo.ready ? 'Ready' : 'Setup'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
       </div>

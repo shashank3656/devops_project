@@ -213,7 +213,7 @@ export default function DeployIntelligenceRepoPage() {
     if (!token) return;
     const branch = insights?.branch_protection.base_branch || repoMeta?.base_branch || 'main';
     const ok = window.confirm(
-      `Apply recommended InfraGate checks on ${owner}/${repo} branch ${branch}?\n\nThis will require infragate/plan-review and infragate/policy, and will create branch protection if it is missing.`,
+      `Apply recommended SetuOps checks on ${owner}/${repo} branch ${branch}?\n\nThis will require infragate/plan-review and infragate/policy, and will create branch protection if it is missing.`,
     );
     if (!ok) return;
     setProtecting(true);
@@ -829,7 +829,7 @@ export default function DeployIntelligenceRepoPage() {
                   disabled={suggestingTicket}
                   onClick={() => void suggestTicket(selected.pr_number, ackReasons.trim().length > 0)}
                 >
-                  {suggestingTicket ? 'Creating ticket…' : 'Create InfraGate ticket'}
+                  {suggestingTicket ? 'Creating ticket…' : 'Create SetuOps ticket'}
                 </button>
               </div>
             ) : null}

@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import CalendarDateInput from '../components/CalendarDateInput';
+import ApprovalsSectionNav from '../components/ApprovalsSectionNav';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -236,6 +237,8 @@ export default function GateApprovalsPage() {
               </p>
             </div>
           </header>
+
+          <ApprovalsSectionNav />
 
           <section className="portal-surface gate-approvals__surface-gap">
             <div className="gate-approvals__summary-actions">

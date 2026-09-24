@@ -256,3 +256,106 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Shared chrome: sentence-case titles, sticky workspace scope */
+.ig-scope-bar {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ig-scope-bar__field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ig-scope-bar__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ig-muted, #94a3b8);
+}
+
+.ig-scope-bar__control {
+  height: 32px;
+  max-width: 220px;
+  padding: 0 8px;
+  border: 1px solid var(--ig-border, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+}
+
+.devops-navbar__title,
+.user-topbar__title,
+.admin-topbar__title,
+.portal-page__title,
+.portal-surface__title,
+.ig-page-header h1,
+.k8s-workspace__utility-title {
+  text-transform: none !important;
+  letter-spacing: -0.03em !important;
+}
+
+.devops-sidebar-new__group-row {
+  display: flex;
+  align-items: stretch;
+}
+
+.devops-sidebar-new__group-row > a,
+.devops-sidebar-new__group-row > .user-sidebar-shell__link,
+.devops-sidebar-new__group-row > .admin-sidebar-shell__link {
+  flex: 1;
+  min-width: 0;
+}
+
+.devops-sidebar-new__chevron {
+  flex-shrink: 0;
+  width: 36px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.devops-sidebar-new__chevron--open {
+  transform: rotate(180deg);
+}
+
+.user-sidebar-shell__sub,
+.admin-sidebar-shell__sub {
+  display: grid;
+  padding: 2px 16px 10px 56px;
+}
+
+.user-sidebar-shell__sublink,
+.admin-sidebar-shell__sublink {
+  padding: 8px 0;
+  color: inherit;
+  text-decoration: none;
+  opacity: 0.72;
+  font-size: 13px;
+}
+
+.user-sidebar-shell__sublink.is-active,
+.user-sidebar-shell__sublink:hover,
+.admin-sidebar-shell__sublink.is-active,
+.admin-sidebar-shell__sublink:hover {
+  opacity: 1;
+  text-decoration: none;
+}
+
+@media (max-width: 900px) {
+  .ig-scope-bar {
+    display: none;
+  }
+}

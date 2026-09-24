@@ -246,6 +246,10 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   box-shadow: inset 3px 0 0 rgba(17, 216, 255, 0.72);
 }
 .devops-sidebar-new__link--active:hover { transform: none; }
+.devops-sidebar-new__link--current {
+  color: #9fd9ff;
+  background: rgba(8, 31, 56, 0.42);
+}
 .devops-sidebar-new__icon { width: 18px; height: 18px; flex-shrink: 0; }
 .devops-sidebar-new__label {
   white-space: nowrap;
@@ -268,24 +272,46 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   line-height: 1;
 }
 .devops-sidebar-new__expandable { margin: 0; }
+.devops-sidebar-new__group-row {
+  display: flex;
+  align-items: stretch;
+}
+.devops-sidebar-new__group-row .devops-sidebar-new__link {
+  flex: 1;
+  min-width: 0;
+}
 .devops-sidebar-new__expandable-trigger {
   justify-content: flex-start;
   cursor: pointer;
   font-family: inherit;
 }
 .devops-sidebar-new__chevron {
-  margin-left: auto;
+  flex-shrink: 0;
+  width: 42px;
+  border: 0;
+  background: transparent;
+  color: #94a3b8;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #94a3b8;
+  cursor: pointer;
+  transition: transform 0.16s ease, color 0.16s ease;
+}
+.devops-sidebar-new__chevron:hover {
+  color: #9fd9ff;
+}
+.devops-sidebar-new__chevron--open {
+  transform: rotate(180deg);
+}
+.devops-sidebar-new__chevron svg {
+  width: 16px;
+  height: 16px;
 }
 .devops-sidebar-new__sub {
   display: grid;
   gap: 0;
   margin: 0;
-  padding: 0 0 12px 66px;
-  border-left: 1px solid rgba(18, 58, 96, 0.92);
+  padding: 4px 16px 10px 66px;
 }
 .devops-sidebar-new__sublink {
   display: block;
@@ -302,6 +328,10 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   background: transparent;
   color: var(--color-primary);
   text-decoration: none;
+}
+
+.approvals-section-nav {
+  margin: 0 0 18px;
 }
 .devops-sidebar-new__section {
   border-top: 1px solid rgba(18, 58, 96, 0.92);

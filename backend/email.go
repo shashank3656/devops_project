@@ -82,14 +82,14 @@ func buildEscapedEmailHTML(subject, escapedBody string) string {
 <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.6;color:#334155;background:#f8fafc;">
   <div style="max-width:600px;margin:24px auto;padding:24px;background:#fff;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
     <div style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #e2e8f0;">
-      <h1 style="margin:0;font-size:20px;font-weight:600;color:#0f172a;">InfraGate</h1>
+      <h1 style="margin:0;font-size:20px;font-weight:600;color:#0f172a;">SetuOps</h1>
       <p style="margin:4px 0 0;font-size:12px;color:#64748b;">Infrastructure Request Portal</p>
     </div>
     <div style="color:#334155;">
       ` + bodyWithBreaks + `
     </div>
     <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;">
-      This is an automated message from InfraGate. Do not reply to this email.
+      This is an automated message from SetuOps. Do not reply to this email.
     </div>
   </div>
 </body>
@@ -260,7 +260,7 @@ func WrapEmailHTML(subject, body string) string {
 
 // EmailTemplatePasswordReset returns HTML and plain text for password reset email
 func EmailTemplatePasswordReset(resetURL string) (subject, plainText, htmlBody string) {
-	subject = "Password reset - InfraGate"
+	subject = "Password reset - SetuOps"
 	plainText = "You requested a password reset. Click the link below to set a new password (valid for 1 hour):\n\n" + resetURL + "\n\nIf you did not request this, ignore this email."
 	htmlBody = WrapEmailHTML(subject, plainText)
 	return subject, plainText, htmlBody
@@ -268,7 +268,7 @@ func EmailTemplatePasswordReset(resetURL string) (subject, plainText, htmlBody s
 
 // EmailTemplate2FA returns subject and body for 2FA code email
 func EmailTemplate2FA(otp string) (subject, body string) {
-	subject = "Your verification code - InfraGate"
+	subject = "Your verification code - SetuOps"
 	body = "Your verification code is: " + otp + "\n\nThis code expires in 10 minutes."
 	return subject, body
 }

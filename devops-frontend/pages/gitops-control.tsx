@@ -357,8 +357,6 @@ export default function GitOpsControlPage() {
     }
     if (requestedView === 'builder' && (next.can_create_projects || requestedProject > 0 || next.projects.some((project) => project.can_manage))) {
       setActiveRail('builder');
-    } else if (next.projects.length === 0 && next.can_create_projects) {
-      setActiveRail('builder');
     }
   };
 
@@ -781,7 +779,7 @@ export default function GitOpsControlPage() {
           <section className="portal-page__hero">
             <div>
               <span className="portal-page__eyebrow">Manager Control</span>
-              <h1 className="portal-page__title">Project-Infra</h1>
+              <h1 className="portal-page__title">GitOps projects</h1>
               <p className="portal-page__subtitle">
                 Create GitOps project folders and files, then decide exactly which DevOps user can view each environment.
               </p>
@@ -842,6 +840,7 @@ export default function GitOpsControlPage() {
                 </div>
               </section>
 
+              {(requestedView === 'builder' || editingProjectId !== null) && (
               <section className="portal-grid">
                 <article className="portal-surface">
                   <div className="portal-surface__header">
@@ -990,6 +989,7 @@ export default function GitOpsControlPage() {
                   )}
                 </article>
               </section>
+              )}
 
               <section className="portal-surface">
                 <div className="portal-surface__header">

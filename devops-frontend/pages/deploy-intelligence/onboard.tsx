@@ -122,12 +122,12 @@ export default function DeployIntelligenceOnboardPage() {
       <div className="di-page">
         <header className="di-page__head">
           <Link href="/deploy-intelligence" className="di-back">
-            ← Repositories
+            ← Back to repositories
           </Link>
           <p className="di-kicker">Deploy intelligence</p>
           <h1 className="di-title">Onboard a repository</h1>
           <p className="di-lede">
-            Connect a GitHub repo so InfraGate can analyze open and merged pull requests and post a change brief on the PR.
+            Connect a GitHub repo so SetuOps can analyze open and merged pull requests and post a change brief on the PR.
           </p>
         </header>
 
