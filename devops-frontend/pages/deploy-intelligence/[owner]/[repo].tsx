@@ -18,6 +18,19 @@ const DEVOPS_TOKEN_KEY = 'devops_token';
 
 type Section = 'merges' | 'open';
 
+interface OpenPRMeta {
+  is_draft?: boolean;
+  age_days?: number;
+  review_sla?: string;
+  review_detail?: string;
+  assignees?: string[];
+  requested_reviewers?: string[];
+  checks?: RequiredCheck[];
+  preview_environments?: { request_id: number; env: string; label: string; expires_at?: string }[];
+  suggest_ticket?: boolean;
+  suggest_ticket_reason?: string;
+}
+
 interface DeployEvent {
   id?: number;
   pr_number: number;
@@ -36,6 +49,7 @@ interface DeployEvent {
   summary: string;
   pr_url: string;
   impact: PRImpactBriefData;
+  open_pr?: OpenPRMeta;
 }
 
 interface RepoSummary {
@@ -80,6 +94,18 @@ interface RepoInsights {
   deploy_frequency: DeployFrequencyBucket[];
 }
 
+interface GitHubFetchMeta {
+  configured: boolean;
+  allowed: boolean;
+  ready: boolean;
+  error?: string;
+  fetched_at?: string;
+  listed: number;
+  total_open: number;
+  truncated: boolean;
+  max_listed: number;
+}
+
 function riskChipTone(level: string): 'low' | 'medium' | 'high' | 'danger' | 'ok' | 'info' | 'neutral' {
   if (level === 'high') return 'danger';
   if (level === 'medium') return 'medium';
@@ -103,8 +129,14 @@ export default function DeployIntelligenceRepoPage() {
   const [selected, setSelected] = useState<DeployEvent | null>(null);
   const [refreshPR, setRefreshPR] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [githubMeta, setGithubMeta] = useState<GitHubFetchMeta | null>(null);
+  const [githubError, setGithubError] = useState('');
+  const [baseFilter, setBaseFilter] = useState<'all' | 'production'>('production');
+  const [includeDrafts, setIncludeDrafts] = useState(false);
+  const [suggestingTicket, setSuggestingTicket] = useState(false);
+  const [ticketMessage, setTicketMessage] = useState('');
 
-  const load = async (refreshNumber?: number) => {
+  const load = async (refreshNumber?: number, options?: { batchDeep?: boolean }) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token || !owner || !repo) return;
     setLoading(true);
@@ -113,9 +145,15 @@ export default function DeployIntelligenceRepoPage() {
       const query = new URLSearchParams({
         owner,
         repo,
-        limit: '50',
+        limit: '100',
         section,
       });
+      if (section === 'open') {
+        query.set('fetch_github', '1');
+        if (baseFilter === 'production') query.set('base_filter', 'production');
+        if (includeDrafts) query.set('include_drafts', '1');
+        if (options?.batchDeep) query.set('batch_deep', '1');
+      }
       if (refreshNumber && refreshNumber > 0) query.set('refresh_pr', String(refreshNumber));
       const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence?${query}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -126,9 +164,16 @@ export default function DeployIntelligenceRepoPage() {
         return;
       }
       setRepoMeta(data?.repo || null);
-      setEvents(Array.isArray(data?.events) ? data.events : []);
+      const nextEvents: DeployEvent[] = Array.isArray(data?.events) ? data.events : [];
+      setEvents(nextEvents);
       setFuture(Array.isArray(data?.future_capabilities) ? data.future_capabilities : []);
       setInsights((data?.insights as RepoInsights) || null);
+      setGithubMeta((data?.github as GitHubFetchMeta) || null);
+      setGithubError(typeof data?.github_error === 'string' ? data.github_error : '');
+      if (refreshNumber && refreshNumber > 0) {
+        const match = nextEvents.find((e) => e.pr_number === refreshNumber);
+        if (match) setSelected(match);
+      }
     } catch {
       setError('Failed to load pull request analysis');
     } finally {
@@ -140,7 +185,40 @@ export default function DeployIntelligenceRepoPage() {
   useEffect(() => {
     if (!router.isReady) return;
     void load();
-  }, [apiUrl, router.isReady, owner, repo, section]);
+  }, [apiUrl, router.isReady, owner, repo, section, baseFilter, includeDrafts]);
+
+  const suggestTicket = async (prNumber: number) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    setSuggestingTicket(true);
+    setTicketMessage('');
+    try {
+      const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/suggest-ticket`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ owner, name: repo, pr_number: prNumber }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setTicketMessage(data?.error || 'Could not create ticket');
+        return;
+      }
+      setTicketMessage(data?.message || `Ticket #${data?.request_id} created`);
+      void load();
+    } catch {
+      setTicketMessage('Could not create ticket');
+    } finally {
+      setSuggestingTicket(false);
+    }
+  };
+
+  const onRowOpen = (row: DeployEvent) => {
+    setSelected(row);
+    if (section === 'open' && row.summary?.includes('Listed from GitHub')) {
+      setRefreshing(true);
+      void load(row.pr_number);
+    }
+  };
 
   const columns: DataTableColumn<DeployEvent>[] = useMemo(
     () => [
@@ -188,10 +266,39 @@ export default function DeployIntelligenceRepoPage() {
       },
       {
         id: 'when',
-        header: section === 'merges' ? 'Merged' : 'Status',
-        cell: (row) =>
-          section === 'merges' && row.merged_at ? new Date(row.merged_at).toLocaleString() : section === 'open' ? 'Open' : '—',
+        header: section === 'merges' ? 'Merged' : 'Review SLA',
+        cell: (row) => {
+          if (section === 'merges' && row.merged_at) return new Date(row.merged_at).toLocaleString();
+          if (section === 'open' && row.open_pr) {
+            const sla = row.open_pr.review_sla || 'ok';
+            return (
+              <span className={`ig-chip ig-chip--${sla === 'breach' ? 'danger' : sla === 'warning' ? 'medium' : 'ok'}`}>
+                {row.open_pr.age_days ?? 0}d · {sla}
+              </span>
+            );
+          }
+          return section === 'open' ? 'Open' : '—';
+        },
       },
+      ...(section === 'open'
+        ? [
+            {
+              id: 'checks',
+              header: 'CI checks',
+              cell: (row: DeployEvent) => {
+                const checks = row.open_pr?.checks || [];
+                const ok = checks.filter((c) => c.status === 'ok').length;
+                const missing = checks.filter((c) => c.status === 'missing').length;
+                if (checks.length === 0) return '—';
+                return (
+                  <span className="ig-cell-meta">
+                    {ok}/{checks.length} ok{missing > 0 ? ` · ${missing} gap` : ''}
+                  </span>
+                );
+              },
+            } as DataTableColumn<DeployEvent>,
+          ]
+        : []),
       {
         id: 'request',
         header: 'Request',
@@ -388,7 +495,58 @@ export default function DeployIntelligenceRepoPage() {
                 {refreshing ? 'Analyzing…' : 'Analyze & store merge'}
               </button>
             </form>
-          ) : null}
+          ) : (
+            <div className="ig-lifecycle__row" style={{ marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+              <SegmentedControl
+                label="Base branch filter"
+                value={baseFilter}
+                onChange={(v) => setBaseFilter(v === 'production' ? 'production' : 'all')}
+                options={[
+                  { value: 'production', label: `→ ${repoMeta?.base_branch || 'main'}` },
+                  { value: 'all', label: 'All open' },
+                ]}
+              />
+              <label className="portal-toolbar__item" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" checked={includeDrafts} onChange={(e) => setIncludeDrafts(e.target.checked)} />
+                <span className="credential-audit-label">Include drafts</span>
+              </label>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={loading || refreshing}
+                onClick={() => {
+                  setRefreshing(true);
+                  void load();
+                }}
+              >
+                {refreshing || loading ? 'Fetching from GitHub…' : 'Refresh from GitHub'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={loading || refreshing}
+                onClick={() => {
+                  setRefreshing(true);
+                  void load(undefined, { batchDeep: true });
+                }}
+                title="Deep-analyze up to 12 PRs (commits, files, CI checks)"
+              >
+                Batch analyze
+              </button>
+              {githubMeta?.fetched_at ? (
+                <span className="portal-surface__subtitle" style={{ margin: 0 }}>
+                  Last fetch {new Date(githubMeta.fetched_at).toLocaleString()} · {githubMeta.listed} listed
+                  {githubMeta.truncated ? ` (cap ${githubMeta.max_listed}; more open on GitHub)` : ''}
+                </span>
+              ) : null}
+              {githubError ? <span className="alert alert-error" style={{ margin: 0, padding: '8px 12px' }}>{githubError}</span> : null}
+              {!githubMeta?.configured && section === 'open' ? (
+                <span className="portal-surface__subtitle" style={{ margin: 0 }}>
+                  Configure <code>GITHUB_TOKEN</code> on the backend to list open pull requests.
+                </span>
+              ) : null}
+            </div>
+          )}
 
           <div className="ig-legacy-table">
             <DataTable<DeployEvent>
@@ -398,14 +556,16 @@ export default function DeployIntelligenceRepoPage() {
               rowKey={rowKey}
               loading={loading}
               activeKey={selected ? rowKey(selected) : null}
-              onRowOpen={setSelected}
+              onRowOpen={onRowOpen}
               empty={
                 <EmptyState
                   title={section === 'merges' ? 'No merge analyses yet' : 'No open pull requests'}
                   body={
                     section === 'merges'
                       ? 'Merge to the production base branch or backfill a PR number above.'
-                      : 'When developers open PRs, they appear here with risk scoring from GitHub.'
+                      : githubError
+                        ? 'Fix GitHub access above, then use Refresh from GitHub.'
+                        : 'No open pull requests on this repository, or the list is still loading.'
                   }
                 />
               }
@@ -428,6 +588,52 @@ export default function DeployIntelligenceRepoPage() {
       </div>
 
       <InspectorDrawer open={Boolean(selected)} title={selected ? `PR #${selected.pr_number}` : 'PR analysis'} onClose={() => setSelected(null)}>
+        {selected?.open_pr ? (
+          <div className="portal-surface" style={{ marginBottom: 16 }}>
+            {selected.open_pr.is_draft ? <span className="ig-chip ig-chip--neutral">Draft</span> : null}
+            {selected.open_pr.review_detail ? <p className="portal-surface__subtitle">{selected.open_pr.review_detail}</p> : null}
+            {selected.open_pr.checks && selected.open_pr.checks.length > 0 ? (
+              <ul className="portal-list">
+                {selected.open_pr.checks.map((c) => (
+                  <li key={c.key}>
+                    <code>{c.label}</code>{' '}
+                    <span className={`ig-chip ig-chip--${c.status === 'ok' ? 'ok' : c.status === 'missing' ? 'danger' : 'neutral'}`}>
+                      {c.status}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {selected.open_pr.preview_environments && selected.open_pr.preview_environments.length > 0 ? (
+              <ul className="portal-list" style={{ marginTop: 12 }}>
+                {selected.open_pr.preview_environments.map((p) => (
+                  <li key={p.request_id}>
+                    <Link href={`/tickets?id=${p.request_id}`} className="ig-cell-link">
+                      {p.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {selected.open_pr.suggest_ticket && !selected.request_id ? (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                style={{ marginTop: 12 }}
+                disabled={suggestingTicket}
+                onClick={() => void suggestTicket(selected.pr_number)}
+              >
+                {suggestingTicket ? 'Creating ticket…' : 'Create InfraGate ticket'}
+              </button>
+            ) : null}
+            {selected.open_pr.suggest_ticket_reason ? (
+              <p className="portal-surface__subtitle" style={{ marginTop: 8 }}>
+                {selected.open_pr.suggest_ticket_reason}
+              </p>
+            ) : null}
+            {ticketMessage ? <p className="portal-surface__subtitle">{ticketMessage}</p> : null}
+          </div>
+        ) : null}
         {brief ? <PRImpactBrief brief={brief} /> : null}
       </InspectorDrawer>
     </DevOpsLayout>

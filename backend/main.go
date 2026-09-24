@@ -537,6 +537,7 @@ func main() {
 		startLifecycleScheduler()
 		startCostDigestScheduler()
 		startDriftAutomationScheduler()
+		startDeployIntelSlackDigestScheduler()
 	}
 	InitRuntimeResilience()
 
@@ -621,6 +622,7 @@ func main() {
 	http.HandleFunc("/api/devops/pr-impact", devopsPRImpactHandler)
 	http.HandleFunc("/api/devops/deploy-intelligence", devopsDeployIntelligenceHandler)
 	http.HandleFunc("/api/devops/deploy-intelligence/repos", devopsDeployIntelReposHandler)
+	http.HandleFunc("/api/devops/deploy-intelligence/suggest-ticket", devopsDeployIntelSuggestTicketHandler)
 	http.HandleFunc("/api/devops/saved-views", devopsSavedFilterViewsHandler)
 	http.HandleFunc("/api/devops/saved-views/", devopsSavedFilterViewsHandler)
 	http.HandleFunc("/api/devops/prs/", devopsPRNumberImpactHandler)

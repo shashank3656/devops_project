@@ -18,3 +18,12 @@ func TestRepoIsOnboardedLegacyMismatch(t *testing.T) {
 		t.Fatal("wrong owner should not match")
 	}
 }
+
+func TestDeployIntelGitHubAccessRequiresToken(t *testing.T) {
+	prev := GitHubToken
+	GitHubToken = ""
+	defer func() { GitHubToken = prev }()
+	if deployIntelGitHubAccessAllowed("acme", "infra") {
+		t.Fatal("expected false without token")
+	}
+}

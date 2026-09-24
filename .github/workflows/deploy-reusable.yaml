@@ -43,6 +43,26 @@ on:
         required: false
         type: string
         default: ""
+      enable_railway_image_updater:
+        description: After push, call Railway Image Updater to retag all matching GHCR services (requires repo vars)
+        required: false
+        type: boolean
+        default: false
+      railway_environment_id:
+        description: Railway environment UUID for image updater (falls back to RAILWAY_ENVIRONMENT_ID var)
+        required: false
+        type: string
+        default: ""
+      railway_project_id:
+        description: Railway project UUID (falls back to RAILWAY_PROJECT_ID repo variable)
+        required: false
+        type: string
+        default: ""
+      ghcr_repo_name:
+        description: GHCR image repo segment (ghcr.io/owner/NAME-backend). Defaults to GitHub repository name.
+        required: false
+        type: string
+        default: ""
     secrets:
       SNYK_TOKEN:
         required: false
@@ -118,10 +138,15 @@ jobs:
       - name: Compute image metadata
         id: image-meta
         shell: bash
+        env:
+          GHCR_REPO_NAME: ${{ inputs.ghcr_repo_name }}
         run: |
           set -euo pipefail
           owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
           repo="$(echo '${{ github.event.repository.name }}' | tr '[:upper:]' '[:lower:]')"
+          if [ -n "${GHCR_REPO_NAME}" ]; then
+            repo="$(echo "${GHCR_REPO_NAME}" | tr '[:upper:]' '[:lower:]')"
+          fi
           image_uri="${{ env.REGISTRY }}/${owner}/${repo}-${{ matrix.image_suffix }}"
           latest_tag="${{ inputs.environment_name }}-latest"
           echo "image_uri=$image_uri" >> "$GITHUB_OUTPUT"
@@ -395,10 +420,74 @@ jobs:
           webhook-type: incoming-webhook
           payload: ${{ steps.notify-meta.outputs.failure_payload }}
 
+  railway-image-updater:
+    name: Sync Railway service images
+    needs: build-and-push
+    if: |
+      needs.build-and-push.result == 'success' &&
+      inputs.enable_railway_image_updater &&
+      vars.RAILWAY_IMAGE_UPDATER_URL != '' &&
+      (inputs.railway_project_id != '' || vars.RAILWAY_PROJECT_ID != '') &&
+      (inputs.railway_environment_id != '' || vars.RAILWAY_ENVIRONMENT_ID != '') &&
+      github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Railway Image Updater
+        shell: bash
+        env:
+          UPDATER_URL: ${{ vars.RAILWAY_IMAGE_UPDATER_URL }}
+          PROJECT_ID: ${{ inputs.railway_project_id != '' && inputs.railway_project_id || vars.RAILWAY_PROJECT_ID }}
+          ENVIRONMENT_ID: ${{ inputs.railway_environment_id != '' && inputs.railway_environment_id || vars.RAILWAY_ENVIRONMENT_ID }}
+          GHCR_REPO_NAME: ${{ inputs.ghcr_repo_name }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          owner="$(echo "${REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          repo_name="$(echo "${REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')"
+          if [ -n "${GHCR_REPO_NAME}" ]; then
+            repo_name="$(echo "${GHCR_REPO_NAME}" | tr '[:upper:]' '[:lower:]')"
+          fi
+          prefix="ghcr.io/${owner}/${repo_name}"
+          payload="$(PREFIX="${prefix}" python3 <<'PY'
+          import json, os
+          prefix = os.environ["PREFIX"]
+          # Railway service names (backend-api, devops_project-*) map by Docker image prefix, not service name.
+          print(json.dumps({
+              "project_id": os.environ["PROJECT_ID"],
+              "environment_id": os.environ["ENVIRONMENT_ID"],
+              "image_prefixes": [
+                  f"{prefix}-backend",
+                  f"{prefix}-frontend",
+                  f"{prefix}-admin-frontend",
+                  f"{prefix}-devops-frontend",
+              ],
+              "new_version": os.environ["IMAGE_TAG"],
+          }))
+          PY
+          )"
+          echo "Calling Railway Image Updater for tag ${IMAGE_TAG}"
+          echo "Image prefixes: ${prefix}-{backend,frontend,admin-frontend,devops-frontend}"
+          echo "Railway services: backend-api, ${repo_name}-frontend, ${repo_name}-admin-frontend, ${repo_name}-devops-frontend"
+          echo "Deploy template: https://railway.com/deploy/railway-image-updater"
+          curl --fail --show-error --silent \
+            -X PUT "${UPDATER_URL%/}/update" \
+            -H "Content-Type: application/json" \
+            -d "${payload}"
+          echo "Railway services updated."
+
   mark-request-complete:
     name: Mark Request Complete
-    needs: build-and-push
-    if: success() && inputs.backend_api_url != '' && github.event_name != 'pull_request'
+    needs:
+      - build-and-push
+      - railway-image-updater
+    if: |
+      always() &&
+      needs.build-and-push.result == 'success' &&
+      (needs.railway-image-updater.result == 'success' || needs.railway-image-updater.result == 'skipped') &&
+      inputs.backend_api_url != '' &&
+      github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Resolve request callback identity
