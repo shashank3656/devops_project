@@ -86,19 +86,19 @@ export function queryToScope(query: Record<string, string | string[] | undefined
 
 export function normalizeScopeProjects(value: unknown): ScopeProject[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => {
-      const row = asRecord(item);
-      const id = row.id ?? row.project_id;
-      if (id == null) return null;
-      return {
-        id,
-        name: typeof row.name === 'string' ? row.name : typeof row.project_name === 'string' ? row.project_name : `Project ${id}`,
-        code: typeof row.code === 'string' ? row.code : typeof row.project_code === 'string' ? row.project_code : '',
-        environments: Array.isArray(row.environments)
-          ? row.environments.filter((entry): entry is string => typeof entry === 'string' && Boolean(entry))
-          : [],
-      };
-    })
-    .filter((item): item is ScopeProject => Boolean(item));
+  const projects: ScopeProject[] = [];
+  for (const item of value) {
+    const row = asRecord(item);
+    const rawId = row.id ?? row.project_id;
+    if (typeof rawId !== 'number' && typeof rawId !== 'string') continue;
+    projects.push({
+      id: rawId,
+      name: typeof row.name === 'string' ? row.name : typeof row.project_name === 'string' ? row.project_name : `Project ${rawId}`,
+      code: typeof row.code === 'string' ? row.code : typeof row.project_code === 'string' ? row.project_code : '',
+      environments: Array.isArray(row.environments)
+        ? row.environments.filter((entry): entry is string => typeof entry === 'string' && Boolean(entry))
+        : [],
+    });
+  }
+  return projects;
 }
