@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { DataTable, type DataTableColumn } from '@infragate/ui';
 import AdminLayout from '../components/AdminLayout';
 import { asRecord, getString } from '../lib/payload';
 
@@ -20,20 +21,83 @@ interface ProjectOption {
   clouds: string[];
 }
 
-function stageTone(stage?: string): { background: string; color: string } {
+function stageTone(stage?: string): string {
   switch (stage) {
     case 'ready':
-      return { background: 'var(--color-success-bg)', color: 'var(--color-success)' };
+      return 'low';
     case 'configured':
     case 'team_mapped':
-      return { background: 'var(--color-warning-bg)', color: 'var(--color-warning)' };
+      return 'medium';
     case 'inactive':
     case 'archived':
-      return { background: 'rgba(148, 163, 184, 0.14)', color: 'var(--color-text-muted)' };
+      return 'muted';
     default:
-      return { background: 'var(--color-primary-light)', color: 'var(--color-primary)' };
+      return 'info';
   }
 }
+
+const projectColumns: DataTableColumn<ProjectOption>[] = [
+  {
+    id: 'project',
+    header: 'Project',
+    cell: (project) => (
+      <div className="ig-cell-stack">
+        <span className="ig-cell-title">{project.name}</span>
+        <span className="ig-cell-meta">
+          <span className="ig-mono">{project.code}</span> · {project.owner_team || 'No owner team'}
+        </span>
+      </div>
+    ),
+  },
+  {
+    id: 'stage',
+    header: 'Stage',
+    cell: (project) => (
+      <div className="ig-cell-stack">
+        <span className={`ig-chip ig-chip--${stageTone(project.onboarding_stage)}`}>
+          {(project.onboarding_stage || 'configured').replace(/_/g, ' ')}
+        </span>
+        {project.status !== 'active' ? <span className="ig-cell-meta">{project.status}</span> : null}
+      </div>
+    ),
+  },
+  {
+    id: 'targets',
+    header: 'Environments & clouds',
+    cell: (project) => (
+      <span className="ig-cell-chips">
+        {project.environments.map((env) => (
+          <span key={env} className="ig-chip">{env}</span>
+        ))}
+        {project.clouds.map((cloud) => (
+          <span key={cloud} className="ig-chip ig-chip--muted">{cloud}</span>
+        ))}
+      </span>
+    ),
+  },
+  {
+    id: 'services',
+    header: 'Services',
+    align: 'right',
+    cell: (project) => <span className="ig-mono">{project.service_count ?? 0}</span>,
+  },
+  {
+    id: 'teams',
+    header: 'Teams',
+    align: 'right',
+    cell: (project) => <span className="ig-mono">{project.team_count ?? 0}</span>,
+  },
+  {
+    id: 'open',
+    header: <span className="ig-sr-only">Open</span>,
+    align: 'right',
+    cell: (project) => (
+      <Link href={`/projects/${project.id}`} className="btn btn-secondary btn-sm">
+        View
+      </Link>
+    ),
+  },
+];
 
 export default function AdminProjectsPage() {
   const router = useRouter();
@@ -141,11 +205,8 @@ export default function AdminProjectsPage() {
 
           {error && <div className="alert alert-error">{error}</div>}
 
-          {loading ? (
-            <div className="portal-surface"><div className="empty-state">Loading projects...</div></div>
-          ) : (
-            <>
-              <section className="portal-stat-grid">
+          <>
+              <section className="portal-stat-grid" aria-busy={loading || undefined}>
                 <article className="portal-stat-card">
                   <span className="portal-stat-card__label">Projects</span>
                   <span className="portal-stat-card__value">{summary.total}</span>
@@ -179,19 +240,21 @@ export default function AdminProjectsPage() {
 
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
                   <input
+                    type="search"
+                    aria-label="Search projects"
                     className="input"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search project, code, or owner team"
                     style={{ maxWidth: 300 }}
                   />
-                  <select className="select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}>
+                  <select className="select" aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}>
                     <option value="all">All statuses</option>
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
                     <option value="archived">Archived</option>
                   </select>
-                  <select className="select" value={stageFilter} onChange={(e) => setStageFilter(e.target.value as typeof stageFilter)}>
+                  <select className="select" aria-label="Filter by stage" value={stageFilter} onChange={(e) => setStageFilter(e.target.value as typeof stageFilter)}>
                     <option value="all">All stages</option>
                     <option value="ready">Ready</option>
                     <option value="configured">Configured</option>
@@ -200,59 +263,37 @@ export default function AdminProjectsPage() {
                   </select>
                 </div>
 
-                {filteredProjects.length === 0 ? (
-                  <div className="empty-state">No projects match the current filters.</div>
-                ) : (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="templates-table">
-                      <thead>
-                        <tr>
-                          <th>Project</th>
-                          <th>Owner team</th>
-                          <th>Status</th>
-                          <th>Stage</th>
-                          <th>Environments</th>
-                          <th>Clouds</th>
-                          <th>Services</th>
-                          <th>Teams</th>
-                          <th>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredProjects.map((project) => {
-                          const stageStyle = stageTone(project.onboarding_stage);
-                          return (
-                            <tr key={project.id}>
-                              <td>
-                                <strong>{project.name}</strong>
-                                <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{project.code}</div>
-                              </td>
-                              <td>{project.owner_team || 'Not set'}</td>
-                              <td>{project.status}</td>
-                              <td>
-                                <span style={{ ...stageStyle, padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, textTransform: 'uppercase' }}>
-                                  {project.onboarding_stage || 'configured'}
-                                </span>
-                              </td>
-                              <td>{project.environments.join(', ')}</td>
-                              <td>{project.clouds.join(', ')}</td>
-                              <td>{project.service_count ?? 0}</td>
-                              <td>{project.team_count ?? 0}</td>
-                              <td>
-                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                  <Link href={`/projects/${project.id}`} className="btn btn-secondary btn-sm">View</Link>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                <DataTable<ProjectOption>
+                  label="Project inventory"
+                  columns={projectColumns}
+                  rows={filteredProjects}
+                  rowKey={(project) => project.id}
+                  loading={loading}
+                  skeletonRows={6}
+                  onRowOpen={(project) => router.push(`/projects/${project.id}`)}
+                  empty={
+                    <div className="ig-table-empty">
+                      <strong>{projects.length === 0 ? 'No projects yet' : 'No projects match these filters'}</strong>
+                      {projects.length > 0 ? (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => {
+                            setSearch('');
+                            setStatusFilter('all');
+                            setStageFilter('all');
+                          }}
+                        >
+                          Clear filters
+                        </button>
+                      ) : (
+                        <p>DevOps creates project catalogs; they appear here once onboarded.</p>
+                      )}
+                    </div>
+                  }
+                />
               </section>
-            </>
-          )}
+          </>
         </div>
       </AdminLayout>
     </>

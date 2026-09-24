@@ -1,8 +1,21 @@
+const fs = require('fs');
+const path = require('path');
+
+function sharedUiHelper() {
+  const nested = path.join(__dirname, 'shared-ui', 'next.cjs');
+  if (fs.existsSync(nested)) return nested;
+  const parent = path.join(__dirname, '..', 'shared-ui', 'next.cjs');
+  if (fs.existsSync(parent)) return parent;
+  return '/shared-ui/next.cjs';
+}
+
+const { withSharedUi } = require(sharedUiHelper());
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  allowedDevOrigins: ['34.172.238.138', 'localhost', '127.0.0.1'],
+  allowedDevOrigins: ['localhost', '127.0.0.1'],
   async headers() {
     return [
       {
@@ -18,4 +31,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+module.exports = withSharedUi(nextConfig, __dirname);

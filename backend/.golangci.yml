@@ -1,0 +1,9 @@
+version: "2"
+
+run:
+  relative-path-mode: gomod
+
+linters:
+  exclusions:
+    paths:
+      - (^|/)test(/|$)

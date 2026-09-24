@@ -8,6 +8,26 @@ import (
 	"strings"
 )
 
+func applyGitHubRepoToCatalogProject(project *GitOpsCatalogProject, owner, repo string) error {
+	if project == nil {
+		return fmt.Errorf("project is required")
+	}
+	owner, repo = normalizeRepoIdentity(owner, repo)
+	if owner == "" && repo == "" {
+		return nil
+	}
+	if owner == "" || repo == "" {
+		return fmt.Errorf("github_owner and github_repo must both be set")
+	}
+	if err := setGitOpsProjectGitHubRepo(project.ID, owner, repo); err != nil {
+		return err
+	}
+	project.GitHubOwner = owner
+	project.GitHubRepo = repo
+	maybeOnboardDeployIntelForProjectRepo(*project)
+	return nil
+}
+
 type GitOpsAssignableUser struct {
 	ID        int    `json:"id"`
 	Username  string `json:"username"`
@@ -167,6 +187,8 @@ func devopsGitOpsProjectCreateHandler(w http.ResponseWriter, r *http.Request) {
 		Name         string   `json:"name"`
 		Slug         string   `json:"slug"`
 		DefaultCloud string   `json:"default_cloud"`
+		GitHubOwner  string   `json:"github_owner"`
+		GitHubRepo   string   `json:"github_repo"`
 		Environments []string `json:"environments"`
 		Components   []string `json:"components"`
 	}
@@ -191,6 +213,10 @@ func devopsGitOpsProjectCreateHandler(w http.ResponseWriter, r *http.Request) {
 	project, err := CreateGitOpsCatalogProject(resolvedTeamID, body.Name, body.Slug, body.Environments, body.Components, body.DefaultCloud, userID)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
+		return
+	}
+	if err := applyGitHubRepoToCatalogProject(project, body.GitHubOwner, body.GitHubRepo); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "failed to save GitHub repository", err)
 		return
 	}
 
@@ -240,6 +266,8 @@ func devopsGitOpsProjectUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		Name         string   `json:"name"`
 		Slug         string   `json:"slug"`
 		DefaultCloud string   `json:"default_cloud"`
+		GitHubOwner  string   `json:"github_owner"`
+		GitHubRepo   string   `json:"github_repo"`
 		Environments []string `json:"environments"`
 		Components   []string `json:"components"`
 	}
@@ -259,6 +287,10 @@ func devopsGitOpsProjectUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	updatedProject, err := UpdateGitOpsCatalogProject(projectID, body.TeamID, body.Name, body.Slug, body.Environments, body.Components, body.DefaultCloud)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
+		return
+	}
+	if err := applyGitHubRepoToCatalogProject(updatedProject, body.GitHubOwner, body.GitHubRepo); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "failed to save GitHub repository", err)
 		return
 	}
 

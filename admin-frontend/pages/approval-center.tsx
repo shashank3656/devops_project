@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
+import { DataTable, formatRelativeTime, type DataTableColumn } from '@infragate/ui';
 import AdminLayout from '../components/AdminLayout';
 import { asRecord, getString } from '../lib/payload';
 
@@ -48,7 +50,74 @@ function formatStatus(status: string): string {
   }
 }
 
+function requestHref(request: ApprovalRequest): string {
+  return `/requests?id=${request.id}${request.project_id ? `&project_id=${request.project_id}` : ''}`;
+}
+
+const approvalColumns: DataTableColumn<ApprovalRequest>[] = [
+  {
+    id: 'request',
+    header: 'Request',
+    cell: (request) => (
+      <div className="ig-cell-stack">
+        <span className="ig-cell-title">
+          <span className="ig-mono">#{request.id}</span> {request.service}
+        </span>
+        <span className="ig-cell-meta">
+          {isAccessRequest(request) ? 'Access request · ' : ''}
+          {request.created_by_username || 'Unknown requester'}
+        </span>
+      </div>
+    ),
+  },
+  {
+    id: 'project',
+    header: 'Project',
+    cell: (request) => (
+      <div className="ig-cell-stack">
+        <span>{request.project_name || 'Unscoped'}</span>
+        <span className="ig-cell-meta">{[request.project_code, request.team].filter(Boolean).join(' · ')}</span>
+      </div>
+    ),
+  },
+  {
+    id: 'target',
+    header: 'Target',
+    cell: (request) => (
+      <span className="ig-cell-chips">
+        <span className="ig-chip">{request.env}</span>
+        <span className="ig-chip ig-chip--muted">{request.cloud}</span>
+      </span>
+    ),
+  },
+  {
+    id: 'stage',
+    header: 'Stage',
+    cell: (request) => <span className="ig-chip ig-chip--info">{formatStatus(request.status)}</span>,
+  },
+  {
+    id: 'created_at',
+    header: 'Created',
+    cell: (request) => (
+      <span className="ig-cell-meta" title={new Date(request.created_at).toLocaleString()}>
+        {formatRelativeTime(request.created_at)}
+      </span>
+    ),
+  },
+  {
+    id: 'open',
+    header: <span className="ig-sr-only">Open</span>,
+    align: 'right',
+    cell: (request) => (
+      <Link href={requestHref(request)} className="btn btn-secondary btn-sm">
+        Open
+      </Link>
+    ),
+  },
+];
+
 export default function AdminApprovalCenter() {
+  const router = useRouter();
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
@@ -67,6 +136,11 @@ export default function AdminApprovalCenter() {
       })
       .catch(() => setProjects([]));
   }, [apiUrl, token]);
+
+  useEffect(() => {
+    const fromQuery = typeof router.query.project_id === 'string' ? router.query.project_id : '';
+    setProjectId(fromQuery);
+  }, [router.query.project_id]);
 
   useEffect(() => {
     if (!token) return;
@@ -179,65 +253,21 @@ export default function AdminApprovalCenter() {
                 <p className="portal-surface__subtitle">Open any request directly in the admin Requests workspace.</p>
               </div>
             </div>
-            {loading ? (
-              <div className="portal-empty"><p>Loading approval queue...</p></div>
-            ) : requests.length === 0 ? (
-              <div className="portal-empty"><p>No pending approvals in this scope.</p></div>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Project</th>
-                      <th>Team</th>
-                      <th>Env</th>
-                      <th>Cloud / Target</th>
-                      <th>Stage</th>
-                      <th>Requester</th>
-                      <th>Created</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {requests.map((request) => {
-                      const href = `/requests?id=${request.id}${request.project_id ? `&project_id=${request.project_id}` : ''}`;
-                      return (
-                        <tr key={request.id}>
-                          <td>#{request.id}</td>
-                          <td>
-                            {request.project_name ? (
-                              <div>
-                                <strong>{request.project_name}</strong>
-                                {request.project_code ? <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{request.project_code}</div> : null}
-                              </div>
-                            ) : (
-                              'Unscoped'
-                            )}
-                          </td>
-                          <td>{request.team}</td>
-                          <td>{request.env}</td>
-                          <td>
-                            <div>{request.cloud} / {request.service}</div>
-                            {isAccessRequest(request) ? (
-                              <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Access request</div>
-                            ) : null}
-                          </td>
-                          <td>{formatStatus(request.status)}</td>
-                          <td>{request.created_by_username || '-'}</td>
-                          <td>{new Date(request.created_at).toLocaleString()}</td>
-                          <td>
-                            <Link href={href} className="btn btn-secondary btn-sm">
-                              Open
-                            </Link>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <DataTable<ApprovalRequest>
+              label="Pending approvals"
+              columns={approvalColumns}
+              rows={requests}
+              rowKey={(request) => request.id}
+              loading={loading}
+              skeletonRows={6}
+              onRowOpen={(request) => router.push(requestHref(request))}
+              empty={
+                <div className="ig-table-empty">
+                  <strong>Nothing waiting on approval</strong>
+                  <p>{projectId ? 'No pending approvals in this project.' : 'Every request in scope has been decided.'}</p>
+                </div>
+              }
+            />
           </section>
         </div>
       </AdminLayout>

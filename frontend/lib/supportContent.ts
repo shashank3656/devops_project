@@ -57,11 +57,12 @@ export const supportArticles: SupportArticle[] = [
     title: 'Raise or review incidents',
     summary: 'Use Incidents when there is service impact, user-facing degradation, or urgent operational risk.',
     content:
-      'Incidents are best used for active operational problems, failed changes, or urgent blockers. If an incident is assigned to your team, it will appear in the portal so you can track ownership, severity, and updates. Use normal requests for planned work and incidents for active disruption.',
-    keywords: ['incident', 'issue', 'outage', 'sev', 'severity', 'problem', 'assigned incident'],
-    routePrefixes: ['/incidents'],
+      'Incidents show alert, ticket, and change-regression issues assigned to you or on your projects. Change Requests list the application deploys recorded for those same projects. Open an incident to see the suspected change, or open a change to see linked incidents. Use normal requests for planned work.',
+    keywords: ['incident', 'issue', 'outage', 'sev', 'severity', 'problem', 'assigned incident', 'change', 'change request', 'deploy'],
+    routePrefixes: ['/incidents', '/changes'],
     actions: [
       { label: 'Open incidents', href: '/incidents' },
+      { label: 'Open change requests', href: '/changes' },
       { label: 'Open request history', href: '/history' },
     ],
   },

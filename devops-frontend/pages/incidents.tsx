@@ -46,6 +46,10 @@ interface Incident {
   owner_username?: string;
   summary: string;
   notes: string;
+  source?: string;
+  fingerprint?: string;
+  alert_source?: string;
+  suspected_change_number?: string;
 }
 
 function normalizeIncident(incident: unknown): Incident {
@@ -71,6 +75,10 @@ function normalizeIncident(incident: unknown): Incident {
     owner_username: typeof item.owner_username === 'string' ? item.owner_username : '',
     summary: typeof item.summary === 'string' ? item.summary : '',
     notes: typeof item.notes === 'string' ? item.notes : '',
+    source: typeof item.source === 'string' ? item.source : 'ticket',
+    fingerprint: typeof item.fingerprint === 'string' ? item.fingerprint : '',
+    alert_source: typeof item.alert_source === 'string' ? item.alert_source : '',
+    suspected_change_number: typeof item.suspected_change_number === 'string' ? item.suspected_change_number : '',
   };
 }
 
@@ -193,6 +201,8 @@ export default function DevOpsIncidentsPage() {
         'environment',
         'service',
         'cloud',
+        'source',
+        'fingerprint',
         'severity',
         'status',
         'escalation_level',
@@ -208,6 +218,8 @@ export default function DevOpsIncidentsPage() {
         incident.request_env || '',
         incident.request_service || '',
         incident.request_cloud || '',
+        incident.source || 'ticket',
+        incident.fingerprint || '',
         incident.severity,
         incident.status,
         incident.escalation_level,
@@ -539,9 +551,12 @@ export default function DevOpsIncidentsPage() {
                 <option value="">All status</option>
                 <option value="draft">Draft</option>
                 <option value="open">Open</option>
+                <option value="acknowledged">Acknowledged</option>
                 <option value="investigating">Investigating</option>
                 <option value="mitigating">Mitigating</option>
                 <option value="resolved">Resolved</option>
+                <option value="closed">Closed</option>
+                <option value="cancelled">Cancelled</option>
               </select>
             </label>
             <label className="devops-incident-filter-chip">
@@ -592,6 +607,7 @@ export default function DevOpsIncidentsPage() {
                 <thead>
                   <tr>
                     <th>Incident reference</th>
+                    <th>Source</th>
                     <th>Project</th>
                     <th>Severity</th>
                     <th>Status</th>
@@ -617,6 +633,15 @@ export default function DevOpsIncidentsPage() {
                               .join(' · ')}
                           </div>
                         </div>
+                      </td>
+                      <td>
+                        {incident.source === 'alert' ? incident.alert_source || 'alert' : incident.source || 'ticket'}
+                        {incident.fingerprint ? (
+                          <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{incident.fingerprint}</div>
+                        ) : null}
+                        {incident.suspected_change_number ? (
+                          <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Caused by {incident.suspected_change_number}</div>
+                        ) : null}
                       </td>
                       <td>{incident.project_name ? `${incident.project_name} (${incident.project_code})` : 'No project'}</td>
                       <td>{incident.severity}</td>

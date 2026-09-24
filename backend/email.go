@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"net"
 	"net/mail"
 	"net/smtp"
 	"os"
@@ -13,6 +14,11 @@ import (
 	"strings"
 	"time"
 	"unicode"
+)
+
+const (
+	smtpDialTimeout    = 10 * time.Second
+	smtpSessionTimeout = 30 * time.Second
 )
 
 func sanitizeEmailHeaderValue(value, field string) (string, error) {
@@ -76,14 +82,14 @@ func buildEscapedEmailHTML(subject, escapedBody string) string {
 <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.6;color:#334155;background:#f8fafc;">
   <div style="max-width:600px;margin:24px auto;padding:24px;background:#fff;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
     <div style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #e2e8f0;">
-      <h1 style="margin:0;font-size:20px;font-weight:600;color:#0f172a;">InfraGate</h1>
+      <h1 style="margin:0;font-size:20px;font-weight:600;color:#0f172a;">SetuOps</h1>
       <p style="margin:4px 0 0;font-size:12px;color:#64748b;">Infrastructure Request Portal</p>
     </div>
     <div style="color:#334155;">
       ` + bodyWithBreaks + `
     </div>
     <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;">
-      This is an automated message from InfraGate. Do not reply to this email.
+      This is an automated message from SetuOps. Do not reply to this email.
     </div>
   </div>
 </body>
@@ -132,7 +138,7 @@ func SendEmail(to, subject, body string) error {
 
 	log.Printf("[Email] Sending to=%s subject=%q host=%s port=%d useTLS=%v", to, subject, host, port, useTLS)
 
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	boundary := fmt.Sprintf("boundary_%d", time.Now().UnixNano())
 	htmlBody := buildEscapedEmailHTML(subject, escapedBody)
 	msg := buildMIMEMessage(from, to, subject, escapedBody, htmlBody, boundary)
@@ -145,22 +151,43 @@ func SendEmail(to, subject, body string) error {
 		log.Printf("[Email] No SMTP auth (SMTP_USER or SMTP_PASSWORD empty)")
 	}
 
-	if useTLS && port == 587 {
-		tlsConfig := &tls.Config{ServerName: host, InsecureSkipVerify: false}
-		conn, err := tls.Dial("tcp", addr, tlsConfig)
-		if err != nil {
-			log.Printf("[Email] TLS dial failed to %s: %v", addr, err)
-			return fmt.Errorf("TLS dial: %w", err)
+	if useTLS {
+		tlsConfig := &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}
+		dialer := &net.Dialer{Timeout: smtpDialTimeout}
+
+		var conn net.Conn
+		// 465 is implicit TLS (SMTPS). Every other port (587, 25, 2525) starts in
+		// plaintext and must be upgraded with STARTTLS before AUTH.
+		if port == 465 {
+			conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
+		} else {
+			conn, err = dialer.Dial("tcp", addr)
 		}
-		defer conn.Close()
-		log.Printf("[Email] TLS connection established")
+		if err != nil {
+			log.Printf("[Email] Dial failed to %s: %v", addr, err)
+			return fmt.Errorf("smtp dial: %w", err)
+		}
+		_ = conn.SetDeadline(time.Now().Add(smtpSessionTimeout))
+		defer func() { _ = conn.Close() }()
 
 		client, err := smtp.NewClient(conn, host)
 		if err != nil {
 			log.Printf("[Email] SMTP NewClient failed: %v", err)
 			return fmt.Errorf("smtp client: %w", err)
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
+
+		if port != 465 {
+			if ok, _ := client.Extension("STARTTLS"); !ok {
+				log.Printf("[Email] %s does not advertise STARTTLS", addr)
+				return fmt.Errorf("smtp: server %s does not support STARTTLS", addr)
+			}
+			if err := client.StartTLS(tlsConfig); err != nil {
+				log.Printf("[Email] STARTTLS failed on %s: %v", addr, err)
+				return fmt.Errorf("smtp starttls: %w", err)
+			}
+		}
+		log.Printf("[Email] TLS connection established (port %d)", port)
 
 		if auth != nil {
 			if err := client.Auth(auth); err != nil {
@@ -233,7 +260,7 @@ func WrapEmailHTML(subject, body string) string {
 
 // EmailTemplatePasswordReset returns HTML and plain text for password reset email
 func EmailTemplatePasswordReset(resetURL string) (subject, plainText, htmlBody string) {
-	subject = "Password reset - InfraGate"
+	subject = "Password reset - SetuOps"
 	plainText = "You requested a password reset. Click the link below to set a new password (valid for 1 hour):\n\n" + resetURL + "\n\nIf you did not request this, ignore this email."
 	htmlBody = WrapEmailHTML(subject, plainText)
 	return subject, plainText, htmlBody
@@ -241,7 +268,7 @@ func EmailTemplatePasswordReset(resetURL string) (subject, plainText, htmlBody s
 
 // EmailTemplate2FA returns subject and body for 2FA code email
 func EmailTemplate2FA(otp string) (subject, body string) {
-	subject = "Your verification code - InfraGate"
+	subject = "Your verification code - SetuOps"
 	body = "Your verification code is: " + otp + "\n\nThis code expires in 10 minutes."
 	return subject, body
 }

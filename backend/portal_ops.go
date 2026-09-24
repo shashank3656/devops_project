@@ -1,0 +1,371 @@
+package main
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"strings"
+)
+
+func visibleProjectIDsForUser(userID int) []int {
+	projects, err := getVisibleProjectsForUser(userID)
+	if err != nil {
+		return nil
+	}
+	ids := make([]int, 0, len(projects))
+	for _, project := range projects {
+		if project.ID > 0 {
+			ids = append(ids, project.ID)
+		}
+	}
+	return ids
+}
+
+func projectIDSet(ids []int) map[int]struct{} {
+	out := make(map[int]struct{}, len(ids))
+	for _, id := range ids {
+		if id > 0 {
+			out[id] = struct{}{}
+		}
+	}
+	return out
+}
+
+func changeVisibleToUser(item changeRequestRecord, projectIDs map[int]struct{}) bool {
+	if item.ProjectID == nil || *item.ProjectID <= 0 {
+		return false
+	}
+	_, ok := projectIDs[*item.ProjectID]
+	return ok
+}
+
+func incidentVisibleToUser(item requestIncident, userID int, projectIDs map[int]struct{}) bool {
+	if userID > 0 && item.OwnerUserID != nil && *item.OwnerUserID == userID {
+		return true
+	}
+	if item.ProjectID != nil && *item.ProjectID > 0 {
+		_, ok := projectIDs[*item.ProjectID]
+		return ok
+	}
+	return false
+}
+
+func applyChangeTypeFilter(items []changeRequestRecord, changeType string) []changeRequestRecord {
+	if strings.TrimSpace(changeType) == "" {
+		return items
+	}
+	needle := normalizeChangeType(changeType)
+	filtered := make([]changeRequestRecord, 0, len(items))
+	for _, item := range items {
+		if normalizeChangeType(item.ChangeType) == needle {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+func filterChangesForUser(items []changeRequestRecord, projectIDs map[int]struct{}) []changeRequestRecord {
+	filtered := make([]changeRequestRecord, 0, len(items))
+	for _, item := range items {
+		if changeVisibleToUser(item, projectIDs) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+func filterIncidentsForUser(items []requestIncident, userID int, projectIDs map[int]struct{}) []requestIncident {
+	filtered := make([]requestIncident, 0, len(items))
+	for _, item := range items {
+		if incidentVisibleToUser(item, userID, projectIDs) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+func filterIncidentsForPortal(items []requestIncident, projectID int, environment, source, query string) []requestIncident {
+	needle := strings.ToLower(strings.TrimSpace(query))
+	env := strings.ToLower(strings.TrimSpace(environment))
+	src := strings.ToLower(strings.TrimSpace(source))
+	filtered := make([]requestIncident, 0, len(items))
+	for _, item := range items {
+		if projectID > 0 && (item.ProjectID == nil || *item.ProjectID != projectID) {
+			continue
+		}
+		itemEnv := strings.ToLower(strings.TrimSpace(item.Environment))
+		if itemEnv == "" {
+			itemEnv = strings.ToLower(strings.TrimSpace(item.RequestEnv))
+		}
+		if env != "" && itemEnv != env {
+			continue
+		}
+		if src != "" && strings.ToLower(strings.TrimSpace(item.Source)) != src {
+			continue
+		}
+		if needle != "" {
+			haystack := strings.ToLower(strings.Join([]string{
+				item.IncidentNumber,
+				item.Summary,
+				item.Fingerprint,
+				item.AlertSource,
+				item.Service,
+				item.RequestService,
+				item.SuspectedChangeNumber,
+			}, " "))
+			if !strings.Contains(haystack, needle) {
+				continue
+			}
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
+}
+
+func parsePositiveQueryID(r *http.Request, key string) int {
+	id, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get(key)))
+	if err != nil || id <= 0 {
+		return 0
+	}
+	return id
+}
+
+func portalRecordIDFromPath(prefix string, r *http.Request) int {
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, prefix), "/")
+	if path == "" {
+		return 0
+	}
+	id, err := strconv.Atoi(strings.Split(path, "/")[0])
+	if err != nil || id <= 0 {
+		return 0
+	}
+	return id
+}
+
+func writeChangeCatalog(w http.ResponseWriter, items []changeRequestRecord, changeType string) {
+	items = applyChangeTypeFilter(items, changeType)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"changes": items,
+		"status":  "ok",
+	})
+}
+
+func writeChangeDetailJSON(w http.ResponseWriter, item *changeRequestRecord) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"change":           item,
+		"change_brief":     changeBriefFromChangeRequest(*item),
+		"linked_incidents": listIncidentsForChange(item.ID),
+		"status":           "ok",
+	})
+}
+
+func writeIncidentCatalog(w http.ResponseWriter, items []requestIncident) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"incidents": items,
+		"status":    "ok",
+	})
+}
+
+func writeIncidentDetailJSON(w http.ResponseWriter, item *requestIncident) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"incident": item,
+		"status":   "ok",
+	})
+}
+
+func listPortalChanges(r *http.Request) ([]changeRequestRecord, error) {
+	return listChangeRequests(
+		parsePositiveQueryID(r, "project_id"),
+		r.URL.Query().Get("environment"),
+		r.URL.Query().Get("status"),
+		r.URL.Query().Get("q"),
+	)
+}
+
+func listPortalIncidents(r *http.Request) ([]requestIncident, error) {
+	items, err := listRequestIncidentsFiltered(strings.TrimSpace(r.URL.Query().Get("status")), nil, false)
+	if err != nil {
+		return nil, err
+	}
+	return filterIncidentsForPortal(
+		items,
+		parsePositiveQueryID(r, "project_id"),
+		r.URL.Query().Get("environment"),
+		r.URL.Query().Get("source"),
+		r.URL.Query().Get("q"),
+	), nil
+}
+
+func adminChangesHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		handleOptions(w, r)
+		return
+	}
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	items, err := listPortalChanges(r)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to list changes", err)
+		return
+	}
+	writeChangeCatalog(w, items, r.URL.Query().Get("change_type"))
+}
+
+func adminChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		handleOptions(w, r)
+		return
+	}
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	id := portalRecordIDFromPath("/api/admin/changes/", r)
+	if id == 0 {
+		writeAPIError(w, r, http.StatusBadRequest, "invalid change id", nil)
+		return
+	}
+	item, err := getChangeRequestByID(id)
+	if err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "change not found", err)
+		return
+	}
+	writeChangeDetailJSON(w, item)
+}
+
+func adminIncidentsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		handleOptions(w, r)
+		return
+	}
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	items, err := listPortalIncidents(r)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to list incidents", err)
+		return
+	}
+	writeIncidentCatalog(w, items)
+}
+
+func adminIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		handleOptions(w, r)
+		return
+	}
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	id := portalRecordIDFromPath("/api/admin/incidents/", r)
+	if id == 0 {
+		writeAPIError(w, r, http.StatusBadRequest, "invalid incident id", nil)
+		return
+	}
+	item, err := getRequestIncidentByID(id)
+	if err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "incident not found", err)
+		return
+	}
+	writeIncidentDetailJSON(w, item)
+}
+
+func meChangesHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		handleOptions(w, r)
+		return
+	}
+	userID, _, ok := requireSignedIn(w, r)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	items, err := listPortalChanges(r)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to list changes", err)
+		return
+	}
+	writeChangeCatalog(w, filterChangesForUser(items, projectIDSet(visibleProjectIDsForUser(userID))), r.URL.Query().Get("change_type"))
+}
+
+func meChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		handleOptions(w, r)
+		return
+	}
+	userID, _, ok := requireSignedIn(w, r)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	id := portalRecordIDFromPath("/api/me/changes/", r)
+	if id == 0 {
+		writeAPIError(w, r, http.StatusBadRequest, "invalid change id", nil)
+		return
+	}
+	item, err := getChangeRequestByID(id)
+	if err != nil || !changeVisibleToUser(*item, projectIDSet(visibleProjectIDsForUser(userID))) {
+		writeAPIError(w, r, http.StatusNotFound, "change not found", err)
+		return
+	}
+	writeChangeDetailJSON(w, item)
+}
+
+func meIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		handleOptions(w, r)
+		return
+	}
+	userID, _, ok := requireSignedIn(w, r)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	id := portalRecordIDFromPath("/api/me/incidents/", r)
+	if id == 0 {
+		writeAPIError(w, r, http.StatusBadRequest, "invalid incident id", nil)
+		return
+	}
+	item, err := getRequestIncidentByID(id)
+	if err != nil || !incidentVisibleToUser(*item, userID, projectIDSet(visibleProjectIDsForUser(userID))) {
+		writeAPIError(w, r, http.StatusNotFound, "incident not found", err)
+		return
+	}
+	writeIncidentDetailJSON(w, item)
+}

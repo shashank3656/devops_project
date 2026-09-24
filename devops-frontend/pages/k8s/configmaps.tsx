@@ -1,10 +1,36 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { fetchK8sConfigMaps, K8sConfigMapsData, readQueryString } from '../../lib/k8sWorkspace';
+
+type ConfigMapRow = K8sConfigMapsData['items'][number];
+
+const CONFIGMAP_COLUMNS: DataTableColumn<ConfigMapRow>[] = [
+  {
+    id: 'configmap',
+    header: 'ConfigMap',
+    cell: (item) => (
+      <div className="ig-cell-stack">
+        <span className="ig-cell-title">{item.name}</span>
+        <span className="ig-cell-meta">{item.data_keys} keys</span>
+      </div>
+    ),
+  },
+  { id: 'namespace', header: 'Namespace', cell: (item) => item.namespace },
+  { id: 'data_keys', header: 'Data keys', align: 'right', className: 'ig-cell-num', cell: (item) => item.data_keys },
+  { id: 'version', header: 'Version', cell: (item) => <span className="ig-mono">{item.resource_version || '—'}</span> },
+  { id: 'age', header: 'Age', cell: (item) => item.age || '—' },
+  {
+    id: 'mounted_by',
+    header: 'Mounted by',
+    cell: (item) => (item.mounted_by ? item.mounted_by : <span className="ig-chip ig-chip--neutral">Not mounted</span>),
+  },
+  { id: 'cluster', header: 'Cluster', cell: (item) => item.cluster_name },
+];
 
 export default function DevOpsK8sConfigMapsPage() {
   const apiUrl = useApiUrl();
@@ -214,45 +240,15 @@ export default function DevOpsK8sConfigMapsPage() {
               </div>
             </div>
 
-            <div className="table-scroll">
-              <table className="templates-table k8s-data-table">
-                <thead>
-                  <tr>
-                    <th>ConfigMap</th>
-                    <th>Namespace</th>
-                    <th>Data keys</th>
-                    <th>Version</th>
-                    <th>Age</th>
-                    <th>Mounted by</th>
-                    <th>Cluster</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((item) => (
-                    <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}>
-                      <td>
-                        <div className="k8s-link-cell__title">{item.name}</div>
-                        <div className="k8s-link-cell__meta">{item.data_keys} keys</div>
-                      </td>
-                      <td>{item.namespace}</td>
-                      <td>{item.data_keys}</td>
-                      <td>{item.resource_version || '—'}</td>
-                      <td>{item.age || '—'}</td>
-                      <td>{item.mounted_by || 'Not mounted'}</td>
-                      <td>{item.cluster_name}</td>
-                    </tr>
-                  ))}
-                  {!loading && visibleRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={7}>
-                        <div className="portal-empty">
-                          <p>No ConfigMaps match the current filters.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            <div className="ig-legacy-table">
+              <DataTable<ConfigMapRow>
+                label="ConfigMaps"
+                columns={CONFIGMAP_COLUMNS}
+                rows={visibleRows}
+                rowKey={(item) => `${item.cluster_name}-${item.namespace}-${item.name}`}
+                loading={loading}
+                empty={<EmptyState title="No ConfigMaps found" body="No ConfigMaps match the current filters." />}
+              />
             </div>
           </section>
         </K8sWorkspaceShell>

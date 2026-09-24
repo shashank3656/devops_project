@@ -1,31 +1,19 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect } from 'react';
+import { getTheme, setTheme, type ThemeMode } from '@infragate/ui';
 import { useToast } from '../context/ToastContext';
 
-const THEME_KEY = 'infra-portal-theme';
-
-export function getStoredTheme(): 'light' | 'dark' {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(THEME_KEY, 'dark');
-    document.documentElement.setAttribute('data-theme', 'dark');
-  }
-  return 'dark';
+export function getStoredTheme(): ThemeMode {
+  return getTheme();
 }
 
-export function setStoredTheme(_theme: 'light' | 'dark') {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(THEME_KEY, 'dark');
-  document.documentElement.setAttribute('data-theme', 'dark');
+export function setStoredTheme(theme: ThemeMode) {
+  setTheme(theme);
 }
 
 export default function NavBar() {
   const router = useRouter();
   const { toast } = useToast();
-
-  useEffect(() => {
-    getStoredTheme();
-  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated');

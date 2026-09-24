@@ -2,7 +2,9 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { ProjectHealthCard, type ProjectHealth } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
+import DriftFixPanel from '../../components/DriftFixPanel';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { asRecord, getString } from '../../lib/payload';
 
@@ -804,6 +806,74 @@ export default function DevOpsProjectDetailPage() {
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
   const [lifecycleAction, setLifecycleAction] = useState('');
+  const [health, setHealth] = useState<ProjectHealth | null>(null);
+  const [healthLoading, setHealthLoading] = useState(true);
+  const [healthError, setHealthError] = useState('');
+  const [budgetUsd, setBudgetUsd] = useState('');
+  const [defaultTtlDays, setDefaultTtlDays] = useState('');
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsNotice, setSettingsNotice] = useState('');
+  const [riskPaths, setRiskPaths] = useState<{ id: number; glob: string; label: string; weight: number }[]>([]);
+  const [riskGlob, setRiskGlob] = useState('infra/prod/**');
+  const [riskLabel, setRiskLabel] = useState('');
+  const [riskWeight, setRiskWeight] = useState('12');
+  const [riskSaving, setRiskSaving] = useState(false);
+  const [riskNotice, setRiskNotice] = useState('');
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    const projectId = parsePositiveIntParam(router.query.id);
+    if (!token || !projectId) return;
+    let cancelled = false;
+    setHealthLoading(true);
+    setHealthError('');
+    fetch(`${apiUrl}/api/devops/projects/${projectId}/health`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        const data = asRecord(await res.json().catch(() => ({})));
+        if (!res.ok) throw new Error(getString(data.error, 'Could not load delivery health'));
+        if (!cancelled) {
+          const next = (data.health as ProjectHealth) || null;
+          setHealth(next);
+          if (next?.settings) {
+            setBudgetUsd(String(next.settings.monthly_budget_usd || ''));
+            setDefaultTtlDays(String(next.settings.default_temp_env_days || ''));
+          }
+        }
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setHealth(null);
+          setHealthError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setHealthLoading(false);
+      });
+    fetch(`${apiUrl}/api/devops/projects/${projectId}/risk-paths`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        const data = asRecord(await res.json().catch(() => ({})));
+        if (!res.ok) throw new Error(getString(data.error, 'Could not load watchlist'));
+        const rows = Array.isArray(data.paths) ? data.paths : [];
+        if (!cancelled) {
+          setRiskPaths(rows.map((row) => {
+            const item = asRecord(row);
+            return {
+              id: Number(item.id) || 0,
+              glob: getString(item.glob),
+              label: getString(item.label),
+              weight: Number(item.weight) || 12,
+            };
+          }).filter((row) => row.id > 0));
+        }
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setRiskNotice(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl, router.isReady, router.query.id]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -945,6 +1015,211 @@ export default function DevOpsProjectDetailPage() {
                 <p className="portal-stat-card__copy">{project.environments.join(', ')}</p>
               </article>
             </section>
+
+            <ProjectHealthCard
+              health={health}
+              loading={healthLoading}
+              error={healthError}
+              renderLink={(href, children) => (
+                <Link href={href} className="ig-health__fix">
+                  {children}
+                </Link>
+              )}
+            />
+
+            {project ? (
+              <section className="portal-surface" style={{ marginBottom: 24 }}>
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Infra defaults</span>
+                    <h2 className="portal-surface__title">Budget, TTL, and DORA export</h2>
+                    <p className="portal-surface__subtitle">
+                      Non-prod requests inherit the default temporary-environment TTL when no expiry is set. Budget drives cost alerts and the weekly idle digest.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={async () => {
+                      const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                      if (!token) return;
+                      try {
+                        const res = await fetch(`${apiUrl}/api/devops/projects/${project.id}/health/export`, {
+                          headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (!res.ok) throw new Error('Export failed');
+                        const blob = await res.blob();
+                        const url = URL.createObjectURL(blob);
+                        const anchor = document.createElement('a');
+                        anchor.href = url;
+                        anchor.download = `dora-${project.code || project.id}.csv`;
+                        anchor.click();
+                        URL.revokeObjectURL(url);
+                      } catch {
+                        setSettingsNotice('Could not export DORA CSV.');
+                      }
+                    }}
+                  >
+                    Export DORA CSV
+                  </button>
+                </div>
+                {settingsNotice ? <p className="portal-surface__subtitle">{settingsNotice}</p> : null}
+                <form
+                  className="portal-toolbar"
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                    if (!token) return;
+                    setSettingsSaving(true);
+                    setSettingsNotice('');
+                    try {
+                      const res = await fetch(`${apiUrl}/api/devops/projects/${project.id}/infra-settings`, {
+                        method: 'PATCH',
+                        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          monthly_budget_usd: parseInt(budgetUsd, 10) || 0,
+                          default_temp_env_days: parseInt(defaultTtlDays, 10) || 0,
+                        }),
+                      });
+                      const data = asRecord(await res.json().catch(() => ({})));
+                      if (!res.ok) throw new Error(getString(data.error, 'Failed to save'));
+                      setSettingsNotice('Infra settings saved.');
+                    } catch (err) {
+                      setSettingsNotice(err instanceof Error ? err.message : 'Failed to save');
+                    } finally {
+                      setSettingsSaving(false);
+                    }
+                  }}
+                >
+                  <label className="portal-toolbar__item">
+                    <span className="credential-audit-label">Monthly budget (USD)</span>
+                    <input className="input" type="number" min={0} value={budgetUsd} onChange={(e) => setBudgetUsd(e.target.value)} />
+                  </label>
+                  <label className="portal-toolbar__item">
+                    <span className="credential-audit-label">Default temp env TTL (days, 0=off)</span>
+                    <input className="input" type="number" min={0} max={90} value={defaultTtlDays} onChange={(e) => setDefaultTtlDays(e.target.value)} />
+                  </label>
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={settingsSaving}>
+                    {settingsSaving ? 'Saving…' : 'Save settings'}
+                  </button>
+                </form>
+              </section>
+            ) : null}
+
+            {project ? (
+              <section className="portal-surface" style={{ marginBottom: 24 }}>
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Deploy intel</span>
+                    <h2 className="portal-surface__title">Hot-path watchlist</h2>
+                    <p className="portal-surface__subtitle">
+                      Matching files raise the deploy-intel score. Use a prefix like <code>infra/prod/**</code>, a glob like <code>*/values.yaml</code>, or a substring such as <code>secret</code>.
+                    </p>
+                  </div>
+                </div>
+                {riskNotice ? <p className="portal-surface__subtitle">{riskNotice}</p> : null}
+                {riskPaths.length > 0 ? (
+                  <ul className="portal-list" style={{ marginBottom: 16 }}>
+                    {riskPaths.map((path) => (
+                      <li key={path.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                        <span>
+                          <code>{path.glob}</code>
+                          {path.label ? ` · ${path.label}` : ''}
+                          <span className="ig-cell-meta"> · weight {path.weight}</span>
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          disabled={riskSaving}
+                          onClick={async () => {
+                            const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                            if (!token) return;
+                            setRiskSaving(true);
+                            setRiskNotice('');
+                            try {
+                              const res = await fetch(`${apiUrl}/api/devops/projects/${project.id}/risk-paths/${path.id}`, {
+                                method: 'DELETE',
+                                headers: { Authorization: `Bearer ${token}` },
+                              });
+                              const data = asRecord(await res.json().catch(() => ({})));
+                              if (!res.ok) throw new Error(getString(data.error, 'Failed to remove path'));
+                              setRiskPaths((prev) => prev.filter((item) => item.id !== path.id));
+                            } catch (err) {
+                              setRiskNotice(err instanceof Error ? err.message : 'Failed to remove path');
+                            } finally {
+                              setRiskSaving(false);
+                            }
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="portal-surface__subtitle">No watchlisted paths yet.</p>
+                )}
+                <form
+                  className="portal-toolbar"
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                    if (!token) return;
+                    setRiskSaving(true);
+                    setRiskNotice('');
+                    try {
+                      const res = await fetch(`${apiUrl}/api/devops/projects/${project.id}/risk-paths`, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          glob: riskGlob,
+                          label: riskLabel,
+                          weight: parseInt(riskWeight, 10) || 12,
+                        }),
+                      });
+                      const data = asRecord(await res.json().catch(() => ({})));
+                      if (!res.ok) throw new Error(getString(data.error, 'Failed to add path'));
+                      const created = asRecord(data.path);
+                      if (Number(created.id) > 0) {
+                        setRiskPaths((prev) => [
+                          ...prev,
+                          {
+                            id: Number(created.id),
+                            glob: getString(created.glob, riskGlob),
+                            label: getString(created.label, riskLabel),
+                            weight: Number(created.weight) || 12,
+                          },
+                        ]);
+                      }
+                      setRiskLabel('');
+                      setRiskNotice('Watchlist path added.');
+                    } catch (err) {
+                      setRiskNotice(err instanceof Error ? err.message : 'Failed to add path');
+                    } finally {
+                      setRiskSaving(false);
+                    }
+                  }}
+                >
+                  <label className="portal-toolbar__item">
+                    <span className="credential-audit-label">Path glob</span>
+                    <input className="input" value={riskGlob} onChange={(e) => setRiskGlob(e.target.value)} placeholder="infra/prod/**" />
+                  </label>
+                  <label className="portal-toolbar__item">
+                    <span className="credential-audit-label">Label</span>
+                    <input className="input" value={riskLabel} onChange={(e) => setRiskLabel(e.target.value)} placeholder="Production Terraform" />
+                  </label>
+                  <label className="portal-toolbar__item">
+                    <span className="credential-audit-label">Weight</span>
+                    <input className="input" type="number" min={1} max={30} value={riskWeight} onChange={(e) => setRiskWeight(e.target.value)} />
+                  </label>
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={riskSaving || !riskGlob.trim()}>
+                    {riskSaving ? 'Saving…' : 'Add path'}
+                  </button>
+                </form>
+              </section>
+            ) : null}
+
+            <DriftFixPanel projectId={project.id} />
 
             <section className="portal-surface">
               <div className="portal-surface__header">

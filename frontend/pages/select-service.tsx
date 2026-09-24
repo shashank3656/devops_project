@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { EstimatePanel, SegmentedControl, Stepper, type CostEstimate } from '@infragate/ui';
 import { useToast } from '../context/ToastContext';
 import CalendarDateInput from '../components/CalendarDateInput';
 import { asRecord } from '../lib/payload';
@@ -342,6 +343,9 @@ export default function SelectService() {
   const [loading, setLoading] = useState(false);
   const [prUrl, setPrUrl] = useState('');
   const [error, setError] = useState('');
+  const [estimate, setEstimate] = useState<CostEstimate | null>(null);
+  const [estimateLoading, setEstimateLoading] = useState(false);
+  const [step, setStep] = useState<'configure' | 'review'>('configure');
   const [canCreatePR, setCanCreatePR] = useState<boolean | null>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -366,6 +370,43 @@ export default function SelectService() {
     if (envParam) setEnv((e) => e || envParam);
     if (serviceParam) setService((s) => s || serviceParam);
   }, [router.isReady, router.query.project_id, router.query.cloud, router.query.env, router.query.service]);
+
+  const instanceTypeValue = String(formValues.instance_type || formValues.instance_class || formValues.node_type || '');
+
+  useEffect(() => {
+    if (!cloud || !service) {
+      setEstimate(null);
+      setEstimateLoading(false);
+      return;
+    }
+    const token = localStorage.getItem('token');
+    const params = new URLSearchParams({ cloud, service, env: env || 'dev' });
+    if (projectId) params.set('project_id', String(projectId));
+    if (team) params.set('team', team);
+    if (instanceTypeValue) params.set('instance_type', instanceTypeValue);
+    const controller = new AbortController();
+    setEstimateLoading(true);
+    const timer = window.setTimeout(() => {
+      fetch(`${apiUrl}/api/cost-guardrail?${params}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal: controller.signal,
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          setEstimate(typeof data?.estimated_monthly === 'number' ? (data as CostEstimate) : null);
+          setEstimateLoading(false);
+        })
+        .catch((err) => {
+          if (err?.name === 'AbortError') return;
+          setEstimate(null);
+          setEstimateLoading(false);
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [apiUrl, cloud, service, env, projectId, team, instanceTypeValue]);
 
   // Fetch template or saved config and prefill form
   useEffect(() => {
@@ -689,6 +730,10 @@ export default function SelectService() {
       setError('Choose the project, team, and at least one service first.');
       return;
     }
+    if (!asDraft && estimate?.allowed === false) {
+      setError(estimate.warning || 'This estimate exceeds the project monthly budget.');
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -786,9 +831,37 @@ export default function SelectService() {
   const canSubmitRequest = loading || !projectId || !team || requestServices.length === 0 || canCreatePR !== true;
   const multiServiceMode = requestServices.length > 1;
 
+  const goToStep = (next: 'configure' | 'review') => {
+    setStep(next);
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (step === 'configure') {
+      if (!env && bundledServices.length === 0) {
+        setError('Choose an environment to continue.');
+        return;
+      }
+      if (requestServices.length === 0) {
+        setError('Choose a cloud and service to continue.');
+        return;
+      }
+      setError('');
+      goToStep('review');
+      return;
+    }
     submitRequest(false);
+  };
+
+  const wizardSteps = [
+    { id: 'choose', label: 'Choose' },
+    { id: 'configure', label: 'Configure' },
+    { id: 'review', label: 'Review' },
+  ];
+  const handleStepSelect = (id: string) => {
+    if (id === 'choose') router.push('/create-infrastructure');
+    else if (id === 'configure') goToStep('configure');
   };
 
   const normalizedService = service ? normalizeServiceKey(cloud, service) : '';
@@ -972,14 +1045,13 @@ export default function SelectService() {
         <div className="container">
           <div className="request-builder">
             <div className="request-builder__header">
-              <button
-                onClick={() => router.push('/home')}
-                className="btn btn-secondary request-builder__back"
-              >
-                ← Back to Home
-              </button>
-              <h1 className="request-builder__title">{pageTitle}</h1>
-              <p className="request-builder__subtitle">{pageSubtitle}</p>
+              <Stepper steps={wizardSteps} current={step} onSelect={handleStepSelect} />
+              <h1 className="request-builder__title">{step === 'review' ? 'Review and send' : pageTitle}</h1>
+              <p className="request-builder__subtitle">
+                {step === 'review'
+                  ? 'Check the details below. Reviewers see exactly this, plus any notes you add.'
+                  : pageSubtitle}
+              </p>
             </div>
 
             {canCreatePR === false && (
@@ -1011,6 +1083,8 @@ export default function SelectService() {
 
             <div className="request-builder__layout">
               <form onSubmit={handleSubmit} className="request-builder__main">
+                {step === 'configure' && (
+                <>
                 <section className="request-builder__section">
                   <div className="request-builder__section-header">
                     <h2>Step 1: Choose the basics</h2>
@@ -1089,20 +1163,18 @@ export default function SelectService() {
                 </div>
 
                 <div className="form-group">
-                  <label className="label">Environment *</label>
-                  <select
-                    className="select"
-                    value={env}
-                    onChange={(e) => setEnv(e.target.value.trim().toLowerCase())}
-                    required
-                  >
-                    <option value="">Choose environment</option>
-                    {availableEnvironmentOptions.map((envOption) => (
-                      <option key={envOption.value} value={envOption.value}>
-                        {envOption.label}
-                      </option>
-                    ))}
-                  </select>
+                  <span className="label">Environment *</span>
+                  {availableEnvironmentOptions.length > 0 ? (
+                    <SegmentedControl
+                      label="Environment"
+                      name="env"
+                      options={availableEnvironmentOptions}
+                      value={env}
+                      onChange={(value) => setEnv(value.trim().toLowerCase())}
+                    />
+                  ) : (
+                    <p className="request-builder__note">Choose a project to see its environments.</p>
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -1131,27 +1203,7 @@ export default function SelectService() {
                     <h2>{platformStepTitle}</h2>
                     <p>{platformStepText}</p>
                   </div>
-                  {(cloud || service) && (
-                    <button
-                      type="button"
-                      className="request-builder__inline-link"
-                      onClick={() => {
-                        const params = new URLSearchParams();
-                        if (cloud) params.set('cloud', cloud);
-                        if (service) params.set('service', service);
-                        if (env) params.set('env', env);
-                        fetch(`${apiUrl}/api/cost-estimate?${params}`)
-                          .then((r) => r.json())
-                          .then((d) => {
-                            if (d.link) window.open(d.link, '_blank', 'noopener,noreferrer');
-                          })
-                          .catch(() => {});
-                      }}
-                    >
-                      Check pricing estimate
-                    </button>
-                  )}
-                  <div className="request-builder__grid" style={{ marginTop: cloud || service ? 16 : 0 }}>
+                  <div className="request-builder__grid">
                 <div className="form-group">
                   <label className="label">Cloud provider *</label>
                   <select
@@ -1161,7 +1213,7 @@ export default function SelectService() {
                       setCloud(e.target.value);
                       setService(''); // Reset service when cloud changes
                     }}
-                    required
+                    required={bundledServices.length === 0}
                   >
                     <option value="">Choose cloud</option>
                     {availableCloudOptions.map(cloudOption => (
@@ -1178,7 +1230,7 @@ export default function SelectService() {
                     className="select"
                     value={service}
                     onChange={(e) => setService(e.target.value)}
-                    required
+                    required={bundledServices.length === 0}
                     disabled={!projectId || !cloud || availableServices.length === 0}
                   >
                     <option value="">{!projectId ? 'Choose project first' : !cloud ? 'Choose cloud first' : 'Choose service'}</option>
@@ -1347,19 +1399,85 @@ export default function SelectService() {
                   </section>
                 )}
 
+                {!serviceConfig && cloud && service && (
+                  <div className="success request-builder__status">
+                    {isIamFlow
+                      ? 'This request does not need any extra fields. Continue to review when ready.'
+                      : 'This service does not need any extra fields. Continue to review when ready.'}
+                  </div>
+                )}
+
+                <div className="request-builder__actions ig-wizard-actions">
+                  <button type="button" className="btn btn-ghost" onClick={() => router.push('/create-infrastructure')}>
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => submitRequest(true)}
+                    className="btn btn-secondary"
+                    disabled={canSubmitRequest}
+                  >
+                    {loading ? <span className="loading"></span> : 'Save draft'}
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={loading || canCreatePR !== true}>
+                    Continue to review
+                  </button>
+                </div>
+                </>
+                )}
+
+                {step === 'review' && (
                 <section className="request-builder__section">
                   <div className="request-builder__section-header">
-                    <h2>Step 4: Add context and send</h2>
+                    <h2>Summary</h2>
                     <p>{submitStepText}</p>
                   </div>
-                  {!serviceConfig && cloud && service && (
-                    <div className="success request-builder__status" style={{ marginBottom: '16px' }}>
-                      {isIamFlow
-                        ? 'This request does not need any extra fields. You can save or send it now.'
-                        : 'This service does not need any extra fields. You can save or send the request now.'}
+                  <dl className="ig-review-list">
+                    <div>
+                      <dt>Project</dt>
+                      <dd>{selectedProject ? `${selectedProject.name} (${selectedProject.code})` : 'Not chosen'}</dd>
                     </div>
-                  )}
-                  <div className="form-group">
+                    <div>
+                      <dt>Team</dt>
+                      <dd>{availableTeams.find((t) => t.slug === team)?.name || team || 'Not chosen'}</dd>
+                    </div>
+                    <div>
+                      <dt>Environment</dt>
+                      <dd>{env ? formatEnvironmentLabel(env) : 'Per service'}</dd>
+                    </div>
+                    <div>
+                      <dt>Urgency</dt>
+                      <dd style={{ textTransform: 'capitalize' }}>{priority}</dd>
+                    </div>
+                    {dueDate ? (
+                      <div>
+                        <dt>Due date</dt>
+                        <dd>{dueDate}</dd>
+                      </div>
+                    ) : null}
+                    {clientName ? (
+                      <div>
+                        <dt>Client</dt>
+                        <dd>{clientName}</dd>
+                      </div>
+                    ) : null}
+                    <div>
+                      <dt>{requestServices.length === 1 ? 'Service' : 'Services'}</dt>
+                      <dd>
+                        <ul className="ig-review-services">
+                          {requestServices.map((entry) => (
+                            <li key={entry.id}>
+                              <strong>{entry.displayName}</strong>
+                              <span>
+                                {entry.cloud.toUpperCase()} · {formatEnvironmentLabel(entry.env)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="form-group" style={{ marginTop: 20 }}>
                     <label className="label">Comment / notes (optional)</label>
                     <textarea
                       className="textarea"
@@ -1371,7 +1489,10 @@ export default function SelectService() {
                     />
                   </div>
 
-                  <div className="request-builder__actions">
+                  <div className="request-builder__actions ig-wizard-actions">
+                <button type="button" className="btn btn-ghost" onClick={() => goToStep('configure')} disabled={loading}>
+                  Back
+                </button>
                 <button
                   type="button"
                   onClick={() => submitRequest(true)}
@@ -1396,9 +1517,11 @@ export default function SelectService() {
                 </button>
                   </div>
                 </section>
+                )}
               </form>
 
               <aside className="request-builder__side">
+                <EstimatePanel estimate={estimate} loading={estimateLoading} ready={!!(cloud && service)} />
                 <div className="request-builder__summary">
                   <h3>{requestSummaryTitle}</h3>
                   <p>{requestSummaryText}</p>

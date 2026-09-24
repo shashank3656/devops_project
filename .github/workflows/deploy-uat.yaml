@@ -33,8 +33,16 @@ jobs:
     uses: ./.github/workflows/deploy-reusable.yaml
     with:
       environment_name: uat
-      public_api_url: ${{ vars.NEXT_PUBLIC_API_URL_UAT || vars.NEXT_PUBLIC_API_URL }}
+      public_api_url: ${{ vars.NEXT_PUBLIC_API_URL_UAT || vars.NEXT_PUBLIC_API_URL || 'https://backend-api-production-ed.up.railway.app' }}
       backend_api_url: ${{ vars.BACKEND_API_URL_UAT || vars.BACKEND_API_URL }}
       request_id: ${{ github.event_name == 'workflow_dispatch' && inputs.request_id || '' }}
       application_id: ${{ github.event_name == 'workflow_dispatch' && inputs.application_id || '' }}
+      publish_latest: ${{ github.event_name != 'pull_request' }}
+      fail_on_trivy: ${{ github.event_name != 'pull_request' }}
+      pr_number: ${{ github.event.pull_request.number || '' }}
+      enable_railway_image_updater: ${{ github.event_name != 'pull_request' }}
+      railway_project_id: ${{ vars.RAILWAY_PROJECT_ID_UAT || vars.RAILWAY_PROJECT_ID || '5332b847-9bab-40fc-83b5-7fbf3a1d2ab0' }}
+      railway_environment_id: ${{ vars.RAILWAY_ENVIRONMENT_ID_UAT || vars.RAILWAY_ENVIRONMENT_ID }}
+      railway_image_updater_url: ${{ vars.RAILWAY_IMAGE_UPDATER_URL }}
+      ghcr_repo_name: devops_project
     secrets: inherit

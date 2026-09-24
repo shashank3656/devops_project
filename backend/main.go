@@ -466,6 +466,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to save request", nil)
 		return
 	}
+	applyProjectDefaultLifetimeIfEligible(prRequest.ID, prRequest.ProjectID, prRequest.Env)
 	AppendUserActivity(userIDPtr, "request_create", "pr_request", strconv.Itoa(prRequest.ID), status)
 
 	// Optional initial comment when raising the PR (saved as first request comment)
@@ -491,6 +492,9 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	loadBackendEnvFiles()
+	reloadConfigFromEnv()
+
 	otelShutdown, otelErr := initOpenTelemetry(context.Background())
 	if otelErr != nil {
 		log.Printf("[OTEL] initialization failed: %v", otelErr)
@@ -530,6 +534,11 @@ func main() {
 		}
 		// Ensure default admin exists (credentials from env or admin/admin123)
 		EnsureDefaultAdmin()
+		startLifecycleScheduler()
+		startCostDigestScheduler()
+		startDriftAutomationScheduler()
+		startDeployIntelSlackDigestScheduler()
+		startChangeWatcherScheduler()
 	}
 	InitRuntimeResilience()
 
@@ -555,10 +564,17 @@ func main() {
 	http.HandleFunc("/api/auth/forgot-password", forgotPasswordHandler)
 	http.HandleFunc("/api/auth/reset-password", resetPasswordHandler)
 	http.HandleFunc("/api/me", meHandler)
-	http.HandleFunc("/api/me/onboarding-progress", onboardingProgressHandler)
+	http.HandleFunc("/api/me/workspace", meWorkspaceHandler)
+	http.HandleFunc("/api/search", searchHandler)
+	http.HandleFunc("/api/golden-paths", goldenPathsHandler)
+	http.HandleFunc("/api/cost-guardrail", costGuardrailHandler)
+	http.HandleFunc("/api/copilot", copilotHandler)
 	http.HandleFunc("/api/me/projects", meProjectsHandler)
 	http.HandleFunc("/api/me/projects/", meProjectDetailHandler)
 	http.HandleFunc("/api/me/incidents", meIncidentsHandler)
+	http.HandleFunc("/api/me/incidents/", meIncidentDetailHandler)
+	http.HandleFunc("/api/me/changes", meChangesHandler)
+	http.HandleFunc("/api/me/changes/", meChangeDetailHandler)
 	http.HandleFunc("/api/me/teams", meTeamsHandler)
 	http.HandleFunc("/api/me/teams/", meTeamMembersRouter)
 	http.HandleFunc("/api/me/managed-teams", meManagedTeamsHandler)
@@ -588,6 +604,7 @@ func main() {
 	http.HandleFunc("/api/admin/devops-users", adminDevopsUsersHandler)
 	http.HandleFunc("/api/admin/notifications", adminNotificationsHandler)
 	http.HandleFunc("/api/admin/stats", adminStatsHandler)
+	http.HandleFunc("/api/admin/workspace", adminWorkspaceHandler)
 	http.HandleFunc("/api/admin/dashboard-stats", adminDashboardStatsHandler)
 	http.HandleFunc("/api/admin/analytics/requests", adminAnalyticsHandler)
 	http.HandleFunc("/api/admin/sla-breach-check", adminSLABreachCheckHandler)
@@ -597,12 +614,32 @@ func main() {
 	http.HandleFunc("/api/admin/user-activity", adminUserActivityHandler)
 	http.HandleFunc("/api/admin/webhooks", adminWebhooksHandler)
 	http.HandleFunc("/api/admin/webhooks/", adminWebhookDetailHandler)
+	http.HandleFunc("/api/admin/inbound-sources", adminInboundSourcesHandler)
+	http.HandleFunc("/api/admin/inbound-sources/", adminInboundSourceDetailHandler)
+	http.HandleFunc("/api/admin/changes", adminChangesHandler)
+	http.HandleFunc("/api/admin/changes/", adminChangeDetailHandler)
+	http.HandleFunc("/api/admin/incidents", adminIncidentsHandler)
+	http.HandleFunc("/api/admin/incidents/", adminIncidentDetailHandler)
 	http.HandleFunc("/api/admin/projects", adminProjectsHandler)
 	http.HandleFunc("/api/admin/project-analytics", adminProjectAnalyticsHandler)
 	http.HandleFunc("/api/admin/projects/", adminProjectDetailHandler)
 	http.HandleFunc("/api/admin/templates", adminTemplatesRouter)
 	http.HandleFunc("/api/admin/templates/", adminTemplatesRouter)
 	http.HandleFunc("/api/admin/request-bundle-normalization", adminRequestBundleNormalizationHandler)
+	http.HandleFunc("/api/admin/saved-views", adminSavedFilterViewsHandler)
+	http.HandleFunc("/api/admin/saved-views/", adminSavedFilterViewsHandler)
+	http.HandleFunc("/api/admin/deploy-intelligence/feed", adminDeployIntelligenceFeedHandler)
+	http.HandleFunc("/api/devops/workspace", devopsWorkspaceHandler)
+	http.HandleFunc("/api/devops/pr-impact", devopsPRImpactHandler)
+	http.HandleFunc("/api/devops/deploy-intelligence", devopsDeployIntelligenceHandler)
+	http.HandleFunc("/api/devops/deploy-intelligence/repos", devopsDeployIntelReposHandler)
+	http.HandleFunc("/api/devops/deploy-intelligence/suggest-ticket", devopsDeployIntelSuggestTicketHandler)
+	http.HandleFunc("/api/devops/deploy-intelligence/protect-branch", devopsDeployIntelProtectBranchHandler)
+	http.HandleFunc("/api/devops/saved-views", devopsSavedFilterViewsHandler)
+	http.HandleFunc("/api/devops/saved-views/", devopsSavedFilterViewsHandler)
+	http.HandleFunc("/api/devops/prs/", devopsPRNumberImpactHandler)
+	http.HandleFunc("/api/devops/oncall", devopsOncallHandler)
+	http.HandleFunc("/api/devops/freezes", devopsFreezesHandler)
 	http.HandleFunc("/api/devops/me", devopsMeHandler)
 	http.HandleFunc("/api/devops/my-teams", devopsMyTeamsHandler)
 	http.HandleFunc("/api/devops/teams/", devopsTeamsRouter)
@@ -624,7 +661,9 @@ func main() {
 	http.HandleFunc("/api/devops/service-heatmap", devopsServiceHeatmapHandler)
 	http.HandleFunc("/api/devops/change-risk", devopsChangeRiskHandler)
 	http.HandleFunc("/api/devops/environment-drift", devopsEnvironmentDriftHandler)
+	http.HandleFunc("/api/devops/environment-drift/fix", devopsEnvironmentDriftFixHandler)
 	http.HandleFunc("/api/devops/ops-command-center", devopsOpsCommandCenterHandler)
+	http.HandleFunc("/api/devops/cost-digest", devopsCostDigestHandler)
 	http.HandleFunc("/api/devops/project-dependencies", devopsProjectDependenciesHandler)
 	http.HandleFunc("/api/devops/k8s-connections", devopsK8sConnectionsHandler)
 	http.HandleFunc("/api/devops/k8s-overview", devopsK8sOverviewHandler)
@@ -656,6 +695,15 @@ func main() {
 	http.HandleFunc("/api/devops/runbooks/", devopsRunbookDetailHandler)
 	http.HandleFunc("/api/devops/incidents", devopsIncidentsHandler)
 	http.HandleFunc("/api/devops/incidents/", devopsIncidentDetailHandler)
+	http.HandleFunc("/api/devops/changes", devopsChangesHandler)
+	http.HandleFunc("/api/devops/changes/", devopsChangeDetailHandler)
+	http.HandleFunc("/api/devops/health", devopsHealthHandler)
+	http.HandleFunc("/api/devops/slos", devopsSLOsHandler)
+	http.HandleFunc("/api/devops/services", devopsServiceMapHandler)
+	http.HandleFunc("/api/devops/services/", devopsServiceMapDetailHandler)
+	http.HandleFunc("/api/devops/problems", devopsProblemsHandler)
+	http.HandleFunc("/api/devops/problems/", devopsProblemDetailHandler)
+	http.HandleFunc("/api/devops/release-notes", devopsReleaseNotesHandler)
 	http.HandleFunc("/api/devops/incident-workspace", devopsIncidentWorkspaceHandler)
 	http.HandleFunc("/api/devops/access-overrides", devopsAccessOverridesHandler)
 	http.HandleFunc("/api/devops/access-overrides/", devopsAccessOverrideDetailHandler)
@@ -682,6 +730,11 @@ func main() {
 	http.HandleFunc("/api/devops/expiry-tracker/actions", devopsExpiryTrackerActionsHandler)
 	http.HandleFunc("/api/webhooks/github", githubWebhookHandler)
 	http.HandleFunc("/api/webhooks/ci", ciWebhookHandler)
+	http.HandleFunc("/api/webhooks/change", changeWebhookHandler)
+	http.HandleFunc("/api/webhooks/alerts", alertWebhookHandler)
+	http.HandleFunc("/api/webhooks/watch-metrics", watchMetricsWebhookHandler)
+	http.HandleFunc("/api/webhooks/slack", slackCommandsHandler)
+	http.HandleFunc("/api/webhooks/teams", teamsCommandsHandler)
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/ready", readyHandler)
 
@@ -689,7 +742,12 @@ func main() {
 	http.HandleFunc("/swagger.json", swaggerHandler)
 	http.HandleFunc("/api-docs", swaggerUIHandler)
 
-	log.Println("Backend server starting on :8080")
+	addr := listenAddr()
+	log.Printf("Backend server starting on %s", addr)
+	log.Printf("Public API URL: %s", strings.TrimRight(os.Getenv("NEXT_PUBLIC_API_URL"), "/"))
+	log.Printf("Frontend URL: %s", FrontendURL)
+	log.Printf("Admin frontend URL: %s", AdminFrontendURL)
+	log.Printf("DevOps frontend URL: %s", DevOpsFrontendURL)
 	if SlackWebhookURL != "" {
 		log.Println("Slack notifications: enabled")
 	} else {
@@ -707,6 +765,10 @@ func main() {
 	log.Println("  POST /api/auth/login  - User login")
 	log.Println("  GET  /api/me         - Current user (auth required)")
 	log.Println("  GET  /api/me/teams   - Current user's teams (auth required; empty = not in any team)")
+	log.Println("  GET  /api/me/changes - Change requests on the user's projects")
+	log.Println("  GET  /api/me/incidents - Incidents assigned to the user or on their projects")
+	log.Println("  GET  /api/admin/changes - Change request catalog (admin, read-only)")
+	log.Println("  GET  /api/admin/incidents - Incident catalog (admin, read-only)")
 	log.Println("  POST /api/change-password - Change password (auth required)")
 	log.Println("  GET  /api/verify-email?token= - Verify email")
 	log.Println("  POST /api/verify-otp - Verify OTP (email + otp)")
@@ -736,9 +798,20 @@ func main() {
 	log.Println("  GET  /swagger.json    - OpenAPI spec")
 	log.Println("  GET  /api-docs       - Swagger UI")
 
-	if err := http.ListenAndServe(":8080", withObservability(withRecovery(http.DefaultServeMux))); err != nil {
+	if err := http.ListenAndServe(addr, withObservability(withRecovery(http.DefaultServeMux))); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
+}
+
+func listenAddr() string {
+	port := strings.TrimSpace(os.Getenv("PORT"))
+	if port == "" {
+		port = "8080"
+	}
+	if strings.HasPrefix(port, ":") {
+		return port
+	}
+	return ":" + port
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {

@@ -21,11 +21,6 @@ export default function ResetPassword() {
     if (typeof t === 'string') setToken(t);
   }, [router.query.token]);
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    localStorage.setItem('user-portal-theme', 'dark');
-  }, []);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token || !password || password !== confirm) {

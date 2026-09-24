@@ -2,10 +2,20 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { buildK8sHref, fetchK8sWorkloads, K8sWorkloadsData, readQueryString } from '../../lib/k8sWorkspace';
+
+type RolloutRow = K8sWorkloadsData['items'][number];
+
+function rolloutTone(status: string) {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === 'healthy') return 'low';
+  if (normalized === 'failed' || normalized === 'critical' || normalized === 'unavailable') return 'danger';
+  return 'medium';
+}
 
 export default function DevOpsK8sRolloutsPage() {
   const apiUrl = useApiUrl();
@@ -82,6 +92,43 @@ export default function DevOpsK8sRolloutsPage() {
     }),
     [visibleRows],
   );
+
+  const rolloutHref = (item: RolloutRow) =>
+    buildK8sHref(`/k8s/workloads/${encodeURIComponent(item.name)}/rollout`, {
+      project_id: projectId || undefined,
+      cluster_name: item.cluster_name,
+      namespace: item.namespace,
+      environment: environment || undefined,
+      workload_name: item.name,
+    });
+
+  const columns: DataTableColumn<RolloutRow>[] = [
+    {
+      id: 'workload',
+      header: 'Workload',
+      cell: (item) => (
+        <Link className="ig-cell-stack ig-cell-link" href={rolloutHref(item)}>
+          <span className="ig-cell-title">{item.name}</span>
+          <span className="ig-cell-meta">Open rollout timeline and pod pressure</span>
+        </Link>
+      ),
+    },
+    { id: 'namespace', header: 'Namespace', cell: (item) => item.namespace },
+    {
+      id: 'ready',
+      header: 'Ready',
+      align: 'right',
+      className: 'ig-cell-num',
+      cell: (item) => `${item.ready_replicas}/${item.replicas}`,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (item) => <span className={`ig-chip ig-chip--${rolloutTone(item.status)}`}>{item.status}</span>,
+    },
+    { id: 'image', header: 'Image', cell: (item) => <span className="ig-mono">{item.image || '—'}</span> },
+    { id: 'cluster', header: 'Cluster', cell: (item) => item.cluster_name },
+  ];
 
   return (
     <>
@@ -212,58 +259,16 @@ export default function DevOpsK8sRolloutsPage() {
               </div>
             </div>
 
-            <div className="table-scroll">
-              <table className="templates-table k8s-data-table">
-                <thead>
-                  <tr>
-                    <th>Workload</th>
-                    <th>Namespace</th>
-                    <th>Ready</th>
-                    <th>Status</th>
-                    <th>Image</th>
-                    <th>Cluster</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((item) => (
-                    <tr key={`${item.cluster_name}-${item.namespace}-${item.name}`}>
-                      <td>
-                        <Link
-                          className="k8s-link-cell"
-                          href={buildK8sHref(`/k8s/workloads/${encodeURIComponent(item.name)}/rollout`, {
-                            project_id: projectId || undefined,
-                            cluster_name: item.cluster_name,
-                            namespace: item.namespace,
-                            environment: environment || undefined,
-                            workload_name: item.name,
-                          })}
-                        >
-                          <div className="k8s-link-cell__title">{item.name}</div>
-                          <div className="k8s-link-cell__meta">Open rollout timeline and pod pressure</div>
-                        </Link>
-                      </td>
-                      <td>{item.namespace}</td>
-                      <td>
-                        {item.ready_replicas}/{item.replicas}
-                      </td>
-                      <td>
-                        <span className="portal-pill">{item.status}</span>
-                      </td>
-                      <td>{item.image || '—'}</td>
-                      <td>{item.cluster_name}</td>
-                    </tr>
-                  ))}
-                  {!loading && visibleRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={6}>
-                        <div className="portal-empty">
-                          <p>No rollout records match the current filters.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            <div className="ig-legacy-table">
+              <DataTable<RolloutRow>
+                label="Workload rollout status"
+                columns={columns}
+                rows={visibleRows}
+                rowKey={(item) => `${item.cluster_name}-${item.namespace}-${item.name}`}
+                loading={loading}
+                onRowOpen={(item) => void router.push(rolloutHref(item))}
+                empty={<EmptyState title="No rollouts found" body="No rollout records match the current filters." />}
+              />
             </div>
           </section>
         </K8sWorkspaceShell>

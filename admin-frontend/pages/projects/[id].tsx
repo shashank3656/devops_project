@@ -123,6 +123,8 @@ export default function AdminProjectDetailPage() {
   const [project, setProject] = useState<ProjectOption | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [budget, setBudget] = useState('');
+  const [budgetSaved, setBudgetSaved] = useState('');
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
@@ -251,6 +253,30 @@ export default function AdminProjectDetailPage() {
                   <article className="portal-detail-card">
                     <span className="portal-surface__eyebrow">Project code</span>
                     <div className="portal-detail-card__value">{project.code}</div>
+                  </article>
+                  <article className="portal-detail-card">
+                    <span className="portal-surface__eyebrow">Monthly budget (USD)</span>
+                    <div className="portal-page__actions">
+                      <input className="input" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="0" />
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          const token = localStorage.getItem('admin_token');
+                          fetch(`${apiUrl}/api/cost-guardrail`, {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${token || ''}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ project_id: project.id, monthly_budget_usd: Number(budget) || 0 }),
+                          })
+                            .then((res) => (res.ok ? res.json() : null))
+                            .then((data) => setBudgetSaved(data?.status === 'ok' ? 'Saved' : 'Could not save'))
+                            .catch(() => setBudgetSaved('Could not save'));
+                        }}
+                      >
+                        Save
+                      </button>
+                    </div>
+                    {budgetSaved ? <p className="ig-muted">{budgetSaved}</p> : null}
                   </article>
                 </div>
               </section>

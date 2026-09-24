@@ -33,6 +33,9 @@ func githubWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		details = details[:2000]
 	}
 	AppendGitHubLog("webhook_"+eventType, "GitHub webhook received", string(details))
+	if eventType == "pull_request" {
+		handleGitHubPullRequestEvent(payload)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	encodeJSON(w, map[string]interface{}{"status": "ok", "event": eventType})

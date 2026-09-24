@@ -348,9 +348,12 @@ export default function NewIncidentPage() {
                   <select className="input" value={status} onChange={(event) => setStatus(event.target.value)}>
                     <option value="draft">Draft</option>
                     <option value="open">Open</option>
+                    <option value="acknowledged">Acknowledged</option>
                     <option value="investigating">Investigating</option>
                     <option value="mitigating">Mitigating</option>
                     <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                    <option value="cancelled">Cancelled</option>
                   </select>
                 </label>
                 <label className="label">

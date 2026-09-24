@@ -2201,6 +2201,33 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if len(pathParts) > 1 && pathParts[1] == "health" {
+		if r.Method != "GET" {
+			writeMethodNotAllowed(w, r)
+			return
+		}
+		if _, ok := requireDevopsUser(w, r); !ok {
+			return
+		}
+		if len(pathParts) > 2 && pathParts[2] == "export" {
+			exportProjectHealthCSV(w, r, projectID)
+			return
+		}
+		handleProjectHealth(w, r, projectID)
+		return
+	}
+	if len(pathParts) > 1 && pathParts[1] == "infra-settings" {
+		devopsProjectInfraSettingsHandler(w, r, projectID)
+		return
+	}
+	if len(pathParts) > 1 && pathParts[1] == "risk-paths" {
+		pathID := 0
+		if len(pathParts) > 2 {
+			pathID, _ = strconv.Atoi(strings.TrimSpace(pathParts[2]))
+		}
+		devopsProjectRiskPathsHandler(w, r, projectID, pathID)
+		return
+	}
 	if len(pathParts) > 1 && pathParts[1] == "lifecycle" {
 		if r.Method != "POST" {
 			writeMethodNotAllowed(w, r)
