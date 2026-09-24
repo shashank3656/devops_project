@@ -151,7 +151,10 @@ jobs:
           version: v2.6.2
           working-directory: ./backend
           args: --timeout=5m --modules-download-mode=mod
-          only-new-issues: true
+          # This PR is larger than GitHub's 20k-line diff API, so only-new-issues
+          # fails with 406. Lint the whole backend package instead; test/ is skipped
+          # in .golangci.yml because those files are staged into package main by make test.
+          only-new-issues: false
         continue-on-error: true
 
       - name: Run go vet
@@ -159,7 +162,9 @@ jobs:
         working-directory: ./backend
         run: |
           set +e
-          go vet ./... 2>&1 | tee govet-output.txt
+          # Vet package main only. backend/test is a separate directory of *_test.go
+          # files that compile through `make test`, not as infra-backend/test.
+          go vet . 2>&1 | tee govet-output.txt
           EXIT_CODE=${PIPESTATUS[0]}
           echo "govet_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
           exit 0

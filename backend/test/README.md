@@ -9,3 +9,5 @@ make test
 ```
 
 Do not add `*_test.go` files next to production `.go` sources; add them here instead.
+
+CI runs `go vet .` and golangci-lint on package `main` only. This folder is excluded from those commands because it is not a standalone Go package.
