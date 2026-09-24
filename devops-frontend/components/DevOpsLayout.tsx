@@ -82,6 +82,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/access-overrides': 'Access Exceptions',
   '/promotions': 'Promotions',
   '/deploy-intelligence': 'Deploy intelligence',
+  '/deploy-intelligence/onboard': 'Onboard repository',
   '/rollback-console': 'Rollback',
   '/gate-approvals': 'Approval History',
   '/gate-policies': 'Approval Rules',
