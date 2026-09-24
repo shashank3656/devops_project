@@ -125,5 +125,8 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 		"depends_on":             dependsOn,
 		"blocked_by":             blockedBy,
 		"lifetime":               buildRequestLifetime(req, time.Now()),
+		"plan_review":            buildPlanReview(req),
+		"policy_checks":          buildPolicyCheckSummary(req.ID),
+		"cost_check":             buildRequestCostCheck(req),
 	})
 }

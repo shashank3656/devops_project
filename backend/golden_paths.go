@@ -92,13 +92,14 @@ func costGuardrailHandler(w http.ResponseWriter, r *http.Request) {
 	projectID := atoiDefault(query.Get("project_id"), 0)
 	if r.Method == http.MethodPost {
 		var body struct {
-			Cloud        string `json:"cloud"`
-			Service      string `json:"service"`
-			Env          string `json:"env"`
-			InstanceType string `json:"instance_type"`
-			Team         string `json:"team"`
-			ProjectID    int    `json:"project_id"`
-			MonthlyUSD   int    `json:"monthly_budget_usd"`
+			Cloud               string `json:"cloud"`
+			Service             string `json:"service"`
+			Env                 string `json:"env"`
+			InstanceType        string `json:"instance_type"`
+			Team                string `json:"team"`
+			ProjectID           int    `json:"project_id"`
+			MonthlyUSD          int    `json:"monthly_budget_usd"`
+			DefaultTempEnvDays  int    `json:"default_temp_env_days"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
 			if body.Cloud != "" {
@@ -119,8 +120,15 @@ func costGuardrailHandler(w http.ResponseWriter, r *http.Request) {
 			if body.ProjectID > 0 {
 				projectID = body.ProjectID
 			}
-			if body.MonthlyUSD > 0 && body.ProjectID > 0 {
-				_ = saveProjectBudget(body.ProjectID, body.MonthlyUSD)
+			if body.ProjectID > 0 {
+				settings := loadProjectInfraSettings(body.ProjectID)
+				if body.MonthlyUSD > 0 {
+					settings.MonthlyBudgetUSD = body.MonthlyUSD
+				}
+				if body.DefaultTempEnvDays >= 0 {
+					settings.DefaultTempEnvDays = body.DefaultTempEnvDays
+				}
+				_ = saveProjectInfraSettings(body.ProjectID, settings)
 			}
 		}
 	}

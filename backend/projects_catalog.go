@@ -2209,7 +2209,15 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		if _, ok := requireDevopsUser(w, r); !ok {
 			return
 		}
+		if len(pathParts) > 2 && pathParts[2] == "export" {
+			exportProjectHealthCSV(w, r, projectID)
+			return
+		}
 		handleProjectHealth(w, r, projectID)
+		return
+	}
+	if len(pathParts) > 1 && pathParts[1] == "infra-settings" {
+		devopsProjectInfraSettingsHandler(w, r, projectID)
 		return
 	}
 	if len(pathParts) > 1 && pathParts[1] == "lifecycle" {

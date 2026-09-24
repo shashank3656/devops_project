@@ -86,6 +86,7 @@ func handleRequestPromote(w http.ResponseWriter, r *http.Request, id int, req *P
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	applyProjectDefaultLifetimeIfEligible(newReq.ID, newReq.ProjectID, newReq.Env)
 	// Link: new request points to source
 	_, _ = DB.Exec("UPDATE pr_requests SET linked_request_id = $1 WHERE id = $2", id, newReq.ID)
 	AppendUserActivity(createdBy, "request_promote", "pr_request", strconv.Itoa(newReq.ID), "promoted from #"+strconv.Itoa(id)+" ("+req.Env+"→"+nextEnvironment+")")

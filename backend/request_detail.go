@@ -253,6 +253,7 @@ func handleRequestSubmit(w http.ResponseWriter, r *http.Request, id int, req *PR
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	applyProjectDefaultLifetimeIfEligible(id, req.ProjectID, req.Env)
 	AppendUserActivity(req.CreatedBy, "request_submit", "pr_request", strconv.Itoa(id), "draft submitted")
 	w.Header().Set("Content-Type", "application/json")
 	encodeJSON(w, map[string]interface{}{"status": "ok", "message": "Draft submitted for approval"})

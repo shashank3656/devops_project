@@ -21,6 +21,7 @@ export { default as PolicyChecksCard } from './PolicyChecksCard';
 export { default as PRImpactBrief } from './PRImpactBrief';
 export { default as ProjectHealthCard } from './ProjectHealthCard';
 export { default as SavedViews, type SavedView } from './SavedViews';
+export { useSavedFilterViews } from './useSavedFilterViews';
 export { default as SegmentedControl, type SegmentedOption } from './SegmentedControl';
 export { default as StatusChip } from './StatusChip';
 export { default as Stepper, type StepperStep } from './Stepper';
@@ -43,6 +44,7 @@ export type {
   PRImpactBriefData,
   ProjectCostSummary,
   ProjectHealth,
+  ProjectInfraSettings,
   QueueItem,
   RequestCostCheck,
   RequestLifetime,

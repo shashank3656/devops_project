@@ -1036,6 +1036,22 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			encodeDevopsJSON(w, map[string]interface{}{"error": "only pending_devops_approval requests can be approved", "status": "error"})
 			return
 		}
+		var approveBody struct {
+			RunbookAcknowledged bool `json:"runbook_acknowledged"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&approveBody)
+		runbookGate := evaluateProdRunbookGate(req)
+		if runbookGate.Required && !approveBody.RunbookAcknowledged {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusPreconditionRequired)
+			encodeDevopsJSON(w, map[string]interface{}{
+				"status":            "error",
+				"error":             runbookGate.Message,
+				"runbook_required":  true,
+				"runbooks":          runbookGate.Runbooks,
+			})
+			return
+		}
 		prURL, err := createPullRequestForRequest(req)
 		if err != nil {
 			log.Printf("DevOps approve: create PR failed: %v", err)

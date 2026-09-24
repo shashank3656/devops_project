@@ -746,6 +746,7 @@ func enrichPromotionItemsWithDeploymentGates(items []promotionCenterItem) error 
 		gate := findDeploymentGateEnvironment(dashboard.DeploymentGates, targetEnvironment)
 		if gate == nil {
 			items[index].Gate = buildUngatedPromotionDecision(targetEnvironment)
+			applyHighRiskMergePromotionCheck(items[index].Gate, items[index].RequestID, targetEnvironment)
 			continue
 		}
 		approval, err := getActiveDeploymentGateApproval(items[index].RequestID, targetEnvironment, items[index].UpdatedAt)
@@ -758,6 +759,7 @@ func enrichPromotionItemsWithDeploymentGates(items []promotionCenterItem) error 
 		}
 		items[index].Gate = buildPromotionGateDecision(targetEnvironment, gate, approval, "", false)
 		items[index].Gate.ApprovalHistory = history
+		applyHighRiskMergePromotionCheck(items[index].Gate, items[index].RequestID, targetEnvironment)
 	}
 
 	return nil
@@ -809,7 +811,9 @@ func evaluatePromotionGateForRequest(req *PRRequest) (*promotionGateDecision, er
 	}
 	gate := findDeploymentGateEnvironment(dashboard.DeploymentGates, targetEnvironment)
 	if gate == nil {
-		return buildUngatedPromotionDecision(targetEnvironment), nil
+		decision := buildUngatedPromotionDecision(targetEnvironment)
+		applyHighRiskMergePromotionCheck(decision, req.ID, targetEnvironment)
+		return decision, nil
 	}
 	approval, err := getActiveDeploymentGateApproval(req.ID, targetEnvironment, req.UpdatedAt)
 	if err != nil {
@@ -821,6 +825,7 @@ func evaluatePromotionGateForRequest(req *PRRequest) (*promotionGateDecision, er
 	}
 	decision := buildPromotionGateDecision(targetEnvironment, gate, approval, "", false)
 	decision.ApprovalHistory = history
+	applyHighRiskMergePromotionCheck(decision, req.ID, targetEnvironment)
 	return decision, nil
 }
 

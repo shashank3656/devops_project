@@ -45,6 +45,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/templates': 'Request Templates',
   '/access-review': 'Access Review',
   '/webhooks': 'Integrations',
+  '/maintenance': 'Maintenance',
   '/profile': 'Profile',
 };
 
@@ -97,6 +98,7 @@ const MORE_NAV: { href: string; label: string; Icon: ComponentType<{ className?:
   { href: '/activity', label: 'Activity', Icon: IconActivity },
   { href: '/templates', label: 'Templates', Icon: IconTemplates },
   { href: '/webhooks', label: 'Integrations', Icon: IconWebhook },
+  { href: '/maintenance', label: 'Maintenance', Icon: IconLayers },
 ];
 
 function getAdminIdentity(): { initials: string; label: string } {

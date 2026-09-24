@@ -1,7 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { DataTable, InspectorDrawer, formatRelativeTime, type DataTableColumn, type RequestLifetime } from '@infragate/ui';
+import {
+  CostCheckCard,
+  DataTable,
+  InspectorDrawer,
+  PlanReviewCard,
+  PolicyChecksCard,
+  formatRelativeTime,
+  type DataTableColumn,
+  type PlanReview,
+  type PolicyCheckSummary,
+  type RequestCostCheck,
+  type RequestLifetime,
+} from '@infragate/ui';
 import { useToast } from '../context/ToastContext';
 import CalendarDateInput from '../components/CalendarDateInput';
 import RequestPRImpact from '../components/RequestPRImpact';
@@ -97,6 +109,9 @@ interface PRRequest {
   bundle_summary?: RequestBundleSummary | null;
   cost_risk_preview?: CostRiskPreview | null;
   approval_context?: ApprovalContext | null;
+  plan_review?: PlanReview | null;
+  policy_checks?: PolicyCheckSummary | null;
+  cost_check?: RequestCostCheck | null;
 }
 
 interface ProjectSummary {
@@ -584,11 +599,17 @@ export default function History() {
         setDependsOn(Array.isArray(data.depends_on) ? data.depends_on : []);
         setBlockedBy(Array.isArray(data.blocked_by) ? data.blocked_by : []);
         setLifetime(data.lifetime || null);
-        if (full.config) {
-          rawConfigByRequestId.current[full.id] = full.config;
-          setDetailRequest({ ...full, config: maskSensitiveJson(full.config) });
+        const enriched: PRRequest = {
+          ...full,
+          plan_review: (data.plan_review as PlanReview | undefined) ?? full.plan_review,
+          policy_checks: (data.policy_checks as PolicyCheckSummary | undefined) ?? full.policy_checks,
+          cost_check: (data.cost_check as RequestCostCheck | undefined) ?? full.cost_check,
+        };
+        if (enriched.config) {
+          rawConfigByRequestId.current[enriched.id] = enriched.config;
+          setDetailRequest({ ...enriched, config: maskSensitiveJson(enriched.config) });
         } else {
-          setDetailRequest(full);
+          setDetailRequest(enriched);
         }
       } else {
         addRecentRequestId(req.id);
@@ -1536,6 +1557,16 @@ export default function History() {
                       <div className="history-detail-modal__notice history-detail-modal__notice--error">
                         <strong className="history-detail-modal__notice-title history-detail-modal__notice-title--error">Why it was rejected</strong>
                         <p className="history-detail-modal__notice-copy history-detail-modal__notice-copy--prewrap">{detailRequest.reject_reason}</p>
+                      </div>
+                    )}
+                    {(detailRequest.plan_review || detailRequest.policy_checks || detailRequest.cost_check) && (
+                      <div className="history-detail-modal__section history-detail-modal__section--muted">
+                        <div className="history-detail-modal__section-head">
+                          <strong>Pipeline checks</strong>
+                        </div>
+                        <PlanReviewCard review={detailRequest.plan_review} env={detailRequest.env} />
+                        <PolicyChecksCard summary={detailRequest.policy_checks} />
+                        <CostCheckCard check={detailRequest.cost_check} />
                       </div>
                     )}
                     {detailRequest.cost_risk_preview && (

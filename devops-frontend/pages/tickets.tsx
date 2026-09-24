@@ -11,6 +11,7 @@ import {
   PolicyChecksCard,
   SavedViews,
   UndoToaster,
+  useSavedFilterViews,
   formatRelativeTime,
   useUndoQueue,
   type DataTableColumn,
@@ -361,6 +362,13 @@ export default function DevOpsTickets() {
   const limit = 20;
 
   const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
+  const { remoteViews, ready: savedViewsReady, saveRemote, deleteRemote } = useSavedFilterViews<TicketFilters>({
+    apiUrl,
+    token,
+    scope: 'devops_tickets',
+    storageKey: 'infragate.devops.tickets.views',
+    portal: 'devops',
+  });
 
   const hasActiveFilters = Boolean(idFilter || team || projectId || cloud || status || search || requester || atRisk);
   const activeFilterCount = [
@@ -542,6 +550,11 @@ export default function DevOpsTickets() {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = asRecord(await res.json().catch(() => ({})));
+    if (res.status === 428 && data.runbook_required) {
+      const err = new Error(getString(data.error, 'Production runbook required')) as Error & { runbookRequired?: boolean };
+      err.runbookRequired = true;
+      throw err;
+    }
     if (!res.ok) throw new Error(getString(data.error, `Request failed (${res.status})`));
     if (Array.isArray(data.errors) && data.errors.length > 0) {
       throw new Error(`Some requests were not updated: ${(data.errors as string[]).join('; ')}`);
@@ -599,7 +612,22 @@ export default function DevOpsTickets() {
       [id],
       action === 'approve' ? 'Approving' : 'Rejecting',
       `${action === 'approve' ? 'Approved' : 'Rejected'} request #${id}`,
-      () => sendDevopsAction(`/api/devops/requests/${id}/${action}`, action === 'reject' ? { reason } : undefined),
+      async () => {
+        try {
+          await sendDevopsAction(`/api/devops/requests/${id}/${action}`, action === 'reject' ? { reason } : undefined);
+        } catch (err) {
+          const runbookErr = err as Error & { runbookRequired?: boolean };
+          if (action === 'approve' && runbookErr.runbookRequired) {
+            const ok = window.confirm(
+              `${runbookErr.message}\n\nAcknowledge that the production runbook is linked (or add one under Guides) and approve anyway?`
+            );
+            if (!ok) throw err;
+            await sendDevopsAction(`/api/devops/requests/${id}/${action}`, { runbook_acknowledged: true });
+            return;
+          }
+          throw err;
+        }
+      },
     );
   };
 
@@ -841,6 +869,9 @@ export default function DevOpsTickets() {
             onApply={applyFilterSet}
             presets={TICKET_VIEW_PRESETS}
             canSave={activeFilterCount > 0}
+            serverViews={savedViewsReady ? remoteViews : undefined}
+            onServerSave={saveRemote}
+            onServerDelete={deleteRemote}
           />
 
           <div className="devops-filter-ribbon card">

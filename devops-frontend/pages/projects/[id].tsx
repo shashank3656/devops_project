@@ -809,6 +809,10 @@ export default function DevOpsProjectDetailPage() {
   const [health, setHealth] = useState<ProjectHealth | null>(null);
   const [healthLoading, setHealthLoading] = useState(true);
   const [healthError, setHealthError] = useState('');
+  const [budgetUsd, setBudgetUsd] = useState('');
+  const [defaultTtlDays, setDefaultTtlDays] = useState('');
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsNotice, setSettingsNotice] = useState('');
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -822,7 +826,14 @@ export default function DevOpsProjectDetailPage() {
       .then(async (res) => {
         const data = asRecord(await res.json().catch(() => ({})));
         if (!res.ok) throw new Error(getString(data.error, 'Could not load delivery health'));
-        if (!cancelled) setHealth((data.health as ProjectHealth) || null);
+        if (!cancelled) {
+          const next = (data.health as ProjectHealth) || null;
+          setHealth(next);
+          if (next?.settings) {
+            setBudgetUsd(String(next.settings.monthly_budget_usd || ''));
+            setDefaultTtlDays(String(next.settings.default_temp_env_days || ''));
+          }
+        }
       })
       .catch((err: Error) => {
         if (!cancelled) {
@@ -989,6 +1000,85 @@ export default function DevOpsProjectDetailPage() {
                 </Link>
               )}
             />
+
+            {project ? (
+              <section className="portal-surface" style={{ marginBottom: 24 }}>
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Infra defaults</span>
+                    <h2 className="portal-surface__title">Budget, TTL, and DORA export</h2>
+                    <p className="portal-surface__subtitle">
+                      Non-prod requests inherit the default temporary-environment TTL when no expiry is set. Budget drives cost alerts and the weekly idle digest.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={async () => {
+                      const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                      if (!token) return;
+                      try {
+                        const res = await fetch(`${apiUrl}/api/devops/projects/${project.id}/health/export`, {
+                          headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (!res.ok) throw new Error('Export failed');
+                        const blob = await res.blob();
+                        const url = URL.createObjectURL(blob);
+                        const anchor = document.createElement('a');
+                        anchor.href = url;
+                        anchor.download = `dora-${project.code || project.id}.csv`;
+                        anchor.click();
+                        URL.revokeObjectURL(url);
+                      } catch {
+                        setSettingsNotice('Could not export DORA CSV.');
+                      }
+                    }}
+                  >
+                    Export DORA CSV
+                  </button>
+                </div>
+                {settingsNotice ? <p className="portal-surface__subtitle">{settingsNotice}</p> : null}
+                <form
+                  className="portal-toolbar"
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                    if (!token) return;
+                    setSettingsSaving(true);
+                    setSettingsNotice('');
+                    try {
+                      const res = await fetch(`${apiUrl}/api/devops/projects/${project.id}/infra-settings`, {
+                        method: 'PATCH',
+                        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          monthly_budget_usd: parseInt(budgetUsd, 10) || 0,
+                          default_temp_env_days: parseInt(defaultTtlDays, 10) || 0,
+                        }),
+                      });
+                      const data = asRecord(await res.json().catch(() => ({})));
+                      if (!res.ok) throw new Error(getString(data.error, 'Failed to save'));
+                      setSettingsNotice('Infra settings saved.');
+                    } catch (err) {
+                      setSettingsNotice(err instanceof Error ? err.message : 'Failed to save');
+                    } finally {
+                      setSettingsSaving(false);
+                    }
+                  }}
+                >
+                  <label className="portal-toolbar__item">
+                    <span className="credential-audit-label">Monthly budget (USD)</span>
+                    <input className="input" type="number" min={0} value={budgetUsd} onChange={(e) => setBudgetUsd(e.target.value)} />
+                  </label>
+                  <label className="portal-toolbar__item">
+                    <span className="credential-audit-label">Default temp env TTL (days, 0=off)</span>
+                    <input className="input" type="number" min={0} max={90} value={defaultTtlDays} onChange={(e) => setDefaultTtlDays(e.target.value)} />
+                  </label>
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={settingsSaving}>
+                    {settingsSaving ? 'Saving…' : 'Save settings'}
+                  </button>
+                </form>
+              </section>
+            ) : null}
 
             <DriftFixPanel projectId={project.id} />
 

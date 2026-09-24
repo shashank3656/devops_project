@@ -6385,6 +6385,24 @@ body {
   flex-wrap: wrap;
 }
 
+.admin-maintenance-card__single-id {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.admin-maintenance-card__single-id .input {
+  min-width: 7rem;
+}
+
+.admin-maintenance-card__item-link {
+  margin-left: auto;
+  font-size: 0.82rem;
+  color: var(--color-accent);
+}
+
 .admin-maintenance-card__body {
   margin-top: 1rem;
   display: grid;

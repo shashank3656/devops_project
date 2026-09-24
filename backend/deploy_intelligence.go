@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -259,6 +260,91 @@ func intFromAny(value interface{}) int {
 		return int(n)
 	default:
 		return 0
+	}
+}
+
+func latestHighRiskMergeForRequest(requestID int, within time.Duration) (*repoDeployEvent, error) {
+	if DB == nil || requestID <= 0 {
+		return nil, nil
+	}
+	if within <= 0 {
+		within = 14 * 24 * time.Hour
+	}
+	cutoff := time.Now().UTC().Add(-within)
+	row := DB.QueryRow(`
+		SELECT id, repo_owner, repo_name, pr_number, request_id, title, author, base_branch, head_branch,
+		       merged_at, commit_count, file_count, additions, deletions, score, risk_level, summary, pr_url, payload
+		  FROM repo_deploy_events
+		 WHERE request_id = $1
+		   AND lower(risk_level) = 'high'
+		   AND merged_at >= $2
+		 ORDER BY merged_at DESC
+		 LIMIT 1
+	`, requestID, cutoff)
+	var ev repoDeployEvent
+	var reqID *int
+	var payload string
+	err := row.Scan(
+		&ev.ID, &ev.RepoOwner, &ev.RepoName, &ev.PRNumber, &reqID, &ev.Title, &ev.Author,
+		&ev.BaseBranch, &ev.HeadBranch, &ev.MergedAt, &ev.CommitCount, &ev.FileCount,
+		&ev.Additions, &ev.Deletions, &ev.Score, &ev.RiskLevel, &ev.Summary, &ev.PRURL, &payload,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	ev.RequestID = reqID
+	if payload != "" {
+		_ = json.Unmarshal([]byte(payload), &ev.Impact)
+	}
+	return &ev, nil
+}
+
+func applyHighRiskMergePromotionCheck(decision *promotionGateDecision, requestID int, targetEnvironment string) {
+	if decision == nil || requestID <= 0 {
+		return
+	}
+	if !isHighControlEnvironment(targetEnvironment) {
+		return
+	}
+	ev, err := latestHighRiskMergeForRequest(requestID, 14*24*time.Hour)
+	if err != nil || ev == nil {
+		return
+	}
+	detail := fmt.Sprintf(
+		"PR #%d merged to %s on %s with high change risk (score %d). %s",
+		ev.PRNumber,
+		ev.BaseBranch,
+		ev.MergedAt.Format("2006-01-02"),
+		ev.Score,
+		strings.TrimSpace(ev.Summary),
+	)
+	if ev.PRURL != "" {
+		detail += " " + ev.PRURL
+	}
+	check := deploymentGateCheck{
+		Key:    "recent_high_risk_merge",
+		Label:  "Recent high-risk merge",
+		Status: "attention",
+		Detail: detail,
+	}
+	decision.Checks = append(decision.Checks, check)
+	decision.AttentionCheckCount++
+	if decision.Approved {
+		return
+	}
+	if decision.Status == "ready" && decision.CanPromote {
+		decision.Status = "attention"
+		decision.CanPromote = false
+		decision.RequiresAcknowledgement = true
+		decision.ReviewMessage = fmt.Sprintf(
+			"A high-risk merge was recorded for this request. Review deploy intelligence before promoting to %s.",
+			strings.ToUpper(strings.TrimSpace(targetEnvironment)),
+		)
+	} else if decision.Status != "blocked" && !decision.CanPromote && decision.ReviewMessage == "" {
+		decision.ReviewMessage = "Review recent high-risk merge activity before continuing promotion."
 	}
 }
 
