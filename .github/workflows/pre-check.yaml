@@ -193,10 +193,12 @@ jobs:
           GOLANGCI=${{ steps.golangci.outcome }}
           PRETTIER_NOTE=""
           [ "$PRETTIER" != "0" ] && PRETTIER_NOTE=" Prettier check failed (non-blocking)."
+          GOLANGCI_NOTE=""
+          [ "$GOLANGCI" != "success" ] && GOLANGCI_NOTE=" golangci-lint failed (non-blocking: full-package lint; only-new-issues cannot fetch this PR's 20k+ line diff)."
 
-          if [ "$ESLINT" = "0" ] && [ "$ESLINT_ADMIN" = "0" ] && [ "$ESLINT_DEVOPS" = "0" ] && [ "$TS" = "0" ] && [ "$TS_ADMIN" = "0" ] && [ "$TS_DEVOPS" = "0" ] && [ "$GOVET" = "0" ] && [ "$GOTEST" = "0" ] && [ "$GOLANGCI" = "success" ]; then
+          if [ "$ESLINT" = "0" ] && [ "$ESLINT_ADMIN" = "0" ] && [ "$ESLINT_DEVOPS" = "0" ] && [ "$TS" = "0" ] && [ "$TS_ADMIN" = "0" ] && [ "$TS_DEVOPS" = "0" ] && [ "$GOVET" = "0" ] && [ "$GOTEST" = "0" ]; then
             echo "status=success" >> $GITHUB_OUTPUT
-            echo "details=All lint checks passed ✅$PRETTIER_NOTE" >> $GITHUB_OUTPUT
+            echo "details=All lint checks passed ✅$GOLANGCI_NOTE$PRETTIER_NOTE" >> $GITHUB_OUTPUT
           else
             echo "status=failure" >> $GITHUB_OUTPUT
             DETAILS=""
@@ -208,8 +210,7 @@ jobs:
             [ "$TS_DEVOPS" != "0" ] && DETAILS="$DETAILS DevOps TypeScript errors found."
             [ "$GOVET" != "0" ] && DETAILS="$DETAILS go vet failed."
             [ "$GOTEST" != "0" ] && DETAILS="$DETAILS Go unit tests failed."
-            [ "$GOLANGCI" != "success" ] && DETAILS="$DETAILS golangci-lint failed."
-            echo "details=$DETAILS$PRETTIER_NOTE" >> $GITHUB_OUTPUT
+            echo "details=$DETAILS$GOLANGCI_NOTE$PRETTIER_NOTE" >> $GITHUB_OUTPUT
           fi
 
       - name: Upload Lint Reports
