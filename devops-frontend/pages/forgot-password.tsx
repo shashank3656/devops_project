@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -10,11 +10,6 @@ export default function DevOpsForgotPassword() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    localStorage.setItem('infra-portal-theme', 'dark');
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

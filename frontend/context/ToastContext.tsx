@@ -27,41 +27,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const toast = useCallback((message: string, type: ToastType = 'info') => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => removeToast(id), TOAST_DURATION);
+    setTimeout(() => removeToast(id), type === 'error' ? TOAST_DURATION * 2 : TOAST_DURATION);
   }, [removeToast]);
 
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div
-        style={{
-          position: 'fixed',
-          top: '20px',
-          right: '20px',
-          zIndex: 9999,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-          maxWidth: '360px',
-        }}
-      >
+      <div className="ig-toasts" aria-live="polite" aria-relevant="additions">
         {toasts.map((t) => (
-          <div
-            key={t.id}
-            role="alert"
-            style={{
-              padding: '14px 18px',
-              borderRadius: '10px',
-              boxShadow: 'var(--shadow-lg)',
-              background: t.type === 'success' ? 'var(--success-bg)' : t.type === 'error' ? 'var(--error-bg)' : 'var(--info-bg)',
-              color: t.type === 'success' ? 'var(--success-color)' : t.type === 'error' ? 'var(--error-color)' : 'var(--info-color)',
-              border: `1px solid ${t.type === 'success' ? 'var(--success-color)' : t.type === 'error' ? 'var(--error-color)' : 'var(--info-color)'}`,
-              fontSize: '14px',
-              fontWeight: 500,
-              animation: 'toastIn 0.25s ease',
-            }}
-          >
-            {t.message}
+          <div key={t.id} role={t.type === 'error' ? 'alert' : 'status'} className={`ig-toast ig-toast--${t.type}`}>
+            <span className="ig-toast__dot" aria-hidden />
+            <span className="ig-toast__message">{t.message}</span>
+            <button type="button" className="ig-toast__close" onClick={() => removeToast(t.id)} aria-label="Dismiss notification">
+              ✕
+            </button>
           </div>
         ))}
       </div>

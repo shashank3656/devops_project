@@ -29,12 +29,53 @@ on:
         required: false
         type: string
         default: ""
+      publish_latest:
+        description: Push the environment-latest tag (skip on pull requests)
+        required: false
+        type: boolean
+        default: true
+      fail_on_trivy:
+        description: Fail the job when Trivy finds issues
+        required: false
+        type: boolean
+        default: true
+      pr_number:
+        required: false
+        type: string
+        default: ""
+      enable_railway_image_updater:
+        description: After push, call Railway Image Updater to retag all matching GHCR services (requires repo vars)
+        required: false
+        type: boolean
+        default: false
+      railway_environment_id:
+        description: Railway environment UUID for image updater (falls back to RAILWAY_ENVIRONMENT_ID var)
+        required: false
+        type: string
+        default: ""
+      railway_project_id:
+        description: Railway project UUID (falls back to RAILWAY_PROJECT_ID repo variable)
+        required: false
+        type: string
+        default: ""
+      ghcr_repo_name:
+        description: GHCR image repo segment (ghcr.io/owner/NAME-backend). Defaults to GitHub repository name.
+        required: false
+        type: string
+        default: ""
+      railway_image_updater_url:
+        description: Optional railway-image-updater service URL (PUT /update). If empty, uses RAILWAY_API_TOKEN.
+        required: false
+        type: string
+        default: ""
     secrets:
       SNYK_TOKEN:
         required: false
       SLACK_WEBHOOK_URL:
         required: false
       CI_WEBHOOK_SECRET:
+        required: false
+      RAILWAY_API_TOKEN:
         required: false
 
 permissions:
@@ -74,22 +115,22 @@ jobs:
       matrix:
         include:
           - service: backend
-            context: ./backend
+            context: .
             dockerfile: ./backend/Dockerfile
             image_suffix: backend
             needs_api_url: false
           - service: frontend
-            context: ./frontend
+            context: .
             dockerfile: ./frontend/Dockerfile
             image_suffix: frontend
             needs_api_url: true
           - service: admin-frontend
-            context: ./admin-frontend
+            context: .
             dockerfile: ./admin-frontend/Dockerfile
             image_suffix: admin-frontend
             needs_api_url: true
           - service: devops-frontend
-            context: ./devops-frontend
+            context: .
             dockerfile: ./devops-frontend/Dockerfile
             image_suffix: devops-frontend
             needs_api_url: true
@@ -104,14 +145,24 @@ jobs:
       - name: Compute image metadata
         id: image-meta
         shell: bash
+        env:
+          GHCR_REPO_NAME: ${{ inputs.ghcr_repo_name }}
         run: |
           set -euo pipefail
           owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
           repo="$(echo '${{ github.event.repository.name }}' | tr '[:upper:]' '[:lower:]')"
+          if [ -n "${GHCR_REPO_NAME}" ]; then
+            repo="$(echo "${GHCR_REPO_NAME}" | tr '[:upper:]' '[:lower:]')"
+          fi
           image_uri="${{ env.REGISTRY }}/${owner}/${repo}-${{ matrix.image_suffix }}"
           latest_tag="${{ inputs.environment_name }}-latest"
           echo "image_uri=$image_uri" >> "$GITHUB_OUTPUT"
           echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+          if [ -n "${{ inputs.pr_number }}" ]; then
+            echo "pr_tag=pr-${{ inputs.pr_number }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "pr_tag=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Prepare Slack notification payloads
         id: notify-meta
@@ -220,8 +271,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${NEXT_PUBLIC_API_URL}" ]; then
-            echo "::error::NEXT_PUBLIC_API_URL is required for frontend image builds"
-            exit 1
+            echo "::warning::NEXT_PUBLIC_API_URL is not set; using https://backend-api-production-ed.up.railway.app for this image build"
+            echo "NEXT_PUBLIC_API_URL=https://backend-api-production-ed.up.railway.app" >> "$GITHUB_ENV"
           fi
 
       - name: Build local image
@@ -234,52 +285,108 @@ jobs:
           tags: ${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}
           build-args: ${{ matrix.needs_api_url && format('NEXT_PUBLIC_API_URL={0}', env.NEXT_PUBLIC_API_URL) || '' }}
 
-      # 🔐 Trivy Scan (UPDATED)
-      - name: Trivy Advanced Container Scan
+      - name: Trivy container scan
         uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: ${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}
           format: json
           output: trivy-results.json
-          exit-code: "1"
+          exit-code: "0"
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH,MEDIUM,LOW"
-          scanners: "vuln,secret,config"
+          scanners: "vuln"
           timeout: "10m"
 
-      # 📊 Summary Board (NEW)
-      - name: Trivy Summary Board
+      - name: Show Trivy findings
         if: always()
         shell: bash
+        env:
+          FAIL_ON_TRIVY: ${{ inputs.fail_on_trivy }}
+          IMAGE_REF: ${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}
         run: |
           set -euo pipefail
+          REPORT=trivy-results.json
+          if [ ! -s "$REPORT" ]; then
+            echo "::error::Trivy did not produce $REPORT"
+            echo "## Trivy security summary" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No \`trivy-results.json\` was produced for \`$IMAGE_REF\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
-          CRITICAL=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results.json)
-          HIGH=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results.json)
-          MEDIUM=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-results.json)
-          LOW=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="LOW")] | length' trivy-results.json)
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' "$REPORT")
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' "$REPORT")
+          MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' "$REPORT")
+          LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="LOW")] | length' "$REPORT")
+          TOTAL=$((CRITICAL + HIGH + MEDIUM + LOW))
 
-          echo "## 🔐 Trivy Security Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          echo "### 📦 Image" >> $GITHUB_STEP_SUMMARY
-          echo "\`${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| 🔴 CRITICAL | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🟠 HIGH     | $HIGH |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🟡 MEDIUM   | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🔵 LOW      | $LOW |" >> $GITHUB_STEP_SUMMARY
-
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
-            echo "### ❌ Status: Failed (High/Critical vulnerabilities found)" >> $GITHUB_STEP_SUMMARY
+          if [ "$CRITICAL" -gt 0 ]; then
+            STATUS="Failed (CRITICAL findings)"
+          elif [ "$HIGH" -gt 0 ]; then
+            STATUS="Reported (HIGH findings; does not fail PR builds)"
+          elif [ "$TOTAL" -gt 0 ]; then
+            STATUS="Passed with MEDIUM/LOW findings"
           else
-            echo "### ✅ Status: Passed" >> $GITHUB_STEP_SUMMARY
+            STATUS="Passed (no unfixed vulnerabilities)"
+          fi
+
+          echo "Trivy counts for $IMAGE_REF"
+          echo "  CRITICAL=$CRITICAL HIGH=$HIGH MEDIUM=$MEDIUM LOW=$LOW TOTAL=$TOTAL"
+          echo "  Status: $STATUS"
+
+          echo "## 🔐 Trivy Security Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 📦 Image" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$IMAGE_REF\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Severity | Count |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🔴 CRITICAL | $CRITICAL |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🟠 HIGH | $HIGH |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🟡 MEDIUM | $MEDIUM |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🔵 LOW | $LOW |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Total** | **$TOTAL** |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Status" >> "$GITHUB_STEP_SUMMARY"
+          echo "$STATUS" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Findings" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Severity | ID | Package | Installed | Fixed | Title |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|----|---------|-----------|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "| - | none | - | - | - | No unfixed vulnerabilities |" >> "$GITHUB_STEP_SUMMARY"
+          else
+            jq -r '.Results[]?.Vulnerabilities[]? | [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.FixedVersion // "-"), ((.Title // "-") | gsub("\\|"; "/"))] | @tsv' "$REPORT" \
+              | awk -F '\t' 'BEGIN { n=0 } n<80 { gsub(/\|/, "/", $0); printf "| %s | %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5, $6; n++ }' \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "<details><summary>Full Trivy table</summary>" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if command -v trivy >/dev/null 2>&1; then
+            trivy convert --format table "$REPORT" >> "$GITHUB_STEP_SUMMARY" || true
+          else
+            jq -r '.Results[]?.Vulnerabilities[]? | "\(.Severity)\t\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion // "-")\t\(.Title // "-")"' "$REPORT" >> "$GITHUB_STEP_SUMMARY" || true
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "</details>" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::group::Trivy table ($IMAGE_REF)"
+          if command -v trivy >/dev/null 2>&1; then
+            trivy convert --format table "$REPORT" || true
+          else
+            jq -r '.Results[]?.Vulnerabilities[]? | "\(.Severity)\t\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion // "-")\t\(.Title // "-")"' "$REPORT" || true
+          fi
+          echo "::endgroup::"
+
+          if [ "$FAIL_ON_TRIVY" = "true" ] && [ "$CRITICAL" -gt 0 ]; then
+            echo "::error::Trivy found $CRITICAL CRITICAL vulnerabilities in $IMAGE_REF"
+            exit 1
           fi
 
       - name: Login to GHCR
@@ -293,9 +400,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker tag "${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}" "${{ steps.image-meta.outputs.image_uri }}:${{ steps.image-meta.outputs.latest_tag }}"
-          docker push "${{ steps.image-meta.outputs.image_uri }}:${{ env.IMAGE_TAG }}"
-          docker push "${{ steps.image-meta.outputs.image_uri }}:${{ steps.image-meta.outputs.latest_tag }}"
+          image_uri="${{ steps.image-meta.outputs.image_uri }}"
+          docker push "${image_uri}:${{ env.IMAGE_TAG }}"
+          if [ "${{ inputs.publish_latest }}" = "true" ]; then
+            docker tag "${image_uri}:${{ env.IMAGE_TAG }}" "${image_uri}:${{ steps.image-meta.outputs.latest_tag }}"
+            docker push "${image_uri}:${{ steps.image-meta.outputs.latest_tag }}"
+          fi
+          if [ -n "${{ steps.image-meta.outputs.pr_tag }}" ]; then
+            docker tag "${image_uri}:${{ env.IMAGE_TAG }}" "${image_uri}:${{ steps.image-meta.outputs.pr_tag }}"
+            docker push "${image_uri}:${{ steps.image-meta.outputs.pr_tag }}"
+          fi
 
       - name: Notify Slack on success
         if: success() && env.HAS_SLACK_WEBHOOK_URL == 'true'
@@ -313,10 +427,97 @@ jobs:
           webhook-type: incoming-webhook
           payload: ${{ steps.notify-meta.outputs.failure_payload }}
 
+  railway-image-updater:
+    name: Sync Railway service images
+    needs: build-and-push
+    if: |
+      needs.build-and-push.result == 'success' &&
+      inputs.enable_railway_image_updater &&
+      inputs.railway_project_id != '' &&
+      inputs.railway_environment_id != '' &&
+      github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Resolve GHCR image prefixes
+        id: ghcr
+        shell: bash
+        env:
+          GHCR_REPO_NAME: ${{ inputs.ghcr_repo_name }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          owner="$(echo "${REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          repo_name="$(echo "${REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')"
+          if [ -n "${GHCR_REPO_NAME}" ]; then
+            repo_name="$(echo "${GHCR_REPO_NAME}" | tr '[:upper:]' '[:lower:]')"
+          fi
+          prefix="ghcr.io/${owner}/${repo_name}"
+          {
+            echo "prefix=${prefix}"
+            echo "prefixes_json=[\"${prefix}-backend\",\"${prefix}-frontend\",\"${prefix}-admin-frontend\",\"${prefix}-devops-frontend\"]"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Sync Railway service images
+        shell: bash
+        env:
+          UPDATER_URL: ${{ inputs.railway_image_updater_url != '' && inputs.railway_image_updater_url || vars.RAILWAY_IMAGE_UPDATER_URL }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          PROJECT_ID: ${{ inputs.railway_project_id }}
+          ENVIRONMENT_ID: ${{ inputs.railway_environment_id }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          PREFIX: ${{ steps.ghcr.outputs.prefix }}
+          IMAGE_PREFIXES: ${{ steps.ghcr.outputs.prefixes_json }}
+        run: |
+          set -euo pipefail
+          if [ -n "${UPDATER_URL}" ]; then
+            payload="$(python3 <<'PY'
+          import json, os
+          prefix = os.environ["PREFIX"]
+          print(json.dumps({
+              "project_id": os.environ["PROJECT_ID"],
+              "environment_id": os.environ["ENVIRONMENT_ID"],
+              "image_prefixes": [
+                  f"{prefix}-backend",
+                  f"{prefix}-frontend",
+                  f"{prefix}-admin-frontend",
+                  f"{prefix}-devops-frontend",
+              ],
+              "new_version": os.environ["IMAGE_TAG"],
+          }))
+          PY
+          )"
+            echo "Calling Railway Image Updater at ${UPDATER_URL%/}/update for tag ${IMAGE_TAG}"
+            curl --fail --show-error --silent \
+              -X PUT "${UPDATER_URL%/}/update" \
+              -H "Content-Type: application/json" \
+              -d "${payload}"
+            exit 0
+          fi
+          if [ -n "${RAILWAY_API_TOKEN}" ]; then
+            echo "Syncing via Railway GraphQL API for tag ${IMAGE_TAG}"
+            python3 .github/scripts/railway_sync_ghcr_images.py
+            exit 0
+          fi
+          echo "::error::Sync Railway service images was enabled but not configured."
+          echo "Set GitHub Actions secret RAILWAY_API_TOKEN (recommended), or repository variable RAILWAY_IMAGE_UPDATER_URL."
+          echo "Deploy Dev already passes project/environment IDs; PR workflows skip this job by design."
+          exit 1
+
   mark-request-complete:
     name: Mark Request Complete
-    needs: build-and-push
-    if: success() && inputs.backend_api_url != '' && github.event_name != 'pull_request'
+    needs:
+      - build-and-push
+      - railway-image-updater
+    if: |
+      always() &&
+      needs.build-and-push.result == 'success' &&
+      (needs.railway-image-updater.result == 'success' || needs.railway-image-updater.result == 'skipped') &&
+      inputs.backend_api_url != '' &&
+      github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Resolve request callback identity

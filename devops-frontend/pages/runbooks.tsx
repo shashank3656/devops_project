@@ -1,6 +1,7 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -106,6 +107,57 @@ export default function DevOpsRunbooksPage() {
   }, [libraryProjectId, libraryService, runbooks]);
 
   const hasLibraryFilters = Boolean(libraryProjectId || libraryService);
+
+  const runbookColumns: DataTableColumn<Runbook>[] = useMemo(
+    () => [
+      {
+        id: 'project',
+        header: 'Project',
+        cell: (runbook) => {
+          const project = projects.find((item) => item.id === runbook.project_id);
+          return project ? `${project.name} (${project.code})` : runbook.project_id;
+        },
+      },
+      { id: 'service', header: 'Service', cell: (runbook) => runbook.service || 'General' },
+      {
+        id: 'title',
+        header: 'Title',
+        cell: (runbook) => <span className="ig-cell-title">{runbook.title}</span>,
+      },
+      {
+        id: 'link',
+        header: 'Link',
+        cell: (runbook) =>
+          runbook.link_url ? (
+            <a href={runbook.link_url} target="_blank" rel="noreferrer">
+              Open link
+            </a>
+          ) : (
+            'Inline only'
+          ),
+      },
+      {
+        id: 'actions',
+        header: 'Action',
+        className: 'ig-cell-actions',
+        cell: (runbook) => (
+          <div className="runbooks__action-row">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => void router.push(`/runbooks/${runbook.id}/edit`)}
+            >
+              Edit
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void removeRunbook(runbook.id)}>
+              Delete
+            </button>
+          </div>
+        ),
+      },
+    ],
+    [projects, router],
+  );
 
   const availableEditorServices = useMemo(() => {
     const project = projects.find((item) => String(item.id) === projectId);
@@ -367,54 +419,26 @@ export default function DevOpsRunbooksPage() {
               </select>
             </label>
           </div>
-          {loading ? (
-            <div className="empty-state">Loading runbooks...</div>
-          ) : selectedProjectRunbooks.length === 0 ? (
-            <div className="empty-state">
-              {hasLibraryFilters ? 'No runbooks match the current filters.' : 'No runbooks yet.'}
-            </div>
-          ) : (
-            <div className="runbooks__table-wrap">
-              <table className="templates-table">
-                <thead>
-                  <tr>
-                    <th>Project</th>
-                    <th>Service</th>
-                    <th>Title</th>
-                    <th>Link</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedProjectRunbooks.map((runbook) => {
-                    const project = projects.find((item) => item.id === runbook.project_id);
-                    return (
-                      <tr key={runbook.id}>
-                        <td>{project ? `${project.name} (${project.code})` : runbook.project_id}</td>
-                        <td>{runbook.service || 'General'}</td>
-                        <td>{runbook.title}</td>
-                        <td>{runbook.link_url ? <a href={runbook.link_url} target="_blank" rel="noreferrer">Open link</a> : 'Inline only'}</td>
-                        <td>
-                          <div className="runbooks__action-row">
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => void router.push(`/runbooks/${runbook.id}/edit`)}
-                            >
-                              Edit
-                            </button>
-                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void removeRunbook(runbook.id)}>
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <div className="ig-legacy-table">
+            <DataTable<Runbook>
+              label="Project runbooks"
+              columns={runbookColumns}
+              rows={selectedProjectRunbooks}
+              rowKey={(runbook) => runbook.id}
+              loading={loading}
+              onRowOpen={(runbook) => void router.push(`/runbooks/${runbook.id}/edit`)}
+              empty={
+                <EmptyState
+                  title={hasLibraryFilters ? 'No runbooks match filters' : 'No runbooks yet'}
+                  body={
+                    hasLibraryFilters
+                      ? 'Try clearing the project or service filter.'
+                      : 'Create a runbook to attach recovery steps to a project service.'
+                  }
+                />
+              }
+            />
+          </div>
         </section>
       </div>
     </DevOpsLayout>

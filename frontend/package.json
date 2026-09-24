@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint . --ext .js,.jsx,.ts,.tsx"
+    "lint": "eslint ."
   },
   "dependencies": {
     "next": "16.2.3",

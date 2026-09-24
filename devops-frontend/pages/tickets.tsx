@@ -1,7 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import {
+  BulkBar,
+  CostCheckCard,
+  DataTable,
+  Day2Banner,
+  InspectorDrawer,
+  PlanReviewCard,
+  PolicyChecksCard,
+  SavedViews,
+  UndoToaster,
+  useSavedFilterViews,
+  formatRelativeTime,
+  useUndoQueue,
+  type DataTableColumn,
+  type PlanReview,
+  type PolicyCheckSummary,
+  type RequestCostCheck,
+  type RequestOperation,
+  type RowKey,
+  type SavedView,
+} from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
+import RequestPRImpact from '../components/RequestPRImpact';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
 import { asRecord, getString } from '../lib/payload';
@@ -17,6 +39,29 @@ const STATUS_OPTIONS = [
   { value: 'in_progress', label: 'In progress' },
   { value: 'completed', label: 'Completed' },
   { value: 'rejected', label: 'Rejected' },
+];
+
+interface TicketFilters {
+  idFilter: string;
+  team: string;
+  projectId: string;
+  cloud: string;
+  status: string;
+  search: string;
+  requester: string;
+  sortBy: string;
+  sortOrder: string;
+  atRisk: boolean;
+}
+
+const DEFAULT_TICKET_FILTERS: TicketFilters = {
+  idFilter: '', team: '', projectId: '', cloud: '', status: '', search: '', requester: '', sortBy: 'created_at', sortOrder: 'desc', atRisk: false,
+};
+
+const TICKET_VIEW_PRESETS: SavedView<TicketFilters>[] = [
+  { name: 'Needs DevOps review', filters: { ...DEFAULT_TICKET_FILTERS, status: 'pending_devops_approval' } },
+  { name: 'Overdue or due soon', filters: { ...DEFAULT_TICKET_FILTERS, atRisk: true, sortBy: 'due_date', sortOrder: 'asc' } },
+  { name: 'In progress', filters: { ...DEFAULT_TICKET_FILTERS, status: 'in_progress', sortBy: 'updated_at' } },
 ];
 
 function getStatusBadgeClass(status: string): string {
@@ -135,6 +180,27 @@ interface TicketDetail extends TicketRow {
   blocked_by_with_status?: BlockedByItem[];
   cost_risk_preview?: CostRiskPreview | null;
   approval_context?: ApprovalContext | null;
+  plan_review?: PlanReview | null;
+  policy_checks?: PolicyCheckSummary | null;
+  cost_check?: RequestCostCheck | null;
+  operation?: RequestOperation | null;
+  last_merge?: {
+    pr_number: number;
+    title: string;
+    risk_level: string;
+    score: number;
+    pr_url?: string;
+    change_brief?: { headline?: string; risk_because?: string[]; changing?: { label: string; count: number }[] };
+    similar_merges?: { pr_number: number; title?: string; headline?: string; later_revert?: { pr_number: number } }[];
+  } | null;
+  high_risk_merge?: {
+    required?: boolean;
+    acknowledged?: boolean;
+    message?: string;
+    change_brief?: { headline?: string; risk_because?: string[]; changing?: { label: string; count: number }[] };
+    similar_merges?: { pr_number: number; title?: string; headline?: string; later_revert?: { pr_number: number } }[];
+    ack?: { username?: string; reasons?: string[]; created_at?: string };
+  } | null;
 }
 
 interface RequestComment {
@@ -293,6 +359,7 @@ export default function DevOpsTickets() {
   const [recentIds, setRecentIds] = useState<number[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const detailSeq = useRef(0);
   const [detailRequest, setDetailRequest] = useState<TicketDetail | null>(null);
   const [detailComments, setDetailComments] = useState<RequestComment[]>([]);
   const [detailTimeline, setDetailTimeline] = useState<RequestTimelineEvent[]>([]);
@@ -302,14 +369,25 @@ export default function DevOpsTickets() {
   const [commentBody, setCommentBody] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
-  const [actioning, setActioning] = useState<'approve' | 'reject' | null>(null);
-  const workspaceRef = useRef<HTMLDivElement>(null);
+  const [ackHighRiskMerge, setAckHighRiskMerge] = useState(false);
+  const [ackReasons, setAckReasons] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [pendingDecisions, setPendingDecisions] = useState<Record<number, string>>({});
+  const [actionError, setActionError] = useState('');
+  const undoQueue = useUndoQueue(6000);
   const detailRequestIsAccess = isAccessRequest(detailRequest);
   const detailServiceBundle = getRequestServiceBundle(detailRequest);
   const detailServiceBundleGroups = groupServiceBundleByEnvironment(detailServiceBundle, detailRequest);
   const limit = 20;
 
   const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
+  const { remoteViews, ready: savedViewsReady, saveRemote, deleteRemote } = useSavedFilterViews<TicketFilters>({
+    apiUrl,
+    token,
+    scope: 'devops_tickets',
+    storageKey: 'infragate.devops.tickets.views',
+    portal: 'devops',
+  });
 
   const hasActiveFilters = Boolean(idFilter || team || projectId || cloud || status || search || requester || atRisk);
   const activeFilterCount = [
@@ -371,6 +449,9 @@ export default function DevOpsTickets() {
 
   const loadDetail = async (id: number, syncUrl = true) => {
     if (!token) return;
+    detailSeq.current += 1;
+    const seq = detailSeq.current;
+    const isStale = () => seq !== detailSeq.current;
     setDetailId(id);
     setDetailLoading(true);
     setDetailError('');
@@ -391,12 +472,15 @@ export default function DevOpsTickets() {
       const detailData = asRecord(await detailRes.json());
       const commentsData = commentsRes.ok ? asRecord(await commentsRes.json().catch(() => ({}))) : {};
       const timelineData = timelineRes.ok ? asRecord(await timelineRes.json().catch(() => ({}))) : {};
+      if (isStale()) return;
 
       const detailRequestData = asRecord(detailData.request);
       setDetailRequest((detailData.request as TicketDetail | null) || null);
       setDetailComments(Array.isArray(commentsData.comments) ? (commentsData.comments as RequestComment[]) : []);
       setDetailTimeline(Array.isArray(timelineData.timeline) ? (timelineData.timeline as RequestTimelineEvent[]) : []);
       setRejectReason(getString(detailRequestData.reject_reason));
+      setAckHighRiskMerge(false);
+      setAckReasons('');
       setCommentBody('');
 
       addRecentRequestId(id);
@@ -405,22 +489,21 @@ export default function DevOpsTickets() {
       if (syncUrl) {
         router.replace(`/tickets?id=${id}`, undefined, { shallow: true });
       }
-
-      setTimeout(() => {
-        workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 0);
     } catch (error) {
+      if (isStale()) return;
       const message = error instanceof Error ? error.message : 'Failed to load request';
       setDetailError(message);
       setDetailRequest(null);
       setDetailComments([]);
       setDetailTimeline([]);
     } finally {
-      setDetailLoading(false);
+      if (!isStale()) setDetailLoading(false);
     }
   };
 
   const closeDetail = () => {
+    detailSeq.current += 1;
+    setDetailLoading(false);
     setDetailId(null);
     setDetailRequest(null);
     setDetailComments([]);
@@ -435,6 +518,21 @@ export default function DevOpsTickets() {
   const refreshDetail = async () => {
     if (!detailId) return;
     await loadDetail(detailId, false);
+  };
+
+  const acknowledgePlan = async (planHash: string, note: string) => {
+    if (!token || !detailRequest) return;
+    const id = detailRequest.id;
+    const res = await fetch(`${apiUrl}/api/devops/requests/${id}/plan-review/acknowledge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ plan_hash: planHash, note }),
+    });
+    const data = asRecord(await res.json().catch(() => ({})));
+    const review = data.plan_review as PlanReview | undefined;
+    if (review) setDetailRequest((prev) => (prev && prev.id === id ? { ...prev, plan_review: review } : prev));
+    if (!res.ok) throw new Error(getString(data.error, 'Could not save the acknowledgement.'));
+    setDetailNotice('Destructive plan acknowledged. The pull request can merge once its other checks pass.');
   };
 
   const submitComment = async () => {
@@ -465,36 +563,253 @@ export default function DevOpsTickets() {
     }
   };
 
-  const handleDecision = async (action: 'approve' | 'reject') => {
-    if (!token || !detailRequest) return;
-    setActioning(action);
+  const sendDevopsAction = async (path: string, body?: unknown) => {
+    const res = await fetch(`${apiUrl}${path}`, {
+      method: 'POST',
+      keepalive: true,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const data = asRecord(await res.json().catch(() => ({})));
+    if (res.status === 428 && data.runbook_required) {
+      const err = new Error(getString(data.error, 'Production runbook required')) as Error & { runbookRequired?: boolean };
+      err.runbookRequired = true;
+      throw err;
+    }
+    if (res.status === 428 && data.high_risk_merge_required) {
+      const brief = data.change_brief && typeof data.change_brief === 'object' ? (data.change_brief as Record<string, unknown>) : null;
+      const headline = brief && typeof brief.headline === 'string' ? brief.headline : '';
+      const err = new Error(getString(data.error, 'High-risk merge acknowledgement required')) as Error & {
+        highRiskMergeRequired?: boolean;
+        changeBriefHeadline?: string;
+      };
+      err.highRiskMergeRequired = true;
+      err.changeBriefHeadline = headline;
+      throw err;
+    }
+    if (!res.ok) throw new Error(getString(data.error, `Request failed (${res.status})`));
+    if (Array.isArray(data.errors) && data.errors.length > 0) {
+      throw new Error(`Some requests were not updated: ${(data.errors as string[]).join('; ')}`);
+    }
+    return data;
+  };
+
+  const setPendingFor = (ids: number[], label: string | null) => {
+    setPendingDecisions((prev) => {
+      const next = { ...prev };
+      ids.forEach((id) => {
+        if (label) next[id] = label;
+        else delete next[id];
+      });
+      return next;
+    });
+  };
+
+  // Decisions are held client-side for the undo window; nothing reaches the backend until it closes.
+  const scheduleDecision = (ids: number[], label: string, message: string, commit: () => Promise<unknown>, restoreSelection = false) => {
+    if (ids.length === 0) return;
     setDetailError('');
     setDetailNotice('');
-    try {
-      const res = await fetch(`${apiUrl}/api/devops/requests/${detailRequest.id}/${action}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: action === 'reject' ? JSON.stringify({ reason: rejectReason.trim() }) : undefined,
-      });
-      const data = asRecord(await res.json().catch(() => ({})));
-      if (!res.ok) {
-        setDetailError(getString(data.error, `Failed to ${action} request`));
-        return;
-      }
-      setDetailNotice(getString(data.message, `Request ${action}d.`));
-      if (action === 'reject') setRejectReason('');
-      fetchTickets();
-      await loadDetail(detailRequest.id, false);
-      window.dispatchEvent(new CustomEvent('devops-notifications-refresh'));
-    } catch (_) {
-      setDetailError(`Failed to ${action} request`);
-    } finally {
-      setActioning(null);
-    }
+    setActionError('');
+    setPendingFor(ids, label);
+    undoQueue.schedule({
+      message,
+      commit: async () => {
+        await commit();
+      },
+      revert: () => {
+        setPendingFor(ids, null);
+        if (restoreSelection) setSelectedIds(new Set(ids));
+      },
+      onError: (err) => {
+        const text = err instanceof Error ? err.message : 'The change could not be applied';
+        setActionError(text);
+        fetchTickets();
+      },
+      onCommitted: () => {
+        setPendingFor(ids, null);
+        fetchTickets();
+        if (detailId && ids.includes(detailId)) void loadDetail(detailId, false);
+        window.dispatchEvent(new CustomEvent('devops-notifications-refresh'));
+      },
+    });
   };
+
+  const handleDecision = (action: 'approve' | 'reject') => {
+    if (!token || !detailRequest) return;
+    const id = detailRequest.id;
+    const reason = rejectReason.trim();
+    if (action === 'reject') setRejectReason('');
+    scheduleDecision(
+      [id],
+      action === 'approve' ? 'Approving' : 'Rejecting',
+      `${action === 'approve' ? 'Approved' : 'Rejected'} request #${id}`,
+      async () => {
+        try {
+          await sendDevopsAction(
+            `/api/devops/requests/${id}/${action}`,
+            action === 'reject'
+              ? { reason }
+              : ackHighRiskMerge
+                ? {
+                    high_risk_merge_acknowledged: true,
+                    ack_reasons: ackReasons.split('\n').map((line) => line.trim()).filter(Boolean),
+                  }
+                : undefined,
+          );
+        } catch (err) {
+          const gateErr = err as Error & { runbookRequired?: boolean; highRiskMergeRequired?: boolean; changeBriefHeadline?: string };
+          if (action === 'approve' && gateErr.runbookRequired) {
+            const ok = window.confirm(
+              `${gateErr.message}\n\nAcknowledge that the production runbook is linked (or add one under Guides) and approve anyway?`
+            );
+            if (!ok) throw err;
+            await sendDevopsAction(`/api/devops/requests/${id}/${action}`, { runbook_acknowledged: true });
+            return;
+          }
+          if (action === 'approve' && gateErr.highRiskMergeRequired) {
+            const headline = gateErr.changeBriefHeadline ? `\n\nChanging: ${gateErr.changeBriefHeadline}` : '';
+            const ok = window.confirm(
+              `${gateErr.message}${headline}\n\nAcknowledge the high-risk merge change brief and approve anyway?`
+            );
+            if (!ok) throw err;
+            await sendDevopsAction(`/api/devops/requests/${id}/${action}`, {
+              high_risk_merge_acknowledged: true,
+              ack_reasons: ackReasons.split('\n').map((line) => line.trim()).filter(Boolean),
+            });
+            return;
+          }
+          throw err;
+        }
+      },
+    );
+  };
+
+  const isDevopsPending = (row: { id: number; status: string }) => row.status === 'pending_devops_approval' && !pendingDecisions[row.id];
+  const selectedActionableIds = Array.from<number>(selectedIds).filter((id) => {
+    const row = requests.find((req) => req.id === id);
+    return row ? isDevopsPending(row) : false;
+  });
+
+  const handleBulk = (action: 'approve' | 'reject') => {
+    const ids = selectedActionableIds.slice(0, 50);
+    if (ids.length === 0) return;
+    let reason = '';
+    if (action === 'reject') {
+      const input = window.prompt(`Reject ${ids.length} request(s)? Add a reason (optional, visible to requesters):`);
+      if (input === null) return;
+      reason = input.trim();
+    }
+    setSelectedIds(new Set());
+    scheduleDecision(
+      ids,
+      action === 'approve' ? 'Approving' : 'Rejecting',
+      `${action === 'approve' ? 'Approved' : 'Rejected'} ${ids.length} request${ids.length === 1 ? '' : 's'}`,
+      () => sendDevopsAction(`/api/devops/requests/bulk-${action}`, { ids, reason }),
+      true,
+    );
+  };
+
+  const handleSortChange = (key: string) => {
+    if (sortBy === key) setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
+    else {
+      setSortBy(key);
+      setSortOrder('desc');
+    }
+    setOffset(0);
+  };
+
+  const ticketColumns: DataTableColumn<TicketRow>[] = [
+    {
+      id: 'request',
+      header: 'Request',
+      cell: (req) => {
+        const bundleCount = getRequestBundleCount(req);
+        return (
+          <div className="ig-cell-stack">
+            <span className="ig-cell-title">{req.service || 'Request'}</span>
+            <span className="ig-cell-meta">
+              <span className="ig-mono">#{req.id}</span>
+              {bundleCount > 1 ? ` · ${bundleCount} services` : ''}
+              {isAccessRequest(req) ? ' · Access' : ''}
+              {req.created_by_username ? ` · ${req.created_by_username}` : ''}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'project',
+      header: 'Project',
+      cell: (req) => (
+        <div className="ig-cell-stack">
+          <span>{req.project_name || 'Not set'}</span>
+          <span className="ig-cell-meta">{req.team}</span>
+        </div>
+      ),
+    },
+    {
+      id: 'target',
+      header: 'Target',
+      cell: (req) => (
+        <span className="ig-cell-chips">
+          <span className="ig-chip">{req.env || '—'}</span>
+          <span className="ig-chip ig-chip--muted">{(req.cloud || '—').toUpperCase()}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'priority',
+      header: 'Priority',
+      sortable: true,
+      cell: (req) => (
+        <span className={`ig-priority ig-priority--${(req.priority || 'medium').toLowerCase()}`}>{req.priority || 'medium'}</span>
+      ),
+    },
+    {
+      id: 'due_date',
+      header: 'Due',
+      sortable: true,
+      cell: (req) => (
+        <div className="ig-cell-stack">
+          <span className="ig-cell-meta">{formatDateOnly(req.due_date)}</span>
+          {req.due_status === 'overdue' ? <span className="ig-badge ig-badge--danger">Overdue</span> : null}
+          {req.due_status === 'due_soon' ? <span className="ig-badge ig-badge--medium">Due in 24h</span> : null}
+        </div>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (req) =>
+        pendingDecisions[req.id] ? (
+          <span className="ig-badge ig-badge--info">{pendingDecisions[req.id]}…</span>
+        ) : (
+          <span className={`ticket-status ${getStatusBadgeClass(req.status)}`}>{formatStatus(req.status)}</span>
+        ),
+    },
+    {
+      id: 'updated_at',
+      header: 'Updated',
+      sortable: true,
+      cell: (req) => (
+        <span className="ig-cell-meta" title={formatDateTime(req.updated_at)}>
+          {formatRelativeTime(req.updated_at) || formatDateTime(req.updated_at)}
+        </span>
+      ),
+    },
+    {
+      id: 'pr',
+      header: <span className="ig-sr-only">Pull request</span>,
+      align: 'right',
+      cell: (req) =>
+        req.pr_url ? (
+          <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">
+            PR ↗
+          </a>
+        ) : null,
+    },
+  ];
 
   useEffect(() => {
     if (!token) {
@@ -502,6 +817,7 @@ export default function DevOpsTickets() {
       return;
     }
     fetchTickets();
+    setSelectedIds(new Set());
   }, [token, router, apiUrl, idFilter, team, projectId, cloud, status, search, requester, sortBy, sortOrder, atRisk, offset]);
 
   useEffect(() => {
@@ -549,20 +865,24 @@ export default function DevOpsTickets() {
     loadDetail(id);
   };
 
-  const clearFilters = () => {
-    setIdFilter('');
-    setTeam('');
-    setProjectId('');
-    setCloud('');
-    setStatus('');
-    setSearch('');
-    setRequester('');
-    setSortBy('created_at');
-    setSortOrder('desc');
-    setAtRisk(false);
+  const applyFilterSet = (next: TicketFilters) => {
+    setIdFilter(next.idFilter);
+    setTeam(next.team);
+    setProjectId(next.projectId);
+    setCloud(next.cloud);
+    setStatus(next.status);
+    setSearch(next.search);
+    setRequester(next.requester);
+    setSortBy(next.sortBy);
+    setSortOrder(next.sortOrder);
+    setAtRisk(next.atRisk);
     setOffset(0);
-    setFilterExpanded(false);
+    setFilterExpanded(Boolean(next.team || next.cloud || next.requester || next.atRisk || next.sortBy !== 'created_at' || next.sortOrder !== 'desc'));
   };
+
+  const clearFilters = () => applyFilterSet(DEFAULT_TICKET_FILTERS);
+
+  const currentFilters: TicketFilters = { idFilter, team, projectId, cloud, status, search, requester, sortBy, sortOrder, atRisk };
 
   return (
     <>
@@ -596,6 +916,17 @@ export default function DevOpsTickets() {
               </p>
             </div>
           </div>
+
+          <SavedViews<TicketFilters>
+            storageKey="infragate.devops.tickets.views"
+            current={currentFilters}
+            onApply={applyFilterSet}
+            presets={TICKET_VIEW_PRESETS}
+            canSave={activeFilterCount > 0}
+            serverViews={savedViewsReady ? remoteViews : undefined}
+            onServerSave={saveRemote}
+            onServerDelete={deleteRemote}
+          />
 
           <div className="devops-filter-ribbon card">
             <div className="devops-filter-ribbon__bar">
@@ -715,13 +1046,13 @@ export default function DevOpsTickets() {
             )}
           </div>
 
-          {loading ? (
-            <div className="portal-table-state portal-table-state--loading">
-              <div className="devops-tickets-spinner" />
-              <h3 className="portal-table-state__title">Loading requests</h3>
-              <p className="portal-table-state__copy">We’re refreshing the DevOps queue for you now.</p>
+          {actionError ? (
+            <div className="alert alert-error" role="alert">
+              {actionError}
             </div>
-          ) : listError ? (
+          ) : null}
+
+          {!loading && listError ? (
             <div className="portal-table-state portal-table-state--error">
               <div className="portal-table-state__icon" aria-hidden>!</div>
               <h3 className="portal-table-state__title">We couldn’t load this queue</h3>
@@ -738,104 +1069,38 @@ export default function DevOpsTickets() {
                 <span>Showing {requests.length} of {total} requests</span>
                 <span>Open a row to work the request without leaving this page.</span>
               </div>
-              <div className="devops-tickets-table-card card">
-                {requests.length === 0 ? (
-                  <div className="portal-table-state portal-table-state--empty">
-                    <div className="portal-table-state__icon" aria-hidden>⋯</div>
-                    <h3 className="portal-table-state__title">No requests match these filters</h3>
-                    <p className="portal-table-state__copy">
-                      Clear one or two filters to bring the request queue back into view.
-                    </p>
-                    <div className="portal-table-state__actions">
-                      <button type="button" className="btn btn-secondary" onClick={clearFilters}>
+              <div className="devops-tickets-table-card card ig-table-card">
+                <DataTable<TicketRow>
+                  label="DevOps request queue"
+                  columns={ticketColumns}
+                  rows={requests}
+                  rowKey={(req) => req.id}
+                  loading={loading}
+                  selectable
+                  selectedKeys={selectedIds as Set<RowKey>}
+                  onSelectionChange={(next) => setSelectedIds(new Set(Array.from(next).map(Number)))}
+                  isRowSelectable={isDevopsPending}
+                  activeKey={detailId}
+                  onRowOpen={(req) => void loadDetail(req.id)}
+                  sort={{ key: sortBy, direction: sortOrder === 'asc' ? 'asc' : 'desc' }}
+                  onSortChange={handleSortChange}
+                  rowClassName={(req) => (pendingDecisions[req.id] ? 'is-pending' : undefined)}
+                  rowVersion={(req) => req.status}
+                  empty={
+                    <div className="ig-table-empty">
+                      <strong>No requests match these filters</strong>
+                      <p>Clear a filter or two to bring the queue back.</p>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters}>
                         Clear filters
                       </button>
                     </div>
-                  </div>
-                ) : (
-                  <div className="devops-tickets-table-wrap">
-                    <table className="devops-tickets-table">
-                      <thead>
-                        <tr>
-                          <th>Request #</th>
-                          <th>Project</th>
-                          <th>Team</th>
-                          <th>Env</th>
-                          <th>Cloud</th>
-                          <th>Service / target</th>
-                          <th>Requester</th>
-                          <th>Priority</th>
-                          <th>Due</th>
-                          <th>Status</th>
-                          <th>PR</th>
-                          <th>Updated</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {requests.map((req) => {
-                          const bundleCount = getRequestBundleCount(req);
-                          return (
-                          <tr
-                            key={req.id}
-                            className={detailId === req.id ? 'devops-tickets-table__row--active' : ''}
-                            onClick={() => loadDetail(req.id)}
-                          >
-                            <td><code className="devops-ticket-id">#{req.id}</code></td>
-                            <td>
-                              {req.project_name ? (
-                                <div className="devops-ticket-primary">
-                                  <strong>{req.project_name}</strong>
-                                  {req.project_code ? <span className="devops-ticket-meta">{req.project_code}</span> : null}
-                                </div>
-                              ) : (
-                                <span style={{ color: 'var(--text-muted)' }}>Not set</span>
-                              )}
-                            </td>
-                            <td>{req.team}</td>
-                            <td><span className="devops-ticket-env">{req.env}</span></td>
-                            <td><span className={`devops-ticket-cloud devops-ticket-cloud--${(req.cloud || '').toLowerCase()}`}>{req.cloud}</span></td>
-                            <td>
-                              <div className="devops-ticket-primary">
-                                <strong>{req.service}</strong>
-                              {bundleCount > 1 ? (
-                                <span className="devops-ticket-bundle-badge">{bundleCount} services</span>
-                              ) : null}
-                              {isAccessRequest(req) ? (
-                                <span className="devops-ticket-meta">Access request</span>
-                              ) : null}
-                              </div>
-                            </td>
-                            <td><span className="devops-ticket-meta">{req.created_by_username || 'Not available'}</span></td>
-                            <td><span className={`devops-ticket-priority devops-ticket-priority--${(req.priority || 'medium').toLowerCase()}`}>{req.priority || 'medium'}</span></td>
-                            <td>
-                              <span className="devops-ticket-due">
-                                <span className="devops-ticket-meta">{formatDateOnly(req.due_date)}</span>
-                                {req.due_status === 'overdue' && <span className="devops-ticket-due-badge devops-ticket-due-badge--overdue">Overdue</span>}
-                                {req.due_status === 'due_soon' && <span className="devops-ticket-due-badge devops-ticket-due-badge--soon">Due in 24h</span>}
-                              </span>
-                            </td>
-                            <td><span className={`ticket-status ${getStatusBadgeClass(req.status)}`}>{formatStatus(req.status)}</span></td>
-                            <td>
-                              {req.pr_url ? (
-                                <a
-                                  href={req.pr_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="devops-ticket-pr-link"
-                                  onClick={(event) => event.stopPropagation()}
-                                >
-                                  View PR
-                                </a>
-                              ) : <span className="devops-ticket-meta">Pending</span>}
-                            </td>
-                            <td className="devops-ticket-updated"><span className="devops-ticket-meta">{formatDateTime(req.updated_at)}</span></td>
-                          </tr>
-                        )})}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                  }
+                />
               </div>
+              <p className="ig-table-hint">
+                <span className="ig-kbd">J</span>/<span className="ig-kbd">K</span> move · <span className="ig-kbd">Enter</span> open ·{' '}
+                <span className="ig-kbd">X</span> select · <span className="ig-kbd">Esc</span> close
+              </p>
               {requests.length > 0 && total > limit && (
                 <div className="devops-tickets-pagination">
                   <span className="devops-tickets-pagination-info">
@@ -854,34 +1119,66 @@ export default function DevOpsTickets() {
             </>
           )}
 
+          <BulkBar count={selectedIds.size} noun="request" onClear={() => setSelectedIds(new Set())}>
+            <button type="button" className="btn btn-primary btn-sm" disabled={selectedActionableIds.length === 0} onClick={() => handleBulk('approve')}>
+              Approve
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={selectedActionableIds.length === 0} onClick={() => handleBulk('reject')}>
+              Reject
+            </button>
+          </BulkBar>
+
+          <UndoToaster
+            entries={undoQueue.entries}
+            onUndo={undoQueue.undo}
+            onCommit={(id) => void undoQueue.commitNow(id)}
+            onUndoLatest={undoQueue.undoLatest}
+          />
+
           {(detailId || detailLoading || detailRequest) && (
-            <section ref={workspaceRef} className="portal-surface devops-approval-workspace">
-              <div className="portal-surface__header devops-approval-workspace__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Request Workspace</span>
-                  <h2 className="portal-surface__title">
-                    {detailRequest ? (detailRequestIsAccess ? `Access request #${detailRequest.id}` : `Request #${detailRequest.id}`) : 'Loading request'}
-                  </h2>
-                  <p className="portal-surface__subtitle">
-                    Review request context, dependency pressure, comments, and timeline without leaving the requests queue.
-                  </p>
-                </div>
-                <div className="portal-page__actions devops-approval-workspace__top-actions">
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={refreshDetail} disabled={detailLoading}>
+            <InspectorDrawer
+              open
+              onClose={closeDetail}
+              resetKey={detailRequest?.id ?? null}
+              label="Request details"
+              eyebrow={detailRequestIsAccess ? 'Access request' : 'Request'}
+              title={
+                detailRequest ? (
+                  <>
+                    <span className="ig-mono">#{detailRequest.id}</span> {detailRequest.service}
+                  </>
+                ) : (
+                  'Loading request'
+                )
+              }
+              subtitle={detailRequest ? [detailRequest.project_name, detailRequest.team, detailRequest.env].filter(Boolean).join(' · ') : undefined}
+              headerActions={
+                <>
+                  {detailRequest && pendingDecisions[detailRequest.id] ? (
+                    <span className="ig-badge ig-badge--info">{pendingDecisions[detailRequest.id]}…</span>
+                  ) : null}
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={refreshDetail} disabled={detailLoading}>
                     Refresh
                   </button>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={closeDetail}>
-                    Close
-                  </button>
-                </div>
-              </div>
-
+                </>
+              }
+            >
+              <div className="devops-approval-workspace">
               {detailLoading && !detailRequest ? (
                 <div className="empty-state">Loading approval workspace...</div>
               ) : (
                 <>
                   {detailError && <div className="alert alert-error">{detailError}</div>}
                   {detailNotice && <div className="devops-approval-workspace__notice">{detailNotice}</div>}
+
+                  {detailRequest ? (
+                    <>
+                      <Day2Banner operation={detailRequest.operation} />
+                      <PlanReviewCard review={detailRequest.plan_review} env={detailRequest.env} onAcknowledge={acknowledgePlan} />
+                      <PolicyChecksCard summary={detailRequest.policy_checks} />
+                      <CostCheckCard check={detailRequest.cost_check} />
+                    </>
+                  ) : null}
 
                   {detailRequest && (
                     <div className="devops-approval-workspace__grid">
@@ -1130,6 +1427,9 @@ export default function DevOpsTickets() {
                         {detailRequest.terraform_plan_output && (
                           <details className="devops-approval-workspace__details">
                             <summary>Terraform plan output</summary>
+                            <p className="portal-surface__subtitle" style={{ marginBottom: 8 }}>
+                              Compare add/change/destroy counts with the PR file list in the impact brief. Destroys and “plan 2 / PR 12 files” mismatches are flagged there.
+                            </p>
                             <pre className="devops-approval-workspace__code">{detailRequest.terraform_plan_output}</pre>
                           </details>
                         )}
@@ -1146,6 +1446,7 @@ export default function DevOpsTickets() {
                               Open PR
                             </a>
                           ) : null}
+                          <RequestPRImpact apiUrl={apiUrl} token={typeof window === 'undefined' ? null : localStorage.getItem(DEVOPS_TOKEN_KEY)} requestId={detailRequest.id} />
                           <a href={`/incidents`} className="btn btn-secondary btn-sm">
                             Incident panel
                           </a>
@@ -1162,6 +1463,60 @@ export default function DevOpsTickets() {
                           </p>
                         </div>
 
+                        {detailRequest.high_risk_merge?.required || detailRequest.last_merge ? (
+                          <div className="admin-request-detail-modal__notice" style={{ marginBottom: 16 }}>
+                            <strong className="admin-request-detail-modal__notice-title">
+                              {detailRequest.high_risk_merge?.change_brief?.headline
+                                || detailRequest.last_merge?.change_brief?.headline
+                                || 'Recent merge'}
+                            </strong>
+                            <p className="admin-request-detail-modal__notice-copy">
+                              {detailRequest.high_risk_merge?.message
+                                || `Last merge PR #${detailRequest.last_merge?.pr_number} · ${detailRequest.last_merge?.risk_level} · score ${detailRequest.last_merge?.score}`}
+                            </p>
+                            {(detailRequest.high_risk_merge?.change_brief?.risk_because
+                              || detailRequest.last_merge?.change_brief?.risk_because
+                              || []).slice(0, 3).map((reason) => (
+                                <p key={reason} className="admin-request-detail-modal__notice-copy">{reason}</p>
+                              ))}
+                            {(detailRequest.high_risk_merge?.similar_merges
+                              || detailRequest.last_merge?.similar_merges
+                              || []).slice(0, 3).map((item) => (
+                                <p key={item.pr_number} className="admin-request-detail-modal__notice-copy">
+                                  Similar #{item.pr_number} {item.headline || item.title || ''}
+                                  {item.later_revert ? ` · later revert #${item.later_revert.pr_number}` : ''}
+                                </p>
+                              ))}
+                            {detailRequest.high_risk_merge?.ack ? (
+                              <p className="admin-request-detail-modal__notice-copy">
+                                Acknowledged by {detailRequest.high_risk_merge.ack.username || 'reviewer'}
+                                {detailRequest.high_risk_merge.ack.reasons?.length
+                                  ? `: ${detailRequest.high_risk_merge.ack.reasons.join('; ')}`
+                                  : ''}
+                              </p>
+                            ) : null}
+                            {canActOnDetail && detailRequest.high_risk_merge?.required ? (
+                              <>
+                                <label className="portal-toolbar__item" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={ackHighRiskMerge}
+                                    onChange={(event) => setAckHighRiskMerge(event.target.checked)}
+                                  />
+                                  <span>Acknowledge risks in this change brief</span>
+                                </label>
+                                <textarea
+                                  className="input devops-approval-workspace__textarea"
+                                  rows={3}
+                                  value={ackReasons}
+                                  onChange={(event) => setAckReasons(event.target.value)}
+                                  placeholder="Exception reasons (required)"
+                                />
+                              </>
+                            ) : null}
+                          </div>
+                        ) : null}
+
                         <label className="label" htmlFor="devops-reject-reason">Reject reason</label>
                         <textarea
                           id="devops-reject-reason"
@@ -1177,17 +1532,17 @@ export default function DevOpsTickets() {
                             type="button"
                             className="btn btn-primary"
                             onClick={() => handleDecision('approve')}
-                            disabled={!canActOnDetail || actioning !== null}
+                            disabled={!canActOnDetail || Boolean(pendingDecisions[detailRequest.id]) || (Boolean(detailRequest.high_risk_merge?.required) && (!ackHighRiskMerge || !ackReasons.trim()))}
                           >
-                            {actioning === 'approve' ? 'Approving...' : 'Approve'}
+                            Approve
                           </button>
                           <button
                             type="button"
                             className="btn btn-secondary"
                             onClick={() => handleDecision('reject')}
-                            disabled={!canActOnDetail || actioning !== null}
+                            disabled={!canActOnDetail || Boolean(pendingDecisions[detailRequest.id])}
                           >
-                            {actioning === 'reject' ? 'Rejecting...' : 'Reject'}
+                            Reject
                           </button>
                         </div>
                       </section>
@@ -1267,7 +1622,8 @@ export default function DevOpsTickets() {
                   )}
                 </>
               )}
-            </section>
+              </div>
+            </InspectorDrawer>
           )}
         </div>
       </DevOpsLayout>

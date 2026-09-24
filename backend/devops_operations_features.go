@@ -26,6 +26,7 @@ type changeCalendarSummary struct {
 
 type changeCalendarItem struct {
 	RequestID    int       `json:"request_id"`
+	ChangeID     int       `json:"change_id,omitempty"`
 	ProjectID    *int      `json:"project_id,omitempty"`
 	ProjectName  string    `json:"project_name,omitempty"`
 	ProjectCode  string    `json:"project_code,omitempty"`
@@ -274,6 +275,39 @@ func devopsChangeCalendarHandler(w http.ResponseWriter, r *http.Request) {
 			Summary:      fmt.Sprintf("%s · %s · %s", req.Team, req.Cloud, req.Service),
 		})
 	}
+	changes, _ := listChangeRequests(0, "", "", "")
+	for _, change := range changes {
+		if change.CABStatus != "pending" && !changeRequiresCAB(change.ChangeType, change.Environment) {
+			continue
+		}
+		if change.CABStatus == "approved" {
+			continue
+		}
+		window := now.Add(2 * time.Hour)
+		if change.CABWindowEnd != nil {
+			window = *change.CABWindowEnd
+		}
+		items = append(items, changeCalendarItem{
+			ChangeID:     change.ID,
+			ProjectID:    change.ProjectID,
+			ProjectName:  change.ProjectName,
+			ProjectCode:  change.ProjectCode,
+			Team:         change.Author,
+			Environment:  change.Environment,
+			Service:      change.Service,
+			Status:       change.Status,
+			Priority:     "normal",
+			DueDate:      window,
+			WindowStart:  now,
+			WindowEnd:    window,
+			CalendarDate: window.Format("2006-01-02"),
+			ChangeType:   "CAB review",
+			RiskLevel:    "high",
+			Summary:      firstNonEmpty(change.Title, change.ChangeNumber) + " needs CAB",
+		})
+		summary.UpcomingCount++
+	}
+
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].DueDate.Before(items[j].DueDate)
 	})

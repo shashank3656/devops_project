@@ -106,6 +106,8 @@ type opsCommandCenterSummary struct {
 	DriftedProjects     int `json:"drifted_projects"`
 	UnhealthyNamespaces int `json:"unhealthy_namespaces"`
 	ActiveOverrides     int `json:"active_overrides"`
+	BudgetAlerts        int `json:"budget_alerts"`
+	IdleResources       int `json:"idle_resources"`
 }
 
 type opsCommandCenterPayload struct {
@@ -120,6 +122,7 @@ type opsCommandCenterPayload struct {
 	ExpiryItems         []expiryTrackerItem            `json:"expiry_items"`
 	NamespaceAlerts     []opsCommandNamespaceAlert     `json:"namespace_alerts"`
 	ActiveOverrides     []projectAccessOverride        `json:"active_overrides"`
+	CostDigest          *fleetCostDigest               `json:"cost_digest,omitempty"`
 }
 
 type projectDependencyNode struct {
@@ -1147,6 +1150,17 @@ func buildOpsCommandCenterPayload(projectID int) (*opsCommandCenterPayload, erro
 	}
 
 	payload.Summary.DriftedProjects = len(payload.DriftedProjects)
+	if digest, err := buildFleetCostDigest(time.Now()); err == nil && digest != nil {
+		payload.CostDigest = digest
+		payload.Summary.BudgetAlerts = len(digest.BudgetAlerts)
+		payload.Summary.IdleResources = len(digest.IdleResources)
+		if len(payload.CostDigest.BudgetAlerts) > 8 {
+			payload.CostDigest.BudgetAlerts = payload.CostDigest.BudgetAlerts[:8]
+		}
+		if len(payload.CostDigest.IdleResources) > 10 {
+			payload.CostDigest.IdleResources = payload.CostDigest.IdleResources[:10]
+		}
+	}
 	return payload, nil
 }
 

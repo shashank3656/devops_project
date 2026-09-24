@@ -1,14 +1,41 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { fetchK8sEvents, formatDateTime, K8sEventsData, readQueryString } from '../../lib/k8sWorkspace';
 
+type EventRow = K8sEventsData['items'][number];
+
 function eventTone(severity: string) {
-  return severity.toLowerCase() === 'normal' ? 'k8s-data-pill k8s-data-pill--normal' : 'k8s-data-pill k8s-data-pill--warning';
+  return severity.toLowerCase() === 'normal' ? 'low' : 'medium';
 }
+
+const EVENT_COLUMNS: DataTableColumn<EventRow>[] = [
+  { id: 'time', header: 'Time', cell: (item) => <span className="ig-cell-meta">{formatDateTime(item.timestamp)}</span> },
+  {
+    id: 'severity',
+    header: 'Severity',
+    cell: (item) => <span className={`ig-chip ig-chip--${eventTone(item.severity)}`}>{item.severity}</span>,
+  },
+  { id: 'reason', header: 'Reason', cell: (item) => item.reason || '—' },
+  {
+    id: 'resource',
+    header: 'Resource',
+    cell: (item) => (
+      <div className="ig-cell-stack">
+        <span className="ig-cell-title">{item.resource_name || 'Resource'}</span>
+        <span className="ig-cell-meta">{item.resource_kind || 'Unknown kind'}</span>
+      </div>
+    ),
+  },
+  { id: 'namespace', header: 'Namespace', cell: (item) => item.namespace },
+  { id: 'cluster', header: 'Cluster', cell: (item) => item.cluster_name },
+  { id: 'count', header: 'Count', align: 'right', className: 'ig-cell-num', cell: (item) => item.occurrence_count },
+  { id: 'message', header: 'Message', cell: (item) => <span className="ig-cell-wrap">{item.message}</span> },
+];
 
 function eventMatchesSearch(query: string, item: K8sEventsData['items'][number]) {
   if (!query) return true;
@@ -208,49 +235,15 @@ export default function DevOpsK8sEventsPage() {
               </div>
             </div>
 
-            <div className="table-scroll">
-              <table className="templates-table k8s-data-table">
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>Severity</th>
-                    <th>Reason</th>
-                    <th>Resource</th>
-                    <th>Namespace</th>
-                    <th>Cluster</th>
-                    <th>Count</th>
-                    <th>Message</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((item) => (
-                    <tr key={item.id}>
-                      <td>{formatDateTime(item.timestamp)}</td>
-                      <td><span className={`portal-pill ${eventTone(item.severity)}`}>{item.severity}</span></td>
-                      <td>{item.reason || '—'}</td>
-                      <td>
-                        <div className="k8s-link-cell">
-                          <span className="k8s-link-cell__title">{item.resource_name || 'Resource'}</span>
-                          <span className="k8s-link-cell__meta">{item.resource_kind || 'Unknown kind'}</span>
-                        </div>
-                      </td>
-                      <td>{item.namespace}</td>
-                      <td>{item.cluster_name}</td>
-                      <td>{item.occurrence_count}</td>
-                      <td>{item.message}</td>
-                    </tr>
-                  ))}
-                  {!loading && visibleRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={8}>
-                        <div className="portal-empty">
-                          <p>No events match the current filters.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            <div className="ig-legacy-table">
+              <DataTable<EventRow>
+                label="Cluster events"
+                columns={EVENT_COLUMNS}
+                rows={visibleRows}
+                rowKey={(item) => item.id}
+                loading={loading}
+                empty={<EmptyState title="No events found" body="No events match the current filters." />}
+              />
             </div>
           </section>
         </K8sWorkspaceShell>

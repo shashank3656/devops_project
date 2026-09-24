@@ -26,6 +26,28 @@ interface OpsSummary {
   drifted_projects: number;
   unhealthy_namespaces: number;
   active_overrides: number;
+  budget_alerts: number;
+  idle_resources: number;
+}
+
+interface CostDigest {
+  summary: string;
+  total_idle_monthly_usd: number;
+  budget_alerts: Array<{
+    project_id: number;
+    project_name: string;
+    alert_level: string;
+    projected_percent: number;
+  }>;
+  idle_resources: Array<{
+    project_id: number;
+    project_name: string;
+    request_id: number;
+    environment: string;
+    service: string;
+    days_idle: number;
+    monthly_cost: number;
+  }>;
 }
 
 interface ProjectPulse {
@@ -138,6 +160,7 @@ interface OpsPayload {
   expiry_items: ExpiryItem[];
   namespace_alerts: NamespaceAlert[];
   active_overrides: AccessOverride[];
+  cost_digest?: CostDigest | null;
 }
 
 type QueueFocus =
@@ -631,6 +654,8 @@ export default function OpsCommandCenterPage() {
                   <span className="portal-pill">Failures {filteredSummary.deliveryFailures}</span>
                   <span className="portal-pill">Expiry {filteredSummary.actionableExpiry}</span>
                   <span className="portal-pill">Namespaces {filteredSummary.namespaceAlerts}</span>
+                  <span className="portal-pill">Budget {center.summary.budget_alerts ?? 0}</span>
+                  <span className="portal-pill">Idle {center.summary.idle_resources ?? 0}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => setActivePanel((current) => current === 'views' ? null : 'views')}>
@@ -639,6 +664,40 @@ export default function OpsCommandCenterPage() {
                 </div>
               </div>
             </section>
+
+            {center.cost_digest &&
+            (center.cost_digest.budget_alerts.length > 0 || center.cost_digest.idle_resources.length > 0) ? (
+              <section className="portal-surface" style={{ marginBottom: 24 }}>
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Cost &amp; idle</span>
+                    <h2 className="portal-surface__title">Budget and idle digest</h2>
+                    <p className="portal-surface__subtitle">{center.cost_digest.summary}</p>
+                  </div>
+                  <Link href="/projects" className="btn btn-secondary btn-sm">
+                    Project budgets
+                  </Link>
+                </div>
+                {center.cost_digest.budget_alerts.length > 0 ? (
+                  <ul className="portal-list" style={{ marginBottom: 16 }}>
+                    {center.cost_digest.budget_alerts.map((row) => (
+                      <li key={row.project_id}>
+                        <strong>{row.project_name}</strong> — {row.alert_level} ({Math.round(row.projected_percent)}% projected)
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {center.cost_digest.idle_resources.length > 0 ? (
+                  <ul className="portal-list">
+                    {center.cost_digest.idle_resources.slice(0, 8).map((row) => (
+                      <li key={`${row.project_id}-${row.request_id}`}>
+                        #{row.request_id} {row.project_name} · {row.environment}/{row.service} — idle {row.days_idle}d (~${row.monthly_cost}/mo)
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </section>
+            ) : null}
 
             <section className="portal-surface portal-surface--tight" style={{ marginBottom: 24 }}>
               <div className="portal-toolbar">
@@ -897,6 +956,9 @@ export default function OpsCommandCenterPage() {
                             <span className="portal-pill">{item.state} · score {item.drift_score}</span>
                           </div>
                           <p style={{ marginTop: 8, color: 'var(--color-text-muted)' }}>{item.summary}</p>
+                          <Link href={`/projects/${item.project_id}#drift`} className="btn btn-secondary btn-sm">
+                            Review and fix drift
+                          </Link>
                         </article>
                       ))}
                     </div>

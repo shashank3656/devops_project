@@ -63,6 +63,8 @@ interface GitOpsProjectSummary {
   group_id: string;
   project_key: string;
   repo_root: string;
+  github_owner?: string;
+  github_repo?: string;
   live_request_path_pattern: string;
   manifest_path_pattern: string;
   branch_pattern: string;
@@ -434,6 +436,9 @@ export default function GitOpsProjectsPage() {
                           <span className="portal-pill">Group ID {project.group_id || 'Pending'}</span>
                           <span className="portal-pill">{project.default_cloud}</span>
                           <span className="portal-pill">{project.default_environment}</span>
+                          {project.github_owner && project.github_repo ? (
+                            <span className="portal-pill">{project.github_owner}/{project.github_repo}</span>
+                          ) : null}
                           <span className="portal-pill">{project.current_permission}</span>
                         </div>
 

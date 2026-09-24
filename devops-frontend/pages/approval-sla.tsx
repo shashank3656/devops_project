@@ -1,6 +1,7 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import ApprovalsSectionNav from '../components/ApprovalsSectionNav';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -120,6 +121,8 @@ export default function DevOpsApprovalSLAPage() {
             <Link href="/tickets" className="btn btn-primary">Open tickets</Link>
           </div>
         </div>
+
+        <ApprovalsSectionNav />
 
         {loading ? <div className="portal-surface"><div className="empty-state">Loading approval SLA...</div></div> : null}
         {error ? <div className="alert alert-error">{error}</div> : null}

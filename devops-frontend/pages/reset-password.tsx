@@ -16,11 +16,6 @@ export default function DevOpsResetPassword() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    localStorage.setItem('infra-portal-theme', 'dark');
-  }, []);
-
-  useEffect(() => {
     const queryToken = router.query.token;
     if (typeof queryToken === 'string') {
       setToken(queryToken);

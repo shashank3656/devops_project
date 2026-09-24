@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AdminLayout from '../../components/AdminLayout';
 
-const EVENT_OPTIONS = ['approved', 'pr_created', 'rejected', 'assigned'];
+const EVENT_OPTIONS = ['approved', 'pr_created', 'rejected', 'assigned', 'change.created', 'change.updated', 'incident.opened', 'incident.updated', 'watch.failed'];
 
 export default function NewWebhookPage() {
   const router = useRouter();

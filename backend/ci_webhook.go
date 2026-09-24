@@ -46,6 +46,10 @@ func ciWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		PlanOutput    string `json:"plan_output"`
 		CostEstimate  string `json:"cost_estimate"`
 		Details       string `json:"details"`
+		// Native Checkov, tfsec or conftest JSON, one entry per tool.
+		PolicyReports []policyReportInput `json:"policy_reports"`
+		// Output of `infracost breakdown --format json`.
+		InfracostReport json.RawMessage `json:"infracost_report"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
@@ -63,7 +67,21 @@ func ciWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Update terraform plan output if provided
 	if payload.PlanOutput != "" {
-		_ = UpdatePRRequestTerraformPlanOutput(req.ID, payload.PlanOutput)
+		if err := UpdatePRRequestTerraformPlanOutput(req.ID, payload.PlanOutput); err == nil {
+			withPlan := *req
+			withPlan.TerraformPlanOutput = payload.PlanOutput
+			go publishPlanReviewStatus(&withPlan, buildPlanReview(&withPlan))
+		}
+	}
+	policyProblems := []string{}
+	if len(payload.PolicyReports) > 0 {
+		policyProblems = ingestPolicyReports(req, payload.PolicyReports)
+	}
+	costError := ""
+	if len(payload.InfracostReport) > 0 && string(payload.InfracostReport) != "null" {
+		if err := ingestInfracostReport(req, payload.InfracostReport); err != nil {
+			costError = err.Error()
+		}
 	}
 	// Log the CI event
 	AppendGitHubLog("ci_"+payload.Status, "CI pipeline: "+payload.Status, payload.Details)
@@ -82,13 +100,27 @@ func ciWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	log.Printf("[CI Webhook] request_id=%d status=%s normalized=%s completed=%t", req.ID, payload.Status, normalizedStatus, markedCompleted)
+	deployStatus := ""
+	switch normalizedStatus {
+	case "merge_success", "merge_pipeline_success", "merge_succeeded":
+		deployStatus = "merged"
+	case "apply_success", "apply_completed", "deploy_success", "deployment_success":
+		deployStatus = "applied"
+	case "apply_failed", "deploy_failed":
+		deployStatus = "failed"
+	}
+	if deployStatus != "" {
+		refreshPRImpactForRequest(req, deployStatus)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeCIWebhookJSON(w, map[string]interface{}{
 		"status":            "ok",
 		"request_id":        req.ID,
-		"updated":           payload.PlanOutput != "" || markedCompleted,
+		"updated":           payload.PlanOutput != "" || markedCompleted || len(payload.PolicyReports) > len(policyProblems) || (len(payload.InfracostReport) > 0 && costError == ""),
 		"marked_completed":  markedCompleted,
 		"normalized_status": normalizedStatus,
+		"policy_errors":     policyProblems,
+		"cost_error":        costError,
 	})
 }
 

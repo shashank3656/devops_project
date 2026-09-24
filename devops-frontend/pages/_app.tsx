@@ -1,16 +1,20 @@
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { useEffect } from 'react';
+import { applyTheme, installApiUrlRewrite } from '@infragate/ui';
 import { ApiUrlProvider } from '../context/ApiUrlContext';
 import { DEVOPS_SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
+import '../../shared-ui/tokens.css';
+import '../../shared-ui/workspace.css';
+import '../../shared-ui/theme.css';
+
+// Must run before any page fetches (child effects run before this component's effects).
+installApiUrlRewrite(process.env.NEXT_PUBLIC_API_URL);
 
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('infra-portal-theme', 'dark');
-      document.documentElement.setAttribute('data-theme', 'dark');
-    }
+    applyTheme();
   }, []);
   return (
     <ApiUrlProvider>

@@ -89,11 +89,20 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 		case "promote":
 			handleRequestPromote(w, r, id, req, userID)
 			return
+		case "pr-impact":
+			requestPRImpactHandler(w, r, id, userID)
+			return
 		case "timeline":
 			handleRequestTimeline(w, r, id, userID)
 			return
 		case "dependencies":
 			handleRequestDependencies(w, r, id, req, userID)
+			return
+		case "lifetime":
+			handleRequestLifetime(w, r, id, req, userID)
+			return
+		case "day2":
+			handleRequestDay2(w, r, id, req, userID)
 			return
 		}
 	}
@@ -244,6 +253,7 @@ func handleRequestSubmit(w http.ResponseWriter, r *http.Request, id int, req *PR
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	applyProjectDefaultLifetimeIfEligible(id, req.ProjectID, req.Env)
 	AppendUserActivity(req.CreatedBy, "request_submit", "pr_request", strconv.Itoa(id), "draft submitted")
 	w.Header().Set("Content-Type", "application/json")
 	encodeJSON(w, map[string]interface{}{"status": "ok", "message": "Draft submitted for approval"})

@@ -137,6 +137,8 @@ Set these in repository or environment secrets.
 | --- | --- |
 | `SMTP_PASSWORD` | SMTP auth |
 | `CI_WEBHOOK_SECRET` | CI webhook auth |
+| `CHANGE_WEBHOOK_SECRET` | App merge change-request webhook auth |
+| `ALERT_WEBHOOK_SECRET` | Grafana / logger incident webhook auth |
 | `SNYK_TOKEN` | Optional Snyk authentication for dependency scanning |
 | `SLACK_WEBHOOK_URL` | Success/failure notifications |
 | `TEAMS_WEBHOOK_URL` | Teams integration |
@@ -204,6 +206,53 @@ Use repository variables for shared defaults or environment variables when they 
 | `OTEL_TRACES_SAMPLER_RATIO` | Trace sample ratio |
 | `OTEL_METRICS_EXPORT_INTERVAL_SECONDS` | Metrics export interval |
 | `ALLOW_START_WITHOUT_DB` | Backend startup override for non-DB environments |
+
+## Change and alert webhooks
+
+After merge to `main`, CI should POST `/api/webhooks/change` with `X-CI-Secret` or `X-Hub-Signature-256`. Omit `environment` so SetuOps fills service, project, and env from the Services catalog when the repo matches. Idempotency is `repo + sha + resolved environment`. Grafana, Alertmanager, or a logger POSTs `/api/webhooks/alerts`. Optional post-deploy samples go to `/api/webhooks/watch-metrics`. Do not store these secrets in git.
+
+```yaml
+- name: Record SetuOps change
+  if: github.ref == 'refs/heads/main'
+  env:
+    SETUOPS_API: ${{ secrets.SETUOPS_API_URL }}
+    SETUOPS_SECRET: ${{ secrets.CHANGE_WEBHOOK_SECRET }}
+    CHANGE_TITLE: ${{ github.event.head_commit.message }}
+    CHANGE_AUTHOR: ${{ github.actor }}
+    PR_NUMBER: ${{ github.event.pull_request.number || 0 }}
+    PR_URL: ${{ github.event.pull_request.html_url }}
+  run: |
+    SERVICE="${GITHUB_REPOSITORY##*/}"
+    TITLE="$(printf '%s' "$CHANGE_TITLE" | head -n1)"
+    curl -sS -X POST "$SETUOPS_API/api/webhooks/change" \
+      -H "Content-Type: application/json" \
+      -H "X-CI-Secret: $SETUOPS_SECRET" \
+      --data "$(jq -n \
+        --arg repo "$GITHUB_REPOSITORY" \
+        --arg sha "$GITHUB_SHA" \
+        --arg previous_sha "${GITHUB_EVENT_BEFORE:-}" \
+        --arg service "$SERVICE" \
+        --arg title "$TITLE" \
+        --arg author "$CHANGE_AUTHOR" \
+        --arg pr_url "$PR_URL" \
+        --arg pipeline_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+        --argjson pr_number "${PR_NUMBER:-0}" \
+        '{
+          repo: $repo,
+          sha: $sha,
+          previous_sha: $previous_sha,
+          service: $service,
+          title: $title,
+          author: $author,
+          pr_number: $pr_number,
+          pr_url: $pr_url,
+          pipeline_url: $pipeline_url,
+          change_type: "standard",
+          priority: "medium",
+          risk_level: "medium",
+          watch_minutes: 120
+        }')"
+```
 
 ## Helm Values Files
 

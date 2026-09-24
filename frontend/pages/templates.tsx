@@ -1,7 +1,8 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import { asRecord, getString } from '../lib/payload';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -43,6 +44,15 @@ interface CloudGroup {
   key: string;
   label: string;
   services: ServiceGroup[];
+}
+
+type TemplateTreeRow =
+  | { kind: 'cloud'; rowKey: string; cloud: CloudGroup }
+  | { kind: 'service'; rowKey: string; cloud: CloudGroup; service: ServiceGroup; serviceRowKey: string }
+  | { kind: 'template'; rowKey: string; template: RequestTemplate };
+
+function cloudTemplateCount(cloud: CloudGroup) {
+  return cloud.services.reduce((count, service) => count + service.templates.length, 0);
 }
 
 interface TemplateDiagnostics {
@@ -343,6 +353,142 @@ export default function TemplatesPage() {
     );
   };
 
+  const flatTreeRows = useMemo(() => {
+    const rows: TemplateTreeRow[] = [];
+    for (const cloud of cloudGroups) {
+      rows.push({ kind: 'cloud', rowKey: `cloud:${cloud.key}`, cloud });
+      if (!expandedClouds.includes(cloud.key)) continue;
+      for (const service of cloud.services) {
+        const serviceRowKey = getServiceRowKey(cloud.key, service.key);
+        rows.push({ kind: 'service', rowKey: `service:${serviceRowKey}`, cloud, service, serviceRowKey });
+        if (!expandedServices.includes(serviceRowKey)) continue;
+        for (const template of service.templates) {
+          rows.push({ kind: 'template', rowKey: `template:${template.id}`, template });
+        }
+      }
+    }
+    return rows;
+  }, [cloudGroups, expandedClouds, expandedServices]);
+
+  const treeColumns = useMemo((): DataTableColumn<TemplateTreeRow>[] => {
+    return [
+      {
+        id: 'name',
+        header: 'Name',
+        cell: (row) => {
+          if (row.kind === 'cloud') {
+            const expanded = expandedClouds.includes(row.cloud.key);
+            return (
+              <div className="ig-tree-cell">
+                <button type="button" className="ig-tree-toggle" onClick={() => toggleCloud(row.cloud.key)}>
+                  <span className="ig-tree-toggle__chevron">{expanded ? '▾' : '▸'}</span>
+                  {row.cloud.label}
+                </button>
+                <span className="ig-cell-meta">
+                  {row.cloud.services.length} services · {cloudTemplateCount(row.cloud)} templates
+                </span>
+              </div>
+            );
+          }
+          if (row.kind === 'service') {
+            const expanded = expandedServices.includes(row.serviceRowKey);
+            return (
+              <div className="ig-tree-cell ig-tree-cell--service">
+                <button type="button" className="ig-tree-toggle" onClick={() => toggleService(row.serviceRowKey)}>
+                  <span className="ig-tree-toggle__chevron">{expanded ? '▾' : '▸'}</span>
+                  {row.service.label}
+                </button>
+                <span className="ig-cell-meta">
+                  {row.service.templates.length} templates · {formatEnvironmentList(row.service.environments)}
+                </span>
+              </div>
+            );
+          }
+          return (
+            <div className="ig-tree-cell ig-tree-cell--template">
+              <span className="ig-cell-title">{row.template.name}</span>
+              <span className="ig-cell-meta">{row.template.description || 'Reusable request defaults for repeatable work.'}</span>
+            </div>
+          );
+        },
+      },
+      {
+        id: 'type',
+        header: 'Type',
+        cell: (row) => (row.kind === 'cloud' ? 'Cloud' : row.kind === 'service' ? 'Service' : 'Template'),
+      },
+      {
+        id: 'environment',
+        header: 'Environment',
+        cell: (row) =>
+          row.kind === 'template' ? (
+            <span className="ig-chip ig-chip--info">{row.template.env.toUpperCase()}</span>
+          ) : row.kind === 'service' ? (
+            formatEnvironmentList(row.service.environments) || '—'
+          ) : (
+            '—'
+          ),
+      },
+      {
+        id: 'status',
+        header: 'Status',
+        cell: (row) =>
+          row.kind === 'template' ? (
+            <span className="ig-chip ig-chip--neutral">{row.template.status.replace(/_/g, ' ')}</span>
+          ) : (
+            '—'
+          ),
+      },
+      {
+        id: 'team',
+        header: 'Team scope',
+        cell: (row) =>
+          row.kind === 'template'
+            ? formatTeamScope(row.template)
+            : row.kind === 'service'
+              ? row.service.teamScopedCount > 0
+                ? 'Team scoped'
+                : 'All teams'
+              : '—',
+      },
+      {
+        id: 'project',
+        header: 'Project scope',
+        cell: (row) =>
+          row.kind === 'template'
+            ? formatProjectScope(row.template)
+            : row.kind === 'service'
+              ? row.service.projectScopedCount > 0
+                ? 'Project scoped'
+                : 'All projects'
+              : '—',
+      },
+      {
+        id: 'actions',
+        header: '',
+        className: 'ig-cell-actions',
+        cell: (row) =>
+          row.kind === 'template' ? (
+            <div className="template-tree__actions">
+              <Link href={`/templates/${row.template.id}`} className="btn btn-secondary btn-sm">
+                View
+              </Link>
+              {row.template.status === 'published' ? (
+                <Link
+                  href={`/select-service?cloud=${encodeURIComponent(row.template.cloud)}&env=${encodeURIComponent(row.template.env)}&service=${encodeURIComponent(row.template.service)}&template_id=${row.template.id}${row.template.projects.length === 1 ? `&project_id=${row.template.projects[0].id}` : ''}`}
+                  className="btn btn-primary btn-sm"
+                >
+                  Use
+                </Link>
+              ) : (
+                <span className="ig-cell-meta">View only until published</span>
+              )}
+            </div>
+          ) : null,
+      },
+    ];
+  }, [expandedClouds, expandedServices]);
+
   return (
     <>
       <Head>
@@ -419,122 +565,22 @@ export default function TemplatesPage() {
                 </div>
               </div>
 
-              <div className="table-scroll">
-                <table className="templates-table template-tree-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Type</th>
-                      <th>Environment</th>
-                      <th>Status</th>
-                      <th>Team scope</th>
-                      <th>Project scope</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cloudGroups.map((cloud) => {
-                      const cloudTemplateCount = cloud.services.reduce((count, service) => count + service.templates.length, 0);
-                      const cloudExpanded = expandedClouds.includes(cloud.key);
-                      return (
-                        <Fragment key={cloud.key}>
-                          <tr key={cloud.key} className="template-tree__row template-tree__row--cloud">
-                            <td>
-                              <button
-                                type="button"
-                                className="template-tree__toggle"
-                                onClick={() => toggleCloud(cloud.key)}
-                              >
-                                <span className="template-tree__chevron">{cloudExpanded ? '▾' : '▸'}</span>
-                                <span className="template-tree__label">{cloud.label}</span>
-                              </button>
-                              <div className="template-tree__meta">
-                                {cloud.services.length} services · {cloudTemplateCount} templates
-                              </div>
-                            </td>
-                            <td>Cloud</td>
-                            <td>—</td>
-                            <td>—</td>
-                            <td>—</td>
-                            <td>—</td>
-                            <td></td>
-                          </tr>
-
-                          {cloudExpanded
-                            ? cloud.services.map((service) => {
-                                const serviceRowKey = getServiceRowKey(cloud.key, service.key);
-                                const serviceExpanded = expandedServices.includes(serviceRowKey);
-                                return (
-                                  <Fragment key={serviceRowKey}>
-                                    <tr className="template-tree__row template-tree__row--service">
-                                      <td>
-                                        <button
-                                          type="button"
-                                          className="template-tree__toggle template-tree__toggle--nested"
-                                          onClick={() => toggleService(serviceRowKey)}
-                                        >
-                                          <span className="template-tree__chevron">{serviceExpanded ? '▾' : '▸'}</span>
-                                          <span className="template-tree__label">{service.label}</span>
-                                        </button>
-                                        <div className="template-tree__meta">
-                                          {service.templates.length} templates · {formatEnvironmentList(service.environments)}
-                                        </div>
-                                      </td>
-                                      <td>Service</td>
-                                      <td>{formatEnvironmentList(service.environments) || '—'}</td>
-                                      <td>—</td>
-                                      <td>{service.teamScopedCount > 0 ? 'Team scoped' : 'All teams'}</td>
-                                      <td>{service.projectScopedCount > 0 ? 'Project scoped' : 'All projects'}</td>
-                                      <td></td>
-                                    </tr>
-
-                                    {serviceExpanded
-                                      ? service.templates.map((template) => (
-                                          <tr key={template.id} className="template-tree__row template-tree__row--template">
-                                            <td>
-                                              <div className="template-tree__template-name">{template.name}</div>
-                                              <div className="template-tree__meta">
-                                                {template.description || 'Reusable request defaults for repeatable work.'}
-                                              </div>
-                                            </td>
-                                            <td>Template</td>
-                                            <td>
-                                              <span className="portal-pill">{template.env.toUpperCase()}</span>
-                                            </td>
-                                            <td>
-                                              <span className="portal-pill">{template.status.replace(/_/g, ' ')}</span>
-                                            </td>
-                                            <td>{formatTeamScope(template)}</td>
-                                            <td>{formatProjectScope(template)}</td>
-                                            <td>
-                                              <div className="template-tree__actions">
-                                                <Link href={`/templates/${template.id}`} className="btn btn-secondary btn-sm">
-                                                  View
-                                                </Link>
-                                                {template.status === 'published' ? (
-                                                  <Link
-                                                    href={`/select-service?cloud=${encodeURIComponent(template.cloud)}&env=${encodeURIComponent(template.env)}&service=${encodeURIComponent(template.service)}&template_id=${template.id}${template.projects.length === 1 ? `&project_id=${template.projects[0].id}` : ''}`}
-                                                    className="btn btn-primary btn-sm"
-                                                  >
-                                                    Use
-                                                  </Link>
-                                                ) : (
-                                                  <span className="template-tree__meta">View only until published</span>
-                                                )}
-                                              </div>
-                                            </td>
-                                          </tr>
-                                        ))
-                                      : null}
-                                  </Fragment>
-                                );
-                              })
-                            : null}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="ig-legacy-table">
+                <DataTable<TemplateTreeRow>
+                  label="Template library tree"
+                  columns={treeColumns}
+                  rows={flatTreeRows}
+                  rowKey={(row) => row.rowKey}
+                  rowClassName={(row) =>
+                    row.kind === 'cloud' ? 'ig-tree-row--cloud' : row.kind === 'service' ? 'ig-tree-row--service' : 'ig-tree-row--template'
+                  }
+                  onRowOpen={(row) => {
+                    if (row.kind === 'cloud') toggleCloud(row.cloud.key);
+                    else if (row.kind === 'service') toggleService(row.serviceRowKey);
+                    else void router.push(`/templates/${row.template.id}`);
+                  }}
+                  empty={<EmptyState title="No templates in tree" body="Expand a cloud and service to browse templates." />}
+                />
               </div>
             </section>
           </>

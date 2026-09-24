@@ -165,6 +165,18 @@ func devopsUsersHandler(w http.ResponseWriter, r *http.Request) {
 		encodeDevopsJSON(w, map[string]interface{}{"users": []interface{}{}, "status": "ok"})
 		return
 	}
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("audience")), "portal") {
+		users, err := listPortalUsers()
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		encodeDevopsJSON(w, map[string]interface{}{"users": users, "status": "ok"})
+		return
+	}
 	users, err := GetDevopsUsers()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -777,7 +789,7 @@ func devopsBulkActionHandler(w http.ResponseWriter, r *http.Request, managerID i
 			continue
 		}
 		if action == "bulk-approve" {
-			prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
+			prURL, err := createPullRequestForRequest(req)
 			if err != nil {
 				errs = append(errs, fmt.Sprintf("#%d: %v", id, err))
 				continue
@@ -858,6 +870,10 @@ func devopsRequestDetailHandler(w http.ResponseWriter, id int) {
 		"jira_ticket_id":        req.JiraTicketID,
 		"cost_risk_preview":     BuildCostRiskPreview(req),
 		"approval_context":      BuildRequestApprovalContext(req),
+		"plan_review":           buildPlanReview(req),
+		"policy_checks":         buildPolicyCheckSummary(req.ID),
+		"cost_check":            buildRequestCostCheck(req),
+		"operation":             loadRequestOperation(req.ID),
 	}
 	dependsOn, _ := GetRequestDependencies(id)
 	blockedBy, _ := GetRequestsThatDependOn(id)
@@ -865,6 +881,13 @@ func devopsRequestDetailHandler(w http.ResponseWriter, id int) {
 	resp["depends_on"] = dependsOn
 	resp["blocked_by"] = blockedBy
 	resp["blocked_by_with_status"] = blockedByWithStatus
+	highRiskGate := evaluateHighRiskMergeAck(req)
+	if highRiskGate.Required {
+		resp["high_risk_merge"] = highRiskGate
+	}
+	if lastMerge, err := latestMergeForRequest(id); err == nil && lastMerge != nil {
+		resp["last_merge"] = lastMerge
+	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeDevopsJSON(w, map[string]interface{}{"request": resp, "status": "ok"})
 }
@@ -1000,6 +1023,13 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	case "comments":
 		devopsRequestCommentsHandler(w, r, id, managerID)
 		return
+	case "plan-review":
+		if len(parts) == 3 && parts[2] == "acknowledge" {
+			handlePlanReviewAcknowledge(w, r, req, managerID, "devops_manager")
+			return
+		}
+		http.NotFound(w, r)
+		return
 	case "timeline":
 		if r.Method != "GET" {
 			writeMethodNotAllowed(w, r)
@@ -1025,7 +1055,33 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 			encodeDevopsJSON(w, map[string]interface{}{"error": "only pending_devops_approval requests can be approved", "status": "error"})
 			return
 		}
-		prURL, err := CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
+		var approveBody struct {
+			RunbookAcknowledged       bool     `json:"runbook_acknowledged"`
+			HighRiskMergeAcknowledged bool     `json:"high_risk_merge_acknowledged"`
+			AckReasons                []string `json:"ack_reasons"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&approveBody)
+		runbookGate := evaluateProdRunbookGate(req)
+		if runbookGate.Required && !approveBody.RunbookAcknowledged {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusPreconditionRequired)
+			encodeDevopsJSON(w, map[string]interface{}{
+				"status":           "error",
+				"error":            runbookGate.Message,
+				"runbook_required": true,
+				"runbooks":         runbookGate.Runbooks,
+			})
+			return
+		}
+		highRiskGate := evaluateHighRiskMergeAck(req)
+		if highRiskGate.Required && !approveBody.HighRiskMergeAcknowledged {
+			writeHighRiskMergeAckRequired(w, highRiskGate)
+			return
+		}
+		if highRiskGate.Event != nil && (approveBody.HighRiskMergeAcknowledged || highRiskGate.Required) {
+			persistAckForGate(req, highRiskGate, managerID, approveBody.AckReasons)
+		}
+		prURL, err := createPullRequestForRequest(req)
 		if err != nil {
 			log.Printf("DevOps approve: create PR failed: %v", err)
 			w.Header().Set("Content-Type", "application/json")

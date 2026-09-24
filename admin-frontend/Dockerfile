@@ -1,15 +1,13 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
-ARG NEXT_PUBLIC_API_URL=http://localhost:8080
+ARG NEXT_PUBLIC_API_URL=https://backend-api-production-ed.up.railway.app
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-COPY package.json ./
+COPY admin-frontend/package.json ./
 RUN npm install
-COPY next.config.js tsconfig.json next-env.d.ts ./
-COPY pages ./pages
-COPY components ./components
-COPY lib ./lib
-COPY styles ./styles
-COPY public ./public
+COPY shared-ui /shared-ui
+COPY admin-frontend/ ./
+COPY shared-ui ./shared-ui
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
 
 FROM node:20-alpine
@@ -22,6 +20,8 @@ COPY --from=builder --chown=node:node /app/next.config.js ./
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/.next ./.next
 COPY --from=builder --chown=node:node /app/public ./public
+COPY --from=builder --chown=node:node /app/shared-ui ./shared-ui
+COPY --from=builder --chown=node:node /shared-ui /shared-ui
 USER node
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

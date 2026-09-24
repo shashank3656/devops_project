@@ -19,6 +19,8 @@ type GitOpsCatalogProject struct {
 	Slug              string                   `json:"slug"`
 	RepoRoot          string                   `json:"repo_root"`
 	BaseBranch        string                   `json:"base_branch"`
+	GitHubOwner       string                   `json:"github_owner,omitempty"`
+	GitHubRepo        string                   `json:"github_repo,omitempty"`
 	DefaultCloud      string                   `json:"default_cloud"`
 	Environments      []string                 `json:"environments"`
 	Components        []string                 `json:"components"`
@@ -160,7 +162,8 @@ func unmarshalStringSliceJSON(raw []byte) []string {
 func queryAllGitOpsCatalogProjects() ([]GitOpsCatalogProject, error) {
 	rows, err := DB.Query(`
 		SELECT p.id, p.team_id, t.name, t.slug, COALESCE(t.application_id,''), p.name, p.slug, p.repo_root,
-		       COALESCE(p.base_branch, ''), COALESCE(p.default_cloud, ''), p.environments, p.components,
+		       COALESCE(p.base_branch, ''), COALESCE(p.default_cloud, ''), COALESCE(p.github_owner, ''),
+		       COALESCE(p.github_repo, ''), p.environments, p.components,
 		       p.created_at, p.created_by
 		FROM gitops_projects p
 		INNER JOIN teams t ON t.id = p.team_id
@@ -192,6 +195,8 @@ func queryAllGitOpsCatalogProjects() ([]GitOpsCatalogProject, error) {
 			&project.RepoRoot,
 			&project.BaseBranch,
 			&project.DefaultCloud,
+			&project.GitHubOwner,
+			&project.GitHubRepo,
 			&environmentsRaw,
 			&componentsRaw,
 			&project.CreatedAt,

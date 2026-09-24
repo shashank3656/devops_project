@@ -36,6 +36,15 @@ interface Incident {
   owner_user_id?: number | null;
   summary: string;
   notes: string;
+  source?: string;
+  fingerprint?: string;
+  alert_source?: string;
+  suspected_change_id?: number;
+  suspected_change_number?: string;
+  major?: boolean;
+  status_note?: string;
+  problem_id?: number;
+  silenced_until?: string;
 }
 
 function normalizeIncident(incident: unknown): Incident {
@@ -51,6 +60,15 @@ function normalizeIncident(incident: unknown): Incident {
     owner_user_id: typeof item.owner_user_id === 'number' ? item.owner_user_id : null,
     summary: typeof item.summary === 'string' ? item.summary : '',
     notes: typeof item.notes === 'string' ? item.notes : '',
+    source: typeof item.source === 'string' ? item.source : 'ticket',
+    fingerprint: typeof item.fingerprint === 'string' ? item.fingerprint : '',
+    alert_source: typeof item.alert_source === 'string' ? item.alert_source : '',
+    suspected_change_id: typeof item.suspected_change_id === 'number' ? item.suspected_change_id : 0,
+    suspected_change_number: typeof item.suspected_change_number === 'string' ? item.suspected_change_number : '',
+    major: item.major === true,
+    status_note: typeof item.status_note === 'string' ? item.status_note : '',
+    problem_id: typeof item.problem_id === 'number' ? item.problem_id : 0,
+    silenced_until: typeof item.silenced_until === 'string' ? item.silenced_until : '',
   };
 }
 
@@ -126,6 +144,16 @@ export default function EditIncidentPage() {
   const [summary, setSummary] = useState('');
   const [notes, setNotes] = useState('');
   const [currentIncidentNumber, setCurrentIncidentNumber] = useState('');
+  const [source, setSource] = useState('ticket');
+  const [fingerprint, setFingerprint] = useState('');
+  const [alertSource, setAlertSource] = useState('');
+  const [suspectedChangeId, setSuspectedChangeId] = useState(0);
+  const [suspectedChangeNumber, setSuspectedChangeNumber] = useState('');
+  const [major, setMajor] = useState(false);
+  const [statusNote, setStatusNote] = useState('');
+  const [problemId, setProblemId] = useState(0);
+  const [silencedUntil, setSilencedUntil] = useState('');
+  const [silencing, setSilencing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -179,6 +207,15 @@ export default function EditIncidentPage() {
         setOwnerUserId(matched.owner_user_id ? String(matched.owner_user_id) : '');
         setSummary(matched.summary);
         setNotes(matched.notes);
+        setSource(matched.source || 'ticket');
+        setFingerprint(matched.fingerprint || '');
+        setAlertSource(matched.alert_source || '');
+        setSuspectedChangeId(matched.suspected_change_id || 0);
+        setSuspectedChangeNumber(matched.suspected_change_number || '');
+        setMajor(Boolean(matched.major));
+        setStatusNote(matched.status_note || '');
+        setProblemId(matched.problem_id || 0);
+        setSilencedUntil(matched.silenced_until || '');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load incident');
@@ -233,6 +270,8 @@ export default function EditIncidentPage() {
           owner_user_id: ownerUserId ? Number(ownerUserId) : null,
           summary,
           notes,
+          major,
+          status_note: statusNote,
         }),
       });
       if (response.status === 401 || response.status === 403) {
@@ -306,6 +345,23 @@ export default function EditIncidentPage() {
                   <input className="input" value={requestId ? `#${requestId}` : 'Not linked'} readOnly />
                 </label>
                 <label className="label">
+                  Source
+                  <input className="input" readOnly value={source === 'alert' ? `${alertSource || 'alert'}${fingerprint ? ` · ${fingerprint}` : ''}` : source} />
+                </label>
+                <label className="label">
+                  Suspected change
+                  {suspectedChangeId ? (
+                    <Link href={`/changes/${suspectedChangeId}`} className="input" style={{ display: 'flex', alignItems: 'center' }}>
+                      {suspectedChangeNumber || `CHG${suspectedChangeId}`}
+                    </Link>
+                  ) : (
+                    <input className="input" readOnly value="Not linked" />
+                  )}
+                </label>
+                {source === 'change_regression' ? (
+                  <p className="portal-surface__subtitle">Opened by the post-deploy watcher. Check the linked change for the previous SHA rollback hint.</p>
+                ) : null}
+                <label className="label">
                   Severity
                   <select className="input" value={severity} onChange={(event) => setSeverity(event.target.value)}>
                     <option value="low">Low</option>
@@ -319,11 +375,17 @@ export default function EditIncidentPage() {
                   <select className="input" value={status} onChange={(event) => setStatus(event.target.value)}>
                     <option value="draft">Draft</option>
                     <option value="open">Open</option>
+                    <option value="acknowledged">Acknowledged</option>
                     <option value="investigating">Investigating</option>
                     <option value="mitigating">Mitigating</option>
                     <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                    <option value="cancelled">Cancelled</option>
                   </select>
                 </label>
+                <p className="portal-surface__subtitle">
+                  Acknowledge when someone owns it. Resolve when service is back. Close after review. Cancel a false alarm.
+                </p>
                 <label className="label">
                   Incident team
                   <select className="input" value={teamId} onChange={(event) => setTeamId(event.target.value)}>
@@ -361,12 +423,63 @@ export default function EditIncidentPage() {
                 </label>
               </div>
 
+              {problemId ? (
+                <p className="portal-surface__subtitle">
+                  Recurring problem: <Link href={`/problems/${problemId}`}>open problem</Link>
+                </p>
+              ) : null}
+              {silencedUntil ? (
+                <p className="portal-surface__subtitle">Silenced until {new Date(silencedUntil).toLocaleString()}</p>
+              ) : null}
+              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" checked={major} onChange={(event) => setMajor(event.target.checked)} />
+                Major incident — page on-call and post a Slack status note
+              </label>
+              <label className="label">
+                Status note
+                <input className="input" value={statusNote} onChange={(event) => setStatusNote(event.target.value)} placeholder="Payments checkout is degraded. Investigating." />
+              </label>
               <label className="label">
                 Notes
                 <textarea className="input" rows={6} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Operational notes, mitigations, and update timeline..." />
               </label>
 
               <div className="portal-form-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={saving || silencing}
+                  onClick={() => {
+                    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                    if (!token || !incidentId) return;
+                    setSilencing(true);
+                    fetch(`${apiUrl}/api/devops/incidents/${incidentId}`, {
+                      method: 'PATCH',
+                      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        team_id: teamId ? Number(teamId) : null,
+                        severity,
+                        status,
+                        escalation_level: escalationLevel,
+                        owner_user_id: ownerUserId ? Number(ownerUserId) : null,
+                        summary,
+                        notes,
+                        silence_minutes: 120,
+                      }),
+                    })
+                      .then(async (res) => {
+                        const data = asRecord(await res.json().catch(() => ({})));
+                        if (!res.ok) throw new Error(getString(data.error, 'Failed to silence'));
+                        const saved = normalizeIncident(data.incident);
+                        setSilencedUntil(saved.silenced_until || '');
+                        setNotice('Alert fingerprint silenced for 2 hours.');
+                      })
+                      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to silence'))
+                      .finally(() => setSilencing(false));
+                  }}
+                >
+                  {silencing ? 'Silencing...' : 'Silence 2 hours'}
+                </button>
                 <button
                   type="button"
                   className="btn btn-primary"

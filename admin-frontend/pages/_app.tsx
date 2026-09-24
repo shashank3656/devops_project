@@ -1,18 +1,24 @@
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { useEffect } from 'react';
+import { applyTheme, installApiUrlRewrite } from '@infragate/ui';
 import { ADMIN_SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
+import '../../shared-ui/tokens.css';
+import '../../shared-ui/workspace.css';
+import '../../shared-ui/theme.css';
 
 const API_OVERRIDE_KEY = 'admin_api_url_override';
 const BUILT_API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080').replace(/\/+$/, '');
+
+// Must run before any page fetches (child effects run before this component's effects).
+installApiUrlRewrite(BUILT_API_URL);
 
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    localStorage.setItem('infra-portal-theme', 'dark');
-    document.documentElement.setAttribute('data-theme', 'dark');
+    applyTheme();
 
     const win = window as Window & { __adminFetchPatched?: boolean };
     if (win.__adminFetchPatched) return;

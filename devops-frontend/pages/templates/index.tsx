@@ -2,12 +2,35 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { asRecord, getString } from '../../lib/payload';
-import { buildCloudGroups, formatEnvironmentList, normalizeTemplate, RequestTemplate } from '../../lib/requestTemplates';
+import {
+  buildCloudGroups,
+  formatEnvironmentList,
+  normalizeTemplate,
+  RequestTemplate,
+  type CloudGroup,
+} from '../../lib/requestTemplates';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
+
+const CLOUD_COLUMNS: DataTableColumn<CloudGroup>[] = [
+  {
+    id: 'cloud',
+    header: 'Cloud',
+    cell: (cloud) => (
+      <div className="ig-cell-stack">
+        <span className="ig-cell-title">{cloud.label}</span>
+        <span className="ig-cell-meta">Click to browse the services and templates inside this cloud.</span>
+      </div>
+    ),
+  },
+  { id: 'services', header: 'Services', align: 'right', className: 'ig-cell-num', cell: (cloud) => cloud.services.length },
+  { id: 'templates', header: 'Templates', align: 'right', className: 'ig-cell-num', cell: (cloud) => cloud.templateCount },
+  { id: 'environments', header: 'Environments', cell: (cloud) => formatEnvironmentList(cloud.environments) || '—' },
+];
 
 export default function DevOpsTemplatesList() {
   const router = useRouter();
@@ -144,51 +167,15 @@ export default function DevOpsTemplatesList() {
                 </label>
               </div>
 
-              <div className="table-scroll">
-                <table className="templates-table template-tree-table">
-                  <thead>
-                    <tr>
-                      <th>Cloud</th>
-                      <th>Services</th>
-                      <th>Templates</th>
-                      <th>Environments</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredCloudGroups.map((cloud) => (
-                      <tr
-                        key={cloud.key}
-                        className="template-tree-table__row-link"
-                        tabIndex={0}
-                        role="link"
-                        onClick={() => openCloud(cloud.key)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            openCloud(cloud.key);
-                          }
-                        }}
-                      >
-                        <td>
-                          <div className="template-tree__template-name">{cloud.label}</div>
-                          <div className="template-tree__meta">Click to browse the services and templates inside this cloud.</div>
-                        </td>
-                        <td>{cloud.services.length}</td>
-                        <td>{cloud.templateCount}</td>
-                        <td>{formatEnvironmentList(cloud.environments) || '—'}</td>
-                      </tr>
-                    ))}
-                    {filteredCloudGroups.length === 0 ? (
-                      <tr>
-                        <td colSpan={4}>
-                          <div className="portal-empty">
-                            <p>No clouds match the current search.</p>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
+              <div className="ig-legacy-table">
+                <DataTable<CloudGroup>
+                  label="Template clouds"
+                  columns={CLOUD_COLUMNS}
+                  rows={filteredCloudGroups}
+                  rowKey={(cloud) => cloud.key}
+                  onRowOpen={(cloud) => openCloud(cloud.key)}
+                  empty={<EmptyState title="No clouds match search" body="Try a different cloud, service, or template name." />}
+                />
               </div>
             </section>
           )}
