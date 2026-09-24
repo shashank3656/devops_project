@@ -45,6 +45,12 @@ type changeRequestRecord struct {
 	LinkedIncidentID      *int            `json:"linked_incident_id,omitempty"`
 	LinkedIncidentNumber  string          `json:"linked_incident_number,omitempty"`
 	CABApprovedAt         *time.Time      `json:"cab_approved_at,omitempty"`
+	AssigneeUserID        *int            `json:"assignee_user_id,omitempty"`
+	AssigneeUsername      string          `json:"assignee_username,omitempty"`
+	Priority              string          `json:"priority,omitempty"`
+	RiskLevel             string          `json:"risk_level,omitempty"`
+	Impact                string          `json:"impact,omitempty"`
+	BackoutPlan           string          `json:"backout_plan,omitempty"`
 	CreatedAt             time.Time       `json:"created_at"`
 	UpdatedAt             time.Time       `json:"updated_at"`
 }
@@ -84,6 +90,47 @@ func encodeChangeFiles(files []string) string {
 	return string(body)
 }
 
+func normalizeChangePriority(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "low":
+		return "low"
+	case "high":
+		return "high"
+	case "critical", "crit", "p1":
+		return "critical"
+	default:
+		return "medium"
+	}
+}
+
+func normalizeChangeRisk(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "low":
+		return "low"
+	case "high":
+		return "high"
+	default:
+		return "medium"
+	}
+}
+
+func parseChangeWindowTime(value string) *time.Time {
+	parsed := parseFlexibleTime(value)
+	if parsed.IsZero() {
+		return nil
+	}
+	return &parsed
+}
+
+func changeWindowTimes(payload parsedChangeWebhook) (*time.Time, *time.Time, error) {
+	start := parseChangeWindowTime(firstNonEmpty(payload.PlannedStart, payload.CABWindowStart))
+	end := parseChangeWindowTime(firstNonEmpty(payload.PlannedEnd, payload.CABWindowEnd))
+	if start != nil && end != nil && end.Before(*start) {
+		return nil, nil, fmt.Errorf("planned end must be after planned start")
+	}
+	return start, end, nil
+}
+
 func decodeChangeFiles(raw string) []string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" || trimmed == "[]" {
@@ -110,6 +157,21 @@ func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, boo
 		}
 	}
 	payload.ChangeType = normalizeChangeType(payload.ChangeType)
+	payload.Priority = normalizeChangePriority(payload.Priority)
+	payload.RiskLevel = normalizeChangeRisk(payload.RiskLevel)
+	payload.Impact = strings.TrimSpace(payload.Impact)
+	payload.BackoutPlan = strings.TrimSpace(payload.BackoutPlan)
+	windowStart, windowEnd, err := changeWindowTimes(payload)
+	if err != nil {
+		return nil, false, err
+	}
+	var windowStartAny, windowEndAny any
+	if windowStart != nil {
+		windowStartAny = *windowStart
+	}
+	if windowEnd != nil {
+		windowEndAny = *windowEnd
+	}
 	linkedIncidentID := resolveLinkedIncidentID(payload.LinkedIncidentID, payload.LinkedIncidentNumber)
 	var linkedAny any
 	if linkedIncidentID > 0 {
@@ -130,10 +192,14 @@ func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, boo
 	if payload.RequestID > 0 {
 		requestAny = payload.RequestID
 	}
+	var assigneeAny any
+	if payload.AssigneeUserID > 0 {
+		assigneeAny = payload.AssigneeUserID
+	}
 	filesJSON := encodeChangeFiles(payload.Files)
 	var existingID int
 	var existingStatus string
-	err := queryRowContext(`
+	err = queryRowContext(`
 		SELECT id, status FROM change_requests
 		WHERE LOWER(repo) = LOWER($1) AND LOWER(sha) = LOWER($2) AND LOWER(environment) = LOWER($3)
 	`, payload.Repo, payload.SHA, payload.Environment).Scan(&existingID, &existingStatus)
@@ -169,6 +235,13 @@ func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, boo
 			    project_id = COALESCE(project_id, $11),
 			    request_id = COALESCE(request_id, $12),
 			    linked_incident_id = COALESCE(linked_incident_id, $15),
+			    assignee_user_id = COALESCE($17, assignee_user_id),
+			    priority = CASE WHEN COALESCE(priority,'') IN ('', 'medium') AND $18 <> '' THEN $18 ELSE priority END,
+			    risk_level = CASE WHEN COALESCE(risk_level,'') IN ('', 'medium') AND $19 <> '' THEN $19 ELSE risk_level END,
+			    impact = CASE WHEN COALESCE(impact,'') = '' THEN $20 ELSE impact END,
+			    backout_plan = CASE WHEN COALESCE(backout_plan,'') = '' THEN $21 ELSE backout_plan END,
+			    cab_window_start = COALESCE(cab_window_start, $22),
+			    cab_window_end = COALESCE(cab_window_end, $23),
 			    cab_status = CASE WHEN COALESCE(cab_status,'') = 'approved' THEN cab_status ELSE $16 END,
 			    status = $13,
 			    watch_minutes = $14,
@@ -182,7 +255,7 @@ func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, boo
 			    END,
 			    updated_at = CURRENT_TIMESTAMP
 			WHERE id = $1
-		`, existingID, payload.Title, payload.Author, payload.Summary, filesJSON, payload.PipelineURL, payload.PRNumber, payload.PRURL, payload.PreviousSHA, payload.Service, projectAny, requestAny, nextStatus, payload.WatchMinutes, linkedAny, cabStatus)
+		`, existingID, payload.Title, payload.Author, payload.Summary, filesJSON, payload.PipelineURL, payload.PRNumber, payload.PRURL, payload.PreviousSHA, payload.Service, projectAny, requestAny, nextStatus, payload.WatchMinutes, linkedAny, cabStatus, assigneeAny, payload.Priority, payload.RiskLevel, payload.Impact, payload.BackoutPlan, windowStartAny, windowEndAny)
 		if err != nil {
 			return nil, false, err
 		}
@@ -207,18 +280,21 @@ func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, boo
 		INSERT INTO change_requests (
 			project_id, service, environment, repo, pr_number, pr_url, sha, previous_sha,
 			title, author, summary, files_json, pipeline_url, change_type, status, watch_minutes, request_id,
-			linked_incident_id, cab_status, watch_started_at, watch_until
+			linked_incident_id, cab_status, assignee_user_id, priority, risk_level, impact, backout_plan,
+			cab_window_start, cab_window_end, watch_started_at, watch_until
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8,
 			$9, $10, $11, $12, $13, $14, $15, $16, $17,
-			$18, $19,
+			$18, $19, $20, $21, $22, $23, $24,
+			$25, $26,
 			CASE WHEN $15 IN ('implemented', 'monitoring') THEN CURRENT_TIMESTAMP ELSE NULL END,
 			CASE WHEN $15 IN ('implemented', 'monitoring') THEN CURRENT_TIMESTAMP + ($16 * INTERVAL '1 minute') ELSE NULL END
 		)
 		RETURNING id
 	`, projectAny, payload.Service, payload.Environment, payload.Repo, payload.PRNumber, payload.PRURL, payload.SHA, payload.PreviousSHA,
 		payload.Title, payload.Author, payload.Summary, filesJSON, payload.PipelineURL, payload.ChangeType, payload.Status, payload.WatchMinutes, requestAny,
-		linkedAny, cabStatus,
+		linkedAny, cabStatus, assigneeAny, payload.Priority, payload.RiskLevel, payload.Impact, payload.BackoutPlan,
+		windowStartAny, windowEndAny,
 	).Scan(&id)
 	if err != nil {
 		return nil, false, err
@@ -246,10 +322,13 @@ func changeRequestSelect() string {
 		       c.watch_minutes, c.watch_started_at, c.watch_until, c.request_id,
 		       (SELECT COUNT(*) FROM request_incidents i WHERE i.suspected_change_id = c.id),
 		       c.created_at, c.updated_at, COALESCE(c.baseline_json,''), COALESCE(c.latest_metrics_json,''),
-		       COALESCE(c.cab_status,''), c.cab_window_start, c.cab_window_end, c.linked_incident_id, COALESCE(inc.incident_number,''), c.cab_approved_at
+		       COALESCE(c.cab_status,''), c.cab_window_start, c.cab_window_end, c.linked_incident_id, COALESCE(inc.incident_number,''), c.cab_approved_at,
+		       c.assignee_user_id, COALESCE(assignee.username,''),
+		       COALESCE(c.priority,'medium'), COALESCE(c.risk_level,'medium'), COALESCE(c.impact,''), COALESCE(c.backout_plan,'')
 		FROM change_requests c
 		LEFT JOIN projects p ON p.id = c.project_id
 		LEFT JOIN request_incidents inc ON inc.id = c.linked_incident_id
+		LEFT JOIN users assignee ON assignee.id = c.assignee_user_id
 	`
 }
 
@@ -257,7 +336,7 @@ func scanChangeRequest(scanner interface {
 	Scan(dest ...any) error
 }) (*changeRequestRecord, error) {
 	var item changeRequestRecord
-	var projectID, requestID, linkedIncidentID sql.NullInt64
+	var projectID, requestID, linkedIncidentID, assigneeUserID sql.NullInt64
 	var watchStarted, watchUntil, cabStart, cabEnd, cabApproved sql.NullTime
 	var filesJSON, baselineJSON, latestJSON string
 	if err := scanner.Scan(
@@ -268,6 +347,8 @@ func scanChangeRequest(scanner interface {
 		&item.WatchMinutes, &watchStarted, &watchUntil, &requestID,
 		&item.LinkedIncidents, &item.CreatedAt, &item.UpdatedAt, &baselineJSON, &latestJSON,
 		&item.CABStatus, &cabStart, &cabEnd, &linkedIncidentID, &item.LinkedIncidentNumber, &cabApproved,
+		&assigneeUserID, &item.AssigneeUsername,
+		&item.Priority, &item.RiskLevel, &item.Impact, &item.BackoutPlan,
 	); err != nil {
 		return nil, err
 	}
@@ -297,6 +378,10 @@ func scanChangeRequest(scanner interface {
 	}
 	if cabApproved.Valid {
 		item.CABApprovedAt = &cabApproved.Time
+	}
+	if assigneeUserID.Valid && assigneeUserID.Int64 > 0 {
+		value := int(assigneeUserID.Int64)
+		item.AssigneeUserID = &value
 	}
 	item.Files = decodeChangeFiles(filesJSON)
 	item.Baseline = decodeServiceMetrics(baselineJSON)
@@ -371,14 +456,26 @@ func prepareManualChange(payload parsedChangeWebhook, author string) (parsedChan
 	payload.Author = strings.TrimSpace(payload.Author)
 	payload.ChangeType = normalizeChangeType(payload.ChangeType)
 	payload.Status = normalizeChangeStatus(payload.Status)
+	payload.Priority = normalizeChangePriority(payload.Priority)
+	payload.RiskLevel = normalizeChangeRisk(payload.RiskLevel)
+	payload.Impact = strings.TrimSpace(payload.Impact)
+	payload.BackoutPlan = strings.TrimSpace(payload.BackoutPlan)
 	if payload.Title == "" {
 		return payload, fmt.Errorf("title is required")
 	}
 	if payload.Environment == "" || payload.Environment == "unspecified" {
-		return payload, fmt.Errorf("environment is required")
+		if mapped := lookupServiceMap(payload.Service, payload.Repo, ""); mapped != nil && strings.TrimSpace(mapped.Environment) != "" {
+			payload.Environment = mapped.Environment
+		} else {
+			payload.Environment = "unspecified"
+		}
 	}
 	if payload.Repo == "" {
-		payload.Repo = "manual"
+		if mapped := lookupServiceMap(payload.Service, "", payload.Environment); mapped != nil && strings.TrimSpace(mapped.Repo) != "" {
+			payload.Repo = mapped.Repo
+		} else {
+			payload.Repo = "manual"
+		}
 	}
 	if payload.SHA == "" {
 		payload.SHA = fmt.Sprintf("manual-%d", time.Now().UnixNano())
@@ -392,10 +489,30 @@ func prepareManualChange(payload parsedChangeWebhook, author string) (parsedChan
 	if payload.Status == "" {
 		payload.Status = "new"
 	}
+	if payload.ProjectID <= 0 && (payload.Service != "" || payload.Repo != "") {
+		if mapped := lookupServiceMap(payload.Service, payload.Repo, payload.Environment); mapped != nil && mapped.ProjectID != nil {
+			payload.ProjectID = *mapped.ProjectID
+		}
+	}
+	if payload.AssigneeUserID > 0 && DB != nil && !portalUserExists(payload.AssigneeUserID) {
+		return payload, fmt.Errorf("assigned user must be a portal user")
+	}
 	if emergencyRequiresIncident(payload.ChangeType, payload.LinkedIncidentID, payload.LinkedIncidentNumber) {
 		return payload, fmt.Errorf("emergency changes must link an incident")
 	}
+	if _, _, err := changeWindowTimes(payload); err != nil {
+		return payload, err
+	}
 	return payload, nil
+}
+
+func portalUserExists(id int) bool {
+	if id <= 0 || DB == nil {
+		return false
+	}
+	var found int
+	err := queryRowContext(`SELECT id FROM users WHERE id = $1 AND COALESCE(user_type, 'portal_user') = 'portal_user'`, id).Scan(&found)
+	return err == nil && found == id
 }
 
 func devopsChangesHandler(w http.ResponseWriter, r *http.Request) {

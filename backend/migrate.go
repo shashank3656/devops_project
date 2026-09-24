@@ -1323,6 +1323,11 @@ func MigrateDatabase() error {
 	// Leftover P1/P3/P4: alert silence window and optional metrics pull URL
 	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS silenced_until TIMESTAMP`)
 	_, _ = DB.Exec(`ALTER TABLE service_map ADD COLUMN IF NOT EXISTS metrics_url TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS assignee_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS priority VARCHAR(20) NOT NULL DEFAULT 'medium'`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS risk_level VARCHAR(20) NOT NULL DEFAULT 'medium'`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS impact TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS backout_plan TEXT NOT NULL DEFAULT ''`)
 
 	log.Println("Database schema is up to date")
 	return nil

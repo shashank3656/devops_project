@@ -98,9 +98,10 @@ const PAGE_TITLES: Record<string, string> = {
   '/access-overrides': 'Access Exceptions',
   '/promotions': 'Promotions',
   '/changes': 'Changes',
+  '/changes/new': 'Create change request',
   '/change-calendar': 'Change calendar',
   '/release-notes': 'Release notes',
-  '/services': 'Service map',
+  '/services': 'Services',
   '/services/new': 'Add service',
   '/problems': 'Problems',
   '/health': 'Health',
@@ -459,6 +460,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       Icon: IconFileText,
       children: [
         { href: '/changes', label: 'Catalog' },
+        { href: '/services', label: 'Services' },
         { href: '/change-calendar', label: 'Calendar' },
         { href: '/release-notes', label: 'Release notes' },
       ],
@@ -474,7 +476,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       children: [
         { href: '/projects', label: 'Catalog' },
         { href: '/team', label: 'Teams' },
-        { href: '/services', label: 'Service map' },
       ],
     });
   }
@@ -886,7 +887,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'create-change', label: 'Create change request', href: '/changes/new' },
           { id: 'change-calendar', label: 'Change calendar', href: '/change-calendar' },
           { id: 'release-notes', label: 'Release notes', href: '/release-notes' },
-          { id: 'services', label: 'Service map', href: '/services' },
+          { id: 'services', label: 'Services', href: '/services' },
+          { id: 'add-service', label: 'Add service', href: '/services/new' },
           { id: 'problems', label: 'Problems', href: '/problems' },
           { id: 'health', label: 'Health', href: '/health' },
           { id: 'deploy-intel', label: 'Deploy intelligence', href: '/deploy-intelligence' },

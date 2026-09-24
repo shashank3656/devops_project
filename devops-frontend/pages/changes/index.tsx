@@ -21,6 +21,9 @@ interface ChangeRow {
   status: string;
   change_type: string;
   linked_incidents: number;
+  assignee_username?: string;
+  priority?: string;
+  risk_level?: string;
   created_at: string;
 }
 
@@ -198,6 +201,9 @@ export default function ChangesCatalogPage() {
                     <th>Repo / PR</th>
                     <th>Service</th>
                     <th>Env</th>
+                    <th>Assigned to</th>
+                    <th>Priority</th>
+                    <th>Risk</th>
                     <th>Type</th>
                     <th>Status</th>
                     <th>Incidents</th>
@@ -217,7 +223,10 @@ export default function ChangesCatalogPage() {
                         </div>
                       </td>
                       <td>{item.service || '—'}</td>
-                      <td>{item.environment}</td>
+                      <td>{item.environment === 'unspecified' ? '—' : item.environment}</td>
+                      <td>{item.assignee_username || '—'}</td>
+                      <td>{item.priority || 'medium'}</td>
+                      <td>{item.risk_level || 'medium'}</td>
                       <td>{item.change_type}</td>
                       <td>{item.status}</td>
                       <td>{item.linked_incidents || 0}</td>

@@ -51,7 +51,7 @@ export default function ServiceDetailPage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Service map</span>
+            <span className="portal-page__eyebrow">Changes</span>
             <h1 className="portal-page__title">{item?.service || 'Service'}</h1>
           </div>
           <Link href="/services" className="btn btn-secondary">Back to catalog</Link>

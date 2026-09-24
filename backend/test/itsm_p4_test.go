@@ -59,19 +59,31 @@ func TestCausedByChangeCopy(t *testing.T) {
 	}
 }
 
-func TestPrepareManualChangeRequiresTitleAndEnvironment(t *testing.T) {
-	if _, err := prepareManualChange(parsedChangeWebhook{Title: "", Environment: "dev"}, "ops"); err == nil {
+func TestNormalizeChangePriorityAndRisk(t *testing.T) {
+	if normalizeChangePriority("P1") != "critical" || normalizeChangePriority("") != "medium" {
+		t.Fatal("priority mapping")
+	}
+	if normalizeChangeRisk("HIGH") != "high" || normalizeChangeRisk("") != "medium" {
+		t.Fatal("risk mapping")
+	}
+	if _, _, err := changeWindowTimes(parsedChangeWebhook{PlannedStart: "2026-09-25T18:00", PlannedEnd: "2026-09-25T17:00"}); err == nil {
+		t.Fatal("end before start should fail")
+	}
+}
+
+func TestPrepareManualChangeRequiresTitle(t *testing.T) {
+	if _, err := prepareManualChange(parsedChangeWebhook{Title: ""}, "ops"); err == nil {
 		t.Fatal("empty title should fail")
 	}
-	if _, err := prepareManualChange(parsedChangeWebhook{Title: "Cutover", Environment: ""}, "ops"); err == nil {
-		t.Fatal("empty environment should fail")
-	}
-	got, err := prepareManualChange(parsedChangeWebhook{Title: "Cutover", Environment: "dev"}, "ops")
+	got, err := prepareManualChange(parsedChangeWebhook{Title: "Cutover"}, "ops")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Repo != "manual" || !strings.HasPrefix(got.SHA, "manual-") || got.Author != "ops" {
 		t.Fatalf("expected generated repo/sha and author, got %#v", got)
+	}
+	if got.Environment != "unspecified" {
+		t.Fatalf("manual change should default environment, got %q", got.Environment)
 	}
 }
 

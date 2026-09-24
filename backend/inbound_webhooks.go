@@ -43,6 +43,15 @@ type parsedChangeWebhook struct {
 	RequestID            int             `json:"request_id"`
 	LinkedIncidentID     int             `json:"incident_id"`
 	LinkedIncidentNumber string          `json:"incident_number"`
+	AssigneeUserID       int             `json:"assignee_user_id"`
+	Priority             string          `json:"priority"`
+	RiskLevel            string          `json:"risk_level"`
+	Impact               string          `json:"impact"`
+	BackoutPlan          string          `json:"backout_plan"`
+	PlannedStart         string          `json:"planned_start"`
+	PlannedEnd           string          `json:"planned_end"`
+	CABWindowStart       string          `json:"cab_window_start"`
+	CABWindowEnd         string          `json:"cab_window_end"`
 	Metrics              *serviceMetrics `json:"metrics"`
 }
 
@@ -419,6 +428,11 @@ func parseFlexibleTime(value string) time.Time {
 	}
 	if parsed, err := time.Parse(time.RFC3339Nano, trimmed); err == nil {
 		return parsed
+	}
+	for _, layout := range []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02 15:04:05", "2006-01-02 15:04", "2006-01-02"} {
+		if parsed, err := time.ParseInLocation(layout, trimmed, time.Local); err == nil {
+			return parsed
+		}
 	}
 	return time.Time{}
 }
