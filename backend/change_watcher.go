@@ -113,7 +113,7 @@ func evaluateChangeWatch(item changeRequestRecord, now time.Time) error {
 		return setChangeStatus(item.ID, "failed")
 	}
 	if decision.CloseChange {
-		_, err := closeChangeRequest(item.ID)
+		_, err := resolveChangeRequest(item.ID)
 		return err
 	}
 	if decision.OpenRegression && !hasRegression && item.LatestMetrics != nil {

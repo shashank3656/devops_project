@@ -166,6 +166,8 @@ func normalizeChangeStatus(status string) string {
 		return "implemented"
 	case "monitoring":
 		return "monitoring"
+	case "resolved", "success", "successful", "review":
+		return "resolved"
 	case "closed", "complete", "completed":
 		return "closed"
 	case "failed", "error", "apply_failed", "deploy_failed":
@@ -174,6 +176,15 @@ func normalizeChangeStatus(status string) string {
 		return "cancelled"
 	default:
 		return "implementing"
+	}
+}
+
+func changeIsFinished(status string) bool {
+	switch normalizeChangeStatus(status) {
+	case "resolved", "closed", "failed", "cancelled":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -187,10 +198,12 @@ func changeStatusRank(status string) int {
 		return 2
 	case "monitoring":
 		return 3
-	case "closed":
+	case "resolved":
 		return 4
-	case "failed", "cancelled":
+	case "closed":
 		return 5
+	case "failed", "cancelled":
+		return 6
 	default:
 		return 1
 	}
@@ -255,6 +268,7 @@ func parseChangeWebhookJSON(body []byte) (parsedChangeWebhook, error) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return parsedChangeWebhook{}, err
 	}
+	envOmitted := strings.TrimSpace(payload.Environment) == ""
 	payload.Repo = strings.TrimSpace(payload.Repo)
 	payload.SHA = strings.TrimSpace(payload.SHA)
 	payload.Environment = normalizeChangeEnvironment(payload.Environment)
@@ -263,13 +277,27 @@ func parseChangeWebhookJSON(body []byte) (parsedChangeWebhook, error) {
 	payload.Title = strings.TrimSpace(payload.Title)
 	payload.Author = strings.TrimSpace(payload.Author)
 	payload.Summary = strings.TrimSpace(payload.Summary)
+	payload.Impact = strings.TrimSpace(payload.Impact)
+	payload.BackoutPlan = strings.TrimSpace(payload.BackoutPlan)
 	payload.PRURL = strings.TrimSpace(payload.PRURL)
 	payload.PipelineURL = strings.TrimSpace(payload.PipelineURL)
 	payload.PreviousSHA = strings.TrimSpace(payload.PreviousSHA)
-	payload.ChangeType = strings.ToLower(strings.TrimSpace(payload.ChangeType))
 	payload.ChangeType = normalizeChangeType(payload.ChangeType)
+	payload.Priority = normalizeChangePriority(payload.Priority)
+	payload.RiskLevel = normalizeChangeRisk(payload.RiskLevel)
 	payload.LinkedIncidentNumber = strings.TrimSpace(payload.LinkedIncidentNumber)
 	payload.Status = normalizeChangeStatus(payload.Status)
+	if mapped := lookupServiceMap(payload.Service, payload.Repo, payload.Environment); mapped != nil {
+		if payload.Service == "" {
+			payload.Service = mapped.Service
+		}
+		if payload.ProjectID == 0 && mapped.ProjectID != nil {
+			payload.ProjectID = *mapped.ProjectID
+		}
+		if envOmitted && strings.TrimSpace(mapped.Environment) != "" {
+			payload.Environment = normalizeChangeEnvironment(mapped.Environment)
+		}
+	}
 	if payload.WatchMinutes <= 0 {
 		payload.WatchMinutes = 120
 	}

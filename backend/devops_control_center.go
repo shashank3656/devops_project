@@ -770,9 +770,43 @@ func runbookMatchesService(runbookService, service string) bool {
 	return guide == target || strings.Contains(target, guide) || strings.Contains(guide, target)
 }
 
+func normalizeIncidentStatus(status string) string {
+	switch strings.ToLower(strings.ReplaceAll(strings.TrimSpace(status), " ", "_")) {
+	case "draft":
+		return "draft"
+	case "open", "new":
+		return "open"
+	case "acknowledged", "ack", "acked":
+		return "acknowledged"
+	case "investigating", "in_progress":
+		return "investigating"
+	case "mitigating":
+		return "mitigating"
+	case "resolved", "success", "ok":
+		return "resolved"
+	case "closed", "complete", "completed":
+		return "closed"
+	case "cancelled", "canceled":
+		return "cancelled"
+	default:
+		if status == "" {
+			return "open"
+		}
+		return strings.ToLower(strings.TrimSpace(status))
+	}
+}
+
+func incidentIsActive(status string) bool {
+	switch normalizeIncidentStatus(status) {
+	case "open", "acknowledged", "investigating", "mitigating":
+		return true
+	default:
+		return false
+	}
+}
+
 func incidentBlocksPromotion(item requestIncident) bool {
-	status := strings.ToLower(strings.TrimSpace(item.Status))
-	if status != "open" && status != "investigating" && status != "mitigating" {
+	if !incidentIsActive(item.Status) {
 		return false
 	}
 	source := strings.ToLower(strings.TrimSpace(item.Source))
@@ -1577,10 +1611,7 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
 			return
 		}
-		normalizedStatus := strings.ToLower(strings.TrimSpace(body.Status))
-		if normalizedStatus == "" {
-			normalizedStatus = "open"
-		}
+		normalizedStatus := normalizeIncidentStatus(body.Status)
 		if body.TeamID == nil || *body.TeamID <= 0 {
 			writeAPIError(w, r, http.StatusBadRequest, "team is required", nil)
 			return
@@ -1648,10 +1679,7 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
 		return
 	}
-	normalizedStatus := strings.ToLower(strings.TrimSpace(body.Status))
-	if normalizedStatus == "" {
-		normalizedStatus = "open"
-	}
+	normalizedStatus := normalizeIncidentStatus(body.Status)
 	if body.TeamID == nil || *body.TeamID <= 0 {
 		writeAPIError(w, r, http.StatusBadRequest, "team is required", nil)
 		return

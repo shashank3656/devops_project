@@ -125,9 +125,12 @@ export default function AdminIncidentsCatalogPage() {
               <select className="input" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                 <option value="">All status</option>
                 <option value="open">Open</option>
+                <option value="acknowledged">Acknowledged</option>
                 <option value="investigating">Investigating</option>
                 <option value="mitigating">Mitigating</option>
                 <option value="resolved">Resolved</option>
+                <option value="closed">Closed</option>
+                <option value="cancelled">Cancelled</option>
               </select>
               <select className="input" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
                 <option value="">All sources</option>

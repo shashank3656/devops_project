@@ -30,7 +30,7 @@ func isRegressionIncident(item requestIncident) bool {
 		return false
 	}
 	status := strings.ToLower(strings.TrimSpace(item.Status))
-	return status == "open" || status == "investigating" || status == "mitigating"
+	return incidentIsActive(status)
 }
 
 func buildOpsHealth(projectID int, environment string) (*opsHealthPayload, error) {

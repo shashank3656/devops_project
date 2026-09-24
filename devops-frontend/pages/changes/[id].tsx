@@ -68,9 +68,32 @@ export default function ChangeDetailPage() {
   const [incidents, setIncidents] = useState<LinkedIncident[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [closing, setClosing] = useState(false);
+  const [acting, setActing] = useState('');
   const [approving, setApproving] = useState(false);
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
+  const status = (item?.status || '').toLowerCase();
+  const finished = status === 'resolved' || status === 'closed' || status === 'failed' || status === 'cancelled';
+
+  const applyStatus = (action: string) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token || !id) return;
+    setActing(action);
+    setError('');
+    fetch(`${apiUrl}/api/devops/changes/${id}/${action}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data?.error || `Failed to ${action} change`);
+          return;
+        }
+        setItem(data.change || item);
+      })
+      .catch(() => setError(`Failed to ${action} change`))
+      .finally(() => setActing(''));
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -134,32 +157,32 @@ export default function ChangeDetailPage() {
                 {approving ? 'Approving...' : 'Approve CAB'}
               </button>
             ) : null}
-            {item && item.status !== 'closed' && item.status !== 'failed' && item.status !== 'cancelled' ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                disabled={closing}
-                onClick={() => {
-                  const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-                  if (!token || !id) return;
-                  setClosing(true);
-                  fetch(`${apiUrl}/api/devops/changes/${id}/close`, {
-                    method: 'POST',
-                    headers: { Authorization: `Bearer ${token}` },
-                  })
-                    .then(async (res) => {
-                      const data = await res.json().catch(() => ({}));
-                      if (!res.ok) {
-                        setError(data?.error || 'Failed to close change');
-                        return;
-                      }
-                      setItem(data.change || item);
-                    })
-                    .catch(() => setError('Failed to close change'))
-                    .finally(() => setClosing(false));
-                }}
-              >
-                {closing ? 'Closing...' : 'Close change'}
+            {item && !finished ? (
+              <>
+                {status !== 'resolved' ? (
+                  <button type="button" className="btn btn-primary" disabled={!!acting} onClick={() => applyStatus('resolve')}>
+                    {acting === 'resolve' ? 'Resolving...' : 'Resolve'}
+                  </button>
+                ) : null}
+                <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={() => applyStatus('close')}>
+                  {acting === 'close' ? 'Closing...' : 'Close'}
+                </button>
+                <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={() => applyStatus('fail')}>
+                  {acting === 'fail' ? 'Failing...' : 'Mark failed'}
+                </button>
+                <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={() => applyStatus('cancel')}>
+                  {acting === 'cancel' ? 'Cancelling...' : 'Cancel'}
+                </button>
+              </>
+            ) : null}
+            {item && status === 'resolved' ? (
+              <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={() => applyStatus('close')}>
+                {acting === 'close' ? 'Closing...' : 'Close'}
+              </button>
+            ) : null}
+            {item && finished ? (
+              <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={() => applyStatus('reopen')}>
+                {acting === 'reopen' ? 'Reopening...' : 'Reopen'}
               </button>
             ) : null}
             <Link href="/changes" className="btn btn-secondary">
@@ -250,6 +273,9 @@ export default function ChangeDetailPage() {
                 <input className="input" readOnly value={item.latest_metrics?.p95_ms != null ? `${item.latest_metrics.p95_ms}ms (baseline ${item.baseline?.p95_ms ?? '—'})` : 'No sample yet'} />
               </label>
             </div>
+            <p className="portal-surface__subtitle">
+              Resolve when the deploy and watch look good. Close when the change is done. Open linked incidents must be resolved or closed first.
+            </p>
             {item.cab_status ? <p className="portal-surface__subtitle">CAB: {item.cab_status}{item.linked_incident_number ? ` · linked ${item.linked_incident_number}` : ''}</p> : null}
             {item.rollback_hint ? <p className="portal-surface__subtitle">{item.rollback_hint}</p> : null}
             {item.summary ? <p className="portal-surface__subtitle">{item.summary}</p> : null}

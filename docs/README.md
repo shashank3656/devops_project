@@ -1,8 +1,21 @@
 # Documentation
 
-This repo keeps the docs intentionally small, task-focused, and easy to navigate for new users, operators, and contributors.
+## Product (read these first)
 
-## Start Here
+| Document | What it is |
+| --- | --- |
+| [All features and how they work](./FEATURES.md) | Every shipped feature, who uses it, and the flow |
+| [Full API reference](./API.md) | Every HTTP route: method, auth, body, what it does |
+| [README](../README.md) | Product picture plus the same two lists |
+
+Notion (narrative / BRDs):
+
+| Document | Link |
+| --- | --- |
+| SetuOps — Portal Features and Flows (parent hub) | https://app.notion.com/p/3e50f430ed10816699fec83b1b270288 |
+| Change Request, Alert Incidents, and Health Plan (child BRD) | https://app.notion.com/p/3e50f430ed1081adb731c7f64bdfa1b2 |
+
+## Operators
 
 - [Architecture](./ARCHITECTURE.md) - whole-app flow, workflow lifecycle, deployment topology, and system view
 - [Tech Stack](./TECH_STACK.md) - frontend, backend, data, deployment, CI/CD, and observability choices
@@ -15,9 +28,11 @@ This repo keeps the docs intentionally small, task-focused, and easy to navigate
 
 ### If you want to understand the app
 
+- [FEATURES.md](./FEATURES.md)
+- [API.md](./API.md)
+- [README.md](../README.md)
 - [Architecture](./ARCHITECTURE.md)
 - [Tech Stack](./TECH_STACK.md)
-- [README.md](../README.md)
 
 ### If you want to deploy it
 
@@ -35,10 +50,12 @@ This repo keeps the docs intentionally small, task-focused, and easy to navigate
 
 ## Recommended Reading Order
 
-1. `README.md` in the repo root for platform overview
-2. [Architecture](./ARCHITECTURE.md) for the system layout and whole-app flow
-3. [Tech Stack](./TECH_STACK.md) for the implementation and tooling choices
-4. [Configuration](./CONFIGURATION.md) for runtime values and secrets
-5. [Deployment](./DEPLOYMENT.md) for Docker Compose or Helm rollout
-6. [CI/CD](./CICD.md) for GitHub Actions deployment pipelines
-7. [Troubleshooting](./TROUBLESHOOTING.md) when validating or debugging
+1. `README.md` in the repo root for the product picture, feature list, and API index
+2. [FEATURES.md](./FEATURES.md) for how every feature works
+3. [API.md](./API.md) for every HTTP route
+4. [Architecture](./ARCHITECTURE.md) for the system layout and whole-app flow
+5. [Tech Stack](./TECH_STACK.md) for the implementation and tooling choices
+6. [Configuration](./CONFIGURATION.md) for runtime values and secrets
+7. [Deployment](./DEPLOYMENT.md) for Docker Compose or Helm rollout
+8. [CI/CD](./CICD.md) for GitHub Actions deployment pipelines
+9. [Troubleshooting](./TROUBLESHOOTING.md) when validating or debugging
