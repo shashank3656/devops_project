@@ -164,6 +164,16 @@ jobs:
           echo "govet_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
           exit 0
 
+      - name: Run Go unit tests
+        id: gotest
+        working-directory: ./backend
+        run: |
+          set +e
+          make test 2>&1 | tee gotest-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "gotest_exit=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit 0
+
       - name: Set Lint Status
         id: set-status
         run: |
@@ -175,11 +185,12 @@ jobs:
           TS_ADMIN=${{ steps.typescript-admin.outputs.ts_admin_exit }}
           TS_DEVOPS=${{ steps.typescript-devops.outputs.ts_devops_exit }}
           GOVET=${{ steps.govet.outputs.govet_exit }}
+          GOTEST=${{ steps.gotest.outputs.gotest_exit }}
           GOLANGCI=${{ steps.golangci.outcome }}
           PRETTIER_NOTE=""
           [ "$PRETTIER" != "0" ] && PRETTIER_NOTE=" Prettier check failed (non-blocking)."
 
-          if [ "$ESLINT" = "0" ] && [ "$ESLINT_ADMIN" = "0" ] && [ "$ESLINT_DEVOPS" = "0" ] && [ "$TS" = "0" ] && [ "$TS_ADMIN" = "0" ] && [ "$TS_DEVOPS" = "0" ] && [ "$GOVET" = "0" ] && [ "$GOLANGCI" = "success" ]; then
+          if [ "$ESLINT" = "0" ] && [ "$ESLINT_ADMIN" = "0" ] && [ "$ESLINT_DEVOPS" = "0" ] && [ "$TS" = "0" ] && [ "$TS_ADMIN" = "0" ] && [ "$TS_DEVOPS" = "0" ] && [ "$GOVET" = "0" ] && [ "$GOTEST" = "0" ] && [ "$GOLANGCI" = "success" ]; then
             echo "status=success" >> $GITHUB_OUTPUT
             echo "details=All lint checks passed ✅$PRETTIER_NOTE" >> $GITHUB_OUTPUT
           else
@@ -192,6 +203,7 @@ jobs:
             [ "$TS_ADMIN" != "0" ] && DETAILS="$DETAILS Admin TypeScript errors found."
             [ "$TS_DEVOPS" != "0" ] && DETAILS="$DETAILS DevOps TypeScript errors found."
             [ "$GOVET" != "0" ] && DETAILS="$DETAILS go vet failed."
+            [ "$GOTEST" != "0" ] && DETAILS="$DETAILS Go unit tests failed."
             [ "$GOLANGCI" != "success" ] && DETAILS="$DETAILS golangci-lint failed."
             echo "details=$DETAILS$PRETTIER_NOTE" >> $GITHUB_OUTPUT
           fi
@@ -213,6 +225,7 @@ jobs:
             admin-frontend/typescript-admin-output.txt
             devops-frontend/typescript-devops-output.txt
             backend/govet-output.txt
+            backend/gotest-output.txt
 
       - name: Enforce Lint Gate
         if: steps.set-status.outputs.status == 'failure'

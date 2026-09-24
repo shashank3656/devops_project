@@ -1115,6 +1115,22 @@ func MigrateDatabase() error {
 	// Migration 54: default TTL for temporary non-prod environments per project
 	_, _ = DB.Exec(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS default_temp_env_days INTEGER NOT NULL DEFAULT 0`)
 
+	// Migration 55: deploy intelligence repo registry (onboard → analyze PRs inside repo)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS deploy_intel_repos (
+			id SERIAL PRIMARY KEY,
+			repo_owner VARCHAR(120) NOT NULL,
+			repo_name VARCHAR(200) NOT NULL,
+			base_branch VARCHAR(120) NOT NULL DEFAULT 'main',
+			enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			notes TEXT NOT NULL DEFAULT '',
+			onboarded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(repo_owner, repo_name)
+		)
+	`)
+	ensureDefaultDeployIntelRepo()
+
 	log.Println("Database schema is up to date")
 	return nil
 }

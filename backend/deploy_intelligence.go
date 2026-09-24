@@ -42,24 +42,13 @@ func isProductionBaseBranch(ref string) bool {
 	}
 }
 
-// repoIsOnboarded is true when the merge target is the configured infra GitHub repo
-// and the org has at least one GitOps project catalog entry (or GitHub is configured).
+// repoIsOnboarded is true when the repo is registered for deploy intelligence and GitHub/GitOps prerequisites are met.
 func repoIsOnboarded(owner, repo string) bool {
-	if !strings.EqualFold(strings.TrimSpace(owner), strings.TrimSpace(GitHubOwner)) {
-		return false
+	owner, repo = normalizeRepoIdentity(owner, repo)
+	if rec, _ := getDeployIntelRepo(owner, repo); rec != nil {
+		return rec.Enabled && deployIntelRepoReady(owner, repo)
 	}
-	if !strings.EqualFold(strings.TrimSpace(repo), strings.TrimSpace(GitHubRepo)) {
-		return false
-	}
-	if GitHubToken == "" {
-		return false
-	}
-	if DB == nil {
-		return true
-	}
-	var count int
-	_ = DB.QueryRow(`SELECT COUNT(*) FROM gitops_projects`).Scan(&count)
-	return count > 0
+	return repoIsOnboardedLegacy(owner, repo)
 }
 
 func analyzeGitHubPullRequest(owner, repo string, number int, req *PRRequest, deployStatus string) prImpactBrief {
@@ -126,9 +115,13 @@ func saveRepoDeployEvent(owner, repo string, mergedAt time.Time, brief prImpactB
 	return err
 }
 
-func listRepoDeployEvents(limit int) ([]repoDeployEvent, error) {
+func listRepoDeployEvents(owner, repo string, limit int) ([]repoDeployEvent, error) {
 	if DB == nil {
 		return nil, nil
+	}
+	owner, repo = normalizeRepoIdentity(owner, repo)
+	if owner == "" || repo == "" {
+		owner, repo = normalizeRepoIdentity(GitHubOwner, GitHubRepo)
 	}
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -137,10 +130,10 @@ func listRepoDeployEvents(limit int) ([]repoDeployEvent, error) {
 		SELECT id, repo_owner, repo_name, pr_number, request_id, title, author, base_branch, head_branch,
 		       merged_at, commit_count, file_count, additions, deletions, score, risk_level, summary, pr_url, payload
 		  FROM repo_deploy_events
-		 WHERE repo_owner = $1 AND repo_name = $2
+		 WHERE lower(repo_owner) = lower($1) AND lower(repo_name) = lower($2)
 		 ORDER BY merged_at DESC
 		 LIMIT $3
-	`, GitHubOwner, GitHubRepo, limit)
+	`, owner, repo, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -361,38 +354,106 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r, http.MethodGet)
 		return
 	}
+
+	owner := strings.TrimSpace(r.URL.Query().Get("owner"))
+	repo := strings.TrimSpace(r.URL.Query().Get("repo"))
+	if owner == "" && repo == "" {
+		if combined := strings.TrimSpace(r.URL.Query().Get("repository")); strings.Contains(combined, "/") {
+			owner, repo = normalizeRepoIdentity("", combined)
+		}
+	}
+
+	// Catalog: onboard repos first, then drill into owner/repo for PR analysis.
+	if owner == "" || repo == "" {
+		summaries, err := listDeployIntelRepoSummaries()
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		encodeJSON(w, map[string]interface{}{
+			"status":               "ok",
+			"repos":                summaries,
+			"future_capabilities":  deployIntelFutureCapabilities,
+		})
+		return
+	}
+
 	limit := 50
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
 			limit = n
 		}
 	}
+	section := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("section")))
+	if section == "" {
+		section = "merges"
+	}
+
+	rec, _ := getDeployIntelRepo(owner, repo)
+	if rec == nil {
+		ensureDefaultDeployIntelRepo()
+		rec, _ = getDeployIntelRepo(owner, repo)
+	}
+	if rec == nil && !repoIsOnboardedLegacy(owner, repo) {
+		writeAPIError(w, r, http.StatusNotFound, "repository is not onboarded for deploy intelligence", nil)
+		return
+	}
+	baseBranch := BaseBranch
+	if rec != nil && strings.TrimSpace(rec.BaseBranch) != "" {
+		baseBranch = rec.BaseBranch
+	}
+
 	refreshNumber, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("refresh_pr")))
-	if refreshNumber > 0 && repoIsOnboarded(GitHubOwner, GitHubRepo) {
+	if refreshNumber > 0 && repoIsOnboarded(owner, repo) {
 		req := findRequestByPRNumber(refreshNumber)
-		brief := analyzeGitHubPullRequest(GitHubOwner, GitHubRepo, refreshNumber, req, "merged")
+		brief := analyzeGitHubPullRequest(owner, repo, refreshNumber, req, "merged")
 		brief.MergeState = "merged"
 		var reqID *int
 		if req != nil {
 			reqID = &req.ID
 		}
-		_ = saveRepoDeployEvent(GitHubOwner, GitHubRepo, time.Now().UTC(), brief, reqID)
+		_ = saveRepoDeployEvent(owner, repo, time.Now().UTC(), brief, reqID)
 	}
-	events, err := listRepoDeployEvents(limit)
+
+	repoSummary := buildDeployIntelRepoSummary(deployIntelRepo{
+		Owner: owner, Name: repo, BaseBranch: baseBranch, Enabled: true,
+	})
+	if rec != nil {
+		repoSummary = buildDeployIntelRepoSummary(*rec)
+	}
+
+	var events []repoDeployEvent
+	var err error
+	if section == "open" {
+		events, err = listOpenPullRequestsAnalyzed(owner, repo, limit)
+	} else {
+		events, err = listRepoDeployEvents(owner, repo, limit)
+	}
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 		return
 	}
-	onboarded := repoIsOnboarded(GitHubOwner, GitHubRepo)
+
+	insights, insightErr := buildDeployIntelRepoInsights(owner, repo, baseBranch)
+	if insightErr != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", insightErr)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	encodeJSON(w, map[string]interface{}{
-		"status": "ok",
+		"status":              "ok",
+		"repo":                repoSummary,
+		"section":             section,
+		"events":              events,
+		"insights":            insights,
+		"future_capabilities": deployIntelFutureCapabilities,
 		"onboarded_repo": map[string]interface{}{
-			"owner":     GitHubOwner,
-			"name":      GitHubRepo,
-			"base":      BaseBranch,
-			"onboarded": onboarded,
+			"owner":     owner,
+			"name":      repo,
+			"base":      baseBranch,
+			"onboarded": repoSummary.Ready,
 		},
-		"events": events,
 	})
 }

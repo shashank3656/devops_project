@@ -492,7 +492,7 @@ export default function DevOpsPromotionsPage() {
               </p>
             </div>
             <Link href="/deploy-intelligence" className="btn btn-secondary btn-sm">
-              Open deploy intelligence
+              Onboarded repos
             </Link>
           </div>
           {recentMerges.length === 0 ? (

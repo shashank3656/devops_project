@@ -9254,3 +9254,58 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Deploy intelligence – weekly merge frequency chart */
+.deploy-intel-chart {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.deploy-intel-chart__row {
+  display: grid;
+  grid-template-columns: 72px 1fr 36px;
+  align-items: center;
+  gap: 10px;
+}
+
+.deploy-intel-chart__label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.deploy-intel-chart__bar-track {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  overflow: hidden;
+}
+
+.deploy-intel-chart__bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  min-width: 2px;
+  transition: width var(--transition);
+}
+
+.deploy-intel-chart__bar--merge {
+  background: linear-gradient(90deg, var(--color-primary), var(--color-primary-hover));
+  z-index: 1;
+}
+
+.deploy-intel-chart__bar--risk {
+  background: rgba(248, 113, 113, 0.85);
+  z-index: 2;
+}
+
+.deploy-intel-chart__value {
+  font-size: 12px;
+  font-weight: var(--font-semibold);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
