@@ -710,34 +710,36 @@ export default function DevOpsPromotionsPage() {
                                             </div>
                                           ) : null}
                                           {check.key === 'recent_high_risk_merge' && item.gate?.requires_acknowledgement ? (
-                                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                                              <input
-                                                type="checkbox"
-                                                checked={Boolean(ackedHighRisk[item.request_id])}
-                                                onChange={(event) =>
-                                                  setAckedHighRisk((current) => ({
-                                                    ...current,
-                                                    [item.request_id]: event.target.checked,
-                                                  }))
-                                                }
-                                              />
-                                              Acknowledge risks: {check.change_brief.headline}
-                                            </label>
-                                            {ackedHighRisk[item.request_id] ? (
-                                              <textarea
-                                                className="input"
-                                                rows={2}
-                                                style={{ marginTop: 8, width: '100%' }}
-                                                value={ackReasons[item.request_id] || ''}
-                                                onChange={(event) =>
-                                                  setAckReasons((current) => ({
-                                                    ...current,
-                                                    [item.request_id]: event.target.value,
-                                                  }))
-                                                }
-                                                placeholder="Exception reasons (required)"
-                                              />
-                                            ) : null}
+                                            <>
+                                              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                                                <input
+                                                  type="checkbox"
+                                                  checked={Boolean(ackedHighRisk[item.request_id])}
+                                                  onChange={(event) =>
+                                                    setAckedHighRisk((current) => ({
+                                                      ...current,
+                                                      [item.request_id]: event.target.checked,
+                                                    }))
+                                                  }
+                                                />
+                                                Acknowledge risks: {check.change_brief.headline}
+                                              </label>
+                                              {ackedHighRisk[item.request_id] ? (
+                                                <textarea
+                                                  className="input"
+                                                  rows={2}
+                                                  style={{ marginTop: 8, width: '100%' }}
+                                                  value={ackReasons[item.request_id] || ''}
+                                                  onChange={(event) =>
+                                                    setAckReasons((current) => ({
+                                                      ...current,
+                                                      [item.request_id]: event.target.value,
+                                                    }))
+                                                  }
+                                                  placeholder="Exception reasons (required)"
+                                                />
+                                              ) : null}
+                                            </>
                                           ) : null}
                                         </div>
                                       ) : null}
