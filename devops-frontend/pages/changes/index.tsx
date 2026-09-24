@@ -127,7 +127,7 @@ export default function ChangesCatalogPage() {
           </div>
           <div className="portal-page__actions">
             <button type="button" className="btn btn-primary" onClick={() => void router.push('/changes/new')}>
-              Create change request
+              New change
             </button>
           </div>
         </div>

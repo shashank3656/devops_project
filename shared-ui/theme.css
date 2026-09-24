@@ -838,12 +838,17 @@ html[data-theme] .devops-main-wrapper-new {
   html[data-theme] .admin-main-shell,
   html[data-theme] .devops-main-wrapper-new {
     margin-left: var(--ig-sidebar-width);
+    width: calc(100% - var(--ig-sidebar-width));
+    max-width: calc(100% - var(--ig-sidebar-width));
+    min-width: 0;
   }
 
   html[data-theme] .user-sidebar-shell--collapsed ~ .user-main-shell,
   html[data-theme] .admin-sidebar-shell--collapsed ~ .admin-main-shell,
   html[data-theme] .devops-sidebar-new--collapsed ~ .devops-main-wrapper-new {
     margin-left: var(--ig-sidebar-collapsed);
+    width: calc(100% - var(--ig-sidebar-collapsed));
+    max-width: calc(100% - var(--ig-sidebar-collapsed));
   }
 }
 
@@ -855,6 +860,8 @@ html[data-theme] .devops-main-wrapper-new {
   html[data-theme] .admin-sidebar-shell--collapsed ~ .admin-main-shell,
   html[data-theme] .devops-sidebar-new--collapsed ~ .devops-main-wrapper-new {
     margin-left: 0;
+    width: 100%;
+    max-width: 100%;
   }
 
   html[data-theme] .user-sidebar-shell,
@@ -872,9 +879,11 @@ html[data-theme] .user-main-shell__content,
 html[data-theme] .admin-main-shell__content,
 html[data-theme] .devops-main-new {
   width: 100%;
-  max-width: 1480px;
+  max-width: min(1480px, 100%);
+  min-width: 0;
   margin: 0 auto;
   padding: 28px 32px 64px;
+  overflow-x: hidden;
 }
 
 html[data-theme] .user-main-shell__content > *,
@@ -1262,7 +1271,8 @@ html[data-theme] .admin-topbar__search-input {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  width: min(340px, 30vw);
+  width: min(220px, 100%);
+  max-width: 100%;
   height: 36px;
   padding: 0 8px 0 12px;
   border: 1px solid var(--ig-border);
@@ -3786,7 +3796,67 @@ html[data-theme] .ig-table tbody tr.ig-tree-row--cloud td:first-child { box-shad
   }
 }
 
-/* Keep catalog pages inside the shell. Long webhook/code lines must not stretch the viewport. */
+/* Keep every portal inside the viewport. The main column is width:100% + sidebar margin unless we subtract it. */
+html[data-theme],
+html[data-theme] body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+html[data-theme] .user-layout,
+html[data-theme] .admin-layout,
+html[data-theme] .admin-shell,
+html[data-theme] .user-shell,
+html[data-theme] .devops-layout,
+html[data-theme] .devops-layout-sidebar {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+html[data-theme] .user-main-shell,
+html[data-theme] .admin-main-shell,
+html[data-theme] .devops-main-wrapper-new {
+  min-width: 0;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+html[data-theme] .user-topbar,
+html[data-theme] .admin-topbar,
+html[data-theme] .devops-navbar {
+  max-width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+  overflow: hidden;
+}
+
+html[data-theme] .user-topbar__left,
+html[data-theme] .admin-topbar__left,
+html[data-theme] .devops-navbar__left {
+  flex: 1 1 220px;
+}
+
+html[data-theme] .user-topbar__right,
+html[data-theme] .admin-topbar__right,
+html[data-theme] .devops-navbar__right,
+html[data-theme] .user-topbar__actions,
+html[data-theme] .admin-topbar__actions,
+html[data-theme] .devops-navbar__actions {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+html[data-theme] .ig-scope-bar {
+  flex: 1 1 160px;
+  overflow: hidden;
+}
+
+html[data-theme] .ig-scope-bar__control {
+  max-width: 160px;
+  width: 100%;
+}
+
 html[data-theme] .ig-page,
 html[data-theme] .devops-main-new,
 html[data-theme] .admin-main-shell__content,
@@ -3799,13 +3869,36 @@ html[data-theme] .user-main-shell__content {
 html[data-theme] .portal-page,
 html[data-theme] .portal-surface,
 html[data-theme] .portal-surface__header,
-html[data-theme] .portal-page__header {
+html[data-theme] .portal-page__header,
+html[data-theme] .portal-form-grid,
+html[data-theme] .k8s-summary-strip {
   min-width: 0;
   max-width: 100%;
 }
 
 html[data-theme] .portal-page {
   width: 100%;
+}
+
+html[data-theme] .portal-page__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+html[data-theme] .portal-page__header > div:first-child {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+html[data-theme] .portal-page__actions {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+html[data-theme] .portal-page__actions .btn,
+html[data-theme] .portal-surface__header .btn {
+  max-width: 100%;
 }
 
 html[data-theme] .portal-surface {
@@ -3844,6 +3937,19 @@ html[data-theme] .changes-page__webhook-url {
 html[data-theme] .changes-page__sample {
   margin: 0;
   max-height: 280px;
+}
+
+@media (max-width: 1100px) {
+  html[data-theme] .ig-search-trigger {
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  html[data-theme] .ig-search-trigger__text,
+  html[data-theme] .ig-search-trigger .ig-kbd {
+    display: none;
+  }
 }
 
 @media (max-width: 900px) {
