@@ -620,6 +620,7 @@ func main() {
 	http.HandleFunc("/api/devops/workspace", devopsWorkspaceHandler)
 	http.HandleFunc("/api/devops/pr-impact", devopsPRImpactHandler)
 	http.HandleFunc("/api/devops/deploy-intelligence", devopsDeployIntelligenceHandler)
+	http.HandleFunc("/api/devops/deploy-intelligence/repos", devopsDeployIntelReposHandler)
 	http.HandleFunc("/api/devops/saved-views", devopsSavedFilterViewsHandler)
 	http.HandleFunc("/api/devops/saved-views/", devopsSavedFilterViewsHandler)
 	http.HandleFunc("/api/devops/prs/", devopsPRNumberImpactHandler)
