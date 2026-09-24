@@ -63,7 +63,7 @@ export default function AdminDeployIntelligencePage() {
               <span className="portal-page__eyebrow">Read only</span>
               <h1 className="portal-page__title">Deploy intelligence</h1>
               <p className="portal-page__subtitle">
-                Recent production-branch merges analyzed by InfraGate. This feed is read-only — managers apply protection and acknowledge promotions in DevOps.
+                Recent production-branch merges analyzed by SetuOps. This feed is read-only — managers apply protection and acknowledge promotions in DevOps.
               </p>
             </div>
             <div className="portal-page__actions">

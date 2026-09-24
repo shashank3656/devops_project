@@ -220,7 +220,7 @@ func planReviewStatusFor(review planReview) (state, description string) {
 		if review.Replace > 0 {
 			parts = append(parts, fmt.Sprintf("%d replaced", review.Replace))
 		}
-		return "pending", "Prod plan: " + strings.Join(parts, ", ") + ". Acknowledge in InfraGate to merge."
+		return "pending", "Prod plan: " + strings.Join(parts, ", ") + ". Acknowledge in SetuOps to merge."
 	case review.RequiresAck:
 		who := review.AcknowledgedBy
 		if who == "" {

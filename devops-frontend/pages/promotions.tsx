@@ -547,7 +547,7 @@ export default function DevOpsPromotionsPage() {
           </div>
           {recentMerges.length === 0 ? (
             <p className="portal-surface__subtitle" style={{ margin: 0 }}>
-              No merge analyses recorded yet. Point the GitHub <code>pull_request</code> webhook at your InfraGate API.
+              No merge analyses recorded yet. Point the GitHub <code>pull_request</code> webhook at your SetuOps API.
             </p>
           ) : (
             <ul className="ig-policy__findings" style={{ margin: 0 }}>

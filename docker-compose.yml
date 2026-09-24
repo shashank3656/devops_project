@@ -1,6 +1,6 @@
 version: '3.8'
 
-# InfraGate local stack
+# SetuOps local stack
 #
 # Development:
 #   make compose-dev

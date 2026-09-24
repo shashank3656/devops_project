@@ -16,6 +16,17 @@ export { default as EmptyState } from './EmptyState';
 export { default as EnvironmentPipeline } from './EnvironmentPipeline';
 export { default as EstimatePanel } from './EstimatePanel';
 export { default as PageHeader } from './PageHeader';
+export { default as ScopeBar } from './ScopeBar';
+export {
+  normalizeScopeProjects,
+  queryToScope,
+  readWorkspaceScope,
+  scopeToQuery,
+  useWorkspaceScope,
+  writeWorkspaceScope,
+  type ScopeProject,
+  type WorkspaceScope,
+} from './useWorkspaceScope';
 export { default as PlanReviewCard } from './PlanReviewCard';
 export { default as PolicyChecksCard } from './PolicyChecksCard';
 export { default as PRImpactBrief } from './PRImpactBrief';

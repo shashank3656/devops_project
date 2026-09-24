@@ -135,7 +135,7 @@ export default function WebhooksPage() {
                 <h2 className="admin-maintenance-card__title">Pipeline webhook &amp; branch checks</h2>
                 <p className="admin-maintenance-card__copy">
                   Post Terraform plan output, policy reports, and Infracost JSON from your pipeline. Set <code>CI_WEBHOOK_SECRET</code> on the API and send it as{' '}
-                  <code>X-CI-Secret</code>. Use GitHub required checks named <code>infragate/plan-review</code> and <code>infragate/policy</code> so merges wait on InfraGate plan + policy status.
+                  <code>X-CI-Secret</code>. Use GitHub required checks named <code>infragate/plan-review</code> and <code>infragate/policy</code> so merges wait on SetuOps plan + policy status.
                 </p>
               </div>
             </div>

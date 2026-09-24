@@ -20,10 +20,24 @@ import {
   IconK8s,
   IconHelpCircle,
   IconFileText,
+  IconChevronDown,
 } from './Icons';
 import SupportHub from './SupportHub';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
-import { CommandPalette, MobileTabBar, SearchTrigger, ThemeToggle, type MobileTab } from '@infragate/ui';
+import {
+  CommandPalette,
+  MobileTabBar,
+  SearchTrigger,
+  ScopeBar,
+  ThemeToggle,
+  normalizeScopeProjects,
+  queryToScope,
+  readWorkspaceScope,
+  scopeToQuery,
+  useWorkspaceScope,
+  type MobileTab,
+  type ScopeProject,
+} from '@infragate/ui';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -56,12 +70,14 @@ function getProfileInitials(): string {
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Overview',
-  '/approval-center': 'Approvals',
+  '/approval-center': 'Approval Queue',
   '/approval-sla': 'Approval Timing',
+  '/gate-policies': 'Approval Rules',
   '/project-operations': 'Project Work',
   '/service-heatmap': 'Service Health',
   '/ops-command-center': 'Operations',
-  '/k8s/onboard': 'Onboard Cluster',
+  '/k8s/onboard': 'Cluster connections',
+  '/k8s/onboard/new': 'Onboard Cluster',
   '/k8s/pods': 'Pods',
   '/k8s/logs': 'Logs',
   '/k8s/events': 'Events',
@@ -85,7 +101,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/deploy-intelligence/onboard': 'Onboard repository',
   '/rollback-console': 'Rollback',
   '/gate-approvals': 'Approval History',
-  '/gate-policies': 'Approval Rules',
   '/notification-settings': 'Alert Settings',
   '/approval-notification-analytics': 'Analytics',
   '/retry-center': 'Delivery Retries',
@@ -145,6 +160,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
   const [advancedNavOpen, setAdvancedNavOpen] = useState(false);
+  const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({});
+  const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
+  const { scope, updateScope } = useWorkspaceScope();
+  const scopeHydrated = useRef(false);
   const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -201,6 +220,29 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       })
       .catch(() => {});
   }, [apiUrl, clearSessionAndRedirect]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setScopeProjects(normalizeScopeProjects(data?.projects)))
+      .catch(() => setScopeProjects([]));
+  }, [apiUrl]);
+
+  useEffect(() => {
+    if (!router.isReady || scopeHydrated.current) return;
+    scopeHydrated.current = true;
+    const fromQuery = queryToScope(router.query);
+    if (fromQuery.projectId || fromQuery.environment) {
+      updateScope(fromQuery);
+      return;
+    }
+    const stored = readWorkspaceScope();
+    if (stored.projectId || stored.environment) {
+      void router.replace({ pathname: router.pathname, query: { ...router.query, ...scopeToQuery(stored) } }, undefined, { shallow: true });
+    }
+  }, [router.isReady]);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -360,47 +402,99 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     router.replace('/login');
   };
 
-const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
+  type NavChild = { href: string; label: string };
+  type NavItem = {
+    href: string;
+    label: string;
+    Icon: ComponentType<{ className?: string }>;
+    children?: NavChild[];
+  };
+
+  const leafIsActive = (href: string) => {
+    if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/clusters');
+    if (href === '/dashboard') return pathname === '/dashboard' || pathname === '/';
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
+
+  const itemIsActive = (item: NavItem) =>
+    Boolean(item.children?.some((child) => leafIsActive(child.href))) || leafIsActive(item.href);
+
+  const primaryNavItems: NavItem[] = [
     { href: '/dashboard', label: 'Overview', Icon: IconTickets },
     { href: '/tickets', label: 'Requests', Icon: IconTickets },
   ];
   if (isManager) {
-    primaryNavItems.push(
-      { href: '/approval-center', label: 'Approvals', Icon: IconShield },
-      { href: '/incidents', label: 'Incidents', Icon: IconAlertTriangle },
-    );
+    primaryNavItems.push({
+      href: '/approval-center',
+      label: 'Approvals',
+      Icon: IconShield,
+      children: [
+        { href: '/approval-center', label: 'Queue' },
+        { href: '/gate-approvals', label: 'History' },
+        { href: '/gate-policies', label: 'Rules' },
+        { href: '/approval-sla', label: 'Timing' },
+      ],
+    });
+    primaryNavItems.push({
+      href: '/incidents',
+      label: 'Incidents',
+      Icon: IconAlertTriangle,
+      children: [
+        { href: '/incidents', label: 'Open' },
+        { href: '/incident-workspace', label: 'Notes' },
+      ],
+    });
   }
   primaryNavItems.push({ href: '/k8s', label: 'Kubernetes', Icon: IconK8s });
   if (isManager) {
-    primaryNavItems.push({ href: '/projects', label: 'Projects', Icon: IconProjects });
+    primaryNavItems.push({
+      href: '/projects',
+      label: 'Projects',
+      Icon: IconProjects,
+      children: [
+        { href: '/projects', label: 'Catalog' },
+        { href: '/team', label: 'Teams' },
+      ],
+    });
   }
 
-  const advancedNavItems: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = isManager
+  const advancedNavItems: NavItem[] = isManager
     ? [
         { href: '/promotions', label: 'Promotions', Icon: IconArrowUpRight },
         { href: '/deploy-intelligence', label: 'Deploy intel', Icon: IconArrowUpRight },
         { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
-        { href: '/approval-sla', label: 'Approval Timing', Icon: IconShield },
         { href: '/ops-command-center', label: 'Operations', Icon: IconAlertTriangle },
         { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
         { href: '/templates', label: 'Request Templates', Icon: IconTemplates },
-        { href: '/team', label: 'Teams', Icon: IconUsers },
         { href: '/access-overrides', label: 'Access Exceptions', Icon: IconKey },
         { href: '/rollback-console', label: 'Rollback', Icon: IconRefreshCw },
-        { href: '/gate-approvals', label: 'Approval History', Icon: IconShield },
-        { href: '/gate-policies', label: 'Approval Rules', Icon: IconShield },
-        { href: '/notification-settings', label: 'Alert Settings', Icon: IconBell },
-        { href: '/retry-center', label: 'Delivery Retries', Icon: IconRefreshCw },
+        {
+          href: '/notification-settings',
+          label: 'Alerts',
+          Icon: IconBell,
+          children: [
+            { href: '/notification-settings', label: 'Settings' },
+            { href: '/retry-center', label: 'Retries' },
+            { href: '/approval-notification-analytics', label: 'Analytics' },
+          ],
+        },
       ]
     : [];
-  const advancedNavActive = advancedNavItems.some(
-    ({ href }) => pathname === href || (href !== '/dashboard' && pathname.startsWith(href)),
-  );
+  const advancedNavActive = advancedNavItems.some((item) => itemIsActive(item));
   const k8sNavActive = pathname === '/k8s' || pathname.startsWith('/k8s/');
 
   useEffect(() => {
     if (advancedNavActive) setAdvancedNavOpen(true);
   }, [advancedNavActive]);
+
+  useEffect(() => {
+    const next: Record<string, boolean> = {};
+    for (const item of [...primaryNavItems, ...advancedNavItems]) {
+      if (item.children && itemIsActive(item)) next[item.href] = true;
+    }
+    if (Object.keys(next).length === 0) return;
+    setOpenNavGroups((current) => ({ ...current, ...next }));
+  }, [pathname]);
 
   const pageTitle = getPageTitle(pathname);
   const roleLabel = isManager ? 'Manager' : 'Contributor';
@@ -409,18 +503,6 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
       ? `${pendingCount} pending approvals`
       : 'No pending approvals'
     : 'Active session';
-  const sidebarStatusItems = isManager
-    ? [
-        { label: 'approval-queue', tone: pendingCount > 0 ? 'warn' : 'ok', meta: pendingCount > 0 ? `${pendingCount} open` : 'clear' },
-        { label: 'template-registry', tone: 'ok', meta: 'ready' },
-        { label: 'audit-stream', tone: 'ok', meta: 'live' },
-      ]
-    : [
-        { label: 'session-scope', tone: 'ok', meta: 'live' },
-        { label: 'template-registry', tone: 'ok', meta: 'ready' },
-        { label: 'audit-stream', tone: 'idle', meta: 'view' },
-      ];
-
   const getSidebarBadge = (href: string): string | null => {
     if (href === '/tickets' && isManager && pendingCount > 0) {
       return pendingCount > 99 ? '99+' : String(pendingCount);
@@ -428,8 +510,67 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
     return null;
   };
 
-  const isNavActive = (href: string) =>
-    href === '/k8s' ? k8sNavActive : pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+  const isNavActive = (href: string) => {
+    const item = [...primaryNavItems, ...advancedNavItems].find((entry) => entry.href === href);
+    if (item) return itemIsActive(item);
+    return href === '/k8s' ? k8sNavActive : leafIsActive(href);
+  };
+
+  const renderNavItem = (item: NavItem) => {
+    const { href, label, Icon, children } = item;
+    const groupActive = itemIsActive(item);
+    const badge = getSidebarBadge(href);
+    const hasChildren = Boolean(children?.length) && !sidebarCollapsed;
+    const groupOpen = Boolean(openNavGroups[href]);
+
+    return (
+      <div key={href} className="devops-sidebar-new__expandable">
+        <div className="devops-sidebar-new__group-row">
+          <Link
+            href={href}
+            className={`devops-sidebar-new__link ${leafIsActive(href) ? 'devops-sidebar-new__link--active' : groupActive ? 'devops-sidebar-new__link--current' : ''}`}
+            onClick={() => {
+              if (hasChildren) setOpenNavGroups((current) => ({ ...current, [href]: true }));
+              setMobileMenuOpen(false);
+            }}
+            aria-current={leafIsActive(href) ? 'page' : undefined}
+            aria-label={sidebarCollapsed ? label : undefined}
+            title={sidebarCollapsed ? label : undefined}
+          >
+            <Icon className="devops-sidebar-new__icon" />
+            {!sidebarCollapsed && <span className="devops-sidebar-new__label">{label}</span>}
+            {!sidebarCollapsed && badge && <span className="devops-sidebar-new__badge">{badge}</span>}
+          </Link>
+          {hasChildren ? (
+            <button
+              type="button"
+              className={`devops-sidebar-new__chevron ${groupOpen ? 'devops-sidebar-new__chevron--open' : ''}`}
+              aria-label={groupOpen ? `Collapse ${label}` : `Expand ${label}`}
+              aria-expanded={groupOpen}
+              onClick={() => setOpenNavGroups((current) => ({ ...current, [href]: !current[href] }))}
+            >
+              <IconChevronDown />
+            </button>
+          ) : null}
+        </div>
+        {hasChildren && groupOpen ? (
+          <div className="devops-sidebar-new__sub">
+            {children!.map((child) => (
+              <Link
+                key={child.href}
+                href={child.href}
+                className={`devops-sidebar-new__sublink ${leafIsActive(child.href) ? 'devops-sidebar-new__sublink--active' : ''}`}
+                onClick={() => setMobileMenuOpen(false)}
+                aria-current={leafIsActive(child.href) ? 'page' : undefined}
+              >
+                {child.label}
+              </Link>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
   const mobileTabs: MobileTab[] = (isManager
     ? [
         { href: '/dashboard', label: 'Overview', Icon: IconTickets },
@@ -471,27 +612,7 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
         <div className="devops-sidebar-new__body">
           <nav className="devops-sidebar-new__nav" aria-label="Primary">
             {!sidebarCollapsed && <span className="devops-sidebar-new__nav-title">Modules</span>}
-            {primaryNavItems.map(({ href, label, Icon }) => {
-              const isActive = href === '/k8s'
-                ? k8sNavActive
-                : pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
-              const badge = getSidebarBadge(href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`devops-sidebar-new__link ${isActive ? 'devops-sidebar-new__link--active' : ''}`}
-                  onClick={() => setMobileMenuOpen(false)}
-                  aria-current={isActive ? 'page' : undefined}
-                  aria-label={sidebarCollapsed ? label : undefined}
-                  title={sidebarCollapsed ? label : undefined}
-                >
-                  <Icon className="devops-sidebar-new__icon" />
-                  {!sidebarCollapsed && <span className="devops-sidebar-new__label">{label}</span>}
-                  {!sidebarCollapsed && badge && <span className="devops-sidebar-new__badge">{badge}</span>}
-                </Link>
-              );
-            })}
+            {primaryNavItems.map((item) => renderNavItem(item))}
             {!sidebarCollapsed && advancedNavItems.length > 0 && (
               <div className="devops-sidebar-new__section">
                 <button
@@ -508,40 +629,12 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
                     <p className="devops-sidebar-new__section-copy">
                       Extra tools stay here so the main menu stays simple.
                     </p>
-                    {advancedNavItems.map(({ href, label, Icon }) => {
-                      const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
-                      return (
-                        <Link
-                          key={href}
-                          href={href}
-                          className={`devops-sidebar-new__link ${isActive ? 'devops-sidebar-new__link--active' : ''}`}
-                          onClick={() => setMobileMenuOpen(false)}
-                          aria-current={isActive ? 'page' : undefined}
-                        >
-                          <Icon className="devops-sidebar-new__icon" />
-                          <span className="devops-sidebar-new__label">{label}</span>
-                        </Link>
-                      );
-                    })}
+                    {advancedNavItems.map((item) => renderNavItem(item))}
                   </div>
                 )}
               </div>
             )}
           </nav>
-          {!sidebarCollapsed && (
-            <div className="devops-sidebar-new__status-panel">
-              <span className="devops-sidebar-new__status-title">System Health</span>
-              <div className="devops-sidebar-new__status-list">
-                {sidebarStatusItems.map((item) => (
-                  <div key={item.label} className="devops-sidebar-new__status-item">
-                    <span className={`devops-sidebar-new__status-dot devops-sidebar-new__status-dot--${item.tone}`} aria-hidden />
-                    <span className="devops-sidebar-new__status-name">{item.label}</span>
-                    <span className="devops-sidebar-new__status-meta">{item.meta}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
           <div className="devops-sidebar-new__footer">
             <button
               type="button"
@@ -600,6 +693,19 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
               <span className="devops-navbar__kicker">SetuOps</span>
               <h1 className="devops-navbar__title">{pageTitle}</h1>
             </div>
+            <ScopeBar
+              projects={scopeProjects}
+              scope={scope}
+              onChange={(partial) => {
+                const next = updateScope(partial);
+                const query = { ...router.query };
+                if (next.projectId) query.project_id = next.projectId;
+                else delete query.project_id;
+                if (next.environment) query.environment = next.environment;
+                else delete query.environment;
+                void router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
+              }}
+            />
             <span className={`devops-navbar__status-chip ${isManager && pendingCount > 0 ? 'devops-navbar__status-chip--alert' : ''}`}>
               {statusLabel}
             </span>
@@ -744,8 +850,12 @@ const primaryNavItems: { href: string; label: string; Icon: ComponentType<{ clas
           { id: 'overview', label: 'Overview', href: '/dashboard' },
           { id: 'requests', label: 'Requests', href: '/tickets' },
           { id: 'approvals', label: 'Approvals', href: '/approval-center' },
+          { id: 'approval-history', label: 'Approval History', href: '/gate-approvals' },
+          { id: 'approval-rules', label: 'Approval Rules', href: '/gate-policies' },
+          { id: 'approval-timing', label: 'Approval Timing', href: '/approval-sla' },
           { id: 'incidents', label: 'Incidents', href: '/incidents' },
           { id: 'k8s', label: 'Kubernetes', href: '/k8s' },
+          { id: 'k8s-onboard', label: 'K8s Connections', href: '/k8s/onboard' },
           { id: 'pods', label: 'Pods', href: '/k8s/pods' },
           { id: 'logs', label: 'Logs', href: '/k8s/logs' },
           { id: 'rollback', label: 'Rollback', href: '/rollback-console' },

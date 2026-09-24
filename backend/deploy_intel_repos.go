@@ -390,7 +390,7 @@ func buildDeployIntelRepoSummary(item deployIntelRepo) deployIntelRepoSummary {
 	case !item.Enabled:
 		summary.SetupSummary = "Repository is registered but monitoring is paused. Re-enable to fetch open PRs from GitHub."
 	case GitHubToken == "":
-		summary.SetupSummary = "Add GITHUB_TOKEN on the API so InfraGate can list and analyze pull requests from GitHub."
+		summary.SetupSummary = "Add GITHUB_TOKEN on the API so SetuOps can list and analyze pull requests from GitHub."
 	case !ready:
 		summary.SetupSummary = fmt.Sprintf("Live open PRs load from GitHub. Add a GitOps project to the catalog to auto-capture merges into %s via webhook.", item.BaseBranch)
 	default:

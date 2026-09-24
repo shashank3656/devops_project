@@ -293,10 +293,10 @@ func buildOpenPRMeta(ctx context.Context, client *github.Client, owner, name str
 	hasTicket := ev.RequestID != nil && *ev.RequestID > 0
 	if !hasTicket && (strings.EqualFold(ev.RiskLevel, "high") || ev.Score >= 70) {
 		meta.SuggestTicket = true
-		meta.SuggestTicketReason = "High deploy risk — track through InfraGate approvals."
+		meta.SuggestTicketReason = "High deploy risk — track through SetuOps approvals."
 	} else if !hasTicket && meta.ReviewSLA == "breach" {
 		meta.SuggestTicket = true
-		meta.SuggestTicketReason = "Long-running open PR without an InfraGate request."
+		meta.SuggestTicketReason = "Long-running open PR without an SetuOps request."
 	}
 	return meta
 }
@@ -623,6 +623,6 @@ func devopsDeployIntelSuggestTicketHandler(w http.ResponseWriter, r *http.Reques
 		"status":     "ok",
 		"request_id": req.ID,
 		"existing":   false,
-		"message":    "InfraGate ticket created from deploy intelligence.",
+		"message":    "SetuOps ticket created from deploy intelligence.",
 	})
 }

@@ -51,7 +51,7 @@ func formatDeployIntelGitHubComment(brief prImpactBrief) string {
 	}
 	var b strings.Builder
 	b.WriteString(deployIntelGitHubCommentMarker)
-	b.WriteString("\n## InfraGate deploy intelligence\n\n")
+	b.WriteString("\n## SetuOps deploy intelligence\n\n")
 	b.WriteString(fmt.Sprintf("**%s** · %s risk (%d/100)\n\n", headline, brief.RiskLevel, brief.Score))
 	if brief.ChangeBrief != nil && len(brief.ChangeBrief.Changing) > 0 {
 		b.WriteString("### Changing\n")
