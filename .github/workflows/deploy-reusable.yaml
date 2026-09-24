@@ -461,18 +461,20 @@ jobs:
             echo "prefixes_json=[\"${prefix}-backend\",\"${prefix}-frontend\",\"${prefix}-admin-frontend\",\"${prefix}-devops-frontend\"]"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Sync via Railway Image Updater (HTTP)
-        if: ${{ inputs.railway_image_updater_url != '' || vars.RAILWAY_IMAGE_UPDATER_URL != '' }}
+      - name: Sync Railway service images
         shell: bash
         env:
           UPDATER_URL: ${{ inputs.railway_image_updater_url != '' && inputs.railway_image_updater_url || vars.RAILWAY_IMAGE_UPDATER_URL }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           PROJECT_ID: ${{ inputs.railway_project_id }}
           ENVIRONMENT_ID: ${{ inputs.railway_environment_id }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
           PREFIX: ${{ steps.ghcr.outputs.prefix }}
+          IMAGE_PREFIXES: ${{ steps.ghcr.outputs.prefixes_json }}
         run: |
           set -euo pipefail
-          payload="$(python3 <<'PY'
+          if [ -n "${UPDATER_URL}" ]; then
+            payload="$(python3 <<'PY'
           import json, os
           prefix = os.environ["PREFIX"]
           print(json.dumps({
@@ -488,25 +490,18 @@ jobs:
           }))
           PY
           )"
-          echo "Calling Railway Image Updater at ${UPDATER_URL%/}/update for tag ${IMAGE_TAG}"
-          curl --fail --show-error --silent \
-            -X PUT "${UPDATER_URL%/}/update" \
-            -H "Content-Type: application/json" \
-            -d "${payload}"
-
-      - name: Sync via Railway GraphQL API
-        if: ${{ (inputs.railway_image_updater_url == '' && vars.RAILWAY_IMAGE_UPDATER_URL == '') && secrets.RAILWAY_API_TOKEN != '' }}
-        env:
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-          PROJECT_ID: ${{ inputs.railway_project_id }}
-          ENVIRONMENT_ID: ${{ inputs.railway_environment_id }}
-          IMAGE_TAG: ${{ env.IMAGE_TAG }}
-          IMAGE_PREFIXES: ${{ steps.ghcr.outputs.prefixes_json }}
-        run: python3 .github/scripts/railway_sync_ghcr_images.py
-
-      - name: Require Railway sync configuration
-        if: ${{ (inputs.railway_image_updater_url == '' && vars.RAILWAY_IMAGE_UPDATER_URL == '') && secrets.RAILWAY_API_TOKEN == '' }}
-        run: |
+            echo "Calling Railway Image Updater at ${UPDATER_URL%/}/update for tag ${IMAGE_TAG}"
+            curl --fail --show-error --silent \
+              -X PUT "${UPDATER_URL%/}/update" \
+              -H "Content-Type: application/json" \
+              -d "${payload}"
+            exit 0
+          fi
+          if [ -n "${RAILWAY_API_TOKEN}" ]; then
+            echo "Syncing via Railway GraphQL API for tag ${IMAGE_TAG}"
+            python3 .github/scripts/railway_sync_ghcr_images.py
+            exit 0
+          fi
           echo "::error::Sync Railway service images was enabled but not configured."
           echo "Set GitHub Actions secret RAILWAY_API_TOKEN (recommended), or repository variable RAILWAY_IMAGE_UPDATER_URL."
           echo "Deploy Dev already passes project/environment IDs; PR workflows skip this job by design."
