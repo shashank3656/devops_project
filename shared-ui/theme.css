@@ -3785,3 +3785,69 @@ html[data-theme] .ig-table tbody tr.ig-tree-row--cloud td:first-child { box-shad
     display: none;
   }
 }
+
+/* Keep catalog pages inside the shell. Long webhook/code lines must not stretch the viewport. */
+html[data-theme] .ig-page,
+html[data-theme] .devops-main-new,
+html[data-theme] .admin-main-shell__content,
+html[data-theme] .user-main-shell__content {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+html[data-theme] .portal-page,
+html[data-theme] .portal-surface,
+html[data-theme] .portal-surface__header,
+html[data-theme] .portal-page__header {
+  min-width: 0;
+  max-width: 100%;
+}
+
+html[data-theme] .portal-page {
+  width: 100%;
+}
+
+html[data-theme] .portal-surface {
+  overflow: hidden;
+}
+
+html[data-theme] code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+html[data-theme] pre,
+html[data-theme] .code-block,
+html[data-theme] .admin-maintenance-card__code-block {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+html[data-theme] .devops-incident-filter-row {
+  width: 100%;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 0.8fr);
+}
+
+html[data-theme] .changes-page__webhook-url {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+html[data-theme] .changes-page__sample {
+  margin: 0;
+  max-height: 280px;
+}
+
+@media (max-width: 900px) {
+  html[data-theme] .devops-incident-filter-row {
+    grid-template-columns: 1fr;
+  }
+}

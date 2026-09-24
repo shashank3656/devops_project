@@ -106,15 +106,8 @@ const PRIMARY_NAV: {
   { href: '/dashboard', label: 'Overview', Icon: IconDashboard },
   { href: '/approval-center', label: 'Approvals', Icon: IconShield },
   { href: '/requests', label: 'Requests', Icon: IconRequests },
-  {
-    href: '/changes',
-    label: 'Operations',
-    Icon: IconAlertCircle,
-    children: [
-      { href: '/changes', label: 'Changes' },
-      { href: '/incidents', label: 'Incidents' },
-    ],
-  },
+  { href: '/changes', label: 'Changes', Icon: IconFileText },
+  { href: '/incidents', label: 'Incidents', Icon: IconAlertCircle },
   {
     href: '/users',
     label: 'People',

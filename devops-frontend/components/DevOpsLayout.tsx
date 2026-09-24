@@ -453,6 +453,16 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/problems', label: 'Problems' },
       ],
     });
+    primaryNavItems.push({
+      href: '/changes',
+      label: 'Changes',
+      Icon: IconFileText,
+      children: [
+        { href: '/changes', label: 'Catalog' },
+        { href: '/change-calendar', label: 'Calendar' },
+        { href: '/release-notes', label: 'Release notes' },
+      ],
+    });
   }
   primaryNavItems.push({ href: '/k8s', label: 'Kubernetes', Icon: IconK8s });
   primaryNavItems.push({ href: '/health', label: 'Health', Icon: IconArrowUpRight });
@@ -472,16 +482,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const advancedNavItems: NavItem[] = isManager
     ? [
         { href: '/promotions', label: 'Promotions', Icon: IconArrowUpRight },
-        {
-          href: '/changes',
-          label: 'Changes',
-          Icon: IconArrowUpRight,
-          children: [
-            { href: '/changes', label: 'Catalog' },
-            { href: '/change-calendar', label: 'Calendar' },
-            { href: '/release-notes', label: 'Release notes' },
-          ],
-        },
         { href: '/deploy-intelligence', label: 'Deploy intel', Icon: IconArrowUpRight },
         { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
         { href: '/ops-command-center', label: 'Operations', Icon: IconAlertTriangle },
@@ -883,6 +883,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'rollback', label: 'Rollback', href: '/rollback-console' },
           { id: 'promotions', label: 'Promotions', href: '/promotions' },
           { id: 'changes', label: 'Changes', href: '/changes' },
+          { id: 'create-change', label: 'Create change request', href: '/changes/new' },
           { id: 'change-calendar', label: 'Change calendar', href: '/change-calendar' },
           { id: 'release-notes', label: 'Release notes', href: '/release-notes' },
           { id: 'services', label: 'Service map', href: '/services' },

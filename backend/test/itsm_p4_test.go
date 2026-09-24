@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -55,6 +56,32 @@ func TestCausedByChangeCopy(t *testing.T) {
 	got := causedByChangeCopy(inc, change)
 	if got != "This page started 14 min after CHG0000123 (PR 1842)." {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestPrepareManualChangeRequiresTitleAndEnvironment(t *testing.T) {
+	if _, err := prepareManualChange(parsedChangeWebhook{Title: "", Environment: "dev"}, "ops"); err == nil {
+		t.Fatal("empty title should fail")
+	}
+	if _, err := prepareManualChange(parsedChangeWebhook{Title: "Cutover", Environment: ""}, "ops"); err == nil {
+		t.Fatal("empty environment should fail")
+	}
+	got, err := prepareManualChange(parsedChangeWebhook{Title: "Cutover", Environment: "dev"}, "ops")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Repo != "manual" || !strings.HasPrefix(got.SHA, "manual-") || got.Author != "ops" {
+		t.Fatalf("expected generated repo/sha and author, got %#v", got)
+	}
+}
+
+func TestPrepareManualChangeEmergencyNeedsIncident(t *testing.T) {
+	if _, err := prepareManualChange(parsedChangeWebhook{Title: "Break fix", Environment: "prod", ChangeType: "emergency"}, "ops"); err == nil {
+		t.Fatal("emergency without incident should fail")
+	}
+	got, err := prepareManualChange(parsedChangeWebhook{Title: "Break fix", Environment: "prod", ChangeType: "emergency", LinkedIncidentNumber: "INC0000001"}, "ops")
+	if err != nil || got.ChangeType != "emergency" {
+		t.Fatalf("linked emergency should pass: %v %#v", err, got)
 	}
 }
 
