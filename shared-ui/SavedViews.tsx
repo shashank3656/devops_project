@@ -32,6 +32,9 @@ export default function SavedViews<T extends object>({
   onApply,
   presets = [],
   canSave = true,
+  serverViews,
+  onServerSave,
+  onServerDelete,
 }: {
   storageKey: string;
   current: T;
@@ -39,14 +42,22 @@ export default function SavedViews<T extends object>({
   presets?: SavedView<T>[];
   /** False when the current filters are the defaults, so there is nothing worth saving. */
   canSave?: boolean;
+  /** When set, replaces browser-stored custom views after login sync. */
+  serverViews?: SavedView<T>[] | null;
+  onServerSave?: (view: SavedView<T>) => void | Promise<void>;
+  onServerDelete?: (name: string) => void | Promise<void>;
 }) {
   const [views, setViews] = useState<SavedView<T>[]>([]);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
 
   useEffect(() => {
+    if (serverViews) {
+      setViews(serverViews);
+      return;
+    }
     setViews(readViews<T>(storageKey));
-  }, [storageKey]);
+  }, [storageKey, serverViews]);
 
   const persist = (next: SavedView<T>[]) => {
     setViews(next);
@@ -61,7 +72,9 @@ export default function SavedViews<T extends object>({
     const trimmed = name.trim().slice(0, 40);
     if (!trimmed) return;
     const rest = views.filter((view) => view.name.toLowerCase() !== trimmed.toLowerCase());
-    persist([...rest, { name: trimmed, filters: { ...current } }].slice(-MAX_VIEWS));
+    const nextView: SavedView<T> = { name: trimmed, filters: { ...current } };
+    persist([...rest, nextView].slice(-MAX_VIEWS));
+    void onServerSave?.(nextView);
     setName('');
     setNaming(false);
   };
@@ -84,7 +97,10 @@ export default function SavedViews<T extends object>({
                 type="button"
                 className="ig-views__remove"
                 aria-label={`Delete view ${view.name}`}
-                onClick={() => persist(views.filter((saved) => saved.name !== view.name))}
+                onClick={() => {
+                  persist(views.filter((saved) => saved.name !== view.name));
+                  void onServerDelete?.(view.name);
+                }}
               >
                 ×
               </button>

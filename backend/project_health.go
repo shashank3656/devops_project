@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
 	"math"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -36,11 +38,12 @@ type scorecardCheck struct {
 }
 
 type projectHealth struct {
-	WindowDays int                `json:"window_days"`
-	Metrics    []doraMetric       `json:"metrics"`
-	Scorecard  []scorecardCheck   `json:"scorecard"`
-	Score      int                `json:"score"`
-	Cost       projectCostSummary `json:"cost"`
+	WindowDays int                  `json:"window_days"`
+	Metrics    []doraMetric         `json:"metrics"`
+	Scorecard  []scorecardCheck     `json:"scorecard"`
+	Score      int                  `json:"score"`
+	Cost       projectCostSummary   `json:"cost"`
+	Settings   projectInfraSettings `json:"settings"`
 }
 
 type doraWindow struct {
@@ -353,7 +356,46 @@ func buildProjectHealth(project ProjectCatalog, now time.Time) (*projectHealth, 
 		Scorecard:  scorecard,
 		Score:      score,
 		Cost:       buildProjectCostSummary(project.ID, now),
+		Settings:   loadProjectInfraSettings(project.ID),
 	}, nil
+}
+
+func exportProjectHealthCSV(w http.ResponseWriter, r *http.Request, projectID int) {
+	project, err := getProjectCatalogByID(projectID)
+	if err != nil || project == nil {
+		writeAPIError(w, r, http.StatusNotFound, "project not found", err)
+		return
+	}
+	health, err := buildProjectHealth(*project, time.Now())
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
+		return
+	}
+	filename := fmt.Sprintf("dora-%s-%s.csv", strings.ToLower(project.Code), time.Now().Format("20060102"))
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	writer := csv.NewWriter(w)
+	_ = writer.Write([]string{"section", "key", "label", "value", "previous", "unit", "band", "samples", "detail"})
+	for _, metric := range health.Metrics {
+		_ = writer.Write([]string{
+			"dora", metric.Key, metric.Label,
+			strconv.FormatFloat(metric.Value, 'f', -1, 64),
+			strconv.FormatFloat(metric.Previous, 'f', -1, 64),
+			metric.Unit, metric.Band, strconv.Itoa(metric.Samples), "",
+		})
+	}
+	for _, check := range health.Scorecard {
+		_ = writer.Write([]string{
+			"scorecard", check.Key, check.Label,
+			strconv.FormatBool(check.Passed), "", "", "", "", check.Detail,
+		})
+	}
+	_ = writer.Write([]string{"summary", "score", "Operational scorecard", strconv.Itoa(health.Score), "", "percent", "", "", ""})
+	_ = writer.Write([]string{
+		"cost", "budget", "Monthly budget",
+		strconv.Itoa(health.Cost.BudgetMonthly), "", "USD", health.Cost.AlertLevel, strconv.Itoa(health.Cost.TrackedRequests), "",
+	})
+	writer.Flush()
 }
 
 func handleProjectHealth(w http.ResponseWriter, r *http.Request, projectID int) {

@@ -98,12 +98,18 @@ export interface ProjectCostSummary {
   idle_candidates: IdleCandidate[];
 }
 
+export interface ProjectInfraSettings {
+  monthly_budget_usd: number;
+  default_temp_env_days: number;
+}
+
 export interface ProjectHealth {
   window_days: number;
   metrics: DoraMetric[];
   scorecard: ScorecardCheck[];
   score: number;
   cost?: ProjectCostSummary;
+  settings?: ProjectInfraSettings;
 }
 
 export interface PlanChange {

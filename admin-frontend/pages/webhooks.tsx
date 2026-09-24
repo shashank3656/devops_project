@@ -23,6 +23,7 @@ export default function WebhooksPage() {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
+  const ciWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/ci`;
 
   const fetchWebhooks = async () => {
     if (!token) return;
@@ -126,6 +127,33 @@ export default function WebhooksPage() {
               </button>
             </div>
           )}
+
+          <section className="admin-maintenance-card" style={{ marginBottom: 24 }}>
+            <div className="admin-maintenance-card__header">
+              <div>
+                <span className="portal-page__eyebrow">Inbound CI</span>
+                <h2 className="admin-maintenance-card__title">Pipeline webhook &amp; branch checks</h2>
+                <p className="admin-maintenance-card__copy">
+                  Post Terraform plan output, policy reports, and Infracost JSON from your pipeline. Set <code>CI_WEBHOOK_SECRET</code> on the API and send it as{' '}
+                  <code>X-CI-Secret</code>. Use GitHub required checks named <code>infragate/plan-review</code> and <code>infragate/policy</code> so merges wait on InfraGate plan + policy status.
+                </p>
+              </div>
+            </div>
+            <div className="admin-maintenance-card__body">
+              <p className="admin-maintenance-card__copy">
+                <strong>Endpoint:</strong> <code>{ciWebhookUrl}</code>
+              </p>
+              <pre className="admin-maintenance-card__code-block" style={{ overflow: 'auto', fontSize: 12, padding: 16, borderRadius: 8, background: 'var(--color-surface-muted)' }}>
+                {`curl -sf -X POST "${ciWebhookUrl}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-CI-Secret: $INFRAGATE_CI_SECRET" \\
+  -d '{"request_id":123,"status":"plan_success","plan_output":"...","policy_reports":[],"infracost_report":{}}'`}
+              </pre>
+              <p className="admin-maintenance-card__copy" style={{ marginTop: 12 }}>
+                GitHub merge webhooks for your onboarded infra repo feed deploy intelligence on the DevOps portal; promotion gates can flag recent high-risk merges to main.
+              </p>
+            </div>
+          </section>
 
           <div className="portal-surface">
             <div className="portal-surface__header">

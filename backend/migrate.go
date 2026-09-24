@@ -1102,6 +1102,19 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_repo_deploy_events_merged ON repo_deploy_events(merged_at DESC)")
 	_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_repo_deploy_events_risk ON repo_deploy_events(risk_level, score DESC)")
 
+	// Migration 53: scope for saved_filter_views (admin + devops queues)
+	var savedViewScopeCount int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'saved_filter_views' AND column_name = 'scope'").Scan(&savedViewScopeCount)
+	if savedViewScopeCount == 0 {
+		log.Println("Migrating database: adding saved_filter_views.scope...")
+		_, _ = DB.Exec("ALTER TABLE saved_filter_views ADD COLUMN scope VARCHAR(64) NOT NULL DEFAULT 'admin_requests'")
+		_, _ = DB.Exec("UPDATE saved_filter_views SET scope = 'admin_requests' WHERE scope IS NULL OR scope = ''")
+	}
+	_, _ = DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_filter_views_user_scope_name ON saved_filter_views (user_id, scope, lower(name))")
+
+	// Migration 54: default TTL for temporary non-prod environments per project
+	_, _ = DB.Exec(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS default_temp_env_days INTEGER NOT NULL DEFAULT 0`)
+
 	log.Println("Database schema is up to date")
 	return nil
 }

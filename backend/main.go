@@ -466,6 +466,7 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to save request", nil)
 		return
 	}
+	applyProjectDefaultLifetimeIfEligible(prRequest.ID, prRequest.ProjectID, prRequest.Env)
 	AppendUserActivity(userIDPtr, "request_create", "pr_request", strconv.Itoa(prRequest.ID), status)
 
 	// Optional initial comment when raising the PR (saved as first request comment)
@@ -534,6 +535,8 @@ func main() {
 		// Ensure default admin exists (credentials from env or admin/admin123)
 		EnsureDefaultAdmin()
 		startLifecycleScheduler()
+		startCostDigestScheduler()
+		startDriftAutomationScheduler()
 	}
 	InitRuntimeResilience()
 
@@ -612,9 +615,13 @@ func main() {
 	http.HandleFunc("/api/admin/templates", adminTemplatesRouter)
 	http.HandleFunc("/api/admin/templates/", adminTemplatesRouter)
 	http.HandleFunc("/api/admin/request-bundle-normalization", adminRequestBundleNormalizationHandler)
+	http.HandleFunc("/api/admin/saved-views", adminSavedFilterViewsHandler)
+	http.HandleFunc("/api/admin/saved-views/", adminSavedFilterViewsHandler)
 	http.HandleFunc("/api/devops/workspace", devopsWorkspaceHandler)
 	http.HandleFunc("/api/devops/pr-impact", devopsPRImpactHandler)
 	http.HandleFunc("/api/devops/deploy-intelligence", devopsDeployIntelligenceHandler)
+	http.HandleFunc("/api/devops/saved-views", devopsSavedFilterViewsHandler)
+	http.HandleFunc("/api/devops/saved-views/", devopsSavedFilterViewsHandler)
 	http.HandleFunc("/api/devops/prs/", devopsPRNumberImpactHandler)
 	http.HandleFunc("/api/devops/oncall", devopsOncallHandler)
 	http.HandleFunc("/api/devops/freezes", devopsFreezesHandler)
@@ -641,6 +648,7 @@ func main() {
 	http.HandleFunc("/api/devops/environment-drift", devopsEnvironmentDriftHandler)
 	http.HandleFunc("/api/devops/environment-drift/fix", devopsEnvironmentDriftFixHandler)
 	http.HandleFunc("/api/devops/ops-command-center", devopsOpsCommandCenterHandler)
+	http.HandleFunc("/api/devops/cost-digest", devopsCostDigestHandler)
 	http.HandleFunc("/api/devops/project-dependencies", devopsProjectDependenciesHandler)
 	http.HandleFunc("/api/devops/k8s-connections", devopsK8sConnectionsHandler)
 	http.HandleFunc("/api/devops/k8s-overview", devopsK8sOverviewHandler)
