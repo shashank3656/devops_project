@@ -45,6 +45,13 @@ interface ChangeDetail {
   rollback_hint?: string;
   cab_status?: string;
   linked_incident_number?: string;
+  assignee_username?: string;
+  priority?: string;
+  risk_level?: string;
+  impact?: string;
+  backout_plan?: string;
+  cab_window_start?: string;
+  cab_window_end?: string;
 }
 
 export default function AdminChangeDetailPage() {
@@ -103,11 +110,16 @@ export default function AdminChangeDetailPage() {
             <div className="portal-form-grid">
               <label className="label">Status<input className="input" readOnly value={item.status} /></label>
               <label className="label">Type<input className="input" readOnly value={item.change_type} /></label>
+              <label className="label">Priority<input className="input" readOnly value={item.priority || 'medium'} /></label>
+              <label className="label">Risk<input className="input" readOnly value={item.risk_level || 'medium'} /></label>
+              <label className="label">Planned start<input className="input" readOnly value={item.cab_window_start ? new Date(item.cab_window_start).toLocaleString() : '—'} /></label>
+              <label className="label">Planned end<input className="input" readOnly value={item.cab_window_end ? new Date(item.cab_window_end).toLocaleString() : '—'} /></label>
               <label className="label">Repo<input className="input" readOnly value={item.repo} /></label>
               <label className="label">SHA<input className="input" readOnly value={item.sha} /></label>
               <label className="label">Pull request<input className="input" readOnly value={item.pr_number ? `#${item.pr_number}` : 'None'} /></label>
               <label className="label">Service<input className="input" readOnly value={item.service || '—'} /></label>
-              <label className="label">Environment<input className="input" readOnly value={item.environment} /></label>
+              <label className="label">Environment<input className="input" readOnly value={item.environment === 'unspecified' ? '—' : item.environment} /></label>
+              <label className="label">Assigned to<input className="input" readOnly value={item.assignee_username || '—'} /></label>
               <label className="label">Author<input className="input" readOnly value={item.author || '—'} /></label>
               <label className="label">Project<input className="input" readOnly value={item.project_name ? `${item.project_name} (${item.project_code})` : '—'} /></label>
               <label className="label">Linked incidents<input className="input" readOnly value={String(item.linked_incidents || 0)} /></label>
@@ -115,6 +127,8 @@ export default function AdminChangeDetailPage() {
             {item.cab_status ? <p className="portal-surface__subtitle">CAB: {item.cab_status}{item.linked_incident_number ? ` · linked ${item.linked_incident_number}` : ''}</p> : null}
             {item.rollback_hint ? <p className="portal-surface__subtitle">{item.rollback_hint}</p> : null}
             {item.summary ? <p className="portal-surface__subtitle">{item.summary}</p> : null}
+            {item.impact ? <p className="portal-surface__subtitle">Impact: {item.impact}</p> : null}
+            {item.backout_plan ? <p className="portal-surface__subtitle">Backout: {item.backout_plan}</p> : null}
             {item.pr_url ? <p><a href={item.pr_url} target="_blank" rel="noreferrer">Open pull request</a></p> : null}
             {brief?.headline ? (
               <div style={{ marginTop: 24 }}>
@@ -142,12 +156,12 @@ export default function AdminChangeDetailPage() {
                 </ul>
               </div>
             ) : null}
-            <h2 className="portal-surface__title" style={{ marginTop: 24 }}>Files</h2>
             {item.files?.length ? (
-              <ul>{item.files.map((file) => <li key={file}><code>{file}</code></li>)}</ul>
-            ) : (
-              <p className="portal-surface__subtitle">No file list was sent with this change.</p>
-            )}
+              <>
+                <h2 className="portal-surface__title" style={{ marginTop: 24 }}>Files</h2>
+                <ul>{item.files.map((file) => <li key={file}><code>{file}</code></li>)}</ul>
+              </>
+            ) : null}
           </section>
         ) : null}
       </div>

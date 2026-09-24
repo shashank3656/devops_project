@@ -15,37 +15,106 @@ interface ProjectOption {
   code: string;
 }
 
+interface ServiceOption {
+  id: number;
+  service: string;
+  repo: string;
+  environment: string;
+  project_id?: number;
+  project_name?: string;
+  project_code?: string;
+}
+
+interface PortalUserOption {
+  id: number;
+  username: string;
+  email?: string;
+}
+
 function clearSessionAndRedirect() {
   localStorage.removeItem(DEVOPS_TOKEN_KEY);
   localStorage.removeItem(DEVOPS_USER_KEY);
   window.location.assign('/login');
 }
 
+function parseProjectList(raw: unknown): ProjectOption[] {
+  const list = Array.isArray(raw) ? raw : [];
+  return list
+    .map((item) => {
+      const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      return {
+        id: typeof row.id === 'number' ? row.id : 0,
+        name: typeof row.name === 'string' ? row.name : '',
+        code: typeof row.code === 'string' ? row.code : '',
+      };
+    })
+    .filter((item) => item.id > 0);
+}
+
+function parseServiceList(raw: unknown): ServiceOption[] {
+  const list = Array.isArray(raw) ? raw : [];
+  return list
+    .map((item) => {
+      const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      return {
+        id: typeof row.id === 'number' ? row.id : 0,
+        service: typeof row.service === 'string' ? row.service : '',
+        repo: typeof row.repo === 'string' ? row.repo : '',
+        environment: typeof row.environment === 'string' ? row.environment : '',
+        project_id: typeof row.project_id === 'number' ? row.project_id : undefined,
+        project_name: typeof row.project_name === 'string' ? row.project_name : '',
+        project_code: typeof row.project_code === 'string' ? row.project_code : '',
+      };
+    })
+    .filter((item) => item.id > 0 && item.service);
+}
+
+function parsePortalUsers(raw: unknown): PortalUserOption[] {
+  const list = Array.isArray(raw) ? raw : [];
+  return list
+    .map((item) => {
+      const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      return {
+        id: typeof row.id === 'number' ? row.id : 0,
+        username: typeof row.username === 'string' ? row.username : '',
+        email: typeof row.email === 'string' ? row.email : '',
+      };
+    })
+    .filter((item) => item.id > 0 && item.username);
+}
+
 export default function NewChangeRequestPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [services, setServices] = useState<ServiceOption[]>([]);
+  const [users, setUsers] = useState<PortalUserOption[]>([]);
   const [previewNumber, setPreviewNumber] = useState('');
   const [title, setTitle] = useState('');
   const [changeType, setChangeType] = useState('standard');
-  const [environment, setEnvironment] = useState('dev');
   const [projectId, setProjectId] = useState('');
-  const [service, setService] = useState('');
+  const [serviceId, setServiceId] = useState('');
   const [repo, setRepo] = useState('');
   const [sha, setSha] = useState('');
   const [prNumber, setPrNumber] = useState('');
   const [prUrl, setPrUrl] = useState('');
+  const [assigneeUserId, setAssigneeUserId] = useState('');
+  const [priority, setPriority] = useState('medium');
+  const [riskLevel, setRiskLevel] = useState('medium');
+  const [plannedStart, setPlannedStart] = useState('');
+  const [plannedEnd, setPlannedEnd] = useState('');
   const [summary, setSummary] = useState('');
-  const [filesText, setFilesText] = useState('');
+  const [impact, setImpact] = useState('');
+  const [backoutPlan, setBackoutPlan] = useState('');
   const [incidentNumber, setIncidentNumber] = useState('');
   const [watchMinutes, setWatchMinutes] = useState('120');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const files = useMemo(
-    () => filesText.split('\n').map((line) => line.trim()).filter(Boolean),
-    [filesText],
+  const selectedService = useMemo(
+    () => services.find((item) => String(item.id) === serviceId) || null,
+    [services, serviceId],
   );
 
   useEffect(() => {
@@ -57,34 +126,38 @@ export default function NewChangeRequestPage() {
     setLoading(true);
     Promise.all([
       fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`${apiUrl}/api/devops/services`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`${apiUrl}/api/devops/users?audience=portal`, { headers: { Authorization: `Bearer ${token}` } }),
       fetch(`${apiUrl}/api/devops/changes?mode=preview`, { headers: { Authorization: `Bearer ${token}` } }),
     ])
-      .then(async ([projectRes, previewRes]) => {
-        if (projectRes.status === 401 || projectRes.status === 403 || previewRes.status === 401 || previewRes.status === 403) {
+      .then(async ([projectRes, serviceRes, userRes, previewRes]) => {
+        if ([projectRes, serviceRes, userRes, previewRes].some((res) => res.status === 401 || res.status === 403)) {
           clearSessionAndRedirect();
           return;
         }
         const projectData = asRecord(await projectRes.json().catch(() => ({})));
+        const serviceData = asRecord(await serviceRes.json().catch(() => ({})));
+        const userData = asRecord(await userRes.json().catch(() => ({})));
         const previewData = asRecord(await previewRes.json().catch(() => ({})));
-        const list = Array.isArray(projectData.projects) ? projectData.projects : [];
-        setProjects(
-          list
-            .map((item) => {
-              const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
-              return {
-                id: typeof row.id === 'number' ? row.id : 0,
-                name: typeof row.name === 'string' ? row.name : '',
-                code: typeof row.code === 'string' ? row.code : '',
-              };
-            })
-            .filter((item) => item.id > 0),
-        );
+        setProjects(parseProjectList(projectData.projects));
+        setServices(parseServiceList(serviceData.services));
+        setUsers(parsePortalUsers(userData.users));
         const number = getString(previewData.change_number);
         if (number) setPreviewNumber(number);
       })
       .catch(() => setError('Failed to load change form options'))
       .finally(() => setLoading(false));
   }, [apiUrl]);
+
+  const applyService = (id: string) => {
+    setServiceId(id);
+    const mapped = services.find((item) => String(item.id) === id);
+    if (!mapped) {
+      return;
+    }
+    if (mapped.repo) setRepo(mapped.repo);
+    if (mapped.project_id) setProjectId(String(mapped.project_id));
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -95,6 +168,18 @@ export default function NewChangeRequestPage() {
     }
     if (!title.trim()) {
       setError('Title is required');
+      return;
+    }
+    if (!selectedService) {
+      setError('Select a service from the Services catalog');
+      return;
+    }
+    if (!assigneeUserId) {
+      setError('Assigned to is required');
+      return;
+    }
+    if (plannedStart && plannedEnd && plannedEnd < plannedStart) {
+      setError('Planned end must be after planned start');
       return;
     }
     if (changeType === 'emergency' && !incidentNumber.trim()) {
@@ -113,17 +198,22 @@ export default function NewChangeRequestPage() {
         body: JSON.stringify({
           title: title.trim(),
           change_type: changeType,
-          environment,
-          project_id: projectId ? Number(projectId) : 0,
-          service: service.trim(),
-          repo: repo.trim(),
+          project_id: projectId ? Number(projectId) : selectedService.project_id || 0,
+          service: selectedService.service,
+          repo: repo.trim() || selectedService.repo,
           sha: sha.trim(),
           pr_number: prNumber ? Number(prNumber) : 0,
           pr_url: prUrl.trim(),
           summary: summary.trim(),
-          files,
+          impact: impact.trim(),
+          backout_plan: backoutPlan.trim(),
+          priority,
+          risk_level: riskLevel,
+          planned_start: plannedStart,
+          planned_end: plannedEnd,
           incident_number: incidentNumber.trim(),
           watch_minutes: Number(watchMinutes) || 120,
+          assignee_user_id: Number(assigneeUserId),
           status: 'new',
         }),
       });
@@ -156,7 +246,7 @@ export default function NewChangeRequestPage() {
             <span className="portal-page__eyebrow">Change request</span>
             <h1 className="portal-page__title">Create change request</h1>
             <p className="portal-page__subtitle">
-              Use this form for planned or emergency deploys that are not coming from CI. Pipelines can still record the same object later.
+              Pick a service, assign a portal user, and record priority, risk, window, impact, and backout. Environment comes from the service.
             </p>
           </div>
           <Link href="/changes" className="btn btn-secondary">
@@ -175,12 +265,22 @@ export default function NewChangeRequestPage() {
                 Reference: <strong>{previewNumber || 'Generated on save'}</strong>
               </p>
             </div>
+            <Link href="/services/new" className="btn btn-secondary">
+              Add service
+            </Link>
           </div>
 
           {loading ? (
             <div className="empty-state">Loading change form...</div>
           ) : (
             <form onSubmit={(event) => void submit(event)}>
+              {!services.length ? (
+                <div className="empty-state">
+                  Add a service first. The service dropdown is filled from the Services catalog.
+                  {' '}
+                  <Link href="/services/new">Create a service</Link>
+                </div>
+              ) : null}
               <div className="portal-form-grid">
                 <label className="label">
                   Title
@@ -195,12 +295,54 @@ export default function NewChangeRequestPage() {
                   </select>
                 </label>
                 <label className="label">
-                  Environment
-                  <select className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)}>
-                    <option value="dev">dev</option>
-                    <option value="uat">uat</option>
-                    <option value="prod">prod</option>
+                  Service
+                  <select className="input" value={serviceId} onChange={(event) => applyService(event.target.value)} required>
+                    <option value="">Select a service</option>
+                    {services.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.service}
+                        {item.project_name ? ` · ${item.project_name}` : ''}
+                        {item.repo ? ` · ${item.repo}` : ''}
+                      </option>
+                    ))}
                   </select>
+                </label>
+                <label className="label">
+                  Assigned to
+                  <select className="input" value={assigneeUserId} onChange={(event) => setAssigneeUserId(event.target.value)} required>
+                    <option value="">Select a portal user</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.username}
+                        {user.email ? ` · ${user.email}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label">
+                  Priority
+                  <select className="input" value={priority} onChange={(event) => setPriority(event.target.value)}>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </label>
+                <label className="label">
+                  Risk
+                  <select className="input" value={riskLevel} onChange={(event) => setRiskLevel(event.target.value)}>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </label>
+                <label className="label">
+                  Planned start
+                  <input className="input" type="datetime-local" value={plannedStart} onChange={(event) => setPlannedStart(event.target.value)} />
+                </label>
+                <label className="label">
+                  Planned end
+                  <input className="input" type="datetime-local" value={plannedEnd} onChange={(event) => setPlannedEnd(event.target.value)} />
                 </label>
                 <label className="label">
                   Project
@@ -214,12 +356,8 @@ export default function NewChangeRequestPage() {
                   </select>
                 </label>
                 <label className="label">
-                  Service
-                  <input className="input" value={service} onChange={(event) => setService(event.target.value)} placeholder="payments-api" />
-                </label>
-                <label className="label">
                   Repo
-                  <input className="input" value={repo} onChange={(event) => setRepo(event.target.value)} placeholder="acme/payments-api" />
+                  <input className="input" value={repo} onChange={(event) => setRepo(event.target.value)} placeholder="Filled from the selected service" />
                 </label>
                 <label className="label">
                   SHA
@@ -246,14 +384,18 @@ export default function NewChangeRequestPage() {
               </div>
               <label className="label">
                 Summary
-                <textarea className="input" rows={4} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="What is changing and why this window is safe." />
+                <textarea className="input" rows={3} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="What is changing and why this window is safe." />
               </label>
               <label className="label">
-                Files
-                <textarea className="input" rows={4} value={filesText} onChange={(event) => setFilesText(event.target.value)} placeholder={'cmd/api/main.go\nhelm/payments/values.yaml'} />
+                Impact
+                <textarea className="input" rows={3} value={impact} onChange={(event) => setImpact(event.target.value)} placeholder="Who or what is affected if this deploy goes wrong." />
+              </label>
+              <label className="label">
+                Backout plan
+                <textarea className="input" rows={3} value={backoutPlan} onChange={(event) => setBackoutPlan(event.target.value)} placeholder="How to revert if health or errors move after the change." />
               </label>
               <div className="portal-form-actions">
-                <button type="submit" className="btn btn-primary" disabled={saving || !title.trim()}>
+                <button type="submit" className="btn btn-primary" disabled={saving || !title.trim() || !serviceId || !assigneeUserId || !services.length}>
                   {saving ? 'Creating...' : 'Create change request'}
                 </button>
               </div>

@@ -165,6 +165,18 @@ func devopsUsersHandler(w http.ResponseWriter, r *http.Request) {
 		encodeDevopsJSON(w, map[string]interface{}{"users": []interface{}{}, "status": "ok"})
 		return
 	}
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("audience")), "portal") {
+		users, err := listPortalUsers()
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		encodeDevopsJSON(w, map[string]interface{}{"users": users, "status": "ok"})
+		return
+	}
 	users, err := GetDevopsUsers()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")

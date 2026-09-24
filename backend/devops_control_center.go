@@ -144,6 +144,7 @@ type opsDeliveryFailure struct {
 type simpleUserOption struct {
 	ID       int    `json:"id"`
 	Username string `json:"username"`
+	Email    string `json:"email,omitempty"`
 }
 
 func normalizeLowerList(values []string) []string {
@@ -176,7 +177,7 @@ func joinCSVList(values []string) string {
 }
 
 func listPortalUsers() ([]simpleUserOption, error) {
-	rows, cancel, err := queryRowsWithTimeout(`SELECT id, username FROM users WHERE COALESCE(user_type, 'portal_user') = 'portal_user' ORDER BY username`)
+	rows, cancel, err := queryRowsWithTimeout(`SELECT id, username, COALESCE(email,'') FROM users WHERE COALESCE(user_type, 'portal_user') = 'portal_user' ORDER BY username`)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +186,7 @@ func listPortalUsers() ([]simpleUserOption, error) {
 	out := []simpleUserOption{}
 	for rows.Next() {
 		var user simpleUserOption
-		if err := rows.Scan(&user.ID, &user.Username); err != nil {
+		if err := rows.Scan(&user.ID, &user.Username, &user.Email); err != nil {
 			return nil, err
 		}
 		out = append(out, user)

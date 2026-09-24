@@ -31,26 +31,28 @@ export default function ServiceMapPage() {
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          setError(data?.error || 'Failed to load service map');
+          setError(data?.error || 'Failed to load services');
           return;
         }
         setItems(Array.isArray(data.services) ? data.services : []);
       })
-      .catch(() => setError('Failed to load service map'))
+      .catch(() => setError('Failed to load services'))
       .finally(() => setLoading(false));
   }, [apiUrl]);
 
   return (
     <DevOpsLayout>
       <Head>
-        <title>Service map - DevOps</title>
+        <title>Services - DevOps</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">CMDB lite</span>
-            <h1 className="portal-page__title">Service map</h1>
-            <p className="portal-page__subtitle">Repo, Grafana, and team so webhooks can resolve a project without a project code.</p>
+            <span className="portal-page__eyebrow">Changes</span>
+            <h1 className="portal-page__title">Services</h1>
+            <p className="portal-page__subtitle">
+              Catalog of services used on change requests. Add a service here and it appears in the Change request dropdown.
+            </p>
           </div>
           <Link href="/services/new" className="btn btn-primary">
             Add service
@@ -59,7 +61,7 @@ export default function ServiceMapPage() {
         {error ? <div className="alert alert-error">{error}</div> : null}
         <section className="portal-surface">
           {loading ? <div className="empty-state">Loading services...</div> : null}
-          {!loading && !items.length ? <div className="empty-state">No services mapped yet.</div> : null}
+          {!loading && !items.length ? <div className="empty-state">No services yet. Add one so change requests can pick it from the dropdown.</div> : null}
           {items.length ? (
             <table className="templates-table">
               <thead>
