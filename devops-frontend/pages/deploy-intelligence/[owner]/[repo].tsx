@@ -214,7 +214,7 @@ export default function DeployIntelligenceRepoPage() {
 
   const onRowOpen = (row: DeployEvent) => {
     setSelected(row);
-    if (section === 'open' && row.summary?.includes('Listed from GitHub')) {
+    if (section === 'open') {
       setRefreshing(true);
       void load(row.pr_number);
     }

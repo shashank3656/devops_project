@@ -295,6 +295,78 @@ func buildOpenPRMeta(ctx context.Context, client *github.Client, owner, name str
 	return meta
 }
 
+func countPullRequestCommits(ctx context.Context, client *github.Client, owner, name string, number int) int {
+	total := 0
+	opts := &github.ListOptions{PerPage: 100}
+	for {
+		commits, resp, err := client.PullRequests.ListCommits(ctx, owner, name, number, opts)
+		if err != nil {
+			return total
+		}
+		total += len(commits)
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return total
+}
+
+func countPullRequestChangedFiles(ctx context.Context, client *github.Client, owner, name string, number int) int {
+	total := 0
+	opts := &github.ListOptions{PerPage: 100}
+	for {
+		files, resp, err := client.PullRequests.ListFiles(ctx, owner, name, number, opts)
+		if err != nil {
+			return total
+		}
+		total += len(files)
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return total
+}
+
+// enrichOpenPRBriefStats loads commit/file/diff counts from GitHub (List PR omits these).
+func enrichOpenPRBriefStats(ctx context.Context, client *github.Client, owner, name string, number int, brief *prImpactBrief, req *PRRequest) {
+	if client == nil || brief == nil || number <= 0 {
+		return
+	}
+	subCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	pr, _, err := client.PullRequests.Get(subCtx, owner, name, number)
+	if err != nil || pr == nil {
+		return
+	}
+	brief.Title = strings.TrimSpace(pr.GetTitle())
+	if pr.GetUser() != nil {
+		brief.Author = pr.GetUser().GetLogin()
+	}
+	if pr.GetBase() != nil {
+		brief.BaseBranch = pr.GetBase().GetRef()
+	}
+	if pr.GetHead() != nil {
+		brief.HeadBranch = pr.GetHead().GetRef()
+	}
+	if pr.GetHTMLURL() != "" {
+		brief.PRURL = pr.GetHTMLURL()
+	}
+	brief.Additions = pr.GetAdditions()
+	brief.Deletions = pr.GetDeletions()
+	brief.CommitCount = countPullRequestCommits(subCtx, client, owner, name, number)
+	brief.FileCount = pr.GetChangedFiles()
+	if brief.FileCount <= 0 {
+		brief.FileCount = countPullRequestChangedFiles(subCtx, client, owner, name, number)
+	}
+	brief.Summary = fmt.Sprintf(
+		"%d commit(s), %d file(s), +%d/-%d (live from GitHub). Open for full file list and CI check details.",
+		brief.CommitCount, brief.FileCount, brief.Additions, brief.Deletions,
+	)
+	scorePRImpact(brief, req)
+}
+
 func attachOpenPRMeta(ctx context.Context, client *github.Client, owner, name string, pr *github.PullRequest, ev repoDeployEvent, deep bool) repoDeployEvent {
 	meta := buildOpenPRMeta(ctx, client, owner, name, pr, ev, deep)
 	if meta != nil {
@@ -356,7 +428,7 @@ func runDeployIntelHighRiskOpenPRDigest(now time.Time) {
 			if !openPRMatchesFilters(pr, opts) {
 				continue
 			}
-			ev := repoDeployEventFromOpenPR(item.Owner, item.Name, pr, false)
+			ev := repoDeployEventFromOpenPR(ctx, client, item.Owner, item.Name, pr, false)
 			if strings.EqualFold(ev.RiskLevel, "high") || ev.Score >= 70 {
 				high++
 			}
