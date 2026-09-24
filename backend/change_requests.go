@@ -361,39 +361,135 @@ func listChangeRequests(projectID int, environment, status, query string) ([]cha
 	return out, nil
 }
 
+func prepareManualChange(payload parsedChangeWebhook, author string) (parsedChangeWebhook, error) {
+	payload.Title = strings.TrimSpace(payload.Title)
+	payload.Environment = normalizeChangeEnvironment(payload.Environment)
+	payload.Repo = strings.TrimSpace(payload.Repo)
+	payload.SHA = strings.TrimSpace(payload.SHA)
+	payload.Service = strings.TrimSpace(payload.Service)
+	payload.Summary = strings.TrimSpace(payload.Summary)
+	payload.Author = strings.TrimSpace(payload.Author)
+	payload.ChangeType = normalizeChangeType(payload.ChangeType)
+	payload.Status = normalizeChangeStatus(payload.Status)
+	if payload.Title == "" {
+		return payload, fmt.Errorf("title is required")
+	}
+	if payload.Environment == "" || payload.Environment == "unspecified" {
+		return payload, fmt.Errorf("environment is required")
+	}
+	if payload.Repo == "" {
+		payload.Repo = "manual"
+	}
+	if payload.SHA == "" {
+		payload.SHA = fmt.Sprintf("manual-%d", time.Now().UnixNano())
+	}
+	if payload.Author == "" {
+		payload.Author = strings.TrimSpace(author)
+	}
+	if payload.WatchMinutes <= 0 {
+		payload.WatchMinutes = 120
+	}
+	if payload.Status == "" {
+		payload.Status = "new"
+	}
+	if emergencyRequiresIncident(payload.ChangeType, payload.LinkedIncidentID, payload.LinkedIncidentNumber) {
+		return payload, fmt.Errorf("emergency changes must link an incident")
+	}
+	return payload, nil
+}
+
 func devopsChangesHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireDevopsManager(w, r); !ok {
+	userID, ok := requireDevopsManager(w, r)
+	if !ok {
 		return
 	}
-	if r.Method != "GET" {
-		writeMethodNotAllowed(w, r)
-		return
-	}
-	projectID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("project_id")))
-	items, err := listChangeRequests(projectID, r.URL.Query().Get("environment"), r.URL.Query().Get("status"), r.URL.Query().Get("q"))
-	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "failed to list changes", err)
-		return
-	}
-	if needle := normalizeChangeType(r.URL.Query().Get("change_type")); r.URL.Query().Get("change_type") != "" {
-		filtered := items[:0]
-		for _, item := range items {
-			if normalizeChangeType(item.ChangeType) == needle {
-				filtered = append(filtered, item)
-			}
+	switch r.Method {
+	case "GET":
+		if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("mode")), "preview") {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"change_number": formatChangeNumber(nextChangeRequestID()),
+				"status":        "ok",
+			})
+			return
 		}
-		items = filtered
+		projectID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("project_id")))
+		items, err := listChangeRequests(projectID, r.URL.Query().Get("environment"), r.URL.Query().Get("status"), r.URL.Query().Get("q"))
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list changes", err)
+			return
+		}
+		if needle := normalizeChangeType(r.URL.Query().Get("change_type")); r.URL.Query().Get("change_type") != "" {
+			filtered := items[:0]
+			for _, item := range items {
+				if normalizeChangeType(item.ChangeType) == needle {
+					filtered = append(filtered, item)
+				}
+			}
+			items = filtered
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"changes": items,
+			"status":  "ok",
+		})
+	case "POST":
+		var payload parsedChangeWebhook
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
+			return
+		}
+		author := ""
+		if user, err := GetUserByID(userID); err == nil && user != nil {
+			author = user.Username
+		}
+		prepared, err := prepareManualChange(payload, author)
+		if err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+			return
+		}
+		item, created, err := upsertChangeRequest(prepared)
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to create change", err)
+			return
+		}
+		if created {
+			go FireOutboundWebhooks("change.created", map[string]interface{}{
+				"change_number": item.ChangeNumber,
+				"id":            item.ID,
+				"repo":          item.Repo,
+				"sha":           item.SHA,
+				"pr_number":     item.PRNumber,
+				"environment":   item.Environment,
+				"service":       item.Service,
+				"source":        "manual",
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"change":  item,
+			"created": created,
+			"status":  "ok",
+		})
+	default:
+		writeMethodNotAllowed(w, r)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"changes": items,
-		"status":  "ok",
-	})
+}
+
+func nextChangeRequestID() int {
+	if DB == nil {
+		return 0
+	}
+	var last int
+	if err := queryRowContext(`SELECT COALESCE(MAX(id), 0) FROM change_requests`).Scan(&last); err != nil {
+		return 0
+	}
+	return last + 1
 }
 
 func changeIsInWatchWindow(item changeRequestRecord, now time.Time) bool {

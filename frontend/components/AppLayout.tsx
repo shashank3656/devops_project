@@ -385,15 +385,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         ...(hasManagedTeams ? [{ href: '/my-teams', label: 'Teams' }] : []),
       ],
     },
-    {
-      href: '/changes',
-      label: 'Operations',
-      Icon: IconAlertCircle,
-      children: [
-        { href: '/changes', label: 'Changes' },
-        { href: '/incidents', label: 'Incidents' },
-      ],
-    },
+    { href: '/changes', label: 'Changes', Icon: IconFileText },
+    { href: '/incidents', label: 'Incidents', Icon: IconAlertCircle },
   ];
 
   if (teamCheck === 'loading') {

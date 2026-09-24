@@ -116,14 +116,19 @@ export default function ChangesCatalogPage() {
       <Head>
         <title>Changes - DevOps</title>
       </Head>
-      <div className="portal-page">
+      <div className="portal-page changes-page">
         <div className="portal-page__header">
           <div>
             <span className="portal-page__eyebrow">Deployments</span>
             <h1 className="portal-page__title">Changes</h1>
             <p className="portal-page__subtitle">
-              Application deploys recorded from CI when code merges to main. This list is the catalog — pipelines create the rows.
+              Application deploys recorded from CI, plus change requests created here. The catalog is the landing page — use the button to open the form.
             </p>
+          </div>
+          <div className="portal-page__actions">
+            <button type="button" className="btn btn-primary" onClick={() => void router.push('/changes/new')}>
+              Create change request
+            </button>
           </div>
         </div>
 
@@ -146,27 +151,6 @@ export default function ChangesCatalogPage() {
             <span className="k8s-summary-card__label">Failed</span>
             <strong className="k8s-summary-card__value">{failedCount}</strong>
           </div>
-        </section>
-
-        <section className="portal-surface" style={{ marginBottom: 16 }}>
-          <div className="portal-surface__header">
-            <div>
-              <span className="portal-surface__eyebrow">Inbound CI</span>
-              <h2 className="portal-surface__title">Change webhook</h2>
-              <p className="portal-surface__subtitle">
-                POST from GitHub Actions after merge to main. Send <code>X-CI-Secret</code> or HMAC. Same SHA + repo + env updates the existing change.
-              </p>
-            </div>
-            <button type="button" className="btn btn-secondary" onClick={() => void copyWebhook()}>
-              {copied ? 'Copied' : 'Copy webhook URL'}
-            </button>
-          </div>
-          <p className="portal-surface__subtitle" style={{ marginBottom: 8 }}>
-            <code>{webhookUrl}</code>
-          </p>
-          <pre className="admin-maintenance-card__code-block" style={{ overflow: 'auto', fontSize: 12, padding: 16, borderRadius: 8, background: 'var(--color-surface-muted)' }}>
-            {CHANGE_WEBHOOK_SAMPLE}
-          </pre>
         </section>
 
         <section className="portal-surface">
@@ -203,7 +187,7 @@ export default function ChangesCatalogPage() {
             <div className="empty-state">Loading changes...</div>
           ) : visible.length === 0 ? (
             <div className="empty-state">
-              No changes yet. Point a CI job at the webhook when code merges to main.
+              No changes yet. Create one here or point a CI job at the webhook when code merges to main.
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
@@ -243,6 +227,26 @@ export default function ChangesCatalogPage() {
               </table>
             </div>
           )}
+        </section>
+
+        <section className="portal-surface">
+          <details>
+            <summary className="portal-surface__title" style={{ cursor: 'pointer' }}>
+              Change webhook
+            </summary>
+            <div className="portal-surface__header" style={{ marginTop: 16 }}>
+              <p className="portal-surface__subtitle">
+                POST from GitHub Actions after merge to main. Send <code>X-CI-Secret</code> or HMAC. Same SHA + repo + env updates the existing change.
+              </p>
+              <button type="button" className="btn btn-secondary" onClick={() => void copyWebhook()}>
+                {copied ? 'Copied' : 'Copy webhook URL'}
+              </button>
+            </div>
+            <p className="portal-surface__subtitle" style={{ marginBottom: 8 }}>
+              <code className="changes-page__webhook-url">{webhookUrl}</code>
+            </p>
+            <pre className="code-block changes-page__sample">{CHANGE_WEBHOOK_SAMPLE}</pre>
+          </details>
         </section>
       </div>
     </DevOpsLayout>
