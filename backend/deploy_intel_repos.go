@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -31,13 +32,13 @@ type deployIntelRepo struct {
 
 type deployIntelRepoSummary struct {
 	deployIntelRepo
-	Ready           bool       `json:"ready"`
-	MergeCount      int        `json:"merge_count"`
-	HighRisk30d     int        `json:"high_risk_30d"`
-	OpenPRCount     int        `json:"open_pr_count"`
-	LastMergedAt    *time.Time `json:"last_merged_at,omitempty"`
-	WebhookPath     string     `json:"webhook_path"`
-	SetupSummary    string     `json:"setup_summary"`
+	Ready        bool       `json:"ready"`
+	MergeCount   int        `json:"merge_count"`
+	HighRisk30d  int        `json:"high_risk_30d"`
+	OpenPRCount  int        `json:"open_pr_count"`
+	LastMergedAt *time.Time `json:"last_merged_at,omitempty"`
+	WebhookPath  string     `json:"webhook_path"`
+	SetupSummary string     `json:"setup_summary"`
 }
 
 func ensureDefaultDeployIntelRepo() {
@@ -227,10 +228,10 @@ func fetchGitHubOpenPullRequests(ctx context.Context, client *github.Client, own
 
 func shallowOpenPRBrief(owner, name string, pr *github.PullRequest) prImpactBrief {
 	brief := prImpactBrief{
-		Factors:     []prImpactFactor{},
-		BlastRadius: []string{},
-		Commits:     []prImpactCommit{},
-		Files:       []prImpactFile{},
+		Factors:      []prImpactFactor{},
+		BlastRadius:  []string{},
+		Commits:      []prImpactCommit{},
+		Files:        []prImpactFile{},
 		DeployStatus: "open",
 		MergeState:   "open",
 	}
@@ -285,6 +286,9 @@ func repoDeployEventFromOpenPR(ctx context.Context, client *github.Client, owner
 	}
 	brief.MergeState = "open"
 	brief.DeployStatus = "open"
+	if brief.ChangeBrief == nil {
+		attachChangeBrief(&brief)
+	}
 	var reqID *int
 	if req != nil && req.ID > 0 {
 		reqID = &req.ID
@@ -308,6 +312,7 @@ func repoDeployEventFromOpenPR(ctx context.Context, client *github.Client, owner
 		Summary:     brief.Summary,
 		PRURL:       brief.PRURL,
 		Impact:      brief,
+		ChangeBrief: brief.ChangeBrief,
 	}
 }
 
@@ -497,6 +502,8 @@ func listOpenPullRequestsAnalyzed(owner, name string, opts openPRListOptions) ([
 			out = append(out, ev)
 		}
 	}
+	attachOpenPRConflicts(out)
+	attachSimilarMergesToOpenEvents(owner, name, out)
 	return out, meta, nil
 }
 
@@ -529,10 +536,23 @@ func devopsDeployIntelReposHandler(w http.ResponseWriter, r *http.Request) {
 		BaseBranch string `json:"base_branch"`
 		Notes      string `json:"notes"`
 		Enabled    *bool  `json:"enabled"`
+		ProjectID  int    `json:"project_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
+	}
+	if body.ProjectID > 0 {
+		identity := resolveGitHubRepoForProject(body.ProjectID)
+		if strings.TrimSpace(body.Owner) == "" {
+			body.Owner = identity.Owner
+		}
+		if strings.TrimSpace(body.Name) == "" {
+			body.Name = identity.Name
+		}
+		if strings.TrimSpace(body.BaseBranch) == "" {
+			body.BaseBranch = identity.BaseBranch
+		}
 	}
 	enabled := true
 	if body.Enabled != nil {
@@ -542,6 +562,11 @@ func devopsDeployIntelReposHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 		return
+	}
+	if body.ProjectID > 0 {
+		if err := setGitOpsProjectGitHubRepo(body.ProjectID, repo.Owner, repo.Name); err != nil {
+			log.Printf("[deploy-intel] link project %d to %s/%s: %v", body.ProjectID, repo.Owner, repo.Name, err)
+		}
 	}
 	AppendAuditLog(&managerID, "deploy_intel_repo_onboard", "deploy_intel_repo", fmt.Sprintf("%s/%s", repo.Owner, repo.Name), repo.BaseBranch)
 	w.Header().Set("Content-Type", "application/json")

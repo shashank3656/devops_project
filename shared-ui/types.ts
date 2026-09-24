@@ -209,6 +209,35 @@ export interface PRImpactFactor {
   detail: string;
 }
 
+export interface DeployIntelChangingGroup {
+  key: string;
+  label: string;
+  count: number;
+}
+
+export interface DeployIntelChangeBrief {
+  headline: string;
+  changing: DeployIntelChangingGroup[];
+  environments?: string[];
+  multi_env?: boolean;
+  risk_because: string[];
+}
+
+export interface DeployIntelPlanDelta {
+  has_plan: boolean;
+  add: number;
+  change: number;
+  destroy: number;
+  replace?: number;
+  plan_resource_count: number;
+  pr_file_count: number;
+  terraform_files?: number;
+  has_destroy: boolean;
+  mismatch: boolean;
+  summary: string;
+  flags?: string[];
+}
+
 export interface PRImpactBriefData {
   request_id?: number;
   pr_number?: number;
@@ -234,6 +263,39 @@ export interface PRImpactBriefData {
   commits?: PRImpactCommit[];
   files?: PRImpactFile[];
   acknowledged?: boolean;
+  change_brief?: DeployIntelChangeBrief;
+  plan_delta?: DeployIntelPlanDelta;
+  similar_merges?: DeployIntelSimilarMerge[];
+}
+
+export interface DeployIntelRevertRef {
+  pr_number: number;
+  title: string;
+  pr_url?: string;
+  merged_at?: string;
+}
+
+export interface DeployIntelSimilarMerge {
+  pr_number: number;
+  title: string;
+  headline?: string;
+  risk_level?: string;
+  score?: number;
+  merged_at?: string;
+  pr_url?: string;
+  overlap?: string[];
+  later_revert?: DeployIntelRevertRef;
+}
+
+export interface DeployIntelAck {
+  id?: number;
+  repo_owner?: string;
+  repo_name?: string;
+  pr_number?: number;
+  user_id?: number;
+  username?: string;
+  reasons?: string[];
+  created_at?: string;
 }
 
 export interface CostEstimate {

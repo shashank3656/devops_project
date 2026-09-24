@@ -1473,8 +1473,9 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body struct {
-			Note           string `json:"note"`
-			ExpiresInHours int    `json:"expires_in_hours"`
+			Note           string   `json:"note"`
+			ExpiresInHours int      `json:"expires_in_hours"`
+			AckReasons     []string `json:"ack_reasons"`
 		}
 		if r.Body != nil {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
@@ -1497,6 +1498,13 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 				return
+			}
+			if req, reqErr := GetPRRequestByID(requestID); reqErr == nil && req != nil {
+				reasons := append([]string{}, body.AckReasons...)
+				if note := strings.TrimSpace(body.Note); note != "" {
+					reasons = append(reasons, note)
+				}
+				persistAckForRequest(req, managerID, reasons)
 			}
 			if err := writeJSONResponse(w, http.StatusOK, map[string]any{"approval": approval, "gate": gate, "status": "ok"}); err != nil {
 				writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotion gate approval response", err)
@@ -1524,14 +1532,21 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				status := http.StatusConflict
 				message := "promotion blocked by deployment gate policy"
-				if gate.RequiresAcknowledgement {
-					message = "deployment gate approval is required before promotion"
-				}
-				if writeErr := writeJSONResponse(w, status, map[string]any{
+				payload := map[string]any{
 					"status": "error",
 					"error":  message,
 					"gate":   gate,
-				}); writeErr != nil {
+				}
+				if gate.RequiresAcknowledgement {
+					status = http.StatusPreconditionRequired
+					message = "deployment gate approval is required before promotion"
+					payload["error"] = message
+					payload["high_risk_merge_required"] = true
+					if brief := changeBriefFromPromotionGate(gate); brief != nil {
+						payload["change_brief"] = brief
+					}
+				}
+				if writeErr := writeJSONResponse(w, status, payload); writeErr != nil {
 					writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotion gate response", writeErr)
 				}
 				return

@@ -89,10 +89,12 @@ type deploymentGatePolicySummary struct {
 }
 
 type deploymentGateCheck struct {
-	Key    string `json:"key"`
-	Label  string `json:"label"`
-	Status string `json:"status"`
-	Detail string `json:"detail"`
+	Key         string                  `json:"key"`
+	Label       string                  `json:"label"`
+	Status      string                  `json:"status"`
+	Detail      string                  `json:"detail"`
+	PRURL       string                  `json:"pr_url,omitempty"`
+	ChangeBrief *deployIntelChangeBrief `json:"change_brief,omitempty"`
 }
 
 type deploymentGateEnvironment struct {

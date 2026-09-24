@@ -32,6 +32,12 @@ interface PromotionGateCheck {
   label: string;
   status: string;
   detail: string;
+  pr_url?: string;
+  change_brief?: {
+    headline?: string;
+    changing?: { key: string; label: string; count: number }[];
+    risk_because?: string[];
+  };
 }
 
 interface PromotionGateDecision {
@@ -115,11 +121,33 @@ function normalizeGate(value: unknown): PromotionGateDecision | null {
       : [],
     checks: checks.map((check) => {
       const checkRecord = check && typeof check === 'object' ? (check as Record<string, unknown>) : {};
+      const brief = checkRecord.change_brief && typeof checkRecord.change_brief === 'object'
+        ? (checkRecord.change_brief as Record<string, unknown>)
+        : null;
       return {
         key: typeof checkRecord.key === 'string' ? checkRecord.key : '',
         label: typeof checkRecord.label === 'string' ? checkRecord.label : '',
         status: typeof checkRecord.status === 'string' ? checkRecord.status : '',
         detail: typeof checkRecord.detail === 'string' ? checkRecord.detail : '',
+        pr_url: typeof checkRecord.pr_url === 'string' ? checkRecord.pr_url : '',
+        change_brief: brief
+          ? {
+              headline: typeof brief.headline === 'string' ? brief.headline : '',
+              changing: Array.isArray(brief.changing)
+                ? brief.changing.map((item) => {
+                    const group = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+                    return {
+                      key: typeof group.key === 'string' ? group.key : '',
+                      label: typeof group.label === 'string' ? group.label : '',
+                      count: typeof group.count === 'number' ? group.count : 0,
+                    };
+                  })
+                : [],
+              risk_because: Array.isArray(brief.risk_because)
+                ? brief.risk_because.filter((item): item is string => typeof item === 'string')
+                : [],
+            }
+          : undefined,
       };
     }),
   };
@@ -215,6 +243,8 @@ export default function DevOpsPromotionsPage() {
   const [revokingId, setRevokingId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [ackedHighRisk, setAckedHighRisk] = useState<Record<number, boolean>>({});
+  const [ackReasons, setAckReasons] = useState<Record<number, string>>({});
   const [recentMerges, setRecentMerges] = useState<
     { pr_number: number; title: string; commit_count: number; risk_level: string; score: number; request_id?: number }[]
   >([]);
@@ -299,7 +329,23 @@ export default function DevOpsPromotionsPage() {
       setNotice('This promotion does not need a gate approval.');
       return;
     }
-    const note = window.prompt('Add an approval note for the deployment gate (optional):', '') ?? null;
+    const highRisk = item.gate.checks.find((check) => check.key === 'recent_high_risk_merge');
+    if (highRisk && !ackedHighRisk[item.request_id]) {
+      setError('Acknowledge the high-risk merge change brief before approving the gate.');
+      return;
+    }
+    const reasons = (ackReasons[item.request_id] || '').split('\n').map((line) => line.trim()).filter(Boolean);
+    if (highRisk && reasons.length === 0) {
+      setError('Add exception reasons before approving the gate.');
+      return;
+    }
+    const headline = highRisk?.change_brief?.headline;
+    const note = window.prompt(
+      headline
+        ? `High-risk merge: ${headline}\n\nAdd an approval note for the deployment gate (optional):`
+        : 'Add an approval note for the deployment gate (optional):',
+      '',
+    ) ?? null;
     if (note === null) return;
     if (item.gate.comment_required && !note.trim()) {
       setError('A justification note is required before approving production promotions.');
@@ -323,7 +369,11 @@ export default function DevOpsPromotionsPage() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ note, expires_in_hours: Math.round(parsedExpiry) }),
+        body: JSON.stringify({
+          note,
+          expires_in_hours: Math.round(parsedExpiry),
+          ack_reasons: reasons,
+        }),
       });
       if (response.status === 401 || response.status === 403) {
         clearSessionAndRedirect();
@@ -651,6 +701,46 @@ export default function DevOpsPromotionsPage() {
                                         <span style={{ textTransform: 'capitalize', fontSize: 11, color: gateTone(check.status).color }}>{check.status}</span>
                                       </div>
                                       <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-text-muted)' }}>{check.detail}</div>
+                                      {check.change_brief?.headline ? (
+                                        <div style={{ marginTop: 6, fontSize: 12 }}>
+                                          <strong>Changing:</strong> {check.change_brief.headline}
+                                          {check.change_brief.risk_because && check.change_brief.risk_because.length > 0 ? (
+                                            <div style={{ color: 'var(--color-text-muted)' }}>
+                                              Risk because: {check.change_brief.risk_because[0]}
+                                            </div>
+                                          ) : null}
+                                          {check.key === 'recent_high_risk_merge' && item.gate?.requires_acknowledgement ? (
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                                              <input
+                                                type="checkbox"
+                                                checked={Boolean(ackedHighRisk[item.request_id])}
+                                                onChange={(event) =>
+                                                  setAckedHighRisk((current) => ({
+                                                    ...current,
+                                                    [item.request_id]: event.target.checked,
+                                                  }))
+                                                }
+                                              />
+                                              Acknowledge risks: {check.change_brief.headline}
+                                            </label>
+                                            {ackedHighRisk[item.request_id] ? (
+                                              <textarea
+                                                className="input"
+                                                rows={2}
+                                                style={{ marginTop: 8, width: '100%' }}
+                                                value={ackReasons[item.request_id] || ''}
+                                                onChange={(event) =>
+                                                  setAckReasons((current) => ({
+                                                    ...current,
+                                                    [item.request_id]: event.target.value,
+                                                  }))
+                                                }
+                                                placeholder="Exception reasons (required)"
+                                              />
+                                            ) : null}
+                                          ) : null}
+                                        </div>
+                                      ) : null}
                                     </div>
                                   ))}
                                 </div>
@@ -673,7 +763,13 @@ export default function DevOpsPromotionsPage() {
                             <button
                               type="button"
                               className="btn btn-secondary btn-sm"
-                              disabled={approvingId === item.request_id || promotingId === item.request_id || revokingId === item.request_id}
+                              disabled={
+                                approvingId === item.request_id ||
+                                promotingId === item.request_id ||
+                                revokingId === item.request_id ||
+                                (Boolean(item.gate.checks.find((check) => check.key === 'recent_high_risk_merge')) &&
+                                  (!ackedHighRisk[item.request_id] || !(ackReasons[item.request_id] || '').trim()))
+                              }
                               onClick={() => void approveGate(item)}
                             >
                               {approvingId === item.request_id ? 'Approving...' : 'Approve gate'}

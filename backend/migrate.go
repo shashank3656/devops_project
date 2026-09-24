@@ -1131,6 +1131,49 @@ func MigrateDatabase() error {
 	`)
 	ensureDefaultDeployIntelRepo()
 
+	// Migration 56: per-project GitHub repo + high-risk merge notify dedup
+	_, _ = DB.Exec(`ALTER TABLE gitops_projects ADD COLUMN IF NOT EXISTS github_owner VARCHAR(120) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE gitops_projects ADD COLUMN IF NOT EXISTS github_repo VARCHAR(200) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS deploy_intel_notify_dedup (
+			id SERIAL PRIMARY KEY,
+			repo_owner VARCHAR(120) NOT NULL,
+			repo_name VARCHAR(200) NOT NULL,
+			pr_number INTEGER NOT NULL,
+			channel VARCHAR(40) NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(repo_owner, repo_name, pr_number, channel)
+		)
+	`)
+
+	// Migration 57: per-project hot-path watchlist for deploy intel scoring
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_risk_paths (
+			id SERIAL PRIMARY KEY,
+			project_id INTEGER NOT NULL,
+			glob VARCHAR(400) NOT NULL,
+			label VARCHAR(200) NOT NULL DEFAULT '',
+			weight INTEGER NOT NULL DEFAULT 12,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_project_risk_paths_project ON project_risk_paths (project_id)`)
+
+	// Migration 58: persisted high-risk exception acknowledgements
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS deploy_intel_acks (
+			id SERIAL PRIMARY KEY,
+			repo_owner VARCHAR(120) NOT NULL,
+			repo_name VARCHAR(200) NOT NULL,
+			pr_number INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			reasons TEXT NOT NULL DEFAULT '[]',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(repo_owner, repo_name, pr_number, user_id)
+		)
+	`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_deploy_intel_acks_pr ON deploy_intel_acks (repo_owner, repo_name, pr_number)`)
+
 	log.Println("Database schema is up to date")
 	return nil
 }

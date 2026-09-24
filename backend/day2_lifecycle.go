@@ -355,7 +355,7 @@ func CreateGitHubPRDeletingFiles(branchName string, paths []string, title, body 
 func createPullRequestForRequest(req *PRRequest) (string, error) {
 	op := loadRequestOperation(req.ID)
 	if op == nil || op.Operation != day2Decommission {
-		return CreateGitHubPR(req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
+		return createGitHubPROn(githubIdentityForRequest(req), req.Branch, req.FilePath, []byte(req.Config), req.ApplicationID)
 	}
 	source, err := GetPRRequestByID(op.SourceRequestID)
 	if err != nil || source == nil {

@@ -46,6 +46,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/access-review': 'Access Review',
   '/webhooks': 'Integrations',
   '/maintenance': 'Maintenance',
+  '/deploy-intelligence': 'Deploy Intel',
   '/profile': 'Profile',
 };
 
@@ -99,6 +100,7 @@ const MORE_NAV: { href: string; label: string; Icon: ComponentType<{ className?:
   { href: '/templates', label: 'Templates', Icon: IconTemplates },
   { href: '/webhooks', label: 'Integrations', Icon: IconWebhook },
   { href: '/maintenance', label: 'Maintenance', Icon: IconLayers },
+  { href: '/deploy-intelligence', label: 'Deploy Intel', Icon: IconActivity },
 ];
 
 function getAdminIdentity(): { initials: string; label: string } {
