@@ -193,13 +193,23 @@ func buildPRImpactFromRequest(req *PRRequest) prImpactBrief {
 	return brief
 }
 
-func enrichPRImpactFromGitHub(brief *prImpactBrief, req *PRRequest) {
+func enrichPRImpactFromGitHub(brief *prImpactBrief, req *PRRequest, repoOwner, repoName string) {
 	if brief == nil || GitHubToken == "" {
 		return
 	}
-	owner, repo, number, ok := parseGitHubPRURL(req.PRURL)
+	prURL := strings.TrimSpace(brief.PRURL)
+	if req != nil && strings.TrimSpace(req.PRURL) != "" {
+		prURL = strings.TrimSpace(req.PRURL)
+	}
+	owner, repo, number, ok := parseGitHubPRURL(prURL)
 	if !ok {
-		owner, repo, number = GitHubOwner, GitHubRepo, brief.PRNumber
+		owner = strings.TrimSpace(repoOwner)
+		repo = strings.TrimSpace(repoName)
+		number = brief.PRNumber
+	}
+	if owner == "" || repo == "" {
+		owner = strings.TrimSpace(GitHubOwner)
+		repo = strings.TrimSpace(GitHubRepo)
 	}
 	if number <= 0 || owner == "" || repo == "" {
 		return

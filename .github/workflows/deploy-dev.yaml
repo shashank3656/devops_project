@@ -1,3 +1,14 @@
+# After GHCR push, optional Railway Image Updater sync (deploy the template once per project):
+# https://railway.com/deploy/railway-image-updater
+# Required GitHub repo variables when enabled:
+#   RAILWAY_IMAGE_UPDATER_URL — public URL of your updater service (PUT /update)
+# Optional GitHub vars override defaults: RAILWAY_ENVIRONMENT_ID_DEV, RAILWAY_ENVIRONMENT_ID, RAILWAY_PROJECT_ID
+# Defaults (dev): project 5332b847-9bab-40fc-83b5-7fbf3a1d2ab0 · environment 916b3e46-9336-4c69-ac06-e44d406ce737
+# Service → GHCR image prefix (same commit tag on all):
+#   backend-api              → ghcr.io/<owner>/devops_project-backend
+#   devops_project-frontend  → ghcr.io/<owner>/devops_project-frontend
+#   devops_project-admin-frontend → ghcr.io/<owner>/devops_project-admin-frontend
+#   devops_project-devops-frontend → ghcr.io/<owner>/devops_project-devops-frontend
 name: Deploy Dev
 
 on:
@@ -40,3 +51,7 @@ jobs:
       publish_latest: ${{ github.event_name != 'pull_request' }}
       fail_on_trivy: ${{ github.event_name != 'pull_request' }}
       pr_number: ${{ github.event.pull_request.number || '' }}
+      enable_railway_image_updater: ${{ github.event_name != 'pull_request' }}
+      railway_project_id: ${{ vars.RAILWAY_PROJECT_ID || '5332b847-9bab-40fc-83b5-7fbf3a1d2ab0' }}
+      railway_environment_id: ${{ vars.RAILWAY_ENVIRONMENT_ID_DEV || vars.RAILWAY_ENVIRONMENT_ID || '916b3e46-9336-4c69-ac06-e44d406ce737' }}
+      ghcr_repo_name: devops_project

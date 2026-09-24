@@ -29,8 +29,9 @@ type repoDeployEvent struct {
 	Score       int           `json:"score"`
 	RiskLevel   string        `json:"risk_level"`
 	Summary     string        `json:"summary"`
-	PRURL       string        `json:"pr_url"`
-	Impact      prImpactBrief `json:"impact"`
+	PRURL       string                 `json:"pr_url"`
+	Impact      prImpactBrief          `json:"impact"`
+	OpenPR      *deployIntelOpenPRMeta `json:"open_pr,omitempty"`
 }
 
 func isProductionBaseBranch(ref string) bool {
@@ -67,7 +68,7 @@ func analyzeGitHubPullRequest(owner, repo string, number int, req *PRRequest, de
 	if deployStatus != "" {
 		brief.DeployStatus = deployStatus
 	}
-	enrichPRImpactFromGitHub(&brief, req)
+	enrichPRImpactFromGitHub(&brief, req, owner, repo)
 	scorePRImpact(&brief, req)
 	if req != nil && req.ID > 0 {
 		_ = savePRImpactBrief(brief)
@@ -405,7 +406,7 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	refreshNumber, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("refresh_pr")))
-	if refreshNumber > 0 && repoIsOnboarded(owner, repo) {
+	if refreshNumber > 0 && section != "open" && repoIsOnboarded(owner, repo) {
 		req := findRequestByPRNumber(refreshNumber)
 		brief := analyzeGitHubPullRequest(owner, repo, refreshNumber, req, "merged")
 		brief.MergeState = "merged"
@@ -424,15 +425,28 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var events []repoDeployEvent
+	var githubFetch deployIntelGitHubFetch
 	var err error
 	if section == "open" {
-		events, err = listOpenPullRequestsAnalyzed(owner, repo, limit)
+		openOpts := parseOpenPRListOptions(r, baseBranch)
+		if openOpts.Limit <= 0 {
+			openOpts.Limit = limit
+		}
+		if refreshNumber > 0 {
+			openOpts.DeepPR = refreshNumber
+		}
+		events, githubFetch, err = listOpenPullRequestsAnalyzed(owner, repo, openOpts)
+		if err != nil {
+			if events == nil {
+				events = []repoDeployEvent{}
+			}
+		}
 	} else {
 		events, err = listRepoDeployEvents(owner, repo, limit)
-	}
-	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
-		return
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
+			return
+		}
 	}
 
 	insights, insightErr := buildDeployIntelRepoInsights(owner, repo, baseBranch)
@@ -442,7 +456,7 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	encodeJSON(w, map[string]interface{}{
+	payload := map[string]interface{}{
 		"status":              "ok",
 		"repo":                repoSummary,
 		"section":             section,
@@ -455,5 +469,18 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 			"base":      baseBranch,
 			"onboarded": repoSummary.Ready,
 		},
-	})
+	}
+	if section == "open" {
+		payload["github"] = githubFetch
+		payload["open_pr_filters"] = map[string]interface{}{
+			"base_filter":     r.URL.Query().Get("base_filter"),
+			"include_drafts":  strings.TrimSpace(r.URL.Query().Get("include_drafts")) == "1",
+			"batch_deep":      strings.TrimSpace(r.URL.Query().Get("batch_deep")) == "1",
+			"production_base": baseBranch,
+		}
+		if githubFetch.Error != "" {
+			payload["github_error"] = githubFetch.Error
+		}
+	}
+	encodeJSON(w, payload)
 }
