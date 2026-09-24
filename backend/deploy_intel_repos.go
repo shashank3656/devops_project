@@ -256,12 +256,11 @@ func shallowOpenPRBrief(owner, name string, pr *github.PullRequest) prImpactBrie
 	brief.Additions = pr.GetAdditions()
 	brief.Deletions = pr.GetDeletions()
 	brief.ChangedFilesHint(pr.GetChangedFiles())
-	brief.Summary = "Listed from GitHub. Open the PR or use “Refresh from GitHub” for full commit and file analysis."
-	scorePRImpact(&brief, nil)
+	brief.Summary = "Loading commit and diff stats from GitHub…"
 	return brief
 }
 
-func repoDeployEventFromOpenPR(owner, name string, pr *github.PullRequest, deep bool) repoDeployEvent {
+func repoDeployEventFromOpenPR(ctx context.Context, client *github.Client, owner, name string, pr *github.PullRequest, deep bool) repoDeployEvent {
 	number := 0
 	if pr != nil {
 		number = pr.GetNumber()
@@ -277,6 +276,11 @@ func repoDeployEventFromOpenPR(owner, name string, pr *github.PullRequest, deep 
 		brief = shallowOpenPRBrief(owner, name, pr)
 		if req != nil {
 			brief.RequestID = req.ID
+		}
+		if number > 0 && client != nil {
+			enrichOpenPRBriefStats(ctx, client, owner, name, number, &brief, req)
+		} else {
+			scorePRImpact(&brief, req)
 		}
 	}
 	brief.MergeState = "open"
@@ -428,9 +432,9 @@ func listOpenPullRequestsAnalyzed(owner, name string, opts openPRListOptions) ([
 	if opts.Limit <= 0 || opts.Limit > deployIntelMaxOpenPRList {
 		opts.Limit = deployIntelMaxOpenPRList
 	}
-	timeout := 45 * time.Second
+	timeout := 90 * time.Second
 	if opts.BatchDeep {
-		timeout = 90 * time.Second
+		timeout = 120 * time.Second
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -473,7 +477,7 @@ func listOpenPullRequestsAnalyzed(owner, name string, opts openPRListOptions) ([
 			deep = true
 			batchDeepRemaining--
 		}
-		ev := repoDeployEventFromOpenPR(owner, name, pr, deep)
+		ev := repoDeployEventFromOpenPR(ctx, client, owner, name, pr, deep)
 		ev = attachOpenPRMeta(ctx, client, owner, name, pr, ev, deep)
 		out = append(out, ev)
 	}
@@ -483,13 +487,13 @@ func listOpenPullRequestsAnalyzed(owner, name string, opts openPRListOptions) ([
 			if out[i].PRNumber == opts.DeepPR {
 				found = true
 				pr := prByNumber(filtered, opts.DeepPR)
-				out[i] = attachOpenPRMeta(ctx, client, owner, name, pr, repoDeployEventFromOpenPR(owner, name, pr, true), true)
+				out[i] = attachOpenPRMeta(ctx, client, owner, name, pr, repoDeployEventFromOpenPR(ctx, client, owner, name, pr, true), true)
 				break
 			}
 		}
 		if !found {
 			pr := &github.PullRequest{Number: github.Int(opts.DeepPR)}
-			ev := attachOpenPRMeta(ctx, client, owner, name, pr, repoDeployEventFromOpenPR(owner, name, pr, true), true)
+			ev := attachOpenPRMeta(ctx, client, owner, name, pr, repoDeployEventFromOpenPR(ctx, client, owner, name, pr, true), true)
 			out = append(out, ev)
 		}
 	}
