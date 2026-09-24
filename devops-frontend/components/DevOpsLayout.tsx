@@ -97,6 +97,14 @@ const PAGE_TITLES: Record<string, string> = {
   '/incident-workspace': 'Incident Notes',
   '/access-overrides': 'Access Exceptions',
   '/promotions': 'Promotions',
+  '/changes': 'Changes',
+  '/change-calendar': 'Change calendar',
+  '/release-notes': 'Release notes',
+  '/services': 'Service map',
+  '/services/new': 'Add service',
+  '/problems': 'Problems',
+  '/health': 'Health',
+  '/health/slo/new': 'Define SLO',
   '/deploy-intelligence': 'Deploy intelligence',
   '/deploy-intelligence/onboard': 'Onboard repository',
   '/rollback-console': 'Rollback',
@@ -442,10 +450,12 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       children: [
         { href: '/incidents', label: 'Open' },
         { href: '/incident-workspace', label: 'Notes' },
+        { href: '/problems', label: 'Problems' },
       ],
     });
   }
   primaryNavItems.push({ href: '/k8s', label: 'Kubernetes', Icon: IconK8s });
+  primaryNavItems.push({ href: '/health', label: 'Health', Icon: IconArrowUpRight });
   if (isManager) {
     primaryNavItems.push({
       href: '/projects',
@@ -454,6 +464,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       children: [
         { href: '/projects', label: 'Catalog' },
         { href: '/team', label: 'Teams' },
+        { href: '/services', label: 'Service map' },
       ],
     });
   }
@@ -461,6 +472,16 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const advancedNavItems: NavItem[] = isManager
     ? [
         { href: '/promotions', label: 'Promotions', Icon: IconArrowUpRight },
+        {
+          href: '/changes',
+          label: 'Changes',
+          Icon: IconArrowUpRight,
+          children: [
+            { href: '/changes', label: 'Catalog' },
+            { href: '/change-calendar', label: 'Calendar' },
+            { href: '/release-notes', label: 'Release notes' },
+          ],
+        },
         { href: '/deploy-intelligence', label: 'Deploy intel', Icon: IconArrowUpRight },
         { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
         { href: '/ops-command-center', label: 'Operations', Icon: IconAlertTriangle },
@@ -582,6 +603,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/dashboard', label: 'Overview', Icon: IconTickets },
         { href: '/tickets', label: 'Requests', Icon: IconTickets },
         { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
+        { href: '/health', label: 'Health', Icon: IconArrowUpRight },
       ]
   ).map((tab) => ({ ...tab, active: isNavActive(tab.href), badge: getSidebarBadge(tab.href) }));
 
@@ -860,6 +882,12 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'logs', label: 'Logs', href: '/k8s/logs' },
           { id: 'rollback', label: 'Rollback', href: '/rollback-console' },
           { id: 'promotions', label: 'Promotions', href: '/promotions' },
+          { id: 'changes', label: 'Changes', href: '/changes' },
+          { id: 'change-calendar', label: 'Change calendar', href: '/change-calendar' },
+          { id: 'release-notes', label: 'Release notes', href: '/release-notes' },
+          { id: 'services', label: 'Service map', href: '/services' },
+          { id: 'problems', label: 'Problems', href: '/problems' },
+          { id: 'health', label: 'Health', href: '/health' },
           { id: 'deploy-intel', label: 'Deploy intelligence', href: '/deploy-intelligence' },
         ]}
       />

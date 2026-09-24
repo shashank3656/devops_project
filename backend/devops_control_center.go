@@ -26,29 +26,46 @@ type projectRunbook struct {
 }
 
 type requestIncident struct {
-	ID              int       `json:"id"`
-	IncidentNumber  string    `json:"incident_number"`
-	RequestID       int       `json:"request_id"`
-	ProjectID       *int      `json:"project_id,omitempty"`
-	ProjectName     string    `json:"project_name,omitempty"`
-	ProjectCode     string    `json:"project_code,omitempty"`
-	RequestTeam     string    `json:"request_team,omitempty"`
-	RequestEnv      string    `json:"request_env,omitempty"`
-	RequestService  string    `json:"request_service,omitempty"`
-	RequestCloud    string    `json:"request_cloud,omitempty"`
-	RequestStatus   string    `json:"request_status,omitempty"`
-	TeamID          *int      `json:"team_id,omitempty"`
-	TeamName        string    `json:"team_name,omitempty"`
-	Severity        string    `json:"severity"`
-	Status          string    `json:"status"`
-	EscalationLevel string    `json:"escalation_level"`
-	OwnerUserID     *int      `json:"owner_user_id,omitempty"`
-	OwnerUsername   string    `json:"owner_username,omitempty"`
-	Summary         string    `json:"summary"`
-	Notes           string    `json:"notes"`
-	CreatedBy       *int      `json:"created_by,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                    int        `json:"id"`
+	IncidentNumber        string     `json:"incident_number"`
+	RequestID             int        `json:"request_id"`
+	ProjectID             *int       `json:"project_id,omitempty"`
+	ProjectName           string     `json:"project_name,omitempty"`
+	ProjectCode           string     `json:"project_code,omitempty"`
+	RequestTeam           string     `json:"request_team,omitempty"`
+	RequestEnv            string     `json:"request_env,omitempty"`
+	RequestService        string     `json:"request_service,omitempty"`
+	RequestCloud          string     `json:"request_cloud,omitempty"`
+	RequestStatus         string     `json:"request_status,omitempty"`
+	TeamID                *int       `json:"team_id,omitempty"`
+	TeamName              string     `json:"team_name,omitempty"`
+	Severity              string     `json:"severity"`
+	Status                string     `json:"status"`
+	EscalationLevel       string     `json:"escalation_level"`
+	OwnerUserID           *int       `json:"owner_user_id,omitempty"`
+	OwnerUsername         string     `json:"owner_username,omitempty"`
+	Summary               string     `json:"summary"`
+	Notes                 string     `json:"notes"`
+	Source                string     `json:"source,omitempty"`
+	Fingerprint           string     `json:"fingerprint,omitempty"`
+	AlertSource           string     `json:"alert_source,omitempty"`
+	DashboardURL          string     `json:"dashboard_url,omitempty"`
+	SuspectedChangeID     *int       `json:"suspected_change_id,omitempty"`
+	SuspectedChangeNumber string     `json:"suspected_change_number,omitempty"`
+	Service               string     `json:"service,omitempty"`
+	Environment           string     `json:"environment,omitempty"`
+	OccurrenceCount       int        `json:"occurrence_count,omitempty"`
+	LastSeenAt            *time.Time `json:"last_seen_at,omitempty"`
+	RollbackHint          string     `json:"rollback_hint,omitempty"`
+	Major                 bool       `json:"major,omitempty"`
+	StatusNote            string     `json:"status_note,omitempty"`
+	SlackThread           string     `json:"slack_thread,omitempty"`
+	ProblemID             *int       `json:"problem_id,omitempty"`
+	SilencedUntil         *time.Time `json:"silenced_until,omitempty"`
+	CausedBy              string     `json:"caused_by,omitempty"`
+	CreatedBy             *int       `json:"created_by,omitempty"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
 }
 
 func formatIncidentNumber(id int) string {
@@ -283,15 +300,19 @@ func listAssignedRequestIncidents(userID int, statusFilter string) ([]requestInc
 func listRequestIncidentsFiltered(statusFilter string, ownerUserID *int, includeDraft bool) ([]requestIncident, error) {
 	query := `
 		SELECT i.id, COALESCE(i.incident_number,''), i.request_id, i.project_id, COALESCE(p.name,''), COALESCE(p.code,''),
-		       COALESCE(r.team,''), COALESCE(r.env,''), COALESCE(r.service,''), COALESCE(r.cloud,''), COALESCE(r.status,''),
+		       COALESCE(r.team,''), COALESCE(NULLIF(i.environment,''), r.env, ''), COALESCE(NULLIF(i.service,''), r.service, ''), COALESCE(r.cloud,''), COALESCE(r.status,''),
 		       i.team_id, COALESCE(t.name,''),
 		       i.severity, i.status, i.escalation_level, i.owner_user_id, COALESCE(u.username,''), COALESCE(i.summary,''), COALESCE(i.notes,''),
-		       i.created_by, i.created_at, i.updated_at
+		       COALESCE(i.source,'ticket'), COALESCE(i.fingerprint,''), COALESCE(i.alert_source,''), COALESCE(i.dashboard_url,''),
+		       i.suspected_change_id, COALESCE(chg.change_number,''), COALESCE(i.service,''), COALESCE(i.environment,''), COALESCE(i.occurrence_count,1), i.last_seen_at,
+		       i.created_by, i.created_at, i.updated_at,
+		       COALESCE(i.major, false), COALESCE(i.status_note,''), COALESCE(i.slack_thread,''), i.problem_id, i.silenced_until
 		FROM request_incidents i
 		LEFT JOIN pr_requests r ON r.id = i.request_id
 		LEFT JOIN projects p ON p.id = i.project_id
 		LEFT JOIN teams t ON t.id = i.team_id
 		LEFT JOIN users u ON u.id = i.owner_user_id
+		LEFT JOIN change_requests chg ON chg.id = i.suspected_change_id
 	`
 	args := []any{}
 	whereParts := []string{}
@@ -322,15 +343,29 @@ func listRequestIncidentsFiltered(statusFilter string, ownerUserID *int, include
 	out := []requestIncident{}
 	for rows.Next() {
 		var item requestIncident
-		var projectID, incidentTeamID, incidentOwnerUserID, createdBy sql.NullInt64
+		var requestID, projectID, incidentTeamID, incidentOwnerUserID, createdBy, suspectedChangeID, problemID sql.NullInt64
+		var lastSeen, silencedUntil sql.NullTime
 		if err := rows.Scan(
-			&item.ID, &item.IncidentNumber, &item.RequestID, &projectID, &item.ProjectName, &item.ProjectCode,
+			&item.ID, &item.IncidentNumber, &requestID, &projectID, &item.ProjectName, &item.ProjectCode,
 			&item.RequestTeam, &item.RequestEnv, &item.RequestService, &item.RequestCloud, &item.RequestStatus,
 			&incidentTeamID, &item.TeamName,
 			&item.Severity, &item.Status, &item.EscalationLevel, &incidentOwnerUserID, &item.OwnerUsername, &item.Summary, &item.Notes,
+			&item.Source, &item.Fingerprint, &item.AlertSource, &item.DashboardURL,
+			&suspectedChangeID, &item.SuspectedChangeNumber, &item.Service, &item.Environment, &item.OccurrenceCount, &lastSeen,
 			&createdBy, &item.CreatedAt, &item.UpdatedAt,
+			&item.Major, &item.StatusNote, &item.SlackThread, &problemID, &silencedUntil,
 		); err != nil {
 			return nil, err
+		}
+		if requestID.Valid {
+			item.RequestID = int(requestID.Int64)
+		}
+		if suspectedChangeID.Valid {
+			value := int(suspectedChangeID.Int64)
+			item.SuspectedChangeID = &value
+		}
+		if lastSeen.Valid {
+			item.LastSeenAt = &lastSeen.Time
 		}
 		if projectID.Valid {
 			value := int(projectID.Int64)
@@ -347,6 +382,13 @@ func listRequestIncidentsFiltered(statusFilter string, ownerUserID *int, include
 		if createdBy.Valid {
 			value := int(createdBy.Int64)
 			item.CreatedBy = &value
+		}
+		if problemID.Valid {
+			value := int(problemID.Int64)
+			item.ProblemID = &value
+		}
+		if silencedUntil.Valid {
+			item.SilencedUntil = &silencedUntil.Time
 		}
 		if strings.TrimSpace(item.IncidentNumber) == "" {
 			item.IncidentNumber = formatIncidentNumber(item.ID)
@@ -502,6 +544,282 @@ func createOrUpdateRequestIncident(requestID int, teamID *int, severity, status,
 		return nil, err
 	}
 	return item, nil
+}
+
+func getRequestIncidentByID(id int) (*requestIncident, error) {
+	if id <= 0 {
+		return nil, fmt.Errorf("incident not found")
+	}
+	items, err := listRequestIncidents("")
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range items {
+		if item.ID == id {
+			return &item, nil
+		}
+	}
+	return nil, fmt.Errorf("incident not found")
+}
+
+func findOpenAlertIncident(source, fingerprint string) (*requestIncident, error) {
+	items, err := listRequestIncidents("")
+	if err != nil {
+		return nil, err
+	}
+	needleSource := strings.ToLower(strings.TrimSpace(source))
+	needlePrint := strings.TrimSpace(fingerprint)
+	for i := range items {
+		item := items[i]
+		if strings.TrimSpace(item.Fingerprint) != needlePrint {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(item.AlertSource)) != needleSource && strings.ToLower(strings.TrimSpace(item.Source)) != needleSource {
+			continue
+		}
+		status := strings.ToLower(strings.TrimSpace(item.Status))
+		if status == "resolved" || status == "closed" {
+			continue
+		}
+		return &item, nil
+	}
+	return nil, nil
+}
+
+func upsertAlertIncident(event parsedAlertEvent) (*requestIncident, string, error) {
+	if DB == nil {
+		return nil, "", fmt.Errorf("database not available")
+	}
+	existing, err := findOpenAlertIncident(event.Source, event.Fingerprint)
+	if err != nil {
+		return nil, "", err
+	}
+	if existing != nil && existing.SilencedUntil != nil && time.Now().Before(*existing.SilencedUntil) {
+		_, err := execContext(`
+			UPDATE request_incidents
+			SET last_seen_at = CURRENT_TIMESTAMP, occurrence_count = occurrence_count + 1, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $1
+		`, existing.ID)
+		if err != nil {
+			return nil, "", err
+		}
+		item, getErr := getRequestIncidentByID(existing.ID)
+		return item, "silenced", getErr
+	}
+	if existing != nil && shouldAutoResolveAlert(existing.Severity, event.Status) {
+		_, err := execContext(`
+			UPDATE request_incidents
+			SET status = 'monitoring', last_seen_at = CURRENT_TIMESTAMP, occurrence_count = occurrence_count + 1, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $1
+		`, existing.ID)
+		if err != nil {
+			return nil, "", err
+		}
+		item, getErr := getRequestIncidentByID(existing.ID)
+		return item, "resolved", getErr
+	}
+	if existing != nil && (event.Status == "resolved" || event.Status == "ok" || event.Status == "normal") && isSEV1Severity(existing.Severity) {
+		_, err := execContext(`
+			UPDATE request_incidents
+			SET last_seen_at = CURRENT_TIMESTAMP, occurrence_count = occurrence_count + 1, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $1
+		`, existing.ID)
+		if err != nil {
+			return nil, "", err
+		}
+		item, getErr := getRequestIncidentByID(existing.ID)
+		return item, "resolve_skipped", getErr
+	}
+	if existing != nil {
+		var suspectedAny any
+		if existing.SuspectedChangeID == nil {
+			if suspected := findSuspectedChange(event.Service, event.Environment, existing.ProjectID); suspected != nil {
+				suspectedAny = suspected.ID
+			}
+		}
+		_, err := execContext(`
+			UPDATE request_incidents
+			SET last_seen_at = CURRENT_TIMESTAMP,
+			    occurrence_count = occurrence_count + 1,
+			    summary = CASE WHEN COALESCE($2,'') = '' THEN summary ELSE $2 END,
+			    notes = CASE WHEN COALESCE($3,'') = '' THEN notes ELSE $3 END,
+			    dashboard_url = CASE WHEN COALESCE($4,'') = '' THEN dashboard_url ELSE $4 END,
+			    suspected_change_id = COALESCE(suspected_change_id, $5),
+			    updated_at = CURRENT_TIMESTAMP
+			WHERE id = $1
+		`, existing.ID, event.Title, event.Message, event.DashboardURL, suspectedAny)
+		if err == nil {
+			go FireOutboundWebhooks("incident.updated", map[string]interface{}{
+				"id": existing.ID, "fingerprint": event.Fingerprint, "severity": existing.Severity,
+			})
+		}
+		if err != nil {
+			return nil, "", err
+		}
+		item, getErr := getRequestIncidentByID(existing.ID)
+		if getErr == nil && item != nil {
+			_, _ = upsertProblemFromIncident(*item)
+		}
+		return item, "updated", getErr
+	}
+	projectID := lookupProjectID(event.ProjectID, event.ProjectCode)
+	if projectID == nil {
+		if mapped := lookupServiceMap(event.Service, "", event.Environment); mapped != nil {
+			projectID = mapped.ProjectID
+			if event.Service == "" {
+				event.Service = mapped.Service
+			}
+			if event.DashboardURL == "" {
+				event.DashboardURL = mapped.DashboardURL
+			}
+		}
+	}
+	var projectAny any
+	if projectID != nil {
+		projectAny = *projectID
+	}
+	var suspectedAny any
+	if suspected := findSuspectedChange(event.Service, event.Environment, projectID); suspected != nil {
+		suspectedAny = suspected.ID
+	}
+	var ownerAny any
+	if ownerID := activeOncallUserID(); ownerID != nil && (event.Severity == "high" || event.Severity == "critical") {
+		ownerAny = *ownerID
+	}
+	notes := event.Message
+	if guides := matchRunbooksForService(projectID, event.Service); len(guides) > 0 {
+		guide := guides[0]
+		prefix := "Guide: " + guide.Title
+		if strings.TrimSpace(guide.LinkURL) != "" {
+			prefix += " — " + strings.TrimSpace(guide.LinkURL)
+		}
+		if notes == "" {
+			notes = prefix
+		} else {
+			notes = prefix + "\n\n" + notes
+		}
+	}
+	var incidentID int
+	err = queryRowContext(`
+		INSERT INTO request_incidents (
+			request_id, project_id, severity, status, escalation_level, owner_user_id, summary, notes,
+			source, fingerprint, alert_source, dashboard_url, suspected_change_id, service, environment, occurrence_count, last_seen_at
+		) VALUES (
+			NULL, $1, $2, 'open', 'monitoring', $3, $4, $5,
+			'alert', $6, $7, $8, $9, $10, $11, 1, CURRENT_TIMESTAMP
+		)
+		RETURNING id
+	`, projectAny, event.Severity, ownerAny, event.Title, notes, event.Fingerprint, event.Source, event.DashboardURL, suspectedAny, event.Service, event.Environment).Scan(&incidentID)
+	if err != nil {
+		return nil, "", err
+	}
+	if _, err := execContext(`
+		UPDATE request_incidents
+		SET incident_number = $2
+		WHERE id = $1 AND COALESCE(incident_number, '') = ''
+	`, incidentID, formatIncidentNumber(incidentID)); err != nil {
+		return nil, "", err
+	}
+	item, getErr := getRequestIncidentByID(incidentID)
+	if getErr == nil && item != nil {
+		if problem, err := upsertProblemFromIncident(*item); err == nil && problem != nil {
+			item.ProblemID = &problem.ID
+		}
+	}
+	return item, "created", getErr
+}
+
+func activeOncallUserID() *int {
+	for _, rotation := range listOncallRotations() {
+		if rotation.Active && rotation.UserID > 0 {
+			value := rotation.UserID
+			return &value
+		}
+	}
+	return nil
+}
+
+func matchRunbooksForService(projectID *int, service string) []projectRunbook {
+	if projectID == nil || *projectID <= 0 {
+		return nil
+	}
+	items, err := listProjectRunbooks(*projectID)
+	if err != nil {
+		return nil
+	}
+	needle := strings.ToLower(strings.TrimSpace(service))
+	out := []projectRunbook{}
+	for _, item := range items {
+		if runbookMatchesService(item.Service, needle) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func runbookMatchesService(runbookService, service string) bool {
+	guide := strings.ToLower(strings.TrimSpace(runbookService))
+	target := strings.ToLower(strings.TrimSpace(service))
+	if guide == "" {
+		return target != ""
+	}
+	if target == "" {
+		return false
+	}
+	return guide == target || strings.Contains(target, guide) || strings.Contains(guide, target)
+}
+
+func incidentBlocksPromotion(item requestIncident) bool {
+	status := strings.ToLower(strings.TrimSpace(item.Status))
+	if status != "open" && status != "investigating" && status != "mitigating" {
+		return false
+	}
+	source := strings.ToLower(strings.TrimSpace(item.Source))
+	if source == "alert" || source == "change_regression" {
+		severity := strings.ToLower(strings.TrimSpace(item.Severity))
+		return severity == "high" || severity == "critical"
+	}
+	return true
+}
+
+func incidentEnvironmentKey(item requestIncident) string {
+	if env := strings.ToLower(strings.TrimSpace(item.Environment)); env != "" {
+		return env
+	}
+	return strings.ToLower(strings.TrimSpace(item.RequestEnv))
+}
+
+func updateAlertIncidentByID(id int, teamID *int, severity, status, escalationLevel string, ownerUserID *int, summary, notes string) (*requestIncident, error) {
+	severity = strings.ToLower(strings.TrimSpace(severity))
+	if severity == "" {
+		severity = "medium"
+	}
+	status = strings.ToLower(strings.TrimSpace(status))
+	if status == "" {
+		status = "open"
+	}
+	escalationLevel = strings.ToLower(strings.TrimSpace(escalationLevel))
+	if escalationLevel == "" {
+		escalationLevel = "monitoring"
+	}
+	var teamAny any
+	if teamID != nil && *teamID > 0 {
+		teamAny = *teamID
+	}
+	var ownerAny any
+	if ownerUserID != nil && *ownerUserID > 0 {
+		ownerAny = *ownerUserID
+	}
+	_, err := execContext(`
+		UPDATE request_incidents
+		SET team_id = $2, severity = $3, status = $4, escalation_level = $5, owner_user_id = $6,
+		    summary = $7, notes = $8, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+	`, id, teamAny, severity, status, escalationLevel, ownerAny, strings.TrimSpace(summary), strings.TrimSpace(notes))
+	if err != nil {
+		return nil, err
+	}
+	return getRequestIncidentByID(id)
 }
 
 func activeProjectAccessOverridesForUser(userID int) ([]projectAccessOverride, error) {
@@ -931,7 +1249,7 @@ func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, *promotionGa
 		return nil, nil, fmt.Errorf("request is already at the highest environment")
 	}
 	if strings.EqualFold(nextEnvironment, "prod") {
-		if reason := activeFreezeReason(); reason != "" {
+		if reason := activeFreezeReason(); reason != "" && !emergencyBypassesFreeze(req.Service, nextEnvironment) {
 			return nil, nil, fmt.Errorf("production freeze is active: %s", reason)
 		}
 		brief := loadOrBuildPRImpact(req)
@@ -1307,7 +1625,7 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	var requestID int
+	var requestID sql.NullInt64
 	err = queryRowContext(`SELECT request_id FROM request_incidents WHERE id = $1`, id).Scan(&requestID)
 	if err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "incident not found", err)
@@ -1321,6 +1639,9 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		OwnerUserID     *int   `json:"owner_user_id"`
 		Summary         string `json:"summary"`
 		Notes           string `json:"notes"`
+		Major           *bool  `json:"major"`
+		StatusNote      string `json:"status_note"`
+		SilenceMinutes  int    `json:"silence_minutes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
@@ -1342,12 +1663,37 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "summary is required before submitting an incident", nil)
 		return
 	}
-	item, err := createOrUpdateRequestIncident(requestID, body.TeamID, body.Severity, normalizedStatus, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID)
+	var item *requestIncident
+	if requestID.Valid && requestID.Int64 > 0 {
+		item, err = createOrUpdateRequestIncident(int(requestID.Int64), body.TeamID, body.Severity, normalizedStatus, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID)
+	} else {
+		item, err = updateAlertIncidentByID(id, body.TeamID, body.Severity, normalizedStatus, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes)
+	}
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 		return
 	}
-	AppendAuditLog(&managerID, "request_incident_update", "pr_request", strconv.Itoa(requestID), item.Severity+":"+item.Status)
+	auditRef := strconv.Itoa(id)
+	if requestID.Valid && requestID.Int64 > 0 {
+		auditRef = strconv.Itoa(int(requestID.Int64))
+	}
+	if body.SilenceMinutes > 0 {
+		until := time.Now().Add(time.Duration(body.SilenceMinutes) * time.Minute)
+		_, _ = execContext(`UPDATE request_incidents SET silenced_until = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, id, until)
+		if refreshed, err := getRequestIncidentByID(id); err == nil && refreshed != nil {
+			item = refreshed
+		}
+	}
+	if body.Major != nil || strings.TrimSpace(body.StatusNote) != "" {
+		major := item.Major
+		if body.Major != nil {
+			major = *body.Major
+		}
+		if updated, err := applyMajorIncidentMode(item, major, firstNonEmpty(body.StatusNote, item.StatusNote)); err == nil && updated != nil {
+			item = updated
+		}
+	}
+	AppendAuditLog(&managerID, "request_incident_update", "pr_request", auditRef, item.Severity+":"+item.Status)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "status": "ok"})
 }

@@ -142,6 +142,7 @@ func workspaceNeedsYou(portal string, viewerID int) []workspaceQueueItem {
 		items = append(items, workspaceApprovalQueue(portal)...)
 	}
 	items = append(items, workspaceIncidentQueue(portal, viewerID)...)
+	items = append(items, workspaceChangeQueue(portal, viewerID)...)
 	if portal != "user" {
 		items = append(items, workspaceRiskyPRQueue(portal)...)
 	}
@@ -301,58 +302,109 @@ func workspaceUserQueue(viewerID int) []workspaceQueueItem {
 
 func workspaceIncidentQueue(portal string, viewerID int) []workspaceQueueItem {
 	items := make([]workspaceQueueItem, 0, 4)
-	query := `
-		SELECT i.id, COALESCE(i.summary, ''), COALESCE(i.severity, 'medium'), COALESCE(i.status, 'open'), i.updated_at
-		FROM request_incidents i
-		WHERE LOWER(COALESCE(i.status, 'open')) NOT IN ('closed', 'resolved')
-		ORDER BY i.updated_at DESC
-		LIMIT 4
-	`
-	args := []interface{}{}
+	listed, err := listRequestIncidentsFiltered("", nil, false)
+	if err != nil {
+		return items
+	}
+	allowed := map[int]struct{}{}
 	if portal == "user" {
 		if viewerID <= 0 {
 			return items
 		}
-		query = `
-			SELECT i.id, COALESCE(i.summary, ''), COALESCE(i.severity, 'medium'), COALESCE(i.status, 'open'), i.updated_at
-			FROM request_incidents i
-			INNER JOIN pr_requests r ON r.id = i.request_id
-			WHERE LOWER(COALESCE(i.status, 'open')) NOT IN ('closed', 'resolved')
-			AND r.created_by = $1
-			ORDER BY i.updated_at DESC
-			LIMIT 4
-		`
-		args = append(args, viewerID)
+		allowed = projectIDSet(visibleProjectIDsForUser(viewerID))
 	}
-	rows, err := DB.Query(query, args...)
-	if err != nil {
-		return items
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var id int
-		var summary, severity, status string
-		var updated sql.NullTime
-		if err := rows.Scan(&id, &summary, &severity, &status, &updated); err != nil {
+	for _, item := range listed {
+		status := strings.ToLower(strings.TrimSpace(item.Status))
+		if status == "closed" || status == "resolved" || status == "draft" {
 			continue
 		}
-		title := strings.TrimSpace(summary)
+		if portal == "user" && !incidentVisibleToUser(item, viewerID, allowed) {
+			continue
+		}
+		title := strings.TrimSpace(item.Summary)
 		if title == "" {
 			title = "Open incident"
 		}
+		href := "/incidents"
+		if item.ID > 0 {
+			href = fmt.Sprintf("/incidents/%d", item.ID)
+		}
 		items = append(items, workspaceQueueItem{
-			ID:     fmt.Sprintf("incident-%d", id),
+			ID:     fmt.Sprintf("incident-%d", item.ID),
 			Kind:   "incident",
 			Title:  truncateWorkspaceText(title, 90),
-			Meta:   severity + " severity · " + strings.ReplaceAll(status, "_", " "),
-			Ref:    formatIncidentNumber(id),
-			Href:   "/incidents",
+			Meta:   item.Severity + " severity · " + strings.ReplaceAll(item.Status, "_", " "),
+			Ref:    firstNonEmpty(item.IncidentNumber, formatIncidentNumber(item.ID)),
+			Href:   href,
 			Action: "Open",
 			Tone:   "high",
-			At:     workspaceTime(updated),
+			At:     item.UpdatedAt.UTC().Format(time.RFC3339),
 		})
+		if len(items) >= 4 {
+			break
+		}
 	}
 	return items
+}
+
+func workspaceChangeQueue(portal string, viewerID int) []workspaceQueueItem {
+	items := make([]workspaceQueueItem, 0, 3)
+	listed, err := listChangeRequests(0, "", "", "")
+	if err != nil {
+		return items
+	}
+	allowed := map[int]struct{}{}
+	if portal == "user" {
+		if viewerID <= 0 {
+			return items
+		}
+		allowed = projectIDSet(visibleProjectIDsForUser(viewerID))
+	}
+	for _, item := range listed {
+		status := strings.ToLower(strings.TrimSpace(item.Status))
+		if status != "failed" && status != "monitoring" && status != "new" && status != "implementing" {
+			continue
+		}
+		if portal == "user" && !changeVisibleToUser(item, allowed) {
+			continue
+		}
+		title := strings.TrimSpace(item.Title)
+		if title == "" {
+			title = item.Repo
+		}
+		if title == "" {
+			title = "Change request"
+		}
+		href := "/changes"
+		if item.ID > 0 {
+			href = fmt.Sprintf("/changes/%d", item.ID)
+		}
+		items = append(items, workspaceQueueItem{
+			ID:     fmt.Sprintf("change-%d", item.ID),
+			Kind:   "change",
+			Title:  truncateWorkspaceText(title, 90),
+			Meta:   strings.Join([]string{item.Environment, item.Status, item.ChangeType}, " · "),
+			Ref:    firstNonEmpty(item.ChangeNumber, formatChangeNumber(item.ID)),
+			Href:   href,
+			Action: "Open",
+			Tone:   workspaceChangeTone(status),
+			At:     item.UpdatedAt.UTC().Format(time.RFC3339),
+		})
+		if len(items) >= 3 {
+			break
+		}
+	}
+	return items
+}
+
+func workspaceChangeTone(status string) string {
+	if status == "failed" {
+		return "danger"
+	}
+	if status == "monitoring" {
+		return "medium"
+	}
+	return "info"
 }
 
 func workspaceRiskyPRQueue(portal string) []workspaceQueueItem {

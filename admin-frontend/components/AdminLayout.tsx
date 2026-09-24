@@ -22,6 +22,7 @@ import {
   IconHelpCircle,
   IconFileText,
   IconChevronDown,
+  IconAlertCircle,
 } from './Icons';
 import SupportHub from './SupportHub';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
@@ -48,6 +49,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/approval-center': 'Approvals',
   '/project-governance': 'Project Setup',
   '/requests': 'Requests',
+  '/changes': 'Changes',
+  '/incidents': 'Incidents',
   '/sla': 'Service Levels',
   '/teams': 'Teams',
   '/users': 'Users',
@@ -103,6 +106,15 @@ const PRIMARY_NAV: {
   { href: '/dashboard', label: 'Overview', Icon: IconDashboard },
   { href: '/approval-center', label: 'Approvals', Icon: IconShield },
   { href: '/requests', label: 'Requests', Icon: IconRequests },
+  {
+    href: '/changes',
+    label: 'Operations',
+    Icon: IconAlertCircle,
+    children: [
+      { href: '/changes', label: 'Changes' },
+      { href: '/incidents', label: 'Incidents' },
+    ],
+  },
   {
     href: '/users',
     label: 'People',
@@ -686,7 +698,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <MobileTabBar
         tabs={PRIMARY_NAV.slice(0, 4).map((item) => ({
           ...item,
-          active: pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href)),
+          active:
+            pathname === item.href
+            || Boolean(item.children?.some((child) => pathname === child.href || pathname.startsWith(`${child.href}/`)))
+            || (item.href !== '/dashboard' && pathname.startsWith(item.href)),
           badge: getSidebarBadge(item.href),
         }))}
         onMore={() => setMobileMenuOpen((open) => !open)}
@@ -700,6 +715,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           { id: 'overview', label: 'Overview', href: '/dashboard' },
           { id: 'approvals', label: 'Approvals', href: '/approval-center' },
           { id: 'requests', label: 'Requests', href: '/requests' },
+          { id: 'changes', label: 'Change requests', href: '/changes' },
+          { id: 'incidents', label: 'Incidents', href: '/incidents' },
           { id: 'people', label: 'People', href: '/users' },
           { id: 'projects', label: 'Projects', href: '/projects' },
           { id: 'templates', label: 'Templates', href: '/templates' },
@@ -724,6 +741,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`SetuOps support: ${pageTitle}`)}`,
           },
           { label: 'Open approval center', href: '/approval-center' },
+          { label: 'Open change requests', href: '/changes' },
+          { label: 'Open incidents', href: '/incidents' },
           { label: 'Open activity', href: '/activity' },
         ]}
       />

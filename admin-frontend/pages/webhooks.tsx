@@ -12,18 +12,30 @@ interface Webhook {
   updated_at: string;
 }
 
-const EVENT_OPTIONS = ['approved', 'pr_created', 'rejected', 'assigned'];
+interface InboundSource {
+  id: number;
+  kind: string;
+  name: string;
+  has_secret: boolean;
+  enabled: boolean;
+}
+
+const EVENT_OPTIONS = ['approved', 'pr_created', 'rejected', 'assigned', 'change.created', 'change.updated', 'incident.opened', 'incident.updated', 'watch.failed'];
 
 export default function WebhooksPage() {
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
+  const [sources, setSources] = useState<InboundSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [toggleLoading, setToggleLoading] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
+  const [sourceDeleteLoading, setSourceDeleteLoading] = useState<number | null>(null);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
   const ciWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/ci`;
+  const changeWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/change`;
+  const alertWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/alerts`;
 
   const fetchWebhooks = async () => {
     if (!token) return;
@@ -37,6 +49,11 @@ export default function WebhooksPage() {
         setError('');
       } else {
         setError(data.error || 'Failed to load webhooks');
+      }
+      const sourceRes = await fetch(`${apiUrl}/api/admin/inbound-sources`, { headers: { Authorization: `Bearer ${token}` } });
+      const sourceData = await sourceRes.json().catch(() => ({}));
+      if (sourceRes.ok) {
+        setSources(Array.isArray(sourceData.sources) ? sourceData.sources : []);
       }
     } catch (_) {
       setError('Failed to load webhooks');
@@ -97,6 +114,28 @@ export default function WebhooksPage() {
     }
   };
 
+  const handleDeleteSource = async (id: number) => {
+    if (!confirm('Delete this inbound source? Pipelines using that secret will get 401.')) return;
+    setSourceDeleteLoading(id);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/inbound-sources/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setSources((prev) => prev.filter((item) => item.id !== id));
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Failed to delete source');
+      }
+    } catch (_) {
+      setError('Failed to delete inbound source');
+    } finally {
+      setSourceDeleteLoading(null);
+    }
+  };
+
   return (
     <>
       <Head>
@@ -141,7 +180,9 @@ export default function WebhooksPage() {
             </div>
             <div className="admin-maintenance-card__body">
               <p className="admin-maintenance-card__copy">
-                <strong>Endpoint:</strong> <code>{ciWebhookUrl}</code>
+                <strong>Infra CI:</strong> <code>{ciWebhookUrl}</code><br />
+                <strong>Change requests:</strong> <code>{changeWebhookUrl}</code><br />
+                <strong>Alert incidents:</strong> <code>{alertWebhookUrl}</code>
               </p>
               <pre className="admin-maintenance-card__code-block" style={{ overflow: 'auto', fontSize: 12, padding: 16, borderRadius: 8, background: 'var(--color-surface-muted)' }}>
                 {`curl -sf -X POST "${ciWebhookUrl}" \\
@@ -154,6 +195,59 @@ export default function WebhooksPage() {
               </p>
             </div>
           </section>
+
+          <div className="portal-surface" style={{ marginBottom: 24 }}>
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Inbound sources</span>
+                <h2 className="portal-surface__title">Change and alert secrets</h2>
+                <p className="portal-surface__subtitle">
+                  Optional per-source secrets for Grafana, Alertmanager, loggers, and CI change posts. Env fallbacks are CHANGE_WEBHOOK_SECRET, ALERT_WEBHOOK_SECRET, and CI_WEBHOOK_SECRET.
+                </p>
+              </div>
+              <Link href="/webhooks/inbound/new" className="btn btn-secondary">
+                Add source
+              </Link>
+            </div>
+            {sources.length === 0 ? (
+              <p style={{ color: 'var(--color-text-muted)' }}>No inbound sources yet. Pipelines can still use the environment secrets.</p>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Kind</th>
+                      <th>Secret</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sources.map((source) => (
+                      <tr key={source.id}>
+                        <td>{source.name}</td>
+                        <td>{source.kind}</td>
+                        <td>{source.has_secret ? 'Set' : 'Missing'}</td>
+                        <td>{source.enabled ? 'Enabled' : 'Disabled'}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-danger"
+                            style={{ padding: '6px 12px', fontSize: 13 }}
+                            disabled={sourceDeleteLoading === source.id}
+                            onClick={() => handleDeleteSource(source.id)}
+                          >
+                            {sourceDeleteLoading === source.id ? '...' : 'Delete'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
           <div className="portal-surface">
             <div className="portal-surface__header">

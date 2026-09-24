@@ -46,7 +46,8 @@ export default function AdminDashboard() {
           activityHref="/activity"
           actions={
             <>
-              <Link href="/requests" className="btn btn-secondary">Requests</Link>
+              <Link href="/changes" className="btn btn-secondary">Changes</Link>
+              <Link href="/incidents" className="btn btn-secondary">Incidents</Link>
               <Link href="/approval-center" className="btn btn-primary">Approvals</Link>
             </>
           }

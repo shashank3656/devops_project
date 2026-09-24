@@ -47,7 +47,8 @@ export default function Home() {
         activityHref="/history"
         actions={
           <>
-            <Link href="/history" className="btn btn-secondary">My requests</Link>
+            <Link href="/changes" className="btn btn-secondary">Changes</Link>
+            <Link href="/incidents" className="btn btn-secondary">Incidents</Link>
             <Link href="/create-infrastructure" className="btn btn-primary">New request</Link>
           </>
         }
