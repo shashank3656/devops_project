@@ -230,27 +230,74 @@ func setChangeStatus(id int, status string) error {
 	return err
 }
 
-func closeChangeRequest(id int) (*changeRequestRecord, error) {
+func changeHasBlockingIncidents(changeID int) bool {
+	for _, item := range listIncidentsForChange(changeID) {
+		if incidentIsActive(item.Status) {
+			return true
+		}
+	}
+	return false
+}
+
+func validateChangeTransition(current, next string, blockingIncidents bool) (string, error) {
+	current = normalizeChangeStatus(current)
+	want := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(next), " ", "_"))
+	if want == "reopen" || want == "open" {
+		want = "implementing"
+	} else {
+		want = normalizeChangeStatus(next)
+	}
+	if want == current {
+		return want, nil
+	}
+	if blockingIncidents && (want == "resolved" || want == "closed") {
+		return "", fmt.Errorf("resolve or close linked incidents first")
+	}
+	if changeIsFinished(current) {
+		if current == "resolved" && (want == "closed" || want == "failed" || want == "cancelled") {
+			return want, nil
+		}
+		if want == "implementing" || want == "new" || want == "monitoring" {
+			return "implementing", nil
+		}
+		return "", fmt.Errorf("reopen this change before moving it to %s", want)
+	}
+	return want, nil
+}
+
+func transitionChangeStatus(id int, next string) (*changeRequestRecord, error) {
 	item, err := getChangeRequestByID(id)
 	if err != nil {
 		return nil, err
 	}
-	status := strings.ToLower(strings.TrimSpace(item.Status))
-	if status != "closed" && status != "cancelled" && status != "canceled" && status != "failed" {
-		if err := setChangeStatus(id, "closed"); err != nil {
-			return nil, err
-		}
-		item, err = getChangeRequestByID(id)
-		if err != nil {
-			return nil, err
-		}
-		go FireOutboundWebhooks("change.updated", map[string]interface{}{
-			"change_id":     item.ID,
-			"change_number": item.ChangeNumber,
-			"status":        item.Status,
-		})
+	want, err := validateChangeTransition(item.Status, next, changeHasBlockingIncidents(id))
+	if err != nil {
+		return nil, err
 	}
+	if want == normalizeChangeStatus(item.Status) {
+		return item, nil
+	}
+	if err := setChangeStatus(id, want); err != nil {
+		return nil, err
+	}
+	item, err = getChangeRequestByID(id)
+	if err != nil {
+		return nil, err
+	}
+	go FireOutboundWebhooks("change.updated", map[string]interface{}{
+		"change_id":     item.ID,
+		"change_number": item.ChangeNumber,
+		"status":        item.Status,
+	})
 	return item, nil
+}
+
+func resolveChangeRequest(id int) (*changeRequestRecord, error) {
+	return transitionChangeStatus(id, "resolved")
+}
+
+func closeChangeRequest(id int) (*changeRequestRecord, error) {
+	return transitionChangeStatus(id, "closed")
 }
 
 func listWatchSamples(changeID int, since time.Time) ([]serviceMetrics, error) {

@@ -81,6 +81,27 @@ func TestParseChangeWebhookJSON(t *testing.T) {
 	if len(payload.Files) != 1 || payload.Files[0] != "cmd/api/main.go" {
 		t.Fatalf("files = %#v", payload.Files)
 	}
+	if payload.Priority != "medium" || payload.RiskLevel != "medium" {
+		t.Fatalf("priority/risk defaults = %+v", payload)
+	}
+}
+
+func TestParseChangeWebhookOmitsEnvironment(t *testing.T) {
+	payload, err := parseChangeWebhookJSON([]byte(`{
+		"repo":"acme/payments-api",
+		"sha":"a1b2c3d",
+		"service":"payments-api",
+		"title":"merge to main"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.Environment != "unspecified" {
+		t.Fatalf("omitted environment should resolve, got %q", payload.Environment)
+	}
+	if payload.Service != "payments-api" || payload.ChangeType != "standard" {
+		t.Fatalf("service/type = %+v", payload)
+	}
 }
 
 func TestParseGrafanaAlertWebhook(t *testing.T) {
@@ -152,6 +173,54 @@ func TestShouldNotAutoResolveSEV1(t *testing.T) {
 func TestChangeStatusRankForwardOnly(t *testing.T) {
 	if changeStatusRank("implemented") <= changeStatusRank("implementing") {
 		t.Fatal("implemented should rank above implementing")
+	}
+	if changeStatusRank("resolved") <= changeStatusRank("monitoring") {
+		t.Fatal("resolved should rank above monitoring")
+	}
+	if changeStatusRank("closed") <= changeStatusRank("resolved") {
+		t.Fatal("closed should rank above resolved")
+	}
+	if normalizeChangeStatus("success") != "resolved" {
+		t.Fatal("success should normalize to resolved")
+	}
+}
+
+func TestValidateChangeTransition(t *testing.T) {
+	got, err := validateChangeTransition("monitoring", "resolved", false)
+	if err != nil || got != "resolved" {
+		t.Fatalf("monitoring -> resolved: got %q err=%v", got, err)
+	}
+	if _, err := validateChangeTransition("monitoring", "resolved", true); err == nil {
+		t.Fatal("open incidents should block resolve")
+	}
+	if _, err := validateChangeTransition("monitoring", "closed", true); err == nil {
+		t.Fatal("open incidents should block close")
+	}
+	got, err = validateChangeTransition("resolved", "closed", false)
+	if err != nil || got != "closed" {
+		t.Fatalf("resolved -> closed: got %q err=%v", got, err)
+	}
+	got, err = validateChangeTransition("closed", "reopen", false)
+	if err != nil || got != "implementing" {
+		t.Fatalf("reopen closed: got %q err=%v", got, err)
+	}
+	if _, err := validateChangeTransition("closed", "failed", false); err == nil {
+		t.Fatal("closed change must reopen before fail")
+	}
+}
+
+func TestNormalizeIncidentStatus(t *testing.T) {
+	if normalizeIncidentStatus("ack") != "acknowledged" {
+		t.Fatal("ack should become acknowledged")
+	}
+	if normalizeIncidentStatus("complete") != "closed" {
+		t.Fatal("complete should become closed")
+	}
+	if !incidentIsActive("acknowledged") {
+		t.Fatal("acknowledged incidents are still active")
+	}
+	if incidentIsActive("resolved") || incidentIsActive("closed") || incidentIsActive("cancelled") {
+		t.Fatal("finished incidents should not be active")
 	}
 }
 

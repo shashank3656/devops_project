@@ -38,7 +38,7 @@ func buildReleaseNotes(from, to time.Time) (*releaseNotesPayload, error) {
 	grouped := map[string][]releaseNoteItem{}
 	for _, item := range items {
 		status := strings.ToLower(item.Status)
-		if status != "closed" && status != "monitoring" && status != "implemented" {
+		if status != "closed" && status != "resolved" && status != "monitoring" && status != "implemented" {
 			continue
 		}
 		stamp := item.UpdatedAt

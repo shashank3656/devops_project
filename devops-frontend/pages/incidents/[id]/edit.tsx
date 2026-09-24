@@ -375,11 +375,17 @@ export default function EditIncidentPage() {
                   <select className="input" value={status} onChange={(event) => setStatus(event.target.value)}>
                     <option value="draft">Draft</option>
                     <option value="open">Open</option>
+                    <option value="acknowledged">Acknowledged</option>
                     <option value="investigating">Investigating</option>
                     <option value="mitigating">Mitigating</option>
                     <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                    <option value="cancelled">Cancelled</option>
                   </select>
                 </label>
+                <p className="portal-surface__subtitle">
+                  Acknowledge when someone owns it. Resolve when service is back. Close after review. Cancel a false alarm.
+                </p>
                 <label className="label">
                   Incident team
                   <select className="input" value={teamId} onChange={(event) => setTeamId(event.target.value)}>

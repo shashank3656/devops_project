@@ -130,8 +130,10 @@ export default function AdminChangesCatalogPage() {
                 <option value="implementing">Implementing</option>
                 <option value="implemented">Implemented</option>
                 <option value="monitoring">Monitoring</option>
+                <option value="resolved">Resolved</option>
                 <option value="closed">Closed</option>
                 <option value="failed">Failed</option>
+                <option value="cancelled">Cancelled</option>
               </select>
               <select className="input" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
                 <option value="">All types</option>

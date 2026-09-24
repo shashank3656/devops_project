@@ -493,7 +493,7 @@ func openIncidentCountForRequest(req *PRRequest) int {
 		_ = DB.QueryRow(`
 			SELECT COUNT(*) FROM request_incidents
 			WHERE project_id = $1
-			  AND LOWER(status) IN ('open', 'investigating', 'mitigating')
+			  AND LOWER(status) IN ('open', 'acknowledged', 'investigating', 'mitigating')
 			  AND (
 			    COALESCE(source,'ticket') NOT IN ('alert', 'change_regression')
 			    OR LOWER(severity) IN ('high', 'critical')

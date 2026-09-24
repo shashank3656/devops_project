@@ -32,11 +32,41 @@ const CHANGE_WEBHOOK_SAMPLE = `- name: Record SetuOps change
   env:
     SETUOPS_API: \${{ secrets.SETUOPS_API_URL }}
     SETUOPS_SECRET: \${{ secrets.CHANGE_WEBHOOK_SECRET }}
+    CHANGE_TITLE: \${{ github.event.head_commit.message }}
+    CHANGE_AUTHOR: \${{ github.actor }}
+    PR_NUMBER: \${{ github.event.pull_request.number || 0 }}
+    PR_URL: \${{ github.event.pull_request.html_url }}
   run: |
+    SERVICE="\${GITHUB_REPOSITORY##*/}"
+    TITLE="$(printf '%s' "$CHANGE_TITLE" | head -n1)"
     curl -sS -X POST "$SETUOPS_API/api/webhooks/change" \\
       -H "Content-Type: application/json" \\
       -H "X-CI-Secret: $SETUOPS_SECRET" \\
-      -d '{"repo":"'"$GITHUB_REPOSITORY"'","sha":"'"$GITHUB_SHA"'","previous_sha":"'"$GITHUB_EVENT_BEFORE"'","environment":"dev","title":"merge to main","pr_number":0,"change_type":"standard"}'`;
+      --data "$(jq -n \\
+        --arg repo "$GITHUB_REPOSITORY" \\
+        --arg sha "$GITHUB_SHA" \\
+        --arg previous_sha "\${GITHUB_EVENT_BEFORE:-}" \\
+        --arg service "$SERVICE" \\
+        --arg title "$TITLE" \\
+        --arg author "$CHANGE_AUTHOR" \\
+        --arg pr_url "$PR_URL" \\
+        --arg pipeline_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \\
+        --argjson pr_number "\${PR_NUMBER:-0}" \\
+        '{
+          repo: $repo,
+          sha: $sha,
+          previous_sha: $previous_sha,
+          service: $service,
+          title: $title,
+          author: $author,
+          pr_number: $pr_number,
+          pr_url: $pr_url,
+          pipeline_url: $pipeline_url,
+          change_type: "standard",
+          priority: "medium",
+          risk_level: "medium",
+          watch_minutes: 120
+        }')"`;
 
 function parseProjectID(value: string | string[] | undefined): number {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -100,7 +130,7 @@ export default function ChangesCatalogPage() {
     );
   }, [items, query]);
 
-  const implementedCount = items.filter((item) => item.status === 'implemented' || item.status === 'monitoring' || item.status === 'closed').length;
+  const implementedCount = items.filter((item) => item.status === 'implemented' || item.status === 'monitoring' || item.status === 'resolved' || item.status === 'closed').length;
   const failedCount = items.filter((item) => item.status === 'failed').length;
   const watchingCount = items.filter((item) => item.status === 'monitoring' || item.status === 'implemented').length;
 
@@ -175,8 +205,10 @@ export default function ChangesCatalogPage() {
                 <option value="implementing">Implementing</option>
                 <option value="implemented">Implemented</option>
                 <option value="monitoring">Monitoring</option>
+                <option value="resolved">Resolved</option>
                 <option value="closed">Closed</option>
                 <option value="failed">Failed</option>
+                <option value="cancelled">Cancelled</option>
               </select>
               <select className="input" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
                 <option value="">All types</option>
@@ -245,7 +277,7 @@ export default function ChangesCatalogPage() {
             </summary>
             <div className="portal-surface__header" style={{ marginTop: 16 }}>
               <p className="portal-surface__subtitle">
-                POST from GitHub Actions after merge to main. Send <code>X-CI-Secret</code> or HMAC. Same SHA + repo + env updates the existing change.
+                POST from GitHub Actions after merge to main. Send <code>X-CI-Secret</code> or HMAC. Omit environment — SetuOps fills service, project, and env from the Services catalog when the repo matches. Same SHA + repo + resolved env updates the existing change.
               </p>
               <button type="button" className="btn btn-secondary" onClick={() => void copyWebhook()}>
                 {copied ? 'Copied' : 'Copy webhook URL'}

@@ -611,7 +611,7 @@ func nextChangeRequestID() int {
 
 func changeIsInWatchWindow(item changeRequestRecord, now time.Time) bool {
 	status := strings.ToLower(strings.TrimSpace(item.Status))
-	if status == "closed" || status == "cancelled" || status == "canceled" || status == "failed" {
+	if changeIsFinished(status) {
 		return false
 	}
 	if item.WatchUntil != nil {
@@ -701,14 +701,41 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid change id", err)
 		return
 	}
-	if len(parts) == 2 && parts[1] == "close" {
-		if r.Method != "POST" {
-			writeMethodNotAllowed(w, r)
+	if len(parts) == 2 {
+		action := strings.ToLower(strings.TrimSpace(parts[1]))
+		if action == "resolve" || action == "close" || action == "fail" || action == "cancel" || action == "reopen" {
+			if r.Method != "POST" {
+				writeMethodNotAllowed(w, r)
+				return
+			}
+			next := action
+			if action == "fail" {
+				next = "failed"
+			}
+			if action == "cancel" {
+				next = "cancelled"
+			}
+			item, err := transitionChangeStatus(id, next)
+			if err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"change": item, "status": "ok"})
 			return
 		}
-		item, err := closeChangeRequest(id)
+	}
+	if r.Method == "PATCH" && len(parts) == 1 {
+		var body struct {
+			Status string `json:"status"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
+			return
+		}
+		item, err := transitionChangeStatus(id, body.Status)
 		if err != nil {
-			writeAPIError(w, r, http.StatusInternalServerError, "failed to close change", err)
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

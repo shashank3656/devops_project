@@ -53,6 +53,12 @@ func TestIncidentBlocksPromotion(t *testing.T) {
 	if incidentBlocksPromotion(requestIncident{Source: "alert", Status: "resolved", Severity: "critical"}) {
 		t.Fatal("resolved SEV1 should not block")
 	}
+	if !incidentBlocksPromotion(requestIncident{Source: "alert", Status: "acknowledged", Severity: "critical"}) {
+		t.Fatal("acknowledged SEV1 should still block")
+	}
+	if incidentBlocksPromotion(requestIncident{Source: "ticket", Status: "closed", Severity: "low"}) {
+		t.Fatal("closed ticket incidents should not block")
+	}
 }
 
 func TestRunbookMatchesService(t *testing.T) {
