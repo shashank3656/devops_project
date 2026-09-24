@@ -150,10 +150,9 @@ jobs:
         with:
           version: v2.6.2
           working-directory: ./backend
-          args: --timeout=5m --modules-download-mode=mod
-          # This PR is larger than GitHub's 20k-line diff API, so only-new-issues
-          # fails with 406. Lint the whole backend package instead; test/ is skipped
-          # in .golangci.yml because those files are staged into package main by make test.
+          # Lint package main only (the trailing `.`). `./...` typechecks backend/test
+          # as a second package, which cannot compile until `make test` stages those files.
+          args: --timeout=5m --modules-download-mode=mod .
           only-new-issues: false
         continue-on-error: true
 

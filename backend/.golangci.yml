@@ -6,4 +6,4 @@ run:
 linters:
   exclusions:
     paths:
-      - (^|/)test/
+      - (^|/)test(/|$)
