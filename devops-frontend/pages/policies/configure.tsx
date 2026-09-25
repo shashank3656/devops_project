@@ -51,7 +51,7 @@ export default function PolicyConfigurePage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Policies</span>
+            <span className="portal-page__eyebrow">Policy as code</span>
             <h1 className="portal-page__title">Configure</h1>
             <p className="portal-page__subtitle">Use deny blocks with input.field == &quot;value&quot;. This is not a full OPA runtime.</p>
           </div>

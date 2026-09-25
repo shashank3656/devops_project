@@ -167,7 +167,7 @@ export default function DevOpsApprovalCenter() {
   return (
     <>
       <Head>
-        <title>Approval Center - SetuOps DevOps</title>
+        <title>Approval queue - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">

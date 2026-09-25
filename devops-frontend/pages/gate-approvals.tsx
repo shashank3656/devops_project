@@ -224,14 +224,14 @@ export default function GateApprovalsPage() {
   return (
     <>
       <Head>
-        <title>Gate Approval Audit - SetuOps DevOps</title>
+        <title>Promotion history - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">
           <header className="portal-page__header">
             <div className="portal-page__header-main">
-              <span className="portal-page__eyebrow">Gate Approval Audit</span>
-              <h1 className="portal-page__title">Deployment gate approvals</h1>
+              <span className="portal-page__eyebrow">Promotions</span>
+              <h1 className="portal-page__title">Promotion history</h1>
               <p className="portal-page__subtitle">
                 Review approval history, expiry windows, revoked decisions, and production promotion oversight in one place.
               </p>
