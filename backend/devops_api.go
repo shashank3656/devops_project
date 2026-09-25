@@ -111,10 +111,15 @@ func devopsMeHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		resp["teams"] = []interface{}{}
 	}
+	token := generateToken(userID)
+	if token == "" {
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to issue session", nil)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeDevopsJSON(w, map[string]interface{}{
 		"user":   resp,
-		"token":  generateToken(userID),
+		"token":  token,
 		"status": "ok",
 	})
 }
@@ -399,9 +404,7 @@ func devopsNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	)
 	payload, err := buildDevopsNotifications(limit, offset, projectID, kind)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeDevopsJSON(w, map[string]interface{}{"error": "failed to fetch notifications", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to fetch notifications", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

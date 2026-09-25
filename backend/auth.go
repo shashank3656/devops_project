@@ -206,15 +206,15 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 	user.Verified = false
 	user.Role = "viewer"
 
-	// TODO: send OTP via email in production; for now return in response for testing
 	w.Header().Set("Content-Type", "application/json")
-	encodeAuthJSON(w, map[string]interface{}{
-		"message":         "Account created. Verify with OTP sent to your email.",
-		"status":          "ok",
-		"otp_for_testing": otp,
-		"email":           req.Email,
-		"user":            user,
-	})
+	signupResp := map[string]interface{}{
+		"message": "Account created. Verify with OTP sent to your email.",
+		"status":  "ok",
+		"email":   req.Email,
+		"user":    user,
+	}
+	maybeAttachTestOTP(signupResp, otp)
+	encodeAuthJSON(w, signupResp)
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -311,60 +311,28 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		subj, body := EmailTemplate2FA(otp)
 		sendNotificationEmailIfConfigured(user.ID, "2fa", subj, body)
 		w.Header().Set("Content-Type", "application/json")
-		encodeAuthJSON(w, map[string]interface{}{
+		twoFAResp := map[string]interface{}{
 			"requires_otp":      true,
 			"pending_2fa_token": pendingToken,
 			"message":           "Enter the 6-digit code sent to your email",
-			"otp_for_testing":   otp,
-		})
+		}
+		maybeAttachTestOTP(twoFAResp, otp)
+		encodeAuthJSON(w, twoFAResp)
 		return
 	}
 
-	// Generate token
 	token := generateToken(user.ID)
+	if token == "" {
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to issue session", nil)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	timeoutMins := 24 * 60
-	if m := os.Getenv("SESSION_TIMEOUT_MINUTES"); m != "" {
-		if n, _ := strconv.Atoi(m); n > 0 {
-			timeoutMins = n
-		}
-	}
 	encodeAuthJSON(w, AuthResponse{
 		Token:     token,
 		User:      user,
-		ExpiresAt: time.Now().Add(time.Duration(timeoutMins) * time.Minute),
+		ExpiresAt: time.Now().Add(sessionTimeoutDuration()),
 	})
-}
-
-// generateToken generates a simple token (in production, use JWT)
-func generateToken(userID int) string {
-	// Simple token format: base64(userID:timestamp)
-	// In production, use proper JWT tokens
-	return fmt.Sprintf("%d:%d", userID, time.Now().Unix())
-}
-
-// validateToken validates a token and returns user ID
-func validateToken(token string) (int, error) {
-	var userID int
-	var timestamp int64
-	_, err := fmt.Sscanf(token, "%d:%d", &userID, &timestamp)
-	if err != nil {
-		return 0, fmt.Errorf("invalid token format")
-	}
-
-	// Check if token is expired (SESSION_TIMEOUT_MINUTES or default 24h)
-	timeoutMins := 24 * 60
-	if m := os.Getenv("SESSION_TIMEOUT_MINUTES"); m != "" {
-		if n, _ := strconv.Atoi(m); n > 0 {
-			timeoutMins = n
-		}
-	}
-	if time.Now().Unix()-timestamp > int64(timeoutMins*60) {
-		return 0, fmt.Errorf("token expired")
-	}
-
-	return userID, nil
 }
 
 // validateTokenOrAPIKey returns (userID, scopes, nil) for valid Bearer token. Token can be session token (scopes "") or API key prefix "ip_xxx" (scopes from DB).
@@ -461,7 +429,7 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 	encodeAuthJSON(w, resp)
 }
 
-// meTeamsHandler returns the current user's teams (for main frontend - 403 if none)
+// meTeamsHandler returns the current user's teams. An empty list is 200, not 403.
 func meTeamsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
@@ -1153,11 +1121,15 @@ func verify2faHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sessionToken := generateToken(verifiedID)
+	if sessionToken == "" {
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to issue session", nil)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeAuthJSON(w, AuthResponse{
 		Token:     sessionToken,
 		User:      *user,
-		ExpiresAt: time.Now().Add(24 * time.Hour),
+		ExpiresAt: time.Now().Add(sessionTimeoutDuration()),
 	})
 }
 
@@ -1268,7 +1240,7 @@ func resendVerificationHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// setRoleHandler sets a user's role (PATCH /api/users/:id/role) - requires X-Admin-Secret header
+// setRoleHandler sets a user's role (PATCH /api/users/:id/role). Requires admin Bearer or audited break-glass.
 func setRoleHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
@@ -1283,13 +1255,7 @@ func setRoleHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
-	adminSecret := os.Getenv("ADMIN_SECRET")
-	if adminSecret == "" {
-		writeAPIError(w, r, http.StatusForbidden, "admin API not configured", nil)
-		return
-	}
-	if r.Header.Get("X-Admin-Secret") != adminSecret {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", nil)
+	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
 	// Parse user ID from path: /api/users/123/role
@@ -1323,7 +1289,7 @@ func setRoleHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// setVerifiedHandler sets a user as verified (PATCH /api/users/:id/verify) - requires X-Admin-Secret
+// setVerifiedHandler sets a user as verified (PATCH /api/users/:id/verify). Requires admin Bearer or audited break-glass.
 func setVerifiedHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
@@ -1338,9 +1304,7 @@ func setVerifiedHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
-	adminSecret := os.Getenv("ADMIN_SECRET")
-	if adminSecret == "" || r.Header.Get("X-Admin-Secret") != adminSecret {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", nil)
+	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/users/")

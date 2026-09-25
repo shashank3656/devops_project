@@ -13,12 +13,23 @@ Preferred database configuration:
 
 ## Local Configuration
 
+`config/.env` is the only local/runtime source. Backend, Next.js, and Docker Compose all read it. Compose only overrides Redis (`redis:6379`) and the in-container CA path.
+
 Start with:
 
 ```bash
 cp config/.env.example config/.env
-./scripts/sync-env.sh
+make env-sync
+make compose-dev
 ```
+
+Or:
+
+```bash
+docker compose --env-file config/.env --profile dev up -d --build
+```
+
+`make frontend-dev`, `make admin-dev`, `make devops-dev`, and `make backend-run` also load `config/.env`. Do not set portal URLs or `NEXT_PUBLIC_API_URL` in docker-compose.
 
 ## Key Runtime Settings
 
@@ -31,9 +42,14 @@ cp config/.env.example config/.env
 | `DB_SSLROOTCERT` | Optional CA certificate path for managed Postgres TLS verification |
 | `REDIS_ADDR`, `REDIS_PASSWORD`, `REDIS_DB` | Redis cache and queue connection |
 | `GITHUB_OWNER`, `GITHUB_REPO`, `GITHUB_TOKEN` | GitHub integration for PR workflows |
-| `ADMIN_SECRET` | Admin API secret |
+| `ADMIN_SECRET` | Admin API secret. Break-glass only when `ADMIN_BREAKGLASS_USER_ID` is also set |
+| `ADMIN_BREAKGLASS_USER_ID` | User id recorded for `X-Admin-Secret` break-glass calls. Required; secret-only calls as user 0 are rejected |
+| `SESSION_SECRET` or `JWT_SECRET` | HMAC key for signed session tokens. Required when `APP_ENV=production` |
+| `API_KEY_HASH_SECRET` | API key hash pepper. Required when `APP_ENV=production` |
+| `ALLOW_TEST_OTP` | If `true` outside production, signup/2FA JSON may include `otp_for_testing` |
+| `CORS_ALLOWED_ORIGINS` | Extra comma-separated browser origins. Portal URLs are already allowed. `*` is ignored |
+| `FRONTEND_URL`, `ADMIN_FRONTEND_URL`, `DEVOPS_FRONTEND_URL` | Portal URLs used for CORS, links, and emails |
 | `DEFAULT_ADMIN_USERNAME`, `DEFAULT_ADMIN_PASSWORD`, `DEFAULT_ADMIN_EMAIL` | Initial admin bootstrap |
-| `FRONTEND_URL`, `DEVOPS_FRONTEND_URL` | Portal URLs used for links and emails |
 | `SLACK_WEBHOOK_URL`, `TEAMS_WEBHOOK_URL`, `OPS_NOTIFICATION_WEBHOOK_URL` | Optional notification targets |
 | `SMTP_*` | Email delivery settings |
 | `OTEL_*` | OpenTelemetry tracing and metrics |

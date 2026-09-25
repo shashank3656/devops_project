@@ -11,6 +11,19 @@ function sharedUiHelper() {
 
 const { withSharedUi } = require(sharedUiHelper());
 
+function loadConfigEnvHelper() {
+  const parent = path.join(__dirname, '..', 'shared-ui', 'load-config-env.cjs');
+  if (fs.existsSync(parent)) return parent;
+  const nested = path.join(__dirname, 'shared-ui', 'load-config-env.cjs');
+  if (fs.existsSync(nested)) return nested;
+  return '';
+}
+
+const loadConfigEnvPath = loadConfigEnvHelper();
+if (loadConfigEnvPath) {
+  require(loadConfigEnvPath).loadConfigEnv(__dirname);
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,

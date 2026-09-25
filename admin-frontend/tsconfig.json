@@ -22,6 +22,6 @@
       "next/router": ["./node_modules/next/router.d.ts"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+  "include": ["next-env.d.ts", "css.d.ts", "**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]
 }

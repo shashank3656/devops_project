@@ -8,7 +8,10 @@ version: '3.8'
 # Production-like:
 #   make compose-prod
 #
-# Environment: config/.env (copy from config/.env.example)
+# Environment: config/.env is the only app config source.
+#   make compose-dev
+#   docker compose --env-file config/.env --profile dev up -d --build
+# Compose only overrides values that must be in-network (Redis hostname, cert path).
 
 services:
   redis:
@@ -36,25 +39,8 @@ services:
     env_file:
       - config/.env
     environment:
-      - DB_CONN_MAX_LIFETIME_MINUTES=2
-      - DB_CONN_MAX_IDLE_TIME_MINUTES=1
-      - DB_MAX_OPEN_CONNS=15
-      - DB_MAX_IDLE_CONNS=3
-      - FRONTEND_URL=http://localhost:3000
-      - ADMIN_FRONTEND_URL=http://localhost:3001
-      - DEVOPS_FRONTEND_URL=http://localhost:3002
-      - NEXT_PUBLIC_API_URL=http://localhost:8080
       - REDIS_ADDR=redis:6379
       - REDIS_URL=
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      - REDIS_DB=${REDIS_DB:-0}
-      - REDIS_CACHE_TTL_SECONDS=${REDIS_CACHE_TTL_SECONDS:-90}
-      - REDIS_QUEUE_NAME=${REDIS_QUEUE_NAME:-infra:jobs}
-      - REDIS_JOB_POLL_TIMEOUT_SECONDS=${REDIS_JOB_POLL_TIMEOUT_SECONDS:-5}
-      - DB_QUERY_TIMEOUT_SECONDS=${DB_QUERY_TIMEOUT_SECONDS:-5}
-      - DB_TX_TIMEOUT_SECONDS=${DB_TX_TIMEOUT_SECONDS:-30}
-      - DB_SLOW_QUERY_MS=${DB_SLOW_QUERY_MS:-750}
-      - REQUEST_LOG_SLOW_MS=${REQUEST_LOG_SLOW_MS:-500}
       - DB_SSLROOTCERT=/app/certs/prod-ca-2021.crt
     volumes:
       - ./backend:/app
@@ -81,25 +67,8 @@ services:
     env_file:
       - config/.env
     environment:
-      - DB_CONN_MAX_LIFETIME_MINUTES=2
-      - DB_CONN_MAX_IDLE_TIME_MINUTES=1
-      - DB_MAX_OPEN_CONNS=15
-      - DB_MAX_IDLE_CONNS=3
-      - FRONTEND_URL=http://localhost:3000
-      - ADMIN_FRONTEND_URL=http://localhost:3001
-      - DEVOPS_FRONTEND_URL=http://localhost:3002
-      - NEXT_PUBLIC_API_URL=http://localhost:8080
       - REDIS_ADDR=redis:6379
       - REDIS_URL=
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      - REDIS_DB=${REDIS_DB:-0}
-      - REDIS_CACHE_TTL_SECONDS=${REDIS_CACHE_TTL_SECONDS:-90}
-      - REDIS_QUEUE_NAME=${REDIS_QUEUE_NAME:-infra:jobs}
-      - REDIS_JOB_POLL_TIMEOUT_SECONDS=${REDIS_JOB_POLL_TIMEOUT_SECONDS:-5}
-      - DB_QUERY_TIMEOUT_SECONDS=${DB_QUERY_TIMEOUT_SECONDS:-5}
-      - DB_TX_TIMEOUT_SECONDS=${DB_TX_TIMEOUT_SECONDS:-30}
-      - DB_SLOW_QUERY_MS=${DB_SLOW_QUERY_MS:-750}
-      - REQUEST_LOG_SLOW_MS=${REQUEST_LOG_SLOW_MS:-500}
       - DB_SSLROOTCERT=/app/certs/prod-ca-2021.crt
     volumes:
       - ./config:/app/config:ro
@@ -132,13 +101,13 @@ services:
       - config/.env
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=http://localhost:8080
       - NEXT_IGNORE_INCORRECT_LOCKFILE=true
       - WATCHPACK_POLLING=true
     volumes:
       - ./frontend:/app
       - ./shared-ui:/shared-ui
       - ./shared-ui:/app/shared-ui
+      - ./config:/app/config:ro
       - /app/node_modules
       - /app/.next
     command: sh -c "npm install --no-package-lock && npm run dev"
@@ -155,7 +124,7 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=http://localhost:8080
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     container_name: infra-frontend
     ports:
       - "3000:3000"
@@ -163,7 +132,6 @@ services:
       - config/.env
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://localhost:8080
     depends_on:
       backend-prod:
         condition: service_healthy
@@ -185,13 +153,14 @@ services:
       context: .
       dockerfile: admin-frontend/Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=http://localhost:8080
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     container_name: infra-admin-frontend
     ports:
       - "3001:3001"
+    env_file:
+      - config/.env
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://localhost:8080
     depends_on:
       - backend
     restart: unless-stopped
@@ -205,13 +174,14 @@ services:
       context: .
       dockerfile: admin-frontend/Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=http://localhost:8080
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     container_name: infra-admin-frontend
     ports:
       - "3001:3001"
+    env_file:
+      - config/.env
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://localhost:8080
     depends_on:
       - backend-prod
     restart: unless-stopped
@@ -225,7 +195,7 @@ services:
       context: .
       dockerfile: devops-frontend/Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=http://localhost:8080
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     container_name: infra-devops-frontend
     ports:
       - "3002:3002"
@@ -233,7 +203,6 @@ services:
       - config/.env
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://localhost:8080
     depends_on:
       - backend
     healthcheck:
@@ -253,7 +222,7 @@ services:
       context: .
       dockerfile: devops-frontend/Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=http://localhost:8080
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     container_name: infra-devops-frontend
     ports:
       - "3002:3002"
@@ -261,7 +230,6 @@ services:
       - config/.env
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://localhost:8080
     depends_on:
       - backend-prod
     healthcheck:

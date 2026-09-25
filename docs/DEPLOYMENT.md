@@ -43,7 +43,7 @@ Before any deployment:
 
    ```bash
    cp config/.env.example config/.env
-   ./scripts/sync-env.sh
+   make env-sync
    ```
 
 2. Start the stack:

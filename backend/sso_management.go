@@ -1747,6 +1747,11 @@ func authSSOLoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := generateToken(userID)
+	if token == "" {
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to issue session", nil)
+		AppendAuditLog(nil, "sso-login-denied", "sso", portal, "failed to issue session")
+		return
+	}
 	timeoutMins := 24 * 60
 	if m := os.Getenv("SESSION_TIMEOUT_MINUTES"); m != "" {
 		if n, _ := strconv.Atoi(m); n > 0 {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -106,11 +107,13 @@ func paginateOpsNotifications(items []OpsNotificationItem, limit, offset int) []
 func buildAdminNotifications(limit, offset, projectID int, kind string) (map[string]interface{}, error) {
 	requests, err := GetPRRequests("", "", "", projectID, "pending_any", "", "", 0, 0, nil, 250, 0, "", "", false, "", "")
 	if err != nil {
-		return nil, err
+		log.Printf("[notifications] admin pending requests failed: %v", err)
+		requests = nil
 	}
 	projectEvents, err := getProjectAuditNotificationEntries(250, projectID)
 	if err != nil {
-		return nil, err
+		log.Printf("[notifications] admin project events failed: %v", err)
+		projectEvents = nil
 	}
 
 	pendingItems := make([]OpsNotificationItem, 0, len(requests))
@@ -149,11 +152,13 @@ func buildAdminNotifications(limit, offset, projectID int, kind string) (map[str
 func buildDevopsNotifications(limit, offset, projectID int, kind string) (map[string]interface{}, error) {
 	requests, err := GetPRRequests("", "", "", projectID, "pending_devops_approval", "", "", 0, 0, nil, 250, 0, "", "", false, "", "")
 	if err != nil {
-		return nil, err
+		log.Printf("[notifications] devops pending requests failed: %v", err)
+		requests = nil
 	}
 	projectEvents, err := getProjectAuditNotificationEntries(250, projectID)
 	if err != nil {
-		return nil, err
+		log.Printf("[notifications] devops project events failed: %v", err)
+		projectEvents = nil
 	}
 
 	pendingItems := make([]OpsNotificationItem, 0, len(requests))
