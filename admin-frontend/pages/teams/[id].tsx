@@ -60,6 +60,7 @@ export default function TeamDetail() {
   const [defaultCloud, setDefaultCloud] = useState('');
   const [savingDefaults, setSavingDefaults] = useState(false);
   const [defaultsSaved, setDefaultsSaved] = useState(false);
+  const [memberNotice, setMemberNotice] = useState('');
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token =
@@ -163,6 +164,8 @@ export default function TeamDetail() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setAddUserId('');
+        setMemberNotice('Member added.');
+        window.setTimeout(() => setMemberNotice(''), 4000);
         fetchTeam(team.id);
       } else {
         setError(data.error || 'Failed to add member');
@@ -326,59 +329,65 @@ export default function TeamDetail() {
         <title>{team?.name ?? 'Team'} - Admin</title>
       </Head>
       <AdminLayout>
-        <div className="container">
-          <Link href="/teams" className="back-link">
-            ← Back to Teams
-          </Link>
-
-          {created === '1' && group && (
-            <div className="alert admin-team-detail__success-alert" role="alert">
-              Team created successfully. <strong>{team?.name ?? ''}</strong> ({decodeURIComponent(String(group))}).
-            </div>
-          )}
-
+        <div className="portal-page">
           {loading ? (
-            <p className="loading-text">Loading…</p>
+            <div className="admin-queue-state">
+              <div className="admin-queue-state__spinner" aria-hidden="true" />
+              <p className="admin-queue-state__title">Loading team</p>
+            </div>
           ) : error && !team ? (
-            <div className="card">
+            <div className="portal-surface">
               <div className="alert alert-error" role="alert">
                 {error}
               </div>
+              <Link href="/teams" className="btn btn-secondary" style={{ marginTop: 16 }}>
+                Back to teams
+              </Link>
             </div>
           ) : team ? (
             <>
-              <div className="card admin-team-detail__card">
-                <div className="admin-team-detail__header">
-                  <div>
-                    <h2 className="card-title">{team.name}</h2>
-                    <p className="admin-team-detail__meta">
-                      Group ID: <code>{team.application_id || 'Pending'}</code>
+              <div className="portal-page__header">
+                <div>
+                  <span className="portal-page__eyebrow">People</span>
+                  <h1 className="portal-page__title">{team.name}</h1>
+                  <p className="portal-page__subtitle admin-team-detail__meta">
+                    Group ID <code>{team.application_id || 'Pending'}</code>
+                    <span className="admin-team-detail__meta-sep">
+                      Slug <code>{team.slug}</code>
+                    </span>
+                    {(team.team_type === 'devops' || team.team_type === 'portal') && (
                       <span className="admin-team-detail__meta-sep">
-                        Slug: <code>{team.slug}</code>
+                        {team.team_type === 'devops' ? 'DevOps group' : 'Portal group'}
                       </span>
-                      {(team.team_type === 'devops' || team.team_type === 'portal') && (
-                        <span className="admin-team-detail__meta-sep">
-                          Group: {team.team_type === 'devops' ? 'DevOps team group' : 'Portal team group'}
-                        </span>
-                      )}
-                    </p>
-                    <p className="admin-team-detail__hint">
-                      Group ID is the stable Git/PR folder key for new infrastructure requests.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    disabled={deleting}
-                    onClick={handleDeleteTeam}
-                  >
+                    )}
+                  </p>
+                </div>
+                <div className="portal-page__actions">
+                  <Link href="/teams" className="btn btn-secondary">
+                    All teams
+                  </Link>
+                  <button type="button" className="btn btn-danger" disabled={deleting} onClick={handleDeleteTeam}>
                     {deleting ? 'Deleting…' : 'Delete team'}
                   </button>
                 </div>
               </div>
 
-              <div className="card admin-team-detail__card">
-                <h3 className="card-title">Team default settings</h3>
+              {created === '1' && group ? (
+                <div className="alert alert-success admin-team-detail__success-alert" role="status">
+                  Team created. <strong>{team.name}</strong> ({decodeURIComponent(String(group))}).
+                </div>
+              ) : null}
+
+              <section className="portal-surface admin-team-detail__card">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Defaults</span>
+                    <h2 className="portal-surface__title">Request defaults</h2>
+                    <p className="portal-surface__subtitle admin-team-detail__copy">
+                      Prefill environment and cloud when someone from this team opens a new request.
+                    </p>
+                  </div>
+                </div>
                 <p className="admin-team-detail__copy">
                   Default environment and cloud are prefilled when a user from this team creates a request.
                 </p>
@@ -414,26 +423,34 @@ export default function TeamDetail() {
                   <button type="submit" className="btn btn-primary" disabled={savingDefaults}>
                     {savingDefaults ? 'Saving…' : 'Save'}
                   </button>
-                  {defaultsSaved && <span className="admin-team-detail__saved">Saved.</span>}
+                  {defaultsSaved ? <span className="admin-team-detail__saved">Saved.</span> : null}
                 </form>
-              </div>
+              </section>
 
-              <div className="card admin-team-detail__card">
-                <h3 className="card-title">Members</h3>
-                {error && (
+              <section className="portal-surface portal-surface--table admin-team-detail__card">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Membership</span>
+                    <h2 className="portal-surface__title">Members</h2>
+                    <p className="portal-surface__subtitle admin-team-detail__copy">
+                      Add portal users from the list below, or{' '}
+                      <Link href="/users/new">create a user</Link> first if they are not in SetuOps yet.
+                    </p>
+                  </div>
+                </div>
+                {error ? (
                   <div className="alert alert-error" role="alert">
                     {error}
                   </div>
-                )}
+                ) : null}
+                {memberNotice ? (
+                  <div className="alert alert-success" role="status">
+                    {memberNotice}
+                  </div>
+                ) : null}
 
                 <div className="admin-team-detail__section">
-                  <h4 className="admin-team-detail__subheading">
-                    Add new member
-                  </h4>
-                  <p className="admin-team-detail__copy">
-                    Select a user to add to this team. New users can be created from the{' '}
-                    <Link href="/users/new">Users</Link> page.
-                  </p>
+                  <h3 className="admin-team-detail__subheading">Add one member</h3>
                   <form onSubmit={handleAddMember} className="admin-team-detail__inline-form">
                     <div className="form-group admin-team-detail__field admin-team-detail__field--user">
                       <label className="label" htmlFor="add-user">
@@ -478,21 +495,20 @@ export default function TeamDetail() {
                         )}
                       </select>
                     </div>
-                    <button
-                      type="submit"
-                      className="btn btn-primary"
-                      disabled={!addUserId || adding}
-                    >
+                    <button type="submit" className="btn btn-primary" disabled={!addUserId || adding || availableUsers.length === 0}>
                       {adding ? 'Adding…' : 'Add member'}
                     </button>
                   </form>
+                  {availableUsers.length === 0 ? (
+                    <div className="empty-state admin-user-edit__empty-inline" style={{ marginTop: 12 }}>
+                      Everyone in the directory is already on this team, or no users exist yet.{' '}
+                      <Link href="/users/new">Add a user</Link>
+                    </div>
+                  ) : null}
 
-                  {/* Bulk add */}
-                  {availableUsers.length > 0 && (
+                  {availableUsers.length > 0 ? (
                     <div className="admin-team-detail__bulk">
-                      <h4 className="admin-team-detail__subheading">
-                        Bulk add members
-                      </h4>
+                      <h3 className="admin-team-detail__subheading">Add several at once</h3>
                       <p className="admin-team-detail__copy">
                         Select multiple users below and add them at once.
                       </p>
@@ -534,12 +550,17 @@ export default function TeamDetail() {
                         </div>
                       </form>
                     </div>
-                  )}
+                  ) : null}
                 </div>
 
                 {members.length === 0 ? (
                   <div className="empty-state">
-                    No members yet. Add users above.
+                    <p>No members yet.</p>
+                    <p style={{ marginTop: 8 }}>
+                      <Link href="/users/new" className="btn btn-secondary btn-sm">
+                        Create user
+                      </Link>
+                    </p>
                   </div>
                 ) : (
                   <div className="table-wrap">
@@ -601,7 +622,7 @@ export default function TeamDetail() {
                     </table>
                   </div>
                 )}
-              </div>
+              </section>
             </>
           ) : null}
         </div>

@@ -130,6 +130,14 @@ func parsePositiveQueryID(r *http.Request, key string) int {
 	return id
 }
 
+func requestQueryEnv(r *http.Request) string {
+	env := strings.TrimSpace(r.URL.Query().Get("environment"))
+	if env == "" {
+		env = strings.TrimSpace(r.URL.Query().Get("env"))
+	}
+	return env
+}
+
 func portalRecordIDFromPath(prefix string, r *http.Request) int {
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, prefix), "/")
 	if path == "" {

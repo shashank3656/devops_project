@@ -73,6 +73,7 @@ html[data-theme] body {
   font-size: var(--ig-text-md);
   line-height: 1.55;
   letter-spacing: normal;
+  word-spacing: 0.04em;
   background: var(--ig-bg);
   color: var(--ig-text-2);
   -webkit-font-smoothing: antialiased;
@@ -282,6 +283,7 @@ html[data-theme] .btn {
   font-size: var(--ig-text-sm);
   font-weight: 600;
   letter-spacing: 0;
+  word-spacing: normal;
   text-transform: none;
   text-shadow: none;
   box-shadow: none;
@@ -3863,8 +3865,13 @@ html[data-theme] .admin-topbar,
 html[data-theme] .devops-navbar {
   max-width: 100%;
   min-width: 0;
-  flex-wrap: nowrap;
   overflow: visible;
+}
+
+html[data-theme] .user-topbar,
+html[data-theme] .admin-topbar,
+html[data-theme] .devops-navbar {
+  flex-wrap: nowrap;
 }
 
 html[data-theme] .user-topbar__notify-panel,
@@ -3903,12 +3910,30 @@ html[data-theme] .devops-navbar__actions {
 
 html[data-theme] .ig-scope-bar {
   flex: 1 1 160px;
-  overflow: hidden;
+  min-width: 0;
 }
 
 html[data-theme] .ig-scope-bar__control {
   max-width: 160px;
   width: 100%;
+}
+
+@media (max-width: 900px) {
+  html[data-theme] .user-topbar__left,
+  html[data-theme] .admin-topbar__left,
+  html[data-theme] .devops-navbar__left {
+    flex-wrap: wrap;
+    flex: 1 1 100%;
+  }
+
+  html[data-theme] .ig-scope-bar {
+    flex: 1 1 100%;
+    overflow: visible;
+  }
+
+  html[data-theme] .ig-scope-bar__control {
+    max-width: none;
+  }
 }
 
 html[data-theme] .ig-page,

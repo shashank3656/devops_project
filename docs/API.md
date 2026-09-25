@@ -88,7 +88,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | POST | `/api/request` | user | `{ team, env, cloud, service, project_id, config, template_id, … }` | Create an infra request. Status is pending manager or pending DevOps. |
 | GET | `/api/request/:id` | user | — | Request detail (must be visible to the user). |
 | POST | `/create-pr` | verified contributor / admin | same shape as request | Skip the queue and open a GitOps PR immediately. Rare; most users use `/api/request`. |
-| GET | `/api/history` | user | `?team=&status=` | The user's requests. |
+| GET | `/api/history` | user | `?project_id=&environment=`/`env=` `&team=&status=` | The user's requests. ScopeBar sends project and environment. |
 | GET | `/api/history/:id` | user | — | Single history row + timeline. |
 | GET | `/api/stats` | user | — | Home counters. |
 | GET | `/api/search` | user | `?q=` | Search requests / projects / templates. |
@@ -120,7 +120,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | GET | `/api/me/changes` | user | `project_id`, `environment`, `status`, `q`, `change_type` | CHGs on visible projects only. Unmapped CHGs omitted. |
 | GET | `/api/me/changes/:id` | user | — | One CHG if visible. Includes cost delta, policy status, `blast_radius`, and live-vs-CHG `drift`. |
 | GET | `/api/me/scorecards` | user | `environment` | Scorecards for services on visible projects, including live-vs-CHG drift. |
-| GET | `/api/me/incidents` | user | `status` | Assigned to the user **or** on a visible project. |
+| GET | `/api/me/incidents` | user | `project_id`, `environment`, `status` | Assigned to the user **or** on a visible project. |
 | GET | `/api/me/incidents/:id` | user | — | One INC if visible. Includes generated `review` and saved `postmortem` (read). |
 
 ---
@@ -233,7 +233,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | Method | Path | Auth | Query / body | What it does |
 | --- | --- | --- | --- | --- |
 | GET | `/api/devops/tickets` | devops | — | Tickets assigned to **me**. |
-| GET | `/api/devops/requests` | manager | `id`, `team`, `cloud`, `status`, `requester`, `sort`, `at_risk` | Full queue. |
+| GET | `/api/devops/requests` | manager | `id`, `team`, `project_id`, `env`/`environment`, `cloud`, `status`, `requester`, `sort`, `at_risk` | Full queue. ScopeBar sends project and environment. |
 | POST | `/api/devops/requests/:id/approve` | manager | optional note | Approve and open GitOps PR. |
 | POST | `/api/devops/requests/:id/reject` | manager | `{ reason }` | Reject. |
 | POST | `/api/devops/requests/bulk-approve` | manager | `{ ids }` | Bulk approve. |
@@ -322,7 +322,7 @@ Omit `environment` so `service_map` can fill service / project / env. If `repo` 
 
 | Method | Path | Auth | Body / query | What it does |
 | --- | --- | --- | --- | --- |
-| GET | `/api/devops/incidents` | manager | `status` | List + `teams` + `team_members_by_team` + `callers` + `categories` + SLA. |
+| GET | `/api/devops/incidents` | manager | `project_id`, `environment`, `status`, `source`, `q` | List + `teams` + `team_members_by_team` + `callers` + `categories` + SLA. |
 | GET | `/api/devops/incidents?mode=preview` | manager | — | Next `incident_number`. |
 | POST | `/api/devops/incidents` | manager | `{ title, severity, source, request_id, caller_user_id, category, subcategory, parent_incident_id, … }` | Manual INC. `request_id` optional. Sets P1–P4 SLA clocks. |
 | GET | `/api/devops/incidents/:id` | manager | — | Incident plus `rollback`, `review`, `postmortem`, `journal`, children, and SLA. |
