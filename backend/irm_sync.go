@@ -233,7 +233,7 @@ func irmWebhookHandler(w http.ResponseWriter, r *http.Request) {
 			Fingerprint: fingerprint,
 			Severity:    "sev2",
 			Title:       firstNonEmpty(title, provider+" incident "+externalID),
-			Message:     "Inbound IRM sync for "+externalID,
+			Message:     "Inbound IRM sync for " + externalID,
 			Service:     service,
 			Status:      mapExternalIncidentStatus(provider, status),
 			StartsAt:    time.Now(),
@@ -255,6 +255,9 @@ func irmWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		attachIncidentExternalRef(item.ID, provider, externalID)
 		if refreshed, getErr := getRequestIncidentByID(item.ID); getErr == nil && refreshed != nil {
 			item = refreshed
+		}
+		if action == "created" {
+			pageIncidentOwners(*item)
 		}
 	}
 	incidentNumber := ""

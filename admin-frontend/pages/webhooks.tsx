@@ -20,7 +20,7 @@ interface InboundSource {
   enabled: boolean;
 }
 
-const EVENT_OPTIONS = ['approved', 'pr_created', 'rejected', 'assigned', 'change.created', 'change.updated', 'incident.opened', 'incident.updated', 'watch.failed'];
+const EVENT_OPTIONS = ['approved', 'pr_created', 'rejected', 'assigned', 'change.created', 'change.updated', 'incident.opened', 'incident.updated', 'incident.owner_paged', 'watch.failed', 'watch.ended'];
 
 export default function WebhooksPage() {
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);

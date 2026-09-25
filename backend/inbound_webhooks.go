@@ -73,16 +73,16 @@ type parsedChangeWebhook struct {
 }
 
 type parsedAlertEvent struct {
-	Source       string
-	Fingerprint  string
-	Severity     string
-	Title        string
-	Message      string
-	Service      string
-	Environment  string
-	ProjectCode  string
-	ProjectID    int
-	DashboardURL string
+	Source           string
+	Fingerprint      string
+	Severity         string
+	Title            string
+	Message          string
+	Service          string
+	Environment      string
+	ProjectCode      string
+	ProjectID        int
+	DashboardURL     string
 	Status           string
 	StartsAt         time.Time
 	Labels           map[string]string
@@ -650,6 +650,7 @@ func alertWebhookHandler(w http.ResponseWriter, r *http.Request) {
 				"severity":        item.Severity,
 				"title":           item.Summary,
 			})
+			pageIncidentOwners(*item)
 		case "updated":
 			updated++
 		case "resolved":

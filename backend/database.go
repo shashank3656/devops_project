@@ -434,6 +434,9 @@ func GetOutboundWebhooks() ([]OutboundWebhook, error) {
 
 // GetEnabledOutboundWebhooksForEvent returns webhooks that are enabled and subscribe to the event
 func GetEnabledOutboundWebhooksForEvent(event string) ([]OutboundWebhook, error) {
+	if DB == nil {
+		return nil, nil
+	}
 	rows, err := DB.Query(`SELECT id, url, COALESCE(secret,''), events FROM outbound_webhooks WHERE enabled = TRUE`)
 	if err != nil {
 		return nil, err
@@ -3495,6 +3498,9 @@ func GetTeamMembers(teamID int) ([]struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
 }, error) {
+	if DB == nil {
+		return nil, nil
+	}
 	rows, err := DB.Query(
 		`SELECT m.id, m.team_id, m.user_id, m.role, m.created_at, u.username, u.email
 		 FROM team_members m JOIN users u ON u.id = m.user_id

@@ -108,12 +108,14 @@ func handleRequestPromote(w http.ResponseWriter, r *http.Request, id int, req *P
 	// Link: new request points to source
 	_, _ = DB.Exec("UPDATE pr_requests SET linked_request_id = $1 WHERE id = $2", id, newReq.ID)
 	AppendUserActivity(createdBy, "request_promote", "pr_request", strconv.Itoa(newReq.ID), "promoted from #"+strconv.Itoa(id)+" ("+req.Env+"→"+nextEnvironment+")")
+	chg := recordPromotionChange(req, newReq)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	encodeJSON(w, map[string]interface{}{
 		"status":  "ok",
 		"id":      newReq.ID,
 		"env":     nextEnvironment,
-		"message": "Request created for " + nextEnvironment + ". Edit and submit from History.",
+		"change":  chg,
+		"message": promotionHopNotice(nextEnvironment, chg),
 	})
 }

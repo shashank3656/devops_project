@@ -157,6 +157,8 @@ func writeChangeDetailJSON(w http.ResponseWriter, item *changeRequestRecord) {
 		"change":           item,
 		"change_brief":     changeBriefFromChangeRequest(*item),
 		"linked_incidents": listIncidentsForChange(item.ID),
+		"blast_radius":     blastRadiusForChange(*item),
+		"drift":            detectServiceDrift(item.Service, item.Environment, item.SHA, item.ImageDigest),
 		"status":           "ok",
 	})
 }
@@ -170,10 +172,13 @@ func writeIncidentCatalog(w http.ResponseWriter, items []requestIncident) {
 }
 
 func writeIncidentDetailJSON(w http.ResponseWriter, item *requestIncident) {
+	review, postmortem := incidentReviewPayload(item)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"incident": item,
-		"status":   "ok",
+		"incident":   item,
+		"review":     review,
+		"postmortem": postmortem,
+		"status":     "ok",
 	})
 }
 

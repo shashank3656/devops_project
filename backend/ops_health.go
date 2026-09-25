@@ -73,6 +73,7 @@ func buildOpsHealth(projectID int, environment string) (*opsHealthPayload, error
 	}
 	for i := range watching {
 		attachChangeRollbackPlan(&watching[i])
+		attachChangeLiveDrift(&watching[i])
 	}
 	for i := range regressions {
 		if regressions[i].SuspectedChangeID == nil {
@@ -85,6 +86,7 @@ func buildOpsHealth(projectID int, environment string) (*opsHealthPayload, error
 		attachRollbackPlan(&regressions[i])
 	}
 	slos, _ := listServiceSLOBudgets(projectID, environment)
+	go syncSLOBudgetFreezes()
 	burned := 0
 	for _, item := range slos {
 		if item.Burned {

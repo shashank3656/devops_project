@@ -32,6 +32,7 @@ interface Scorecard {
   last_change?: string;
   last_change_id?: number;
   slo_burned?: boolean;
+  drift?: { drifted?: boolean; detail?: string };
   checks?: ScorecardCheck[];
   dora?: DoraMetric[];
 }
@@ -67,7 +68,7 @@ export default function ScorecardsPage() {
           <div>
             <span className="portal-page__eyebrow">Services</span>
             <h1 className="portal-page__title">Scorecards</h1>
-            <p className="portal-page__subtitle">Owner, SLO, incidents, runbook, last CHG, and DORA for each catalog service.</p>
+            <p className="portal-page__subtitle">Owner, SLO, incidents, runbook, last CHG, live-vs-CHG drift, and DORA for each catalog service.</p>
           </div>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
@@ -106,6 +107,7 @@ export default function ScorecardsPage() {
                     <td>
                       {item.last_change_id ? <Link href={`/changes/${item.last_change_id}`}>{item.last_change}</Link> : '—'}
                       {item.slo_burned ? <div className="portal-surface__subtitle">SLO burning</div> : null}
+                      {item.drift?.drifted ? <div className="portal-surface__subtitle">{item.drift.detail || 'Live image drifted from last CHG'}</div> : null}
                     </td>
                   </tr>
                 ))}

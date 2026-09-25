@@ -40,18 +40,20 @@ type deployIntelLastChange struct {
 	AttestationURL   string              `json:"attestation_url,omitempty"`
 	PolicyStatus     string              `json:"policy_status,omitempty"`
 	Status           string              `json:"status,omitempty"`
+	ImageDigest      string              `json:"image_digest,omitempty"`
+	Drift            *liveChangeDrift    `json:"drift,omitempty"`
 	Rollback         *changeRollbackPlan `json:"rollback,omitempty"`
 }
 
 type deployIntelRepoSummary struct {
 	deployIntelRepo
-	Ready        bool                  `json:"ready"`
-	MergeCount   int                   `json:"merge_count"`
-	HighRisk30d  int                   `json:"high_risk_30d"`
-	OpenPRCount  int                   `json:"open_pr_count"`
-	LastMergedAt *time.Time            `json:"last_merged_at,omitempty"`
-	WebhookPath  string                `json:"webhook_path"`
-	SetupSummary string                `json:"setup_summary"`
+	Ready        bool                   `json:"ready"`
+	MergeCount   int                    `json:"merge_count"`
+	HighRisk30d  int                    `json:"high_risk_30d"`
+	OpenPRCount  int                    `json:"open_pr_count"`
+	LastMergedAt *time.Time             `json:"last_merged_at,omitempty"`
+	WebhookPath  string                 `json:"webhook_path"`
+	SetupSummary string                 `json:"setup_summary"`
 	LastChange   *deployIntelLastChange `json:"last_change,omitempty"`
 }
 
@@ -435,6 +437,7 @@ func lastChangeForRepo(owner, name string) *deployIntelLastChange {
 		return nil
 	}
 	attachChangeRollbackPlan(latest)
+	drift := detectServiceDrift(latest.Service, latest.Environment, latest.SHA, latest.ImageDigest)
 	return &deployIntelLastChange{
 		ID:               latest.ID,
 		ChangeNumber:     latest.ChangeNumber,
@@ -445,6 +448,8 @@ func lastChangeForRepo(owner, name string) *deployIntelLastChange {
 		AttestationURL:   latest.AttestationURL,
 		PolicyStatus:     latest.PolicyStatus,
 		Status:           latest.Status,
+		ImageDigest:      latest.ImageDigest,
+		Drift:            &drift,
 		Rollback:         latest.RollbackPlan,
 	}
 }

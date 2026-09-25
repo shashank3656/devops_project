@@ -7,6 +7,32 @@ import { ADMIN_SITE_NAME } from '../../lib/site';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
+interface IncidentReview {
+  generated?: boolean;
+  impact_summary?: string;
+  root_cause?: string;
+  detection_summary?: string;
+  mitigation_summary?: string;
+  corrective_actions?: string;
+  review_notes?: string;
+  caused_by_change?: string;
+  previous_sha?: string;
+  watch_result?: string;
+  acknowledged_by?: string;
+}
+
+interface IncidentPostmortem {
+  status?: string;
+  impact_summary?: string;
+  root_cause?: string;
+  detection_summary?: string;
+  mitigation_summary?: string;
+  corrective_actions?: string;
+  review_notes?: string;
+  follow_up_owner_username?: string;
+  updated_by_username?: string;
+}
+
 interface IncidentDetail {
   id: number;
   incident_number?: string;
@@ -36,6 +62,8 @@ interface IncidentDetail {
 export default function AdminIncidentDetailPage() {
   const router = useRouter();
   const [item, setItem] = useState<IncidentDetail | null>(null);
+  const [review, setReview] = useState<IncidentReview | null>(null);
+  const [postmortem, setPostmortem] = useState<IncidentPostmortem | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
@@ -57,6 +85,8 @@ export default function AdminIncidentDetailPage() {
           throw new Error(data?.error || 'Failed to load incident');
         }
         setItem(data.incident || null);
+        setReview(data.review && typeof data.review === 'object' ? data.review : null);
+        setPostmortem(data.postmortem && typeof data.postmortem === 'object' ? data.postmortem : null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load incident'))
       .finally(() => setLoading(false));
@@ -113,6 +143,25 @@ export default function AdminIncidentDetailPage() {
                 <a href={item.dashboard_url} target="_blank" rel="noreferrer">Open source dashboard</a>
               </p>
             ) : null}
+          </section>
+        ) : null}
+        {item && (postmortem || review) ? (
+          <section className="portal-surface">
+            <span className="portal-surface__eyebrow">Incident review</span>
+            <h2 className="portal-surface__title">Read-only review</h2>
+            <p className="portal-surface__subtitle">
+              {postmortem?.status ? `Status ${postmortem.status}` : 'Draft from the incident timeline'}
+              {review?.caused_by_change ? ` · ${review.caused_by_change}` : ''}
+              {review?.watch_result ? ` · Watch ${review.watch_result}` : ''}
+            </p>
+            <div className="portal-form-grid">
+              <label className="label">Impact<textarea className="input" readOnly rows={3} value={postmortem?.impact_summary || review?.impact_summary || '—'} /></label>
+              <label className="label">Why it happened<textarea className="input" readOnly rows={3} value={postmortem?.root_cause || review?.root_cause || '—'} /></label>
+              <label className="label">Detection<textarea className="input" readOnly rows={3} value={postmortem?.detection_summary || review?.detection_summary || '—'} /></label>
+              <label className="label">What we did<textarea className="input" readOnly rows={3} value={postmortem?.mitigation_summary || review?.mitigation_summary || '—'} /></label>
+              <label className="label">Follow-up<textarea className="input" readOnly rows={3} value={postmortem?.corrective_actions || review?.corrective_actions || '—'} /></label>
+              <label className="label">Owner<input className="input" readOnly value={postmortem?.follow_up_owner_username || review?.acknowledged_by || 'Unassigned'} /></label>
+            </div>
           </section>
         ) : null}
       </div>

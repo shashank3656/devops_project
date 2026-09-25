@@ -65,7 +65,7 @@ Workspace scope (`project_id`, `environment`) is stored in `localStorage` key `s
 | Health | Post-release watch: watch window, baseline vs latest metrics, SLO, rollback hint, DORA from CHGs. |
 | Deploy intel | Onboarded GitHub repos get a change brief and `infragate/deploy-intel` check run on PRs. |
 | Promotion | Move an approved infra change through environments with gate policies. |
-| Freeze | Blocks promotions / high-risk merges during a window. |
+| Freeze | Blocks promotions / high-risk merges during a window. A burned SLO writes the same row. |
 | Problem | Recurring-incident record (P4). One problem can cover many incidents. |
 
 ---
@@ -292,7 +292,7 @@ Alert-created incidents skip the form: Grafana POSTs `/api/webhooks/alerts`. Sam
 Admin **People → SSO** turns on OIDC for User and DevOps. The login pages already call `GET /api/public/sso/options`. Continue with OIDC starts `GET /api/auth/oidc/start` and returns through `/api/auth/oidc/callback` with `?sso_token=`. Admin stays on local break-glass password. Env: `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URL`.
 
 ### Workload identity
-CI posts a GitHub Actions OIDC token to `POST /api/auth/workload/github` or a GitLab CI OIDC token to `POST /api/auth/workload/gitlab` (audience default `setuops`). Self-hosted GitLab can set `GITLAB_OIDC_ISSUER` / `GITLAB_OIDC_JWKS_URL`. DevOps **Health → Identity** lists static keys in this process (`AWS_ACCESS_KEY_ID`, `RAILWAY_API_TOKEN`, …) and recent verified exchanges.
+CI posts a GitHub Actions OIDC token to `POST /api/auth/workload/github` or a GitLab CI OIDC token to `POST /api/auth/workload/gitlab` (audience default `setuops`). Self-hosted GitLab can set `GITLAB_OIDC_ISSUER` / `GITLAB_OIDC_JWKS_URL`. After verify, SetuOps can assume `AWS_WORKLOAD_ROLE_ARN` with the repo as subject (see W7). DevOps **Health → Identity** lists static keys, the last cloud-role exchange (no secrets), and recent verified tokens.
 
 ### Bidirectional incidents
 Alert labels `pagerduty_incident` / `grafana_alert_uid` attach an external id. Ack or resolve in SetuOps pushes to PagerDuty / Grafana IRM / Opsgenie. Those tools POST the same status to `/api/webhooks/irm` or `/api/webhooks/pagerduty`.
@@ -300,15 +300,15 @@ Alert labels `pagerduty_incident` / `grafana_alert_uid` attach an external id. A
 ### SBOM / provenance on each CHG
 `POST /api/webhooks/change` accepts `sbom_url`, `attestation_url`, `image_digest`, optional `signed` / `provenance`. Detail pages and the Deploy intel repo last-change card show Signed or Unsigned. The Changes catalog webhook sample includes the fields.
 
-### Read-only MCP
-`POST /mcp` is JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`) authenticated with a session token or API key from `POST /api/me/api-keys`. Tools: `list_changes`, `get_change`, `list_incidents`, `get_incident`, `ask_catalog`, `health_for_service`, `list_identity_findings`, `list_tickets`, `get_ticket`, `list_scorecards`. `ask_catalog` answers from CHG/INC/runbook IDs only. `get_change` / `get_incident` include a rollback plan when `previous_sha` exists. No write tools. Static keys also appear on the DevOps expiry tracker.
+### MCP
+`POST /mcp` is JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`) authenticated with a session token or API key from `POST /api/me/api-keys`. Read tools: `list_changes`, `get_change`, `list_incidents`, `get_incident`, `ask_catalog`, `health_for_service`, `list_identity_findings`, `list_tickets`, `get_ticket`, `list_scorecards`. `get_change` includes blast radius, live-vs-CHG drift, and a rollback plan when `previous_sha` exists. `get_incident` includes rollback plus the generated review. Write tools (`GET /mcp` `write_tools`): `comment_incident` and `request_rollback`. Same freeze/CAB as the portal. Terraform/kubectl apply is refused. Static keys also appear on the DevOps expiry tracker.
 
 ---
 
 ## W2 — Modern delivery
 
 ### Preview environments
-A GitHub PR opened on an onboarded repo creates a `preview` CHG and a live preview row. Cost is estimated from `PREVIEW_HOURLY_USD` (default $0.25/h) and shown on Deploy intel PR meta and **Changes → Previews**. Merge or close tears it down and cancels the CHG. URL template: `PREVIEW_URL_TEMPLATE` with `{pr}`, `{repo}`, `{branch}`.
+A GitHub PR opened on an onboarded repo creates a `preview` CHG and a live preview row. Cost is estimated from `PREVIEW_HOURLY_USD` (default $0.25/h) and shown on Deploy intel PR meta and **Changes → Previews**. Close without merge tears it down and cancels the preview CHG. Merge graduates the git SHA into a standard CHG in the service default env. URL template: `PREVIEW_URL_TEMPLATE` with `{pr}`, `{repo}`, `{branch}`.
 
 ### Progressive delivery
 A CHG tracks canary / 10 / 50 / 100. CI can send `rollout_stage` or `rollout_percent` on the change webhook. DevOps advances stages on the detail page (`POST /api/devops/changes/:id/rollout`). If Health sees a breach before 100%, rollout is halted and a regression INC opens.
@@ -343,7 +343,49 @@ DevOps **Policies** stores lightweight Rego `deny` rules (`target=change` or `re
 `POST /api/copilot` retrieves CHGs, INCs, and runbooks first. The reply names those IDs. If a linked change has `previous_sha`, it suggests that recovery. It will not apply Terraform, Helm, or cluster changes. The Support hub shows citation links. User answers stay scoped to visible projects.
 
 ### Watcher rollback to an emergency CHG
-A regression INC on Health, a watching CHG with `previous_sha`, Deploy intel last-change, or the incident editor can record an emergency CHG that targets `previous_sha`. Prod freezes still block it. High-control rollback without an active INC still needs CAB. If a cluster connection exists, the plan includes `k8s_href`. SetuOps records the CHG (and a rollback-console draft when the source ticket exists). It does not apply the revision.
+A regression INC on Health, a watching CHG with `previous_sha`, Deploy intel last-change, or the incident editor can record an emergency CHG that targets `previous_sha`. An active emergency CHG or open SEV1/SEV2 INC can bypass a freeze. High-control rollback without an active INC still needs CAB. If a cluster connection exists, the plan includes `k8s_href`. SetuOps records the CHG (and a rollback-console draft when the source ticket exists). It does not apply the revision.
+
+---
+
+## W5 — Close the loop
+
+### Burned SLO writes a deploy freeze
+Health already computes error-budget burn (`freeze_on_budget`, 3+ samples, remaining ≤ 0) and the promotion gate already read that reason. `w5_slo_freeze.go` writes the same `deployment_freezes` row used on Friday/CAB, keyed `slo:service/env`. Health, SLO save, and watch samples sync the row. Promotions and high-control CHG policy then halt via `activeFreezeReason`. When the budget recovers, that SLO freeze ends. An active emergency CHG or open SEV1/SEV2 INC for the service/env can bypass.
+
+### Post-incident review from the INC
+The incident workspace form is no longer a blank second ITSM. `w5_incident_review.go` powers DevOps **Generate from timeline** (incident editor, workspace, or `POST /api/devops/incidents/:id/review`). It drafts impact, cause, detection, mitigation, and follow-up from the INC timeline, linked CHG, `previous_sha`, watch samples, and who is assigned. Completed reviews are not overwritten. Admin, User, and MCP `get_incident` show the same draft read-only. No new ticket type.
+
+### Page the scorecard owner
+`w5_owner_page.go` pages on first open SEV1/SEV2 (alert, watcher, IRM create, manual create, or draft→open). It fires `incident.owner_paged` to the service-map team and its members, plus the assigned owner. ChatOps ack/resolve stay. This is not a new roster product.
+
+### Watch-ended digest
+`w5_watch_digest.go` POSTs `watch.ended` when a CHG resolves: CHG id, SHA, `previous_sha`, `cost_delta_usd`, `watch_result`. `watch.failed` still fires on regression.
+
+---
+
+## W6 — Delivery hops you can watch
+
+### Preview graduates on merge
+`w6_preview_graduate.go`. Close without merge still tears down the preview and cancels the `preview` CHG. Merge keeps that teardown, then upserts a **standard** CHG with the merge/git SHA, `previous_sha` from the last watchable CHG in the target env, and starts a watch. UNIQUE(repo, sha, environment) stays.
+
+### Each promote hop is a CHG
+`w6_promote_chg.go`. DevOps or portal promote writes a CHG for the next environment with the same SHA that last shipped in the source env. The target env's last SHA becomes `previous_sha`. High-control hops use `normal` so CAB still applies. Freeze still blocks the promote itself.
+
+### Live vs last CHG drift
+`w6_drift.go`. Scorecards, Health watch rows, CHG detail, and Deploy intel last-change compare the connected cluster image tag/digest to the last CHG SHA or `image_digest`. Drift fails the scorecard check. SetuOps does not apply a sync.
+
+### Blast radius from the service map
+`w6_blast_radius.go`. CHG detail, MCP `get_change`, and the PR impact brief add 1-hop dependents: other catalog services on the same repo or the same team/env. No new CMDB. Promote responses include the hop CHG. User and Admin scorecards show the same drift line as DevOps.
+
+---
+
+## W7 — Workload cloud roles and MCP writes
+
+### OIDC → cloud role
+`w7_cloud_sts.go`. After GitHub or GitLab OIDC verify, SetuOps assumes `AWS_WORKLOAD_ROLE_ARN` with the repo (or GitLab project) as the subject. Short-lived AWS credentials return to the CI caller only. Identity findings store role, subject, exchanged, reason, and expiry — never `SecretAccessKey` or `SessionToken`. `GCP_WORKLOAD_SERVICE_ACCOUNT` is recorded as the intended identity; SetuOps does not mint a GCP key. If neither is set, the exchange is skipped and still shown on Identity.
+
+### MCP write tools
+`w7_mcp_write.go`. `comment_incident` appends a timestamped operator note. `request_rollback` records an emergency CHG to `previous_sha` through `executeChangeSHARollback` (same freeze/CAB as the portal). Both refuse terraform/kubectl/helm apply. `GET /mcp` lists them under `write_tools`.
 
 ---
 
@@ -375,6 +417,16 @@ A regression INC on Health, a watching CHG with `previous_sha`, Deploy intel las
 | Policies / Rego | — | — | Catalog + configure |
 | Grounded assistant | Own CHG/INC | All read | Cite + suggest SHA |
 | Watcher rollback | — | — | Record emergency CHG |
+| SLO deploy freeze | — | See freeze | Write/clear on burn |
+| Incident review | Read | Read | Generate + edit draft |
+| Owner page (SEV1/SEV2) | — | Subscribe `incident.owner_paged` | Outbound + ChatOps |
+| Watch-ended digest | — | Subscribe `watch.ended` | Outbound on resolve |
+| Preview graduate | — | — | Merge → standard CHG |
+| Promote hop CHG | — | — | Written on promote |
+| Live vs last CHG drift | Own projects | Read | Scorecard + intel |
+| Blast radius | Read | Read | CHG + PR brief |
+| Workload cloud role | — | — | Identity last exchange |
+| MCP write tools | — | — | comment + rollback CHG |
 
 ---
 

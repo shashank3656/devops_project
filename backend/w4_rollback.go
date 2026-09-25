@@ -56,7 +56,7 @@ func planChangeSHARollback(incidentID, changeID int) (*changeRollbackPlan, error
 		return plan, nil
 	}
 	if isHighControlEnvironment(change.Environment) {
-		if reason := activeFreezeReason(); reason != "" {
+		if reason := activeFreezeReason(); reason != "" && !emergencyBypassesFreeze(change.Service, change.Environment) {
 			plan.FreezeReason = reason
 			plan.BlockReason = "production freeze is active: " + reason
 			return plan, nil
@@ -103,23 +103,23 @@ func executeChangeSHARollback(userID, incidentID, changeID int) (*changeRequestR
 	}
 	title := fmt.Sprintf("Rollback %s to %s", firstNonEmpty(plan.Service, plan.Repo), plan.PreviousSHA)
 	payload := parsedChangeWebhook{
-		Repo:                plan.Repo,
-		SHA:                 plan.PreviousSHA,
-		PreviousSHA:         plan.CurrentSHA,
-		Title:               title,
-		Author:              author,
-		Summary:             "Watcher-driven rollback recorded as an emergency CHG. SetuOps does not apply the revision.",
-		Service:             plan.Service,
-		Environment:         plan.Environment,
-		ChangeType:          "emergency",
-		Status:              "implementing",
-		Priority:            "high",
-		RiskLevel:           "high",
-		WatchMinutes:        60,
-		LinkedIncidentID:    plan.IncidentID,
+		Repo:                 plan.Repo,
+		SHA:                  plan.PreviousSHA,
+		PreviousSHA:          plan.CurrentSHA,
+		Title:                title,
+		Author:               author,
+		Summary:              "Watcher-driven rollback recorded as an emergency CHG. SetuOps does not apply the revision.",
+		Service:              plan.Service,
+		Environment:          plan.Environment,
+		ChangeType:           "emergency",
+		Status:               "implementing",
+		Priority:             "high",
+		RiskLevel:            "high",
+		WatchMinutes:         60,
+		LinkedIncidentID:     plan.IncidentID,
 		LinkedIncidentNumber: plan.IncidentNumber,
-		BackoutPlan:         "Re-ship " + plan.CurrentSHA + " if the rollback does not restore service.",
-		Impact:              "Revert " + plan.Service + " in " + plan.Environment + " to " + plan.PreviousSHA,
+		BackoutPlan:          "Re-ship " + plan.CurrentSHA + " if the rollback does not restore service.",
+		Impact:               "Revert " + plan.Service + " in " + plan.Environment + " to " + plan.PreviousSHA,
 	}
 	item, _, err := upsertChangeRequest(payload)
 	if err != nil {

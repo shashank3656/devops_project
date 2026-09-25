@@ -40,6 +40,7 @@ interface HealthChange {
   rollback_plan?: HealthRollbackPlan;
   cost_delta_usd?: number;
   cost_currency?: string;
+  drift?: { drifted?: boolean; detail?: string };
 }
 
 interface HealthIncident {
@@ -266,6 +267,7 @@ export default function HealthPage() {
                         <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
                           {item.repo} · {item.sha.slice(0, 7)}
                           {item.pr_number ? ` · PR #${item.pr_number}` : ''}
+                          {item.drift?.drifted ? ` · ${item.drift.detail || 'Live image drifted from last CHG'}` : ''}
                         </div>
                       </td>
                       <td>{item.service || '—'}</td>

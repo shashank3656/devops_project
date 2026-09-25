@@ -11,23 +11,25 @@ import (
 )
 
 type serviceScorecard struct {
-	Service         string           `json:"service"`
-	Environment     string           `json:"environment,omitempty"`
-	Repo            string           `json:"repo,omitempty"`
-	Team            string           `json:"team,omitempty"`
-	ProjectID       *int             `json:"project_id,omitempty"`
-	ProjectName     string           `json:"project_name,omitempty"`
-	ProjectCode     string           `json:"project_code,omitempty"`
-	Score           int              `json:"score"`
-	OpenIncidents   int              `json:"open_incidents"`
-	Deployments30d  int              `json:"deployments_30d"`
-	Failed30d       int              `json:"failed_30d"`
-	LastChange      string           `json:"last_change,omitempty"`
-	LastChangeID    *int             `json:"last_change_id,omitempty"`
-	RunbookAgeDays  *int             `json:"runbook_age_days,omitempty"`
-	SLOBurned       bool             `json:"slo_burned"`
-	Dora            []doraMetric     `json:"dora,omitempty"`
-	Checks          []scorecardCheck `json:"checks"`
+	Service        string           `json:"service"`
+	Environment    string           `json:"environment,omitempty"`
+	Repo           string           `json:"repo,omitempty"`
+	Team           string           `json:"team,omitempty"`
+	ProjectID      *int             `json:"project_id,omitempty"`
+	ProjectName    string           `json:"project_name,omitempty"`
+	ProjectCode    string           `json:"project_code,omitempty"`
+	Score          int              `json:"score"`
+	OpenIncidents  int              `json:"open_incidents"`
+	Deployments30d int              `json:"deployments_30d"`
+	Failed30d      int              `json:"failed_30d"`
+	LastChange     string           `json:"last_change,omitempty"`
+	LastChangeID   *int             `json:"last_change_id,omitempty"`
+	LastChangeSHA  string           `json:"last_change_sha,omitempty"`
+	RunbookAgeDays *int             `json:"runbook_age_days,omitempty"`
+	SLOBurned      bool             `json:"slo_burned"`
+	Drift          *liveChangeDrift `json:"drift,omitempty"`
+	Dora           []doraMetric     `json:"dora,omitempty"`
+	Checks         []scorecardCheck `json:"checks"`
 }
 
 func buildServiceScorecards(projectID int, environment string) ([]serviceScorecard, error) {
@@ -51,6 +53,7 @@ func buildServiceScorecards(projectID int, environment string) ([]serviceScoreca
 			ProjectCode: svc.ProjectCode,
 		}
 		var latestChangeAt time.Time
+		var latestChange *changeRequestRecord
 		leadHours := []float64{}
 		for _, change := range changes {
 			if !strings.EqualFold(change.Service, svc.Service) {
@@ -69,7 +72,10 @@ func buildServiceScorecards(projectID int, environment string) ([]serviceScoreca
 				copyID := change.ID
 				card.LastChangeID = &copyID
 				card.LastChange = change.ChangeNumber
+				card.LastChangeSHA = change.SHA
 				latestChangeAt = change.CreatedAt
+				copyChange := change
+				latestChange = &copyChange
 			}
 			if change.CreatedAt.After(since) && (change.Status == "resolved" || change.Status == "closed" || change.Status == "failed") && !change.UpdatedAt.IsZero() {
 				leadHours = append(leadHours, change.UpdatedAt.Sub(change.CreatedAt).Hours())
@@ -102,12 +108,19 @@ func buildServiceScorecards(projectID int, environment string) ([]serviceScoreca
 			reasons := detectWatchBreaches(&serviceMetrics{P95Ms: slo.LatencyP95Ms, ErrorRatio: slo.ErrorRatio, Saturation: slo.Saturation}, *latest, slo)
 			card.SLOBurned = len(reasons) > 0
 		}
+		digest := ""
+		if latestChange != nil {
+			digest = latestChange.ImageDigest
+		}
+		drift := detectServiceDrift(svc.Service, firstNonEmpty(svc.Environment, environment), card.LastChangeSHA, digest)
+		card.Drift = &drift
 		card.Checks = []scorecardCheck{
 			{Key: "owner", Label: "Owner", Passed: strings.TrimSpace(svc.Team) != "", Detail: firstNonEmpty(svc.Team, "No team on this service")},
 			{Key: "slo", Label: "SLO", Passed: slo != nil && !card.SLOBurned, Detail: map[bool]string{true: "Within budget", false: "No SLO or currently burning"}[slo != nil && !card.SLOBurned]},
 			{Key: "incidents", Label: "Open incidents", Passed: card.OpenIncidents == 0, Detail: strconv.Itoa(card.OpenIncidents) + " active"},
 			{Key: "runbook", Label: "Runbook", Passed: card.RunbookAgeDays != nil && *card.RunbookAgeDays < 180, Detail: map[bool]string{true: "Fresh enough", false: "Missing or older than 180 days"}[card.RunbookAgeDays != nil && *card.RunbookAgeDays < 180]},
 			{Key: "change", Label: "Last change", Passed: card.LastChange != "", Detail: firstNonEmpty(card.LastChange, "No CHG in catalog")},
+			{Key: "drift", Label: "Live vs last CHG", Passed: !drift.Drifted, Detail: firstNonEmpty(drift.Detail, "No cluster image to compare")},
 			{Key: "dora", Label: "DORA", Passed: doraFailureRateOK(card.Dora), Detail: doraScorecardDetail(card.Dora)},
 		}
 		passed := 0

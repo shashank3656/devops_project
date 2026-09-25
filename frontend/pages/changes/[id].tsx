@@ -61,6 +61,8 @@ export default function UserChangeDetailPage() {
   const [item, setItem] = useState<ChangeDetail | null>(null);
   const [brief, setBrief] = useState<ChangeBrief | null>(null);
   const [incidents, setIncidents] = useState<LinkedIncident[]>([]);
+  const [blastRadius, setBlastRadius] = useState<string[]>([]);
+  const [drift, setDrift] = useState<{ drifted?: boolean; detail?: string } | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
@@ -88,6 +90,8 @@ export default function UserChangeDetailPage() {
         setItem(data.change || null);
         setBrief(data.change_brief || null);
         setIncidents(Array.isArray(data.linked_incidents) ? data.linked_incidents : []);
+        setBlastRadius(Array.isArray(data.blast_radius) ? data.blast_radius : []);
+        setDrift(data.drift && typeof data.drift === 'object' ? data.drift : null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load change'))
       .finally(() => setLoading(false));
@@ -154,6 +158,15 @@ export default function UserChangeDetailPage() {
                 {brief.changing?.length ? (
                   <p className="portal-surface__subtitle">{brief.changing.map((group) => `${group.label} (${group.count})`).join(' · ')}</p>
                 ) : null}
+              </div>
+            ) : null}
+            {drift?.drifted ? (
+              <p className="portal-surface__subtitle">{drift.detail || 'Live image drifted from last CHG'}</p>
+            ) : null}
+            {blastRadius.length ? (
+              <div style={{ marginTop: 24 }}>
+                <h2 className="portal-surface__title">Blast radius</h2>
+                <ul>{blastRadius.map((entry) => <li key={entry}>{entry}</li>)}</ul>
               </div>
             ) : null}
             {incidents.length ? (

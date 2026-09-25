@@ -160,6 +160,7 @@ func applyWatchSample(change changeRequestRecord, sample serviceMetrics) (*reque
 	if err := recordWatchSample(change.ID, *normalized, asBaseline); err != nil {
 		return nil, nil, err
 	}
+	go syncSLOBudgetFreezes()
 	if asBaseline {
 		if strings.EqualFold(change.Status, "implemented") {
 			_ = setChangeStatus(change.ID, "monitoring")
@@ -283,6 +284,7 @@ func openChangeRegressionIncident(change changeRequestRecord, reasons []string, 
 			"severity":        item.Severity,
 			"title":           item.Summary,
 		})
+		pageIncidentOwners(*item)
 	}
 	return item, getErr
 }

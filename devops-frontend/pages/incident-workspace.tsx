@@ -125,10 +125,25 @@ interface RequestSummary {
   updated_at?: string;
 }
 
+interface ReviewDraft {
+  generated?: boolean;
+  impact_summary?: string;
+  root_cause?: string;
+  detection_summary?: string;
+  mitigation_summary?: string;
+  corrective_actions?: string;
+  review_notes?: string;
+  caused_by_change?: string;
+  previous_sha?: string;
+  watch_result?: string;
+  acknowledged_by?: string;
+}
+
 interface WorkspaceDetail {
   incident: IncidentItem;
   request?: RequestSummary | null;
   timeline: TimelineEvent[];
+  review?: ReviewDraft | null;
   postmortem?: PostmortemRecord | null;
   runbooks: RunbookItem[];
   gate_approvals: GateApproval[];
@@ -204,6 +219,7 @@ export default function IncidentWorkspacePage() {
   const [workspace, setWorkspace] = useState<WorkspacePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [projectId, setProjectId] = useState('');
@@ -269,6 +285,45 @@ export default function IncidentWorkspacePage() {
   useEffect(() => {
     void loadWorkspace();
   }, [apiUrl, incidentId, projectId, router, statusFilter]);
+
+  const generateReview = async () => {
+    if (!workspace?.detail?.incident?.id) {
+      setError('Select an incident before generating the review.');
+      return;
+    }
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      clearSessionAndRedirect(router);
+      return;
+    }
+    setGenerating(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/incidents/${workspace.detail.incident.id}/review`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+      if (response.status === 401 || response.status === 403) {
+        clearSessionAndRedirect(router);
+        return;
+      }
+      const payload = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok) {
+        throw new Error(getString(payload.error, 'Failed to generate incident review'));
+      }
+      setNotice('Review draft filled from the incident timeline.');
+      await loadWorkspace();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate incident review');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const savePostmortem = async () => {
     if (!workspace?.detail?.incident?.id) {
@@ -516,6 +571,15 @@ export default function IncidentWorkspacePage() {
 
                       <div className="portal-surface incident-workspace__subsurface">
                         <h3 className="portal-surface__title incident-workspace__section-title">Post-incident notes</h3>
+                        {detail.review?.caused_by_change || detail.review?.previous_sha ? (
+                          <p className="portal-surface__subtitle">
+                            {detail.review.caused_by_change ? `Caused by ${detail.review.caused_by_change}` : 'No linked change'}
+                            {detail.review.watch_result ? ` · Watch ${detail.review.watch_result}` : ''}
+                            {detail.review.previous_sha ? ` · previous SHA ${detail.review.previous_sha}` : ''}
+                          </p>
+                        ) : (
+                          <p className="portal-surface__subtitle">Generate fills this draft from the INC timeline, linked CHG, and watch samples. It does not create a new ticket.</p>
+                        )}
                         <div className="incident-workspace__form">
                           <div>
                             <label className="credential-audit-label" htmlFor="postmortem-status">Status</label>
@@ -561,7 +625,10 @@ export default function IncidentWorkspacePage() {
                             <textarea id="postmortem-review-notes" className="input" rows={3} value={form.review_notes} onChange={(event) => setForm((current) => ({ ...current, review_notes: event.target.value }))} />
                           </div>
                           <div className="incident-workspace__save-row">
-                            <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void savePostmortem()}>
+                            <button type="button" className="btn btn-secondary" disabled={generating || saving} onClick={() => void generateReview()}>
+                              {generating ? 'Generating...' : 'Generate from timeline'}
+                            </button>
+                            <button type="button" className="btn btn-primary" disabled={saving || generating} onClick={() => void savePostmortem()}>
                               {saving ? 'Saving...' : 'Save notes'}
                             </button>
                             {detail.postmortem?.updated_at ? (

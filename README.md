@@ -85,7 +85,7 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 
 **App deploy.** Merge to `main` → `POST /api/webhooks/change` (optional SBOM / attestation / digest) → `CHG…` → Health watch → Grafana `POST /api/webhooks/alerts` or watcher spike → `INC…` linked to the CHG. Ack/resolve can sync to PagerDuty or Grafana IRM. DevOps can also file a CHG by hand.
 
-**Identity.** User and DevOps portals can sign in with OIDC. CI can prove GitHub Actions or GitLab OIDC at `POST /api/auth/workload/github` and `POST /api/auth/workload/gitlab`. Agents can read CHGs, INCs, and Health through `POST /mcp` with an API key.
+**Identity.** User and DevOps portals can sign in with OIDC. CI can prove GitHub Actions or GitLab OIDC at `POST /api/auth/workload/github` and `POST /api/auth/workload/gitlab`, then assume `AWS_WORKLOAD_ROLE_ARN` (repo as subject). Cloud secrets are not stored. Agents use `POST /mcp` with an API key for catalog reads plus `comment_incident` / `request_rollback`.
 
 ### User portal (`frontend/` · :3000 · token `token`)
 
@@ -119,10 +119,10 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 | Changes | Catalog + **New change**. Resolve, close, fail, cancel, reopen. Canary / 10 / 50 / 100 rollout. Preview and flag types. Clean watch auto-resolves. Open linked incidents block resolve/close. |
 | Services | Separate catalog. Created services populate the CHG dropdown and fill omitted webhook env. |
 | Calendar / release notes / change risk | Planned windows and weekly notes from closed CHGs. |
-| Incidents / problems / workspace | Manual pages plus Grafana. Problems group repeats. |
-| Health / SLO / Identity | Watch window, baseline vs latest, rollback hint, DORA. Identity flags static keys and GitHub OIDC exchanges. |
-| Scorecards / Evidence / Policies | Per-service health score. 30-day evidence pack. Lightweight Rego deny on CHG and request.json (`infragate/policy`). |
-| Promotions / freezes / rollback | Env promotion with gates. Freeze blocks risky ships. |
+| Incidents / problems / workspace | Manual pages plus Grafana. Problems group repeats. DevOps generates a PIR from the INC timeline; Admin/User read it. SEV1/SEV2 pages the scorecard team. |
+| Health / SLO / Identity | Watch window, baseline vs latest, rollback hint, DORA. Burned SLO writes a deploy freeze. Identity flags static keys, last cloud-role exchange, and OIDC verifies. |
+| Scorecards / Evidence / Policies | Per-service health score, including live-vs-last-CHG drift. 30-day evidence pack. Lightweight Rego deny on CHG and request.json (`infragate/policy`). |
+| Promotions / freezes / rollback | Env promotion with gates. Each hop writes a CHG. Freeze blocks risky ships. |
 | Deploy intel | Onboard repo → open PRs + change brief + `infragate/deploy-intel` check. |
 | GitOps control | Which repo/path gets `request.json`. |
 | Kubernetes | Onboard cluster, then pods/logs/workloads/terminal. |
@@ -137,7 +137,7 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 | IRM webhook | PagerDuty / Grafana IRM / Opsgenie ack-resolve on the same INC. |
 | Flag webhook | LaunchDarkly / Unleash / Flagsmith creates a `flag` CHG. |
 | OTLP metrics | `POST /api/otlp/v1/metrics` feeds Health p95/error for watching CHGs. |
-| MCP | `POST /mcp` read tools for changes, incidents, health, tickets, scorecards. Bearer API key. |
+| MCP | `POST /mcp` catalog reads plus `comment_incident` / `request_rollback`. Bearer API key. Never applies terraform/kubectl. |
 | Watch metrics | Push latency/error samples into Health. |
 | Infra CI / GitHub / Slack / Teams | Plan output, intel briefs, ChatOps. |
 
@@ -179,7 +179,7 @@ Auth: User / Admin / DevOps send `Authorization: Bearer …`. Admin may send `X-
 
 `/api/devops/me` · `/workspace` · `/tickets` · `/requests` (+ approve/reject/bulk) · `/pending-approvals` · `/deployment-gate-approvals` · `/approval-sla` · `/users` (`?audience=portal` = CHG assignees) · `/workload` · `/dashboard-stats`  
 `/api/devops/changes` · `/changes/:id` · `/changes/:id/close` · `/changes/:id/cab-approve` · `/services` · `/change-calendar` · `/change-risk` · `/release-notes`  
-`/api/devops/incidents` · `/problems` · `/runbooks` · `/incident-workspace`  
+`/api/devops/incidents` · `/incidents/:id/review` · `/problems` · `/runbooks` · `/incident-workspace`  
 `/api/devops/health` · `/slos` · `/identity` · `/previews` · `/scorecards` · `/evidence` · `/policies`  
 `/api/devops/promotions` · `/rollback-console` · `/freezes` · `/oncall`  
 `/api/devops/deploy-intelligence` · `/repos` · `/suggest-ticket` · `/protect-branch`  

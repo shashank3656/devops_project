@@ -104,16 +104,16 @@ func applyChangePolicies(id int, payload parsedChangeWebhook) {
 		cabApproved = strings.EqualFold(existing.CABStatus, "approved") || existing.CABApprovedAt != nil
 	}
 	input := map[string]any{
-		"environment":  environment,
-		"change_type":  normalizeChangeType(changeType),
-		"service":      service,
-		"repo":         repo,
-		"weekday":      time.Now().Weekday().String(),
-		"cab_approved": cabApproved,
-		"public":       strings.Contains(strings.ToLower(impact+summary), "public"),
+		"environment":   environment,
+		"change_type":   normalizeChangeType(changeType),
+		"service":       service,
+		"repo":          repo,
+		"weekday":       time.Now().Weekday().String(),
+		"cab_approved":  cabApproved,
+		"public":        strings.Contains(strings.ToLower(impact+summary), "public"),
 		"freeze_reason": "",
 	}
-	if isHighControlEnvironment(environment) {
+	if isHighControlEnvironment(environment) && !emergencyBypassesFreeze(service, environment) {
 		input["freeze_reason"] = activeFreezeReason()
 	}
 	denied := evaluatePolicyRules("change", input)
