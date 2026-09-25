@@ -37,6 +37,8 @@ cp config/.env.example config/.env
 | `SLACK_WEBHOOK_URL`, `TEAMS_WEBHOOK_URL`, `OPS_NOTIFICATION_WEBHOOK_URL` | Optional notification targets |
 | `SMTP_*` | Email delivery settings |
 | `OTEL_*` | OpenTelemetry tracing and metrics |
+| `AWS_WORKLOAD_ROLE_ARN` | Optional IAM role assumed after GitHub/GitLab OIDC verify (repo as subject) |
+| `GCP_WORKLOAD_SERVICE_ACCOUNT` | Optional GCP SA recorded after OIDC verify; no GCP key is minted |
 
 ### Frontend core settings
 

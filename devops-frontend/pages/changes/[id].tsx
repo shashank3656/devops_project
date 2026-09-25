@@ -48,6 +48,12 @@ interface ChangeDetail {
   baseline?: { p95_ms?: number; error_ratio?: number; saturation?: number };
   latest_metrics?: { p95_ms?: number; error_ratio?: number; saturation?: number };
   rollback_hint?: string;
+  rollback_plan?: {
+    allowed?: boolean;
+    previous_sha?: string;
+    block_reason?: string;
+    k8s_href?: string;
+  };
   cab_status?: string;
   linked_incident_number?: string;
   assignee_username?: string;
@@ -55,6 +61,19 @@ interface ChangeDetail {
   risk_level?: string;
   impact?: string;
   backout_plan?: string;
+  sbom_url?: string;
+  attestation_url?: string;
+  image_digest?: string;
+  provenance_signed?: boolean;
+  rollout_stage?: string;
+  rollout_percent?: number;
+  rollout_halted?: boolean;
+  rollout_note?: string;
+  cost_delta_usd?: number;
+  cost_monthly_after?: number;
+  cost_currency?: string;
+  policy_status?: string;
+  policy_reasons?: string[];
   cab_window_start?: string;
   cab_window_end?: string;
   created_at: string;
@@ -66,6 +85,8 @@ export default function ChangeDetailPage() {
   const [item, setItem] = useState<ChangeDetail | null>(null);
   const [brief, setBrief] = useState<ChangeBrief | null>(null);
   const [incidents, setIncidents] = useState<LinkedIncident[]>([]);
+  const [blastRadius, setBlastRadius] = useState<string[]>([]);
+  const [drift, setDrift] = useState<{ drifted?: boolean; detail?: string } | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState('');
@@ -95,6 +116,51 @@ export default function ChangeDetailPage() {
       .finally(() => setActing(''));
   };
 
+  const applyRollout = (stage: string) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token || !id) return;
+    setActing(`rollout-${stage}`);
+    setError('');
+    fetch(`${apiUrl}/api/devops/changes/${id}/rollout`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data?.error || 'Failed to update rollout');
+          return;
+        }
+        setItem(data.change || item);
+      })
+      .catch(() => setError('Failed to update rollout'))
+      .finally(() => setActing(''));
+  };
+
+  const applyRollback = () => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token || !id) return;
+    setActing('rollback');
+    setError('');
+    fetch(`${apiUrl}/api/devops/changes/${id}/rollback`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data?.error || 'Failed to record rollback');
+          return;
+        }
+        if (data.change?.id) {
+          void router.push(`/changes/${data.change.id}`);
+        }
+      })
+      .catch(() => setError('Failed to record rollback'))
+      .finally(() => setActing(''));
+  };
+
   useEffect(() => {
     if (!id) return;
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -112,6 +178,8 @@ export default function ChangeDetailPage() {
         setItem(data.change || null);
         setBrief(data.change_brief || null);
         setIncidents(Array.isArray(data.linked_incidents) ? data.linked_incidents : []);
+        setBlastRadius(Array.isArray(data.blast_radius) ? data.blast_radius : []);
+        setDrift(data.drift && typeof data.drift === 'object' ? data.drift : null);
       })
       .catch(() => setError('Failed to load change'))
       .finally(() => setLoading(false));
@@ -173,6 +241,16 @@ export default function ChangeDetailPage() {
                 <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={() => applyStatus('cancel')}>
                   {acting === 'cancel' ? 'Cancelling...' : 'Cancel'}
                 </button>
+                {item.previous_sha ? (
+                  <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={applyRollback}>
+                    {acting === 'rollback' ? 'Recording…' : `Roll back to ${item.previous_sha.slice(0, 7)}`}
+                  </button>
+                ) : null}
+                {item.rollback_plan?.k8s_href ? (
+                  <Link href={item.rollback_plan.k8s_href} className="btn btn-secondary">
+                    Open cluster
+                  </Link>
+                ) : null}
               </>
             ) : null}
             {item && status === 'resolved' ? (
@@ -272,7 +350,42 @@ export default function ChangeDetailPage() {
                 Latest p95
                 <input className="input" readOnly value={item.latest_metrics?.p95_ms != null ? `${item.latest_metrics.p95_ms}ms (baseline ${item.baseline?.p95_ms ?? '—'})` : 'No sample yet'} />
               </label>
+              <label className="label">
+                Provenance
+                <input className="input" readOnly value={item.provenance_signed ? 'Signed attestation' : 'Unsigned'} />
+              </label>
+              <label className="label">
+                Image digest
+                <input className="input" readOnly value={item.image_digest || '—'} />
+              </label>
             </div>
+            <p className="portal-surface__subtitle">
+              Cost delta: {item.cost_currency || 'USD'} {item.cost_delta_usd ?? 0}
+              {item.cost_monthly_after ? ` · monthly after ${item.cost_monthly_after}` : ''}
+              {item.policy_status ? ` · policy ${item.policy_status}` : ''}
+              {item.policy_reasons?.length ? ` · ${item.policy_reasons.join('; ')}` : ''}
+            </p>
+            <p className="portal-surface__subtitle">
+              Rollout: {item.rollout_stage || 'full'} · {item.rollout_percent ?? 100}%
+              {item.rollout_halted ? ' · halted by Health watcher' : ''}
+              {item.rollout_note ? ` · ${item.rollout_note}` : ''}
+            </p>
+            {!finished ? (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                {['canary', '10', '50', '100'].map((stage) => (
+                  <button key={stage} type="button" className="btn btn-secondary" disabled={!!acting} onClick={() => applyRollout(stage)}>
+                    {acting === `rollout-${stage}` ? 'Updating…' : stage === '100' ? '100%' : stage === 'canary' ? 'Canary' : `${stage}%`}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {item.sbom_url || item.attestation_url ? (
+              <p className="portal-surface__subtitle">
+                {item.sbom_url ? <a href={item.sbom_url} target="_blank" rel="noreferrer">SBOM</a> : null}
+                {item.sbom_url && item.attestation_url ? ' · ' : ''}
+                {item.attestation_url ? <a href={item.attestation_url} target="_blank" rel="noreferrer">Attestation</a> : null}
+              </p>
+            ) : null}
             <p className="portal-surface__subtitle">
               Resolve when the deploy and watch look good. Close when the change is done. Open linked incidents must be resolved or closed first.
             </p>
@@ -311,6 +424,20 @@ export default function ChangeDetailPage() {
                     ))}
                   </ul>
                 ) : null}
+              </div>
+            ) : null}
+            {drift?.drifted ? (
+              <p className="portal-surface__subtitle">{drift.detail || 'Live image drifted from last CHG'}</p>
+            ) : null}
+            {blastRadius.length ? (
+              <div style={{ marginTop: 24 }}>
+                <h2 className="portal-surface__title">Blast radius</h2>
+                <p className="portal-surface__subtitle">One hop from the service map (same repo or team). This is not a CMDB rebuild.</p>
+                <ul>
+                  {blastRadius.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
               </div>
             ) : null}
             {incidents.length ? (

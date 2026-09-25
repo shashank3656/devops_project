@@ -1329,6 +1329,82 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS impact TEXT NOT NULL DEFAULT ''`)
 	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS backout_plan TEXT NOT NULL DEFAULT ''`)
 
+	// W1: OIDC / IRM / provenance
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS sbom_url TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS attestation_url TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS image_digest TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS provenance_json TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS external_provider VARCHAR(40) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS external_id VARCHAR(240) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_request_incidents_external ON request_incidents (external_provider, external_id)`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS identity_findings (
+			id SERIAL PRIMARY KEY,
+			kind VARCHAR(40) NOT NULL,
+			name VARCHAR(240) NOT NULL,
+			provider VARCHAR(80) NOT NULL DEFAULT '',
+			details_json TEXT NOT NULL DEFAULT '',
+			last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE (kind, name)
+		)
+	`)
+
+	// W2: preview envs, progressive delivery, OTLP latest
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS rollout_stage VARCHAR(20) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS rollout_percent INTEGER NOT NULL DEFAULT 100`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS rollout_halted BOOLEAN NOT NULL DEFAULT FALSE`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS rollout_note TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS preview_environments (
+			id SERIAL PRIMARY KEY,
+			repo VARCHAR(400) NOT NULL,
+			pr_number INTEGER NOT NULL,
+			branch VARCHAR(240) NOT NULL DEFAULT '',
+			sha VARCHAR(80) NOT NULL DEFAULT '',
+			url TEXT NOT NULL DEFAULT '',
+			status VARCHAR(40) NOT NULL DEFAULT 'pending',
+			change_id INTEGER,
+			estimated_cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			torn_down_at TIMESTAMP,
+			UNIQUE (LOWER(repo), pr_number)
+		)
+	`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_preview_environments_branch ON preview_environments (LOWER(branch), status)`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS service_metric_latest (
+			service VARCHAR(200) NOT NULL,
+			environment VARCHAR(80) NOT NULL DEFAULT '',
+			p95_ms DOUBLE PRECISION NOT NULL DEFAULT 0,
+			error_ratio DOUBLE PRECISION NOT NULL DEFAULT 0,
+			saturation DOUBLE PRECISION NOT NULL DEFAULT 0,
+			source VARCHAR(80) NOT NULL DEFAULT 'otlp',
+			taken_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE (LOWER(service), LOWER(environment))
+		)
+	`)
+
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS cost_delta_usd DOUBLE PRECISION NOT NULL DEFAULT 0`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS cost_monthly_after DOUBLE PRECISION NOT NULL DEFAULT 0`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS cost_currency VARCHAR(8) NOT NULL DEFAULT 'USD'`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS policy_status VARCHAR(20) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS policy_reasons_json TEXT NOT NULL DEFAULT '[]'`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS policy_rules (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(200) NOT NULL,
+			target VARCHAR(40) NOT NULL DEFAULT 'change',
+			rego TEXT NOT NULL DEFAULT '',
+			enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+
 	log.Println("Database schema is up to date")
 	return nil
 }

@@ -51,7 +51,11 @@ const CHANGE_WEBHOOK_SAMPLE = `- name: Record SetuOps change
         --arg author "$CHANGE_AUTHOR" \\
         --arg pr_url "$PR_URL" \\
         --arg pipeline_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \\
+        --arg sbom_url "\${SBOM_URL:-}" \\
+        --arg attestation_url "\${ATTESTATION_URL:-}" \\
+        --arg image_digest "\${IMAGE_DIGEST:-}" \\
         --argjson pr_number "\${PR_NUMBER:-0}" \\
+        --argjson infracost_report "\${INFRACOST_REPORT:-null}" \\
         '{
           repo: $repo,
           sha: $sha,
@@ -65,7 +69,11 @@ const CHANGE_WEBHOOK_SAMPLE = `- name: Record SetuOps change
           change_type: "standard",
           priority: "medium",
           risk_level: "medium",
-          watch_minutes: 120
+          watch_minutes: 120,
+          sbom_url: $sbom_url,
+          attestation_url: $attestation_url,
+          image_digest: $image_digest,
+          infracost_report: $infracost_report
         }')"`;
 
 function parseProjectID(value: string | string[] | undefined): number {
@@ -192,7 +200,7 @@ export default function ChangesCatalogPage() {
               <span className="portal-surface__eyebrow">Catalog</span>
               <h2 className="portal-surface__title">Recorded changes</h2>
             </div>
-            <div className="devops-incident-filter-row">
+            <div className="ig-filter-bar devops-incident-filter-row">
               <input
                 className="input"
                 placeholder="Search repo, PR, SHA, title"
@@ -215,6 +223,8 @@ export default function ChangesCatalogPage() {
                 <option value="standard">Standard</option>
                 <option value="normal">Normal</option>
                 <option value="emergency">Emergency</option>
+                <option value="preview">Preview</option>
+                <option value="flag">Feature flag</option>
               </select>
             </div>
           </div>

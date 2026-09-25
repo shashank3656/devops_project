@@ -109,6 +109,7 @@ type incidentWorkspaceDetail struct {
 	Incident           requestIncident                  `json:"incident"`
 	Request            *PRRequest                       `json:"request,omitempty"`
 	Timeline           []incidentWorkspaceTimelineEvent `json:"timeline"`
+	Review             *incidentReviewDraft             `json:"review,omitempty"`
 	Postmortem         *incidentPostmortemRecord        `json:"postmortem,omitempty"`
 	Runbooks           []projectRunbook                 `json:"runbooks"`
 	GateApprovals      []deploymentGateApprovalRecord   `json:"gate_approvals"`
@@ -929,10 +930,12 @@ func buildIncidentWorkspacePayload(projectID, incidentID int, statusFilter strin
 	}
 	approvals, _ := listDeploymentGateApprovalsForRequest(selected.RequestID)
 	rollbacks, _ := listRollbackOperationRecords(0, selected.RequestID, 25)
+	review := buildIncidentReview(*selected)
 	payload.Detail = &incidentWorkspaceDetail{
 		Incident:           *selected,
 		Request:            request,
 		Timeline:           buildIncidentWorkspaceTimeline(*selected, request, approvals, rollbacks),
+		Review:             &review,
 		Postmortem:         postmortemByIncident[selected.ID],
 		Runbooks:           runbooks,
 		GateApprovals:      approvals,
@@ -1333,6 +1336,7 @@ func devopsIncidentWorkspaceHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		var body struct {
 			IncidentID          int    `json:"incident_id"`
+			Generate            bool   `json:"generate"`
 			Status              string `json:"status"`
 			ImpactSummary       string `json:"impact_summary"`
 			RootCause           string `json:"root_cause"`
@@ -1349,6 +1353,23 @@ func devopsIncidentWorkspaceHandler(w http.ResponseWriter, r *http.Request) {
 		payload, err := buildIncidentWorkspacePayload(0, body.IncidentID, "")
 		if err != nil || payload.Detail == nil {
 			writeAPIError(w, r, http.StatusNotFound, "incident workspace item not found", err)
+			return
+		}
+		if body.Generate {
+			postmortem, review, err := generateIncidentReview(payload.Detail.Incident, managerID)
+			if err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			AppendAuditLog(&managerID, "incident_review_generate", "request_incident", strconv.Itoa(payload.Detail.Incident.ID), payload.Detail.Incident.IncidentNumber)
+			if err := writeJSONResponse(w, http.StatusOK, map[string]interface{}{
+				"status":     "ok",
+				"generated":  true,
+				"review":     sanitizeJSONValue(review),
+				"postmortem": sanitizeJSONValue(postmortem),
+			}); err != nil {
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to write generated review", err)
+			}
 			return
 		}
 		postmortem, err := upsertIncidentPostmortem(payload.Detail.Incident, body.Status, body.ImpactSummary, body.RootCause, body.DetectionSummary, body.MitigationSummary, body.CorrectiveActions, body.FollowUpOwnerUserID, body.ReviewNotes, managerID)

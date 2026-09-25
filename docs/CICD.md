@@ -236,7 +236,11 @@ After merge to `main`, CI should POST `/api/webhooks/change` with `X-CI-Secret` 
         --arg author "$CHANGE_AUTHOR" \
         --arg pr_url "$PR_URL" \
         --arg pipeline_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+        --arg sbom_url "${SBOM_URL:-}" \
+        --arg attestation_url "${ATTESTATION_URL:-}" \
+        --arg image_digest "${IMAGE_DIGEST:-}" \
         --argjson pr_number "${PR_NUMBER:-0}" \
+        --argjson infracost_report "${INFRACOST_REPORT:-null}" \
         '{
           repo: $repo,
           sha: $sha,
@@ -250,7 +254,11 @@ After merge to `main`, CI should POST `/api/webhooks/change` with `X-CI-Secret` 
           change_type: "standard",
           priority: "medium",
           risk_level: "medium",
-          watch_minutes: 120
+          watch_minutes: 120,
+          sbom_url: $sbom_url,
+          attestation_url: $attestation_url,
+          image_digest: $image_digest,
+          infracost_report: $infracost_report
         }')"
 ```
 

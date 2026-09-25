@@ -11,48 +11,67 @@ import (
 )
 
 type changeRequestRecord struct {
-	ID                    int             `json:"id"`
-	ChangeNumber          string          `json:"change_number"`
-	ProjectID             *int            `json:"project_id,omitempty"`
-	ProjectName           string          `json:"project_name,omitempty"`
-	ProjectCode           string          `json:"project_code,omitempty"`
-	Service               string          `json:"service"`
-	Environment           string          `json:"environment"`
-	Repo                  string          `json:"repo"`
-	PRNumber              int             `json:"pr_number"`
-	PRURL                 string          `json:"pr_url,omitempty"`
-	SHA                   string          `json:"sha"`
-	PreviousSHA           string          `json:"previous_sha,omitempty"`
-	Title                 string          `json:"title"`
-	Author                string          `json:"author,omitempty"`
-	Summary               string          `json:"summary,omitempty"`
-	Files                 []string        `json:"files"`
-	PipelineURL           string          `json:"pipeline_url,omitempty"`
-	ChangeType            string          `json:"change_type"`
-	Status                string          `json:"status"`
-	WatchMinutes          int             `json:"watch_minutes"`
-	WatchStartedAt        *time.Time      `json:"watch_started_at,omitempty"`
-	WatchUntil            *time.Time      `json:"watch_until,omitempty"`
-	RequestID             *int            `json:"request_id,omitempty"`
-	LinkedIncidents       int             `json:"linked_incidents"`
-	Baseline              *serviceMetrics `json:"baseline,omitempty"`
-	LatestMetrics         *serviceMetrics `json:"latest_metrics,omitempty"`
-	WatchRemainingMinutes int             `json:"watch_remaining_minutes"`
-	RollbackHint          string          `json:"rollback_hint,omitempty"`
-	CABStatus             string          `json:"cab_status,omitempty"`
-	CABWindowStart        *time.Time      `json:"cab_window_start,omitempty"`
-	CABWindowEnd          *time.Time      `json:"cab_window_end,omitempty"`
-	LinkedIncidentID      *int            `json:"linked_incident_id,omitempty"`
-	LinkedIncidentNumber  string          `json:"linked_incident_number,omitempty"`
-	CABApprovedAt         *time.Time      `json:"cab_approved_at,omitempty"`
-	AssigneeUserID        *int            `json:"assignee_user_id,omitempty"`
-	AssigneeUsername      string          `json:"assignee_username,omitempty"`
-	Priority              string          `json:"priority,omitempty"`
-	RiskLevel             string          `json:"risk_level,omitempty"`
-	Impact                string          `json:"impact,omitempty"`
-	BackoutPlan           string          `json:"backout_plan,omitempty"`
-	CreatedAt             time.Time       `json:"created_at"`
-	UpdatedAt             time.Time       `json:"updated_at"`
+	ID                    int                 `json:"id"`
+	ChangeNumber          string              `json:"change_number"`
+	ProjectID             *int                `json:"project_id,omitempty"`
+	ProjectName           string              `json:"project_name,omitempty"`
+	ProjectCode           string              `json:"project_code,omitempty"`
+	Service               string              `json:"service"`
+	Environment           string              `json:"environment"`
+	Repo                  string              `json:"repo"`
+	PRNumber              int                 `json:"pr_number"`
+	PRURL                 string              `json:"pr_url,omitempty"`
+	SHA                   string              `json:"sha"`
+	PreviousSHA           string              `json:"previous_sha,omitempty"`
+	Title                 string              `json:"title"`
+	Author                string              `json:"author,omitempty"`
+	Summary               string              `json:"summary,omitempty"`
+	Files                 []string            `json:"files"`
+	PipelineURL           string              `json:"pipeline_url,omitempty"`
+	ChangeType            string              `json:"change_type"`
+	Status                string              `json:"status"`
+	WatchMinutes          int                 `json:"watch_minutes"`
+	WatchStartedAt        *time.Time          `json:"watch_started_at,omitempty"`
+	WatchUntil            *time.Time          `json:"watch_until,omitempty"`
+	RequestID             *int                `json:"request_id,omitempty"`
+	LinkedIncidents       int                 `json:"linked_incidents"`
+	Baseline              *serviceMetrics     `json:"baseline,omitempty"`
+	LatestMetrics         *serviceMetrics     `json:"latest_metrics,omitempty"`
+	WatchRemainingMinutes int                 `json:"watch_remaining_minutes"`
+	RollbackHint          string              `json:"rollback_hint,omitempty"`
+	RollbackPlan          *changeRollbackPlan `json:"rollback_plan,omitempty"`
+	CABStatus             string              `json:"cab_status,omitempty"`
+	CABWindowStart        *time.Time          `json:"cab_window_start,omitempty"`
+	CABWindowEnd          *time.Time          `json:"cab_window_end,omitempty"`
+	LinkedIncidentID      *int                `json:"linked_incident_id,omitempty"`
+	LinkedIncidentNumber  string              `json:"linked_incident_number,omitempty"`
+	CABApprovedAt         *time.Time          `json:"cab_approved_at,omitempty"`
+	CABApprovedBy         *int                `json:"cab_approved_by,omitempty"`
+	CABApprovedByUsername string              `json:"cab_approved_by_username,omitempty"`
+	WatchResult           string              `json:"watch_result,omitempty"`
+	AssigneeUserID        *int                `json:"assignee_user_id,omitempty"`
+	AssigneeUsername      string              `json:"assignee_username,omitempty"`
+	Priority              string              `json:"priority,omitempty"`
+	RiskLevel             string              `json:"risk_level,omitempty"`
+	Impact                string              `json:"impact,omitempty"`
+	BackoutPlan           string              `json:"backout_plan,omitempty"`
+	SbomURL               string              `json:"sbom_url,omitempty"`
+	AttestationURL        string              `json:"attestation_url,omitempty"`
+	ImageDigest           string              `json:"image_digest,omitempty"`
+	ProvenanceJSON        string              `json:"provenance_json,omitempty"`
+	ProvenanceSigned      bool                `json:"provenance_signed"`
+	RolloutStage          string              `json:"rollout_stage,omitempty"`
+	RolloutPercent        int                 `json:"rollout_percent"`
+	RolloutHalted         bool                `json:"rollout_halted"`
+	RolloutNote           string              `json:"rollout_note,omitempty"`
+	CostDeltaUSD          float64             `json:"cost_delta_usd"`
+	CostMonthlyAfter      float64             `json:"cost_monthly_after"`
+	CostCurrency          string              `json:"cost_currency,omitempty"`
+	PolicyStatus          string              `json:"policy_status,omitempty"`
+	PolicyReasons         []string            `json:"policy_reasons,omitempty"`
+	Drift                 *liveChangeDrift    `json:"drift,omitempty"`
+	CreatedAt             time.Time           `json:"created_at"`
+	UpdatedAt             time.Time           `json:"updated_at"`
 }
 
 func formatChangeNumber(id int) string {
@@ -262,6 +281,10 @@ func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, boo
 		if payload.Metrics != nil {
 			_ = recordWatchSample(existingID, *payload.Metrics, true)
 		}
+		persistChangeProvenance(existingID, payload)
+		persistChangeRollout(existingID, payload)
+		persistChangeCost(existingID, payload)
+		applyChangePolicies(existingID, payload)
 		item, getErr := getChangeRequestByID(existingID)
 		if getErr == nil && item != nil && nextStatus != existingStatus {
 			go FireOutboundWebhooks("change.updated", map[string]interface{}{
@@ -309,6 +332,10 @@ func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, boo
 	if payload.Metrics != nil {
 		_ = recordWatchSample(id, *payload.Metrics, true)
 	}
+	persistChangeProvenance(id, payload)
+	persistChangeRollout(id, payload)
+	persistChangeCost(id, payload)
+	applyChangePolicies(id, payload)
 	item, getErr := getChangeRequestByID(id)
 	return item, true, getErr
 }
@@ -324,11 +351,17 @@ func changeRequestSelect() string {
 		       c.created_at, c.updated_at, COALESCE(c.baseline_json,''), COALESCE(c.latest_metrics_json,''),
 		       COALESCE(c.cab_status,''), c.cab_window_start, c.cab_window_end, c.linked_incident_id, COALESCE(inc.incident_number,''), c.cab_approved_at,
 		       c.assignee_user_id, COALESCE(assignee.username,''),
-		       COALESCE(c.priority,'medium'), COALESCE(c.risk_level,'medium'), COALESCE(c.impact,''), COALESCE(c.backout_plan,'')
+		       COALESCE(c.priority,'medium'), COALESCE(c.risk_level,'medium'), COALESCE(c.impact,''), COALESCE(c.backout_plan,''),
+		       COALESCE(c.sbom_url,''), COALESCE(c.attestation_url,''), COALESCE(c.image_digest,''), COALESCE(c.provenance_json,''),
+		       COALESCE(c.rollout_stage,''), COALESCE(c.rollout_percent,100), COALESCE(c.rollout_halted,false), COALESCE(c.rollout_note,''),
+		       COALESCE(c.cost_delta_usd,0), COALESCE(c.cost_monthly_after,0), COALESCE(c.cost_currency,'USD'),
+		       COALESCE(c.policy_status,''), COALESCE(c.policy_reasons_json,'[]'),
+		       c.cab_approved_by, COALESCE(cab_approver.username,'')
 		FROM change_requests c
 		LEFT JOIN projects p ON p.id = c.project_id
 		LEFT JOIN request_incidents inc ON inc.id = c.linked_incident_id
 		LEFT JOIN users assignee ON assignee.id = c.assignee_user_id
+		LEFT JOIN users cab_approver ON cab_approver.id = c.cab_approved_by
 	`
 }
 
@@ -336,9 +369,9 @@ func scanChangeRequest(scanner interface {
 	Scan(dest ...any) error
 }) (*changeRequestRecord, error) {
 	var item changeRequestRecord
-	var projectID, requestID, linkedIncidentID, assigneeUserID sql.NullInt64
+	var projectID, requestID, linkedIncidentID, assigneeUserID, cabApprovedBy sql.NullInt64
 	var watchStarted, watchUntil, cabStart, cabEnd, cabApproved sql.NullTime
-	var filesJSON, baselineJSON, latestJSON string
+	var filesJSON, baselineJSON, latestJSON, policyReasonsJSON string
 	if err := scanner.Scan(
 		&item.ID, &item.ChangeNumber, &projectID, &item.ProjectName, &item.ProjectCode,
 		&item.Service, &item.Environment, &item.Repo, &item.PRNumber, &item.PRURL,
@@ -349,6 +382,11 @@ func scanChangeRequest(scanner interface {
 		&item.CABStatus, &cabStart, &cabEnd, &linkedIncidentID, &item.LinkedIncidentNumber, &cabApproved,
 		&assigneeUserID, &item.AssigneeUsername,
 		&item.Priority, &item.RiskLevel, &item.Impact, &item.BackoutPlan,
+		&item.SbomURL, &item.AttestationURL, &item.ImageDigest, &item.ProvenanceJSON,
+		&item.RolloutStage, &item.RolloutPercent, &item.RolloutHalted, &item.RolloutNote,
+		&item.CostDeltaUSD, &item.CostMonthlyAfter, &item.CostCurrency,
+		&item.PolicyStatus, &policyReasonsJSON,
+		&cabApprovedBy, &item.CABApprovedByUsername,
 	); err != nil {
 		return nil, err
 	}
@@ -383,6 +421,10 @@ func scanChangeRequest(scanner interface {
 		value := int(assigneeUserID.Int64)
 		item.AssigneeUserID = &value
 	}
+	if cabApprovedBy.Valid && cabApprovedBy.Int64 > 0 {
+		value := int(cabApprovedBy.Int64)
+		item.CABApprovedBy = &value
+	}
 	item.Files = decodeChangeFiles(filesJSON)
 	item.Baseline = decodeServiceMetrics(baselineJSON)
 	item.LatestMetrics = decodeServiceMetrics(latestJSON)
@@ -391,7 +433,59 @@ func scanChangeRequest(scanner interface {
 	if strings.TrimSpace(item.ChangeNumber) == "" {
 		item.ChangeNumber = formatChangeNumber(item.ID)
 	}
+	item.ProvenanceSigned = changeProvenanceSigned(item)
+	item.PolicyReasons = decodeStringList(policyReasonsJSON)
+	item.WatchResult = changeWatchResult(item)
 	return &item, nil
+}
+
+func changeWatchResult(item changeRequestRecord) string {
+	switch normalizeChangeStatus(item.Status) {
+	case "resolved", "closed":
+		if item.LinkedIncidents > 0 {
+			return "resolved_with_incidents"
+		}
+		return "clean"
+	case "failed":
+		return "failed"
+	case "cancelled":
+		return "cancelled"
+	case "implemented", "monitoring":
+		return "watching"
+	default:
+		return firstNonEmpty(item.Status, "open")
+	}
+}
+
+func decodeStringList(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || trimmed == "[]" {
+		return nil
+	}
+	var out []string
+	if json.Unmarshal([]byte(trimmed), &out) != nil {
+		return nil
+	}
+	return out
+}
+
+func changeProvenanceSigned(item changeRequestRecord) bool {
+	return strings.TrimSpace(item.AttestationURL) != "" || strings.Contains(strings.ToLower(item.ProvenanceJSON), `"signed":true`)
+}
+
+func persistChangeProvenance(id int, payload parsedChangeWebhook) {
+	if id <= 0 || DB == nil {
+		return
+	}
+	_, _ = execContext(`
+		UPDATE change_requests
+		SET sbom_url = CASE WHEN COALESCE($2,'') = '' THEN sbom_url ELSE $2 END,
+		    attestation_url = CASE WHEN COALESCE($3,'') = '' THEN attestation_url ELSE $3 END,
+		    image_digest = CASE WHEN COALESCE($4,'') = '' THEN image_digest ELSE $4 END,
+		    provenance_json = CASE WHEN COALESCE($5,'') = '' THEN provenance_json ELSE $5 END,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+	`, id, payload.SbomURL, payload.AttestationURL, payload.ImageDigest, payload.ProvenanceJSON)
 }
 
 func getChangeRequestByID(id int) (*changeRequestRecord, error) {
@@ -403,6 +497,9 @@ func getChangeRequestByID(id int) (*changeRequestRecord, error) {
 }
 
 func listChangeRequests(projectID int, environment, status, query string) ([]changeRequestRecord, error) {
+	if DB == nil {
+		return []changeRequestRecord{}, nil
+	}
 	sqlQuery := changeRequestSelect()
 	args := []any{}
 	where := []string{}
@@ -703,6 +800,41 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) == 2 {
 		action := strings.ToLower(strings.TrimSpace(parts[1]))
+		if action == "rollback" {
+			if r.Method != "POST" {
+				writeMethodNotAllowed(w, r)
+				return
+			}
+			item, plan, err := executeChangeSHARollback(userID, 0, id)
+			if err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"change": item, "rollback": plan, "status": "ok"})
+			return
+		}
+		if action == "rollout" {
+			if r.Method != "POST" {
+				writeMethodNotAllowed(w, r)
+				return
+			}
+			var body struct {
+				Stage string `json:"stage"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
+				return
+			}
+			item, err := setChangeRollout(id, body.Stage)
+			if err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"change": item, "status": "ok"})
+			return
+		}
 		if action == "resolve" || action == "close" || action == "fail" || action == "cancel" || action == "reopen" {
 			if r.Method != "POST" {
 				writeMethodNotAllowed(w, r)
@@ -765,11 +897,14 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusNotFound, "change not found", err)
 		return
 	}
+	attachChangeRollbackPlan(item)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"change":           item,
 		"change_brief":     changeBriefFromChangeRequest(*item),
 		"linked_incidents": listIncidentsForChange(item.ID),
+		"blast_radius":     blastRadiusForChange(*item),
+		"drift":            detectServiceDrift(item.Service, item.Environment, item.SHA, item.ImageDigest),
 		"status":           "ok",
 	})
 }

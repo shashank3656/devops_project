@@ -74,6 +74,13 @@ func FireOutboundWebhooks(event string, payload map[string]interface{}) {
 		payload = make(map[string]interface{})
 	}
 	payload["event"] = event
+	if event == "pr_created" {
+		if id := intFromAny(payload["request_id"]); id > 0 {
+			if req, err := GetPRRequestByID(id); err == nil && req != nil {
+				go evaluateAndPublishRequestPolicy(req)
+			}
+		}
+	}
 	webhooks, err := GetEnabledOutboundWebhooksForEvent(event)
 	if err != nil || len(webhooks) == 0 {
 		return
