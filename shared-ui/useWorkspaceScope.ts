@@ -40,8 +40,11 @@ export function clearWorkspaceScope(): WorkspaceScope {
   return EMPTY_SCOPE;
 }
 
-export function mergeScopeQuery<T extends Record<string, unknown>>(query: T, scope: WorkspaceScope): T {
-  const next = { ...query };
+export function mergeScopeQuery(
+  query: Record<string, string | string[] | undefined>,
+  scope: WorkspaceScope,
+): Record<string, string | string[] | undefined> {
+  const next: Record<string, string | string[] | undefined> = { ...query };
   if (scope.projectId) next.project_id = scope.projectId;
   else delete next.project_id;
   if (scope.environment) next.environment = scope.environment;
