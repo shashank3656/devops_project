@@ -14,6 +14,7 @@ Notion (narrative / BRDs):
 | --- | --- |
 | SetuOps — Portal Features and Flows (parent hub) | https://app.notion.com/p/3e50f430ed10816699fec83b1b270288 |
 | Change Request, Alert Incidents, and Health Plan (child BRD) | https://app.notion.com/p/3e50f430ed1081adb731c7f64bdfa1b2 |
+| W5–W7 Shipped Features (child) | https://app.notion.com/p/3e60f430ed1081599374cdb7a48c56be |
 
 ## Operators
 

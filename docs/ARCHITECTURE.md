@@ -74,12 +74,13 @@ flowchart TD
     B --> C["Admin reviews governance and approvals"]
     C --> D["DevOps evaluates gate policy and release readiness"]
     D --> E["Promotion / release action"]
-    E --> F["K8s health, drift, and expiry checks"]
+    E --> E2["Promote hop writes a CHG for the next env"]
+    E2 --> F["K8s health, live-vs-CHG drift, SLO freeze, expiry"]
     F --> G{"Issue detected?"}
-    G -- "No" --> H["Normal operations and audit trail"]
+    G -- "No" --> H["Watch ends; watch.ended digest"]
     G -- "Yes" --> I["Incident created with INC reference"]
-    I --> J["Timeline, assignee, postmortem, notifications"]
-    J --> K["Rollback or remediation workflow"]
+    I --> J["Owner page on SEV1/SEV2; review from timeline"]
+    J --> K["Rollback CHG to previous_sha (does not apply)"]
     K --> H
 ```
 
@@ -142,7 +143,8 @@ The user portal is the self-service entry point for:
 - infrastructure requests
 - reusable templates
 - request history
-- assigned incidents
+- assigned incidents and read-only reviews
+- scorecards and live-vs-CHG drift on visible projects
 - notifications
 
 ### Admin Portal
@@ -152,17 +154,20 @@ The admin portal is used for:
 - user and team management
 - governance and approval views
 - template management
+- outbound webhook subscriptions (`watch.ended`, `incident.owner_paged`)
+- read catalogs for changes, incidents, scorecards, and reviews
 - administrative workflows
 
 ### DevOps Portal
 
 The DevOps portal is used for:
 
-- promotions and release workflows
-- deployment gates
-- Kubernetes health
-- drift, expiry, dependency, and risk analysis
-- incidents, rollback, and command-center operations
+- promotions (each hop writes a CHG) and release gates
+- Health, SLO deploy freeze, and live-vs-CHG drift
+- Identity (OIDC verify + last cloud-role exchange)
+- Kubernetes, expiry, dependency, and risk analysis
+- incidents, generated reviews, rollback CHG, and command-center operations
+- MCP catalog reads plus comment / request-rollback (no apply)
 
 ### Backend API
 
@@ -181,11 +186,13 @@ Across the app, these objects are the most important:
 
 - requests
 - approvals and gate approvals
-- incidents and postmortems
-- promotions and rollback actions
+- change requests (including preview graduate and promote hops)
+- incidents, generated reviews, and postmortems
+- promotions, SLO freezes, and rollback CHGs
 - teams and assignments
-- K8s health findings
-- expiry and notification events
+- K8s health findings and live-vs-CHG drift
+- identity findings (OIDC / cloud-role exchange, no secrets)
+- expiry and notification events (`watch.ended`, `incident.owner_paged`)
 
 That shared object model is the main reason all three portals can work as one system instead of separate apps.
 
