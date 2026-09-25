@@ -38,6 +38,7 @@ import {
   scopeToQuery,
   useWorkspaceScope,
   type ScopeProject,
+  type WorkspaceScope,
 } from '@infragate/ui';
 
 const SIDEBAR_COLLAPSED_KEY = 'infra-admin-sidebar-collapsed';
@@ -233,6 +234,15 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       void router.replace({ pathname: router.pathname, query: { ...router.query, ...scopeToQuery(stored) } }, undefined, { shallow: true });
     }
   }, [router.isReady]);
+
+  const writeScopeQuery = (next: WorkspaceScope) => {
+    const query = { ...router.query };
+    if (next.projectId) query.project_id = next.projectId;
+    else delete query.project_id;
+    if (next.environment) query.environment = next.environment;
+    else delete query.environment;
+    void router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
+  };
 
   useEffect(() => {
     const currentToken = getAdminToken();
@@ -541,15 +551,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <ScopeBar
               projects={scopeProjects}
               scope={scope}
-              onChange={(partial) => {
-                const next = updateScope(partial);
-                const query = { ...router.query };
-                if (next.projectId) query.project_id = next.projectId;
-                else delete query.project_id;
-                if (next.environment) query.environment = next.environment;
-                else delete query.environment;
-                void router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
-              }}
+              onChange={(partial) => writeScopeQuery(updateScope(partial))}
+              onClear={() => writeScopeQuery(updateScope({ projectId: '', environment: '' }))}
             />
             <span className={`admin-topbar__status-chip ${newRequestsCount > 0 ? 'admin-topbar__status-chip--alert' : ''}`}>
               {statusLabel}

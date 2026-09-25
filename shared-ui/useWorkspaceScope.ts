@@ -35,6 +35,34 @@ export function writeWorkspaceScope(scope: WorkspaceScope) {
   window.dispatchEvent(new CustomEvent(WORKSPACE_SCOPE_EVENT, { detail: scope }));
 }
 
+export function clearWorkspaceScope(): WorkspaceScope {
+  writeWorkspaceScope(EMPTY_SCOPE);
+  return EMPTY_SCOPE;
+}
+
+export function mergeScopeQuery<T extends Record<string, unknown>>(query: T, scope: WorkspaceScope): T {
+  const next = { ...query };
+  if (scope.projectId) next.project_id = scope.projectId;
+  else delete next.project_id;
+  if (scope.environment) next.environment = scope.environment;
+  else delete next.environment;
+  return next;
+}
+
+export function queryString(query: Record<string, string | string[] | undefined> | undefined, key: string): string {
+  const raw = query?.[key];
+  if (Array.isArray(raw)) return raw[0] || '';
+  return raw || '';
+}
+
+export function defaultEnvironmentForProject(projects: ScopeProject[], projectId: string, current?: string): string {
+  if (!projectId) return '';
+  const project = projects.find((item) => String(item.id) === String(projectId));
+  const environments = project?.environments?.filter(Boolean) || [];
+  if (current && environments.includes(current)) return current;
+  return environments[0] || current || '';
+}
+
 export function useWorkspaceScope() {
   const [scope, setScope] = useState<WorkspaceScope>(EMPTY_SCOPE);
 

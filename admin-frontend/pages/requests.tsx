@@ -328,14 +328,12 @@ export default function AdminRequests() {
 
   useEffect(() => {
     if (!router.isReady) return;
-    const rawProjectID = router.query.project_id;
-    const nextProjectID = Array.isArray(rawProjectID) ? rawProjectID[0] : rawProjectID;
-    if (typeof nextProjectID === 'string') {
-      setProjectId(nextProjectID);
-      setShowAdvancedFilters(true);
-      setOffset(0);
-    }
-  }, [router.isReady, router.query.project_id]);
+    const nextProjectID = Array.isArray(router.query.project_id) ? router.query.project_id[0] : router.query.project_id || '';
+    const nextEnv = Array.isArray(router.query.environment) ? router.query.environment[0] : router.query.environment || '';
+    setProjectId(typeof nextProjectID === 'string' ? nextProjectID : '');
+    setEnv(typeof nextEnv === 'string' ? nextEnv : '');
+    setOffset(0);
+  }, [router.isReady, router.query.project_id, router.query.environment]);
 
   useEffect(() => {
     if (env || cloud || priorityFilter || sortBy !== 'created_at' || sortOrder !== 'desc' || atRiskOnly) {
@@ -418,8 +416,9 @@ export default function AdminRequests() {
       router.replace('/login');
       return;
     }
-    fetchRequests({ offset });
-  }, [token, router, offset]);
+    filtersRef.current = { ...filtersRef.current, projectId, env };
+    fetchRequests({ projectId, env, offset });
+  }, [token, router, offset, projectId, env]);
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -491,7 +490,11 @@ export default function AdminRequests() {
     setOffset(0);
     const qs = new URLSearchParams();
     if (searchVal) qs.set('q', searchVal);
-    router.replace(searchVal ? `/requests?${qs}` : '/requests', undefined, { shallow: true });
+    const scopedProject = typeof router.query.project_id === 'string' ? router.query.project_id : projectVal;
+    const scopedEnv = typeof router.query.environment === 'string' ? router.query.environment : envVal;
+    if (scopedProject) qs.set('project_id', scopedProject);
+    if (scopedEnv) qs.set('environment', scopedEnv);
+    router.replace(qs.toString() ? `/requests?${qs}` : '/requests', undefined, { shallow: true });
     fetchRequests({ team: teamVal, projectId: projectVal, env: envVal, cloud: cloudVal, search: searchVal, status: statusVal, priority: priorityVal, offset: 0 });
   };
 
@@ -509,7 +512,11 @@ export default function AdminRequests() {
     setAtRiskOnly(next.atRiskOnly);
     setShowAdvancedFilters(Boolean(next.env || next.cloud || next.priority || next.atRiskOnly));
     setOffset(0);
-    router.replace(next.search ? `/requests?${new URLSearchParams({ q: next.search })}` : '/requests', undefined, { shallow: true });
+    const qs = new URLSearchParams();
+    if (next.search) qs.set('q', next.search);
+    if (typeof router.query.project_id === 'string' && router.query.project_id) qs.set('project_id', router.query.project_id);
+    if (typeof router.query.environment === 'string' && router.query.environment) qs.set('environment', router.query.environment);
+    router.replace(qs.toString() ? `/requests?${qs}` : '/requests', undefined, { shallow: true });
     fetchRequests({ ...next, offset: 0 });
   };
 

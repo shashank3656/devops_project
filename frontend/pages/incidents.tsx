@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { asRecord, getString } from '../lib/payload';
+import { PageFilters } from '@infragate/ui';
 import { SITE_NAME } from '../lib/site';
 
 interface Incident {
@@ -177,6 +178,12 @@ export default function UserIncidentsPage() {
         </section>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
+        <PageFilters
+          chips={[
+            projectID ? { key: 'project', label: 'Project', value: String(projectID) } : null,
+            environment ? { key: 'environment', label: 'Environment', value: environment } : null,
+          ].filter((chip): chip is { key: string; label: string; value: string } => Boolean(chip))}
+        />
 
         <section className="portal-surface">
           <div className="portal-surface__header">
