@@ -37,7 +37,7 @@ export default function AdminDashboard() {
   return (
     <>
       <Head>
-        <title>Overview - Admin</title>
+        <title>Home - Admin</title>
       </Head>
       <AdminLayout>
         <WorkspaceHome

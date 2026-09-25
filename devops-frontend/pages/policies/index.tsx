@@ -40,12 +40,12 @@ export default function PoliciesCatalogPage() {
 
   return (
     <DevOpsLayout>
-      <Head><title>Policies - SetuOps</title></Head>
+      <Head><title>Policy as code - SetuOps</title></Head>
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
             <span className="portal-page__eyebrow">Gates</span>
-            <h1 className="portal-page__title">Policies</h1>
+            <h1 className="portal-page__title">Policy as code</h1>
             <p className="portal-page__subtitle">
               Lightweight Rego deny rules on CHGs and request.json. Failures post the existing infragate/policy check.
             </p>
