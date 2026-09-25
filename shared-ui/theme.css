@@ -1907,6 +1907,27 @@ html[data-theme] .login-page__card > .ig-icon-button {
   padding: 20px;
 }
 
+.ig-home-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+  border-color: color-mix(in srgb, var(--ig-danger) 28%, var(--ig-border));
+}
+
+.ig-home-error strong {
+  display: block;
+  font-size: var(--ig-text-md);
+  color: var(--ig-text);
+}
+
+.ig-home-error p {
+  margin: 4px 0 0;
+  font-size: var(--ig-text-sm);
+  color: var(--ig-muted);
+}
+
 .ig-home-empty strong {
   display: block;
   font-size: var(--ig-text-md);

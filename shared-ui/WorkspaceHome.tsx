@@ -15,6 +15,8 @@ function firstName(viewer?: string): string {
 export default function WorkspaceHome({
   payload,
   loading = false,
+  error = null,
+  onRetry,
   actions,
   activityHref,
   aside,
@@ -22,6 +24,8 @@ export default function WorkspaceHome({
 }: {
   payload: WorkspacePayload;
   loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
   actions?: ReactNode;
   activityHref?: string;
   aside?: ReactNode;
@@ -34,12 +38,23 @@ export default function WorkspaceHome({
   }, []);
 
   const name = firstName(payload.viewer);
-  const count = payload.needs_you?.length || 0;
-  const summary = loading
-    ? 'Loading your workspace…'
-    : count === 0
-      ? "You're all caught up."
-      : `${count} ${count === 1 ? 'item needs' : 'items need'} you.`;
+  const needsCount = payload.needs_you?.length || 0;
+  const failedCount = payload.failed?.length || 0;
+  const envCount = payload.pipeline?.stages?.length || 0;
+  const showFailed = loading || failedCount > 0;
+  const showEnvironments = loading || envCount > 0 || Boolean(payload.pipeline?.project_name);
+  const summary = error
+    ? 'Home could not load.'
+    : loading
+      ? 'Loading your workspace…'
+      : needsCount === 0 && failedCount === 0
+        ? "You're all caught up."
+        : [
+            needsCount > 0 ? `${needsCount} ${needsCount === 1 ? 'item needs' : 'items need'} you` : '',
+            failedCount > 0 ? `${failedCount} ${failedCount === 1 ? 'delivery is' : 'deliveries are'} failed or blocked` : '',
+          ]
+            .filter(Boolean)
+            .join('. ') + '.';
 
   return (
     <div className="ig-home">
@@ -50,40 +65,84 @@ export default function WorkspaceHome({
             {name ? `, ${name}` : ''}
           </h1>
           <p className="ig-home__summary">
-            <span className={count > 0 && !loading ? 'ig-home__count' : undefined}>{summary}</span> {payload.subtitle}
+            <span className={(needsCount > 0 || failedCount > 0) && !loading && !error ? 'ig-home__count' : undefined}>
+              {summary}
+            </span>{' '}
+            {!error ? payload.subtitle : null}
           </p>
         </div>
         {actions ? <div className="ig-home__actions">{actions}</div> : null}
       </header>
 
-      <div className="ig-home__grid">
-        <div className="ig-home__main">
-          <section className="ig-home__section" aria-labelledby="ig-home-needs-title">
-            <div className="ig-home__section-head">
-              <h2 id="ig-home-needs-title">Needs you</h2>
-              {!loading && count > 0 ? <span className="ig-home__pill">{count}</span> : null}
-            </div>
-            <WorkQueue items={payload.needs_you || []} loading={loading} />
-          </section>
-
-          <section className="ig-home__section" aria-labelledby="ig-home-env-title">
-            <div className="ig-home__section-head">
-              <h2 id="ig-home-env-title">Environments</h2>
-              {payload.pipeline?.project_name ? (
-                <span className="ig-home__section-note">{payload.pipeline.project_name}</span>
-              ) : null}
-            </div>
-            <EnvironmentPipeline stages={payload.pipeline?.stages || []} loading={loading} />
-          </section>
-
-          {children}
+      {error ? (
+        <div className="ig-home-panel ig-home-error" role="alert">
+          <div>
+            <strong>Workspace is unavailable</strong>
+            <p>{error}</p>
+          </div>
+          {onRetry ? (
+            <button type="button" className="btn btn-primary" onClick={onRetry}>
+              Try again
+            </button>
+          ) : null}
         </div>
+      ) : (
+        <div className="ig-home__grid">
+          <div className="ig-home__main">
+            <section className="ig-home__section" aria-labelledby="ig-home-needs-title">
+              <div className="ig-home__section-head">
+                <h2 id="ig-home-needs-title">Needs my action</h2>
+                {!loading && needsCount > 0 ? <span className="ig-home__pill">{needsCount}</span> : null}
+              </div>
+              <WorkQueue
+                items={payload.needs_you || []}
+                loading={loading}
+                emptyTitle="You're all caught up"
+                emptyBody="Approvals, assigned tickets, and assigned incidents will show up here."
+              />
+            </section>
 
-        <aside className="ig-home__aside">
-          <ActivityFeed items={payload.activity || []} loading={loading} viewAllHref={activityHref} />
-          {aside}
-        </aside>
-      </div>
+            {showFailed ? (
+              <section className="ig-home__section" aria-labelledby="ig-home-failed-title">
+                <div className="ig-home__section-head">
+                  <h2 id="ig-home-failed-title">Failed or blocked</h2>
+                  {!loading && failedCount > 0 ? <span className="ig-home__pill">{failedCount}</span> : null}
+                </div>
+                <WorkQueue
+                  items={payload.failed || []}
+                  loading={loading}
+                  emptyTitle="No failed deliveries"
+                  emptyBody="Failed changes, rejected tickets, and blocked promotions appear here."
+                />
+              </section>
+            ) : null}
+
+            {showEnvironments ? (
+              <section className="ig-home__section" aria-labelledby="ig-home-env-title">
+                <div className="ig-home__section-head">
+                  <h2 id="ig-home-env-title">Environments I own</h2>
+                  {payload.pipeline?.project_name ? (
+                    <span className="ig-home__section-note">{payload.pipeline.project_name}</span>
+                  ) : null}
+                </div>
+                <EnvironmentPipeline stages={payload.pipeline?.stages || []} loading={loading} />
+              </section>
+            ) : null}
+
+            {children}
+          </div>
+
+          <aside className="ig-home__aside">
+            <ActivityFeed
+              items={payload.activity || []}
+              loading={loading}
+              title="Recent operations"
+              viewAllHref={activityHref}
+            />
+            {aside}
+          </aside>
+        </div>
+      )}
     </div>
   );
 }

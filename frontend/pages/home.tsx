@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -10,6 +10,7 @@ const emptyWorkspace: WorkspacePayload = {
   title: 'What needs attention',
   subtitle: 'Your requests, reviews, and environment path.',
   needs_you: [],
+  failed: [],
   pipeline: { stages: [] },
   activity: [],
 };
@@ -18,23 +19,46 @@ export default function Home() {
   const router = useRouter();
   const [workspace, setWorkspace] = useState<WorkspacePayload>(emptyWorkspace);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadWorkspace = useCallback(() => {
     if (!localStorage.getItem('isAuthenticated')) {
       router.push('/login');
       return;
     }
     const token = localStorage.getItem('token');
+    setLoading(true);
+    setError(null);
     fetch(`${apiUrl}/api/me/workspace`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.workspace) setWorkspace(data.workspace);
+      .then(async (res) => {
+        if (res.status === 401) {
+          router.push('/login');
+          return null;
+        }
+        if (!res.ok) {
+          throw new Error(`Home could not load (${res.status}).`);
+        }
+        return res.json();
       })
-      .catch(() => {})
+      .then((data) => {
+        if (!data) return;
+        if (!data.workspace) {
+          throw new Error('Home response was empty.');
+        }
+        setWorkspace(data.workspace);
+      })
+      .catch((err: Error) => {
+        setWorkspace(emptyWorkspace);
+        setError(err?.message || 'Home could not load.');
+      })
       .finally(() => setLoading(false));
   }, [router]);
+
+  useEffect(() => {
+    loadWorkspace();
+  }, [loadWorkspace]);
 
   return (
     <>
@@ -44,6 +68,8 @@ export default function Home() {
       <WorkspaceHome
         payload={workspace}
         loading={loading}
+        error={error}
+        onRetry={loadWorkspace}
         activityHref="/history"
         actions={
           <>

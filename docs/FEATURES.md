@@ -93,7 +93,7 @@ Primary nav: Home, Requests, Projects, Changes, Incidents. Mobile tabs: Home, Re
 
 | Feature | Page | How it works |
 | --- | --- | --- |
-| Home | `/home` | Cards for new request, my requests, projects, changes, incidents. Uses `/api/stats` and workspace. |
+| Home | `/home` | Attention dashboard from `GET /api/me/workspace`: needs my action (manager approvals, assigned tickets/incidents), failed or blocked deliveries, recent operations, and environments I own. Row click opens the existing detail. Loading, empty, and error + retry are all shown. |
 | Notifications | header + `/notifications` | `GET /api/me/notifications` (optional `since=` for badge). `POST` marks read. |
 | Command palette / search | header | `GET /api/search?q=` across requests, projects, templates. |
 | Copilot | support hub | `POST /api/copilot` for in-app help. |
@@ -144,7 +144,7 @@ Primary nav: Home, Approvals, Requests, People, Projects, Catalog, More. Mobile 
 
 | Feature | Page | How it works |
 | --- | --- | --- |
-| Home | `/dashboard` | `GET /api/admin/dashboard-stats`, `/api/admin/stats`, `/api/admin/workspace`. Counts of users, pending requests, SLA risk. |
+| Home | `/dashboard` | Attention dashboard from `GET /api/admin/workspace`: needs my action, failed or blocked deliveries, recent operations, and environments I own. Loading, empty, and error + retry are shown. |
 | Users | `/users` | `GET /api/admin/users`. Create portal users or DevOps users (`/users/new`, `/users/new-devops`). Edit `/users/[id]/edit`. |
 | Teams | `/teams`, `/teams/new`, `/teams/[id]` | Create teams, set default env/cloud, add/remove members, change member role. |
 | Access review | `/access-review` | `GET /api/admin/access-review`. Who has what, stale access. |
@@ -185,7 +185,7 @@ Primary nav (manager): Home, Requests, Changes, Deployments, Kubernetes, GitOps,
 
 | Feature | Page | How it works |
 | --- | --- | --- |
-| Home | `/dashboard` | `GET /api/devops/dashboard-stats`, `/api/devops/workspace`. Open tickets, pending approvals, watching CHGs, open INCs. |
+| Home | `/dashboard` | Attention dashboard from `GET /api/devops/workspace`: needs my action, failed or blocked deliveries (including failed CHGs), recent operations, and environments I own. Freeze and on-call stay in the aside. Loading, empty, and error + retry are shown. |
 | My tickets | `/tickets` | `GET /api/devops/tickets` — tickets assigned to the current user. |
 | Request list / actions | `/tickets` + inspector | `GET /api/devops/requests` (filters: id, team, cloud, status, requester, at_risk). `POST /api/devops/requests/:id/approve` or `/reject`. Bulk approve/reject. Approve opens the GitOps PR. |
 | Workload | `/workload` | `GET /api/devops/workload`. Open / in-progress / completed-this-week by team and person. Manager only. |

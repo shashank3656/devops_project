@@ -64,7 +64,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | POST | `/api/verify-otp` | none | `{ email, otp }` | Verifies signup OTP. |
 | POST | `/api/resend-verification` | user | — | Resends OTP / link. |
 | GET | `/api/me` | user | — | Current user + role + user_type. |
-| GET | `/api/me/workspace` | user | — | Projects and default scope for the ScopeBar. |
+| GET | `/api/me/workspace` | user | — | Attention Home: `needs_you`, `failed`, `pipeline`, `activity`. |
 | POST | `/api/change-password` | user | `{ current_password, new_password }` | Change password. |
 | GET | `/api/me/2fa` | user | — | 2FA status. |
 | POST | `/api/me/2fa` | user | enable payload | Enable 2FA. |
@@ -129,7 +129,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 
 | Method | Path | Auth | Body / query | What it does |
 | --- | --- | --- | --- | --- |
-| GET | `/api/admin/workspace` | admin | — | Admin ScopeBar payload. |
+| GET | `/api/admin/workspace` | admin | — | Attention Home: `needs_you`, `failed`, `pipeline`, `activity`. |
 | GET | `/api/admin/users` | admin | — | Directory (portal + devops metadata). |
 | POST | `/api/admin/users` | admin | `{ username, email, password, user_type, … }` | Create a portal or DevOps user. |
 | GET | `/api/admin/users/:id` | admin | — | Profile. |
@@ -215,7 +215,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | Method | Path | Auth | Query / body | What it does |
 | --- | --- | --- | --- | --- |
 | GET | `/api/devops/me` | devops | — | User + devops profile (`is_manager`). |
-| GET | `/api/devops/workspace` | devops | — | ScopeBar projects / envs. |
+| GET | `/api/devops/workspace` | devops | — | Attention Home: `needs_you`, `failed`, `pipeline`, `activity`. |
 | GET | `/api/devops/my-teams` | devops | — | Teams this DevOps user belongs to. |
 | POST | `/api/devops/teams/:id/members` | manager | `{ user_id }` | Add a DevOps teammate. |
 | GET | `/api/devops/users` | manager | — | DevOps users (workload filter). |

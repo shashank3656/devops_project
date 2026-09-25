@@ -6,15 +6,17 @@ export default function ActivityFeed({
   items,
   loading = false,
   viewAllHref,
+  title = 'Recent operations',
 }: {
   items: ActivityItem[];
   loading?: boolean;
   viewAllHref?: string;
+  title?: string;
 }) {
   return (
     <section className="ig-home-panel ig-home-activity" aria-labelledby="ig-home-activity-title">
       <header className="ig-home-activity__header">
-        <h2 id="ig-home-activity-title">Recent activity</h2>
+        <h2 id="ig-home-activity-title">{title}</h2>
         {viewAllHref ? (
           <Link href={viewAllHref} className="ig-home-link">
             View all
