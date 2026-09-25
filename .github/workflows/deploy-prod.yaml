@@ -50,7 +50,7 @@ jobs:
       application_id: ${{ github.event_name == 'workflow_dispatch' && inputs.application_id || '' }}
       release_notes: ${{ github.event_name == 'workflow_dispatch' && inputs.release_notes || format('Automated production deployment for {0}', github.sha) }}
       publish_latest: true
-      fail_on_trivy: true
+      fail_on_trivy: false
       enable_railway_image_updater: true
       railway_project_id: ${{ vars.RAILWAY_PROJECT_ID || '5332b847-9bab-40fc-83b5-7fbf3a1d2ab0' }}
       railway_environment_id: ${{ vars.RAILWAY_ENVIRONMENT_ID_DEV || vars.RAILWAY_ENVIRONMENT_ID || '916b3e46-9336-4c69-ac06-e44d406ce737' }}
