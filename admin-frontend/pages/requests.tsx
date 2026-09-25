@@ -1327,7 +1327,7 @@ export default function AdminRequests() {
             ) : null}
           </form>
 
-          <div className="card ig-table-card">
+          <div className="portal-surface portal-surface--table ig-table-card">
             {!loading && error && requests.length === 0 ? (
               <div className="admin-queue-state admin-queue-state--error">
                 <div className="admin-queue-state__icon" aria-hidden>!</div>

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import type { ComponentType, FormEvent, ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import {
   IconLogout,
@@ -16,7 +16,6 @@ import {
   IconWebhook,
   IconShield,
   IconLayers,
-  IconSearch,
   IconMenu,
   IconTrendingUp,
   IconHelpCircle,
@@ -31,7 +30,9 @@ import {
   CommandPalette,
   MobileTabBar,
   ScopeBar,
+  SearchTrigger,
   ThemeToggle,
+  openCommandPalette,
   normalizeScopeProjects,
   queryToScope,
   readWorkspaceScope,
@@ -62,6 +63,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/templates': 'Catalog',
   '/access-review': 'Access Review',
   '/webhooks': 'Integrations',
+  '/sso': 'SSO',
   '/maintenance': 'Maintenance',
   '/deploy-intelligence': 'Deploy Intel',
   '/profile': 'Profile',
@@ -174,7 +176,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = router.pathname;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [newRequestsCount, setNewRequestsCount] = useState(0);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -189,7 +190,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({});
   const { scope, updateScope } = useWorkspaceScope();
   const scopeHydrated = useRef(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -301,19 +301,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
-    const q = router.query.q;
-    const val = typeof q === 'string' ? q : '';
-    setSearchQuery(val);
-  }, [router.query.q]);
-
-  useEffect(() => {
     let gPressedAt = 0;
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        searchInputRef.current?.focus();
+        openCommandPalette();
         return;
       }
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
@@ -347,16 +341,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [router]);
-
-  const handleSearchSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    const q = searchQuery.trim();
-    if (q) {
-      router.push(`/requests?q=${encodeURIComponent(q)}`);
-    } else {
-      router.push('/requests');
-    }
-  };
 
   useEffect(() => {
     if (!notifyOpen && !profileOpen) return;
@@ -548,25 +532,21 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <span className="admin-topbar__kicker">SetuOps</span>
               <h1 className="admin-topbar__title">{pageTitle}</h1>
             </div>
-            <span className={`admin-topbar__status-chip ${newRequestsCount > 0 ? 'admin-topbar__status-chip--alert' : ''}`}>
+            <ScopeBar
+              projects={scopeProjects}
+              scope={scope}
+              onChange={(partial) => writeScopeQuery(updateScope(partial))}
+              onClear={() => writeScopeQuery(updateScope({ projectId: '', environment: '' }))}
+            />
+            <span
+              className={`admin-topbar__status-chip ${newRequestsCount > 0 ? 'admin-topbar__status-chip--alert' : ''}`}
+            >
               {statusLabel}
             </span>
           </div>
 
           <div className="admin-topbar__right">
-            <form className="admin-topbar__search" onSubmit={handleSearchSubmit} role="search">
-              <IconSearch className="admin-topbar__search-icon" />
-              <input
-                ref={searchInputRef}
-                type="search"
-                placeholder="Search requests, teams, clouds, services"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="admin-topbar__search-input"
-                aria-label="Search requests"
-              />
-            </form>
-
+            <SearchTrigger placeholder="Search requests, teams, services…" />
             <div className="admin-topbar__actions">
               <button
                 type="button"
@@ -584,112 +564,104 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <span className="admin-topbar__workspace">{profileLabel}</span>
               <span className="admin-topbar__role">Admin</span>
               <ThemeToggle />
-            </div>
+              <div className="admin-topbar__notify-wrap" ref={notifyRef}>
+                <button
+                  type="button"
+                  className="admin-topbar__icon-btn"
+                  onClick={() => {
+                    setNotifyOpen((o) => !o);
+                    setProfileOpen(false);
+                    setSupportOpen(false);
+                  }}
+                  title={newRequestsCount > 0 ? `${newRequestsCount} new request(s) pending` : 'Notifications'}
+                  aria-label="Notifications"
+                  aria-expanded={notifyOpen}
+                  aria-haspopup="true"
+                >
+                  <IconBell />
+                  {newRequestsCount > 0 && <span className="admin-topbar__badge admin-topbar__badge--dot" aria-hidden />}
+                </button>
 
-            <div className="admin-topbar__notify-wrap" ref={notifyRef}>
-              <button
-                type="button"
-                className="admin-topbar__icon-btn"
-                onClick={() => {
-                  setNotifyOpen((o) => !o);
-                  setProfileOpen(false);
-                  setSupportOpen(false);
-                }}
-                title={newRequestsCount > 0 ? `${newRequestsCount} new request(s) pending` : 'Notifications'}
-                aria-expanded={notifyOpen}
-                aria-haspopup="true"
-              >
-                <IconBell />
-                {newRequestsCount > 0 && <span className="admin-topbar__badge admin-topbar__badge--dot" aria-hidden />}
-              </button>
+                {notifyOpen && (
+                  <div className="admin-topbar__notify-panel">
+                    <div className="admin-topbar__notify-header">
+                      <h3 className="admin-topbar__notify-title">Pending Requests</h3>
+                      <button type="button" className="admin-topbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
+                        Close
+                      </button>
+                    </div>
+                    <div className="admin-topbar__notify-summary">
+                      <strong>{newRequestsCount > 99 ? '99+' : newRequestsCount}</strong>
+                      <span>
+                        {newRequestsCount > 0
+                          ? 'Requests are waiting for admin review right now.'
+                          : 'No pending request tickets at the moment.'}
+                      </span>
+                    </div>
+                    <div className="admin-topbar__notify-links">
+                      <Link href="/requests" className="admin-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                        Open requests
+                      </Link>
+                    </div>
+                    <div className="admin-topbar__notify-list">
+                      {ticketsLoading ? (
+                        <p className="admin-topbar__notify-empty">Loading...</p>
+                      ) : pendingTickets.length === 0 ? (
+                        <p className="admin-topbar__notify-empty">No pending request tickets.</p>
+                      ) : (
+                        pendingTickets.map((req) => (
+                          <Link
+                            key={req.id}
+                            href={`/requests?id=${req.id}`}
+                            className="admin-topbar__notify-ticket"
+                            onClick={() => setNotifyOpen(false)}
+                          >
+                            <strong>Ticket #{req.id}</strong>
+                            <span>{req.team} / {req.cloud} / {req.service}</span>
+                            <small>{formatTime(req.created_at)}</small>
+                          </Link>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
-              {notifyOpen && (
-                <div className="admin-topbar__notify-panel">
-                  <div className="admin-topbar__notify-header">
-                    <h3 className="admin-topbar__notify-title">Pending Requests</h3>
-                    <button type="button" className="admin-topbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
-                      Close
+              <div className="admin-topbar__profile-wrap" ref={profileRef}>
+                <button
+                  type="button"
+                  className="admin-topbar__profile-btn"
+                  onClick={() => {
+                    setProfileOpen((o) => !o);
+                    setNotifyOpen(false);
+                    setSupportOpen(false);
+                  }}
+                  aria-expanded={profileOpen}
+                  aria-haspopup="true"
+                  title="Profile"
+                >
+                  <span className="admin-topbar__avatar">{profileInitials}</span>
+                  <span className="admin-topbar__profile-label">{profileLabel}</span>
+                </button>
+
+                {profileOpen && (
+                  <div className="admin-topbar__dropdown">
+                    <div className="admin-topbar__dropdown-header">
+                      <span className="admin-topbar__dropdown-avatar">{profileInitials}</span>
+                      <span className="admin-topbar__dropdown-label">{profileLabel}</span>
+                    </div>
+                    <Link href="/profile" className="admin-topbar__dropdown-item" onClick={() => setProfileOpen(false)}>
+                      <IconUser />
+                      Profile
+                    </Link>
+                    <button type="button" className="admin-topbar__dropdown-item" onClick={handleLogout}>
+                      <IconLogout />
+                      Logout
                     </button>
                   </div>
-                  <div className="admin-topbar__notify-summary">
-                    <strong>{newRequestsCount > 99 ? '99+' : newRequestsCount}</strong>
-                    <span>
-                      {newRequestsCount > 0
-                        ? 'Requests are waiting for admin review right now.'
-                        : 'No pending request tickets at the moment.'}
-                    </span>
-                  </div>
-                  <div className="admin-topbar__notify-links">
-                    <Link href="/requests" className="admin-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                      Open requests
-                    </Link>
-                  </div>
-                  <div className="admin-topbar__notify-list">
-                    {ticketsLoading ? (
-                      <p className="admin-topbar__notify-empty">Loading...</p>
-                    ) : pendingTickets.length === 0 ? (
-                      <p className="admin-topbar__notify-empty">No pending request tickets.</p>
-                    ) : (
-                      pendingTickets.map((req) => (
-                        <Link
-                          key={req.id}
-                          href={`/requests?id=${req.id}`}
-                          className="admin-topbar__notify-ticket"
-                          onClick={() => setNotifyOpen(false)}
-                        >
-                          <strong>Ticket #{req.id}</strong>
-                          <span>{req.team} / {req.cloud} / {req.service}</span>
-                          <small>{formatTime(req.created_at)}</small>
-                        </Link>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-
-            <div className="admin-topbar__profile-wrap" ref={profileRef}>
-              <button
-                type="button"
-                className="admin-topbar__profile-btn"
-                onClick={() => {
-                  setProfileOpen((o) => !o);
-                  setNotifyOpen(false);
-                  setSupportOpen(false);
-                }}
-                aria-expanded={profileOpen}
-                aria-haspopup="true"
-                title="Profile"
-              >
-                <span className="admin-topbar__avatar">{profileInitials}</span>
-                <span className="admin-topbar__profile-label">{profileLabel}</span>
-              </button>
-
-              {profileOpen && (
-                <div className="admin-topbar__dropdown">
-                  <div className="admin-topbar__dropdown-header">
-                    <span className="admin-topbar__dropdown-avatar">{profileInitials}</span>
-                    <span className="admin-topbar__dropdown-label">{profileLabel}</span>
-                  </div>
-                  <Link href="/profile" className="admin-topbar__dropdown-item" onClick={() => setProfileOpen(false)}>
-                    <IconUser />
-                    Profile
-                  </Link>
-                  <button type="button" className="admin-topbar__dropdown-item" onClick={handleLogout}>
-                    <IconLogout />
-                    Logout
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="admin-topbar__scope">
-            <ScopeBar
-              projects={scopeProjects}
-              scope={scope}
-              onChange={(partial) => writeScopeQuery(updateScope(partial))}
-              onClear={() => writeScopeQuery(updateScope({ projectId: '', environment: '' }))}
-            />
           </div>
         </header>
 

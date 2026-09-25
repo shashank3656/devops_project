@@ -117,21 +117,25 @@ export default function NewUser() {
         <title>Add user - Admin</title>
       </Head>
       <AdminLayout>
-        <div className="container">
-          <Link href="/users" className="back-link">
-            ← Back to Users
-          </Link>
-          <div className="card" style={{ maxWidth: 480 }}>
-            <h2 className="card-title">Add new user</h2>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: 14, marginBottom: 24 }}>
-              Create a user account. They can log in to the main portal and be added to teams.
-            </p>
-            {error && (
-              <div className="alert alert-error" role="alert">
-                {error}
-              </div>
-            )}
-            <form onSubmit={handleSubmit}>
+        <div className="portal-page portal-page--narrow">
+          <div className="portal-page__header">
+            <div>
+              <span className="portal-page__eyebrow">People</span>
+              <h1 className="portal-page__title">Add user</h1>
+              <p className="portal-page__subtitle">
+                Create a portal account. You can assign teams now or finish onboarding on the user profile page.
+              </p>
+            </div>
+            <Link href="/users" className="btn btn-secondary">
+              Back to users
+            </Link>
+          </div>
+          {error ? (
+            <div className="alert alert-error" role="alert">
+              {error}
+            </div>
+          ) : null}
+          <form className="portal-surface" onSubmit={handleSubmit}>
               <div className="form-group">
                 <label className="label" htmlFor="user-username">
                   Username <span style={{ color: 'var(--color-danger)' }}>*</span>
@@ -246,16 +250,12 @@ export default function NewUser() {
                   </>
                 )}
               </div>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={loading}
-                style={{ padding: '10px 24px' }}
-              >
+            <div className="portal-page__actions" style={{ marginTop: 8 }}>
+              <button type="submit" className="btn btn-primary" disabled={loading}>
                 {loading ? 'Creating…' : 'Create user'}
               </button>
-            </form>
-          </div>
+            </div>
+          </form>
         </div>
       </AdminLayout>
     </>
