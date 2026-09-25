@@ -122,7 +122,7 @@ export default function DevOpsDashboard() {
   return (
     <>
       <Head>
-        <title>Overview - SetuOps DevOps</title>
+        <title>Home - SetuOps DevOps</title>
       </Head>
       <DevOpsLayout>
         <WorkspaceHome

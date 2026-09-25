@@ -1319,6 +1319,14 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_problem_records_fingerprint ON problem_records (fingerprint) WHERE fingerprint <> ''`)
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_problem_records_status ON problem_records (status)`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS priority VARCHAR(8) NOT NULL DEFAULT 'p3'`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS category VARCHAR(80) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS assignee_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS known_error BOOLEAN NOT NULL DEFAULT FALSE`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS workaround TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS root_cause TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS related_incident_id INTEGER`)
 
 	// Leftover P1/P3/P4: alert silence window and optional metrics pull URL
 	_, _ = DB.Exec(`ALTER TABLE request_incidents ADD COLUMN IF NOT EXISTS silenced_until TIMESTAMP`)
@@ -1400,6 +1408,57 @@ func MigrateDatabase() error {
 			target VARCHAR(40) NOT NULL DEFAULT 'change',
 			rego TEXT NOT NULL DEFAULT '',
 			enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS incident_itsm (
+			incident_id INTEGER PRIMARY KEY REFERENCES request_incidents(id) ON DELETE CASCADE,
+			caller_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			category VARCHAR(80) NOT NULL DEFAULT '',
+			subcategory VARCHAR(80) NOT NULL DEFAULT '',
+			parent_incident_id INTEGER REFERENCES request_incidents(id) ON DELETE SET NULL,
+			conference_url TEXT NOT NULL DEFAULT '',
+			conference_notes TEXT NOT NULL DEFAULT '',
+			sla_respond_by TIMESTAMP,
+			sla_resolve_by TIMESTAMP,
+			sla_responded_at TIMESTAMP,
+			sla_resolved_at TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_incident_itsm_parent ON incident_itsm(parent_incident_id)`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS subcategory VARCHAR(80) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS caller_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS assignment_group_id INTEGER REFERENCES teams(id) ON DELETE SET NULL`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS sla_respond_by TIMESTAMP`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS sla_resolve_by TIMESTAMP`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS sla_responded_at TIMESTAMP`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS sla_resolved_at TIMESTAMP`)
+	_, _ = DB.Exec(`ALTER TABLE problem_records ADD COLUMN IF NOT EXISTS knowledge_article_id INTEGER`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS itsm_journal (
+			id SERIAL PRIMARY KEY,
+			record_type VARCHAR(20) NOT NULL,
+			record_id INTEGER NOT NULL,
+			kind VARCHAR(20) NOT NULL,
+			body TEXT NOT NULL DEFAULT '',
+			author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_itsm_journal_record ON itsm_journal(record_type, record_id, created_at)`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS knowledge_articles (
+			id SERIAL PRIMARY KEY,
+			article_number VARCHAR(20) NOT NULL DEFAULT '',
+			title VARCHAR(300) NOT NULL,
+			body TEXT NOT NULL DEFAULT '',
+			problem_id INTEGER REFERENCES problem_records(id) ON DELETE SET NULL,
+			published BOOLEAN NOT NULL DEFAULT TRUE,
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)

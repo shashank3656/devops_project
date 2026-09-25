@@ -281,8 +281,21 @@ export default function GitOpsControlPage() {
   const [accessUserId, setAccessUserId] = useState('');
   const [accessPermission, setAccessPermission] = useState('read');
   const [accessEnvironments, setAccessEnvironments] = useState<string[]>([]);
+  const [showBuilder, setShowBuilder] = useState(false);
+
+  const openBuilder = () => {
+    setShowBuilder(true);
+    setEditingProjectId(null);
+    if (requestedView !== 'builder') {
+      void router.push({ pathname: '/gitops-control', query: { view: 'builder' } }, undefined, { shallow: true });
+    }
+  };
 
   const resetProjectForm = () => {
+    setShowBuilder(false);
+    if (requestedView === 'builder') {
+      void router.replace('/gitops-control', undefined, { shallow: true });
+    }
     setEditingProjectId(null);
     setCreateName('');
     setCreateSlug('');
@@ -541,9 +554,9 @@ export default function GitOpsControlPage() {
 
   useEffect(() => {
     if (activeRail !== 'builder') return;
-    if (data?.can_create_projects || selectedPanelProject?.can_manage) return;
+    if (data?.can_create_projects || selectedPanelProject?.can_manage || !data?.projects.length) return;
     setActiveRail('explorer');
-  }, [activeRail, data?.can_create_projects, selectedPanelProject?.can_manage]);
+  }, [activeRail, data?.can_create_projects, data?.projects.length, selectedPanelProject?.can_manage]);
 
   const handleCreateProject = async (event: FormEvent) => {
     event.preventDefault();
@@ -769,25 +782,30 @@ export default function GitOpsControlPage() {
     void router.push(`/gitops-control/${project.id}/edit`);
   };
 
+  const hasProjects = Boolean(data?.projects.length);
+  const showCreateForm = !hasProjects || showBuilder || requestedView === 'builder' || editingProjectId !== null;
+  const canCreate = Boolean(data?.can_create_projects || editingProjectId !== null || !hasProjects);
+  const useIde = hasProjects && !showCreateForm;
+
   return (
     <>
       <Head>
         <title>Project-Infra - DevOps Portal</title>
       </Head>
       <DevOpsLayout>
-        <div className="portal-page gitops-page gitops-page--ide">
+        <div className={`portal-page gitops-page${useIde ? ' gitops-page--ide' : ''}`}>
           <section className="portal-page__hero">
             <div>
               <span className="portal-page__eyebrow">Manager Control</span>
               <h1 className="portal-page__title">GitOps projects</h1>
               <p className="portal-page__subtitle">
-                Create GitOps project folders and files, then decide exactly which DevOps user can view each environment.
+                Create a project folder, pick environments, and choose who can see each one.
               </p>
             </div>
             <div className="portal-page__actions">
-              <Link href="/gitops-control/new" className="btn btn-primary">
+              <button type="button" className="btn btn-primary" onClick={openBuilder}>
                 New GitOps project
-              </Link>
+              </button>
               <Link href="/gitops-projects" className="btn btn-secondary">
                 Open GitOps Projects
               </Link>
@@ -840,22 +858,22 @@ export default function GitOpsControlPage() {
                 </div>
               </section>
 
-              {(requestedView === 'builder' || editingProjectId !== null) && (
-              <section className="portal-grid">
+              {showCreateForm && (
+              <section className="gitops-create">
                 <article className="portal-surface">
                   <div className="portal-surface__header">
                     <div>
-                      <span className="portal-surface__eyebrow">{editingProjectId ? 'Edit Structure' : 'Create Structure'}</span>
+                      <span className="portal-surface__eyebrow">{editingProjectId ? 'Edit structure' : 'Create project'}</span>
                       <h2 className="portal-surface__title">{editingProjectId ? 'Edit GitOps project' : 'New GitOps project'}</h2>
-                      <p className="portal-surface__subtitle">This defines the folder root, environments, and component JSON file set that the portal will expose.</p>
+                      <p className="portal-surface__subtitle">Name the project, list environments, and choose the JSON files each environment should get.</p>
                     </div>
-                    {editingProjectId && (
+                    {hasProjects ? (
                       <button type="button" className="btn btn-secondary btn-sm" onClick={resetProjectForm}>
-                        Cancel edit
+                        Cancel
                       </button>
-                    )}
+                    ) : null}
                   </div>
-                  {data.can_create_projects || editingProjectId !== null ? (
+                  {canCreate ? (
                     <form onSubmit={handleCreateProject} className="gitops-builder">
                       <section className="gitops-builder-section">
                         <div className="gitops-builder-section__header">
@@ -991,6 +1009,7 @@ export default function GitOpsControlPage() {
               </section>
               )}
 
+              {hasProjects ? (
               <section className="portal-surface">
                 <div className="portal-surface__header">
                   <div>
@@ -999,12 +1018,7 @@ export default function GitOpsControlPage() {
                     <p className="portal-surface__subtitle">Select a project, then manage that project&apos;s access, environment folders, and JSON files in the same flow.</p>
                   </div>
                 </div>
-                {data.projects.length === 0 ? (
-                  <div className="portal-empty">
-                    <p>No GitOps project structure exists yet.</p>
-                  </div>
-                ) : (
-                  <div className="gitops-editor">
+                <div className="gitops-editor">
                     <nav className="gitops-editor__rail" aria-label="Workspace Views">
                       <button
                         type="button"
@@ -1389,8 +1403,8 @@ export default function GitOpsControlPage() {
                       </div>
                     </section>
                   </div>
-                )}
               </section>
+              ) : null}
             </>
           )}
         </div>

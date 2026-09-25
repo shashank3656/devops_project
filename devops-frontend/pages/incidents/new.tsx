@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { FALLBACK_ITSM_CATEGORIES, IMPACT_URGENCY, INCIDENT_STATES, ITSM_PRIORITIES, ITSMCategory, normalizeCategories, priorityFromImpactUrgency, subcategoriesFor } from '../../lib/itsm';
 import { asRecord, getString } from '../../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -120,12 +121,24 @@ export default function NewIncidentPage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [requestId, setRequestId] = useState('');
   const [teamId, setTeamId] = useState('');
-  const [severity, setSeverity] = useState('medium');
-  const [status, setStatus] = useState('open');
+  const [priority, setPriority] = useState('p3');
+  const [impact, setImpact] = useState('medium');
+  const [urgency, setUrgency] = useState('medium');
+  const [status, setStatus] = useState('new');
   const [escalationLevel, setEscalationLevel] = useState('monitoring');
   const [ownerUserId, setOwnerUserId] = useState('');
   const [summary, setSummary] = useState('');
   const [notes, setNotes] = useState('');
+  const [comment, setComment] = useState('');
+  const [callers, setCallers] = useState<TeamMemberOption[]>([]);
+  const [categories, setCategories] = useState<ITSMCategory[]>(FALLBACK_ITSM_CATEGORIES);
+  const [callerUserId, setCallerUserId] = useState('');
+  const [category, setCategory] = useState('software');
+  const [subcategory, setSubcategory] = useState('');
+  const [parentIncidentId, setParentIncidentId] = useState('');
+  const [major, setMajor] = useState(false);
+  const [conferenceURL, setConferenceURL] = useState('');
+  const [conferenceNotes, setConferenceNotes] = useState('');
   const [currentIncidentNumber, setCurrentIncidentNumber] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -174,6 +187,16 @@ export default function NewIncidentPage() {
       setTeams(normalizeTeams(data.teams));
       setMembersByTeam(normalizeMembersByTeam(data.team_members_by_team));
       setIncidents(normalizeIncidents(data.incidents));
+      const callerList = Array.isArray(data.callers) ? data.callers : [];
+      setCallers(callerList.filter((item: { id?: number; user_id?: number }) => typeof item.id === 'number' || typeof item.user_id === 'number').map((item: { id?: number; user_id?: number; username?: string; email?: string }) => ({
+        id: item.id || 0,
+        team_id: 0,
+        user_id: item.id || item.user_id || 0,
+        role: 'caller',
+        username: item.username || 'unknown',
+        email: item.email || '',
+      })));
+      setCategories(normalizeCategories(data.categories));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load incident options');
     } finally {
@@ -210,6 +233,10 @@ export default function NewIncidentPage() {
   }, [apiUrl]);
 
   useEffect(() => {
+    setPriority(priorityFromImpactUrgency(impact, urgency));
+  }, [impact, urgency]);
+
+  useEffect(() => {
     if (!teamId || !ownerUserId) return;
     const ownerStillInTeam = selectedTeamMembers.some((member) => String(member.user_id) === ownerUserId);
     if (!ownerStillInTeam) {
@@ -228,10 +255,10 @@ export default function NewIncidentPage() {
     setNotice('');
     try {
       const linkedRequestID = requestedRequestId || resolveIncidentReferenceInput(requestId, incidents);
-      if (!linkedRequestID) {
-        throw new Error('Enter a valid request number before saving this incident');
+      const normalizedStatus = mode === 'draft' ? 'draft' : status === 'draft' ? 'new' : status;
+      if (mode !== 'draft' && !summary.trim()) {
+        throw new Error('Short description is required');
       }
-      const normalizedStatus = mode === 'draft' ? 'draft' : status === 'draft' ? 'open' : status;
       const response = await fetch(`${apiUrl}/api/devops/incidents`, {
         method: 'POST',
         headers: {
@@ -239,14 +266,24 @@ export default function NewIncidentPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          request_id: linkedRequestID,
+          request_id: linkedRequestID || 0,
           team_id: teamId ? Number(teamId) : null,
-          severity,
+          priority,
+          impact,
+          urgency,
           status: normalizedStatus,
           escalation_level: escalationLevel,
           owner_user_id: ownerUserId ? Number(ownerUserId) : null,
           summary,
           notes,
+          comment,
+          caller_user_id: callerUserId ? Number(callerUserId) : 0,
+          category,
+          subcategory,
+          parent_incident_id: parentIncidentId ? Number(parentIncidentId) : 0,
+          major,
+          conference_url: conferenceURL,
+          conference_notes: conferenceNotes,
         }),
       });
       if (response.status === 401 || response.status === 403) {
@@ -263,6 +300,10 @@ export default function NewIncidentPage() {
         setRequestId(String(savedIncident.request_id));
       }
       setNotice(mode === 'draft' ? 'Incident draft created.' : 'Incident submitted.');
+      if (savedIncident.id > 0 && mode === 'submit') {
+        await router.push(`/incidents/${savedIncident.id}/edit`);
+        return;
+      }
       void loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save incident');
@@ -282,7 +323,7 @@ export default function NewIncidentPage() {
             <span className="portal-page__eyebrow">Incident Editor</span>
             <h1 className="portal-page__title">Create incident</h1>
             <p className="portal-page__subtitle">
-              Use a dedicated page to create an incident without losing the queue context.
+              ServiceNow-style intake: short description, impact, urgency, P1–P4, then New → In Progress → On Hold → Resolved → Closed.
             </p>
           </div>
           <div className="portal-page__actions">
@@ -325,41 +366,51 @@ export default function NewIncidentPage() {
                   </label>
                 ) : (
                   <label className="label">
-                    Request number
+                    Linked request (optional)
                     <input
                       className="input"
                       value={requestId}
                       onChange={(event) => setRequestId(event.target.value)}
-                      placeholder="Enter the request number for this incident"
+                      placeholder="Optional infra ticket or INC number"
                     />
                   </label>
                 )}
                 <label className="label">
-                  Severity
-                  <select className="input" value={severity} onChange={(event) => setSeverity(event.target.value)}>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
+                  Impact
+                  <select className="input" value={impact} onChange={(event) => setImpact(event.target.value)}>
+                    {IMPACT_URGENCY.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
                   </select>
                 </label>
                 <label className="label">
-                  Status
+                  Urgency
+                  <select className="input" value={urgency} onChange={(event) => setUrgency(event.target.value)}>
+                    {IMPACT_URGENCY.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label">
+                  Priority
+                  <select className="input" value={priority} onChange={(event) => setPriority(event.target.value)}>
+                    {ITSM_PRIORITIES.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label">
+                  State
                   <select className="input" value={status} onChange={(event) => setStatus(event.target.value)}>
-                    <option value="draft">Draft</option>
-                    <option value="open">Open</option>
-                    <option value="acknowledged">Acknowledged</option>
-                    <option value="investigating">Investigating</option>
-                    <option value="mitigating">Mitigating</option>
-                    <option value="resolved">Resolved</option>
-                    <option value="closed">Closed</option>
-                    <option value="cancelled">Cancelled</option>
+                    {INCIDENT_STATES.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
                   </select>
                 </label>
                 <label className="label">
-                  Incident team
+                  Assignment group
                   <select className="input" value={teamId} onChange={(event) => setTeamId(event.target.value)}>
-                    <option value="">Select team</option>
+                    <option value="">Select group</option>
                     {teams.map((team) => (
                       <option key={team.id} value={team.id}>
                         {team.name}
@@ -377,7 +428,7 @@ export default function NewIncidentPage() {
                   </select>
                 </label>
                 <label className="label">
-                  Assigned member
+                  Assignee
                   <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} disabled={!teamId}>
                     <option value="">Unassigned</option>
                     {selectedTeamMembers.map((member) => (
@@ -388,21 +439,79 @@ export default function NewIncidentPage() {
                   </select>
                 </label>
                 <label className="label">
-                  Summary
-                  <input className="input" value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Production deployment degraded" />
+                  Caller
+                  <select className="input" value={callerUserId} onChange={(event) => setCallerUserId(event.target.value)}>
+                    <option value="">Unknown caller</option>
+                    {callers.map((caller) => (
+                      <option key={caller.user_id} value={caller.user_id}>
+                        {caller.username}
+                        {caller.email ? ` · ${caller.email}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label">
+                  Category
+                  <select className="input" value={category} onChange={(event) => { setCategory(event.target.value); setSubcategory(''); }}>
+                    {categories.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label">
+                  Subcategory
+                  <select className="input" value={subcategory} onChange={(event) => setSubcategory(event.target.value)}>
+                    <option value="">Select subcategory</option>
+                    {subcategoriesFor(categories, category).map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label">
+                  Parent incident
+                  <select className="input" value={parentIncidentId} onChange={(event) => setParentIncidentId(event.target.value)}>
+                    <option value="">None — this is the parent</option>
+                    {incidents.map((item) => (
+                      <option key={item.id} value={item.id}>{getIncidentReference(item)}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label">
+                  Short description
+                  <input className="input" value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Production checkout is returning 5xx" />
                 </label>
               </div>
 
+              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" checked={major} onChange={(event) => setMajor(event.target.checked)} />
+                Major incident — open a conference bridge
+              </label>
+              {major ? (
+                <>
+                  <label className="label">
+                    Conference URL
+                    <input className="input" value={conferenceURL} onChange={(event) => setConferenceURL(event.target.value)} placeholder="https://meet.example.com/major-inc" />
+                  </label>
+                  <label className="label">
+                    Conference notes
+                    <input className="input" value={conferenceNotes} onChange={(event) => setConferenceNotes(event.target.value)} placeholder="Bridge pin, war-room channel, next update time" />
+                  </label>
+                </>
+              ) : null}
               <label className="label">
-                Notes
-                <textarea className="input" rows={6} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Operational notes, mitigations, and update timeline..." />
+                Work note (internal)
+                <textarea className="input" rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Internal investigation note" />
+              </label>
+              <label className="label">
+                Customer comment
+                <textarea className="input" rows={3} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Visible update for the caller" />
               </label>
 
               <div className="portal-form-actions">
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  disabled={saving || !resolvedLinkedRequestId || !teamId}
+                  disabled={saving}
                   onClick={() => void submit('draft')}
                 >
                   {saving ? 'Saving...' : 'Save Draft'}
@@ -410,7 +519,7 @@ export default function NewIncidentPage() {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={saving || !resolvedLinkedRequestId || !teamId || !ownerUserId || !summary.trim()}
+                  disabled={saving || !summary.trim()}
                   onClick={() => void submit('submit')}
                 >
                   {saving ? 'Saving...' : 'Submit Incident'}

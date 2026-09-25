@@ -46,7 +46,7 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@setuops.example';
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'Overview',
+  '/dashboard': 'Home',
   '/approval-center': 'Approvals',
   '/project-governance': 'Project Setup',
   '/requests': 'Requests',
@@ -58,7 +58,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/projects': 'Projects',
   '/team-ownership': 'Team Access',
   '/activity': 'Recent Activity',
-  '/templates': 'Request Templates',
+  '/templates': 'Catalog',
   '/access-review': 'Access Review',
   '/webhooks': 'Integrations',
   '/maintenance': 'Maintenance',
@@ -71,7 +71,7 @@ function getPageTitle(pathname: string): string {
   for (const [path, title] of Object.entries(PAGE_TITLES)) {
     if (path !== '/dashboard' && pathname.startsWith(path)) return title;
   }
-  return 'Overview';
+  return 'Home';
 }
 
 function formatTime(iso: string): string {
@@ -104,11 +104,9 @@ const PRIMARY_NAV: {
   Icon: ComponentType<{ className?: string }>;
   children?: { href: string; label: string }[];
 }[] = [
-  { href: '/dashboard', label: 'Overview', Icon: IconDashboard },
+  { href: '/dashboard', label: 'Home', Icon: IconDashboard },
   { href: '/approval-center', label: 'Approvals', Icon: IconShield },
   { href: '/requests', label: 'Requests', Icon: IconRequests },
-  { href: '/changes', label: 'Changes', Icon: IconFileText },
-  { href: '/incidents', label: 'Incidents', Icon: IconAlertCircle },
   {
     href: '/users',
     label: 'People',
@@ -129,19 +127,25 @@ const PRIMARY_NAV: {
       { href: '/team-ownership', label: 'Access' },
     ],
   },
+  { href: '/templates', label: 'Catalog', Icon: IconTemplates },
 ];
 
 const MORE_NAV: { href: string; label: string; Icon: ComponentType<{ className?: string }> }[] = [
+  { href: '/changes', label: 'Changes', Icon: IconFileText },
+  { href: '/incidents', label: 'Incidents', Icon: IconAlertCircle },
   { href: '/sla', label: 'Service levels', Icon: IconTrendingUp },
   { href: '/access-review', label: 'Access review', Icon: IconShield },
   { href: '/activity', label: 'Activity', Icon: IconActivity },
-  { href: '/templates', label: 'Templates', Icon: IconTemplates },
   { href: '/webhooks', label: 'Integrations', Icon: IconWebhook },
   { href: '/maintenance', label: 'Maintenance', Icon: IconLayers },
   { href: '/deploy-intelligence', label: 'Deploy intel', Icon: IconActivity },
   { href: '/scorecards', label: 'Scorecards', Icon: IconTrendingUp },
   { href: '/evidence', label: 'Evidence', Icon: IconFileText },
 ];
+
+const MOBILE_TABS = ['/dashboard', '/approval-center', '/requests', '/projects']
+  .map((href) => PRIMARY_NAV.find((item) => item.href === href))
+  .filter((item): item is (typeof PRIMARY_NAV)[number] => Boolean(item));
 
 function getAdminIdentity(): { initials: string; label: string } {
   if (typeof window === 'undefined') return { initials: 'A', label: 'Admin' };
@@ -689,7 +693,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </main>
       </div>
       <MobileTabBar
-        tabs={PRIMARY_NAV.slice(0, 4).map((item) => ({
+        tabs={MOBILE_TABS.map((item) => ({
           ...item,
           active:
             pathname === item.href
@@ -705,14 +709,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         apiUrl={apiUrl}
         token={token}
         commands={[
-          { id: 'overview', label: 'Overview', href: '/dashboard' },
+          { id: 'home', label: 'Home', href: '/dashboard' },
           { id: 'approvals', label: 'Approvals', href: '/approval-center' },
           { id: 'requests', label: 'Requests', href: '/requests' },
-          { id: 'changes', label: 'Change requests', href: '/changes' },
-          { id: 'incidents', label: 'Incidents', href: '/incidents' },
           { id: 'people', label: 'People', href: '/users' },
           { id: 'projects', label: 'Projects', href: '/projects' },
-          { id: 'templates', label: 'Templates', href: '/templates' },
+          { id: 'catalog', label: 'Catalog', href: '/templates' },
+          { id: 'changes', label: 'Change requests', href: '/changes' },
+          { id: 'incidents', label: 'Incidents', href: '/incidents' },
           { id: 'webhooks', label: 'Integrations', href: '/webhooks' },
         ]}
       />

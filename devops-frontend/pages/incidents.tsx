@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { downloadCSV } from '../lib/csv';
+import { INCIDENT_STATES, ITSM_PRIORITIES, IncidentSLA, incidentStateLabel, incidentStateValue, normalizeSLA, priorityLabel, severityToPriority, slaClockLabel } from '../lib/itsm';
 import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -50,6 +51,7 @@ interface Incident {
   fingerprint?: string;
   alert_source?: string;
   suspected_change_number?: string;
+  sla?: IncidentSLA | null;
 }
 
 function normalizeIncident(incident: unknown): Incident {
@@ -79,6 +81,7 @@ function normalizeIncident(incident: unknown): Incident {
     fingerprint: typeof item.fingerprint === 'string' ? item.fingerprint : '',
     alert_source: typeof item.alert_source === 'string' ? item.alert_source : '',
     suspected_change_number: typeof item.suspected_change_number === 'string' ? item.suspected_change_number : '',
+    sla: normalizeSLA(item.sla),
   };
 }
 
@@ -207,6 +210,8 @@ export default function DevOpsIncidentsPage() {
         'status',
         'escalation_level',
         'owner',
+        'response_sla',
+        'resolve_sla',
         'summary',
         'notes',
       ],
@@ -224,6 +229,8 @@ export default function DevOpsIncidentsPage() {
         incident.status,
         incident.escalation_level,
         incident.owner_username || '',
+        slaClockLabel(incident.sla, 'response'),
+        slaClockLabel(incident.sla, 'resolve'),
         incident.summary,
         incident.notes,
       ]),
@@ -257,8 +264,8 @@ export default function DevOpsIncidentsPage() {
     return incidents.filter((incident) => {
       if (activeProjectID && incident.project_id !== activeProjectID) return false;
       if (activeRequestID && incident.request_id !== activeRequestID) return false;
-      if (activeSeverityFilter && incident.severity.trim().toLowerCase() !== activeSeverityFilter) return false;
-      if (activeStatusFilter && incident.status.trim().toLowerCase() !== activeStatusFilter) return false;
+      if (activeSeverityFilter && severityToPriority(incident.severity) !== activeSeverityFilter) return false;
+      if (activeStatusFilter && incidentStateValue(incident.status) !== incidentStateValue(activeStatusFilter)) return false;
       if (activeEnvironmentFilter && incident.request_env?.trim().toLowerCase() !== activeEnvironmentFilter) return false;
       return true;
     });
@@ -270,8 +277,8 @@ export default function DevOpsIncidentsPage() {
   const resolvedIncidentRequestId = useMemo(() => resolveIncidentReferenceInput(requestId, incidents), [incidents, requestId]);
 
   const visibleIncidentSummary = useMemo(() => {
-    const active = filteredIncidents.filter((incident) => ['open', 'investigating', 'mitigating'].includes(incident.status)).length;
-    const urgent = filteredIncidents.filter((incident) => ['high', 'critical'].includes(incident.severity)).length;
+    const active = filteredIncidents.filter((incident) => ['new', 'in_progress', 'on_hold'].includes(incidentStateValue(incident.status))).length;
+    const urgent = filteredIncidents.filter((incident) => ['p1', 'p2'].includes(severityToPriority(incident.severity))).length;
     const assigned = filteredIncidents.filter((incident) => Boolean(incident.owner_user_id || incident.owner_username)).length;
     return {
       total: filteredIncidents.length,
@@ -528,35 +535,29 @@ export default function DevOpsIncidentsPage() {
         <section className="devops-incident-filter-surface">
           <div className="devops-incident-filter-row">
             <label className="devops-incident-filter-chip">
-              <span className="devops-incident-filter-chip__label">Severity</span>
+              <span className="devops-incident-filter-chip__label">Priority</span>
               <select
                 className="devops-incident-filter-chip__control"
                 value={activeSeverityFilter}
                 onChange={(event) => updateQueueFilters({ severity: event.target.value })}
               >
-                <option value="">All severity</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
+                <option value="">All priorities</option>
+                {ITSM_PRIORITIES.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
               </select>
             </label>
             <label className="devops-incident-filter-chip">
-              <span className="devops-incident-filter-chip__label">Status</span>
+              <span className="devops-incident-filter-chip__label">State</span>
               <select
                 className="devops-incident-filter-chip__control"
                 value={activeStatusFilter}
                 onChange={(event) => updateQueueFilters({ status: event.target.value })}
               >
-                <option value="">All status</option>
-                <option value="draft">Draft</option>
-                <option value="open">Open</option>
-                <option value="acknowledged">Acknowledged</option>
-                <option value="investigating">Investigating</option>
-                <option value="mitigating">Mitigating</option>
-                <option value="resolved">Resolved</option>
-                <option value="closed">Closed</option>
-                <option value="cancelled">Cancelled</option>
+                <option value="">All states</option>
+                {INCIDENT_STATES.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
               </select>
             </label>
             <label className="devops-incident-filter-chip">
@@ -609,11 +610,12 @@ export default function DevOpsIncidentsPage() {
                     <th>Incident reference</th>
                     <th>Source</th>
                     <th>Project</th>
-                    <th>Severity</th>
-                    <th>Status</th>
-                    <th>Team</th>
-                    <th>Escalation</th>
-                    <th>Assigned</th>
+                    <th>Priority</th>
+                    <th>State</th>
+                    <th>Assignment group</th>
+                    <th>Response SLA</th>
+                    <th>Resolve SLA</th>
+                    <th>Assignee</th>
                     <th>Action</th>
                   </tr>
                 </thead>
@@ -644,10 +646,11 @@ export default function DevOpsIncidentsPage() {
                         ) : null}
                       </td>
                       <td>{incident.project_name ? `${incident.project_name} (${incident.project_code})` : 'No project'}</td>
-                      <td>{incident.severity}</td>
-                      <td>{incident.status}</td>
-                      <td>{incident.team_name || incident.request_team || 'No team'}</td>
-                      <td>{incident.escalation_level}</td>
+                      <td>{priorityLabel(incident.severity)}</td>
+                      <td>{incidentStateLabel(incident.status)}</td>
+                      <td>{incident.team_name || incident.request_team || 'No group'}</td>
+                      <td style={{ color: incident.sla?.response_breached ? 'var(--color-danger, #b42318)' : undefined }}>{slaClockLabel(incident.sla, 'response')}</td>
+                      <td style={{ color: incident.sla?.resolve_breached ? 'var(--color-danger, #b42318)' : undefined }}>{slaClockLabel(incident.sla, 'resolve')}</td>
                       <td>{incident.owner_username || 'Unassigned'}</td>
                       <td>
                         <button

@@ -42,6 +42,12 @@ const nextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      { source: '/gitops', destination: '/gitops-projects', permanent: false },
+      { source: '/deployments', destination: '/promotions', permanent: false },
+    ];
+  },
 };
 
 module.exports = withSharedUi(nextConfig, __dirname);

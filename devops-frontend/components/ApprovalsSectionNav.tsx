@@ -2,10 +2,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 
 const TABS = [
-  { href: '/approval-center', label: 'Queue' },
-  { href: '/gate-approvals', label: 'History' },
-  { href: '/gate-policies', label: 'Rules' },
-  { href: '/approval-sla', label: 'Timing' },
+  { href: '/approval-center', label: 'Approval queue' },
+  { href: '/gate-approvals', label: 'Promotion history' },
+  { href: '/gate-policies', label: 'Promotion rules' },
+  { href: '/approval-sla', label: 'Approval timing' },
 ];
 
 function isActive(pathname: string, href: string) {

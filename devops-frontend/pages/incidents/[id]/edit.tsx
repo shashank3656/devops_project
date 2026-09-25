@@ -4,6 +4,9 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
+import ITSMClock from '../../../components/ITSMClock';
+import ITSMJournal from '../../../components/ITSMJournal';
+import { FALLBACK_ITSM_CATEGORIES, INCIDENT_STATES, ITSMCategory, ITSMJournalEntry, IncidentSLA, ITSM_PRIORITIES, incidentStateValue, normalizeCategories, normalizeJournal, normalizeSLA, severityToPriority, subcategoriesFor } from '../../../lib/itsm';
 import { asRecord, getString } from '../../../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -55,6 +58,16 @@ interface Incident {
   silenced_until?: string;
   external_provider?: string;
   external_id?: string;
+  caller_user_id?: number | null;
+  caller_username?: string;
+  category?: string;
+  subcategory?: string;
+  parent_incident_id?: number | null;
+  parent_incident_number?: string;
+  child_incidents?: { id: number; incident_number?: string; summary?: string; status?: string }[];
+  conference_url?: string;
+  conference_notes?: string;
+  sla?: IncidentSLA | null;
 }
 
 function normalizeIncident(incident: unknown): Incident {
@@ -82,6 +95,16 @@ function normalizeIncident(incident: unknown): Incident {
     silenced_until: typeof item.silenced_until === 'string' ? item.silenced_until : '',
     external_provider: typeof item.external_provider === 'string' ? item.external_provider : '',
     external_id: typeof item.external_id === 'string' ? item.external_id : '',
+    caller_user_id: typeof item.caller_user_id === 'number' ? item.caller_user_id : null,
+    caller_username: typeof item.caller_username === 'string' ? item.caller_username : '',
+    category: typeof item.category === 'string' ? item.category : '',
+    subcategory: typeof item.subcategory === 'string' ? item.subcategory : '',
+    parent_incident_id: typeof item.parent_incident_id === 'number' ? item.parent_incident_id : null,
+    parent_incident_number: typeof item.parent_incident_number === 'string' ? item.parent_incident_number : '',
+    child_incidents: Array.isArray(item.child_incidents) ? item.child_incidents as Incident['child_incidents'] : [],
+    conference_url: typeof item.conference_url === 'string' ? item.conference_url : '',
+    conference_notes: typeof item.conference_notes === 'string' ? item.conference_notes : '',
+    sla: normalizeSLA(item.sla),
   };
 }
 
@@ -176,6 +199,17 @@ export default function EditIncidentPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [callers, setCallers] = useState<TeamMemberOption[]>([]);
+  const [categories, setCategories] = useState<ITSMCategory[]>(FALLBACK_ITSM_CATEGORIES);
+  const [callerUserId, setCallerUserId] = useState('');
+  const [category, setCategory] = useState('software');
+  const [subcategory, setSubcategory] = useState('');
+  const [parentIncidentId, setParentIncidentId] = useState('');
+  const [conferenceURL, setConferenceURL] = useState('');
+  const [conferenceNotes, setConferenceNotes] = useState('');
+  const [childIncidents, setChildIncidents] = useState<NonNullable<Incident['child_incidents']>>([]);
+  const [sla, setSla] = useState<IncidentSLA | null>(null);
+  const [journal, setJournal] = useState<ITSMJournalEntry[]>([]);
 
   const incidentId = useMemo(() => parseIncidentId(router.query.id), [router.query.id]);
 
@@ -211,6 +245,16 @@ export default function EditIncidentPage() {
       setTeams(nextTeams);
       setMembersByTeam(nextMembers);
       setIncidents(nextIncidents);
+      const callerList = Array.isArray(data.callers) ? data.callers : [];
+      setCallers(callerList.filter((item: { id?: number }) => typeof item.id === 'number').map((item: { id: number; username?: string; email?: string }) => ({
+        id: item.id,
+        team_id: 0,
+        user_id: item.id,
+        role: 'caller',
+        username: item.username || 'unknown',
+        email: item.email || '',
+      })));
+      setCategories(normalizeCategories(data.categories));
       if (incidentId) {
         const matched = nextIncidents.find((incident) => incident.id === incidentId);
         if (!matched) {
@@ -219,8 +263,8 @@ export default function EditIncidentPage() {
         setCurrentIncidentNumber(getIncidentReference(matched));
         setRequestId(matched.request_id > 0 ? String(matched.request_id) : '');
         setTeamId(matched.team_id ? String(matched.team_id) : '');
-        setSeverity(matched.severity);
-        setStatus(matched.status);
+        setSeverity(severityToPriority(matched.severity));
+        setStatus(incidentStateValue(matched.status));
         setEscalationLevel(matched.escalation_level);
         setOwnerUserId(matched.owner_user_id ? String(matched.owner_user_id) : '');
         setSummary(matched.summary);
@@ -235,6 +279,14 @@ export default function EditIncidentPage() {
         setProblemId(matched.problem_id || 0);
         setSilencedUntil(matched.silenced_until || '');
         setExternalRef(matched.external_provider && matched.external_id ? `${matched.external_provider} · ${matched.external_id}` : '');
+        setCallerUserId(matched.caller_user_id ? String(matched.caller_user_id) : '');
+        setCategory(matched.category || 'software');
+        setSubcategory(matched.subcategory || '');
+        setParentIncidentId(matched.parent_incident_id ? String(matched.parent_incident_id) : '');
+        setConferenceURL(matched.conference_url || '');
+        setConferenceNotes(matched.conference_notes || '');
+        setChildIncidents(matched.child_incidents || []);
+        setSla(matched.sla || null);
         setRollbackPlan(matched.rollback_plan);
         const detail = await fetch(`${apiUrl}/api/devops/incidents/${incidentId}`, { headers: { Authorization: `Bearer ${token}` } });
         if (detail.ok) {
@@ -244,6 +296,19 @@ export default function EditIncidentPage() {
           if (body.review && typeof body.review === 'object') {
             setReview(body.review as Incident['review']);
           }
+          const detailIncident = normalizeIncident(body.incident);
+          if (detailIncident.id) {
+            setCallerUserId(detailIncident.caller_user_id ? String(detailIncident.caller_user_id) : callerUserId);
+            setCategory(detailIncident.category || category);
+            setSubcategory(detailIncident.subcategory || subcategory);
+            setParentIncidentId(detailIncident.parent_incident_id ? String(detailIncident.parent_incident_id) : parentIncidentId);
+            setConferenceURL(detailIncident.conference_url || conferenceURL);
+            setConferenceNotes(detailIncident.conference_notes || conferenceNotes);
+            setChildIncidents(detailIncident.child_incidents || []);
+            setSla(detailIncident.sla || sla);
+            setMajor(Boolean(detailIncident.major || matched.major));
+          }
+          setJournal(normalizeJournal(body.journal));
         }
       }
     } catch (err) {
@@ -301,6 +366,12 @@ export default function EditIncidentPage() {
           notes,
           major,
           status_note: statusNote,
+          caller_user_id: callerUserId ? Number(callerUserId) : 0,
+          category,
+          subcategory,
+          parent_incident_id: parentIncidentId ? Number(parentIncidentId) : 0,
+          conference_url: conferenceURL,
+          conference_notes: conferenceNotes,
         }),
       });
       if (response.status === 401 || response.status === 403) {
@@ -338,6 +409,18 @@ export default function EditIncidentPage() {
             </p>
           </div>
           <div className="portal-page__actions">
+            {problemId > 0 ? (
+              <Link href={`/problems/${problemId}`} className="btn btn-secondary">
+                Open problem
+              </Link>
+            ) : (
+              <Link
+                href={`/problems/new?incident_id=${incidentId || ''}&title=${encodeURIComponent(summary || currentIncidentNumber)}&priority=${encodeURIComponent(severity)}`}
+                className="btn btn-primary"
+              >
+                Create problem
+              </Link>
+            )}
             <Link href="/incidents" className="btn btn-secondary">
               Back to incidents
             </Link>
@@ -395,34 +478,29 @@ export default function EditIncidentPage() {
                   <p className="portal-surface__subtitle">Opened by the post-deploy watcher. Check the linked change for the previous SHA rollback hint.</p>
                 ) : null}
                 <label className="label">
-                  Severity
+                  Priority
                   <select className="input" value={severity} onChange={(event) => setSeverity(event.target.value)}>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
+                    {ITSM_PRIORITIES.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
                   </select>
                 </label>
                 <label className="label">
-                  Status
+                  State
                   <select className="input" value={status} onChange={(event) => setStatus(event.target.value)}>
-                    <option value="draft">Draft</option>
-                    <option value="open">Open</option>
-                    <option value="acknowledged">Acknowledged</option>
-                    <option value="investigating">Investigating</option>
-                    <option value="mitigating">Mitigating</option>
-                    <option value="resolved">Resolved</option>
-                    <option value="closed">Closed</option>
-                    <option value="cancelled">Cancelled</option>
+                    {INCIDENT_STATES.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
                   </select>
                 </label>
                 <p className="portal-surface__subtitle">
-                  Acknowledge when someone owns it. Resolve when service is back. Close after review. Cancel a false alarm.
+                  New → In Progress → On Hold → Resolved → Closed. Response SLA starts on create; moving out of New marks it met.
                 </p>
+                <ITSMClock sla={sla} />
                 <label className="label">
-                  Incident team
+                  Assignment group
                   <select className="input" value={teamId} onChange={(event) => setTeamId(event.target.value)}>
-                    <option value="">Select team</option>
+                    <option value="">Select group</option>
                     {teams.map((team) => (
                       <option key={team.id} value={team.id}>
                         {team.name}
@@ -440,13 +518,51 @@ export default function EditIncidentPage() {
                   </select>
                 </label>
                 <label className="label">
-                  Assigned member
+                  Assignee
                   <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} disabled={!teamId}>
                     <option value="">Unassigned</option>
                     {selectedTeamMembers.map((member) => (
                       <option key={member.id} value={member.user_id}>
                         {member.username} ({member.role})
                       </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label">
+                  Caller
+                  <select className="input" value={callerUserId} onChange={(event) => setCallerUserId(event.target.value)}>
+                    <option value="">Unknown caller</option>
+                    {callers.map((caller) => (
+                      <option key={caller.user_id} value={caller.user_id}>
+                        {caller.username}
+                        {caller.email ? ` · ${caller.email}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label">
+                  Category
+                  <select className="input" value={category} onChange={(event) => { setCategory(event.target.value); setSubcategory(''); }}>
+                    {categories.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label">
+                  Subcategory
+                  <select className="input" value={subcategory} onChange={(event) => setSubcategory(event.target.value)}>
+                    <option value="">Select subcategory</option>
+                    {subcategoriesFor(categories, category).map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label">
+                  Parent incident
+                  <select className="input" value={parentIncidentId} onChange={(event) => setParentIncidentId(event.target.value)}>
+                    <option value="">None — this is the parent</option>
+                    {incidents.filter((item) => item.id !== incidentId).map((item) => (
+                      <option key={item.id} value={item.id}>{getIncidentReference(item)}</option>
                     ))}
                   </select>
                 </label>
@@ -476,17 +592,40 @@ export default function EditIncidentPage() {
               {silencedUntil ? (
                 <p className="portal-surface__subtitle">Silenced until {new Date(silencedUntil).toLocaleString()}</p>
               ) : null}
+              {childIncidents.length ? (
+                <p className="portal-surface__subtitle">
+                  Child incidents:{' '}
+                  {childIncidents.map((child, index) => (
+                    <span key={child.id}>
+                      {index > 0 ? ', ' : ''}
+                      <Link href={`/incidents/${child.id}/edit`}>{child.incident_number || `INC${String(child.id).padStart(7, '0')}`}</Link>
+                    </span>
+                  ))}
+                </p>
+              ) : null}
               <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="checkbox" checked={major} onChange={(event) => setMajor(event.target.checked)} />
-                Major incident — page on-call and post a Slack status note
+                Major incident — page on-call and open a conference
               </label>
+              {major ? (
+                <>
+                  <label className="label">
+                    Conference URL
+                    <input className="input" value={conferenceURL} onChange={(event) => setConferenceURL(event.target.value)} placeholder="https://meet.example.com/major-inc" />
+                  </label>
+                  <label className="label">
+                    Conference notes
+                    <input className="input" value={conferenceNotes} onChange={(event) => setConferenceNotes(event.target.value)} placeholder="Bridge pin, war-room channel, next update" />
+                  </label>
+                </>
+              ) : null}
               <label className="label">
                 Status note
                 <input className="input" value={statusNote} onChange={(event) => setStatusNote(event.target.value)} placeholder="Payments checkout is degraded. Investigating." />
               </label>
               <label className="label">
-                Notes
-                <textarea className="input" rows={6} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Operational notes, mitigations, and update timeline..." />
+                Summary notes
+                <textarea className="input" rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Sticky incident description. Use the journal below for work notes vs customer comments." />
               </label>
 
               <div className="portal-form-actions">
@@ -587,12 +726,20 @@ export default function EditIncidentPage() {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={saving || !teamId || (status !== 'draft' && (!ownerUserId || !summary.trim()))}
+                  disabled={saving || !summary.trim()}
                   onClick={() => void submit()}
                 >
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
+              {incidentId ? (
+                <ITSMJournal
+                  apiUrl={apiUrl}
+                  path={`/api/devops/incidents/${incidentId}/journal`}
+                  entries={journal}
+                  onPosted={setJournal}
+                />
+              ) : null}
             </>
           )}
         </section>
