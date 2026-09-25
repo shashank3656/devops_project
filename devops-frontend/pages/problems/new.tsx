@@ -77,44 +77,50 @@ export default function NewProblemPage() {
       return;
     }
     setLoading(true);
+    const authHeaders = { Authorization: `Bearer ${token}` };
+    const loadJson = async (path: string) => {
+      try {
+        const response = await fetch(`${apiUrl}${path}`, { headers: authHeaders });
+        if (response.status === 401 || response.status === 403) {
+          return { unauthorized: true, data: {} as Record<string, unknown> };
+        }
+        return { unauthorized: false, data: asRecord(await response.json().catch(() => ({}))) };
+      } catch {
+        return { unauthorized: false, data: {} as Record<string, unknown> };
+      }
+    };
     Promise.all([
-      fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } }),
-      fetch(`${apiUrl}/api/devops/services`, { headers: { Authorization: `Bearer ${token}` } }),
-      fetch(`${apiUrl}/api/devops/users?audience=portal`, { headers: { Authorization: `Bearer ${token}` } }),
-      fetch(`${apiUrl}/api/devops/incidents`, { headers: { Authorization: `Bearer ${token}` } }),
-      fetch(`${apiUrl}/api/devops/problems?mode=preview`, { headers: { Authorization: `Bearer ${token}` } }),
-      fetch(`${apiUrl}/api/devops/itsm-catalog`, { headers: { Authorization: `Bearer ${token}` } }),
+      loadJson('/api/devops/projects'),
+      loadJson('/api/devops/services'),
+      loadJson('/api/devops/users?audience=portal'),
+      loadJson('/api/devops/incidents'),
+      loadJson('/api/devops/problems?mode=preview'),
+      loadJson('/api/devops/itsm-catalog'),
     ])
-      .then(async ([projectRes, serviceRes, userRes, incidentRes, previewRes, catalogRes]) => {
-        if ([projectRes, serviceRes, userRes, incidentRes, previewRes, catalogRes].some((res) => res.status === 401 || res.status === 403)) {
+      .then(([projectRes, serviceRes, userRes, incidentRes, previewRes, catalogRes]) => {
+        if ([projectRes, serviceRes, userRes, incidentRes, previewRes, catalogRes].every((item) => item.unauthorized)) {
           clearSessionAndRedirect();
           return;
         }
-        const projectData = asRecord(await projectRes.json().catch(() => ({})));
-        const serviceData = asRecord(await serviceRes.json().catch(() => ({})));
-        const userData = asRecord(await userRes.json().catch(() => ({})));
-        const incidentData = asRecord(await incidentRes.json().catch(() => ({})));
-        const previewData = asRecord(await previewRes.json().catch(() => ({})));
-        const catalogData = asRecord(await catalogRes.json().catch(() => ({})));
-        setCategories(normalizeCategories(catalogData.categories));
-        const teamList = Array.isArray(incidentData.teams) ? incidentData.teams : [];
+        setCategories(normalizeCategories(catalogRes.data.categories));
+        const teamList = Array.isArray(incidentRes.data.teams) ? incidentRes.data.teams : [];
         setTeams(teamList.filter((item: { id?: number; name?: string }) => typeof item.id === 'number').map((item: { id: number; name?: string; slug?: string }) => ({
           id: item.id,
           name: item.name || 'Team',
           code: item.slug || '',
         })));
-        const projectList = Array.isArray(projectData.projects) ? projectData.projects : [];
+        const projectList = Array.isArray(projectRes.data.projects) ? projectRes.data.projects : [];
         setProjects(projectList.filter((item: { id?: number }) => typeof item.id === 'number') as ProjectOption[]);
-        const serviceList = Array.isArray(serviceData.services) ? serviceData.services : [];
+        const serviceList = Array.isArray(serviceRes.data.services) ? serviceRes.data.services : [];
         setServices(serviceList.filter((item: { service?: string }) => item.service) as ServiceOption[]);
-        const userList = Array.isArray(userData.users) ? userData.users : [];
+        const userList = Array.isArray(userRes.data.users) ? userRes.data.users : [];
         setUsers(userList.filter((item: { id?: number }) => typeof item.id === 'number') as PortalUserOption[]);
-        const incidentList = Array.isArray(incidentData.incidents) ? incidentData.incidents : [];
+        const incidentList = Array.isArray(incidentRes.data.incidents) ? incidentRes.data.incidents : [];
         setIncidents(incidentList.filter((item: { id?: number }) => typeof item.id === 'number') as IncidentOption[]);
-        const number = getString(previewData.problem_number);
+        const number = getString(previewRes.data.problem_number);
         if (number) setPreviewNumber(number);
       })
-      .catch(() => setError('Failed to load problem form options'))
+      .catch(() => setError('Some dropdowns could not load. You can still create the problem.'))
       .finally(() => setLoading(false));
   }, [apiUrl]);
 

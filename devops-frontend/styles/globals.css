@@ -7193,9 +7193,19 @@ td {
   background: rgba(2, 6, 23, 0.88);
 }
 
-.gitops-page--ide > .portal-stat-grid,
-.gitops-page--ide > .portal-grid {
+.gitops-page--ide > .portal-stat-grid {
   display: none;
+}
+
+.gitops-create {
+  display: block;
+}
+
+.gitops-create .portal-surface {
+  background: var(--color-surface, rgba(15, 23, 42, 0.72));
+  border: 1px solid var(--color-border, rgba(148, 163, 184, 0.16));
+  border-radius: 20px;
+  padding: 24px;
 }
 
 .gitops-page--ide .portal-surface {
