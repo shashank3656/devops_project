@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { priorityLabel, problemStateLabel } from '../../lib/itsm';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -14,6 +15,7 @@ interface ProblemRow {
   environment: string;
   summary: string;
   status: string;
+  priority?: string;
   occurrence_count: number;
 }
 
@@ -50,8 +52,11 @@ export default function ProblemsPage() {
           <div>
             <span className="portal-page__eyebrow">Incidents</span>
             <h1 className="portal-page__title">Problems</h1>
-            <p className="portal-page__subtitle">The same alert fingerprint three times in 14 days becomes a problem for RCA, not more tickets.</p>
+            <p className="portal-page__subtitle">Create a problem request like a change, or let three matching alerts in 14 days open one for RCA.</p>
           </div>
+          <button type="button" className="btn btn-primary" onClick={() => void router.push('/problems/new')}>
+            Create problem
+          </button>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
         <section className="portal-surface">
@@ -62,9 +67,10 @@ export default function ProblemsPage() {
               <thead>
                 <tr>
                   <th>Problem</th>
+                  <th>Priority</th>
                   <th>Service</th>
                   <th>Count</th>
-                  <th>Status</th>
+                  <th>State</th>
                 </tr>
               </thead>
               <tbody>
@@ -74,9 +80,10 @@ export default function ProblemsPage() {
                       <strong>{item.problem_number}</strong>
                       <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.fingerprint}</div>
                     </td>
+                    <td>{priorityLabel(item.priority || 'p3')}</td>
                     <td>{item.service || item.environment || '—'}</td>
                     <td>{item.occurrence_count}</td>
-                    <td>{item.status}</td>
+                    <td>{problemStateLabel(item.status)}</td>
                   </tr>
                 ))}
               </tbody>

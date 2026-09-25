@@ -223,3 +223,94 @@ func formatProblemNumber(id int) string {
 	}
 	return fmt.Sprintf("PRB%07d", id)
 }
+
+func normalizeITSMPriority(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "p1", "1", "critical", "crit", "sev1":
+		return "p1"
+	case "p2", "2", "high", "sev2":
+		return "p2"
+	case "p4", "4", "low", "sev4":
+		return "p4"
+	default:
+		return "p3"
+	}
+}
+
+func itsmPriorityToSeverity(priority string) string {
+	switch normalizeITSMPriority(priority) {
+	case "p1":
+		return "critical"
+	case "p2":
+		return "high"
+	case "p4":
+		return "low"
+	default:
+		return "medium"
+	}
+}
+
+func severityToITSMPriority(severity string) string {
+	return normalizeITSMPriority(severity)
+}
+
+func itsmPriorityFromImpactUrgency(impact, urgency string) string {
+	rank := func(value string) int {
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "1", "high":
+			return 1
+		case "3", "low":
+			return 3
+		default:
+			return 2
+		}
+	}
+	switch rank(impact) + rank(urgency) {
+	case 2:
+		return "p1"
+	case 3:
+		return "p2"
+	case 4:
+		return "p3"
+	default:
+		return "p4"
+	}
+}
+
+func normalizeProblemStatus(value string) string {
+	switch strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), " ", "_")) {
+	case "new", "open":
+		return "new"
+	case "assess", "assessment":
+		return "assess"
+	case "root_cause_analysis", "rca", "root_cause":
+		return "root_cause_analysis"
+	case "fix_in_progress", "fix", "implementing":
+		return "fix_in_progress"
+	case "resolved", "known_error":
+		return "resolved"
+	case "closed", "complete", "completed":
+		return "closed"
+	default:
+		if value == "" {
+			return "new"
+		}
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+}
+
+func nextProblemNumber() (string, error) {
+	var nextNumber int
+	err := queryRowContext(`
+		SELECT COALESCE(MAX(CAST(SUBSTRING(problem_number FROM 4) AS INTEGER)), 0) + 1
+		FROM problem_records
+		WHERE COALESCE(problem_number, '') <> ''
+	`).Scan(&nextNumber)
+	if err != nil {
+		return "", err
+	}
+	if nextNumber <= 0 {
+		nextNumber = 1
+	}
+	return formatProblemNumber(nextNumber), nil
+}

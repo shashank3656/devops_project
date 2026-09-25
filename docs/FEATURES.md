@@ -219,11 +219,12 @@ Primary nav (manager): Home, Requests, Changes, Deployments, Kubernetes, GitOps,
 
 | Feature | Page | How it works |
 | --- | --- | --- |
-| Open incidents | `/incidents` | `GET /api/devops/incidents`. Status filter. Includes teams and assignees for the create form. |
-| New incident | `/incidents/new` | `POST /api/devops/incidents`. Manual page. Can link a ticket or a suspected CHG. |
-| Edit / assign | `/incidents/[id]/edit` | `PATCH /api/devops/incidents/:id`. Status, owner, severity, notes. |
+| Open incidents | `/incidents` | `GET /api/devops/incidents`. Priority P1–P4, ServiceNow states, assignment group vs assignee, and response/resolve SLA clocks. |
+| New incident | `/incidents/new` | `POST /api/devops/incidents`. Caller, category/subcategory, optional parent INC, impact × urgency, work note vs customer comment. |
+| Edit / assign | `/incidents/[id]/edit` | `PATCH /api/devops/incidents/:id`. SLA clocks, journal, child incidents, major-incident conference. |
 | Incident workspace | `/incident-workspace` | Shared notes while an INC is major. |
-| Problems | `/problems`, `/problems/[id]` | Recurring-issue records. Link many INCs. |
+| Problems | `/problems`, `/problems/new`, `/problems/[id]` | Create a PRB like a change with P1–P4, catalogs, assignment group, and SLA. Recurring alerts still open a problem after three hits. |
+| Knowledge | `/knowledge`, `/knowledge/[id]` | Publish a KB article from a known-error problem (`POST /api/devops/problems/:id/knowledge`). |
 
 Alert-created incidents skip the form: Grafana POSTs `/api/webhooks/alerts`. Same fingerprint updates the existing INC.
 

@@ -322,18 +322,24 @@ Omit `environment` so `service_map` can fill service / project / env. If `repo` 
 
 | Method | Path | Auth | Body / query | What it does |
 | --- | --- | --- | --- | --- |
-| GET | `/api/devops/incidents` | manager | `status` | List + `teams` + `team_members_by_team`. |
+| GET | `/api/devops/incidents` | manager | `status` | List + `teams` + `team_members_by_team` + `callers` + `categories` + SLA. |
 | GET | `/api/devops/incidents?mode=preview` | manager | — | Next `incident_number`. |
-| POST | `/api/devops/incidents` | manager | `{ title, severity, source, request_id, suspected_change_id, owner_user_id, … }` | Manual INC. `request_id` optional. |
-| GET | `/api/devops/incidents/:id` | manager | — | Incident plus `rollback` plan, generated `review`, and saved `postmortem`. |
-| PATCH | `/api/devops/incidents/:id` | manager | status / owner / notes | Update. |
+| POST | `/api/devops/incidents` | manager | `{ title, severity, source, request_id, caller_user_id, category, subcategory, parent_incident_id, … }` | Manual INC. `request_id` optional. Sets P1–P4 SLA clocks. |
+| GET | `/api/devops/incidents/:id` | manager | — | Incident plus `rollback`, `review`, `postmortem`, `journal`, children, and SLA. |
+| PATCH | `/api/devops/incidents/:id` | manager | status / owner / catalogs / conference | Update. In Progress meets response SLA; Resolved meets resolve SLA. |
+| GET/POST | `/api/devops/incidents/:id/journal` | manager | `{ kind, body }` | Work note (`work_note`) or customer comment (`comment`). |
 | GET/POST | `/api/devops/incidents/:id/review` | manager | — | Read or generate a PIR draft from the INC timeline. Does not create a new ticket. Completed reviews are left alone. |
 | POST | `/api/devops/incidents/:id/rollback` | manager | — | Record emergency CHG to the linked change `previous_sha`. Does not apply. |
 | GET | `/api/devops/incident-workspace` | devops | — | Shared major-incident notes plus generated `review`. |
 | POST | `/api/devops/incident-workspace` | manager | `{ incident_id, generate: true }` or postmortem fields | Generate a draft or save notes on the same INC. |
+| GET | `/api/devops/itsm-catalog` | devops | — | Caller categories and default SLA policy (P1 15m/4h … P4 8h/120h). |
 | GET | `/api/devops/problems` | devops | — | Problem records. |
 | POST | `/api/devops/problems` | manager | problem fields | Create. |
-| GET | `/api/devops/problems/:id` | devops | — | Detail + linked INCs. |
+| GET | `/api/devops/problems/:id` | manager | — | Detail + journal + linked KB. |
+| POST | `/api/devops/problems/:id/journal` | manager | `{ kind, body }` | Work note or customer comment. |
+| POST | `/api/devops/problems/:id/knowledge` | manager | — | Publish a KB article from a known error. |
+| GET | `/api/devops/knowledge` | devops | — | Knowledge articles. |
+| GET | `/api/devops/knowledge/:id` | devops | — | One article. |
 | GET | `/api/devops/runbooks` | devops | — | List. |
 | POST | `/api/devops/runbooks` | manager | `{ title, body, service }` | Create. |
 | GET/PATCH/DELETE | `/api/devops/runbooks/:id` | devops / manager | — | One runbook. |
