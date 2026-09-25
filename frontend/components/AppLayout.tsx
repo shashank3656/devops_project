@@ -294,6 +294,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!notifyOpen && !profileOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (notifyRef.current && !notifyRef.current.contains(e.target as Node)) {
         setNotifyOpen(false);
@@ -302,11 +303,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         setProfileOpen(false);
       }
     };
-
-    if (notifyOpen || profileOpen) {
+    const timer = window.setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, [notifyOpen, profileOpen]);
 
   useEffect(() => {
