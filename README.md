@@ -226,7 +226,7 @@ devops_project/
 
 ```bash
 cp config/.env.example config/.env
-./scripts/sync-env.sh
+make env-sync
 docker-compose --profile dev up -d --build
 ```
 

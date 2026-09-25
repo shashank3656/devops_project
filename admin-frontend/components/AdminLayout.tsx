@@ -25,6 +25,7 @@ import {
   IconAlertCircle,
 } from './Icons';
 import SupportHub from './SupportHub';
+import { clearAdminSession, readAdminToken } from '../lib/session';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
 import {
   CommandPalette,
@@ -160,12 +161,7 @@ function getAdminIdentity(): { initials: string; label: string } {
 }
 
 function getAdminToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  const raw = (localStorage.getItem('admin_token') || '').trim();
-  if (!raw || raw === 'undefined' || raw === 'null') return null;
-  // Backend session token format is "<userID>:<unixTimestamp>".
-  if (!/^\d+:\d+$/.test(raw)) return null;
-  return raw;
+  return readAdminToken();
 }
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
@@ -237,10 +233,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     const currentToken = getAdminToken();
     if (currentToken) return;
-    try {
-      localStorage.removeItem('admin_token');
-      localStorage.removeItem('admin_user');
-    } catch (_) {}
+    clearAdminSession();
     if (router.pathname !== '/login') {
       router.replace('/login');
     }

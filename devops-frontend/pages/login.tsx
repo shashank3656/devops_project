@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AuthPipeline, ThemeToggle } from '@infragate/ui';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord } from '../lib/payload';
+import { isSignedSessionToken } from '../lib/session';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -35,7 +36,7 @@ export default function DevOpsLogin() {
 
   useEffect(() => {
     const token = typeof router.query.sso_token === 'string' ? router.query.sso_token : '';
-    if (!token) return;
+    if (!token || !isSignedSessionToken(token)) return;
     localStorage.setItem(DEVOPS_TOKEN_KEY, token);
     router.replace('/dashboard');
   }, [router, router.query.sso_token]);
@@ -91,7 +92,7 @@ export default function DevOpsLogin() {
         setError(loginData.error || 'Login failed');
         return;
       }
-      if (!loginData.token) {
+      if (typeof loginData.token !== 'string' || !isSignedSessionToken(loginData.token)) {
         setError('Login failed');
         return;
       }
@@ -111,7 +112,7 @@ export default function DevOpsLogin() {
         return;
       }
       localStorage.setItem(DEVOPS_TOKEN_KEY, loginData.token);
-      if (typeof meData.token === 'string' && meData.token.trim()) {
+      if (typeof meData.token === 'string' && isSignedSessionToken(meData.token)) {
         localStorage.setItem(DEVOPS_TOKEN_KEY, meData.token.trim());
       }
       localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(meData.user || {}));

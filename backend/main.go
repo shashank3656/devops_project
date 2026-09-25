@@ -14,16 +14,75 @@ import (
 
 type InfraRequest map[string]interface{}
 
-// enableCORS adds CORS headers to allow frontend requests
-func enableCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+func corsAllowedOrigins() []string {
+	origins := []string{
+		strings.TrimRight(strings.TrimSpace(FrontendURL), "/"),
+		strings.TrimRight(strings.TrimSpace(AdminFrontendURL), "/"),
+		strings.TrimRight(strings.TrimSpace(DevOpsFrontendURL), "/"),
+	}
+	for _, part := range strings.Split(os.Getenv("CORS_ALLOWED_ORIGINS"), ",") {
+		part = strings.TrimRight(strings.TrimSpace(part), "/")
+		if part == "" || part == "*" {
+			continue
+		}
+		origins = append(origins, part)
+	}
+	return origins
 }
 
-// handleOptions handles preflight CORS requests
+func corsOriginAllowed(origin string) bool {
+	origin = strings.TrimRight(strings.TrimSpace(origin), "/")
+	if origin == "" {
+		return false
+	}
+	for _, allowed := range corsAllowedOrigins() {
+		if strings.EqualFold(origin, allowed) {
+			return true
+		}
+	}
+	return false
+}
+
+func applyCORSHeaders(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Secret")
+	if r == nil {
+		return
+	}
+	origin := strings.TrimRight(strings.TrimSpace(r.Header.Get("Origin")), "/")
+	if origin != "" && corsOriginAllowed(origin) {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Vary", "Origin")
+	}
+}
+
+func enableCORS(w http.ResponseWriter) {
+	applyCORSHeaders(w, nil)
+}
+
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		applyCORSHeaders(w, r)
+		if r.Method == http.MethodOptions {
+			origin := strings.TrimRight(strings.TrimSpace(r.Header.Get("Origin")), "/")
+			if origin != "" && !corsOriginAllowed(origin) {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func handleOptions(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
+	applyCORSHeaders(w, r)
+	origin := strings.TrimRight(strings.TrimSpace(r.Header.Get("Origin")), "/")
+	if origin != "" && !corsOriginAllowed(origin) {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -494,6 +553,9 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	loadBackendEnvFiles()
 	reloadConfigFromEnv()
+	if err := validateRuntimeSecrets(); err != nil {
+		log.Fatalf("Refusing to start: %v", err)
+	}
 
 	otelShutdown, otelErr := initOpenTelemetry(context.Background())
 	if otelErr != nil {
@@ -798,8 +860,8 @@ func main() {
 	log.Println("  GET  /api/verify-email?token= - Verify email")
 	log.Println("  POST /api/verify-otp - Verify OTP (email + otp)")
 	log.Println("  POST /api/resend-verification - Resend verification (auth required)")
-	log.Println("  PATCH /api/users/:id/role - Set user role (X-Admin-Secret required)")
-	log.Println("  PATCH /api/users/:id/verify - Set user verified (X-Admin-Secret required)")
+	log.Println("  PATCH /api/users/:id/role - Set user role (admin Bearer or break-glass)")
+	log.Println("  PATCH /api/users/:id/verify - Set user verified (admin Bearer or break-glass)")
 	log.Println("  GET  /api/admin/users - List users (admin only)")
 	log.Println("  POST /api/admin/users - Create user (admin only)")
 	log.Println("  GET  /api/admin/users/:id - Get user (admin only)")
@@ -823,7 +885,7 @@ func main() {
 	log.Println("  GET  /swagger.json    - OpenAPI spec")
 	log.Println("  GET  /api-docs       - Swagger UI")
 
-	if err := http.ListenAndServe(addr, withObservability(withRecovery(http.DefaultServeMux))); err != nil {
+	if err := http.ListenAndServe(addr, withCORS(withObservability(withRecovery(http.DefaultServeMux)))); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }

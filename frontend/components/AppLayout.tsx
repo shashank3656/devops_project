@@ -17,6 +17,7 @@ import {
   IconChevronDown,
 } from './Icons';
 import SupportHub from './SupportHub';
+import { clearUserSession } from '../lib/session';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
 import {
   CommandPalette,
@@ -133,7 +134,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileInitials, setProfileInitials] = useState('U');
   const [profileLabel, setProfileLabel] = useState('Portal User');
-  const [teamCheck, setTeamCheck] = useState<'loading' | 'ok' | 'forbidden'>('loading');
+  const [teamCheck, setTeamCheck] = useState<'loading' | 'ok' | 'empty' | 'unauthenticated'>('loading');
   const [updatedRequestsCount, setUpdatedRequestsCount] = useState(0);
   const [pendingManagerApprovalCount, setPendingManagerApprovalCount] = useState(0);
   const [hasManagedTeams, setHasManagedTeams] = useState(false);
@@ -165,16 +166,24 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token || token === 'undefined') {
-      setTeamCheck('forbidden');
+      setTeamCheck('unauthenticated');
       return;
     }
     fetch(`${apiUrl}/api/me/teams`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.json().catch(() => ({})))
-      .then((data) => {
-        const teams = Array.isArray(data?.teams) ? data.teams : [];
-        setTeamCheck(teams.length > 0 ? 'ok' : 'forbidden');
+      .then((res) => {
+        if (res.status === 401) {
+          clearUserSession();
+          setTeamCheck('unauthenticated');
+          return null;
+        }
+        return res.json().catch(() => ({}));
       })
-      .catch(() => setTeamCheck('forbidden'));
+      .then((data) => {
+        if (!data) return;
+        const teams = Array.isArray(data?.teams) ? data.teams : [];
+        setTeamCheck(teams.length > 0 ? 'ok' : 'empty');
+      })
+      .catch(() => setTeamCheck('empty'));
   }, []);
 
   useEffect(() => {
@@ -357,9 +366,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    clearUserSession();
     toast('Logged out successfully', 'success');
     router.push('/login');
   };
@@ -402,17 +409,34 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  if (teamCheck === 'forbidden') {
+  if (teamCheck === 'unauthenticated') {
+    if (typeof window !== 'undefined' && router.pathname !== '/login') {
+      void router.replace('/login');
+    }
+    return (
+      <div className="user-layout-loading">
+        <p>Redirecting to login...</p>
+      </div>
+    );
+  }
+
+  if (teamCheck === 'empty' && pathname !== '/profile') {
     return (
       <div className="user-layout-forbidden">
         <div className="card" style={{ maxWidth: 480, textAlign: 'center' }}>
-          <h1 className="user-forbidden-title">403 Forbidden</h1>
+          <h1 className="user-forbidden-title">Join a team to continue</h1>
           <p className="user-forbidden-text">
-            You are not assigned to any team. Contact your administrator to be added to a team.
+            You are signed in, but you are not assigned to a team yet. Ask an administrator to add you.
+            You can still open your profile.
           </p>
-          <button type="button" className="btn btn-primary" onClick={handleLogout}>
-            Logout
-          </button>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 16 }}>
+            <Link href="/profile" className="btn btn-primary">
+              Profile
+            </Link>
+            <button type="button" className="btn" onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
         </div>
       </div>
     );

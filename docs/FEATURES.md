@@ -78,8 +78,8 @@ Who: developers and team leads. They ask for infrastructure and watch their own 
 
 | Feature | Page | How it works |
 | --- | --- | --- |
-| Login | `/login` | `POST /api/auth/login`. Stores `token`. User must be `portal_user` (or a permitted role) to use this portal. |
-| Signup | `/signup` | `POST /api/auth/signup`. Creates an unverified viewer. OTP is emailed (or returned in testers' responses). |
+| Login | `/login` | `POST /api/auth/login`. Stores a signed JWT in `token`. Legacy `userID:unix` values are rejected. User must be `portal_user` (or a permitted role) to use this portal. |
+| Signup | `/signup` | `POST /api/auth/signup`. Creates an unverified viewer. OTP is emailed. `otp_for_testing` is only returned when `ALLOW_TEST_OTP=true` outside production. |
 | Verify email / OTP | `/verify-email`, `/verify-required` | `GET /api/verify-email`, `POST /api/verify-otp`, `POST /api/resend-verification`. |
 | Forgot / reset password | `/forgot-password`, `/reset-password` | Emails a reset link using `FRONTEND_URL`. |
 | 2FA | `/profile` | `GET/POST/DELETE /api/me/2fa` then `POST /api/auth/verify-2fa` at login. |
@@ -116,7 +116,7 @@ Who: developers and team leads. They ask for infrastructure and watch their own 
 | --- | --- | --- |
 | My projects | `/my-projects` | `GET /api/me/projects`. Projects the user can see via team membership. |
 | Project detail | `/my-projects/[id]` | `GET /api/me/projects/:id`. Requests and recent activity for that project. |
-| My teams | `/my-teams` | `GET /api/me/teams`. Empty teams return 403 so the user knows they are not onboarded. |
+| My teams | `/my-teams` | `GET /api/me/teams`. Empty teams return 200 with `teams: []`. The portal shows a join-a-team empty state. Expired sessions go to login. |
 | Manage team members | `/my-teams` (managers) | `GET /api/me/managed-teams`, `GET/POST /api/me/teams/:id/members`. Portal managers add teammates. They cannot invent admin or DevOps users. |
 
 ### Changes and Incidents (read)

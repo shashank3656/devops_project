@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AuthPipeline, ThemeToggle } from '@infragate/ui';
 import { useToast } from '../context/ToastContext';
 import { asRecord, getString } from '../lib/payload';
+import { clearUserSession, isSignedSessionToken } from '../lib/session';
 import { SITE_NAME } from '../lib/site';
 
 interface PublicSSOState {
@@ -36,16 +37,19 @@ export default function Login() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
   useEffect(() => {
-    const t = localStorage.getItem('token');
-    if (t === 'undefined' || t === 'null') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('isAuthenticated');
+    const t = (localStorage.getItem('token') || '').trim();
+    if (!t || t === 'undefined' || t === 'null' || !isSignedSessionToken(t)) {
+      clearUserSession();
     }
   }, []);
 
   useEffect(() => {
     const token = typeof router.query.sso_token === 'string' ? router.query.sso_token : '';
     if (!token) return;
+    if (!isSignedSessionToken(token)) {
+      clearUserSession();
+      return;
+    }
     localStorage.setItem('token', token);
     localStorage.setItem('isAuthenticated', 'true');
     toast('Signed in with SSO', 'success');
@@ -120,7 +124,7 @@ export default function Login() {
         }
         return;
       }
-      if (typeof data.token !== 'string' || !data.token) {
+      if (typeof data.token !== 'string' || !isSignedSessionToken(data.token)) {
         const message = getString(data.error, 'Login failed');
         setError(message);
         toast(message, 'error');
@@ -129,20 +133,6 @@ export default function Login() {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user && typeof data.user === 'object' ? data.user : {}));
       localStorage.setItem('isAuthenticated', 'true');
-
-      const teamsRes = await fetch(`${apiUrl}/api/me/teams`, {
-        headers: { Authorization: `Bearer ${data.token}` },
-      });
-      const teamsData = asRecord(await teamsRes.json().catch(() => ({})));
-      const teams = Array.isArray(teamsData.teams) ? teamsData.teams : [];
-      if (teams.length === 0) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('isAuthenticated');
-        localStorage.removeItem('user');
-        setError('403 Forbidden: You are not assigned to any team. Contact your administrator.');
-        toast('Access forbidden. You are not in any team.', 'error');
-        return;
-      }
       toast('Welcome back!', 'success');
       router.push('/home');
     } catch (err: any) {
@@ -175,24 +165,13 @@ export default function Login() {
         toast(message, 'error');
         return;
       }
-      if (typeof data.token !== 'string' || !data.token) {
+      if (typeof data.token !== 'string' || !isSignedSessionToken(data.token)) {
         setError('Verification failed');
         return;
       }
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user && typeof data.user === 'object' ? data.user : {}));
       localStorage.setItem('isAuthenticated', 'true');
-      const teamsRes = await fetch(`${apiUrl}/api/me/teams`, { headers: { Authorization: `Bearer ${data.token}` } });
-      const teamsData = asRecord(await teamsRes.json().catch(() => ({})));
-      const teams = Array.isArray(teamsData.teams) ? teamsData.teams : [];
-      if (teams.length === 0) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('isAuthenticated');
-        localStorage.removeItem('user');
-        setError('403 Forbidden: You are not assigned to any team.');
-        toast('Access forbidden. You are not in any team.', 'error');
-        return;
-      }
       toast('Welcome back!', 'success');
       router.push('/home');
     } catch (err: any) {
