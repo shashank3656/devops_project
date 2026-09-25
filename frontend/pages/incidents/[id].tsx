@@ -25,6 +25,8 @@ interface IncidentDetail {
   environment?: string;
   owner_username?: string;
   caused_by?: string;
+  external_provider?: string;
+  external_id?: string;
 }
 
 export default function UserIncidentDetailPage() {
@@ -89,6 +91,7 @@ export default function UserIncidentDetailPage() {
               <label className="label">Owner<input className="input" readOnly value={item.owner_username || 'Unassigned'} /></label>
               <label className="label">Project<input className="input" readOnly value={item.project_name ? `${item.project_name} (${item.project_code})` : '—'} /></label>
               <label className="label">Fingerprint<input className="input" readOnly value={item.fingerprint || '—'} /></label>
+              <label className="label">External IRM<input className="input" readOnly value={item.external_provider && item.external_id ? `${item.external_provider} · ${item.external_id}` : '—'} /></label>
             </div>
             {item.caused_by ? <p className="portal-surface__subtitle">{item.caused_by}</p> : null}
             {item.notes ? <p className="portal-surface__subtitle">{item.notes}</p> : null}

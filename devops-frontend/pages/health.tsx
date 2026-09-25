@@ -13,6 +13,14 @@ interface HealthMetrics {
   saturation?: number;
 }
 
+interface HealthRollbackPlan {
+  allowed?: boolean;
+  previous_sha?: string;
+  block_reason?: string;
+  change_id?: number;
+  k8s_href?: string;
+}
+
 interface HealthChange {
   id: number;
   change_number: string;
@@ -29,6 +37,9 @@ interface HealthChange {
   baseline?: HealthMetrics;
   latest_metrics?: HealthMetrics;
   rollback_hint?: string;
+  rollback_plan?: HealthRollbackPlan;
+  cost_delta_usd?: number;
+  cost_currency?: string;
 }
 
 interface HealthIncident {
@@ -43,6 +54,7 @@ interface HealthIncident {
   service?: string;
   rollback_hint?: string;
   caused_by?: string;
+  rollback_plan?: HealthRollbackPlan;
 }
 
 interface HealthDoraMetric {
@@ -101,6 +113,7 @@ export default function HealthPage() {
   const [payload, setPayload] = useState<HealthPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [rollingKey, setRollingKey] = useState('');
   const projectID = parseQueryNumber(router.query.project_id);
   const environment = Array.isArray(router.query.environment) ? router.query.environment[0] : router.query.environment || '';
 
@@ -131,6 +144,31 @@ export default function HealthPage() {
   const sloQuery = new URLSearchParams();
   if (projectID) sloQuery.set('project_id', String(projectID));
   if (environment) sloQuery.set('environment', environment);
+
+  const rollbackFrom = (kind: 'inc' | 'chg', id: number) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    const key = `${kind}-${id}`;
+    setRollingKey(key);
+    setError('');
+    const path = kind === 'inc' ? `/api/devops/incidents/${id}/rollback` : `/api/devops/changes/${id}/rollback`;
+    fetch(`${apiUrl}${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data?.error || 'Failed to record rollback');
+          return;
+        }
+        if (data.change?.id) {
+          void router.push(`/changes/${data.change.id}`);
+        }
+      })
+      .catch(() => setError('Failed to record rollback'))
+      .finally(() => setRollingKey(''));
+  };
 
   return (
     <DevOpsLayout>
@@ -216,6 +254,8 @@ export default function HealthPage() {
                     <th>Remaining</th>
                     <th>p95 vs baseline</th>
                     <th>Errors</th>
+                    <th>Cost delta</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -237,6 +277,26 @@ export default function HealthPage() {
                       <td>
                         {formatRatio(item.latest_metrics?.error_ratio)}
                         {item.baseline ? ` / ${formatRatio(item.baseline.error_ratio)}` : ''}
+                      </td>
+                      <td>{item.cost_currency || 'USD'} {item.cost_delta_usd ?? 0}</td>
+                      <td>
+                        {item.rollback_plan?.allowed && item.rollback_plan.previous_sha ? (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            disabled={rollingKey === `chg-${item.id}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              rollbackFrom('chg', item.id);
+                            }}
+                          >
+                            {rollingKey === `chg-${item.id}` ? 'Recording…' : `Roll back to ${item.rollback_plan.previous_sha.slice(0, 7)}`}
+                          </button>
+                        ) : item.rollback_plan?.block_reason ? (
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.rollback_plan.block_reason}</span>
+                        ) : item.previous_sha ? (
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Previous {item.previous_sha.slice(0, 7)}</span>
+                        ) : null}
                       </td>
                     </tr>
                   ))}
@@ -266,6 +326,7 @@ export default function HealthPage() {
                     <th>Severity</th>
                     <th>Caused by</th>
                     <th>Rollback hint</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -279,6 +340,23 @@ export default function HealthPage() {
                       <td>{item.severity}</td>
                       <td>{item.caused_by || '—'}</td>
                       <td>{item.rollback_hint || '—'}</td>
+                      <td>
+                        {item.rollback_plan?.allowed && item.rollback_plan.previous_sha ? (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            disabled={rollingKey === `inc-${item.id}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              rollbackFrom('inc', item.id);
+                            }}
+                          >
+                            {rollingKey === `inc-${item.id}` ? 'Recording…' : `Roll back to ${item.rollback_plan.previous_sha.slice(0, 7)}`}
+                          </button>
+                        ) : item.rollback_plan?.block_reason ? (
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.rollback_plan.block_reason}</span>
+                        ) : null}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

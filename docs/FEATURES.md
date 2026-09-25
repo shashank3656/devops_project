@@ -275,13 +275,75 @@ Alert-created incidents skip the form: Grafana POSTs `/api/webhooks/alerts`. Sam
 
 | Integration | Endpoint | How it works |
 | --- | --- | --- |
-| Change webhook | `POST /api/webhooks/change` | CI after merge to `main`. Auth: `X-CI-Secret` or `X-Hub-Signature-256`. Idempotent on `repo+sha+environment`. Omit `environment` to let service_map fill it. |
+| Change webhook | `POST /api/webhooks/change` | CI after merge to `main`. Auth: `X-CI-Secret` or `X-Hub-Signature-256`. Idempotent on `repo+sha+environment`. Omit `environment` to let service_map fill it. Optional SBOM + `infracost_report`. |
 | Alert webhook | `POST /api/webhooks/alerts` | Grafana, Alertmanager, or generic logger. Same fingerprint updates one INC. |
 | Watch metrics | `POST /api/webhooks/watch-metrics` | Push latency/error samples into the watcher. |
 | Infra CI | `POST /api/webhooks/ci` | Terraform plan, Infracost, apply success/fail on a ticket. |
 | GitHub | `POST /api/webhooks/github` | PR events for Deploy intel briefs and check runs. |
 | Slack / Teams commands | `POST /api/webhooks/slack`, `/api/webhooks/teams` | ChatOps: on-call, status. |
 | Outbound events | Admin webhooks | SetuOps POSTs request/change/incident events to Slack or HTTP. |
+| IRM sync | `POST /api/webhooks/irm` | PagerDuty / Grafana IRM / Opsgenie ack-resolve writes back to the same INC fingerprint. |
+
+---
+
+## W1 — Platform integrations
+
+### OIDC login
+Admin **People → SSO** turns on OIDC for User and DevOps. The login pages already call `GET /api/public/sso/options`. Continue with OIDC starts `GET /api/auth/oidc/start` and returns through `/api/auth/oidc/callback` with `?sso_token=`. Admin stays on local break-glass password. Env: `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URL`.
+
+### Workload identity
+CI posts a GitHub Actions OIDC token to `POST /api/auth/workload/github` or a GitLab CI OIDC token to `POST /api/auth/workload/gitlab` (audience default `setuops`). Self-hosted GitLab can set `GITLAB_OIDC_ISSUER` / `GITLAB_OIDC_JWKS_URL`. DevOps **Health → Identity** lists static keys in this process (`AWS_ACCESS_KEY_ID`, `RAILWAY_API_TOKEN`, …) and recent verified exchanges.
+
+### Bidirectional incidents
+Alert labels `pagerduty_incident` / `grafana_alert_uid` attach an external id. Ack or resolve in SetuOps pushes to PagerDuty / Grafana IRM / Opsgenie. Those tools POST the same status to `/api/webhooks/irm` or `/api/webhooks/pagerduty`.
+
+### SBOM / provenance on each CHG
+`POST /api/webhooks/change` accepts `sbom_url`, `attestation_url`, `image_digest`, optional `signed` / `provenance`. Detail pages and the Deploy intel repo last-change card show Signed or Unsigned. The Changes catalog webhook sample includes the fields.
+
+### Read-only MCP
+`POST /mcp` is JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`) authenticated with a session token or API key from `POST /api/me/api-keys`. Tools: `list_changes`, `get_change`, `list_incidents`, `get_incident`, `ask_catalog`, `health_for_service`, `list_identity_findings`, `list_tickets`, `get_ticket`, `list_scorecards`. `ask_catalog` answers from CHG/INC/runbook IDs only. `get_change` / `get_incident` include a rollback plan when `previous_sha` exists. No write tools. Static keys also appear on the DevOps expiry tracker.
+
+---
+
+## W2 — Modern delivery
+
+### Preview environments
+A GitHub PR opened on an onboarded repo creates a `preview` CHG and a live preview row. Cost is estimated from `PREVIEW_HOURLY_USD` (default $0.25/h) and shown on Deploy intel PR meta and **Changes → Previews**. Merge or close tears it down and cancels the CHG. URL template: `PREVIEW_URL_TEMPLATE` with `{pr}`, `{repo}`, `{branch}`.
+
+### Progressive delivery
+A CHG tracks canary / 10 / 50 / 100. CI can send `rollout_stage` or `rollout_percent` on the change webhook. DevOps advances stages on the detail page (`POST /api/devops/changes/:id/rollout`). If Health sees a breach before 100%, rollout is halted and a regression INC opens.
+
+### Feature-flag changes
+`POST /api/webhooks/flags` from LaunchDarkly / Unleash / Flagsmith creates a `flag` CHG with the same resolve/close and watch window.
+
+### OTLP as Health source
+`POST /api/otlp/v1/metrics` or `POST /v1/metrics` accepts OTLP JSON or `{ service, p95_ms, error_ratio }`. Latest samples feed the watcher when `service_map.metrics_url` is empty.
+
+---
+
+## W3 — Governance
+
+### Service scorecards
+Each catalog service gets a 0–100 score from owner, SLO, open incidents, runbook freshness, last CHG, and DORA change-failure rate. DevOps **Scorecards**, Admin **Scorecards**, and User **Scorecards** (visible projects only). MCP `list_scorecards` is the same read.
+
+### Cost delta on a Change
+`POST /api/webhooks/change` accepts `cost_delta_usd` / `cost_monthly_after` or an `infracost_report`. If the CHG is linked to an infra ticket, the watcher copies Infracost onto the CHG when the watch window ends. Detail pages, Health, and the evidence pack show the monthly delta.
+
+### Compliance evidence pack
+DevOps **Evidence** exports the last 30 days: who approved, SHA shipped, watch result, policy, cost, incidents, approvals, previews, and required `infragate/*` branch checks. JSON or Markdown (`?format=md`). Admin has the same pack read-only.
+
+### OPA / Rego on request.json and CHG
+DevOps **Policies** stores lightweight Rego `deny` rules (`target=change` or `request`). Built-in rules reuse existing gates: active deployment freeze on high-control envs, no standard prod change on Friday/Saturday without CAB, no public exposure on high-control request environments. CAB approve re-evaluates the CHG. Failures write `policy_status` / `policy_reasons` and post `infragate/policy`. Manual / preview / flag SHAs skip the GitHub status.
+
+---
+
+## W4 — Act, with citations
+
+### Grounded assistant
+`POST /api/copilot` retrieves CHGs, INCs, and runbooks first. The reply names those IDs. If a linked change has `previous_sha`, it suggests that recovery. It will not apply Terraform, Helm, or cluster changes. The Support hub shows citation links. User answers stay scoped to visible projects.
+
+### Watcher rollback to an emergency CHG
+A regression INC on Health, a watching CHG with `previous_sha`, Deploy intel last-change, or the incident editor can record an emergency CHG that targets `previous_sha`. Prod freezes still block it. High-control rollback without an active INC still needs CAB. If a cluster connection exists, the plan includes `k8s_href`. SetuOps records the CHG (and a rollback-console draft when the source ticket exists). It does not apply the revision.
 
 ---
 
@@ -302,6 +364,17 @@ Alert-created incidents skip the form: Grafana POSTs `/api/webhooks/alerts`. Sam
 | Kubernetes | — | — | Yes |
 | People / teams | Own teams | Full | DevOps teams |
 | Webhook secrets | — | Configure | Use sample on Changes |
+| SSO / OIDC | Login button | Configure | Login button + Identity |
+| MCP | — | — | Via API key |
+| Previews | — | — | Catalog + PR brief cost |
+| Progressive rollout | — | Read | Advance / halt |
+| Flag CHGs | Read | Read | Webhook + catalog |
+| OTLP Health | — | — | Ingest + watcher |
+| Scorecards | Own projects | Read | Catalog |
+| Evidence pack | — | Read | Export JSON / Markdown |
+| Policies / Rego | — | — | Catalog + configure |
+| Grounded assistant | Own CHG/INC | All read | Cite + suggest SHA |
+| Watcher rollback | — | — | Record emergency CHG |
 
 ---
 
@@ -315,4 +388,4 @@ Alert-created incidents skip the form: Grafana POSTs `/api/webhooks/alerts`. Sam
 
 **Priority / risk on CHG:** `low` / `medium` / `high` / `critical` (normalized from several aliases).
 
-**Change type:** `standard` / `normal` / `emergency`.
+**Change type:** `standard` / `normal` / `emergency` / `preview` / `flag`.

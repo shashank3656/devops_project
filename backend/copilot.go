@@ -34,7 +34,8 @@ func copilotHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r, http.MethodPost)
 		return
 	}
-	if _, _, ok := requireSignedIn(w, r); !ok {
+	userID, _, ok := requireSignedIn(w, r)
+	if !ok {
 		return
 	}
 	var body copilotRequest
@@ -42,12 +43,14 @@ func copilotHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
-	reply, source := answerCopilot(body)
+	answer := answerGroundedCopilot(body, userID, body.Portal)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"status": "ok",
-		"reply":  reply,
-		"source": source,
+		"status":    "ok",
+		"reply":     answer.Reply,
+		"source":    answer.Source,
+		"citations": answer.Citations,
+		"rollback":  answer.Rollback,
 	})
 }
 
@@ -109,7 +112,7 @@ func callCopilotModel(body copilotRequest) (string, bool) {
 	payload := map[string]interface{}{
 		"model": model,
 		"messages": []copilotMessage{
-			{Role: "system", Content: "You are the SetuOps ops copilot. Be concise. Explain production impact, gates, incidents, and rollback using only the provided context."},
+			{Role: "system", Content: "You are the SetuOps ops copilot. Answer only from the provided Change, Incident, and runbook citations. Name those IDs. Suggest a previous SHA when present. Never apply Terraform, Helm, or cluster changes."},
 			{Role: "user", Content: fmt.Sprintf("Portal: %s\nPage: %s %s\nQuestion: %s\nContext: %s", body.Portal, body.Title, body.Path, body.Query, string(contextJSON))},
 		},
 		"temperature": 0.2,

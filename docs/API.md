@@ -50,7 +50,13 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | Method | Path | Auth | Body / query | What it does |
 | --- | --- | --- | --- | --- |
 | POST | `/api/auth/signup` | none | `{ username, email, password }` | Creates unverified viewer. Password min 6. Conflict if username/email taken. May return `otp_for_testing`. |
-| POST | `/api/auth/login` | none | `{ username_or_email, password }` or `{ email, password }` | Returns `{ token, user }`. If 2FA is on, returns a challenge then call verify-2fa. |
+| POST | `/api/auth/login` | none | `{ username_or_email, password }` or `{ email, password }` | Returns `{ token, user }`. If 2FA is on, returns a challenge then call verify-2fa. Blocked when portal SSO is required (except admin). |
+| GET | `/api/public/sso/options` | none | `?portal=user\|devops` | `{ enabled, mode, provider, login_url }`. OIDC login_url defaults to `/api/auth/oidc/start`. |
+| GET | `/api/auth/oidc/start` | none | `?portal=` | Redirects to the IdP. |
+| GET | `/api/auth/oidc/callback` | none | `code`, `state` | Exchanges the code and redirects to the portal `/login?sso_token=`. |
+| POST | `/api/auth/sso/login` | `X-SSO-Auth-Secret` if set | directory user JSON | Existing JIT/SSO session mint (IdP adapters). |
+| POST | `/api/auth/workload/github` | GitHub OIDC JWT | Bearer token or `{ token }` | Verifies Actions OIDC (`aud` default `setuops`). |
+| POST | `/api/auth/workload/gitlab` | GitLab OIDC JWT | Bearer token or `{ token }` | Verifies GitLab CI OIDC (`aud` default `setuops`). |
 | POST | `/api/auth/forgot-password` | none | `{ email }` | Sends reset email using `FRONTEND_URL`. |
 | POST | `/api/auth/reset-password` | none | `{ token, password }` | Sets a new password. |
 | POST | `/api/auth/verify-2fa` | pending | `{ code }` or `{ token, code }` | Completes 2FA login. |
@@ -89,7 +95,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | GET | `/api/golden-paths` | user | — | Suggested request paths. |
 | GET | `/api/cost-guardrail` | user | query | Whether the filled form exceeds policy. |
 | POST | `/api/cost-estimate` | user | request-shaped body | Estimated monthly cost. |
-| POST | `/api/copilot` | user | `{ prompt, context }` | In-app help. |
+| POST | `/api/copilot` | signed-in | `{ query, path, title, portal, context }` | Grounded reply with `citations[]` and optional `rollback`. Refuses apply. |
 | GET | `/api/templates` | user | — | Published templates. |
 | GET | `/api/templates/:id` | user | — | Template detail / schema. |
 | GET | `/api/logs/cloud` | user | `?cloud=` | Cloud activity for the user's work. |
@@ -112,7 +118,8 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | GET | `/api/me/teams/:id/members` | manager | — | Members. |
 | POST | `/api/me/teams/:id/members` | manager | `{ user_id }` | Add member. |
 | GET | `/api/me/changes` | user | `project_id`, `environment`, `status`, `q`, `change_type` | CHGs on visible projects only. Unmapped CHGs omitted. |
-| GET | `/api/me/changes/:id` | user | — | One CHG if visible. |
+| GET | `/api/me/changes/:id` | user | — | One CHG if visible. Includes cost delta and policy status. |
+| GET | `/api/me/scorecards` | user | `environment` | Scorecards for services on visible projects. |
 | GET | `/api/me/incidents` | user | `status` | Assigned to the user **or** on a visible project. |
 | GET | `/api/me/incidents/:id` | user | — | One INC if visible. |
 
@@ -187,11 +194,16 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | POST | `/api/admin/webhooks` | admin | `{ url, events, secret }` | Create outbound webhook. |
 | PATCH | `/api/admin/webhooks/:id` | admin | fields | Update. |
 | DELETE | `/api/admin/webhooks/:id` | admin | — | Delete. |
+| GET/PUT | `/api/admin/sso/settings` | admin | provider, portal modes, JIT, claim flags | Enable OIDC / directory SSO. |
+| POST | `/api/admin/sso/sync` | admin | — | Run directory sync now. |
+| GET | `/api/admin/sso/audit` | admin | — | SSO audit entries. |
 | GET | `/api/admin/inbound-sources` | admin | — | Extra inbound secrets (kinds: `change`, `alert`, `grafana`, …). |
 | POST | `/api/admin/inbound-sources` | admin | `{ kind, name, secret }` | Add a source. Secret is stored hashed. |
 | PATCH/DELETE | `/api/admin/inbound-sources/:id` | admin | — | Disable or remove. |
 | GET | `/api/admin/changes` | admin | same filters as DevOps list | Full CHG catalog (read). |
-| GET | `/api/admin/changes/:id` | admin | — | One CHG (read). |
+| GET | `/api/admin/changes/:id` | admin | — | One CHG (read). Includes cost delta and policy status. |
+| GET | `/api/admin/scorecards` | admin | `project_id`, `environment` | Read-only service scorecards. |
+| GET | `/api/admin/evidence` | admin | `project_id`, `from`, `to`, `format=md` | 30-day evidence pack (JSON or Markdown). |
 | GET | `/api/admin/incidents` | admin | `status` | Full INC catalog (read). |
 | GET | `/api/admin/incidents/:id` | admin | — | One INC (read). |
 | GET | `/api/admin/deploy-intelligence/feed` | admin | — | Read-only intel stream. |
@@ -256,6 +268,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | POST | `/api/devops/changes/:id/cancel` | manager | — | Never shipped. |
 | POST | `/api/devops/changes/:id/reopen` | manager | — | Back to `implementing`. |
 | POST | `/api/devops/changes/:id/cab-approve` | manager | — | CAB approve. |
+| POST | `/api/devops/changes/:id/rollback` | manager | — | Record emergency CHG to `previous_sha`. Does not apply. Freeze/CAB still apply. |
 | GET | `/api/devops/change-calendar` | devops | — | Planned windows. |
 | GET | `/api/devops/change-risk` | devops | — | Risk view. |
 | GET | `/api/devops/release-notes` | devops | — | Weekly notes from closed CHGs. |
@@ -312,7 +325,9 @@ Omit `environment` so `service_map` can fill service / project / env. If `repo` 
 | GET | `/api/devops/incidents` | manager | `status` | List + `teams` + `team_members_by_team`. |
 | GET | `/api/devops/incidents?mode=preview` | manager | — | Next `incident_number`. |
 | POST | `/api/devops/incidents` | manager | `{ title, severity, source, request_id, suspected_change_id, owner_user_id, … }` | Manual INC. `request_id` optional. |
+| GET | `/api/devops/incidents/:id` | manager | — | Incident plus `rollback` plan when a previous SHA exists. |
 | PATCH | `/api/devops/incidents/:id` | manager | status / owner / notes | Update. |
+| POST | `/api/devops/incidents/:id/rollback` | manager | — | Record emergency CHG to the linked change `previous_sha`. Does not apply. |
 | GET | `/api/devops/incident-workspace` | devops | — | Shared major-incident notes. |
 | GET | `/api/devops/problems` | devops | — | Problem records. |
 | POST | `/api/devops/problems` | manager | problem fields | Create. |
@@ -428,6 +443,13 @@ All require a DevOps user. Writes (onboard, actions, terminal) typically require
 | POST | `/api/devops/environment-drift/fix` | manager | Apply a drift fix. |
 | GET | `/api/devops/cost-digest` | devops | Cost rollup. |
 | GET | `/api/devops/service-heatmap` | devops | Hot services. |
+| GET | `/api/devops/identity` | devops | Static-key flags + recent GitHub OIDC exchanges. |
+| GET | `/api/devops/previews` | devops | Ephemeral preview environments and estimated cost. |
+| POST | `/api/devops/changes/:id/rollout` | manager | `{ stage: canary|10|50|100 }` progressive delivery. |
+| GET | `/api/devops/scorecards` | devops | Service scorecards from the catalog + CHG/INC/SLO. |
+| GET | `/api/devops/evidence` | devops | Evidence pack. `?format=md` downloads Markdown. |
+| GET | `/api/devops/policies` | devops | Stored Rego deny rules. |
+| POST | `/api/devops/policies` | manager | `{ name, target, rego }` target `change` or `request`. |
 | GET | `/api/devops/credential-audit` | devops | Cloud key audit. |
 | POST | `/api/devops/expiry-tracker/actions` | manager | Act on expiring credentials. |
 | GET/POST | `/api/devops/access-overrides` | manager | Time-boxed extra access. |
@@ -450,13 +472,29 @@ Creates or updates a Change Request. Idempotent on `repo + sha + environment`.
 
 Call this from application CI after merge to `main`. Omit `environment` so the service catalog can fill it. Same SHA + repo + resolved env updates the existing CHG.
 
-See the **Manual / webhook body** above. Extra fields CI usually sends: `files[]` (optional; not on the DevOps form).
+See the **Manual / webhook body** above. Extra fields CI usually sends: `files[]` (optional; not on the DevOps form), `sbom_url`, `attestation_url`, `image_digest`, `signed`, `provenance`, `cost_delta_usd`, `cost_monthly_after`, `infracost_report`.
 
 ### `POST /api/webhooks/alerts`
 
 Secret: `ALERT_WEBHOOK_SECRET` (plus `CI_WEBHOOK_SECRET` and inbound sources of kind `alert` / `grafana` / `alertmanager` / `generic_log`).
 
-Accepts Grafana, Alertmanager, or a generic `{ fingerprint, severity, title, message, service, environment, status, labels }` body. Firing with the same fingerprint updates the same INC. Resolving marks it resolved. If a CHG for that service is still in its watch window, `suspected_change_id` is set.
+Accepts Grafana, Alertmanager, or a generic `{ fingerprint, severity, title, message, service, environment, status, labels }` body. Firing with the same fingerprint updates the same INC. Resolving marks it resolved. If a CHG for that service is still in its watch window, `suspected_change_id` is set. Labels `pagerduty_incident` / `grafana_alert_uid` / `opsgenie_alert` attach the IRM id.
+
+### `POST /api/webhooks/irm` and `/api/webhooks/irm/:provider`
+
+Same alert secrets. PagerDuty, Grafana IRM, or Opsgenie payloads ack/resolve the matching INC (or open one). SetuOps also writes back on DevOps incident PATCH when `PAGERDUTY_API_KEY` / `GRAFANA_IRM_URL` / `OPSGENIE_API_KEY` are set.
+
+### `POST /mcp` and `GET /mcp`
+
+JSON-RPC MCP. Auth: Bearer session token or API key. Read tools only: `list_changes`, `get_change`, `list_incidents`, `get_incident`, `ask_catalog`, `health_for_service`, `list_identity_findings`, `list_tickets`, `get_ticket`, `list_scorecards`. `ask_catalog` cites catalog IDs and never applies. `GET /mcp` is the discovery document.
+
+### `POST /api/webhooks/flags`
+
+Same change secrets. LaunchDarkly / Unleash / Flagsmith style JSON. Creates a `flag` CHG.
+
+### `POST /api/otlp/v1/metrics` and `POST /v1/metrics`
+
+Change or alert secrets. OTLP JSON `resourceMetrics` or `{ service, p95_ms, error_ratio }`. Updates watching CHGs and `service_metric_latest`.
 
 ### `POST /api/webhooks/watch-metrics`
 
@@ -520,4 +558,4 @@ Do **not** send a hardcoded `environment: dev` or `pr_number: 0`. The full sampl
 
 ## Route count (registered in `main.go`)
 
-About **190** `http.HandleFunc` paths. Sub-routes (`/approve`, `/close`, `/cab-approve`, `/members`, …) are extra methods on those prefixes and are listed in the tables above.
+About **196** `http.HandleFunc` paths. Sub-routes (`/approve`, `/close`, `/cab-approve`, `/members`, …) are extra methods on those prefixes and are listed in the tables above.

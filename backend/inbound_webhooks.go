@@ -52,6 +52,23 @@ type parsedChangeWebhook struct {
 	PlannedEnd           string          `json:"planned_end"`
 	CABWindowStart       string          `json:"cab_window_start"`
 	CABWindowEnd         string          `json:"cab_window_end"`
+	SbomURL              string          `json:"sbom_url"`
+	AttestationURL       string          `json:"attestation_url"`
+	ImageDigest          string          `json:"image_digest"`
+	ImageRef             string          `json:"image"`
+	ProvenanceJSON       string          `json:"-"`
+	Provenance           map[string]any  `json:"provenance"`
+	Signed               *bool           `json:"signed"`
+	RolloutStage         string          `json:"rollout_stage"`
+	RolloutPercent       int             `json:"rollout_percent"`
+	PreviewURL           string          `json:"preview_url"`
+	EstimatedCostUSD     float64         `json:"estimated_cost_usd"`
+	FlagKey              string          `json:"flag_key"`
+	FlagValue            string          `json:"flag_value"`
+	CostDeltaUSD         float64         `json:"cost_delta_usd"`
+	CostMonthlyAfter     float64         `json:"cost_monthly_after"`
+	CostCurrency         string          `json:"cost_currency"`
+	InfracostReport      json.RawMessage `json:"infracost_report"`
 	Metrics              *serviceMetrics `json:"metrics"`
 }
 
@@ -66,9 +83,11 @@ type parsedAlertEvent struct {
 	ProjectCode  string
 	ProjectID    int
 	DashboardURL string
-	Status       string
-	StartsAt     time.Time
-	Labels       map[string]string
+	Status           string
+	StartsAt         time.Time
+	Labels           map[string]string
+	ExternalProvider string
+	ExternalID       string
 }
 
 func inboundWebhookAuthorized(kind inboundWebhookKind, headers http.Header, body []byte) bool {
@@ -309,6 +328,29 @@ func parseChangeWebhookJSON(body []byte) (parsedChangeWebhook, error) {
 	}
 	payload.Files = cleanFiles
 	payload.Metrics = normalizeServiceMetrics(payload.Metrics)
+	if payload.Provenance == nil {
+		payload.Provenance = map[string]any{}
+	}
+	payload.SbomURL = firstNonEmpty(payload.SbomURL, stringFromAny(payload.Provenance["sbom_url"]))
+	payload.AttestationURL = firstNonEmpty(payload.AttestationURL, stringFromAny(payload.Provenance["attestation_url"]))
+	payload.ImageDigest = firstNonEmpty(payload.ImageDigest, payload.ImageRef, stringFromAny(payload.Provenance["image_digest"]))
+	if payload.SbomURL != "" {
+		payload.Provenance["sbom_url"] = payload.SbomURL
+	}
+	if payload.AttestationURL != "" {
+		payload.Provenance["attestation_url"] = payload.AttestationURL
+	}
+	if payload.ImageDigest != "" {
+		payload.Provenance["image_digest"] = payload.ImageDigest
+	}
+	if payload.Signed != nil {
+		payload.Provenance["signed"] = *payload.Signed
+	} else if payload.AttestationURL != "" {
+		payload.Provenance["signed"] = true
+	}
+	if raw, err := json.Marshal(payload.Provenance); err == nil && len(payload.Provenance) > 0 {
+		payload.ProvenanceJSON = string(raw)
+	}
 	return payload, nil
 }
 
@@ -377,6 +419,7 @@ func alertEventFromGrafanaMap(source string, envelope, alert map[string]interfac
 		StartsAt:     startsAt,
 		Labels:       labels,
 	}
+	event.ExternalProvider, event.ExternalID = extractAlertExternalRef(labels, envelope)
 	return event
 }
 
@@ -387,7 +430,7 @@ func parseGenericAlertMap(raw map[string]interface{}) (parsedAlertEvent, error) 
 	environment := firstNonEmpty(stringFromAny(raw["environment"]), labels["env"], labels["environment"])
 	source := normalizeAlertSource(firstNonEmpty(stringFromAny(raw["source"]), "generic_log"))
 	fingerprint := alertFingerprint(source, stringFromAny(raw["fingerprint"]), title, service, environment)
-	return parsedAlertEvent{
+	event := parsedAlertEvent{
 		Source:       source,
 		Fingerprint:  fingerprint,
 		Severity:     normalizeAlertSeverity(firstNonEmpty(stringFromAny(raw["severity"]), labels["severity"])),
@@ -401,7 +444,27 @@ func parseGenericAlertMap(raw map[string]interface{}) (parsedAlertEvent, error) 
 		Status:       firstNonEmpty(stringFromAny(raw["status"]), "firing"),
 		StartsAt:     parseFlexibleTime(stringFromAny(raw["starts_at"])),
 		Labels:       labels,
-	}, nil
+	}
+	event.ExternalProvider, event.ExternalID = extractAlertExternalRef(labels, raw)
+	event.ExternalProvider = firstNonEmpty(event.ExternalProvider, normalizeIRMProvider(stringFromAny(raw["external_provider"])))
+	event.ExternalID = firstNonEmpty(event.ExternalID, stringFromAny(raw["external_id"]))
+	return event, nil
+}
+
+func extractAlertExternalRef(labels map[string]string, raw map[string]interface{}) (string, string) {
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	if id := firstNonEmpty(labels["pagerduty_incident"], labels["pd_incident"], stringFromAny(raw["pagerduty_incident"])); id != "" {
+		return "pagerduty", id
+	}
+	if id := firstNonEmpty(labels["grafana_alert_uid"], labels["alert_uid"], stringFromAny(raw["alert_uid"])); id != "" {
+		return "grafana", id
+	}
+	if id := firstNonEmpty(labels["opsgenie_alert"], labels["opsgenie_id"], stringFromAny(raw["opsgenie_id"])); id != "" {
+		return "opsgenie", id
+	}
+	return "", ""
 }
 
 func firstNonEmpty(values ...string) string {
@@ -568,6 +631,12 @@ func alertWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to record incident", err)
 			return
+		}
+		if item != nil {
+			attachIncidentExternalRef(item.ID, event.ExternalProvider, event.ExternalID)
+			if refreshed, getErr := getRequestIncidentByID(item.ID); getErr == nil && refreshed != nil {
+				item = refreshed
+			}
 		}
 		incidents = append(incidents, *item)
 		switch action {

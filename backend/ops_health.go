@@ -71,6 +71,9 @@ func buildOpsHealth(projectID int, environment string) (*opsHealthPayload, error
 	if len(regressions) > 40 {
 		regressions = regressions[:40]
 	}
+	for i := range watching {
+		attachChangeRollbackPlan(&watching[i])
+	}
 	for i := range regressions {
 		if regressions[i].SuspectedChangeID == nil {
 			continue
@@ -79,6 +82,7 @@ func buildOpsHealth(projectID int, environment string) (*opsHealthPayload, error
 			regressions[i].RollbackHint = change.RollbackHint
 			regressions[i].CausedBy = causedByChangeCopy(regressions[i], change)
 		}
+		attachRollbackPlan(&regressions[i])
 	}
 	slos, _ := listServiceSLOBudgets(projectID, environment)
 	burned := 0

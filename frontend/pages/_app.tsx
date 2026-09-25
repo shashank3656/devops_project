@@ -14,7 +14,7 @@ import '../../shared-ui/theme.css';
 // Must run before any page fetches (child effects run before this component's effects).
 installApiUrlRewrite(process.env.NEXT_PUBLIC_API_URL);
 
-const AUTHED_PATHS = ['/home', '/create-infrastructure', '/templates', '/select-service', '/custom-json', '/history', '/profile', '/my-teams', '/my-projects', '/incidents', '/changes', '/request-success'];
+const AUTHED_PATHS = ['/home', '/create-infrastructure', '/templates', '/select-service', '/custom-json', '/history', '/profile', '/my-teams', '/my-projects', '/incidents', '/changes', '/scorecards', '/request-success'];
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();

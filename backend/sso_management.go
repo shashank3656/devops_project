@@ -121,6 +121,8 @@ func normalizeSSOProvider(provider string) string {
 		return "keycloak"
 	case "saml":
 		return "saml"
+	case "oidc", "openid", "openid_connect":
+		return "oidc"
 	default:
 		return "none"
 	}
@@ -1593,9 +1595,14 @@ func publicSSOOptionsHandler(w http.ResponseWriter, r *http.Request) {
 			loginURL = strings.TrimSpace(os.Getenv("KEYCLOAK_SSO_LOGIN_URL"))
 		case "saml":
 			loginURL = strings.TrimSpace(os.Getenv("SAML_SSO_LOGIN_URL"))
+		case "oidc":
+			loginURL = oidcStartURL(portal)
 		default:
 			loginURL = strings.TrimSpace(os.Getenv("SSO_LOGIN_URL"))
 		}
+	}
+	if loginURL == "" && settings.Provider == "oidc" && mode != ssoModeDisabled {
+		loginURL = oidcStartURL(portal)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

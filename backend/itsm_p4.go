@@ -12,6 +12,10 @@ func normalizeChangeType(value string) string {
 		return "normal"
 	case "emergency", "emerg", "break_fix", "break-fix":
 		return "emergency"
+	case "preview", "ephemeral", "sandbox":
+		return "preview"
+	case "flag", "feature_flag", "feature-flag", "flags":
+		return "flag"
 	default:
 		return "standard"
 	}
@@ -123,6 +127,14 @@ func approveChangeCAB(id, userID int) (*changeRequestRecord, error) {
 	if err != nil {
 		return nil, err
 	}
+	applyChangePolicies(id, parsedChangeWebhook{
+		Environment: item.Environment,
+		ChangeType:  item.ChangeType,
+		Service:     item.Service,
+		Repo:        item.Repo,
+		Impact:      item.Impact,
+		Summary:     item.Summary,
+	})
 	go FireOutboundWebhooks("change.updated", map[string]interface{}{
 		"change_id": item.ID, "change_number": item.ChangeNumber, "status": item.Status, "cab_status": item.CABStatus,
 	})

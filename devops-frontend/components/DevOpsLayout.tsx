@@ -101,11 +101,17 @@ const PAGE_TITLES: Record<string, string> = {
   '/changes/new': 'Create change request',
   '/change-calendar': 'Change calendar',
   '/release-notes': 'Release notes',
+  '/previews': 'Preview environments',
+  '/scorecards': 'Scorecards',
+  '/evidence': 'Evidence',
+  '/policies': 'Policies',
+  '/policies/configure': 'Configure policy',
   '/services': 'Services',
   '/services/new': 'Add service',
   '/problems': 'Problems',
   '/health': 'Health',
   '/health/slo/new': 'Define SLO',
+  '/identity': 'Identity',
   '/deploy-intelligence': 'Deploy intelligence',
   '/deploy-intelligence/onboard': 'Onboard repository',
   '/rollback-console': 'Rollback',
@@ -460,14 +466,24 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       Icon: IconFileText,
       children: [
         { href: '/changes', label: 'Catalog' },
+        { href: '/previews', label: 'Previews' },
         { href: '/services', label: 'Services' },
+        { href: '/scorecards', label: 'Scorecards' },
         { href: '/change-calendar', label: 'Calendar' },
         { href: '/release-notes', label: 'Release notes' },
       ],
     });
   }
   primaryNavItems.push({ href: '/k8s', label: 'Kubernetes', Icon: IconK8s });
-  primaryNavItems.push({ href: '/health', label: 'Health', Icon: IconArrowUpRight });
+  primaryNavItems.push({
+    href: '/health',
+    label: 'Health',
+    Icon: IconArrowUpRight,
+    children: [
+      { href: '/health', label: 'Catalog' },
+      { href: '/identity', label: 'Identity' },
+    ],
+  });
   if (isManager) {
     primaryNavItems.push({
       href: '/projects',
@@ -485,6 +501,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/promotions', label: 'Promotions', Icon: IconArrowUpRight },
         { href: '/deploy-intelligence', label: 'Deploy intel', Icon: IconArrowUpRight },
         { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
+        { href: '/evidence', label: 'Evidence', Icon: IconFileText },
+        { href: '/policies', label: 'Policies', Icon: IconShield },
         { href: '/ops-command-center', label: 'Operations', Icon: IconAlertTriangle },
         { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
         { href: '/templates', label: 'Request Templates', Icon: IconTemplates },
