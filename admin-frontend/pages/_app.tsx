@@ -2,6 +2,7 @@ import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { useEffect } from 'react';
 import { applyTheme, installApiUrlRewrite } from '@infragate/ui';
+import { clearAdminSession } from '../lib/session';
 import { ADMIN_SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
 import '../../shared-ui/tokens.css';
@@ -54,8 +55,7 @@ export default function App({ Component, pageProps }: AppProps) {
         const responseUrl = response.url ? normalize(response.url) : requestUrl;
         const isAdminProtectedAPI = responseUrl.includes('/api/admin/') || responseUrl.endsWith('/api/me');
         if (response.status === 401 && isAdminProtectedAPI) {
-          localStorage.removeItem('admin_token');
-          localStorage.removeItem('admin_user');
+          clearAdminSession();
           if (window.location.pathname !== '/login') {
             window.location.assign('/login');
           }

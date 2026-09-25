@@ -46,5 +46,6 @@ done < "$CONFIG_ENV"
 
 echo "✓ Synced environment variables to $ROOT_ENV"
 echo ""
-echo "You can now run: docker-compose up -d"
+echo "Preferred: make compose-dev   (uses --env-file config/.env)"
+echo "Also works: docker compose --env-file config/.env --profile dev up -d"
 echo "Use DATABASE_URL (recommended for Supabase / managed Postgres) or DB_* values."

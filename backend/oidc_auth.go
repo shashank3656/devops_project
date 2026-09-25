@@ -399,6 +399,9 @@ func completeOIDCPortalLogin(portal, email, username, externalID string, groups 
 		return "", nil, fmt.Errorf("failed to load user")
 	}
 	token := generateToken(userID)
+	if token == "" {
+		return "", nil, fmt.Errorf("failed to issue session")
+	}
 	AppendUserActivity(&userID, "sso_login", "user", fmt.Sprintf("%d", userID), fmt.Sprintf("provider=oidc portal=%s action=%s", portal, action))
 	AppendAuditLog(nil, "sso-login-success", "sso", fmt.Sprintf("%d", userID), fmt.Sprintf("provider=oidc portal=%s action=%s", portal, action))
 	return token, fullUser, nil

@@ -3,6 +3,8 @@
 GO ?= go
 NPM ?= npm
 DOCKER_COMPOSE ?= docker-compose
+COMPOSE_ENV_FILE ?= config/.env
+COMPOSE := $(DOCKER_COMPOSE) --env-file $(COMPOSE_ENV_FILE)
 HELM ?= helm
 HELM_RELEASE ?= infragate
 HELM_NAMESPACE ?= infragate
@@ -37,44 +39,44 @@ backend-build: ## Build the backend binary
 backend-test: ## Run backend tests
 	$(MAKE) -C backend test
 
-backend-run: ## Run the backend directly from source
+backend-run: ## Run the backend directly from source (loads ../config/.env)
 	cd backend && $(GO) run .
 
 frontend-install: ## Install user portal dependencies
 	cd frontend && $(NPM) install
 
 frontend-build: ## Build the user portal
-	cd frontend && $(NPM) run build
+	bash -lc 'set -a; [ -f config/.env ] && . ./config/.env; set +a; cd frontend && exec $(NPM) run build'
 
 frontend-lint: ## Lint the user portal
 	cd frontend && $(NPM) run lint
 
 frontend-dev: ## Run the user portal locally
-	cd frontend && $(NPM) run dev
+	bash -lc 'set -a; [ -f config/.env ] && . ./config/.env; set +a; cd frontend && exec $(NPM) run dev'
 
 admin-install: ## Install admin portal dependencies
 	cd admin-frontend && $(NPM) install
 
 admin-build: ## Build the admin portal
-	cd admin-frontend && $(NPM) run build
+	bash -lc 'set -a; [ -f config/.env ] && . ./config/.env; set +a; cd admin-frontend && exec $(NPM) run build'
 
 admin-lint: ## Lint the admin portal
 	cd admin-frontend && $(NPM) run lint
 
 admin-dev: ## Run the admin portal locally
-	cd admin-frontend && $(NPM) run dev
+	bash -lc 'set -a; [ -f config/.env ] && . ./config/.env; set +a; cd admin-frontend && exec $(NPM) run dev'
 
 devops-install: ## Install DevOps portal dependencies
 	cd devops-frontend && $(NPM) install
 
 devops-build: ## Build the DevOps portal
-	cd devops-frontend && $(NPM) run build
+	bash -lc 'set -a; [ -f config/.env ] && . ./config/.env; set +a; cd devops-frontend && exec $(NPM) run build'
 
 devops-lint: ## Lint the DevOps portal
 	cd devops-frontend && $(NPM) run lint
 
 devops-dev: ## Run the DevOps portal locally
-	cd devops-frontend && $(NPM) run dev
+	bash -lc 'set -a; [ -f config/.env ] && . ./config/.env; set +a; cd devops-frontend && exec $(NPM) run dev'
 
 install-all: frontend-install admin-install devops-install ## Install dependencies for all frontends
 
@@ -84,20 +86,20 @@ lint-all: frontend-lint admin-lint devops-lint ## Run lint across all frontends
 
 test: backend-test ## Run the test suite that exists today
 
-compose-dev: ## Start the development stack with docker-compose
-	$(DOCKER_COMPOSE) --profile dev up -d --build
+compose-dev: env-sync ## Start the development stack with docker-compose
+	$(COMPOSE) --profile dev up -d --build
 
-compose-prod: ## Start the production-like stack with docker-compose
-	$(DOCKER_COMPOSE) --profile prod up -d --build
+compose-prod: env-sync ## Start the production-like stack with docker-compose
+	$(COMPOSE) --profile prod up -d --build
 
 compose-down: ## Stop and remove docker-compose services
-	$(DOCKER_COMPOSE) down
+	$(COMPOSE) down
 
 compose-logs: ## Tail docker-compose logs
-	$(DOCKER_COMPOSE) logs -f
+	$(COMPOSE) logs -f
 
 compose-ps: ## Show docker-compose service status
-	$(DOCKER_COMPOSE) ps
+	$(COMPOSE) ps
 
 helm-lint: ## Lint the Helm chart
 	$(HELM) lint $(HELM_CHART)

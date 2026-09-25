@@ -14,8 +14,8 @@ Live stubs: `GET /swagger.json`, `GET /api-docs` (the in-process spec is incompl
 
 | Audience | How |
 | --- | --- |
-| User portal | `Authorization: Bearer <token>` from `POST /api/auth/login`. Browser key: `token`. |
-| Admin portal | Bearer token with `role=admin`, **or** `X-Admin-Secret: $ADMIN_SECRET`. Browser key: `admin_token`. |
+| User portal | `Authorization: Bearer <token>` from `POST /api/auth/login`. Browser key: `token`. Tokens are HMAC-signed HS256 JWTs. Legacy `userID:unix` values return 401. |
+| Admin portal | Bearer token with `role=admin`, **or** `X-Admin-Secret: $ADMIN_SECRET` plus `ADMIN_BREAKGLASS_USER_ID`. Browser key: `admin_token`. |
 | DevOps portal | Bearer token. User must be `user_type=devops_user` **or** `role=admin`. Browser key: `devops_token`. |
 | DevOps manager | Same as DevOps, plus `devops_profiles.is_manager = true`. Many write routes require this. |
 | Inbound webhooks | `X-CI-Secret` / `X-SetuOps-Secret` / `X-Webhook-Secret` matching `CHANGE_WEBHOOK_SECRET`, `ALERT_WEBHOOK_SECRET`, `CI_WEBHOOK_SECRET`, or an Admin inbound source. **Or** `X-Hub-Signature-256: sha256=<hex>` HMAC of the raw body. Unsigned posts return **401**. |
@@ -49,7 +49,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 
 | Method | Path | Auth | Body / query | What it does |
 | --- | --- | --- | --- | --- |
-| POST | `/api/auth/signup` | none | `{ username, email, password }` | Creates unverified viewer. Password min 6. Conflict if username/email taken. May return `otp_for_testing`. |
+| POST | `/api/auth/signup` | none | `{ username, email, password }` | Creates unverified viewer. Password min 6. Conflict if username/email taken. `otp_for_testing` is returned only when `ALLOW_TEST_OTP=true` and `APP_ENV` is not production. |
 | POST | `/api/auth/login` | none | `{ username_or_email, password }` or `{ email, password }` | Returns `{ token, user }`. If 2FA is on, returns a challenge then call verify-2fa. Blocked when portal SSO is required (except admin). |
 | GET | `/api/public/sso/options` | none | `?portal=user\|devops` | `{ enabled, mode, provider, login_url }`. OIDC login_url defaults to `/api/auth/oidc/start`. |
 | GET | `/api/auth/oidc/start` | none | `?portal=` | Redirects to the IdP. |
