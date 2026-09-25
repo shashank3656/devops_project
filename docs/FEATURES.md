@@ -74,6 +74,8 @@ Workspace scope (`project_id`, `environment`) is stored in `localStorage` key `s
 
 Who: developers and team leads. They ask for infrastructure and watch their own work. They do **not** create Change Requests.
 
+Primary nav: Home, Requests, Projects, Changes, Incidents. Mobile tabs: Home, Requests, Changes, Incidents. Scorecards stays at `/scorecards` but is not a top-level item.
+
 ### Sign in and account
 
 | Feature | Page | How it works |
@@ -136,11 +138,13 @@ Users cannot create, close, CAB-approve, or edit Changes or Incidents.
 
 Who: platform / IAM admins (`role=admin`). They own people, access, templates, and integrations. They do **not** own the CHG or INC queue (read catalogs only).
 
+Primary nav: Home, Approvals, Requests, People, Projects, Catalog, More. Mobile tabs: Home, Approvals, Requests, Projects. Changes and Incidents live under More. `/catalog` redirects to `/templates`.
+
 ### Directory
 
 | Feature | Page | How it works |
 | --- | --- | --- |
-| Overview | `/dashboard` | `GET /api/admin/dashboard-stats`, `/api/admin/stats`, `/api/admin/workspace`. Counts of users, pending requests, SLA risk. |
+| Home | `/dashboard` | `GET /api/admin/dashboard-stats`, `/api/admin/stats`, `/api/admin/workspace`. Counts of users, pending requests, SLA risk. |
 | Users | `/users` | `GET /api/admin/users`. Create portal users or DevOps users (`/users/new`, `/users/new-devops`). Edit `/users/[id]/edit`. |
 | Teams | `/teams`, `/teams/new`, `/teams/[id]` | Create teams, set default env/cloud, add/remove members, change member role. |
 | Access review | `/access-review` | `GET /api/admin/access-review`. Who has what, stale access. |
@@ -175,11 +179,13 @@ Who: platform / IAM admins (`role=admin`). They own people, access, templates, a
 
 Who: `devops_user` (and admins for some template routes). **Managers** (`is_manager`) own the request queue, CHGs, incidents, promotions, and GitOps writes.
 
-### Overview and requests
+Primary nav (manager): Home, Requests, Changes, Deployments, Kubernetes, GitOps, Projects. Health, problems, policy as code, evidence, and credential audit stay under More tools. `/gitops` redirects to `/gitops-projects`; `/deployments` redirects to `/promotions`. Mobile tabs: Home, Requests, Changes, Kubernetes.
+
+### Home and requests
 
 | Feature | Page | How it works |
 | --- | --- | --- |
-| Overview | `/dashboard` | `GET /api/devops/dashboard-stats`, `/api/devops/workspace`. Open tickets, pending approvals, watching CHGs, open INCs. |
+| Home | `/dashboard` | `GET /api/devops/dashboard-stats`, `/api/devops/workspace`. Open tickets, pending approvals, watching CHGs, open INCs. |
 | My tickets | `/tickets` | `GET /api/devops/tickets` — tickets assigned to the current user. |
 | Request list / actions | `/tickets` + inspector | `GET /api/devops/requests` (filters: id, team, cloud, status, requester, at_risk). `POST /api/devops/requests/:id/approve` or `/reject`. Bulk approve/reject. Approve opens the GitOps PR. |
 | Workload | `/workload` | `GET /api/devops/workload`. Open / in-progress / completed-this-week by team and person. Manager only. |
@@ -189,10 +195,11 @@ Who: `devops_user` (and admins for some template routes). **Managers** (`is_mana
 
 | Feature | Page | How it works |
 | --- | --- | --- |
-| Queue | `/approval-center` | `GET /api/devops/pending-approvals`. Manager signs the ticket. |
-| History | `/gate-approvals` | `GET /api/devops/deployment-gate-approvals`. Past gate decisions, including high-risk merge acknowledgements. |
-| Rules | `/gate-policies`, `/gate-policies/[id]` | Who must sign for which env / risk. Used by promotions and deploy-intel. |
-| Timing | `/approval-sla` | `GET /api/devops/approval-sla`. How long tickets sit in each queue. |
+| Approval queue | `/approval-center` | `GET /api/devops/pending-approvals`. Manager signs the ticket. |
+| Promotion history | `/gate-approvals` | `GET /api/devops/deployment-gate-approvals`. Past gate decisions, including high-risk merge acknowledgements. |
+| Promotion rules | `/gate-policies`, `/gate-policies/[id]` | Who must sign for which env / risk. Used by promotions and deploy-intel. |
+| Approval timing | `/approval-sla` | `GET /api/devops/approval-sla`. How long tickets sit in each queue. |
+| Policy as code | `/policies` | Rego deny rules. Not a primary nav item; lives under More tools. |
 
 ### Changes
 
@@ -212,11 +219,12 @@ Who: `devops_user` (and admins for some template routes). **Managers** (`is_mana
 
 | Feature | Page | How it works |
 | --- | --- | --- |
-| Open incidents | `/incidents` | `GET /api/devops/incidents`. Status filter. Includes teams and assignees for the create form. |
-| New incident | `/incidents/new` | `POST /api/devops/incidents`. Manual page. Can link a ticket or a suspected CHG. |
-| Edit / assign | `/incidents/[id]/edit` | `PATCH /api/devops/incidents/:id`. Status, owner, severity, notes. |
+| Open incidents | `/incidents` | `GET /api/devops/incidents`. Priority P1–P4, ServiceNow states, assignment group vs assignee, and response/resolve SLA clocks. |
+| New incident | `/incidents/new` | `POST /api/devops/incidents`. Caller, category/subcategory, optional parent INC, impact × urgency, work note vs customer comment. |
+| Edit / assign | `/incidents/[id]/edit` | `PATCH /api/devops/incidents/:id`. SLA clocks, journal, child incidents, major-incident conference. |
 | Incident workspace | `/incident-workspace` | Shared notes while an INC is major. |
-| Problems | `/problems`, `/problems/[id]` | Recurring-issue records. Link many INCs. |
+| Problems | `/problems`, `/problems/new`, `/problems/[id]` | Create a PRB like a change with P1–P4, catalogs, assignment group, and SLA. Recurring alerts still open a problem after three hits. |
+| Knowledge | `/knowledge`, `/knowledge/[id]` | Publish a KB article from a known-error problem (`POST /api/devops/problems/:id/knowledge`). |
 
 Alert-created incidents skip the form: Grafana POSTs `/api/webhooks/alerts`. Same fingerprint updates the existing INC.
 
@@ -324,7 +332,7 @@ A CHG tracks canary / 10 / 50 / 100. CI can send `rollout_stage` or `rollout_per
 ## W3 — Governance
 
 ### Service scorecards
-Each catalog service gets a 0–100 score from owner, SLO, open incidents, runbook freshness, last CHG, and DORA change-failure rate. DevOps **Scorecards**, Admin **Scorecards**, and User **Scorecards** (visible projects only). MCP `list_scorecards` is the same read.
+Each catalog service gets a 0–100 score from owner, SLO, open incidents, runbook freshness, last CHG, and DORA change-failure rate. DevOps and Admin keep Scorecards under More. User `/scorecards` stays reachable but is not a top-level nav item. MCP `list_scorecards` is the same read.
 
 ### Cost delta on a Change
 `POST /api/webhooks/change` accepts `cost_delta_usd` / `cost_monthly_after` or an `infracost_report`. If the CHG is linked to an infra ticket, the watcher copies Infracost onto the CHG when the watch window ends. Detail pages, Health, and the evidence pack show the monthly delta.

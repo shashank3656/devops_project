@@ -107,17 +107,17 @@ export default function DevOpsApprovalSLAPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Approval SLA - DevOps Portal</title>
+        <title>Approval timing - DevOps Portal</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
             <span className="portal-page__eyebrow">Approvals</span>
-            <h1 className="portal-page__title">Approval SLA Dashboard</h1>
+            <h1 className="portal-page__title">Approval timing</h1>
             <p className="portal-page__subtitle">Track approval aging by project, environment, team, and approval owner.</p>
           </div>
           <div className="portal-page__actions">
-            <Link href="/approval-center" className="btn btn-secondary">Approval center</Link>
+            <Link href="/approval-center" className="btn btn-secondary">Approval queue</Link>
             <Link href="/tickets" className="btn btn-primary">Open tickets</Link>
           </div>
         </div>

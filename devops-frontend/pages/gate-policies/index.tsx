@@ -125,13 +125,13 @@ export default function GatePoliciesCatalogPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Approval Rules - DevOps Portal</title>
+        <title>Promotion rules - DevOps Portal</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
             <span className="portal-page__eyebrow">Approvals</span>
-            <h1 className="portal-page__title">Approval rules</h1>
+            <h1 className="portal-page__title">Promotion rules</h1>
             <p className="portal-page__subtitle">
               Browse project gate rules here. Open a project to edit manager and DevOps requirements.
             </p>

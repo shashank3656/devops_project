@@ -9,7 +9,8 @@ import {
   IconTickets,
   IconTemplates,
   IconProjects,
-  IconUsers,
+  IconWorkload,
+  IconGitOps,
   IconMenu,
   IconShield,
   IconBookOpen,
@@ -69,10 +70,12 @@ function getProfileInitials(): string {
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'Overview',
-  '/approval-center': 'Approval Queue',
-  '/approval-sla': 'Approval Timing',
-  '/gate-policies': 'Approval Rules',
+  '/dashboard': 'Home',
+  '/approval-center': 'Approval queue',
+  '/approval-sla': 'Approval timing',
+  '/gate-policies': 'Promotion rules',
+  '/gitops-projects': 'GitOps',
+  '/gitops-control': 'GitOps control',
   '/project-operations': 'Project Work',
   '/service-heatmap': 'Service Health',
   '/ops-command-center': 'Operations',
@@ -104,18 +107,20 @@ const PAGE_TITLES: Record<string, string> = {
   '/previews': 'Preview environments',
   '/scorecards': 'Scorecards',
   '/evidence': 'Evidence',
-  '/policies': 'Policies',
+  '/policies': 'Policy as code',
   '/policies/configure': 'Configure policy',
   '/services': 'Services',
   '/services/new': 'Add service',
   '/problems': 'Problems',
+  '/problems/new': 'Create problem',
+  '/knowledge': 'Knowledge',
   '/health': 'Health',
   '/health/slo/new': 'Define SLO',
   '/identity': 'Identity',
   '/deploy-intelligence': 'Deploy intelligence',
   '/deploy-intelligence/onboard': 'Onboard repository',
   '/rollback-console': 'Rollback',
-  '/gate-approvals': 'Approval History',
+  '/gate-approvals': 'Promotion history',
   '/notification-settings': 'Alert Settings',
   '/approval-notification-analytics': 'Analytics',
   '/retry-center': 'Delivery Retries',
@@ -133,7 +138,7 @@ function getPageTitle(pathname: string): string {
   for (const [path, title] of Object.entries(PAGE_TITLES)) {
     if (path !== '/dashboard' && pathname.startsWith(path)) return title;
   }
-  return 'Dashboard';
+  return 'Home';
 }
 
 interface PendingApprovalItem {
@@ -386,8 +391,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
         e.preventDefault();
         const msg = isManager
-          ? 'Shortcuts: ? help, g then d = Overview, g then t = Requests, g then a = Approvals'
-          : 'Shortcuts: ? help, g then d = Overview';
+          ? 'Shortcuts: ? help, g then d = Home, g then t = Requests, g then a = Approval queue'
+          : 'Shortcuts: ? help, g then d = Home';
         alert(msg);
         return;
       }
@@ -430,7 +435,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   };
 
   const leafIsActive = (href: string) => {
-    if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/clusters');
+    if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/');
     if (href === '/dashboard') return pathname === '/dashboard' || pathname === '/';
     return pathname === href || pathname.startsWith(`${href}/`);
   };
@@ -439,56 +444,56 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     Boolean(item.children?.some((child) => leafIsActive(child.href))) || leafIsActive(item.href);
 
   const primaryNavItems: NavItem[] = [
-    { href: '/dashboard', label: 'Overview', Icon: IconTickets },
-    { href: '/tickets', label: 'Requests', Icon: IconTickets },
-  ];
-  if (isManager) {
-    primaryNavItems.push({
-      href: '/approval-center',
-      label: 'Approvals',
-      Icon: IconShield,
-      children: [
-        { href: '/approval-center', label: 'Queue' },
-        { href: '/gate-approvals', label: 'History' },
-        { href: '/gate-policies', label: 'Rules' },
-        { href: '/approval-sla', label: 'Timing' },
-      ],
-    });
-    primaryNavItems.push({
-      href: '/incidents',
-      label: 'Incidents',
-      Icon: IconAlertTriangle,
-      children: [
-        { href: '/incidents', label: 'Open' },
-        { href: '/incident-workspace', label: 'Notes' },
-        { href: '/problems', label: 'Problems' },
-      ],
-    });
-    primaryNavItems.push({
+    { href: '/dashboard', label: 'Home', Icon: IconWorkload },
+    {
+      href: '/tickets',
+      label: 'Requests',
+      Icon: IconTickets,
+      children: isManager
+        ? [
+            { href: '/approval-center', label: 'Approval queue' },
+            { href: '/gate-approvals', label: 'Promotion history' },
+            { href: '/gate-policies', label: 'Promotion rules' },
+            { href: '/approval-sla', label: 'Approval timing' },
+          ]
+        : undefined,
+    },
+    {
       href: '/changes',
       label: 'Changes',
       Icon: IconFileText,
+      children: isManager
+        ? [
+            { href: '/changes', label: 'Catalog' },
+            { href: '/services', label: 'Services' },
+            { href: '/change-calendar', label: 'Calendar' },
+            { href: '/release-notes', label: 'Release notes' },
+          ]
+        : undefined,
+    },
+  ];
+  if (isManager) {
+    primaryNavItems.push({
+      href: '/promotions',
+      label: 'Deployments',
+      Icon: IconArrowUpRight,
       children: [
-        { href: '/changes', label: 'Catalog' },
-        { href: '/previews', label: 'Previews' },
-        { href: '/services', label: 'Services' },
-        { href: '/scorecards', label: 'Scorecards' },
-        { href: '/change-calendar', label: 'Calendar' },
-        { href: '/release-notes', label: 'Release notes' },
+        { href: '/promotions', label: 'Promotions' },
+        { href: '/deploy-intelligence', label: 'Deploy intel' },
       ],
     });
   }
   primaryNavItems.push({ href: '/k8s', label: 'Kubernetes', Icon: IconK8s });
-  primaryNavItems.push({
-    href: '/health',
-    label: 'Health',
-    Icon: IconArrowUpRight,
-    children: [
-      { href: '/health', label: 'Catalog' },
-      { href: '/identity', label: 'Identity' },
-    ],
-  });
   if (isManager) {
+    primaryNavItems.push({
+      href: '/gitops-projects',
+      label: 'GitOps',
+      Icon: IconGitOps,
+      children: [
+        { href: '/gitops-projects', label: 'Projects' },
+        { href: '/gitops-control', label: 'Control' },
+      ],
+    });
     primaryNavItems.push({
       href: '/projects',
       label: 'Projects',
@@ -502,15 +507,35 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
 
   const advancedNavItems: NavItem[] = isManager
     ? [
-        { href: '/promotions', label: 'Promotions', Icon: IconArrowUpRight },
-        { href: '/deploy-intelligence', label: 'Deploy intel', Icon: IconArrowUpRight },
+        {
+          href: '/incidents',
+          label: 'Incidents',
+          Icon: IconAlertTriangle,
+          children: [
+            { href: '/incidents', label: 'Open' },
+            { href: '/incident-workspace', label: 'Notes' },
+          ],
+        },
+        {
+          href: '/health',
+          label: 'Health',
+          Icon: IconArrowUpRight,
+          children: [
+            { href: '/health', label: 'Catalog' },
+            { href: '/identity', label: 'Identity' },
+          ],
+        },
+        { href: '/problems', label: 'Problems', Icon: IconAlertTriangle },
+        { href: '/knowledge', label: 'Knowledge', Icon: IconBookOpen },
+        { href: '/previews', label: 'Previews', Icon: IconFileText },
+        { href: '/scorecards', label: 'Scorecards', Icon: IconFileText },
         { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
         { href: '/evidence', label: 'Evidence', Icon: IconFileText },
-        { href: '/policies', label: 'Policies', Icon: IconShield },
+        { href: '/policies', label: 'Policy as code', Icon: IconShield },
         { href: '/ops-command-center', label: 'Operations', Icon: IconAlertTriangle },
         { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
-        { href: '/templates', label: 'Request Templates', Icon: IconTemplates },
-        { href: '/access-overrides', label: 'Access Exceptions', Icon: IconKey },
+        { href: '/templates', label: 'Request templates', Icon: IconTemplates },
+        { href: '/access-overrides', label: 'Access exceptions', Icon: IconKey },
         { href: '/rollback-console', label: 'Rollback', Icon: IconRefreshCw },
         {
           href: '/notification-settings',
@@ -523,7 +548,17 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           ],
         },
       ]
-    : [];
+    : [
+        {
+          href: '/health',
+          label: 'Health',
+          Icon: IconArrowUpRight,
+          children: [
+            { href: '/health', label: 'Catalog' },
+            { href: '/identity', label: 'Identity' },
+          ],
+        },
+      ];
   const advancedNavActive = advancedNavItems.some((item) => itemIsActive(item));
   const k8sNavActive = pathname === '/k8s' || pathname.startsWith('/k8s/');
 
@@ -615,20 +650,12 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       </div>
     );
   };
-  const mobileTabs: MobileTab[] = (isManager
-    ? [
-        { href: '/dashboard', label: 'Overview', Icon: IconTickets },
-        { href: '/tickets', label: 'Requests', Icon: IconTickets },
-        { href: '/approval-center', label: 'Approvals', Icon: IconShield },
-        { href: '/incidents', label: 'Incidents', Icon: IconAlertTriangle },
-      ]
-    : [
-        { href: '/dashboard', label: 'Overview', Icon: IconTickets },
-        { href: '/tickets', label: 'Requests', Icon: IconTickets },
-        { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
-        { href: '/health', label: 'Health', Icon: IconArrowUpRight },
-      ]
-  ).map((tab) => ({ ...tab, active: isNavActive(tab.href), badge: getSidebarBadge(tab.href) }));
+  const mobileTabs: MobileTab[] = [
+    { href: '/dashboard', label: 'Home', Icon: IconWorkload },
+    { href: '/tickets', label: 'Requests', Icon: IconTickets },
+    { href: '/changes', label: 'Changes', Icon: IconFileText },
+    { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
+  ].map((tab) => ({ ...tab, active: isNavActive(tab.href), badge: getSidebarBadge(tab.href) }));
 
   return (
     <div className="devops-layout devops-layout-sidebar">
@@ -892,27 +919,34 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         apiUrl={apiUrl}
         token={typeof window === 'undefined' ? null : localStorage.getItem(DEVOPS_TOKEN_KEY)}
         commands={[
-          { id: 'overview', label: 'Overview', href: '/dashboard' },
+          { id: 'home', label: 'Home', href: '/dashboard' },
           { id: 'requests', label: 'Requests', href: '/tickets' },
-          { id: 'approvals', label: 'Approvals', href: '/approval-center' },
-          { id: 'approval-history', label: 'Approval History', href: '/gate-approvals' },
-          { id: 'approval-rules', label: 'Approval Rules', href: '/gate-policies' },
-          { id: 'approval-timing', label: 'Approval Timing', href: '/approval-sla' },
-          { id: 'incidents', label: 'Incidents', href: '/incidents' },
+          { id: 'approval-queue', label: 'Approval queue', href: '/approval-center' },
+          { id: 'promotion-history', label: 'Promotion history', href: '/gate-approvals' },
+          { id: 'promotion-rules', label: 'Promotion rules', href: '/gate-policies' },
+          { id: 'approval-timing', label: 'Approval timing', href: '/approval-sla' },
+          { id: 'changes', label: 'Changes', href: '/changes' },
+          { id: 'deployments', label: 'Deployments', href: '/promotions' },
           { id: 'k8s', label: 'Kubernetes', href: '/k8s' },
+          { id: 'gitops', label: 'GitOps', href: '/gitops-projects' },
+          { id: 'gitops-control', label: 'GitOps control', href: '/gitops-control' },
+          { id: 'projects', label: 'Projects', href: '/projects' },
           { id: 'k8s-onboard', label: 'K8s Connections', href: '/k8s/onboard' },
           { id: 'pods', label: 'Pods', href: '/k8s/pods' },
           { id: 'logs', label: 'Logs', href: '/k8s/logs' },
           { id: 'rollback', label: 'Rollback', href: '/rollback-console' },
           { id: 'promotions', label: 'Promotions', href: '/promotions' },
-          { id: 'changes', label: 'Changes', href: '/changes' },
           { id: 'create-change', label: 'Create change request', href: '/changes/new' },
           { id: 'change-calendar', label: 'Change calendar', href: '/change-calendar' },
           { id: 'release-notes', label: 'Release notes', href: '/release-notes' },
           { id: 'services', label: 'Services', href: '/services' },
           { id: 'add-service', label: 'Add service', href: '/services/new' },
+          { id: 'incidents', label: 'Incidents', href: '/incidents' },
           { id: 'problems', label: 'Problems', href: '/problems' },
+          { id: 'create-problem', label: 'Create problem', href: '/problems/new' },
+          { id: 'knowledge', label: 'Knowledge', href: '/knowledge' },
           { id: 'health', label: 'Health', href: '/health' },
+          { id: 'policy-as-code', label: 'Policy as code', href: '/policies' },
           { id: 'deploy-intel', label: 'Deploy intelligence', href: '/deploy-intelligence' },
         ]}
       />

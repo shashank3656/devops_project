@@ -42,6 +42,11 @@ const nextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      { source: '/catalog', destination: '/templates', permanent: false },
+    ];
+  },
 };
 
 module.exports = withSharedUi(nextConfig, __dirname);

@@ -174,7 +174,7 @@ export default function GatePolicyEditorPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>{project ? `Rules · ${project.name}` : 'Edit approval rules'} - DevOps Portal</title>
+        <title>{project ? `Promotion rules · ${project.name}` : 'Edit promotion rules'} - DevOps Portal</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">
@@ -183,7 +183,7 @@ export default function GatePolicyEditorPage() {
               ← Back to rules
             </Link>
             <span className="portal-page__eyebrow">Approvals</span>
-            <h1 className="portal-page__title">{project ? project.name : 'Edit approval rules'}</h1>
+            <h1 className="portal-page__title">{project ? project.name : 'Edit promotion rules'}</h1>
             <p className="portal-page__subtitle">
               {project
                 ? `${project.owner_team ? `Owner team: ${project.owner_team}. ` : ''}Set manager and DevOps requirements for each environment.`

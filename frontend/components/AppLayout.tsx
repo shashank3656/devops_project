@@ -329,7 +329,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
         e.preventDefault();
-        toast('Shortcuts: ? help, g then h = Dashboard, g then t = Request History, g then n = Create Infrastructure', 'success');
+        toast('Shortcuts: ? help, g then h = Home, g then t = Requests, g then n = New request', 'success');
         return;
       }
       if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
@@ -398,7 +398,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     },
     { href: '/changes', label: 'Changes', Icon: IconFileText },
     { href: '/incidents', label: 'Incidents', Icon: IconAlertCircle },
-    { href: '/scorecards', label: 'Scorecards', Icon: IconFileText },
   ];
 
   if (teamCheck === 'loading') {
@@ -751,9 +750,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </main>
       </div>
       <MobileTabBar
-        tabs={baseNavItems.slice(0, 4).map((item) => ({
+        tabs={['/home', '/history', '/changes', '/incidents'].map((href) => {
+          const item = baseNavItems.find((entry) => entry.href === href);
+          if (!item) return null;
+          return item;
+        }).filter((item): item is (typeof baseNavItems)[number] => Boolean(item)).map((item) => ({
           ...item,
-          label: item.href === '/create-infrastructure' ? 'New' : item.href === '/history' ? 'Requests' : item.label,
+          label: item.href === '/history' ? 'Requests' : item.label,
           active:
             pathname === item.href
             || Boolean(item.children?.some((child) => pathname === child.href || pathname.startsWith(`${child.href}/`)))
@@ -775,6 +778,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           { id: 'changes', label: 'Change requests', href: '/changes' },
           { id: 'incidents', label: 'Incidents', href: '/incidents' },
           { id: 'templates', label: 'Templates', href: '/templates' },
+          { id: 'scorecards', label: 'Scorecards', href: '/scorecards', hint: 'More' },
         ]}
       />
       <SupportHub
