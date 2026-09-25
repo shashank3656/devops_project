@@ -29,7 +29,7 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Get query parameters
 	team := r.URL.Query().Get("team")
-	env := r.URL.Query().Get("env")
+	env := requestQueryEnv(r)
 	cloud := r.URL.Query().Get("cloud")
 	projectID := 0
 	if rawProjectID := strings.TrimSpace(r.URL.Query().Get("project_id")); rawProjectID != "" {

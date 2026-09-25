@@ -23,7 +23,7 @@ SetuOps is one Go API and three Next.js portals:
 
 Landing pages are **catalogs**. Forms open only after Onboard / Create / Edit.
 
-Workspace scope (`project_id`, `environment`) is stored in `localStorage` key `setuops-workspace-scope` and in the URL. The ScopeBar at the top of each portal filters lists to that project and environment.
+Workspace scope (`project_id`, `environment`) is stored in `localStorage` key `setuops-workspace-scope` and in the URL. The ScopeBar at the top of each portal stays visible on tablet and mobile. Changing project or environment updates tickets, changes, incidents, and Kubernetes lists. Clear empties both the URL and the local workspace key. List pages show active filter chips above the table.
 
 ---
 

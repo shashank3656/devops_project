@@ -297,7 +297,11 @@ export default function DevOpsIncidentsPage() {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`${apiUrl}/api/devops/incidents`, {
+      const params = new URLSearchParams();
+      if (activeProjectID) params.set('project_id', String(activeProjectID));
+      if (activeEnvironmentFilter) params.set('environment', activeEnvironmentFilter);
+      if (activeStatusFilter) params.set('status', activeStatusFilter);
+      const response = await fetch(`${apiUrl}/api/devops/incidents${params.toString() ? `?${params}` : ''}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.status === 401 || response.status === 403) {
@@ -320,7 +324,7 @@ export default function DevOpsIncidentsPage() {
 
   useEffect(() => {
     void loadData();
-  }, [apiUrl]);
+  }, [apiUrl, activeProjectID, activeEnvironmentFilter, activeStatusFilter]);
 
   const resetForm = () => {
     setEditingId(null);

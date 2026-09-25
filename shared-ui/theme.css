@@ -3903,12 +3903,30 @@ html[data-theme] .devops-navbar__actions {
 
 html[data-theme] .ig-scope-bar {
   flex: 1 1 160px;
-  overflow: hidden;
+  min-width: 0;
 }
 
 html[data-theme] .ig-scope-bar__control {
   max-width: 160px;
   width: 100%;
+}
+
+@media (max-width: 900px) {
+  html[data-theme] .user-topbar__left,
+  html[data-theme] .admin-topbar__left,
+  html[data-theme] .devops-navbar__left {
+    flex-wrap: wrap;
+    flex: 1 1 100%;
+  }
+
+  html[data-theme] .ig-scope-bar {
+    flex: 1 1 100%;
+    overflow: visible;
+  }
+
+  html[data-theme] .ig-scope-bar__control {
+    max-width: none;
+  }
 }
 
 html[data-theme] .ig-page,

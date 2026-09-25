@@ -351,7 +351,7 @@ func adminRequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	team := r.URL.Query().Get("team")
-	env := r.URL.Query().Get("env")
+	env := requestQueryEnv(r)
 	cloud := r.URL.Query().Get("cloud")
 	statusFilter := r.URL.Query().Get("status")
 	priorityFilter := r.URL.Query().Get("priority")
