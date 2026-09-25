@@ -59,6 +59,46 @@ func TestCausedByChangeCopy(t *testing.T) {
 	}
 }
 
+func TestITSMSLAPolicyAndJournalKind(t *testing.T) {
+	p1 := slaPolicyForPriority("P1")
+	if p1.RespondMinutes != 15 || p1.ResolveMinutes != 4*60 {
+		t.Fatalf("p1 sla: %#v", p1)
+	}
+	p4 := slaPolicyForPriority("p4")
+	if p4.RespondMinutes != 8*60 || p4.ResolveMinutes != 5*24*60 {
+		t.Fatalf("p4 sla: %#v", p4)
+	}
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	respondBy := now.Add(-time.Minute)
+	resolveBy := now.Add(2 * time.Hour)
+	sla := buildIncidentSLA("p1", &respondBy, &resolveBy, nil, nil, now)
+	if !sla.ResponseBreached || sla.ResolveBreached || sla.ResponseRemaining == "" {
+		t.Fatalf("expected response breach with resolve remaining, got %#v", sla)
+	}
+	if formatKBNumber(12) != "KB0000012" {
+		t.Fatal("kb number")
+	}
+	cats := itsmCategoryCatalog()
+	if len(cats) < 3 || len(cats[0].Subcategories) == 0 {
+		t.Fatal("category catalog")
+	}
+}
+
+func TestNormalizeITSMPriorityAndIncidentFlow(t *testing.T) {
+	if normalizeITSMPriority("P1") != "p1" || itsmPriorityToSeverity("p1") != "critical" {
+		t.Fatal("p1 mapping")
+	}
+	if itsmPriorityFromImpactUrgency("high", "high") != "p1" || itsmPriorityFromImpactUrgency("low", "low") != "p4" {
+		t.Fatal("impact/urgency matrix")
+	}
+	if normalizeIncidentStatus("in progress") != "investigating" || normalizeIncidentStatus("on_hold") != "on_hold" {
+		t.Fatal("incident state mapping")
+	}
+	if normalizeProblemStatus("rca") != "root_cause_analysis" {
+		t.Fatal("problem state mapping")
+	}
+}
+
 func TestNormalizeChangePriorityAndRisk(t *testing.T) {
 	if normalizeChangePriority("P1") != "critical" || normalizeChangePriority("") != "medium" {
 		t.Fatal("priority mapping")

@@ -110,16 +110,7 @@ func encodeChangeFiles(files []string) string {
 }
 
 func normalizeChangePriority(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "low":
-		return "low"
-	case "high":
-		return "high"
-	case "critical", "crit", "p1":
-		return "critical"
-	default:
-		return "medium"
-	}
+	return itsmPriorityToSeverity(value)
 }
 
 func normalizeChangeRisk(value string) string {

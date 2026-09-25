@@ -785,7 +785,7 @@ export default function GitOpsControlPage() {
               </p>
             </div>
             <div className="portal-page__actions">
-              <Link href="/gitops-control/new" className="btn btn-primary">
+              <Link href={{ pathname: '/gitops-control', query: { view: 'builder' } }} className="btn btn-primary">
                 New GitOps project
               </Link>
               <Link href="/gitops-projects" className="btn btn-secondary">
@@ -840,7 +840,7 @@ export default function GitOpsControlPage() {
                 </div>
               </section>
 
-              {(requestedView === 'builder' || editingProjectId !== null) && (
+              {(requestedView === 'builder' || editingProjectId !== null || data.projects.length === 0) && (
               <section className="portal-grid">
                 <article className="portal-surface">
                   <div className="portal-surface__header">
@@ -1001,7 +1001,10 @@ export default function GitOpsControlPage() {
                 </div>
                 {data.projects.length === 0 ? (
                   <div className="portal-empty">
-                    <p>No GitOps project structure exists yet.</p>
+                    <p>No GitOps project structure exists yet. Use the form above to create the first project.</p>
+                    <Link href={{ pathname: '/gitops-control', query: { view: 'builder' } }} className="btn btn-primary">
+                      Create GitOps project
+                    </Link>
                   </div>
                 ) : (
                   <div className="gitops-editor">

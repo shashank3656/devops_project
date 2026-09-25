@@ -69,6 +69,16 @@ type requestIncident struct {
 	UpdatedAt             time.Time           `json:"updated_at"`
 	ExternalProvider      string              `json:"external_provider,omitempty"`
 	ExternalID            string              `json:"external_id,omitempty"`
+	CallerUserID          *int                `json:"caller_user_id,omitempty"`
+	CallerUsername        string              `json:"caller_username,omitempty"`
+	Category              string              `json:"category,omitempty"`
+	Subcategory           string              `json:"subcategory,omitempty"`
+	ParentIncidentID      *int                `json:"parent_incident_id,omitempty"`
+	ParentIncidentNumber  string              `json:"parent_incident_number,omitempty"`
+	ChildIncidents        []incidentChildRef  `json:"child_incidents,omitempty"`
+	ConferenceURL         string              `json:"conference_url,omitempty"`
+	ConferenceNotes       string              `json:"conference_notes,omitempty"`
+	SLA                   *incidentSLA        `json:"sla,omitempty"`
 }
 
 func formatIncidentNumber(id int) string {
@@ -407,7 +417,7 @@ func listRequestIncidentsFiltered(statusFilter string, ownerUserID *int, include
 		}
 		out = append(out, item)
 	}
-	return out, nil
+	return hydrateIncidentsITSM(out), nil
 }
 
 func getRequestIncidentByRequestID(requestID int) (*requestIncident, error) {
@@ -457,7 +467,55 @@ func listPortalIncidentTeamMembersByTeam() (map[string]any, error) {
 	return membersByTeam, nil
 }
 
+func createStandaloneIncident(teamID *int, severity, status, escalationLevel string, ownerUserID *int, summary, notes string, createdBy *int, projectID int, service, environment string) (*requestIncident, error) {
+	severity = itsmPriorityToSeverity(severity)
+	status = normalizeIncidentStatus(status)
+	if status == "" {
+		status = "open"
+	}
+	escalationLevel = strings.ToLower(strings.TrimSpace(escalationLevel))
+	if escalationLevel == "" {
+		escalationLevel = "monitoring"
+	}
+	var teamAny any
+	if teamID != nil && *teamID > 0 {
+		teamAny = *teamID
+	}
+	var ownerAny any
+	if ownerUserID != nil && *ownerUserID > 0 {
+		ownerAny = *ownerUserID
+	}
+	var createdAny any
+	if createdBy != nil && *createdBy > 0 {
+		createdAny = *createdBy
+	}
+	var projectAny any
+	if projectID > 0 {
+		projectAny = projectID
+	}
+	var incidentID int
+	err := queryRowContext(`
+		INSERT INTO request_incidents (request_id, project_id, team_id, severity, status, escalation_level, owner_user_id, summary, notes, created_by, source, service, environment)
+		VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8, $9, 'manual', $10, $11)
+		RETURNING id
+	`, projectAny, teamAny, severity, status, escalationLevel, ownerAny, strings.TrimSpace(summary), strings.TrimSpace(notes), createdAny, strings.TrimSpace(service), strings.TrimSpace(environment)).Scan(&incidentID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := execContext(`
+		UPDATE request_incidents
+		SET incident_number = $2
+		WHERE id = $1 AND COALESCE(incident_number, '') = ''
+	`, incidentID, formatIncidentNumber(incidentID)); err != nil {
+		return nil, err
+	}
+	return getRequestIncidentByID(incidentID)
+}
+
 func createOrUpdateRequestIncident(requestID int, teamID *int, severity, status, escalationLevel string, ownerUserID *int, summary, notes string, createdBy *int) (*requestIncident, error) {
+	if requestID <= 0 {
+		return createStandaloneIncident(teamID, severity, status, escalationLevel, ownerUserID, summary, notes, createdBy, 0, "", "")
+	}
 	req, err := GetPRRequestByID(requestID)
 	if err != nil {
 		return nil, err
@@ -465,11 +523,8 @@ func createOrUpdateRequestIncident(requestID int, teamID *int, severity, status,
 	if req == nil {
 		return nil, fmt.Errorf("request not found")
 	}
-	severity = strings.ToLower(strings.TrimSpace(severity))
-	if severity == "" {
-		severity = "medium"
-	}
-	status = strings.ToLower(strings.TrimSpace(status))
+	severity = itsmPriorityToSeverity(severity)
+	status = normalizeIncidentStatus(status)
 	if status == "" {
 		status = "open"
 	}
@@ -734,9 +789,11 @@ func upsertAlertIncident(event parsedAlertEvent) (*requestIncident, string, erro
 	}
 	item, getErr := getRequestIncidentByID(incidentID)
 	if getErr == nil && item != nil {
+		_ = upsertIncidentITSM(item.ID, 0, 0, "", "", "", "", severityToITSMPriority(item.Severity), item.CreatedAt, item.Status)
 		if problem, err := upsertProblemFromIncident(*item); err == nil && problem != nil {
 			item.ProblemID = &problem.ID
 		}
+		item = hydrateOneIncidentITSM(item)
 	}
 	return item, "created", getErr
 }
@@ -791,6 +848,8 @@ func normalizeIncidentStatus(status string) string {
 		return "acknowledged"
 	case "investigating", "in_progress":
 		return "investigating"
+	case "on_hold", "hold", "waiting":
+		return "on_hold"
 	case "mitigating":
 		return "mitigating"
 	case "resolved", "success", "ok":
@@ -809,7 +868,7 @@ func normalizeIncidentStatus(status string) string {
 
 func incidentIsActive(status string) bool {
 	switch normalizeIncidentStatus(status) {
-	case "open", "acknowledged", "investigating", "mitigating":
+	case "open", "acknowledged", "investigating", "mitigating", "on_hold":
 		return true
 	default:
 		return false
@@ -836,11 +895,8 @@ func incidentEnvironmentKey(item requestIncident) string {
 }
 
 func updateAlertIncidentByID(id int, teamID *int, severity, status, escalationLevel string, ownerUserID *int, summary, notes string) (*requestIncident, error) {
-	severity = strings.ToLower(strings.TrimSpace(severity))
-	if severity == "" {
-		severity = "medium"
-	}
-	status = strings.ToLower(strings.TrimSpace(status))
+	severity = itsmPriorityToSeverity(severity)
+	status = normalizeIncidentStatus(status)
 	if status == "" {
 		status = "open"
 	}
@@ -1600,45 +1656,76 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incident assignees", err)
 			return
 		}
+		callers, _ := listITSMCallers()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"incidents":            items,
 			"teams":                teams,
 			"team_members_by_team": membersByTeam,
+			"callers":              callers,
+			"categories":           itsmCategoryCatalog(),
+			"sla":                  []itsmSLAPolicy{slaPolicyForPriority("p1"), slaPolicyForPriority("p2"), slaPolicyForPriority("p3"), slaPolicyForPriority("p4")},
 			"status":               "ok",
 		})
 	case "POST":
 		var body struct {
-			RequestID       int    `json:"request_id"`
-			TeamID          *int   `json:"team_id"`
-			Severity        string `json:"severity"`
-			Status          string `json:"status"`
-			EscalationLevel string `json:"escalation_level"`
-			OwnerUserID     *int   `json:"owner_user_id"`
-			Summary         string `json:"summary"`
-			Notes           string `json:"notes"`
+			RequestID         int    `json:"request_id"`
+			TeamID            *int   `json:"team_id"`
+			Severity          string `json:"severity"`
+			Priority          string `json:"priority"`
+			Impact            string `json:"impact"`
+			Urgency           string `json:"urgency"`
+			Status            string `json:"status"`
+			EscalationLevel   string `json:"escalation_level"`
+			OwnerUserID       *int   `json:"owner_user_id"`
+			Summary           string `json:"summary"`
+			Notes             string `json:"notes"`
+			Comment           string `json:"comment"`
+			ProjectID         int    `json:"project_id"`
+			Service           string `json:"service"`
+			Environment       string `json:"environment"`
+			CallerUserID      int    `json:"caller_user_id"`
+			Category          string `json:"category"`
+			Subcategory       string `json:"subcategory"`
+			ParentIncidentID  int    `json:"parent_incident_id"`
+			ConferenceURL     string `json:"conference_url"`
+			ConferenceNotes   string `json:"conference_notes"`
+			Major             *bool  `json:"major"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
 			return
 		}
 		normalizedStatus := normalizeIncidentStatus(body.Status)
-		if body.TeamID == nil || *body.TeamID <= 0 {
-			writeAPIError(w, r, http.StatusBadRequest, "team is required", nil)
-			return
+		severity := strings.TrimSpace(body.Priority)
+		if severity == "" && strings.TrimSpace(body.Impact) != "" && strings.TrimSpace(body.Urgency) != "" {
+			severity = itsmPriorityFromImpactUrgency(body.Impact, body.Urgency)
 		}
-		if normalizedStatus != "draft" && (body.OwnerUserID == nil || *body.OwnerUserID <= 0) {
-			writeAPIError(w, r, http.StatusBadRequest, "assignee is required before submitting an incident", nil)
-			return
+		if severity == "" {
+			severity = body.Severity
 		}
 		if normalizedStatus != "draft" && strings.TrimSpace(body.Summary) == "" {
-			writeAPIError(w, r, http.StatusBadRequest, "summary is required before submitting an incident", nil)
+			writeAPIError(w, r, http.StatusBadRequest, "short description is required before submitting an incident", nil)
 			return
 		}
-		item, err := createOrUpdateRequestIncident(body.RequestID, body.TeamID, body.Severity, normalizedStatus, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID)
+		var item *requestIncident
+		var err error
+		if body.RequestID <= 0 {
+			item, err = createStandaloneIncident(body.TeamID, severity, normalizedStatus, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID, body.ProjectID, body.Service, body.Environment)
+		} else {
+			item, err = createOrUpdateRequestIncident(body.RequestID, body.TeamID, severity, normalizedStatus, body.EscalationLevel, body.OwnerUserID, body.Summary, body.Notes, &managerID)
+		}
 		if err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
+		}
+		if item != nil {
+			item = applyCreatedIncidentITSM(item, body.CallerUserID, body.ParentIncidentID, body.Category, body.Subcategory, body.ConferenceURL, body.ConferenceNotes, body.Notes, body.Comment, managerID)
+			if body.Major != nil && *body.Major {
+				if updated, err := applyMajorIncidentMode(item, true, firstNonEmpty(body.ConferenceNotes, item.StatusNote)); err == nil && updated != nil {
+					item = updated
+				}
+			}
 		}
 		AppendAuditLog(&managerID, "request_incident_upsert", "pr_request", strconv.Itoa(body.RequestID), item.Severity+":"+item.Status)
 		if item != nil {
@@ -1668,6 +1755,10 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid incident id", err)
 		return
 	}
+	if len(parts) == 2 && strings.EqualFold(parts[1], "journal") {
+		handleITSMJournal(w, r, "incident", id, managerID)
+		return
+	}
 	if len(parts) == 2 && strings.EqualFold(parts[1], "review") {
 		handleIncidentReviewRoute(w, r, managerID, id)
 		return
@@ -1694,8 +1785,9 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		attachRollbackPlan(item)
 		review, postmortem := incidentReviewPayload(item)
+		journal, _ := listITSMJournal("incident", id)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "rollback": item.RollbackPlan, "review": review, "postmortem": postmortem, "status": "ok"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "rollback": item.RollbackPlan, "review": review, "postmortem": postmortem, "journal": journal, "status": "ok"})
 		return
 	}
 	if r.Method != "PATCH" {
@@ -1710,32 +1802,30 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		TeamID          *int   `json:"team_id"`
-		Severity        string `json:"severity"`
-		Status          string `json:"status"`
-		EscalationLevel string `json:"escalation_level"`
-		OwnerUserID     *int   `json:"owner_user_id"`
-		Summary         string `json:"summary"`
-		Notes           string `json:"notes"`
-		Major           *bool  `json:"major"`
-		StatusNote      string `json:"status_note"`
-		SilenceMinutes  int    `json:"silence_minutes"`
+		TeamID           *int   `json:"team_id"`
+		Severity         string `json:"severity"`
+		Status           string `json:"status"`
+		EscalationLevel  string `json:"escalation_level"`
+		OwnerUserID      *int   `json:"owner_user_id"`
+		Summary          string `json:"summary"`
+		Notes            string `json:"notes"`
+		Major            *bool  `json:"major"`
+		StatusNote       string `json:"status_note"`
+		SilenceMinutes   int    `json:"silence_minutes"`
+		CallerUserID     int    `json:"caller_user_id"`
+		Category         string `json:"category"`
+		Subcategory      string `json:"subcategory"`
+		ParentIncidentID int    `json:"parent_incident_id"`
+		ConferenceURL    string `json:"conference_url"`
+		ConferenceNotes  string `json:"conference_notes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
 		return
 	}
 	normalizedStatus := normalizeIncidentStatus(body.Status)
-	if body.TeamID == nil || *body.TeamID <= 0 {
-		writeAPIError(w, r, http.StatusBadRequest, "team is required", nil)
-		return
-	}
-	if normalizedStatus != "draft" && (body.OwnerUserID == nil || *body.OwnerUserID <= 0) {
-		writeAPIError(w, r, http.StatusBadRequest, "assignee is required before submitting an incident", nil)
-		return
-	}
 	if normalizedStatus != "draft" && strings.TrimSpace(body.Summary) == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "summary is required before submitting an incident", nil)
+		writeAPIError(w, r, http.StatusBadRequest, "short description is required before submitting an incident", nil)
 		return
 	}
 	var item *requestIncident
@@ -1767,6 +1857,11 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		if updated, err := applyMajorIncidentMode(item, major, firstNonEmpty(body.StatusNote, item.StatusNote)); err == nil && updated != nil {
 			item = updated
 		}
+	}
+	if item != nil {
+		_ = upsertIncidentITSM(item.ID, body.CallerUserID, body.ParentIncidentID, body.Category, body.Subcategory, body.ConferenceURL, body.ConferenceNotes, severityToITSMPriority(item.Severity), item.CreatedAt, item.Status)
+		applyIncidentSLATransition(item.ID, item.Status)
+		item = hydrateOneIncidentITSM(item)
 	}
 	AppendAuditLog(&managerID, "request_incident_update", "pr_request", auditRef, item.Severity+":"+item.Status)
 	if item != nil {

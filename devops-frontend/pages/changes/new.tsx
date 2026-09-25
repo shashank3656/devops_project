@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { ITSM_PRIORITIES } from '../../lib/itsm';
 import { asRecord, getString } from '../../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -99,7 +100,7 @@ export default function NewChangeRequestPage() {
   const [prNumber, setPrNumber] = useState('');
   const [prUrl, setPrUrl] = useState('');
   const [assigneeUserId, setAssigneeUserId] = useState('');
-  const [priority, setPriority] = useState('medium');
+  const [priority, setPriority] = useState('p3');
   const [riskLevel, setRiskLevel] = useState('medium');
   const [plannedStart, setPlannedStart] = useState('');
   const [plannedEnd, setPlannedEnd] = useState('');
@@ -148,6 +149,15 @@ export default function NewChangeRequestPage() {
       .catch(() => setError('Failed to load change form options'))
       .finally(() => setLoading(false));
   }, [apiUrl]);
+
+  useEffect(() => {
+    const problemNumber = typeof router.query.problem === 'string' ? router.query.problem : '';
+    const problemTitle = typeof router.query.title === 'string' ? router.query.title : '';
+    const linkedIncident = typeof router.query.incident === 'string' ? router.query.incident : '';
+    if (problemTitle) setTitle((current) => current || problemTitle);
+    if (problemNumber) setSummary((current) => current || `Fix for ${problemNumber}`);
+    if (linkedIncident) setIncidentNumber((current) => current || linkedIncident);
+  }, [router.query.incident, router.query.problem, router.query.title]);
 
   const applyService = (id: string) => {
     setServiceId(id);
@@ -322,10 +332,9 @@ export default function NewChangeRequestPage() {
                 <label className="label">
                   Priority
                   <select className="input" value={priority} onChange={(event) => setPriority(event.target.value)}>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
+                    {ITSM_PRIORITIES.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
                   </select>
                 </label>
                 <label className="label">
