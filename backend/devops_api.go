@@ -404,9 +404,7 @@ func devopsNotificationsHandler(w http.ResponseWriter, r *http.Request) {
 	)
 	payload, err := buildDevopsNotifications(limit, offset, projectID, kind)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeDevopsJSON(w, map[string]interface{}{"error": "failed to fetch notifications", "status": "error"})
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to fetch notifications", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
