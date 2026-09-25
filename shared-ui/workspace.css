@@ -276,8 +276,8 @@
 
 .ig-scope-bar__label {
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ig-muted, #94a3b8);
 }
@@ -301,7 +301,8 @@
 .ig-page-header h1,
 .k8s-workspace__utility-title {
   text-transform: none !important;
-  letter-spacing: -0.03em !important;
+  letter-spacing: -0.02em !important;
+  font-synthesis: none;
 }
 
 .devops-sidebar-new__group-row {

@@ -79,6 +79,24 @@ interface RepoSummary {
   open_pr_count: number;
   setup_summary: string;
   webhook_path: string;
+  last_change?: {
+    id: number;
+    change_number: string;
+    sha: string;
+    previous_sha?: string;
+    provenance_signed: boolean;
+    sbom_url?: string;
+    attestation_url?: string;
+    policy_status?: string;
+    status?: string;
+    drift?: { drifted?: boolean; detail?: string; live_marker?: string };
+    rollback?: {
+      allowed?: boolean;
+      previous_sha?: string;
+      block_reason?: string;
+      k8s_href?: string;
+    };
+  };
 }
 
 interface RequiredCheck {
@@ -156,6 +174,7 @@ export default function DeployIntelligenceRepoPage() {
   const [ackReasons, setAckReasons] = useState('');
   const [protecting, setProtecting] = useState(false);
   const [protectMessage, setProtectMessage] = useState('');
+  const [rollingLastChange, setRollingLastChange] = useState(false);
 
   const load = async (refreshNumber?: number, options?: { batchDeep?: boolean }) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -496,6 +515,78 @@ export default function DeployIntelligenceRepoPage() {
         </div>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
+
+        {repoMeta?.last_change ? (
+          <section className="portal-surface" style={{ marginBottom: 24 }}>
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Last Change Request</span>
+                <h2 className="portal-surface__title">{repoMeta.last_change.change_number}</h2>
+                <p className="portal-surface__subtitle">
+                  {repoMeta.last_change.sha.slice(0, 12)}
+                  {repoMeta.last_change.previous_sha ? ` · previous ${repoMeta.last_change.previous_sha.slice(0, 7)}` : ''}
+                  {repoMeta.last_change.status ? ` · ${repoMeta.last_change.status}` : ''}
+                </p>
+              </div>
+              <span className={`ig-chip ig-chip--${repoMeta.last_change.provenance_signed ? 'ok' : 'medium'}`}>
+                {repoMeta.last_change.provenance_signed ? 'Signed provenance' : 'Unsigned'}
+              </span>
+              {repoMeta.last_change.drift?.drifted ? (
+                <span className="ig-chip ig-chip--medium">{repoMeta.last_change.drift.detail || 'Live image drifted from last CHG'}</span>
+              ) : null}
+            </div>
+            <div className="portal-page__actions" style={{ justifyContent: 'flex-start' }}>
+              <Link href={`/changes/${repoMeta.last_change.id}`} className="btn btn-secondary">
+                Open change
+              </Link>
+              {repoMeta.last_change.sbom_url ? (
+                <a href={repoMeta.last_change.sbom_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">
+                  SBOM
+                </a>
+              ) : null}
+              {repoMeta.last_change.rollback?.k8s_href ? (
+                <Link href={repoMeta.last_change.rollback.k8s_href} className="btn btn-secondary">
+                  Cluster
+                </Link>
+              ) : null}
+              {repoMeta.last_change.rollback?.allowed && repoMeta.last_change.rollback.previous_sha ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={rollingLastChange}
+                  onClick={() => {
+                    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                    if (!token || !repoMeta.last_change) return;
+                    setRollingLastChange(true);
+                    setError('');
+                    fetch(`${apiUrl}/api/devops/changes/${repoMeta.last_change.id}/rollback`, {
+                      method: 'POST',
+                      headers: { Authorization: `Bearer ${token}` },
+                    })
+                      .then(async (res) => {
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                          setError(data?.error || 'Failed to record rollback');
+                          return;
+                        }
+                        if (data.change?.id) {
+                          void router.push(`/changes/${data.change.id}`);
+                        }
+                      })
+                      .catch(() => setError('Failed to record rollback'))
+                      .finally(() => setRollingLastChange(false));
+                  }}
+                >
+                  {rollingLastChange
+                    ? 'Recording…'
+                    : `Roll back to ${repoMeta.last_change.rollback.previous_sha.slice(0, 7)}`}
+                </button>
+              ) : repoMeta.last_change.rollback?.block_reason ? (
+                <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{repoMeta.last_change.rollback.block_reason}</span>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
         {insights ? (
           <div className="portal-detail-grid" style={{ marginBottom: 24 }}>

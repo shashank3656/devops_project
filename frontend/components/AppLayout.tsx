@@ -61,6 +61,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/history': 'My Requests',
   '/incidents': 'Incidents',
   '/changes': 'Changes',
+  '/scorecards': 'Scorecards',
   '/my-teams': 'My Teams',
   '/profile': 'Profile',
 };
@@ -293,6 +294,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!notifyOpen && !profileOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (notifyRef.current && !notifyRef.current.contains(e.target as Node)) {
         setNotifyOpen(false);
@@ -301,11 +303,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         setProfileOpen(false);
       }
     };
-
-    if (notifyOpen || profileOpen) {
+    const timer = window.setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, [notifyOpen, profileOpen]);
 
   useEffect(() => {
@@ -387,6 +391,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     },
     { href: '/changes', label: 'Changes', Icon: IconFileText },
     { href: '/incidents', label: 'Incidents', Icon: IconAlertCircle },
+    { href: '/scorecards', label: 'Scorecards', Icon: IconFileText },
   ];
 
   if (teamCheck === 'loading') {

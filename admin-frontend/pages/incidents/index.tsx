@@ -120,7 +120,7 @@ export default function AdminIncidentsCatalogPage() {
               <span className="portal-surface__eyebrow">Catalog</span>
               <h2 className="portal-surface__title">Open and recent incidents</h2>
             </div>
-            <div className="devops-incident-filter-row">
+            <div className="ig-filter-bar devops-incident-filter-row">
               <input className="input" placeholder="Search number, summary, fingerprint" value={query} onChange={(event) => setQuery(event.target.value)} />
               <select className="input" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                 <option value="">All status</option>

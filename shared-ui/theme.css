@@ -9,6 +9,7 @@ html[data-theme] {
   --font-sans: var(--ig-font);
   --font-display: var(--ig-font);
   --font-mono: var(--ig-mono);
+  font-synthesis: none;
 
   --color-bg: var(--ig-bg);
   --color-bg-subtle: var(--ig-bg-subtle);
@@ -76,7 +77,8 @@ html[data-theme] body {
   color: var(--ig-text-2);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: 'cv11', 'ss01';
+  font-synthesis: none;
+  font-feature-settings: normal;
 }
 
 html[data-theme] a,
@@ -136,7 +138,7 @@ html[data-theme] .portal-profile-hero__title,
 html[data-theme] .request-builder__title {
   font-family: var(--ig-font);
   font-size: clamp(22px, 2.2vw, 28px);
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.2;
   letter-spacing: -0.025em;
   text-transform: none;
@@ -375,6 +377,8 @@ html[data-theme] .filters-bar .select {
   padding: 8px 12px;
   background: var(--ig-bg);
   border: 1px solid var(--ig-border-strong);
+  letter-spacing: 0;
+  font-synthesis: none;
   border-radius: var(--ig-radius);
   color: var(--ig-text);
   font-size: var(--ig-text-md);
@@ -1236,8 +1240,19 @@ html[data-theme] .admin-topbar__search-input {
   box-shadow: none;
   font-family: var(--ig-font);
   font-size: var(--ig-text-sm);
+  font-weight: 400;
+  letter-spacing: 0;
+  font-synthesis: none;
   color: var(--ig-text);
   outline: none;
+}
+
+html[data-theme] .admin-topbar__search-input::placeholder,
+html[data-theme] .ig-search-trigger__text {
+  font-family: var(--ig-font);
+  font-weight: 400;
+  letter-spacing: 0;
+  font-synthesis: none;
 }
 
 @media (max-width: 768px) {
@@ -1405,7 +1420,7 @@ html[data-theme] .login-page__title {
   margin: 0 0 12px;
   font-family: var(--ig-font);
   font-size: clamp(28px, 3vw, 38px);
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.12;
   letter-spacing: -0.035em;
   text-transform: none;
@@ -1450,7 +1465,7 @@ html[data-theme] .login-page__card-title {
   margin: 0 0 6px;
   font-family: var(--ig-font);
   font-size: 22px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.025em;
   text-transform: none;
   text-shadow: none;
@@ -1682,7 +1697,7 @@ html[data-theme] .login-page__card > .ig-icon-button {
 .ig-home__title {
   margin: 0 0 6px;
   font-size: clamp(24px, 2.6vw, 32px);
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.15;
   letter-spacing: -0.03em;
   color: var(--ig-text);
@@ -3818,7 +3833,7 @@ html[data-theme] .user-main-shell,
 html[data-theme] .admin-main-shell,
 html[data-theme] .devops-main-wrapper-new {
   min-width: 0;
-  overflow-x: hidden;
+  overflow: visible;
   box-sizing: border-box;
 }
 
@@ -3827,8 +3842,26 @@ html[data-theme] .admin-topbar,
 html[data-theme] .devops-navbar {
   max-width: 100%;
   min-width: 0;
-  flex-wrap: wrap;
-  overflow: hidden;
+  flex-wrap: nowrap;
+  overflow: visible;
+}
+
+html[data-theme] .user-topbar__notify-panel,
+html[data-theme] .admin-topbar__notify-panel,
+html[data-theme] .devops-navbar__notify-panel,
+html[data-theme] .user-topbar__dropdown,
+html[data-theme] .admin-topbar__dropdown,
+html[data-theme] .devops-navbar__dropdown {
+  z-index: 80;
+}
+
+html[data-theme] .user-topbar__actions .user-topbar__workspace,
+html[data-theme] .admin-topbar__actions .admin-topbar__workspace,
+html[data-theme] .devops-navbar__actions .devops-navbar__username,
+html[data-theme] .user-topbar__actions .user-topbar__role,
+html[data-theme] .admin-topbar__actions .admin-topbar__role,
+html[data-theme] .devops-navbar__actions .devops-navbar__role {
+  display: none;
 }
 
 html[data-theme] .user-topbar__left,
@@ -3922,9 +3955,77 @@ html[data-theme] .admin-maintenance-card__code-block {
   word-break: break-word;
 }
 
+html[data-theme] .portal-surface__header .ig-filter-bar,
+html[data-theme] .portal-surface__header .devops-incident-filter-row {
+  flex: 1 1 100%;
+}
+
+html[data-theme] .ig-filter-bar,
 html[data-theme] .devops-incident-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
   width: 100%;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 0.8fr);
+  min-width: 0;
+}
+
+html[data-theme] .ig-filter-bar > .input,
+html[data-theme] .devops-incident-filter-row > .input {
+  flex: 1 1 160px;
+  width: auto;
+  min-width: 140px;
+  max-width: 100%;
+  height: 40px;
+  letter-spacing: 0;
+  font-family: var(--ig-font);
+  font-weight: 400;
+  font-synthesis: none;
+}
+
+html[data-theme] .ig-filter-bar > input.input:first-child,
+html[data-theme] .devops-incident-filter-row > input.input:first-child {
+  flex: 2 1 240px;
+}
+
+html[data-theme] .devops-incident-filter-chip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 160px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--ig-border-strong);
+  border-radius: var(--ig-radius);
+  background: var(--ig-bg);
+}
+
+html[data-theme] .devops-incident-filter-chip__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ig-muted);
+}
+
+html[data-theme] .devops-incident-filter-chip__control {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ig-text);
+  font-family: var(--ig-font);
+  font-size: 13px;
+  outline: none;
+}
+
+html[data-theme] .devops-incident-filter-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 html[data-theme] .changes-page__webhook-url {
@@ -3952,8 +4053,14 @@ html[data-theme] .changes-page__sample {
   }
 }
 
-@media (max-width: 900px) {
-  html[data-theme] .devops-incident-filter-row {
-    grid-template-columns: 1fr;
+@media (max-width: 760px) {
+  html[data-theme] .ig-filter-bar > .input,
+  html[data-theme] .devops-incident-filter-row > .input,
+  html[data-theme] .ig-filter-bar > input.input:first-child,
+  html[data-theme] .devops-incident-filter-row > input.input:first-child,
+  html[data-theme] .devops-incident-filter-chip,
+  html[data-theme] .devops-incident-filter-row__actions {
+    flex: 1 1 100%;
+    margin-left: 0;
   }
 }

@@ -121,7 +121,7 @@ export default function UserChangesCatalogPage() {
               <span className="portal-surface__eyebrow">Catalog</span>
               <h2 className="portal-surface__title">Your project changes</h2>
             </div>
-            <div className="devops-incident-filter-row">
+            <div className="ig-filter-bar devops-incident-filter-row">
               <input className="input" placeholder="Search repo, title, SHA" value={query} onChange={(event) => setQuery(event.target.value)} />
               <select className="input" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                 <option value="">All status</option>

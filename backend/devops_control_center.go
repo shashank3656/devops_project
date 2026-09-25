@@ -26,46 +26,49 @@ type projectRunbook struct {
 }
 
 type requestIncident struct {
-	ID                    int        `json:"id"`
-	IncidentNumber        string     `json:"incident_number"`
-	RequestID             int        `json:"request_id"`
-	ProjectID             *int       `json:"project_id,omitempty"`
-	ProjectName           string     `json:"project_name,omitempty"`
-	ProjectCode           string     `json:"project_code,omitempty"`
-	RequestTeam           string     `json:"request_team,omitempty"`
-	RequestEnv            string     `json:"request_env,omitempty"`
-	RequestService        string     `json:"request_service,omitempty"`
-	RequestCloud          string     `json:"request_cloud,omitempty"`
-	RequestStatus         string     `json:"request_status,omitempty"`
-	TeamID                *int       `json:"team_id,omitempty"`
-	TeamName              string     `json:"team_name,omitempty"`
-	Severity              string     `json:"severity"`
-	Status                string     `json:"status"`
-	EscalationLevel       string     `json:"escalation_level"`
-	OwnerUserID           *int       `json:"owner_user_id,omitempty"`
-	OwnerUsername         string     `json:"owner_username,omitempty"`
-	Summary               string     `json:"summary"`
-	Notes                 string     `json:"notes"`
-	Source                string     `json:"source,omitempty"`
-	Fingerprint           string     `json:"fingerprint,omitempty"`
-	AlertSource           string     `json:"alert_source,omitempty"`
-	DashboardURL          string     `json:"dashboard_url,omitempty"`
-	SuspectedChangeID     *int       `json:"suspected_change_id,omitempty"`
-	SuspectedChangeNumber string     `json:"suspected_change_number,omitempty"`
-	Service               string     `json:"service,omitempty"`
-	Environment           string     `json:"environment,omitempty"`
-	OccurrenceCount       int        `json:"occurrence_count,omitempty"`
-	LastSeenAt            *time.Time `json:"last_seen_at,omitempty"`
-	RollbackHint          string     `json:"rollback_hint,omitempty"`
-	Major                 bool       `json:"major,omitempty"`
-	StatusNote            string     `json:"status_note,omitempty"`
-	SlackThread           string     `json:"slack_thread,omitempty"`
-	ProblemID             *int       `json:"problem_id,omitempty"`
-	SilencedUntil         *time.Time `json:"silenced_until,omitempty"`
-	CausedBy              string     `json:"caused_by,omitempty"`
-	CreatedBy             *int       `json:"created_by,omitempty"`
-	CreatedAt             time.Time  `json:"created_at"`
-	UpdatedAt             time.Time  `json:"updated_at"`
+	ID                    int                 `json:"id"`
+	IncidentNumber        string              `json:"incident_number"`
+	RequestID             int                 `json:"request_id"`
+	ProjectID             *int                `json:"project_id,omitempty"`
+	ProjectName           string              `json:"project_name,omitempty"`
+	ProjectCode           string              `json:"project_code,omitempty"`
+	RequestTeam           string              `json:"request_team,omitempty"`
+	RequestEnv            string              `json:"request_env,omitempty"`
+	RequestService        string              `json:"request_service,omitempty"`
+	RequestCloud          string              `json:"request_cloud,omitempty"`
+	RequestStatus         string              `json:"request_status,omitempty"`
+	TeamID                *int                `json:"team_id,omitempty"`
+	TeamName              string              `json:"team_name,omitempty"`
+	Severity              string              `json:"severity"`
+	Status                string              `json:"status"`
+	EscalationLevel       string              `json:"escalation_level"`
+	OwnerUserID           *int                `json:"owner_user_id,omitempty"`
+	OwnerUsername         string              `json:"owner_username,omitempty"`
+	Summary               string              `json:"summary"`
+	Notes                 string              `json:"notes"`
+	Source                string              `json:"source,omitempty"`
+	Fingerprint           string              `json:"fingerprint,omitempty"`
+	AlertSource           string              `json:"alert_source,omitempty"`
+	DashboardURL          string              `json:"dashboard_url,omitempty"`
+	SuspectedChangeID     *int                `json:"suspected_change_id,omitempty"`
+	SuspectedChangeNumber string              `json:"suspected_change_number,omitempty"`
+	Service               string              `json:"service,omitempty"`
+	Environment           string              `json:"environment,omitempty"`
+	OccurrenceCount       int                 `json:"occurrence_count,omitempty"`
+	LastSeenAt            *time.Time          `json:"last_seen_at,omitempty"`
+	RollbackHint          string              `json:"rollback_hint,omitempty"`
+	RollbackPlan          *changeRollbackPlan `json:"rollback_plan,omitempty"`
+	Major                 bool                `json:"major,omitempty"`
+	StatusNote            string              `json:"status_note,omitempty"`
+	SlackThread           string              `json:"slack_thread,omitempty"`
+	ProblemID             *int                `json:"problem_id,omitempty"`
+	SilencedUntil         *time.Time          `json:"silenced_until,omitempty"`
+	CausedBy              string              `json:"caused_by,omitempty"`
+	CreatedBy             *int                `json:"created_by,omitempty"`
+	CreatedAt             time.Time           `json:"created_at"`
+	UpdatedAt             time.Time           `json:"updated_at"`
+	ExternalProvider      string              `json:"external_provider,omitempty"`
+	ExternalID            string              `json:"external_id,omitempty"`
 }
 
 func formatIncidentNumber(id int) string {
@@ -195,6 +198,9 @@ func listPortalUsers() ([]simpleUserOption, error) {
 }
 
 func listProjectRunbooks(projectID int) ([]projectRunbook, error) {
+	if DB == nil {
+		return []projectRunbook{}, nil
+	}
 	query := `
 		SELECT id, project_id, COALESCE(service,''), title, COALESCE(content,''), COALESCE(link_url,''), created_by, created_at, updated_at
 		FROM project_runbooks
@@ -299,6 +305,9 @@ func listAssignedRequestIncidents(userID int, statusFilter string) ([]requestInc
 }
 
 func listRequestIncidentsFiltered(statusFilter string, ownerUserID *int, includeDraft bool) ([]requestIncident, error) {
+	if DB == nil {
+		return []requestIncident{}, nil
+	}
 	query := `
 		SELECT i.id, COALESCE(i.incident_number,''), i.request_id, i.project_id, COALESCE(p.name,''), COALESCE(p.code,''),
 		       COALESCE(r.team,''), COALESCE(NULLIF(i.environment,''), r.env, ''), COALESCE(NULLIF(i.service,''), r.service, ''), COALESCE(r.cloud,''), COALESCE(r.status,''),
@@ -307,7 +316,8 @@ func listRequestIncidentsFiltered(statusFilter string, ownerUserID *int, include
 		       COALESCE(i.source,'ticket'), COALESCE(i.fingerprint,''), COALESCE(i.alert_source,''), COALESCE(i.dashboard_url,''),
 		       i.suspected_change_id, COALESCE(chg.change_number,''), COALESCE(i.service,''), COALESCE(i.environment,''), COALESCE(i.occurrence_count,1), i.last_seen_at,
 		       i.created_by, i.created_at, i.updated_at,
-		       COALESCE(i.major, false), COALESCE(i.status_note,''), COALESCE(i.slack_thread,''), i.problem_id, i.silenced_until
+		       COALESCE(i.major, false), COALESCE(i.status_note,''), COALESCE(i.slack_thread,''), i.problem_id, i.silenced_until,
+		       COALESCE(i.external_provider,''), COALESCE(i.external_id,'')
 		FROM request_incidents i
 		LEFT JOIN pr_requests r ON r.id = i.request_id
 		LEFT JOIN projects p ON p.id = i.project_id
@@ -355,6 +365,7 @@ func listRequestIncidentsFiltered(statusFilter string, ownerUserID *int, include
 			&suspectedChangeID, &item.SuspectedChangeNumber, &item.Service, &item.Environment, &item.OccurrenceCount, &lastSeen,
 			&createdBy, &item.CreatedAt, &item.UpdatedAt,
 			&item.Major, &item.StatusNote, &item.SlackThread, &problemID, &silencedUntil,
+			&item.ExternalProvider, &item.ExternalID,
 		); err != nil {
 			return nil, err
 		}
@@ -1268,46 +1279,46 @@ func revokePromotionGateAsDevops(requestID int, userID int, note string) (*deplo
 	return record, updatedGate, nil
 }
 
-func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, *promotionGateDecision, error) {
+func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, *promotionGateDecision, *changeRequestRecord, error) {
 	req, err := GetPRRequestByID(requestID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if req == nil {
-		return nil, nil, fmt.Errorf("request not found")
+		return nil, nil, nil, fmt.Errorf("request not found")
 	}
 	if req.Status != "completed" && req.Status != "in_progress" {
-		return nil, nil, fmt.Errorf("only completed or in-progress requests can be promoted")
+		return nil, nil, nil, fmt.Errorf("only completed or in-progress requests can be promoted")
 	}
 	nextEnvironment := nextEnv(req.Env)
 	if nextEnvironment == "" {
-		return nil, nil, fmt.Errorf("request is already at the highest environment")
+		return nil, nil, nil, fmt.Errorf("request is already at the highest environment")
 	}
 	if strings.EqualFold(nextEnvironment, "prod") {
 		if reason := activeFreezeReason(); reason != "" && !emergencyBypassesFreeze(req.Service, nextEnvironment) {
-			return nil, nil, fmt.Errorf("production freeze is active: %s", reason)
+			return nil, nil, nil, fmt.Errorf("production freeze is active: %s", reason)
 		}
 		brief := loadOrBuildPRImpact(req)
 		if strings.EqualFold(brief.RiskLevel, "high") && !brief.Acknowledged {
-			return nil, nil, fmt.Errorf("high-risk PR impact brief must be acknowledged before promoting to prod")
+			return nil, nil, nil, fmt.Errorf("high-risk PR impact brief must be acknowledged before promoting to prod")
 		}
 	}
 
 	gate, err := evaluatePromotionGateForRequest(req)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if gate != nil {
 		if gate.Status == "blocked" {
-			return nil, gate, fmt.Errorf("promotion blocked by deployment gate policy")
+			return nil, gate, nil, fmt.Errorf("promotion blocked by deployment gate policy")
 		}
 		if gate.RequiresAcknowledgement {
-			return nil, gate, fmt.Errorf("promotion requires deployment gate approval")
+			return nil, gate, nil, fmt.Errorf("promotion requires deployment gate approval")
 		}
 	}
 	appID, err := GenerateApplicationID()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	filePath, branchName := BuildRequestGitArtifacts(req.ProjectID, req.Team, req.Cloud, nextEnvironment, req.Service, appID)
 	createdBy := req.CreatedBy
@@ -1332,7 +1343,7 @@ func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, *promotionGa
 		CreatedBy:     createdBy,
 	}
 	if err := SavePRRequest(newReq); err != nil {
-		return nil, gate, err
+		return nil, gate, nil, err
 	}
 	_, _ = execContext(`UPDATE pr_requests SET linked_request_id = $1 WHERE id = $2`, requestID, newReq.ID)
 	auditDetails := fmt.Sprintf("devops:%d->%s", requestID, nextEnvironment)
@@ -1340,7 +1351,7 @@ func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, *promotionGa
 		auditDetails += ":gate-approved"
 	}
 	AppendAuditLog(&userID, "request_promote", "pr_request", strconv.Itoa(newReq.ID), auditDetails)
-	return newReq, gate, nil
+	return newReq, gate, recordPromotionChange(req, newReq), nil
 }
 
 func listOpsDeliveryFailures(statusFilter string) ([]opsDeliveryFailure, error) {
@@ -1630,6 +1641,9 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		AppendAuditLog(&managerID, "request_incident_upsert", "pr_request", strconv.Itoa(body.RequestID), item.Severity+":"+item.Status)
+		if item != nil {
+			pageIncidentOwners(*item)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "status": "ok"})
 	default:
@@ -1648,15 +1662,47 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/devops/incidents/"), "/")
-	id, err := strconv.Atoi(path)
+	parts := strings.Split(path, "/")
+	id, err := strconv.Atoi(parts[0])
 	if err != nil || id <= 0 {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid incident id", err)
+		return
+	}
+	if len(parts) == 2 && strings.EqualFold(parts[1], "review") {
+		handleIncidentReviewRoute(w, r, managerID, id)
+		return
+	}
+	if len(parts) == 2 && strings.EqualFold(parts[1], "rollback") {
+		if r.Method != "POST" {
+			writeMethodNotAllowed(w, r)
+			return
+		}
+		item, plan, err := executeChangeSHARollback(managerID, id, 0)
+		if err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"change": item, "rollback": plan, "status": "ok"})
+		return
+	}
+	if r.Method == "GET" && len(parts) == 1 {
+		item, err := getRequestIncidentByID(id)
+		if err != nil || item == nil {
+			writeAPIError(w, r, http.StatusNotFound, "incident not found", err)
+			return
+		}
+		attachRollbackPlan(item)
+		review, postmortem := incidentReviewPayload(item)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "rollback": item.RollbackPlan, "review": review, "postmortem": postmortem, "status": "ok"})
 		return
 	}
 	if r.Method != "PATCH" {
 		writeMethodNotAllowed(w, r)
 		return
 	}
+	previous, _ := getRequestIncidentByID(id)
 	var requestID sql.NullInt64
 	err = queryRowContext(`SELECT request_id FROM request_incidents WHERE id = $1`, id).Scan(&requestID)
 	if err != nil {
@@ -1723,6 +1769,10 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	AppendAuditLog(&managerID, "request_incident_update", "pr_request", auditRef, item.Severity+":"+item.Status)
+	if item != nil {
+		pageIncidentOwnersIfNewlyOpen(previous, *item)
+		go pushIncidentToExternalIRM(*item)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "status": "ok"})
 }
@@ -1897,7 +1947,7 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		item, gate, err := promoteRequestAsDevops(requestID, managerID)
+		item, gate, change, err := promoteRequestAsDevops(requestID, managerID)
 		if err != nil {
 			if gate != nil && (gate.Status == "blocked" || gate.RequiresAcknowledgement) {
 				if req, reqErr := GetPRRequestByID(requestID); reqErr == nil && req != nil && gate.Status == "blocked" {
@@ -1929,7 +1979,7 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
 		}
-		if err := writeJSONResponse(w, http.StatusOK, map[string]any{"request": item, "gate": gate, "status": "ok"}); err != nil {
+		if err := writeJSONResponse(w, http.StatusOK, map[string]any{"request": item, "gate": gate, "change": change, "status": "ok"}); err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to write promotion response", err)
 		}
 	default:

@@ -504,7 +504,14 @@ export default function DevOpsPromotionsPage() {
         throw new Error(getString(data.error, 'Failed to promote request'));
       }
       const requestRecord = asRecord(data.request);
-      setNotice(`Created draft request #${typeof requestRecord.id === 'number' ? requestRecord.id : ''} for the next environment.`);
+      const changeRecord = asRecord(data.change);
+      const changeNumber = getString(changeRecord.change_number, '');
+      const requestID = typeof requestRecord.id === 'number' ? requestRecord.id : '';
+      if (changeNumber) {
+        setNotice(`Created draft request #${requestID} for the next environment as ${changeNumber}.`);
+      } else {
+        setNotice(`Created draft request #${requestID} for the next environment.`);
+      }
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to promote request');

@@ -4,11 +4,18 @@ import type { SupportAction, SupportArticle } from '../lib/supportContent';
 
 type SupportTab = 'chat' | 'docs';
 
+interface ChatCitation {
+  number?: string;
+  title?: string;
+  href?: string;
+}
+
 interface ChatMessage {
   id: string;
   role: 'assistant' | 'user';
   text: string;
   actions?: SupportAction[];
+  citations?: ChatCitation[];
 }
 
 interface SupportHubProps {
@@ -219,7 +226,13 @@ export default function SupportHub({
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         const text = typeof data?.reply === 'string' && data.reply.trim() ? data.reply : fallback.text;
-        setMessages((current) => [...current, { id: `assistant-${Date.now()}`, role: 'assistant', text, actions: fallback.actions }]);
+        const citations = Array.isArray(data?.citations) ? data.citations.map((item: ChatCitation) => {
+          if (item.href && item.href.startsWith('/incidents/') && !item.href.includes('/edit')) {
+            return { ...item, href: `${item.href}/edit` };
+          }
+          return item;
+        }) : [];
+        setMessages((current) => [...current, { id: `assistant-${Date.now()}`, role: 'assistant', text, actions: fallback.actions, citations }]);
       })
       .catch(() => setMessages((current) => [...current, fallback]));
   };
@@ -246,6 +259,15 @@ export default function SupportHub({
               {messages.map((message) => (
                 <div key={message.id} className={`portal-assistant__message portal-assistant__message--${message.role}`}>
                   <div className="portal-assistant__message-copy">{renderMessageText(message.text)}</div>
+                  {message.citations && message.citations.length > 0 ? (
+                    <div className="portal-assistant__message-actions">
+                      {message.citations.map((citation) => (
+                        citation.href
+                          ? <Link key={`${message.id}-${citation.number}`} href={citation.href} className="portal-assistant__link" onClick={onClose}>{citation.number || citation.title}</Link>
+                          : <span key={`${message.id}-${citation.number}`}>{citation.number}</span>
+                      ))}
+                    </div>
+                  ) : null}
                   {message.actions && message.actions.length > 0 ? (
                     <div className="portal-assistant__message-actions">
                       {message.actions.map((action) => (

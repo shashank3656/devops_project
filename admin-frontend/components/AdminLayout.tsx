@@ -115,6 +115,7 @@ const PRIMARY_NAV: {
     children: [
       { href: '/users', label: 'Users' },
       { href: '/teams', label: 'Teams' },
+      { href: '/sso', label: 'SSO' },
     ],
   },
   {
@@ -137,6 +138,8 @@ const MORE_NAV: { href: string; label: string; Icon: ComponentType<{ className?:
   { href: '/webhooks', label: 'Integrations', Icon: IconWebhook },
   { href: '/maintenance', label: 'Maintenance', Icon: IconLayers },
   { href: '/deploy-intelligence', label: 'Deploy intel', Icon: IconActivity },
+  { href: '/scorecards', label: 'Scorecards', Icon: IconTrendingUp },
+  { href: '/evidence', label: 'Evidence', Icon: IconFileText },
 ];
 
 function getAdminIdentity(): { initials: string; label: string } {
@@ -349,14 +352,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    if (!notifyOpen && !profileOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (notifyRef.current && !notifyRef.current.contains(e.target as Node)) setNotifyOpen(false);
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
     };
-    if (notifyOpen || profileOpen) {
+    const timer = window.setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, [notifyOpen, profileOpen]);
 
   const handleLogout = () => {

@@ -650,7 +650,7 @@ func buildDeploymentGatePolicyEngine(
 				Detail: "No active incidents are blocking this environment.",
 			})
 		}
-		if reason := sloBudgetFreezeReason(environment); reason != "" {
+		if reason := sloBudgetFreezeReason(environment); reason != "" && !emergencyBypassesFreeze("", environment) {
 			checks = append(checks, deploymentGateCheck{
 				Key:    "slo_budget",
 				Label:  "Error budget",
@@ -1197,6 +1197,19 @@ func buildExpiryTracker(entries []CredentialAuditEntry, cloudFilter string, proj
 			DaysRemaining:  daysUntil(secretExpiry, now),
 			Status:         expiryStatus(secretExpiry, now),
 			Recommendation: expiryRecommendation("secret", secretExpiry, now),
+		})
+	}
+
+	for _, finding := range listStaticKeyFindings() {
+		name := stringFromAny(finding["name"])
+		appendItem(expiryTrackerItem{
+			Category:       "credential",
+			Source:         "static_key",
+			ResourceName:   name,
+			ResourceType:   "Long-lived process secret",
+			Status:         "expiring_30d",
+			DaysRemaining:  0,
+			Recommendation: "Replace with GitHub OIDC / workload identity. POST /api/auth/workload/github from CI.",
 		})
 	}
 

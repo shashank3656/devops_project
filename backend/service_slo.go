@@ -246,6 +246,7 @@ func devopsSLOsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list SLOs", err)
 			return
 		}
+		go syncSLOBudgetFreezes()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"slos": items, "status": "ok"})
 	case "POST":
@@ -265,6 +266,7 @@ func devopsSLOsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to save SLO", err)
 			return
 		}
+		go syncSLOBudgetFreezes()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"slo": item, "status": "ok"})
 	default:

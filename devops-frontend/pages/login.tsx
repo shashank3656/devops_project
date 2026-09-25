@@ -20,6 +20,7 @@ function providerLabel(provider: string): string {
   if (provider === 'azure_ad') return 'Azure AD';
   if (provider === 'keycloak') return 'Keycloak';
   if (provider === 'saml') return 'SAML SSO';
+  if (provider === 'oidc') return 'OIDC';
   return 'SSO';
 }
 
@@ -31,6 +32,13 @@ export default function DevOpsLogin() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sso, setSso] = useState<PublicSSOState>({ enabled: false, mode: 'disabled', provider: 'none', login_url: '' });
+
+  useEffect(() => {
+    const token = typeof router.query.sso_token === 'string' ? router.query.sso_token : '';
+    if (!token) return;
+    localStorage.setItem(DEVOPS_TOKEN_KEY, token);
+    router.replace('/dashboard');
+  }, [router, router.query.sso_token]);
 
   useEffect(() => {
     fetch(`${apiUrl}/api/public/sso/options?portal=devops`)

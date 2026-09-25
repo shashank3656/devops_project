@@ -758,20 +758,10 @@ func portalFreezeHref(portal string) string {
 }
 
 func activeFreezeReason() string {
-	if DB == nil {
-		return ""
+	if reason := storedActiveFreezeReason(); reason != "" {
+		return reason
 	}
-	var reason string
-	err := DB.QueryRow(`
-		SELECT reason FROM deployment_freezes
-		WHERE starts_at <= NOW() AND ends_at >= NOW()
-		ORDER BY starts_at DESC
-		LIMIT 1
-	`).Scan(&reason)
-	if err != nil {
-		return ""
-	}
-	return reason
+	return sloBudgetFreezeReason("")
 }
 
 func nextEnvironment(env string) string {

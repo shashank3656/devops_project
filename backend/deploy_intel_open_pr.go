@@ -26,7 +26,10 @@ type deployIntelPreviewLink struct {
 	Branch    string     `json:"branch,omitempty"`
 	Status    string     `json:"status,omitempty"`
 	Label     string     `json:"label"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
+	URL                string     `json:"url,omitempty"`
+	EstimatedCostUSD   float64    `json:"estimated_cost_usd,omitempty"`
+	ChangeNumber       string     `json:"change_number,omitempty"`
 }
 
 type deployIntelOpenPRMeta struct {
@@ -241,6 +244,17 @@ func findPreviewEnvironmentsForBranch(headBranch string) []deployIntelPreviewLin
 		}
 		link.Label = fmt.Sprintf("Request #%d · %s", link.RequestID, link.Env)
 		out = append(out, link)
+	}
+	for _, preview := range previewsForBranch(headBranch) {
+		out = append(out, deployIntelPreviewLink{
+			Env:              "preview",
+			Branch:           preview.Branch,
+			Status:           preview.Status,
+			Label:            firstNonEmpty(preview.ChangeNumber, fmt.Sprintf("Preview PR #%d", preview.PRNumber)),
+			URL:              preview.URL,
+			EstimatedCostUSD: preview.EstimatedCostUSD,
+			ChangeNumber:     preview.ChangeNumber,
+		})
 	}
 	return out
 }

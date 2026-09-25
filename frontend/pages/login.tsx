@@ -18,6 +18,7 @@ function providerLabel(provider: string): string {
   if (provider === 'azure_ad') return 'Azure AD';
   if (provider === 'keycloak') return 'Keycloak';
   if (provider === 'saml') return 'SAML SSO';
+  if (provider === 'oidc') return 'OIDC';
   return 'SSO';
 }
 
@@ -41,6 +42,15 @@ export default function Login() {
       localStorage.removeItem('isAuthenticated');
     }
   }, []);
+
+  useEffect(() => {
+    const token = typeof router.query.sso_token === 'string' ? router.query.sso_token : '';
+    if (!token) return;
+    localStorage.setItem('token', token);
+    localStorage.setItem('isAuthenticated', 'true');
+    toast('Signed in with SSO', 'success');
+    router.replace('/home');
+  }, [router, router.query.sso_token, toast]);
 
   useEffect(() => {
     fetch(`${apiUrl}/api/public/sso/options?portal=user`)
