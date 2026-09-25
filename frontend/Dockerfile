@@ -5,15 +5,18 @@ WORKDIR /app
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
-COPY frontend/package.json ./
-RUN npm install
+# hadolint ignore=DL3018
+RUN apk --no-cache upgrade
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 
 COPY shared-ui /shared-ui
 COPY frontend/ ./
 COPY shared-ui ./shared-ui
 
 ENV NODE_OPTIONS="--max-old-space-size=4096"
-RUN npm run build
+RUN npm run build && npm prune --omit=dev
 
 # ---------- Runtime stage ----------
 FROM node:20-alpine
@@ -22,7 +25,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # hadolint ignore=DL3018
-RUN apk --no-cache add wget
+RUN apk --no-cache upgrade && apk --no-cache add wget
 
 COPY --from=builder --chown=node:node /app/package.json ./
 COPY --from=builder --chown=node:node /app/next.config.js ./

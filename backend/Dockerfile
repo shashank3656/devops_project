@@ -7,16 +7,17 @@ WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 COPY backend/*.go ./
 
-RUN go mod download && \
+RUN apk --no-cache upgrade && \
+    go mod download && \
     go mod verify && \
     go mod tidy
 
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o backend .
 
-FROM alpine:3.20
+FROM alpine:3.23
 
 # hadolint ignore=DL3018
-RUN apk --no-cache add ca-certificates wget postgresql-client
+RUN apk --no-cache upgrade && apk --no-cache add ca-certificates wget postgresql-client
 RUN addgroup -S app && adduser -S -G app app
 
 WORKDIR /app
