@@ -3833,7 +3833,7 @@ html[data-theme] .user-main-shell,
 html[data-theme] .admin-main-shell,
 html[data-theme] .devops-main-wrapper-new {
   min-width: 0;
-  overflow-x: hidden;
+  overflow: visible;
   box-sizing: border-box;
 }
 
@@ -3842,8 +3842,26 @@ html[data-theme] .admin-topbar,
 html[data-theme] .devops-navbar {
   max-width: 100%;
   min-width: 0;
-  flex-wrap: wrap;
-  overflow: hidden;
+  flex-wrap: nowrap;
+  overflow: visible;
+}
+
+html[data-theme] .user-topbar__notify-panel,
+html[data-theme] .admin-topbar__notify-panel,
+html[data-theme] .devops-navbar__notify-panel,
+html[data-theme] .user-topbar__dropdown,
+html[data-theme] .admin-topbar__dropdown,
+html[data-theme] .devops-navbar__dropdown {
+  z-index: 80;
+}
+
+html[data-theme] .user-topbar__actions .user-topbar__workspace,
+html[data-theme] .admin-topbar__actions .admin-topbar__workspace,
+html[data-theme] .devops-navbar__actions .devops-navbar__username,
+html[data-theme] .user-topbar__actions .user-topbar__role,
+html[data-theme] .admin-topbar__actions .admin-topbar__role,
+html[data-theme] .devops-navbar__actions .devops-navbar__role {
+  display: none;
 }
 
 html[data-theme] .user-topbar__left,
