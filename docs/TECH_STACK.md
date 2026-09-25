@@ -49,7 +49,8 @@ Key responsibilities:
 - infrastructure request creation
 - request templates
 - request history
-- assigned incidents
+- assigned incidents and read-only reviews
+- scorecards and live-vs-CHG drift
 - notification drawer UX
 
 #### Admin Portal
@@ -64,6 +65,8 @@ Key responsibilities:
 - team management
 - governance and approval views
 - templates and platform controls
+- outbound webhook event catalog
+- read catalogs for changes, incidents, scorecards, and reviews
 
 #### DevOps Portal
 
@@ -78,8 +81,10 @@ Key responsibilities:
 - environment drift
 - K8s workload health
 - expiry tracker
-- incidents and rollback
+- incidents, generated reviews, and rollback CHGs
+- Health, SLO freeze, scorecards, and Identity
 - ops command center
+- MCP comment / request-rollback (no apply)
 
 ## Backend Stack
 
@@ -113,7 +118,9 @@ The backend acts as the shared workflow engine for three separate portals. Go is
 - rollback operations
 - notification workflows
 - GitHub and PR-driven automation
-- operational summaries such as drift, health, risk, and dependencies
+- operational summaries such as live-vs-CHG drift, health, SLO freeze, risk, and dependencies
+- GitHub/GitLab OIDC verify and optional AWS role exchange
+- MCP catalog reads and two write tools that reuse portal freeze/CAB
 
 ## Data Layer
 
