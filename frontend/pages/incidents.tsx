@@ -185,7 +185,7 @@ export default function UserIncidentsPage() {
               <h2 className="portal-surface__title">Incident workload</h2>
               <p className="portal-surface__subtitle">Filter by status or source to find alerts, tickets, or regressions.</p>
             </div>
-            <div className="portal-page__actions">
+            <div className="ig-filter-bar">
               <select
                 className="input incidents-page__filter"
                 value={activeStatus}
