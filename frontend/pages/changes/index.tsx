@@ -1,6 +1,7 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { PageFilters } from '@infragate/ui';
 import { SITE_NAME } from '../../lib/site';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -98,6 +99,32 @@ export default function UserChangesCatalogPage() {
           </div>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
+        <PageFilters
+          search={query}
+          onSearchChange={setQuery}
+          searchPlaceholder="Search repo, title, SHA"
+          status={statusFilter}
+          onStatusChange={setStatusFilter}
+          statusOptions={[
+            { value: '', label: 'All status' },
+            { value: 'new', label: 'New' },
+            { value: 'failed', label: 'Failed' },
+            { value: 'monitoring', label: 'Monitoring' },
+            { value: 'resolved', label: 'Resolved' },
+            { value: 'closed', label: 'Closed' },
+          ]}
+          chips={[
+            projectID ? { key: 'project', label: 'Project', value: String(projectID) } : null,
+            environment ? { key: 'environment', label: 'Environment', value: environment } : null,
+            statusFilter ? { key: 'status', label: 'Status', value: statusFilter } : null,
+            typeFilter ? { key: 'type', label: 'Type', value: typeFilter } : null,
+          ].filter((chip): chip is { key: string; label: string; value: string } => Boolean(chip))}
+          onClear={() => {
+            setQuery('');
+            setStatusFilter('');
+            setTypeFilter('');
+          }}
+        />
         <section className="portal-stat-grid notification-summary-grid">
           <article className="portal-stat-card">
             <span className="portal-stat-card__label">Changes</span>

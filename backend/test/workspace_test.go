@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -151,6 +152,23 @@ func TestChangeNeedsViewerAction(t *testing.T) {
 	}
 	if !changeNeedsViewerAction(changeRequestRecord{}, "devops", 8) {
 		t.Fatal("unassigned CHGs need an owner")
+	}
+}
+
+func TestRequestQueryEnvPrefersEnvironmentAlias(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "/api/devops/requests?env=dev&environment=prod", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := requestQueryEnv(req); got != "prod" {
+		t.Fatalf("requestQueryEnv = %q", got)
+	}
+	req, err = http.NewRequest(http.MethodGet, "/api/history?env=uat", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := requestQueryEnv(req); got != "uat" {
+		t.Fatalf("requestQueryEnv env-only = %q", got)
 	}
 }
 

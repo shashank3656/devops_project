@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { type ScopeProject, type WorkspaceScope } from './useWorkspaceScope';
+import { defaultEnvironmentForProject, type ScopeProject, type WorkspaceScope } from './useWorkspaceScope';
 
 const FALLBACK_ENVIRONMENTS = ['dev', 'uat', 'prod'];
 
@@ -7,10 +7,12 @@ export default function ScopeBar({
   projects,
   scope,
   onChange,
+  onClear,
 }: {
   projects: ScopeProject[];
   scope: WorkspaceScope;
   onChange: (next: Partial<WorkspaceScope>) => void;
+  onClear?: () => void;
 }) {
   const selected = useMemo(
     () => projects.find((project) => String(project.id) === String(scope.projectId)) || null,
@@ -22,6 +24,7 @@ export default function ScopeBar({
     const unique = Array.from(new Set((fromProject.length ? fromProject : fromAll).map((item) => item.trim()).filter(Boolean)));
     return unique.length ? unique : FALLBACK_ENVIRONMENTS;
   }, [projects, selected]);
+  const hasScope = Boolean(scope.projectId || scope.environment);
 
   return (
     <div className="ig-scope-bar" role="group" aria-label="Workspace scope">
@@ -32,10 +35,10 @@ export default function ScopeBar({
           value={scope.projectId}
           onChange={(event) => {
             const projectId = event.target.value;
-            const project = projects.find((item) => String(item.id) === projectId);
-            const nextEnv =
-              project?.environments?.includes(scope.environment) ? scope.environment : project?.environments?.[0] || '';
-            onChange({ projectId, environment: nextEnv });
+            onChange({
+              projectId,
+              environment: defaultEnvironmentForProject(projects, projectId, scope.environment),
+            });
           }}
         >
           <option value="">All projects</option>
@@ -61,6 +64,11 @@ export default function ScopeBar({
           ))}
         </select>
       </label>
+      {onClear && hasScope ? (
+        <button type="button" className="ig-scope-bar__clear" onClick={onClear}>
+          Clear
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -160,6 +160,7 @@ export default function EditUser() {
   const [onboardingProgress, setOnboardingProgress] = useState<OnboardingProgress | null>(null);
   const [onboardingLoading, setOnboardingLoading] = useState(false);
   const [error, setError] = useState('');
+  const [membershipNotice, setMembershipNotice] = useState('');
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
@@ -364,6 +365,8 @@ export default function EditUser() {
         setError(data.error || 'Failed to add team membership');
         return;
       }
+      setMembershipNotice('Added to team.');
+      window.setTimeout(() => setMembershipNotice(''), 4000);
       await fetchUser(user.id);
       await fetchOnboardingProgress(user.id);
     } catch (_) {
@@ -404,24 +407,44 @@ export default function EditUser() {
         <title>Edit user - SetuOps Governance</title>
       </Head>
       <AdminLayout>
-        <div className="container">
-          <Link href="/users" className="back-link">
-            ← Back to Users
-          </Link>
-          {created === '1' && (
-            <div className="alert admin-user-edit__success-alert" role="alert">
-              User created successfully.
-              {team_assign_failed ? ` Some team assignments still need review.` : ''}
-            </div>
-          )}
+        <div className="portal-page">
           {loading ? (
-            <p className="loading-text">Loading…</p>
+            <div className="admin-queue-state">
+              <div className="admin-queue-state__spinner" aria-hidden="true" />
+              <p className="admin-queue-state__title">Loading user</p>
+            </div>
           ) : error && !user ? (
-            <div className="card">
+            <div className="portal-surface">
               <div className="alert alert-error">{error}</div>
+              <Link href="/users" className="btn btn-secondary" style={{ marginTop: 16 }}>
+                Back to users
+              </Link>
             </div>
           ) : user ? (
             <>
+              <div className="portal-page__header">
+                <div>
+                  <span className="portal-page__eyebrow">People</span>
+                  <h1 className="portal-page__title">{user.username}</h1>
+                  <p className="portal-page__subtitle">
+                    {user.email} · {userType === 'devops_user' ? 'DevOps user' : 'Portal user'}
+                  </p>
+                </div>
+                <Link href="/users" className="btn btn-secondary">
+                  All users
+                </Link>
+              </div>
+              {created === '1' ? (
+                <div className="alert admin-user-edit__success-alert" role="alert">
+                  User created successfully.
+                  {team_assign_failed ? ' Some team assignments still need review.' : ''}
+                </div>
+              ) : null}
+              {membershipNotice ? (
+                <div className="alert alert-success" role="status">
+                  {membershipNotice}
+                </div>
+              ) : null}
               <div className="card onboarding-admin-card admin-user-edit__card admin-user-edit__card--wide">
                 <h3 className="card-title admin-user-edit__section-title">Onboarding Progress Tracker</h3>
                 <p className="admin-user-edit__section-copy">
@@ -479,21 +502,25 @@ export default function EditUser() {
                   </div>
                 )}
               </div>
-              {user.teams && user.teams.length > 0 && (
-                <div className="card admin-user-edit__card admin-user-edit__card--narrow">
-                  <h3 className="card-title admin-user-edit__section-title">Teams</h3>
-                  <p className="admin-user-edit__section-copy admin-user-edit__section-copy--compact">
-                    Review this user&apos;s current team memberships here. You can also remove them directly from this screen.
-                  </p>
+              <section className="portal-surface admin-user-edit__card admin-user-edit__card--wide">
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Teams</span>
+                    <h2 className="portal-surface__title">Team membership</h2>
+                    <p className="portal-surface__subtitle admin-user-edit__section-copy admin-user-edit__section-copy--compact">
+                      Add or remove {userType === 'devops_user' ? 'DevOps' : 'portal'} teams for this person. You can also manage members from{' '}
+                      <Link href="/teams">Teams</Link>.
+                    </p>
+                  </div>
+                </div>
+                {user.teams && user.teams.length > 0 ? (
                   <ul className="admin-user-edit__team-list">
                     {user.teams.map((t) => (
                       <li key={t.id} className="admin-user-edit__team-item">
                         <Link href={`/teams/${t.id}`}>{t.name}</Link>
-                        {t.team_type && (
-                          <span className="admin-user-edit__team-meta">
-                            ({t.team_type})
-                          </span>
-                        )}
+                        {t.team_type ? (
+                          <span className="admin-user-edit__team-meta">({t.team_type})</span>
+                        ) : null}
                         <button
                           type="button"
                           className="btn btn-secondary admin-user-edit__team-remove"
@@ -505,63 +532,69 @@ export default function EditUser() {
                       </li>
                     ))}
                   </ul>
-                </div>
-              )}
-              <div className="card admin-user-edit__card admin-user-edit__card--narrow">
-                <h3 className="card-title admin-user-edit__section-title">Add to team</h3>
-                <p className="admin-user-edit__section-copy admin-user-edit__section-copy--compact">
-                  Assign this user to {userType === 'devops_user' ? 'DevOps' : 'portal'} teams without leaving the user screen.
-                </p>
-                {availableTeams.length === 0 ? (
-                  <div className="empty-state admin-user-edit__empty-inline">
-                    No additional {userType === 'devops_user' ? 'DevOps' : 'portal'} teams are available.
-                  </div>
                 ) : (
-                  <form onSubmit={handleAddTeamMembership}>
-                    <div className="form-group">
-                      <label className="label" htmlFor="user-team-add">Team</label>
-                      <select
-                        id="user-team-add"
-                        className="input"
-                        value={selectedTeamId}
-                        onChange={(e) => setSelectedTeamId(e.target.value)}
-                      >
-                        {availableTeams.map((team) => (
-                          <option key={team.id} value={team.id}>
-                            {team.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="form-group">
-                      <label className="label" htmlFor="user-team-role">Membership role</label>
-                      <select
-                        id="user-team-role"
-                        className="input admin-user-edit__select--sm"
-                        value={teamRole}
-                        onChange={(e) => setTeamRole(e.target.value)}
-                      >
-                        {userType === 'devops_user' ? (
-                          <>
-                            <option value="member">member</option>
-                            <option value="lead">lead</option>
-                          </>
-                        ) : (
-                          <>
-                            <option value="developer">developer</option>
-                            <option value="senior_developer">senior developer</option>
-                            <option value="lead">lead</option>
-                            <option value="manager">manager</option>
-                          </>
-                        )}
-                      </select>
-                    </div>
-                    <button type="submit" className="btn btn-primary" disabled={membershipSaving || !selectedTeamId}>
-                      {membershipSaving ? 'Saving…' : 'Add to team'}
-                    </button>
-                  </form>
+                  <div className="empty-state admin-user-edit__empty-inline">
+                    Not on any teams yet. Add one below or open a team and use <strong>Add member</strong>.
+                  </div>
                 )}
-              </div>
+                <div className="admin-team-detail__section" style={{ marginTop: 20 }}>
+                  <h3 className="admin-team-detail__subheading">Add to team</h3>
+                  {availableTeams.length === 0 ? (
+                    <div className="empty-state admin-user-edit__empty-inline">
+                      No more {userType === 'devops_user' ? 'DevOps' : 'portal'} teams to join.{' '}
+                      <Link href="/teams/new">Create a team</Link>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleAddTeamMembership} className="admin-team-detail__inline-form">
+                      <div className="form-group admin-team-detail__field admin-team-detail__field--user">
+                        <label className="label" htmlFor="user-team-add">
+                          Team
+                        </label>
+                        <select
+                          id="user-team-add"
+                          className="input"
+                          value={selectedTeamId}
+                          onChange={(e) => setSelectedTeamId(e.target.value)}
+                        >
+                          {availableTeams.map((team) => (
+                            <option key={team.id} value={team.id}>
+                              {team.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-group admin-team-detail__field admin-team-detail__field--role">
+                        <label className="label" htmlFor="user-team-role">
+                          Role
+                        </label>
+                        <select
+                          id="user-team-role"
+                          className="input admin-user-edit__select--sm"
+                          value={teamRole}
+                          onChange={(e) => setTeamRole(e.target.value)}
+                        >
+                          {userType === 'devops_user' ? (
+                            <>
+                              <option value="member">member</option>
+                              <option value="lead">lead</option>
+                            </>
+                          ) : (
+                            <>
+                              <option value="developer">developer</option>
+                              <option value="senior_developer">senior developer</option>
+                              <option value="lead">lead</option>
+                              <option value="manager">manager</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+                      <button type="submit" className="btn btn-primary" disabled={membershipSaving || !selectedTeamId}>
+                        {membershipSaving ? 'Saving…' : 'Add to team'}
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </section>
             <div className="card admin-user-edit__card admin-user-edit__card--narrow">
               <h2 className="card-title">Edit user profile</h2>
               <p className="admin-user-edit__section-copy admin-user-edit__section-copy--form">

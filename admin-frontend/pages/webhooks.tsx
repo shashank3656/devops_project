@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import AdminLayout from '../components/AdminLayout';
+import CopyField from '../components/CopyField';
+import { copyText } from '../lib/clipboard';
 
 interface Webhook {
   id: number;
@@ -20,7 +22,31 @@ interface InboundSource {
   enabled: boolean;
 }
 
-const EVENT_OPTIONS = ['approved', 'pr_created', 'rejected', 'assigned', 'change.created', 'change.updated', 'incident.opened', 'incident.updated', 'incident.owner_paged', 'watch.failed', 'watch.ended'];
+const EVENT_LABELS: Record<string, string> = {
+  approved: 'Request approved',
+  pr_created: 'Pull request opened',
+  rejected: 'Request rejected',
+  assigned: 'Request assigned',
+  'change.created': 'Change created',
+  'change.updated': 'Change updated',
+  'incident.opened': 'Incident opened',
+  'incident.updated': 'Incident updated',
+  'incident.owner_paged': 'Owner paged',
+  'watch.failed': 'Watch failed',
+  'watch.ended': 'Watch ended',
+};
+
+const SOURCE_KIND_LABELS: Record<string, string> = {
+  change: 'Change CI',
+  grafana: 'Grafana',
+  alertmanager: 'Alertmanager',
+  generic_log: 'Logger',
+  alert: 'Alert source',
+};
+
+function eventLabel(event: string): string {
+  return EVENT_LABELS[event] || event;
+}
 
 export default function WebhooksPage() {
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
@@ -30,15 +56,71 @@ export default function WebhooksPage() {
   const [toggleLoading, setToggleLoading] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
   const [sourceDeleteLoading, setSourceDeleteLoading] = useState<number | null>(null);
+  const [copiedSample, setCopiedSample] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
-  const ciWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/ci`;
-  const changeWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/change`;
-  const alertWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/alerts`;
-  const irmWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/irm`;
-  const flagWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/flags`;
-  const otlpWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/otlp/v1/metrics`;
+  const origin = apiUrl.replace(/\/$/, '');
+
+  const inboundEndpoints = useMemo(
+    () => [
+      {
+        id: 'ci',
+        title: 'Infra CI',
+        purpose: 'Plan, policy, and apply results from GitHub or GitLab.',
+        url: `${origin}/api/webhooks/ci`,
+        auth: 'X-CI-Secret',
+      },
+      {
+        id: 'change',
+        title: 'Changes',
+        purpose: 'Record a deploy after merge to main.',
+        url: `${origin}/api/webhooks/change`,
+        auth: 'X-CI-Secret or HMAC',
+      },
+      {
+        id: 'alerts',
+        title: 'Alerts',
+        purpose: 'Open or update an incident from Grafana or Alertmanager.',
+        url: `${origin}/api/webhooks/alerts`,
+        auth: 'X-CI-Secret or HMAC',
+      },
+      {
+        id: 'irm',
+        title: 'IRM',
+        purpose: 'Ack or resolve the same incident from PagerDuty or Grafana IRM.',
+        url: `${origin}/api/webhooks/irm`,
+        auth: 'X-CI-Secret',
+      },
+      {
+        id: 'github',
+        title: 'GitHub',
+        purpose: 'PR events for deploy briefs and check runs.',
+        url: `${origin}/api/webhooks/github`,
+        auth: 'X-Hub-Signature-256',
+      },
+      {
+        id: 'flags',
+        title: 'Feature flags',
+        purpose: 'Create a flag change from LaunchDarkly, Unleash, or Flagsmith.',
+        url: `${origin}/api/webhooks/flags`,
+        auth: 'X-CI-Secret',
+      },
+      {
+        id: 'otlp',
+        title: 'Metrics',
+        purpose: 'Push OTLP samples into Health when a service has no metrics URL.',
+        url: `${origin}/api/otlp/v1/metrics`,
+        auth: 'X-CI-Secret',
+      },
+    ],
+    [origin],
+  );
+
+  const sampleCurl = `curl -sf -X POST "${origin}/api/webhooks/ci" \\
+  -H "Content-Type: application/json" \\
+  -H "X-CI-Secret: $INFRAGATE_CI_SECRET" \\
+  -d '{"request_id":123,"status":"plan_success","plan_output":"...","policy_reports":[],"infracost_report":{}}'`;
 
   const fetchWebhooks = async () => {
     if (!token) return;
@@ -96,7 +178,7 @@ export default function WebhooksPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Delete this webhook? It will stop receiving events.')) return;
+    if (!confirm('Delete this destination? SetuOps will stop posting events to it.')) return;
     setDeleteLoading(id);
     setError('');
     try {
@@ -118,7 +200,7 @@ export default function WebhooksPage() {
   };
 
   const handleDeleteSource = async (id: number) => {
-    if (!confirm('Delete this inbound source? Pipelines using that secret will get 401.')) return;
+    if (!confirm('Delete this secret? Pipelines still using it will get 401.')) return;
     setSourceDeleteLoading(id);
     setError('');
     try {
@@ -139,191 +221,216 @@ export default function WebhooksPage() {
     }
   };
 
+  const copySample = async () => {
+    const ok = await copyText(sampleCurl);
+    if (!ok) return;
+    setCopiedSample(true);
+    window.setTimeout(() => setCopiedSample(false), 1600);
+  };
+
   return (
     <>
       <Head>
-        <title>Webhooks - Admin</title>
+        <title>Integrations - Admin</title>
       </Head>
       <AdminLayout>
         <div className="portal-page">
           <div className="portal-page__header">
             <div>
-              <span className="portal-page__eyebrow">Webhooks</span>
-              <h1 className="portal-page__title">Webhook Management</h1>
+              <span className="portal-page__eyebrow">Integrations</span>
+              <h1 className="portal-page__title">Webhooks</h1>
               <p className="portal-page__subtitle">
-                Outbound webhooks fire when request status changes. Payloads include the event, request id, and request fields, with optional HMAC signing.
+                Paste a URL into CI or Grafana. Add a destination if Slack or another system should hear about approvals.
               </p>
             </div>
             <div className="portal-page__actions">
+              <Link href="/webhooks/inbound/new" className="btn btn-secondary">
+                Add secret
+              </Link>
               <Link href="/webhooks/new" className="btn btn-primary">
-                Add webhook
+                Add destination
               </Link>
             </div>
           </div>
 
           {error && (
-            <div className="alert alert-error" role="alert" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+            <div className="alert alert-error" role="alert">
               <span>{error}</span>
-              <button type="button" className="btn btn-secondary" style={{ padding: '8px 16px' }} onClick={() => { setError(''); fetchWebhooks(); }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setError(''); fetchWebhooks(); }}>
                 Retry
               </button>
             </div>
           )}
 
-          <section className="admin-maintenance-card" style={{ marginBottom: 24 }}>
-            <div className="admin-maintenance-card__header">
+          <section className="portal-surface">
+            <div className="portal-surface__header">
               <div>
-                <span className="portal-page__eyebrow">Inbound CI</span>
-                <h2 className="admin-maintenance-card__title">Pipeline webhook &amp; branch checks</h2>
-                <p className="admin-maintenance-card__copy">
-                  Post Terraform plan output, policy reports, and Infracost JSON from your pipeline. Set <code>CI_WEBHOOK_SECRET</code> on the API and send it as{' '}
-                  <code>X-CI-Secret</code>. Use GitHub required checks named <code>infragate/plan-review</code> and <code>infragate/policy</code> so merges wait on SetuOps plan + policy status.
+                <span className="portal-surface__eyebrow">Receive</span>
+                <h2 className="portal-surface__title">Endpoints your tools post to</h2>
+                <p className="portal-surface__subtitle">
+                  Copy a URL into the tool. GitHub checks <code>infragate/plan-review</code> and <code>infragate/policy</code> wait on the Infra CI endpoint.
                 </p>
               </div>
             </div>
-            <div className="admin-maintenance-card__body">
-              <p className="admin-maintenance-card__copy">
-                <strong>Infra CI:</strong> <code>{ciWebhookUrl}</code><br />
-                <strong>Change requests:</strong> <code>{changeWebhookUrl}</code><br />
-                <strong>Alert incidents:</strong> <code>{alertWebhookUrl}</code><br />
-                <strong>IRM sync:</strong> <code>{irmWebhookUrl}</code> or <code>{irmWebhookUrl}/pagerduty</code><br />
-                <strong>Feature flags:</strong> <code>{flagWebhookUrl}</code><br />
-                <strong>OTLP metrics:</strong> <code>{otlpWebhookUrl}</code>
-              </p>
-              <pre className="admin-maintenance-card__code-block" style={{ overflow: 'auto', fontSize: 12, padding: 16, borderRadius: 8, background: 'var(--color-surface-muted)' }}>
-                {`curl -sf -X POST "${ciWebhookUrl}" \\
-  -H "Content-Type: application/json" \\
-  -H "X-CI-Secret: $INFRAGATE_CI_SECRET" \\
-  -d '{"request_id":123,"status":"plan_success","plan_output":"...","policy_reports":[],"infracost_report":{}}'`}
-              </pre>
-              <p className="admin-maintenance-card__copy" style={{ marginTop: 12 }}>
-                GitHub merge webhooks for your onboarded infra repo feed deploy intelligence on the DevOps portal; promotion gates can flag recent high-risk merges to main.
-              </p>
-            </div>
+            <ul className="admin-setup-list">
+              {inboundEndpoints.map((endpoint) => (
+                <li key={endpoint.id} className="admin-setup-row">
+                  <div className="admin-setup-row__copy">
+                    <h3>{endpoint.title}</h3>
+                    <p>{endpoint.purpose}</p>
+                    <span className="admin-setup-row__meta">Auth: {endpoint.auth}</span>
+                  </div>
+                  <CopyField value={endpoint.url} />
+                </li>
+              ))}
+            </ul>
+            <details className="admin-setup-sample">
+              <summary>Sample Infra CI request</summary>
+              <div className="admin-setup-sample__toolbar">
+                <p>Use this from a pipeline after plan. Replace the secret with the value stored as a named secret or <code>CI_WEBHOOK_SECRET</code>.</p>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => void copySample()}>
+                  {copiedSample ? 'Copied' : 'Copy curl'}
+                </button>
+              </div>
+              <pre className="admin-maintenance-card__code-block">{sampleCurl}</pre>
+            </details>
           </section>
 
-          <div className="portal-surface" style={{ marginBottom: 24 }}>
+          <section className="portal-surface">
             <div className="portal-surface__header">
               <div>
-                <span className="portal-surface__eyebrow">Inbound sources</span>
-                <h2 className="portal-surface__title">Change and alert secrets</h2>
+                <span className="portal-surface__eyebrow">Send</span>
+                <h2 className="portal-surface__title">Destinations SetuOps calls</h2>
                 <p className="portal-surface__subtitle">
-                  Optional per-source secrets for Grafana, Alertmanager, loggers, and CI change posts. Env fallbacks are CHANGE_WEBHOOK_SECRET, ALERT_WEBHOOK_SECRET, and CI_WEBHOOK_SECRET.
+                  Slack, Teams, or any HTTPS URL. Pick the events, optionally sign with a shared secret.
+                </p>
+              </div>
+              <Link href="/webhooks/new" className="btn btn-secondary">
+                Add destination
+              </Link>
+            </div>
+            {loading ? (
+              <div className="admin-queue-state">
+                <div className="admin-queue-state__spinner" aria-hidden="true" />
+                <p className="admin-queue-state__title">Loading destinations</p>
+              </div>
+            ) : !error && webhooks.length === 0 ? (
+              <div className="admin-queue-state">
+                <p className="admin-queue-state__title">No destinations yet</p>
+                <p className="admin-queue-state__copy">
+                  Add a Slack incoming webhook or your own URL to get a POST when a request is approved or an incident opens.
+                </p>
+                <div className="admin-queue-state__actions">
+                  <Link href="/webhooks/new" className="btn btn-primary">
+                    Add destination
+                  </Link>
+                </div>
+              </div>
+            ) : !error ? (
+              <ul className="admin-webhook-list">
+                {webhooks.map((w) => {
+                  const events = (w.events || '').split(',').map((event) => event.trim()).filter(Boolean);
+                  return (
+                    <li key={w.id} className="admin-webhook-row">
+                      <div className="admin-webhook-row__top">
+                        <CopyField value={w.url} />
+                        <span className={`admin-webhook-status${w.enabled ? ' is-on' : ''}`}>
+                          {w.enabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                      </div>
+                      <div className="admin-webhook-row__events">
+                        {events.length === 0 ? (
+                          <span className="admin-webhook-chip">No events</span>
+                        ) : (
+                          events.map((event) => (
+                            <span key={event} className="admin-webhook-chip">
+                              {eventLabel(event)}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                      <div className="admin-webhook-row__actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          disabled={toggleLoading === w.id}
+                          onClick={() => handleToggle(w)}
+                        >
+                          {toggleLoading === w.id ? 'Saving…' : w.enabled ? 'Disable' : 'Enable'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-sm"
+                          disabled={deleteLoading === w.id}
+                          onClick={() => handleDelete(w.id)}
+                        >
+                          {deleteLoading === w.id ? 'Deleting…' : 'Delete'}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </section>
+
+          <section className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Secrets</span>
+                <h2 className="portal-surface__title">Named inbound secrets</h2>
+                <p className="portal-surface__subtitle">
+                  Give Grafana or CI its own secret so you can rotate one tool without changing the others. If none are set, pipelines can still use <code>CI_WEBHOOK_SECRET</code>, <code>CHANGE_WEBHOOK_SECRET</code>, or <code>ALERT_WEBHOOK_SECRET</code> on the API host.
                 </p>
               </div>
               <Link href="/webhooks/inbound/new" className="btn btn-secondary">
-                Add source
+                Add secret
               </Link>
             </div>
             {sources.length === 0 ? (
-              <p style={{ color: 'var(--color-text-muted)' }}>No inbound sources yet. Pipelines can still use the environment secrets.</p>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Kind</th>
-                      <th>Secret</th>
-                      <th>Status</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sources.map((source) => (
-                      <tr key={source.id}>
-                        <td>{source.name}</td>
-                        <td>{source.kind}</td>
-                        <td>{source.has_secret ? 'Set' : 'Missing'}</td>
-                        <td>{source.enabled ? 'Enabled' : 'Disabled'}</td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn btn-danger"
-                            style={{ padding: '6px 12px', fontSize: 13 }}
-                            disabled={sourceDeleteLoading === source.id}
-                            onClick={() => handleDeleteSource(source.id)}
-                          >
-                            {sourceDeleteLoading === source.id ? '...' : 'Delete'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <span className="portal-surface__eyebrow">Current routes</span>
-                <h2 className="portal-surface__title">Webhooks</h2>
-                <p className="portal-surface__subtitle">
-                  Create now opens on a dedicated page so this screen stays focused on browsing and lifecycle actions.
+              <div className="admin-queue-state">
+                <p className="admin-queue-state__title">Using the shared API secrets</p>
+                <p className="admin-queue-state__copy">
+                  Add a named secret when more than one tool posts in, or when you want to rotate Grafana without touching CI.
                 </p>
+                <div className="admin-queue-state__actions">
+                  <Link href="/webhooks/inbound/new" className="btn btn-secondary">
+                    Add secret
+                  </Link>
+                </div>
               </div>
-            </div>
-            {loading ? (
-              <div className="empty-state">Loading...</div>
-            ) : !error && webhooks.length === 0 ? (
-              <p style={{ color: 'var(--color-text-muted)' }}>No webhooks configured.</p>
-            ) : !error ? (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>URL</th>
-                      <th>Events</th>
-                      <th>Status</th>
-                      <th style={{ width: 140 }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {webhooks.map((w) => (
-                      <tr key={w.id}>
-                        <td style={{ wordBreak: 'break-all', color: 'var(--color-text)' }}>{w.url}</td>
-                        <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{w.events || '-'}</td>
-                        <td>
-                          <span style={{
-                            padding: '4px 8px',
-                            borderRadius: 6,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            background: w.enabled ? 'var(--color-success-bg)' : 'var(--color-border)',
-                            color: w.enabled ? 'var(--color-success)' : 'var(--color-text-muted)',
-                          }}>
-                            {w.enabled ? 'Enabled' : 'Disabled'}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            style={{ marginRight: 8, padding: '6px 12px', fontSize: 13 }}
-                            disabled={toggleLoading === w.id}
-                            onClick={() => handleToggle(w)}
-                          >
-                            {toggleLoading === w.id ? '...' : w.enabled ? 'Disable' : 'Enable'}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-danger"
-                            style={{ padding: '6px 12px', fontSize: 13 }}
-                            disabled={deleteLoading === w.id}
-                            onClick={() => handleDelete(w.id)}
-                          >
-                            {deleteLoading === w.id ? '...' : 'Delete'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-          </div>
+            ) : (
+              <ul className="admin-webhook-list">
+                {sources.map((source) => (
+                  <li key={source.id} className="admin-webhook-row">
+                    <div className="admin-webhook-row__top">
+                      <div>
+                        <strong>{source.name}</strong>
+                        <p className="admin-setup-row__meta">
+                          {SOURCE_KIND_LABELS[source.kind] || source.kind}
+                          {' · '}
+                          {source.has_secret ? 'Secret set' : 'Secret missing'}
+                        </p>
+                      </div>
+                      <span className={`admin-webhook-status${source.enabled ? ' is-on' : ''}`}>
+                        {source.enabled ? 'Enabled' : 'Disabled'}
+                      </span>
+                    </div>
+                    <div className="admin-webhook-row__actions">
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        disabled={sourceDeleteLoading === source.id}
+                        onClick={() => handleDeleteSource(source.id)}
+                      >
+                        {sourceDeleteLoading === source.id ? 'Deleting…' : 'Delete'}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       </AdminLayout>
     </>

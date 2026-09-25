@@ -57,106 +57,95 @@ export default function NewTeam() {
         <title>Create team - Admin</title>
       </Head>
       <AdminLayout>
-        <div className="container">
-          <Link href="/teams" className="back-link">
-            ← Back to Teams
-          </Link>
-          <div className="card" style={{ maxWidth: 480 }}>
-            <h2 className="card-title">Create team</h2>
-            {error && (
-              <div className="alert alert-error" role="alert">
-                {error}
-              </div>
-            )}
-            <form onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label className="label" htmlFor="team-name">
-                  Team name <span style={{ color: 'var(--color-danger)' }}>*</span>
-                </label>
-                <input
-                  id="team-name"
-                  className="input"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  placeholder="e.g. Platform Team"
-                  autoFocus
-                />
-              </div>
-              <div className="form-group">
-                <label className="label" htmlFor="team-slug">
-                  Team slug{' '}
-                  <span className="label-optional">
-                    (optional, auto-generated from name if empty)
-                  </span>
-                </label>
-                <input
-                  id="team-slug"
-                  className="input"
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
-                  placeholder="e.g. platform-team"
-                />
-                <p style={{ marginTop: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>
-                  Group ID is auto-generated as a 12-character lowercase alphanumeric value and used in Git/PR folder paths.
-                </p>
-              </div>
-              <div className="form-group">
-                <label className="label" htmlFor="team-type">Group type</label>
-                <select
-                  id="team-type"
-                  className="input"
-                  value={teamType}
-                  onChange={(e) => setTeamType(e.target.value as 'portal' | 'devops')}
-                >
-                  <option value="portal">Portal team group (developer, lead, manager roles)</option>
-                  <option value="devops">DevOps team group</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="label" htmlFor="default-env">
-                  Default environment{' '}
-                  <span className="label-optional">(prefilled when user from this team creates a request)</span>
-                </label>
-                <select
-                  id="default-env"
-                  className="input"
-                  value={defaultEnv}
-                  onChange={(e) => setDefaultEnv(e.target.value)}
-                >
-                  <option value="">None</option>
-                  <option value="dev">dev</option>
-                  <option value="stage">stage</option>
-                  <option value="prod">prod</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="label" htmlFor="default-cloud">
-                  Default cloud{' '}
-                  <span className="label-optional">(optional)</span>
-                </label>
-                <select
-                  id="default-cloud"
-                  className="input"
-                  value={defaultCloud}
-                  onChange={(e) => setDefaultCloud(e.target.value)}
-                >
-                  <option value="">None</option>
-                  <option value="aws">AWS</option>
-                  <option value="gcp">GCP</option>
-                  <option value="azure">Azure</option>
-                </select>
-              </div>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={loading}
-                style={{ padding: '10px 24px' }}
+        <div className="portal-page portal-page--narrow">
+          <div className="portal-page__header">
+            <div>
+              <span className="portal-page__eyebrow">People</span>
+              <h1 className="portal-page__title">Create team</h1>
+              <p className="portal-page__subtitle">
+                Add a portal or DevOps group. A unique group ID is generated for Git and PR folder paths.
+              </p>
+            </div>
+            <Link href="/teams" className="btn btn-secondary">
+              Back to teams
+            </Link>
+          </div>
+          {error ? (
+            <div className="alert alert-error" role="alert">
+              {error}
+            </div>
+          ) : null}
+          <form className="portal-surface" onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label className="label" htmlFor="team-name">
+                Team name <span style={{ color: 'var(--color-danger)' }}>*</span>
+              </label>
+              <input
+                id="team-name"
+                className="input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                placeholder="e.g. Platform Team"
+                autoFocus
+              />
+            </div>
+            <div className="form-group">
+              <label className="label" htmlFor="team-slug">
+                Team slug{' '}
+                <span className="label-optional">(optional, auto-generated from name if empty)</span>
+              </label>
+              <input
+                id="team-slug"
+                className="input"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                placeholder="e.g. platform-team"
+              />
+            </div>
+            <div className="form-group">
+              <label className="label" htmlFor="team-type">
+                Group type
+              </label>
+              <select
+                id="team-type"
+                className="input"
+                value={teamType}
+                onChange={(e) => setTeamType(e.target.value as 'portal' | 'devops')}
               >
+                <option value="portal">Portal team group (developer, lead, manager roles)</option>
+                <option value="devops">DevOps team group</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="label" htmlFor="default-env">
+                Default environment{' '}
+                <span className="label-optional">(prefilled when this team creates a request)</span>
+              </label>
+              <select id="default-env" className="input" value={defaultEnv} onChange={(e) => setDefaultEnv(e.target.value)}>
+                <option value="">None</option>
+                <option value="dev">dev</option>
+                <option value="stage">stage</option>
+                <option value="prod">prod</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="label" htmlFor="default-cloud">
+                Default cloud <span className="label-optional">(optional)</span>
+              </label>
+              <select id="default-cloud" className="input" value={defaultCloud} onChange={(e) => setDefaultCloud(e.target.value)}>
+                <option value="">None</option>
+                <option value="aws">AWS</option>
+                <option value="gcp">GCP</option>
+                <option value="azure">Azure</option>
+              </select>
+            </div>
+            <div className="portal-page__actions" style={{ marginTop: 8 }}>
+              <button type="submit" className="btn btn-primary" disabled={loading}>
                 {loading ? 'Creating…' : 'Create team'}
               </button>
-            </form>
-          </div>
+            </div>
+          </form>
         </div>
       </AdminLayout>
     </>

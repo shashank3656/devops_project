@@ -1646,6 +1646,13 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incidents", err)
 			return
 		}
+		items = filterIncidentsForPortal(
+			items,
+			parsePositiveQueryID(r, "project_id"),
+			requestQueryEnv(r),
+			r.URL.Query().Get("source"),
+			r.URL.Query().Get("q"),
+		)
 		teams, err := listPortalIncidentTeams()
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incident teams", err)

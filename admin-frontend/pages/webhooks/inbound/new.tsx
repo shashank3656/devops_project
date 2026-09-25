@@ -1,15 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AdminLayout from '../../../components/AdminLayout';
+import CopyField from '../../../components/CopyField';
 
 const KIND_OPTIONS = [
-  { id: 'change', label: 'Change request CI' },
-  { id: 'grafana', label: 'Grafana' },
-  { id: 'alertmanager', label: 'Alertmanager' },
-  { id: 'generic_log', label: 'Generic logging' },
-  { id: 'alert', label: 'Any alert source' },
+  { id: 'change', label: 'Change request CI', endpoint: '/api/webhooks/change', header: 'X-CI-Secret or HMAC' },
+  { id: 'grafana', label: 'Grafana', endpoint: '/api/webhooks/alerts', header: 'X-CI-Secret or HMAC' },
+  { id: 'alertmanager', label: 'Alertmanager', endpoint: '/api/webhooks/alerts', header: 'X-CI-Secret or HMAC' },
+  { id: 'generic_log', label: 'Generic logging', endpoint: '/api/webhooks/alerts', header: 'X-CI-Secret or HMAC' },
+  { id: 'alert', label: 'Any alert source', endpoint: '/api/webhooks/alerts', header: 'X-CI-Secret or HMAC' },
 ];
 
 export default function NewInboundSourcePage() {
@@ -26,6 +27,9 @@ export default function NewInboundSourcePage() {
       router.replace('/login');
     }
   }, [router]);
+
+  const selected = useMemo(() => KIND_OPTIONS.find((option) => option.id === kind) || KIND_OPTIONS[1], [kind]);
+  const postUrl = `${apiUrl.replace(/\/$/, '')}${selected.endpoint}`;
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -69,16 +73,16 @@ export default function NewInboundSourcePage() {
   return (
     <>
       <Head>
-        <title>Add inbound source - Admin</title>
+        <title>Add secret - Admin</title>
       </Head>
       <AdminLayout>
-        <div className="portal-page">
+        <div className="portal-page portal-page--narrow">
           <div className="portal-page__header">
             <div>
               <span className="portal-page__eyebrow">Integrations</span>
-              <h1 className="portal-page__title">Add inbound source</h1>
+              <h1 className="portal-page__title">Add inbound secret</h1>
               <p className="portal-page__subtitle">
-                Store a secret Grafana, Alertmanager, a logger, or CI can send as X-CI-Secret or HMAC.
+                Store a secret for one tool. After you save, paste the URL and secret into that tool — SetuOps never shows the secret again.
               </p>
             </div>
             <Link href="/webhooks" className="btn btn-secondary">
@@ -88,7 +92,7 @@ export default function NewInboundSourcePage() {
           {error ? <div className="alert alert-error">{error}</div> : null}
           <form className="portal-surface" onSubmit={handleCreate}>
             <label className="label">
-              Kind
+              Tool
               <select className="input" value={kind} onChange={(event) => setKind(event.target.value)}>
                 {KIND_OPTIONS.map((option) => (
                   <option key={option.id} value={option.id}>
@@ -98,16 +102,22 @@ export default function NewInboundSourcePage() {
               </select>
             </label>
             <label className="label">
-              Name
+              Display name
               <input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Prod Grafana" />
             </label>
             <label className="label">
               Shared secret
-              <input className="input" type="password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="Do not commit this value" />
+              <input className="input" type="password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="Generate this in the tool, then paste it here" />
             </label>
+            <div className="admin-setup-hint">
+              <p>
+                This tool should POST to the URL below and send the secret as <code>{selected.header}</code>.
+              </p>
+              <CopyField value={postUrl} />
+            </div>
             <div className="portal-form-actions">
               <button type="submit" className="btn btn-primary" disabled={creating}>
-                {creating ? 'Saving...' : 'Save source'}
+                {creating ? 'Saving…' : 'Save secret'}
               </button>
             </div>
           </form>

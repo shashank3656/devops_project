@@ -100,7 +100,7 @@ export default function TeamsList() {
         <div className="portal-page">
           <div className="portal-page__header">
             <div>
-              <span className="portal-page__eyebrow">Teams</span>
+              <span className="portal-page__eyebrow">People</span>
               <h1 className="portal-page__title">Team Management</h1>
               <p className="portal-page__subtitle">
                 Create new teams, inspect membership entry points, and remove unused groups from the platform.
@@ -168,18 +168,16 @@ export default function TeamsList() {
                           {new Date(t.created_at).toLocaleDateString()}
                         </td>
                         <td>
-                          <div className="portal-page__actions">
+                          <div className="portal-table-actions">
                             <Link
                               href={`/teams/${t.id}`}
-                              className="btn btn-secondary"
-                              style={{ padding: '8px 14px', fontSize: 13 }}
+                              className="btn btn-secondary btn-sm"
                             >
-                              Manage members
+                              Members
                             </Link>
                             <button
                               type="button"
-                              className="btn btn-danger"
-                              style={{ padding: '8px 14px', fontSize: 13 }}
+                              className="btn btn-danger btn-sm"
                               disabled={deletingId === t.id}
                               onClick={() => handleDeleteTeam(t)}
                               title="Delete team"

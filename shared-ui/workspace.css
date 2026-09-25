@@ -293,6 +293,75 @@
   font-size: 13px;
 }
 
+.ig-scope-bar__clear {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--ig-border, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ig-page-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.ig-page-filters__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ig-page-filters__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--ig-surface-2, rgba(148, 163, 184, 0.12));
+  font-size: 12px;
+}
+
+.ig-page-filters__chip-label {
+  color: var(--ig-muted, #94a3b8);
+}
+
+.ig-page-filters__chip-remove,
+.ig-page-filters__clear {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.ig-page-filters__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ig-page-filters__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+}
+
+.ig-page-filters__field span {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ig-muted, #94a3b8);
+}
+
 .devops-navbar__title,
 .user-topbar__title,
 .admin-topbar__title,
@@ -359,6 +428,31 @@
 
 @media (max-width: 900px) {
   .ig-scope-bar {
+    display: flex;
+    flex: 1 1 100%;
+    align-items: end;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .ig-scope-bar__field {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .ig-scope-bar__label {
     display: none;
+  }
+
+  .ig-scope-bar__control {
+    max-width: none;
+    width: 100%;
+    height: 30px;
+    font-size: 12px;
+  }
+
+  .ig-scope-bar__clear {
+    height: 30px;
+    padding: 0 8px;
   }
 }

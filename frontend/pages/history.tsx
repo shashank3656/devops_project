@@ -7,7 +7,9 @@ import {
   InspectorDrawer,
   PlanReviewCard,
   PolicyChecksCard,
+  PageFilters,
   formatRelativeTime,
+  queryString,
   type DataTableColumn,
   type PlanReview,
   type PolicyCheckSummary,
@@ -307,6 +309,7 @@ export default function History() {
   const [filterType, setFilterType] = useState<'team' | 'pr_number' | 'env' | 'cloud' | 'search' | 'application_id'>('team');
   const [filterValue, setFilterValue] = useState('');
   const [projectId, setProjectId] = useState('');
+  const [scopeEnv, setScopeEnv] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -380,13 +383,10 @@ export default function History() {
 
   useEffect(() => {
     if (!router.isReady) return;
-    const rawProjectID = router.query.project_id;
-    const nextProjectID = Array.isArray(rawProjectID) ? rawProjectID[0] : rawProjectID;
-    if (typeof nextProjectID === 'string') {
-      setProjectId(nextProjectID);
-      setPage(0);
-    }
-  }, [router.isReady, router.query.project_id]);
+    setProjectId(queryString(router.query, 'project_id'));
+    setScopeEnv(queryString(router.query, 'environment'));
+    setPage(0);
+  }, [router.isReady, router.query.project_id, router.query.environment]);
 
   useEffect(() => {
     setRecentIds(getRecentRequestIds());
@@ -420,7 +420,7 @@ export default function History() {
       return;
     }
     fetchHistory();
-  }, [filterType, filterValue, projectId, page, viewMode, statusFilter, fromDate, toDate]);
+  }, [filterType, filterValue, projectId, scopeEnv, page, viewMode, statusFilter, fromDate, toDate]);
 
   useEffect(() => {
     try {
@@ -526,6 +526,7 @@ export default function History() {
         }
       }
       if (projectId) params.append('project_id', projectId);
+      if (scopeEnv) params.append('environment', scopeEnv);
       if (statusFilter) params.append('status', statusFilter);
       if (fromDate) params.append('from', fromDate);
       if (toDate) params.append('to', toDate);
@@ -903,6 +904,7 @@ export default function History() {
       else params.append(filterType, filterValue.trim());
     }
     if (projectId) params.append('project_id', projectId);
+    if (scopeEnv) params.append('environment', scopeEnv);
     if (statusFilter) params.append('status', statusFilter);
     if (fromDate) params.append('from', fromDate);
     if (toDate) params.append('to', toDate);
@@ -1135,6 +1137,16 @@ export default function History() {
             </button>
           </div>
         </div>
+
+        <PageFilters
+          chips={[
+            projectId ? { key: 'project', label: 'Project', value: projects.find((item) => String(item.id) === projectId)?.name || projectId } : null,
+            scopeEnv ? { key: 'environment', label: 'Environment', value: scopeEnv } : null,
+            statusFilter ? { key: 'status', label: 'Status', value: statusFilter } : null,
+            filterValue ? { key: 'q', label: 'Filter', value: filterValue } : null,
+          ].filter((chip): chip is { key: string; label: string; value: string } => Boolean(chip))}
+          onClear={clearFilters}
+        />
 
         <div className="card history-filter-card">
           <div className="history-filter-shell history-filter-shell--compact">

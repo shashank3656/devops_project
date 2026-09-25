@@ -9,10 +9,12 @@ import {
   InspectorDrawer,
   PlanReviewCard,
   PolicyChecksCard,
+  PageFilters,
   SavedViews,
   UndoToaster,
   useSavedFilterViews,
   formatRelativeTime,
+  queryString,
   useUndoQueue,
   type DataTableColumn,
   type PlanReview,
@@ -347,6 +349,7 @@ export default function DevOpsTickets() {
   const [idFilter, setIdFilter] = useState('');
   const [team, setTeam] = useState('');
   const [projectId, setProjectId] = useState('');
+  const [environment, setEnvironment] = useState('');
   const [cloud, setCloud] = useState('');
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
@@ -389,11 +392,10 @@ export default function DevOpsTickets() {
     portal: 'devops',
   });
 
-  const hasActiveFilters = Boolean(idFilter || team || projectId || cloud || status || search || requester || atRisk);
+  const hasActiveFilters = Boolean(idFilter || team || cloud || status || search || requester || atRisk);
   const activeFilterCount = [
     idFilter.trim(),
     team.trim(),
-    projectId,
     cloud,
     status,
     search.trim(),
@@ -412,6 +414,7 @@ export default function DevOpsTickets() {
     if (idFilter.trim()) params.set('id', idFilter.trim());
     if (team) params.set('team', team);
     if (projectId) params.set('project_id', projectId);
+    if (environment) params.set('env', environment);
     if (cloud) params.set('cloud', cloud);
     if (status) params.set('status', status);
     if (search) params.set('q', search);
@@ -818,7 +821,13 @@ export default function DevOpsTickets() {
     }
     fetchTickets();
     setSelectedIds(new Set());
-  }, [token, router, apiUrl, idFilter, team, projectId, cloud, status, search, requester, sortBy, sortOrder, atRisk, offset]);
+  }, [token, router, apiUrl, idFilter, team, projectId, environment, cloud, status, search, requester, sortBy, sortOrder, atRisk, offset]);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    setProjectId(queryString(router.query, 'project_id'));
+    setEnvironment(queryString(router.query, 'environment'));
+  }, [router.isReady, router.query.project_id, router.query.environment]);
 
   useEffect(() => {
     fetchProjects();
@@ -917,6 +926,18 @@ export default function DevOpsTickets() {
             </div>
           </div>
 
+          <PageFilters
+            chips={[
+              projectId ? { key: 'project', label: 'Project', value: projects.find((item) => String(item.id) === projectId)?.name || projectId } : null,
+              environment ? { key: 'environment', label: 'Environment', value: environment } : null,
+              status ? { key: 'status', label: 'Status', value: formatStatus(status) } : null,
+              search ? { key: 'q', label: 'Search', value: search } : null,
+              team ? { key: 'team', label: 'Team', value: team } : null,
+              atRisk ? { key: 'at_risk', label: 'Risk', value: 'At risk' } : null,
+            ].filter((chip): chip is { key: string; label: string; value: string } => Boolean(chip))}
+            onClear={hasActiveFilters ? clearFilters : undefined}
+          />
+
           <SavedViews<TicketFilters>
             storageKey="infragate.devops.tickets.views"
             current={currentFilters}
@@ -949,15 +970,6 @@ export default function DevOpsTickets() {
                   onChange={(e) => setSearch(e.target.value)}
                   className="devops-filter-ribbon__control"
                 />
-              </label>
-              <label className="devops-filter-ribbon__pill">
-                <span className="devops-filter-ribbon__key">Project</span>
-                <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="devops-filter-ribbon__control">
-                  <option value="">All projects</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>{project.name} ({project.code})</option>
-                  ))}
-                </select>
               </label>
               <label className="devops-filter-ribbon__pill">
                 <span className="devops-filter-ribbon__key">Status</span>
