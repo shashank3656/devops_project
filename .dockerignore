@@ -27,3 +27,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# App build artifacts (keep image builds from copying host installs)
+**/node_modules
+**/.next
