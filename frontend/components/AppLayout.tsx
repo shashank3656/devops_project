@@ -61,6 +61,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/history': 'My Requests',
   '/incidents': 'Incidents',
   '/changes': 'Changes',
+  '/scorecards': 'Scorecards',
   '/my-teams': 'My Teams',
   '/profile': 'Profile',
 };
@@ -387,6 +388,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     },
     { href: '/changes', label: 'Changes', Icon: IconFileText },
     { href: '/incidents', label: 'Incidents', Icon: IconAlertCircle },
+    { href: '/scorecards', label: 'Scorecards', Icon: IconFileText },
   ];
 
   if (teamCheck === 'loading') {

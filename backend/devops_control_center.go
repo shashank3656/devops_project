@@ -56,7 +56,8 @@ type requestIncident struct {
 	Environment           string     `json:"environment,omitempty"`
 	OccurrenceCount       int        `json:"occurrence_count,omitempty"`
 	LastSeenAt            *time.Time `json:"last_seen_at,omitempty"`
-	RollbackHint          string     `json:"rollback_hint,omitempty"`
+	RollbackHint          string              `json:"rollback_hint,omitempty"`
+	RollbackPlan          *changeRollbackPlan `json:"rollback_plan,omitempty"`
 	Major                 bool       `json:"major,omitempty"`
 	StatusNote            string     `json:"status_note,omitempty"`
 	SlackThread           string     `json:"slack_thread,omitempty"`
@@ -66,6 +67,8 @@ type requestIncident struct {
 	CreatedBy             *int       `json:"created_by,omitempty"`
 	CreatedAt             time.Time  `json:"created_at"`
 	UpdatedAt             time.Time  `json:"updated_at"`
+	ExternalProvider      string     `json:"external_provider,omitempty"`
+	ExternalID            string     `json:"external_id,omitempty"`
 }
 
 func formatIncidentNumber(id int) string {
@@ -195,6 +198,9 @@ func listPortalUsers() ([]simpleUserOption, error) {
 }
 
 func listProjectRunbooks(projectID int) ([]projectRunbook, error) {
+	if DB == nil {
+		return []projectRunbook{}, nil
+	}
 	query := `
 		SELECT id, project_id, COALESCE(service,''), title, COALESCE(content,''), COALESCE(link_url,''), created_by, created_at, updated_at
 		FROM project_runbooks
@@ -299,6 +305,9 @@ func listAssignedRequestIncidents(userID int, statusFilter string) ([]requestInc
 }
 
 func listRequestIncidentsFiltered(statusFilter string, ownerUserID *int, includeDraft bool) ([]requestIncident, error) {
+	if DB == nil {
+		return []requestIncident{}, nil
+	}
 	query := `
 		SELECT i.id, COALESCE(i.incident_number,''), i.request_id, i.project_id, COALESCE(p.name,''), COALESCE(p.code,''),
 		       COALESCE(r.team,''), COALESCE(NULLIF(i.environment,''), r.env, ''), COALESCE(NULLIF(i.service,''), r.service, ''), COALESCE(r.cloud,''), COALESCE(r.status,''),
@@ -307,7 +316,8 @@ func listRequestIncidentsFiltered(statusFilter string, ownerUserID *int, include
 		       COALESCE(i.source,'ticket'), COALESCE(i.fingerprint,''), COALESCE(i.alert_source,''), COALESCE(i.dashboard_url,''),
 		       i.suspected_change_id, COALESCE(chg.change_number,''), COALESCE(i.service,''), COALESCE(i.environment,''), COALESCE(i.occurrence_count,1), i.last_seen_at,
 		       i.created_by, i.created_at, i.updated_at,
-		       COALESCE(i.major, false), COALESCE(i.status_note,''), COALESCE(i.slack_thread,''), i.problem_id, i.silenced_until
+		       COALESCE(i.major, false), COALESCE(i.status_note,''), COALESCE(i.slack_thread,''), i.problem_id, i.silenced_until,
+		       COALESCE(i.external_provider,''), COALESCE(i.external_id,'')
 		FROM request_incidents i
 		LEFT JOIN pr_requests r ON r.id = i.request_id
 		LEFT JOIN projects p ON p.id = i.project_id
@@ -355,6 +365,7 @@ func listRequestIncidentsFiltered(statusFilter string, ownerUserID *int, include
 			&suspectedChangeID, &item.SuspectedChangeNumber, &item.Service, &item.Environment, &item.OccurrenceCount, &lastSeen,
 			&createdBy, &item.CreatedAt, &item.UpdatedAt,
 			&item.Major, &item.StatusNote, &item.SlackThread, &problemID, &silencedUntil,
+			&item.ExternalProvider, &item.ExternalID,
 		); err != nil {
 			return nil, err
 		}
@@ -1648,9 +1659,35 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/devops/incidents/"), "/")
-	id, err := strconv.Atoi(path)
+	parts := strings.Split(path, "/")
+	id, err := strconv.Atoi(parts[0])
 	if err != nil || id <= 0 {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid incident id", err)
+		return
+	}
+	if len(parts) == 2 && strings.EqualFold(parts[1], "rollback") {
+		if r.Method != "POST" {
+			writeMethodNotAllowed(w, r)
+			return
+		}
+		item, plan, err := executeChangeSHARollback(managerID, id, 0)
+		if err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"change": item, "rollback": plan, "status": "ok"})
+		return
+	}
+	if r.Method == "GET" && len(parts) == 1 {
+		item, err := getRequestIncidentByID(id)
+		if err != nil || item == nil {
+			writeAPIError(w, r, http.StatusNotFound, "incident not found", err)
+			return
+		}
+		attachRollbackPlan(item)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "rollback": item.RollbackPlan, "status": "ok"})
 		return
 	}
 	if r.Method != "PATCH" {
@@ -1723,6 +1760,9 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	AppendAuditLog(&managerID, "request_incident_update", "pr_request", auditRef, item.Severity+":"+item.Status)
+	if item != nil {
+		go pushIncidentToExternalIRM(*item)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "status": "ok"})
 }

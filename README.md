@@ -83,7 +83,9 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 
 **Infra ticket.** User picks project + template → optional team-manager approval → DevOps review → GitOps PR (`request.json`) → promote `dev → uat → prod` → K8s / Health / rollback.
 
-**App deploy.** Merge to `main` → `POST /api/webhooks/change` → `CHG…` → Health watch → Grafana `POST /api/webhooks/alerts` or watcher spike → `INC…` linked to the CHG. DevOps can also file a CHG by hand.
+**App deploy.** Merge to `main` → `POST /api/webhooks/change` (optional SBOM / attestation / digest) → `CHG…` → Health watch → Grafana `POST /api/webhooks/alerts` or watcher spike → `INC…` linked to the CHG. Ack/resolve can sync to PagerDuty or Grafana IRM. DevOps can also file a CHG by hand.
+
+**Identity.** User and DevOps portals can sign in with OIDC. CI can prove GitHub Actions or GitLab OIDC at `POST /api/auth/workload/github` and `POST /api/auth/workload/gitlab`. Agents can read CHGs, INCs, and Health through `POST /mcp` with an API key.
 
 ### User portal (`frontend/` · :3000 · token `token`)
 
@@ -101,7 +103,7 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 
 | Feature | How it works |
 | --- | --- |
-| Users / teams / access review / ownership | IAM. Create portal users and DevOps users. |
+| Users / teams / SSO / access review / ownership | IAM. Create portal users and DevOps users. People → SSO turns on OIDC. |
 | Requests / approval center / SLA | Full request list. Approve, reject, reassign, bulk status. |
 | Projects / templates / maintenance | Catalog authors and legacy bundle cleanup. |
 | Outbound + inbound webhooks | Slack/HTTP destinations and extra inbound secrets. |
@@ -114,11 +116,12 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 | --- | --- |
 | Requests / my tickets / workload | Manager queue. Approve opens the GitOps PR. |
 | Approvals (queue, history, rules, timing) | Who must sign, how long it sat, high-risk merge ack. |
-| Changes | Catalog + **New change**. Resolve, close, fail, cancel, reopen. Clean watch auto-resolves. Open linked incidents block resolve/close. |
+| Changes | Catalog + **New change**. Resolve, close, fail, cancel, reopen. Canary / 10 / 50 / 100 rollout. Preview and flag types. Clean watch auto-resolves. Open linked incidents block resolve/close. |
 | Services | Separate catalog. Created services populate the CHG dropdown and fill omitted webhook env. |
 | Calendar / release notes / change risk | Planned windows and weekly notes from closed CHGs. |
 | Incidents / problems / workspace | Manual pages plus Grafana. Problems group repeats. |
-| Health / SLO | Watch window, baseline vs latest, rollback hint, DORA. Watcher every ~2 min. |
+| Health / SLO / Identity | Watch window, baseline vs latest, rollback hint, DORA. Identity flags static keys and GitHub OIDC exchanges. |
+| Scorecards / Evidence / Policies | Per-service health score. 30-day evidence pack. Lightweight Rego deny on CHG and request.json (`infragate/policy`). |
 | Promotions / freezes / rollback | Env promotion with gates. Freeze blocks risky ships. |
 | Deploy intel | Onboard repo → open PRs + change brief + `infragate/deploy-intel` check. |
 | GitOps control | Which repo/path gets `request.json`. |
@@ -131,6 +134,10 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 | --- | --- |
 | Change webhook | CI after merge. Idempotent `repo+sha+env`. Omit environment. |
 | Alert webhook | Grafana / Alertmanager / logger. Same fingerprint = same INC. |
+| IRM webhook | PagerDuty / Grafana IRM / Opsgenie ack-resolve on the same INC. |
+| Flag webhook | LaunchDarkly / Unleash / Flagsmith creates a `flag` CHG. |
+| OTLP metrics | `POST /api/otlp/v1/metrics` feeds Health p95/error for watching CHGs. |
+| MCP | `POST /mcp` read tools for changes, incidents, health, tickets, scorecards. Bearer API key. |
 | Watch metrics | Push latency/error samples into Health. |
 | Infra CI / GitHub / Slack / Teams | Plan output, intel briefs, ChatOps. |
 
@@ -149,6 +156,8 @@ Auth: User / Admin / DevOps send `Authorization: Bearer …`. Admin may send `X-
 ### Auth and `/api/me`
 
 `POST /api/auth/signup` · `login` · `forgot-password` · `reset-password` · `verify-2fa`  
+`GET /api/public/sso/options` · `GET /api/auth/oidc/start` · `GET /api/auth/oidc/callback` · `POST /api/auth/workload/github` · `POST /api/auth/workload/gitlab`  
+`GET /mcp` · `POST /mcp`  
 `GET /api/verify-email` · `POST /api/verify-otp` · `POST /api/resend-verification`  
 `GET /api/me` · `/api/me/workspace` · `/api/me/2fa` · `/api/me/api-keys` · `/api/me/notifications` · `/api/me/notification-preferences`  
 `POST /api/change-password`
@@ -156,22 +165,22 @@ Auth: User / Admin / DevOps send `Authorization: Bearer …`. Admin may send `X-
 ### User requests and catalogs
 
 `POST /api/request` · `GET /api/request/:id` · `POST /create-pr`  
-`GET /api/history` · `/api/history/:id` · `/api/stats` · `/api/search` · `/api/golden-paths` · `/api/cost-guardrail` · `POST /api/cost-estimate` · `POST /api/copilot`  
+`GET /api/history` · `/api/history/:id` · `/api/stats` · `/api/search` · `/api/golden-paths` · `/api/cost-guardrail` · `POST /api/cost-estimate` · `POST /api/copilot` (grounded citations)  
 `GET /api/templates` · `/api/templates/:id` · `/api/logs/cloud` · `/api/logs/github`  
-`GET /api/me/projects` · `/api/me/teams` · `/api/me/managed-teams` · `/api/me/changes` · `/api/me/incidents` · `/api/me/saved-configs` · `/api/me/pending-manager-approval`
+`GET /api/me/projects` · `/api/me/teams` · `/api/me/managed-teams` · `/api/me/changes` · `/api/me/incidents` · `/api/me/scorecards` · `/api/me/saved-configs` · `/api/me/pending-manager-approval`
 
 ### Admin
 
 `/api/admin/users` · `/teams` · `/requests` (+ approve/reject/status/reassign/bulk) · `/stats` · `/dashboard-stats` · `/analytics/requests` · `/sla-breach-check` · `/notifications` · `/audit-log` · `/access-review` · `/team-ownership` · `/user-activity`  
 `/api/admin/projects` · `/project-analytics` · `/templates` · `/request-bundle-normalization` · `/saved-views`  
-`/api/admin/webhooks` · `/inbound-sources` · `/changes` · `/incidents` · `/deploy-intelligence/feed`
+`/api/admin/webhooks` · `/inbound-sources` · `/sso/settings` · `/changes` · `/incidents` · `/scorecards` · `/evidence` · `/deploy-intelligence/feed`
 
 ### DevOps
 
 `/api/devops/me` · `/workspace` · `/tickets` · `/requests` (+ approve/reject/bulk) · `/pending-approvals` · `/deployment-gate-approvals` · `/approval-sla` · `/users` (`?audience=portal` = CHG assignees) · `/workload` · `/dashboard-stats`  
 `/api/devops/changes` · `/changes/:id` · `/changes/:id/close` · `/changes/:id/cab-approve` · `/services` · `/change-calendar` · `/change-risk` · `/release-notes`  
 `/api/devops/incidents` · `/problems` · `/runbooks` · `/incident-workspace`  
-`/api/devops/health` · `/slos`  
+`/api/devops/health` · `/slos` · `/identity` · `/previews` · `/scorecards` · `/evidence` · `/policies`  
 `/api/devops/promotions` · `/rollback-console` · `/freezes` · `/oncall`  
 `/api/devops/deploy-intelligence` · `/repos` · `/suggest-ticket` · `/protect-branch`  
 `/api/devops/gitops/...` · `/projects` · `/templates` · `/k8s-*` · `/ops-command-center` · `/environment-drift` · `/credential-audit` · `/access-overrides` · `/retry-center` · `/notification-settings`
@@ -181,6 +190,9 @@ Auth: User / Admin / DevOps send `Authorization: Bearer …`. Admin may send `X-
 | Method | Path | Secret |
 | --- | --- | --- |
 | POST | `/api/webhooks/change` | `CHANGE_WEBHOOK_SECRET` |
+| POST | `/api/webhooks/flags` | `CHANGE_WEBHOOK_SECRET` |
+| POST | `/api/otlp/v1/metrics` | change / alert secret |
+| POST | `/api/webhooks/irm` | `ALERT_WEBHOOK_SECRET` |
 | POST | `/api/webhooks/alerts` | `ALERT_WEBHOOK_SECRET` |
 | POST | `/api/webhooks/watch-metrics` | alert / CI secret |
 | POST | `/api/webhooks/ci` | `CI_WEBHOOK_SECRET` |

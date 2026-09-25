@@ -1200,6 +1200,19 @@ func buildExpiryTracker(entries []CredentialAuditEntry, cloudFilter string, proj
 		})
 	}
 
+	for _, finding := range listStaticKeyFindings() {
+		name := stringFromAny(finding["name"])
+		appendItem(expiryTrackerItem{
+			Category:       "credential",
+			Source:         "static_key",
+			ResourceName:   name,
+			ResourceType:   "Long-lived process secret",
+			Status:         "expiring_30d",
+			DaysRemaining:  0,
+			Recommendation: "Replace with GitHub OIDC / workload identity. POST /api/auth/workload/github from CI.",
+		})
+	}
+
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].DaysRemaining == items[j].DaysRemaining {
 			return items[i].ResourceName < items[j].ResourceName

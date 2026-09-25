@@ -69,7 +69,7 @@ func listExpiredWatchChanges(now time.Time) ([]changeRequestRecord, error) {
 func pullMappedServiceMetrics(service, repo, environment string) *serviceMetrics {
 	mapped := lookupServiceMap(service, repo, environment)
 	if mapped == nil || strings.TrimSpace(mapped.MetricsURL) == "" {
-		return nil
+		return pullTempoServiceMetrics(service, environment)
 	}
 	client := &http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Get(strings.TrimSpace(mapped.MetricsURL))
@@ -99,7 +99,11 @@ func pullMappedServiceMetrics(service, repo, environment string) *serviceMetrics
 func evaluateChangeWatch(item changeRequestRecord, now time.Time) error {
 	stale := item.LatestMetrics == nil || item.LatestMetrics.TakenAt.IsZero() || now.Sub(item.LatestMetrics.TakenAt) > 3*time.Minute
 	if stale {
-		if sample := pullMappedServiceMetrics(item.Service, item.Repo, item.Environment); sample != nil {
+		sample := pullMappedServiceMetrics(item.Service, item.Repo, item.Environment)
+		if sample == nil {
+			sample = latestServiceMetrics(item.Service, item.Environment)
+		}
+		if sample != nil {
 			_, _, _ = applyWatchSample(item, *sample)
 			if refreshed, err := getChangeRequestByID(item.ID); err == nil && refreshed != nil {
 				item = *refreshed
@@ -110,13 +114,18 @@ func evaluateChangeWatch(item changeRequestRecord, now time.Time) error {
 	hasRegression := changeHasOpenRegression(item.ID)
 	decision := decideWatchOutcome(item, item.Baseline, item.LatestMetrics, now, hasRegression, slo)
 	if decision.FailChange {
+		finalizeChangeCost(item.ID)
 		return setChangeStatus(item.ID, "failed")
 	}
 	if decision.CloseChange {
+		finalizeChangeCost(item.ID)
 		_, err := resolveChangeRequest(item.ID)
 		return err
 	}
 	if decision.OpenRegression && !hasRegression && item.LatestMetrics != nil {
+		if item.RolloutPercent > 0 && item.RolloutPercent < 100 {
+			haltChangeRollout(item.ID, decision.Reasons)
+		}
 		_, err := openChangeRegressionIncident(item, decision.Reasons, *item.LatestMetrics)
 		return err
 	}
@@ -168,6 +177,9 @@ func applyWatchSample(change changeRequestRecord, sample serviceMetrics) (*reque
 			_ = setChangeStatus(refreshed.ID, "monitoring")
 		}
 		return nil, nil, nil
+	}
+	if refreshed.RolloutPercent > 0 && refreshed.RolloutPercent < 100 {
+		haltChangeRollout(refreshed.ID, reasons)
 	}
 	incident, err := openChangeRegressionIncident(*refreshed, reasons, *normalized)
 	if err != nil {

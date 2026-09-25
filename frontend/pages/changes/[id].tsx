@@ -43,8 +43,17 @@ interface ChangeDetail {
   risk_level?: string;
   impact?: string;
   backout_plan?: string;
+  sbom_url?: string;
+  attestation_url?: string;
+  image_digest?: string;
+  provenance_signed?: boolean;
   cab_window_start?: string;
   cab_window_end?: string;
+  cost_delta_usd?: number;
+  cost_monthly_after?: number;
+  cost_currency?: string;
+  policy_status?: string;
+  policy_reasons?: string[];
 }
 
 export default function UserChangeDetailPage() {
@@ -123,6 +132,20 @@ export default function UserChangeDetailPage() {
             {item.summary ? <p className="portal-surface__subtitle">{item.summary}</p> : null}
             {item.impact ? <p className="portal-surface__subtitle">Impact: {item.impact}</p> : null}
             {item.backout_plan ? <p className="portal-surface__subtitle">Backout: {item.backout_plan}</p> : null}
+            <p className="portal-surface__subtitle">
+              Cost delta: {item.cost_currency || 'USD'} {item.cost_delta_usd ?? 0}
+              {item.cost_monthly_after ? ` · monthly after ${item.cost_monthly_after}` : ''}
+              {item.policy_status ? ` · policy ${item.policy_status}` : ''}
+              {item.policy_reasons?.length ? ` · ${item.policy_reasons.join('; ')}` : ''}
+            </p>
+            <p className="portal-surface__subtitle">Provenance: {item.provenance_signed ? 'Signed' : 'Unsigned'}{item.image_digest ? ` · ${item.image_digest}` : ''}</p>
+            {item.sbom_url || item.attestation_url ? (
+              <p className="portal-surface__subtitle">
+                {item.sbom_url ? <a href={item.sbom_url} target="_blank" rel="noreferrer">SBOM</a> : null}
+                {item.sbom_url && item.attestation_url ? ' · ' : ''}
+                {item.attestation_url ? <a href={item.attestation_url} target="_blank" rel="noreferrer">Attestation</a> : null}
+              </p>
+            ) : null}
             {item.pr_url ? <p><a href={item.pr_url} target="_blank" rel="noreferrer">Open pull request</a></p> : null}
             {brief?.headline ? (
               <div style={{ marginTop: 24 }}>

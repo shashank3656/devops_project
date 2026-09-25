@@ -275,6 +275,15 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		user.Role = "viewer"
 	}
 
+	var authSource string
+	var ssoActive bool
+	if scanErr := DB.QueryRow(`SELECT COALESCE(auth_source,'local'), COALESCE(sso_active, TRUE) FROM users WHERE id = $1`, user.ID).Scan(&authSource, &ssoActive); scanErr == nil {
+		if policyErr := enforcePortalSSOPolicyForPasswordLogin(req.Portal, &user, authSource, ssoActive); policyErr != nil {
+			writeAPIError(w, r, http.StatusForbidden, policyErr.Error(), policyErr)
+			return
+		}
+	}
+
 	// 2FA: if totp_enabled, require OTP before issuing token
 	if user.TotpEnabled {
 		otpBytes := make([]byte, 6)

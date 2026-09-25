@@ -30,15 +30,29 @@ type deployIntelRepo struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+type deployIntelLastChange struct {
+	ID               int                 `json:"id"`
+	ChangeNumber     string              `json:"change_number"`
+	SHA              string              `json:"sha"`
+	PreviousSHA      string              `json:"previous_sha,omitempty"`
+	ProvenanceSigned bool                `json:"provenance_signed"`
+	SbomURL          string              `json:"sbom_url,omitempty"`
+	AttestationURL   string              `json:"attestation_url,omitempty"`
+	PolicyStatus     string              `json:"policy_status,omitempty"`
+	Status           string              `json:"status,omitempty"`
+	Rollback         *changeRollbackPlan `json:"rollback,omitempty"`
+}
+
 type deployIntelRepoSummary struct {
 	deployIntelRepo
-	Ready        bool       `json:"ready"`
-	MergeCount   int        `json:"merge_count"`
-	HighRisk30d  int        `json:"high_risk_30d"`
-	OpenPRCount  int        `json:"open_pr_count"`
-	LastMergedAt *time.Time `json:"last_merged_at,omitempty"`
-	WebhookPath  string     `json:"webhook_path"`
-	SetupSummary string     `json:"setup_summary"`
+	Ready        bool                  `json:"ready"`
+	MergeCount   int                   `json:"merge_count"`
+	HighRisk30d  int                   `json:"high_risk_30d"`
+	OpenPRCount  int                   `json:"open_pr_count"`
+	LastMergedAt *time.Time            `json:"last_merged_at,omitempty"`
+	WebhookPath  string                `json:"webhook_path"`
+	SetupSummary string                `json:"setup_summary"`
+	LastChange   *deployIntelLastChange `json:"last_change,omitempty"`
 }
 
 func ensureDefaultDeployIntelRepo() {
@@ -396,7 +410,43 @@ func buildDeployIntelRepoSummary(item deployIntelRepo) deployIntelRepoSummary {
 	default:
 		summary.SetupSummary = fmt.Sprintf("Fetching open PRs from GitHub and listening for merges into %s.", item.BaseBranch)
 	}
+	summary.LastChange = lastChangeForRepo(item.Owner, item.Name)
 	return summary
+}
+
+func lastChangeForRepo(owner, name string) *deployIntelLastChange {
+	repo := strings.ToLower(strings.Trim(owner+"/"+name, "/"))
+	if repo == "/" || repo == "" {
+		return nil
+	}
+	changes, err := listChangeRequests(0, "", "", repo)
+	if err != nil {
+		return nil
+	}
+	var latest *changeRequestRecord
+	for i := range changes {
+		if strings.ToLower(strings.TrimSpace(changes[i].Repo)) != repo {
+			continue
+		}
+		latest = &changes[i]
+		break
+	}
+	if latest == nil {
+		return nil
+	}
+	attachChangeRollbackPlan(latest)
+	return &deployIntelLastChange{
+		ID:               latest.ID,
+		ChangeNumber:     latest.ChangeNumber,
+		SHA:              latest.SHA,
+		PreviousSHA:      latest.PreviousSHA,
+		ProvenanceSigned: latest.ProvenanceSigned,
+		SbomURL:          latest.SbomURL,
+		AttestationURL:   latest.AttestationURL,
+		PolicyStatus:     latest.PolicyStatus,
+		Status:           latest.Status,
+		Rollback:         latest.RollbackPlan,
+	}
 }
 
 func listDeployIntelRepoSummaries() ([]deployIntelRepoSummary, error) {

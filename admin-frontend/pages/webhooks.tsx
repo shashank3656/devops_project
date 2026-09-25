@@ -36,6 +36,9 @@ export default function WebhooksPage() {
   const ciWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/ci`;
   const changeWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/change`;
   const alertWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/alerts`;
+  const irmWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/irm`;
+  const flagWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/flags`;
+  const otlpWebhookUrl = `${apiUrl.replace(/\/$/, '')}/api/otlp/v1/metrics`;
 
   const fetchWebhooks = async () => {
     if (!token) return;
@@ -182,7 +185,10 @@ export default function WebhooksPage() {
               <p className="admin-maintenance-card__copy">
                 <strong>Infra CI:</strong> <code>{ciWebhookUrl}</code><br />
                 <strong>Change requests:</strong> <code>{changeWebhookUrl}</code><br />
-                <strong>Alert incidents:</strong> <code>{alertWebhookUrl}</code>
+                <strong>Alert incidents:</strong> <code>{alertWebhookUrl}</code><br />
+                <strong>IRM sync:</strong> <code>{irmWebhookUrl}</code> or <code>{irmWebhookUrl}/pagerduty</code><br />
+                <strong>Feature flags:</strong> <code>{flagWebhookUrl}</code><br />
+                <strong>OTLP metrics:</strong> <code>{otlpWebhookUrl}</code>
               </p>
               <pre className="admin-maintenance-card__code-block" style={{ overflow: 'auto', fontSize: 12, padding: 16, borderRadius: 8, background: 'var(--color-surface-muted)' }}>
                 {`curl -sf -X POST "${ciWebhookUrl}" \\

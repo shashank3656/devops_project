@@ -213,6 +213,10 @@ func processGitHubPullRequestWebhook(payload map[string]interface{}) {
 		headSHA, _ = head["sha"].(string)
 	}
 
+	if action == "opened" || action == "synchronize" || action == "reopened" || action == "ready_for_review" || action == "closed" {
+		_ = upsertPreviewFromPullRequest(owner, repo, pr, action)
+	}
+
 	if action == "opened" || action == "synchronize" || action == "reopened" || action == "ready_for_review" {
 		brief := analyzeGitHubPullRequest(owner, repo, number, req, "open")
 		brief.MergeState = "open"
