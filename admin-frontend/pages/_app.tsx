@@ -2,7 +2,7 @@ import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { useEffect } from 'react';
 import { applyTheme, installApiUrlRewrite } from '@infragate/ui';
-import { clearAdminSession } from '../lib/session';
+import { clearAdminSession, purgeUnsignedAdminSession } from '../lib/session';
 import { ADMIN_SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
 import '../../shared-ui/tokens.css';
@@ -14,6 +14,7 @@ const BUILT_API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080
 
 // Must run before any page fetches (child effects run before this component's effects).
 installApiUrlRewrite(BUILT_API_URL);
+purgeUnsignedAdminSession();
 
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {

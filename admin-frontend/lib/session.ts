@@ -14,6 +14,13 @@ export function readAdminToken(): string | null {
   return raw;
 }
 
+export function purgeUnsignedAdminSession(): void {
+  if (typeof window === 'undefined') return;
+  if (!readAdminToken()) {
+    clearAdminSession();
+  }
+}
+
 export function clearAdminSession(): void {
   try {
     localStorage.removeItem('admin_token');

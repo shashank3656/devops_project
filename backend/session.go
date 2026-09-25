@@ -154,7 +154,7 @@ func validateToken(token string) (int, error) {
 		return 0, fmt.Errorf("invalid or expired token")
 	}
 	if isLegacySessionToken(token) {
-		return 0, fmt.Errorf("legacy token rejected")
+		return 0, fmt.Errorf("session expired, please sign in again")
 	}
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {

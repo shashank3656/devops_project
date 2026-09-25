@@ -5,6 +5,14 @@ export function isSignedSessionToken(raw: string): boolean {
   return parts.length === 3 && parts.every((part) => part.length > 0);
 }
 
+export function purgeUnsignedUserSession(): void {
+  if (typeof window === 'undefined') return;
+  const raw = (localStorage.getItem('token') || '').trim();
+  if (!raw || raw === 'undefined' || raw === 'null' || !isSignedSessionToken(raw)) {
+    clearUserSession();
+  }
+}
+
 export function clearUserSession(): void {
   try {
     localStorage.removeItem('token');

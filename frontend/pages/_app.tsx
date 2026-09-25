@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { applyTheme, installApiUrlRewrite } from '@infragate/ui';
 import AppLayout from '../components/AppLayout';
 import { ToastProvider } from '../context/ToastContext';
-import { installUserSessionGuard } from '../lib/session';
+import { installUserSessionGuard, purgeUnsignedUserSession } from '../lib/session';
 import { SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
 import '../../shared-ui/tokens.css';
@@ -14,6 +14,7 @@ import '../../shared-ui/theme.css';
 
 // Must run before any page fetches (child effects run before this component's effects).
 installApiUrlRewrite(process.env.NEXT_PUBLIC_API_URL);
+purgeUnsignedUserSession();
 
 const AUTHED_PATHS = ['/home', '/create-infrastructure', '/templates', '/select-service', '/custom-json', '/history', '/profile', '/my-teams', '/my-projects', '/incidents', '/changes', '/scorecards', '/request-success'];
 

@@ -2964,13 +2964,11 @@ func GetAuditLogs(limit, offset int, actionFilter, fromDate, toDate string, proj
 		LEFT JOIN users u ON u.id = a.admin_user_id
 		LEFT JOIN pr_requests request_ref
 		  ON a.resource_type = 'pr_request'
-		 AND a.resource_id ~ '^[0-9]+$'
-		 AND request_ref.id = a.resource_id::int
+		 AND request_ref.id = CASE WHEN a.resource_id ~ '^[0-9]+$' THEN a.resource_id::int END
 		LEFT JOIN projects request_project ON request_project.id = request_ref.project_id
 		LEFT JOIN projects direct_project
 		  ON a.resource_type = 'project'
-		 AND a.resource_id ~ '^[0-9]+$'
-		 AND direct_project.id = a.resource_id::int
+		 AND direct_project.id = CASE WHEN a.resource_id ~ '^[0-9]+$' THEN a.resource_id::int END
 		WHERE 1=1
 	`
 	args := []interface{}{}
