@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -11,6 +11,7 @@ const emptyWorkspace: WorkspacePayload = {
   title: 'Operations queue',
   subtitle: 'Promotions, incidents, and production-impacting PRs.',
   needs_you: [],
+  failed: [],
   pipeline: { stages: [] },
   activity: [],
 };
@@ -29,6 +30,7 @@ export default function DevOpsDashboard() {
   const apiUrl = useApiUrl();
   const [workspace, setWorkspace] = useState<WorkspacePayload>(emptyWorkspace);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [freezeReason, setFreezeReason] = useState('');
   const [activeFreeze, setActiveFreeze] = useState('');
   const [rotations, setRotations] = useState<OncallRotation[]>([]);
@@ -62,21 +64,43 @@ export default function DevOpsDashboard() {
       .catch(() => {});
   };
 
-  useEffect(() => {
+  const loadWorkspace = useCallback(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
       router.replace('/login');
       return;
     }
+    setLoading(true);
+    setError(null);
     fetch(`${apiUrl}/api/devops/workspace`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.workspace) setWorkspace(data.workspace);
+      .then(async (res) => {
+        if (res.status === 401) {
+          router.replace('/login');
+          return null;
+        }
+        if (!res.ok) {
+          throw new Error(`Home could not load (${res.status}).`);
+        }
+        return res.json();
       })
-      .catch(() => {})
+      .then((data) => {
+        if (!data) return;
+        if (!data.workspace) {
+          throw new Error('Home response was empty.');
+        }
+        setWorkspace(data.workspace);
+      })
+      .catch((err: Error) => {
+        setWorkspace(emptyWorkspace);
+        setError(err?.message || 'Home could not load.');
+      })
       .finally(() => setLoading(false));
-    loadOpsControls();
   }, [apiUrl, router]);
+
+  useEffect(() => {
+    loadWorkspace();
+    loadOpsControls();
+  }, [apiUrl, loadWorkspace]);
 
   const startFreeze = () => {
     fetch(`${apiUrl}/api/devops/freezes`, {
@@ -128,6 +152,8 @@ export default function DevOpsDashboard() {
         <WorkspaceHome
           payload={workspace}
           loading={loading}
+          error={error}
+          onRetry={loadWorkspace}
           activityHref="/tickets"
           actions={
             <>
@@ -137,28 +163,6 @@ export default function DevOpsDashboard() {
           }
           aside={
             <>
-              <section className="ig-home-panel ig-home-ops" aria-label="Health">
-                <span className="ig-home-ops__label">Health</span>
-                <h3 className="ig-home-ops__title">
-                  <span className={`ig-dot ${healthRegressions || healthHighRisk ? 'ig-dot--danger' : 'ig-dot--ok'}`} aria-hidden />
-                  {healthRegressions > 0 ? `${healthRegressions} change-linked alert${healthRegressions === 1 ? '' : 's'}` : 'No post-deploy regressions'}
-                </h3>
-                <p className="ig-home-ops__copy">
-                  {healthWatching} watching · {healthHighRisk} SEV1/SEV2 · {healthBurned} burned SLO{healthBurned === 1 ? '' : 's'}
-                </p>
-                <Link href="/health" className="btn btn-secondary btn-sm">Open health</Link>
-              </section>
-              <section className="ig-home-panel ig-home-ops" aria-label="On-call">
-                <span className="ig-home-ops__label">On-call</span>
-                <h3 className="ig-home-ops__title">
-                  <span className={`ig-dot ${pagingNow ? 'ig-dot--ok' : ''}`} aria-hidden />
-                  {pagingNow ? `${pagingNow.username || 'Someone'} is on call` : 'No one is on call'}
-                </h3>
-                <p className="ig-home-ops__copy">
-                  {pagingNow?.team_name ? `${pagingNow.team_name} rotation` : 'Take the next eight-hour shift.'}
-                </p>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={takeOncall}>Take on-call</button>
-              </section>
               <section className="ig-home-panel ig-home-ops" aria-label="Change freeze">
                 <span className="ig-home-ops__label">Change freeze</span>
                 <h3 className="ig-home-ops__title">
@@ -182,6 +186,28 @@ export default function DevOpsDashboard() {
                     <button type="button" className="btn btn-secondary btn-sm" onClick={startFreeze}>Start</button>
                   </div>
                 )}
+              </section>
+              <section className="ig-home-panel ig-home-ops" aria-label="On-call">
+                <span className="ig-home-ops__label">On-call</span>
+                <h3 className="ig-home-ops__title">
+                  <span className={`ig-dot ${pagingNow ? 'ig-dot--ok' : ''}`} aria-hidden />
+                  {pagingNow ? `${pagingNow.username || 'Someone'} is on call` : 'No one is on call'}
+                </h3>
+                <p className="ig-home-ops__copy">
+                  {pagingNow?.team_name ? `${pagingNow.team_name} rotation` : 'Take the next eight-hour shift.'}
+                </p>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={takeOncall}>Take on-call</button>
+              </section>
+              <section className="ig-home-panel ig-home-ops" aria-label="Health">
+                <span className="ig-home-ops__label">Health</span>
+                <h3 className="ig-home-ops__title">
+                  <span className={`ig-dot ${healthRegressions || healthHighRisk ? 'ig-dot--danger' : 'ig-dot--ok'}`} aria-hidden />
+                  {healthRegressions > 0 ? `${healthRegressions} change-linked alert${healthRegressions === 1 ? '' : 's'}` : 'No post-deploy regressions'}
+                </h3>
+                <p className="ig-home-ops__copy">
+                  {healthWatching} watching · {healthHighRisk} SEV1/SEV2 · {healthBurned} burned SLO{healthBurned === 1 ? '' : 's'}
+                </p>
+                <Link href="/health" className="btn btn-secondary btn-sm">Open health</Link>
               </section>
             </>
           }

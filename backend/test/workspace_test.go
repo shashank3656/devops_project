@@ -84,7 +84,80 @@ func TestBuildWorkspacePayloadWithoutDB(t *testing.T) {
 	if payload.Title != "Operations queue" {
 		t.Fatalf("title = %q", payload.Title)
 	}
-	if payload.NeedsYou == nil || payload.Activity == nil || payload.Pipeline.Stages == nil {
+	if payload.NeedsYou == nil || payload.Failed == nil || payload.Activity == nil || payload.Pipeline.Stages == nil {
 		t.Fatal("slices must be non-nil so JSON encodes [] not null")
+	}
+}
+
+func TestWorkspaceDeliveryClassification(t *testing.T) {
+	if !workspaceChangeIsFailed("FAILED") {
+		t.Fatal("failed CHG must be classified as failed")
+	}
+	if workspaceChangeNeedsAction("failed") {
+		t.Fatal("failed CHG must not stay in the action queue")
+	}
+	if !workspaceChangeNeedsAction("implementing") || !workspaceChangeNeedsAction("monitoring") {
+		t.Fatal("active CHGs must stay in the action queue")
+	}
+	if !workspaceDeliveryIsFailed("apply_failed") || !workspaceDeliveryIsFailed("plan_failed") {
+		t.Fatal("failed CI statuses must be classified as failed")
+	}
+	if workspaceDeliveryIsFailed("in_progress") {
+		t.Fatal("in-progress tickets are not failed deliveries")
+	}
+	if !workspaceDeliveryIsBlocked("blocked") || !workspaceDeliveryIsBlocked("promotion_blocked") {
+		t.Fatal("blocked promotions must be classified as blocked")
+	}
+}
+
+func TestWorkspaceIncidentHref(t *testing.T) {
+	if got := workspaceIncidentHref(42); got != "/incidents/42" {
+		t.Fatalf("workspaceIncidentHref(42) = %q", got)
+	}
+	if got := workspaceIncidentHref(0); got != "/incidents" {
+		t.Fatalf("workspaceIncidentHref(0) = %q", got)
+	}
+}
+
+func TestIncidentNeedsViewerAction(t *testing.T) {
+	owner := 9
+	assigned := requestIncident{OwnerUserID: &owner}
+	if !incidentNeedsViewerAction(assigned, "user", 9) {
+		t.Fatal("assigned incident should appear on the owner home")
+	}
+	if incidentNeedsViewerAction(assigned, "user", 3) {
+		t.Fatal("another user's incident should not appear on User Home")
+	}
+	unassigned := requestIncident{}
+	if incidentNeedsViewerAction(unassigned, "user", 9) {
+		t.Fatal("unassigned incidents are not User Home actions")
+	}
+	if !incidentNeedsViewerAction(unassigned, "devops", 9) {
+		t.Fatal("unassigned incidents need DevOps action")
+	}
+}
+
+func TestChangeNeedsViewerAction(t *testing.T) {
+	assignee := 4
+	item := changeRequestRecord{AssigneeUserID: &assignee}
+	if !changeNeedsViewerAction(item, "user", 1) {
+		t.Fatal("users still see visible CHGs they own via project scope")
+	}
+	if !changeNeedsViewerAction(item, "devops", 4) {
+		t.Fatal("assigned CHG should appear on DevOps Home")
+	}
+	if changeNeedsViewerAction(item, "devops", 8) {
+		t.Fatal("another operator's CHG should not appear in Needs my action")
+	}
+	if !changeNeedsViewerAction(changeRequestRecord{}, "devops", 8) {
+		t.Fatal("unassigned CHGs need an owner")
+	}
+}
+
+func TestCapWorkspaceQueue(t *testing.T) {
+	items := []workspaceQueueItem{{ID: "a"}, {ID: "b"}, {ID: "c"}}
+	got := capWorkspaceQueue(items, 2)
+	if len(got) != 2 || got[0].ID != "a" {
+		t.Fatalf("unexpected cap: %+v", got)
 	}
 }

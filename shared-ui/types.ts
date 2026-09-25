@@ -138,7 +138,7 @@ export interface PlanReview {
 
 export type Tone = RiskLevel | 'ok' | 'info' | 'danger';
 
-export type QueueKind = 'approval' | 'incident' | 'pr_risk' | 'freeze' | 'rejected' | 'draft' | 'waiting';
+export type QueueKind = 'approval' | 'incident' | 'pr_risk' | 'freeze' | 'rejected' | 'draft' | 'waiting' | 'change' | 'failed' | 'blocked';
 
 export interface QueueItem {
   id: string;
@@ -332,6 +332,7 @@ export interface WorkspacePayload {
   subtitle: string;
   viewer?: string;
   needs_you: QueueItem[];
+  failed?: QueueItem[];
   pipeline: {
     project_name?: string;
     stages: PipelineStage[];
