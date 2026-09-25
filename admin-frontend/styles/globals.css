@@ -2185,12 +2185,25 @@ tbody tr:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 12px 16px;
   min-height: 84px;
-  padding: 18px 28px;
+  padding: 14px 28px;
   background: rgba(20, 24, 32, 0.82);
   border-bottom: 1px solid rgba(148, 163, 184, 0.12);
   backdrop-filter: blur(16px);
+}
+
+.admin-topbar__scope {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.admin-topbar__scope .ig-scope-bar__control {
+  min-width: 168px;
+  max-width: 240px;
 }
 
 .admin-topbar__left,
@@ -6346,8 +6359,9 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-.admin-request-filter__panel-grid--short {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  .admin-request-filter__panel-grid--short {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .admin-maintenance-card {
@@ -6365,6 +6379,17 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.admin-maintenance-card details {
+  margin-top: 12px;
+}
+
+.admin-maintenance-card summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 13px;
 }
 
 .admin-maintenance-card__title {
@@ -6487,6 +6512,38 @@ body {
   color: #f7a8a8;
 }
 
+.admin-endpoint-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.admin-endpoint-list div {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.admin-endpoint-list dt {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.admin-endpoint-list dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.admin-endpoint-list code {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+@media (max-width: 1220px) {
   .filters-bar__quick {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
