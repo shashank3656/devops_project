@@ -10,6 +10,9 @@ const KIND_LABELS: Record<string, string> = {
   rejected: 'Rejected',
   draft: 'Draft',
   waiting: 'In review',
+  change: 'Change',
+  failed: 'Failed',
+  blocked: 'Blocked',
 };
 
 const KIND_TONES: Record<string, Tone> = {
@@ -19,6 +22,9 @@ const KIND_TONES: Record<string, Tone> = {
   rejected: 'danger',
   draft: 'medium',
   waiting: 'info',
+  change: 'medium',
+  failed: 'danger',
+  blocked: 'danger',
 };
 
 function badgeTone(item: QueueItem): Tone {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -10,6 +10,7 @@ const emptyWorkspace: WorkspacePayload = {
   title: 'Governance queue',
   subtitle: 'Pending requests and the current release path.',
   needs_you: [],
+  failed: [],
   pipeline: { stages: [] },
   activity: [],
 };
@@ -18,21 +19,44 @@ export default function AdminDashboard() {
   const router = useRouter();
   const [workspace, setWorkspace] = useState<WorkspacePayload>(emptyWorkspace);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadWorkspace = useCallback(() => {
     const token = localStorage.getItem('admin_token');
     if (!token) {
       router.replace('/login');
       return;
     }
+    setLoading(true);
+    setError(null);
     fetch(`${apiUrl}/api/admin/workspace`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.workspace) setWorkspace(data.workspace);
+      .then(async (res) => {
+        if (res.status === 401) {
+          router.replace('/login');
+          return null;
+        }
+        if (!res.ok) {
+          throw new Error(`Home could not load (${res.status}).`);
+        }
+        return res.json();
       })
-      .catch(() => {})
+      .then((data) => {
+        if (!data) return;
+        if (!data.workspace) {
+          throw new Error('Home response was empty.');
+        }
+        setWorkspace(data.workspace);
+      })
+      .catch((err: Error) => {
+        setWorkspace(emptyWorkspace);
+        setError(err?.message || 'Home could not load.');
+      })
       .finally(() => setLoading(false));
   }, [router]);
+
+  useEffect(() => {
+    loadWorkspace();
+  }, [loadWorkspace]);
 
   return (
     <>
@@ -43,6 +67,8 @@ export default function AdminDashboard() {
         <WorkspaceHome
           payload={workspace}
           loading={loading}
+          error={error}
+          onRetry={loadWorkspace}
           activityHref="/activity"
           actions={
             <>

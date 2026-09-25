@@ -50,6 +50,7 @@ type workspacePayload struct {
 	Subtitle string               `json:"subtitle"`
 	Viewer   string               `json:"viewer,omitempty"`
 	NeedsYou []workspaceQueueItem `json:"needs_you"`
+	Failed   []workspaceQueueItem `json:"failed"`
 	Pipeline struct {
 		ProjectName string                   `json:"project_name,omitempty"`
 		Stages      []workspacePipelineStage `json:"stages"`
@@ -117,6 +118,7 @@ func buildWorkspacePayload(portal, projectID string, viewerID int) workspacePayl
 		}
 	}
 	payload.NeedsYou = workspaceNeedsYou(portal, viewerID)
+	payload.Failed = workspaceFailedDeliveries(portal, viewerID)
 	payload.Pipeline.ProjectName, payload.Pipeline.Stages = workspacePipeline(portal, projectID, viewerID)
 	payload.Activity = workspaceRecentActivity(portal, viewerID)
 	switch portal {
@@ -142,9 +144,9 @@ func workspaceNeedsYou(portal string, viewerID int) []workspaceQueueItem {
 		items = append(items, workspaceApprovalQueue(portal)...)
 	}
 	items = append(items, workspaceIncidentQueue(portal, viewerID)...)
-	items = append(items, workspaceChangeQueue(portal, viewerID)...)
+	items = append(items, workspaceChangeQueue(portal, viewerID, false)...)
 	if portal != "user" {
-		items = append(items, workspaceRiskyPRQueue(portal)...)
+		items = append(items, workspaceRiskyPRQueue(portal, false)...)
 	}
 
 	if reason := activeFreezeReason(); reason != "" {
@@ -159,10 +161,35 @@ func workspaceNeedsYou(portal string, viewerID int) []workspaceQueueItem {
 		}}, items...)
 	}
 
-	if len(items) > 12 {
-		return items[:12]
+	return capWorkspaceQueue(items, 12)
+}
+
+func workspaceFailedDeliveries(portal string, viewerID int) []workspaceQueueItem {
+	items := make([]workspaceQueueItem, 0, 8)
+	if DB == nil {
+		return items
 	}
-	return items
+	items = append(items, workspaceChangeQueue(portal, viewerID, true)...)
+	items = append(items, workspaceFailedTicketQueue(portal, viewerID)...)
+	seen := map[string]struct{}{}
+	for _, item := range items {
+		if item.Ref != "" {
+			seen[item.Ref] = struct{}{}
+		}
+		seen[item.ID] = struct{}{}
+	}
+	if portal != "user" {
+		for _, item := range workspaceRiskyPRQueue(portal, true) {
+			if _, ok := seen[item.Ref]; ok {
+				continue
+			}
+			if _, ok := seen[item.ID]; ok {
+				continue
+			}
+			items = append(items, item)
+		}
+	}
+	return capWorkspaceQueue(items, 8)
 }
 
 func workspaceApprovalQueue(portal string) []workspaceQueueItem {
@@ -252,21 +279,18 @@ func workspaceUserQueue(viewerID int) []workspaceQueueItem {
 	}
 
 	if rows, err := DB.Query(`
-		SELECT id, env, service, status, COALESCE(reject_reason, ''), updated_at
+		SELECT id, env, service, status, updated_at
 		FROM pr_requests
 		WHERE created_by = $1
-		AND (
-			status IN ('draft', 'pending_approval', 'pending_user_manager_approval', 'pending_devops_approval', 'in_progress')
-			OR (status = 'rejected' AND updated_at >= NOW() - INTERVAL '14 days')
-		)
-		ORDER BY CASE WHEN status = 'rejected' THEN 0 WHEN status = 'draft' THEN 1 ELSE 2 END, updated_at DESC
+		AND status IN ('draft', 'pending_approval', 'pending_user_manager_approval', 'pending_devops_approval', 'in_progress')
+		ORDER BY CASE WHEN status = 'draft' THEN 0 ELSE 1 END, updated_at DESC
 		LIMIT 6
 	`, viewerID); err == nil {
 		for rows.Next() {
 			var id int
-			var env, service, status, rejectReason string
+			var env, service, status string
 			var updated sql.NullTime
-			if err := rows.Scan(&id, &env, &service, &status, &rejectReason, &updated); err != nil {
+			if err := rows.Scan(&id, &env, &service, &status, &updated); err != nil {
 				continue
 			}
 			item := workspaceQueueItem{
@@ -280,15 +304,7 @@ func workspaceUserQueue(viewerID int) []workspaceQueueItem {
 				Tone:   "info",
 				At:     workspaceTime(updated),
 			}
-			switch status {
-			case "rejected":
-				item.Kind = "rejected"
-				item.Action = "Fix"
-				item.Tone = "danger"
-				if reason := strings.TrimSpace(rejectReason); reason != "" {
-					item.Meta = "Rejected · " + truncateWorkspaceText(reason, 80)
-				}
-			case "draft":
+			if status == "draft" {
 				item.Kind = "draft"
 				item.Action = "Continue"
 				item.Tone = "medium"
@@ -321,14 +337,14 @@ func workspaceIncidentQueue(portal string, viewerID int) []workspaceQueueItem {
 		if portal == "user" && !incidentVisibleToUser(item, viewerID, allowed) {
 			continue
 		}
+		if !incidentNeedsViewerAction(item, portal, viewerID) {
+			continue
+		}
 		title := strings.TrimSpace(item.Summary)
 		if title == "" {
 			title = "Open incident"
 		}
-		href := "/incidents"
-		if item.ID > 0 {
-			href = fmt.Sprintf("/incidents/%d", item.ID)
-		}
+		href := workspaceIncidentHref(item.ID)
 		items = append(items, workspaceQueueItem{
 			ID:     fmt.Sprintf("incident-%d", item.ID),
 			Kind:   "incident",
@@ -347,7 +363,7 @@ func workspaceIncidentQueue(portal string, viewerID int) []workspaceQueueItem {
 	return items
 }
 
-func workspaceChangeQueue(portal string, viewerID int) []workspaceQueueItem {
+func workspaceChangeQueue(portal string, viewerID int, failedOnly bool) []workspaceQueueItem {
 	items := make([]workspaceQueueItem, 0, 3)
 	listed, err := listChangeRequests(0, "", "", "")
 	if err != nil {
@@ -362,10 +378,17 @@ func workspaceChangeQueue(portal string, viewerID int) []workspaceQueueItem {
 	}
 	for _, item := range listed {
 		status := strings.ToLower(strings.TrimSpace(item.Status))
-		if status != "failed" && status != "monitoring" && status != "new" && status != "implementing" {
+		if failedOnly {
+			if !workspaceChangeIsFailed(status) {
+				continue
+			}
+		} else if !workspaceChangeNeedsAction(status) {
 			continue
 		}
 		if portal == "user" && !changeVisibleToUser(item, allowed) {
+			continue
+		}
+		if !failedOnly && !changeNeedsViewerAction(item, portal, viewerID) {
 			continue
 		}
 		title := strings.TrimSpace(item.Title)
@@ -379,14 +402,20 @@ func workspaceChangeQueue(portal string, viewerID int) []workspaceQueueItem {
 		if item.ID > 0 {
 			href = fmt.Sprintf("/changes/%d", item.ID)
 		}
+		kind := "change"
+		action := "Open"
+		if failedOnly {
+			kind = "failed"
+			action = "Inspect"
+		}
 		items = append(items, workspaceQueueItem{
 			ID:     fmt.Sprintf("change-%d", item.ID),
-			Kind:   "change",
+			Kind:   kind,
 			Title:  truncateWorkspaceText(title, 90),
-			Meta:   strings.Join([]string{item.Environment, item.Status, item.ChangeType}, " · "),
+			Meta:   strings.Join(nonEmptyStrings(item.Environment, item.Status, item.ChangeType), " · "),
 			Ref:    firstNonEmpty(item.ChangeNumber, formatChangeNumber(item.ID)),
 			Href:   href,
-			Action: "Open",
+			Action: action,
 			Tone:   workspaceChangeTone(status),
 			At:     item.UpdatedAt.UTC().Format(time.RFC3339),
 		})
@@ -407,14 +436,14 @@ func workspaceChangeTone(status string) string {
 	return "info"
 }
 
-func workspaceRiskyPRQueue(portal string) []workspaceQueueItem {
+func workspaceRiskyPRQueue(portal string, failedOnly bool) []workspaceQueueItem {
 	items := make([]workspaceQueueItem, 0, 4)
 	rows, err := DB.Query(`
 		SELECT request_id, COALESCE(pr_number, 0), score, risk_level, COALESCE(deploy_status, ''), updated_at
 		FROM pr_request_impact
 		WHERE LOWER(risk_level) IN ('high', 'medium')
 		ORDER BY score DESC, updated_at DESC
-		LIMIT 4
+		LIMIT 8
 	`)
 	if err != nil {
 		return items
@@ -427,21 +456,92 @@ func workspaceRiskyPRQueue(portal string) []workspaceQueueItem {
 		if err := rows.Scan(&requestID, &prNumber, &score, &risk, &deploy, &updated); err != nil {
 			continue
 		}
+		failed := workspaceDeliveryIsFailed(deploy)
+		if failedOnly != failed {
+			continue
+		}
 		meta := fmt.Sprintf("%s risk · %d/100", risk, score)
 		if deploy != "" {
 			meta += " · " + strings.ReplaceAll(deploy, "_", " ")
 		}
+		kind := "pr_risk"
+		action := "Inspect"
+		tone := strings.ToLower(risk)
+		if failedOnly {
+			kind = "failed"
+			tone = "danger"
+		}
 		items = append(items, workspaceQueueItem{
 			ID:     fmt.Sprintf("pr-%d", requestID),
-			Kind:   "pr_risk",
+			Kind:   kind,
 			Title:  fmt.Sprintf("PR #%d production impact", prNumber),
 			Meta:   meta,
 			Ref:    workspaceRequestRef(requestID),
 			Href:   workspaceRequestHref(portal, requestID, false),
-			Action: "Inspect",
-			Tone:   strings.ToLower(risk),
+			Action: action,
+			Tone:   tone,
 			At:     workspaceTime(updated),
 		})
+		if len(items) >= 4 {
+			break
+		}
+	}
+	return items
+}
+
+func workspaceFailedTicketQueue(portal string, viewerID int) []workspaceQueueItem {
+	items := make([]workspaceQueueItem, 0, 4)
+	query := `
+		SELECT id, env, service, status, COALESCE(reject_reason, ''), updated_at, created_by
+		FROM pr_requests
+		WHERE LOWER(COALESCE(status, '')) IN ('failed', 'apply_failed', 'plan_failed', 'deploy_failed', 'blocked', 'rejected')
+		   OR LOWER(COALESCE(status, '')) LIKE '%fail%'
+		   OR LOWER(COALESCE(status, '')) LIKE '%block%'
+		ORDER BY updated_at DESC
+		LIMIT 12
+	`
+	rows, err := DB.Query(query)
+	if err != nil {
+		return items
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int
+		var env, service, status, rejectReason string
+		var updated sql.NullTime
+		var createdBy sql.NullInt64
+		if err := rows.Scan(&id, &env, &service, &status, &rejectReason, &updated, &createdBy); err != nil {
+			continue
+		}
+		if portal == "user" && (viewerID <= 0 || !createdBy.Valid || int(createdBy.Int64) != viewerID) {
+			continue
+		}
+		kind := "failed"
+		action := "Inspect"
+		meta := workspaceStatusPhrase(status)
+		if strings.EqualFold(status, "rejected") {
+			kind = "rejected"
+			action = "Fix"
+			if reason := strings.TrimSpace(rejectReason); reason != "" {
+				meta = "Rejected · " + truncateWorkspaceText(reason, 80)
+			}
+		} else if workspaceDeliveryIsBlocked(status) {
+			kind = "blocked"
+		}
+		items = append(items, workspaceQueueItem{
+			ID:     fmt.Sprintf("ticket-%d", id),
+			Kind:   kind,
+			Title:  fmt.Sprintf("%s (%s)", service, env),
+			Meta:   meta,
+			Ref:    workspaceRequestRef(id),
+			Href:   workspaceRequestHref(portal, id, false),
+			Action: action,
+			Tone:   "danger",
+			At:     workspaceTime(updated),
+		})
+		if len(items) >= 4 {
+			break
+		}
 	}
 	return items
 }
@@ -470,13 +570,13 @@ func workspacePipeline(portal, projectID string, viewerID int) (string, []worksp
 		}
 	}
 	if id == 0 {
-		return projectName, defaultPipelineStages(portal)
+		return projectName, stages
 	}
 	rows, err := DB.Query(`
 		SELECT environment FROM project_environments WHERE project_id = $1
 	`, id)
 	if err != nil {
-		return projectName, defaultPipelineStages(portal)
+		return projectName, stages
 	}
 	envs := make([]string, 0, 4)
 	for rows.Next() {
@@ -606,7 +706,7 @@ func workspaceRecentActivity(portal string, viewerID int) []workspaceActivity {
 				ID:      fmt.Sprintf("incident-%d", id),
 				Summary: "Incident " + formatIncidentNumber(id) + " " + strings.ReplaceAll(strings.ToLower(status), "_", " "),
 				Detail:  truncateWorkspaceText(summary, 80),
-				Href:    "/incidents",
+				Href:    workspaceIncidentHref(id),
 				Tone:    tone,
 				At:      workspaceTime(updated),
 				sortAt:  updated.Time,
@@ -628,13 +728,66 @@ func sortWorkspaceActivity(events []workspaceActivity, limit int) []workspaceAct
 	return events
 }
 
-func defaultPipelineStages(portal string) []workspacePipelineStage {
-	_ = portal
-	return []workspacePipelineStage{
-		{Env: "dev", Status: "idle", Summary: "No recent change"},
-		{Env: "uat", Status: "idle", Summary: "Waiting on a promotion"},
-		{Env: "prod", Status: "idle", Summary: "Production is quiet"},
+func capWorkspaceQueue(items []workspaceQueueItem, limit int) []workspaceQueueItem {
+	if limit > 0 && len(items) > limit {
+		return items[:limit]
 	}
+	return items
+}
+
+func workspaceIncidentHref(id int) string {
+	if id <= 0 {
+		return "/incidents"
+	}
+	return fmt.Sprintf("/incidents/%d", id)
+}
+
+func workspaceChangeNeedsAction(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "monitoring", "new", "implementing":
+		return true
+	default:
+		return false
+	}
+}
+
+func workspaceChangeIsFailed(status string) bool {
+	return strings.ToLower(strings.TrimSpace(status)) == "failed"
+}
+
+func workspaceDeliveryIsFailed(status string) bool {
+	value := strings.ToLower(strings.TrimSpace(status))
+	switch value {
+	case "failed", "apply_failed", "plan_failed", "deploy_failed", "error":
+		return true
+	default:
+		return strings.Contains(value, "fail")
+	}
+}
+
+func workspaceDeliveryIsBlocked(status string) bool {
+	value := strings.ToLower(strings.TrimSpace(status))
+	return value == "blocked" || strings.Contains(value, "block")
+}
+
+func incidentNeedsViewerAction(item requestIncident, portal string, viewerID int) bool {
+	if viewerID > 0 && item.OwnerUserID != nil && *item.OwnerUserID == viewerID {
+		return true
+	}
+	if portal == "user" {
+		return false
+	}
+	return item.OwnerUserID == nil
+}
+
+func changeNeedsViewerAction(item changeRequestRecord, portal string, viewerID int) bool {
+	if portal == "user" {
+		return true
+	}
+	if item.AssigneeUserID == nil {
+		return true
+	}
+	return viewerID > 0 && *item.AssigneeUserID == viewerID
 }
 
 func workspaceRequestRef(id int) string {
