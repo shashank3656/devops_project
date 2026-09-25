@@ -548,12 +548,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <span className="admin-topbar__kicker">SetuOps</span>
               <h1 className="admin-topbar__title">{pageTitle}</h1>
             </div>
-            <ScopeBar
-              projects={scopeProjects}
-              scope={scope}
-              onChange={(partial) => writeScopeQuery(updateScope(partial))}
-              onClear={() => writeScopeQuery(updateScope({ projectId: '', environment: '' }))}
-            />
             <span className={`admin-topbar__status-chip ${newRequestsCount > 0 ? 'admin-topbar__status-chip--alert' : ''}`}>
               {statusLabel}
             </span>
@@ -688,6 +682,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 </div>
               )}
             </div>
+          </div>
+          <div className="admin-topbar__scope">
+            <ScopeBar
+              projects={scopeProjects}
+              scope={scope}
+              onChange={(partial) => writeScopeQuery(updateScope(partial))}
+              onClear={() => writeScopeQuery(updateScope({ projectId: '', environment: '' }))}
+            />
           </div>
         </header>
 

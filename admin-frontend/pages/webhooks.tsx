@@ -149,9 +149,9 @@ export default function WebhooksPage() {
           <div className="portal-page__header">
             <div>
               <span className="portal-page__eyebrow">Webhooks</span>
-              <h1 className="portal-page__title">Webhook Management</h1>
+              <h1 className="portal-page__title">Webhooks</h1>
               <p className="portal-page__subtitle">
-                Outbound webhooks fire when request status changes. Payloads include the event, request id, and request fields, with optional HMAC signing.
+                Outbound routes SetuOps calls, and the inbound endpoints your pipeline posts to.
               </p>
             </div>
             <div className="portal-page__actions">
@@ -170,35 +170,101 @@ export default function WebhooksPage() {
             </div>
           )}
 
+          <div className="portal-surface" style={{ marginBottom: 24 }}>
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Outbound</span>
+                <h2 className="portal-surface__title">Routes SetuOps calls</h2>
+              </div>
+            </div>
+            {loading ? (
+              <div className="empty-state">Loading...</div>
+            ) : !error && webhooks.length === 0 ? (
+              <p style={{ color: 'var(--color-text-muted)' }}>No outbound webhooks yet.</p>
+            ) : !error ? (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>URL</th>
+                      <th>Events</th>
+                      <th>Status</th>
+                      <th style={{ width: 140 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {webhooks.map((w) => (
+                      <tr key={w.id}>
+                        <td style={{ wordBreak: 'break-all', color: 'var(--color-text)' }}>{w.url}</td>
+                        <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{w.events || '-'}</td>
+                        <td>
+                          <span style={{
+                            padding: '4px 8px',
+                            borderRadius: 6,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            background: w.enabled ? 'var(--color-success-bg)' : 'var(--color-border)',
+                            color: w.enabled ? 'var(--color-success)' : 'var(--color-text-muted)',
+                          }}>
+                            {w.enabled ? 'Enabled' : 'Disabled'}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ marginRight: 8, padding: '6px 12px', fontSize: 13 }}
+                            disabled={toggleLoading === w.id}
+                            onClick={() => handleToggle(w)}
+                          >
+                            {toggleLoading === w.id ? '...' : w.enabled ? 'Disable' : 'Enable'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-danger"
+                            style={{ padding: '6px 12px', fontSize: 13 }}
+                            disabled={deleteLoading === w.id}
+                            onClick={() => handleDelete(w.id)}
+                          >
+                            {deleteLoading === w.id ? '...' : 'Delete'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+
           <section className="admin-maintenance-card" style={{ marginBottom: 24 }}>
             <div className="admin-maintenance-card__header">
               <div>
-                <span className="portal-page__eyebrow">Inbound CI</span>
-                <h2 className="admin-maintenance-card__title">Pipeline webhook &amp; branch checks</h2>
+                <span className="portal-page__eyebrow">Inbound</span>
+                <h2 className="admin-maintenance-card__title">Endpoints your pipeline posts to</h2>
                 <p className="admin-maintenance-card__copy">
-                  Post Terraform plan output, policy reports, and Infracost JSON from your pipeline. Set <code>CI_WEBHOOK_SECRET</code> on the API and send it as{' '}
-                  <code>X-CI-Secret</code>. Use GitHub required checks named <code>infragate/plan-review</code> and <code>infragate/policy</code> so merges wait on SetuOps plan + policy status.
+                  Send <code>X-CI-Secret</code>. GitHub checks <code>infragate/plan-review</code> and <code>infragate/policy</code> wait on plan and policy status.
                 </p>
               </div>
             </div>
             <div className="admin-maintenance-card__body">
-              <p className="admin-maintenance-card__copy">
-                <strong>Infra CI:</strong> <code>{ciWebhookUrl}</code><br />
-                <strong>Change requests:</strong> <code>{changeWebhookUrl}</code><br />
-                <strong>Alert incidents:</strong> <code>{alertWebhookUrl}</code><br />
-                <strong>IRM sync:</strong> <code>{irmWebhookUrl}</code> or <code>{irmWebhookUrl}/pagerduty</code><br />
-                <strong>Feature flags:</strong> <code>{flagWebhookUrl}</code><br />
-                <strong>OTLP metrics:</strong> <code>{otlpWebhookUrl}</code>
-              </p>
-              <pre className="admin-maintenance-card__code-block" style={{ overflow: 'auto', fontSize: 12, padding: 16, borderRadius: 8, background: 'var(--color-surface-muted)' }}>
-                {`curl -sf -X POST "${ciWebhookUrl}" \\
+              <dl className="admin-endpoint-list">
+                <div><dt>Infra CI</dt><dd><code>{ciWebhookUrl}</code></dd></div>
+                <div><dt>Changes</dt><dd><code>{changeWebhookUrl}</code></dd></div>
+                <div><dt>Alerts</dt><dd><code>{alertWebhookUrl}</code></dd></div>
+                <div><dt>IRM</dt><dd><code>{irmWebhookUrl}</code></dd></div>
+                <div><dt>Flags</dt><dd><code>{flagWebhookUrl}</code></dd></div>
+                <div><dt>OTLP</dt><dd><code>{otlpWebhookUrl}</code></dd></div>
+              </dl>
+              <details>
+                <summary>Sample CI request</summary>
+                <pre className="admin-maintenance-card__code-block" style={{ overflow: 'auto', fontSize: 12, padding: 16, borderRadius: 8, background: 'var(--color-surface-muted)' }}>
+                  {`curl -sf -X POST "${ciWebhookUrl}" \\
   -H "Content-Type: application/json" \\
   -H "X-CI-Secret: $INFRAGATE_CI_SECRET" \\
   -d '{"request_id":123,"status":"plan_success","plan_output":"...","policy_reports":[],"infracost_report":{}}'`}
-              </pre>
-              <p className="admin-maintenance-card__copy" style={{ marginTop: 12 }}>
-                GitHub merge webhooks for your onboarded infra repo feed deploy intelligence on the DevOps portal; promotion gates can flag recent high-risk merges to main.
-              </p>
+                </pre>
+              </details>
             </div>
           </section>
 
@@ -255,75 +321,6 @@ export default function WebhooksPage() {
             )}
           </div>
 
-          <div className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <span className="portal-surface__eyebrow">Current routes</span>
-                <h2 className="portal-surface__title">Webhooks</h2>
-                <p className="portal-surface__subtitle">
-                  Create now opens on a dedicated page so this screen stays focused on browsing and lifecycle actions.
-                </p>
-              </div>
-            </div>
-            {loading ? (
-              <div className="empty-state">Loading...</div>
-            ) : !error && webhooks.length === 0 ? (
-              <p style={{ color: 'var(--color-text-muted)' }}>No webhooks configured.</p>
-            ) : !error ? (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>URL</th>
-                      <th>Events</th>
-                      <th>Status</th>
-                      <th style={{ width: 140 }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {webhooks.map((w) => (
-                      <tr key={w.id}>
-                        <td style={{ wordBreak: 'break-all', color: 'var(--color-text)' }}>{w.url}</td>
-                        <td style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{w.events || '-'}</td>
-                        <td>
-                          <span style={{
-                            padding: '4px 8px',
-                            borderRadius: 6,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            background: w.enabled ? 'var(--color-success-bg)' : 'var(--color-border)',
-                            color: w.enabled ? 'var(--color-success)' : 'var(--color-text-muted)',
-                          }}>
-                            {w.enabled ? 'Enabled' : 'Disabled'}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            style={{ marginRight: 8, padding: '6px 12px', fontSize: 13 }}
-                            disabled={toggleLoading === w.id}
-                            onClick={() => handleToggle(w)}
-                          >
-                            {toggleLoading === w.id ? '...' : w.enabled ? 'Disable' : 'Enable'}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-danger"
-                            style={{ padding: '6px 12px', fontSize: 13 }}
-                            disabled={deleteLoading === w.id}
-                            onClick={() => handleDelete(w.id)}
-                          >
-                            {deleteLoading === w.id ? '...' : 'Delete'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-          </div>
         </div>
       </AdminLayout>
     </>

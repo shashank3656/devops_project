@@ -3911,6 +3911,16 @@ html[data-theme] .ig-scope-bar__control {
   width: 100%;
 }
 
+html[data-theme] .admin-topbar__scope .ig-scope-bar {
+  overflow: visible;
+  flex: 0 1 auto;
+}
+
+html[data-theme] .admin-topbar__scope .ig-scope-bar__control {
+  max-width: 240px;
+  min-width: 168px;
+}
+
 @media (max-width: 900px) {
   html[data-theme] .user-topbar__left,
   html[data-theme] .admin-topbar__left,
