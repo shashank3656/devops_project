@@ -20,10 +20,24 @@ func encodeAdminTeamJSON(w http.ResponseWriter, payload interface{}) {
 	}
 }
 
-// requireAdmin returns true if the request is from an admin (Bearer token with role=admin or X-Admin-Secret)
+func adminBreakGlassUserID(r *http.Request) (int, bool) {
+	secret := strings.TrimSpace(os.Getenv("ADMIN_SECRET"))
+	if secret == "" || r.Header.Get("X-Admin-Secret") != secret {
+		return 0, false
+	}
+	id, err := strconv.Atoi(strings.TrimSpace(os.Getenv("ADMIN_BREAKGLASS_USER_ID")))
+	if err != nil || id <= 0 {
+		log.Printf("admin break-glass rejected (ADMIN_BREAKGLASS_USER_ID unset) path=%s remote=%s", r.URL.Path, r.RemoteAddr)
+		return 0, false
+	}
+	log.Printf("admin break-glass used user_id=%d path=%s remote=%s", id, r.URL.Path, r.RemoteAddr)
+	return id, true
+}
+
+// requireAdmin returns true if the request is from an admin (Bearer token with role=admin or audited break-glass).
 func requireAdmin(w http.ResponseWriter, r *http.Request) (userID int, ok bool) {
-	if adminSecret := os.Getenv("ADMIN_SECRET"); adminSecret != "" && r.Header.Get("X-Admin-Secret") == adminSecret {
-		return 0, true
+	if id, allowed := adminBreakGlassUserID(r); allowed {
+		return id, true
 	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {

@@ -1,6 +1,6 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
-ARG NEXT_PUBLIC_API_URL=https://backend-api-production-ed.up.railway.app
+ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 COPY admin-frontend/package.json ./
 RUN npm install

@@ -4,6 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { AuthPipeline, ThemeToggle } from '@infragate/ui';
 import { asRecord, getString } from '../lib/payload';
+import { clearAdminSession, isSignedSessionToken } from '../lib/session';
 
 const API_OVERRIDE_KEY = 'admin_api_url_override';
 const LOGIN_ATTEMPT_TIMEOUT_MS = 6000;
@@ -22,9 +23,8 @@ export default function AdminLogin() {
 
   useEffect(() => {
     const existingToken = (localStorage.getItem('admin_token') || '').trim();
-    if (!existingToken || existingToken === 'undefined' || existingToken === 'null' || !/^\d+:\d+$/.test(existingToken)) {
-      localStorage.removeItem('admin_token');
-      localStorage.removeItem('admin_user');
+    if (!existingToken || existingToken === 'undefined' || existingToken === 'null' || !isSignedSessionToken(existingToken)) {
+      clearAdminSession();
     }
     const override = (localStorage.getItem(API_OVERRIDE_KEY) || '').trim();
     if (override) {
@@ -60,6 +60,11 @@ export default function AdminLogin() {
   const finishAdminLogin = (token: string, user?: { role?: string }) => {
     if (user?.role !== 'admin') {
       setError('Admin access only. Your account does not have admin role.');
+      return;
+    }
+    if (!isSignedSessionToken(token)) {
+      clearAdminSession();
+      setError('Login failed to issue a signed session. Try again.');
       return;
     }
     localStorage.setItem('admin_token', token);

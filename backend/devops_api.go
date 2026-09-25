@@ -111,10 +111,15 @@ func devopsMeHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		resp["teams"] = []interface{}{}
 	}
+	token := generateToken(userID)
+	if token == "" {
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to issue session", nil)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeDevopsJSON(w, map[string]interface{}{
 		"user":   resp,
-		"token":  generateToken(userID),
+		"token":  token,
 		"status": "ok",
 	})
 }

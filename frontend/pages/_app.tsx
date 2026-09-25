@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { applyTheme, installApiUrlRewrite } from '@infragate/ui';
 import AppLayout from '../components/AppLayout';
 import { ToastProvider } from '../context/ToastContext';
+import { installUserSessionGuard } from '../lib/session';
 import { SITE_NAME } from '../lib/site';
 import '../styles/globals.css';
 import '../../shared-ui/tokens.css';
@@ -21,6 +22,7 @@ export default function App({ Component, pageProps }: AppProps) {
 
   useEffect(() => {
     applyTheme();
+    installUserSessionGuard();
   }, []);
 
   const showLayout = AUTHED_PATHS.some((p) => router.pathname === p || router.pathname.startsWith(`${p}/`));

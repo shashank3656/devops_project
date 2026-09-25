@@ -45,6 +45,9 @@ func apiKeyHashSecret() string {
 	if value := strings.TrimSpace(os.Getenv("API_KEY_PEPPER")); value != "" {
 		return value
 	}
+	if isProductionRuntime() {
+		return ""
+	}
 	if value := strings.TrimSpace(os.Getenv("JWT_SECRET")); value != "" {
 		return value
 	}
