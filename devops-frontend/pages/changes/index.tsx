@@ -200,7 +200,7 @@ export default function ChangesCatalogPage() {
               <span className="portal-surface__eyebrow">Catalog</span>
               <h2 className="portal-surface__title">Recorded changes</h2>
             </div>
-            <div className="devops-incident-filter-row">
+            <div className="ig-filter-bar devops-incident-filter-row">
               <input
                 className="input"
                 placeholder="Search repo, PR, SHA, title"
