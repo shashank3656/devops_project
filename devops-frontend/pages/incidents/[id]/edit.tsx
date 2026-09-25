@@ -42,6 +42,13 @@ interface Incident {
   suspected_change_id?: number;
   suspected_change_number?: string;
   rollback_plan?: { allowed?: boolean; previous_sha?: string; block_reason?: string };
+  review?: {
+    generated?: boolean;
+    caused_by_change?: string;
+    previous_sha?: string;
+    watch_result?: string;
+    impact_summary?: string;
+  };
   major?: boolean;
   status_note?: string;
   problem_id?: number;
@@ -163,6 +170,8 @@ export default function EditIncidentPage() {
   const [silencing, setSilencing] = useState(false);
   const [rollbackPlan, setRollbackPlan] = useState<Incident['rollback_plan']>();
   const [rollingBack, setRollingBack] = useState(false);
+  const [review, setReview] = useState<Incident['review']>();
+  const [generatingReview, setGeneratingReview] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -232,6 +241,9 @@ export default function EditIncidentPage() {
           const body = asRecord(await detail.json().catch(() => ({})));
           const plan = body.rollback && typeof body.rollback === 'object' ? (body.rollback as Incident['rollback_plan']) : normalizeIncident(body.incident).rollback_plan;
           if (plan) setRollbackPlan(plan);
+          if (body.review && typeof body.review === 'object') {
+            setReview(body.review as Incident['review']);
+          }
         }
       }
     } catch (err) {
@@ -449,6 +461,13 @@ export default function EditIncidentPage() {
                   Watcher recovery: {rollbackPlan.allowed ? `record an emergency CHG to ${rollbackPlan.previous_sha}` : rollbackPlan.block_reason || 'rollback blocked'}.
                 </p>
               ) : null}
+              {review?.caused_by_change || review?.impact_summary ? (
+                <p className="portal-surface__subtitle">
+                  Review draft{review.caused_by_change ? ` · ${review.caused_by_change}` : ''}
+                  {review.watch_result ? ` · Watch ${review.watch_result}` : ''}
+                  {review.previous_sha ? ` · previous SHA ${review.previous_sha}` : ''}
+                </p>
+              ) : null}
               {problemId ? (
                 <p className="portal-surface__subtitle">
                   Recurring problem: <Link href={`/problems/${problemId}`}>open problem</Link>
@@ -471,6 +490,37 @@ export default function EditIncidentPage() {
               </label>
 
               <div className="portal-form-actions">
+                <Link href={`/incident-workspace?incident_id=${incidentId}`} className="btn btn-secondary">
+                  Open review workspace
+                </Link>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={generatingReview || !incidentId}
+                  onClick={() => {
+                    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                    if (!token || !incidentId) return;
+                    setGeneratingReview(true);
+                    setError('');
+                    fetch(`${apiUrl}/api/devops/incidents/${incidentId}/review`, {
+                      method: 'POST',
+                      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                      body: JSON.stringify({}),
+                    })
+                      .then(async (res) => {
+                        const data = asRecord(await res.json().catch(() => ({})));
+                        if (!res.ok) throw new Error(getString(data.error, 'Failed to generate review'));
+                        if (data.review && typeof data.review === 'object') {
+                          setReview(data.review as Incident['review']);
+                        }
+                        setNotice('Review draft filled from the incident timeline.');
+                      })
+                      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to generate review'))
+                      .finally(() => setGeneratingReview(false));
+                  }}
+                >
+                  {generatingReview ? 'Generating…' : 'Generate from timeline'}
+                </button>
                 {rollbackPlan?.allowed && rollbackPlan.previous_sha ? (
                   <button
                     type="button"

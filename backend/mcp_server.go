@@ -42,7 +42,7 @@ func mcpTools() []mcpTool {
 		},
 		{
 			Name:        "get_change",
-			Description: "Get one change request by id or change_number.",
+			Description: "Get one change request by id or change_number. Includes blast radius, live-vs-CHG drift, and rollback plan.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -63,12 +63,12 @@ func mcpTools() []mcpTool {
 		},
 		{
 			Name:        "get_incident",
-			Description: "Get one incident by id or incident_number.",
+			Description: "Get one incident by id or incident_number. Includes rollback plan and generated review when present.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"id":               map[string]any{"type": "integer"},
-					"incident_number":  map[string]any{"type": "string"},
+					"id":              map[string]any{"type": "integer"},
+					"incident_number": map[string]any{"type": "string"},
 				},
 			},
 		},
@@ -86,7 +86,7 @@ func mcpTools() []mcpTool {
 		},
 		{
 			Name:        "list_identity_findings",
-			Description: "List static-key warnings and recent GitHub OIDC exchanges.",
+			Description: "List static-key warnings, recent OIDC verifies, and the last cloud-role exchange (no secrets).",
 			InputSchema: emptyProps,
 		},
 		{
@@ -131,7 +131,37 @@ func mcpTools() []mcpTool {
 				},
 			},
 		},
+		{
+			Name:        "comment_incident",
+			Description: "Append an operator comment to an incident. Same freeze/apply refusal as the portal. Does not terraform or kubectl apply.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":              map[string]any{"type": "integer"},
+					"incident_number": map[string]any{"type": "string"},
+					"comment":         map[string]any{"type": "string"},
+				},
+			},
+		},
+		{
+			Name:        "request_rollback",
+			Description: "Record an emergency CHG to previous_sha. Same freeze/CAB as the portal. Does not apply the revision.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"incident_id":     map[string]any{"type": "integer"},
+					"incident_number": map[string]any{"type": "string"},
+					"change_id":       map[string]any{"type": "integer"},
+					"change_number":   map[string]any{"type": "string"},
+					"reason":          map[string]any{"type": "string"},
+				},
+			},
+		},
 	}
+}
+
+func mcpWriteToolNames() []string {
+	return []string{"comment_incident", "request_rollback"}
 }
 
 func mcpWrite(w http.ResponseWriter, id any, result any) {
@@ -152,16 +182,21 @@ func mcpError(w http.ResponseWriter, id any, code int, message string) {
 	})
 }
 
-func mcpAuthOK(r *http.Request) bool {
+func mcpAuthIdentity(r *http.Request) (int, error) {
 	auth := strings.TrimSpace(r.Header.Get("Authorization"))
 	token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer"))
 	if token == "" {
 		token = strings.TrimSpace(r.Header.Get("X-API-Key"))
 	}
 	if token == "" {
-		return false
+		return 0, fmt.Errorf("missing token")
 	}
-	_, _, err := validateTokenOrAPIKey(token)
+	uid, _, err := validateTokenOrAPIKey(token)
+	return uid, err
+}
+
+func mcpAuthOK(r *http.Request) bool {
+	_, err := mcpAuthIdentity(r)
 	return err == nil
 }
 
@@ -179,7 +214,7 @@ func mcpHandler(w http.ResponseWriter, r *http.Request) {
 			"version":          "1.0.0",
 			"protocol_version": mcpProtocolVersion,
 			"tools":            mcpToolNames(),
-			"write_tools":      []string{},
+			"write_tools":      mcpWriteToolNames(),
 			"auth":             "Bearer session token or API key from POST /api/me/api-keys",
 		})
 		return
@@ -225,7 +260,8 @@ func mcpHandler(w http.ResponseWriter, r *http.Request) {
 			mcpError(w, req.ID, -32602, "invalid params")
 			return
 		}
-		text, callErr := callMCPTool(params.Name, params.Arguments)
+		userID, _ := mcpAuthIdentity(r)
+		text, callErr := callMCPToolAs(params.Name, params.Arguments, userID)
 		if callErr != nil {
 			mcpError(w, req.ID, -32000, callErr.Error())
 			return
@@ -249,6 +285,10 @@ func mcpToolNames() []string {
 }
 
 func callMCPTool(name string, args map[string]any) (string, error) {
+	return callMCPToolAs(name, args, 0)
+}
+
+func callMCPToolAs(name string, args map[string]any, userID int) (string, error) {
 	if args == nil {
 		args = map[string]any{}
 	}
@@ -264,8 +304,7 @@ func callMCPTool(name string, args map[string]any) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		attachChangeRollbackPlan(item)
-		return marshalMCP(item)
+		return marshalMCP(mcpChangeDetail(item))
 	case "list_incidents":
 		items, err := listRequestIncidents(stringFromAny(args["status"]))
 		if err != nil {
@@ -278,7 +317,8 @@ func callMCPTool(name string, args map[string]any) (string, error) {
 			return "", err
 		}
 		attachRollbackPlan(item)
-		return marshalMCP(item)
+		review, postmortem := incidentReviewPayload(item)
+		return marshalMCP(map[string]any{"incident": item, "review": review, "postmortem": postmortem, "rollback": item.RollbackPlan})
 	case "ask_catalog":
 		answer := buildGroundedAnswer(stringFromAny(args["query"]), retrieveGroundedSources(stringFromAny(args["query"]), nil))
 		return marshalMCP(answer)
@@ -293,10 +333,11 @@ func callMCPTool(name string, args map[string]any) (string, error) {
 		}
 		return marshalMCP(payload)
 	case "list_identity_findings":
-		return marshalMCP(map[string]any{
-			"static_keys": listStaticKeyFindings(),
-			"findings":    listIdentityFindings(50),
-		})
+		return marshalMCP(identityCatalogPayload())
+	case "comment_incident":
+		return mcpCommentIncident(args, userID)
+	case "request_rollback":
+		return mcpRequestRollback(args, userID)
 	case "list_tickets":
 		items, err := GetPRRequests("", "", "", intFromAny(args["project_id"]), stringFromAny(args["status"]), "", stringFromAny(args["q"]), 0, 0, nil, 50, 0, "updated_at", "desc", false, "", "")
 		if err != nil {
@@ -321,6 +362,21 @@ func callMCPTool(name string, args map[string]any) (string, error) {
 		return marshalMCP(item)
 	default:
 		return "", fmt.Errorf("unknown or write tool %q is not allowed", name)
+	}
+}
+
+func mcpChangeDetail(item *changeRequestRecord) map[string]any {
+	if item == nil {
+		return map[string]any{}
+	}
+	if item.ID > 0 {
+		attachChangeRollbackPlan(item)
+	}
+	return map[string]any{
+		"change":       item,
+		"blast_radius": blastRadiusForChange(*item),
+		"drift":        detectServiceDrift(item.Service, item.Environment, item.SHA, item.ImageDigest),
+		"rollback":     item.RollbackPlan,
 	}
 }
 

@@ -289,6 +289,9 @@ func transitionChangeStatus(id int, next string) (*changeRequestRecord, error) {
 		"change_number": item.ChangeNumber,
 		"status":        item.Status,
 	})
+	if strings.EqualFold(item.Status, "resolved") {
+		fireWatchEndedDigest(*item)
+	}
 	return item, nil
 }
 

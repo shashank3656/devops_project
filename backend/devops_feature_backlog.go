@@ -650,7 +650,7 @@ func buildDeploymentGatePolicyEngine(
 				Detail: "No active incidents are blocking this environment.",
 			})
 		}
-		if reason := sloBudgetFreezeReason(environment); reason != "" {
+		if reason := sloBudgetFreezeReason(environment); reason != "" && !emergencyBypassesFreeze("", environment) {
 			checks = append(checks, deploymentGateCheck{
 				Key:    "slo_budget",
 				Label:  "Error budget",

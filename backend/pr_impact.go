@@ -426,6 +426,9 @@ func blastRadiusFromRequest(req *PRRequest, files []prImpactFile) []string {
 		add(req.Cloud)
 		add(req.Env)
 		add(req.Team)
+		for _, hop := range blastRadiusForService(req.Service, "", req.Env, req.ProjectID) {
+			add(hop)
+		}
 	}
 	for _, file := range files {
 		add(file.Category)

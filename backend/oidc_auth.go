@@ -31,11 +31,11 @@ type oidcStatePayload struct {
 }
 
 type oidcDiscovery struct {
-	Issuer        string `json:"issuer"`
-	AuthURL       string `json:"authorization_endpoint"`
-	TokenURL      string `json:"token_endpoint"`
-	UserInfoURL   string `json:"userinfo_endpoint"`
-	JWKSURL       string `json:"jwks_uri"`
+	Issuer      string `json:"issuer"`
+	AuthURL     string `json:"authorization_endpoint"`
+	TokenURL    string `json:"token_endpoint"`
+	UserInfoURL string `json:"userinfo_endpoint"`
+	JWKSURL     string `json:"jwks_uri"`
 }
 
 type jwksDocument struct {
@@ -461,13 +461,14 @@ func readWorkloadOIDCToken(r *http.Request) string {
 	return strings.TrimSpace(body.Token)
 }
 
-func writeWorkloadOIDCResult(w http.ResponseWriter, claims map[string]any) {
+func writeWorkloadOIDCResult(w http.ResponseWriter, claims map[string]any, exchange workloadRoleExchange) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"status":  "ok",
-		"issuer":  stringFromAny(claims["iss"]),
-		"subject": stringFromAny(claims["sub"]),
-		"claims":  claims,
+		"status":   "ok",
+		"issuer":   stringFromAny(claims["iss"]),
+		"subject":  stringFromAny(claims["sub"]),
+		"claims":   claims,
+		"exchange": exchange,
 	})
 }
 
@@ -492,7 +493,7 @@ func workloadGitHubHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	recordIdentityFinding("oidc_ok", firstNonEmpty(stringFromAny(claims["repository"]), stringFromAny(claims["sub"])), "github_actions", claims)
-	writeWorkloadOIDCResult(w, claims)
+	writeWorkloadOIDCResult(w, claims, exchangeWorkloadCloudRole("github", token, claims))
 }
 
 func workloadGitLabHandler(w http.ResponseWriter, r *http.Request) {
@@ -516,7 +517,7 @@ func workloadGitLabHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	recordIdentityFinding("oidc_ok", firstNonEmpty(stringFromAny(claims["project_path"]), stringFromAny(claims["sub"])), "gitlab_ci", claims)
-	writeWorkloadOIDCResult(w, claims)
+	writeWorkloadOIDCResult(w, claims, exchangeWorkloadCloudRole("gitlab", token, claims))
 }
 
 func gitlabOIDCIssuer() string {
@@ -754,11 +755,9 @@ func devopsIdentityHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"status":        "ok",
-		"oidc_issuer":   oidcIssuer(),
-		"oidc_audience": githubOIDCAudience(),
-		"static_keys":   listStaticKeyFindings(),
-		"findings":      listIdentityFindings(100),
-	})
+	payload := identityCatalogPayload()
+	payload["status"] = "ok"
+	payload["oidc_issuer"] = oidcIssuer()
+	payload["oidc_audience"] = githubOIDCAudience()
+	_ = json.NewEncoder(w).Encode(payload)
 }

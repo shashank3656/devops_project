@@ -12,19 +12,19 @@ import (
 )
 
 type previewEnvironment struct {
-	ID                int        `json:"id"`
-	Repo              string     `json:"repo"`
-	PRNumber          int        `json:"pr_number"`
-	Branch            string     `json:"branch,omitempty"`
-	SHA               string     `json:"sha,omitempty"`
-	URL               string     `json:"url,omitempty"`
-	Status            string     `json:"status"`
-	ChangeID          *int       `json:"change_id,omitempty"`
-	ChangeNumber      string     `json:"change_number,omitempty"`
-	EstimatedCostUSD  float64    `json:"estimated_cost_usd"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
-	TornDownAt        *time.Time `json:"torn_down_at,omitempty"`
+	ID               int        `json:"id"`
+	Repo             string     `json:"repo"`
+	PRNumber         int        `json:"pr_number"`
+	Branch           string     `json:"branch,omitempty"`
+	SHA              string     `json:"sha,omitempty"`
+	URL              string     `json:"url,omitempty"`
+	Status           string     `json:"status"`
+	ChangeID         *int       `json:"change_id,omitempty"`
+	ChangeNumber     string     `json:"change_number,omitempty"`
+	EstimatedCostUSD float64    `json:"estimated_cost_usd"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	TornDownAt       *time.Time `json:"torn_down_at,omitempty"`
 }
 
 func normalizeRolloutStage(value string) string {
@@ -195,9 +195,11 @@ func upsertPreviewFromPullRequest(owner, repo string, pr map[string]interface{},
 		author = stringFromAny(user["login"])
 	}
 	htmlURL := stringFromAny(pr["html_url"])
-	merged, _ := pr["merged"].(bool)
-	closed := action == "closed" || action == "merged" || merged
+	closed, merged := previewClosedMerged(pr, action)
 	if closed {
+		if merged {
+			return graduatePreviewFromPullRequest(fullRepo, pr)
+		}
 		return teardownPreview(fullRepo, number)
 	}
 	if action != "opened" && action != "synchronize" && action != "reopened" && action != "ready_for_review" {

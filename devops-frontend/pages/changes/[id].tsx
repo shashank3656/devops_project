@@ -85,6 +85,8 @@ export default function ChangeDetailPage() {
   const [item, setItem] = useState<ChangeDetail | null>(null);
   const [brief, setBrief] = useState<ChangeBrief | null>(null);
   const [incidents, setIncidents] = useState<LinkedIncident[]>([]);
+  const [blastRadius, setBlastRadius] = useState<string[]>([]);
+  const [drift, setDrift] = useState<{ drifted?: boolean; detail?: string } | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState('');
@@ -176,6 +178,8 @@ export default function ChangeDetailPage() {
         setItem(data.change || null);
         setBrief(data.change_brief || null);
         setIncidents(Array.isArray(data.linked_incidents) ? data.linked_incidents : []);
+        setBlastRadius(Array.isArray(data.blast_radius) ? data.blast_radius : []);
+        setDrift(data.drift && typeof data.drift === 'object' ? data.drift : null);
       })
       .catch(() => setError('Failed to load change'))
       .finally(() => setLoading(false));
@@ -420,6 +424,20 @@ export default function ChangeDetailPage() {
                     ))}
                   </ul>
                 ) : null}
+              </div>
+            ) : null}
+            {drift?.drifted ? (
+              <p className="portal-surface__subtitle">{drift.detail || 'Live image drifted from last CHG'}</p>
+            ) : null}
+            {blastRadius.length ? (
+              <div style={{ marginTop: 24 }}>
+                <h2 className="portal-surface__title">Blast radius</h2>
+                <p className="portal-surface__subtitle">One hop from the service map (same repo or team). This is not a CMDB rebuild.</p>
+                <ul>
+                  {blastRadius.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
               </div>
             ) : null}
             {incidents.length ? (

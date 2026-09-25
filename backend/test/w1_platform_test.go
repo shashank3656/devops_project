@@ -83,8 +83,8 @@ func TestMCPToolsAreReadOnly(t *testing.T) {
 		t.Fatalf("expected core read tools, got %v", names)
 	}
 	for _, name := range names {
-		if name == "create_change" || name == "resolve_incident" {
-			t.Fatalf("write tool leaked: %s", name)
+		if name == "create_change" || name == "resolve_incident" || name == "terraform_apply" || name == "kubectl_apply" {
+			t.Fatalf("forbidden write tool leaked: %s", name)
 		}
 	}
 	if _, err := callMCPTool("resolve_incident", nil); err == nil {

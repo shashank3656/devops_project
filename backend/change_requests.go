@@ -11,66 +11,67 @@ import (
 )
 
 type changeRequestRecord struct {
-	ID                    int             `json:"id"`
-	ChangeNumber          string          `json:"change_number"`
-	ProjectID             *int            `json:"project_id,omitempty"`
-	ProjectName           string          `json:"project_name,omitempty"`
-	ProjectCode           string          `json:"project_code,omitempty"`
-	Service               string          `json:"service"`
-	Environment           string          `json:"environment"`
-	Repo                  string          `json:"repo"`
-	PRNumber              int             `json:"pr_number"`
-	PRURL                 string          `json:"pr_url,omitempty"`
-	SHA                   string          `json:"sha"`
-	PreviousSHA           string          `json:"previous_sha,omitempty"`
-	Title                 string          `json:"title"`
-	Author                string          `json:"author,omitempty"`
-	Summary               string          `json:"summary,omitempty"`
-	Files                 []string        `json:"files"`
-	PipelineURL           string          `json:"pipeline_url,omitempty"`
-	ChangeType            string          `json:"change_type"`
-	Status                string          `json:"status"`
-	WatchMinutes          int             `json:"watch_minutes"`
-	WatchStartedAt        *time.Time      `json:"watch_started_at,omitempty"`
-	WatchUntil            *time.Time      `json:"watch_until,omitempty"`
-	RequestID             *int            `json:"request_id,omitempty"`
-	LinkedIncidents       int             `json:"linked_incidents"`
-	Baseline              *serviceMetrics `json:"baseline,omitempty"`
-	LatestMetrics         *serviceMetrics `json:"latest_metrics,omitempty"`
-	WatchRemainingMinutes int             `json:"watch_remaining_minutes"`
+	ID                    int                 `json:"id"`
+	ChangeNumber          string              `json:"change_number"`
+	ProjectID             *int                `json:"project_id,omitempty"`
+	ProjectName           string              `json:"project_name,omitempty"`
+	ProjectCode           string              `json:"project_code,omitempty"`
+	Service               string              `json:"service"`
+	Environment           string              `json:"environment"`
+	Repo                  string              `json:"repo"`
+	PRNumber              int                 `json:"pr_number"`
+	PRURL                 string              `json:"pr_url,omitempty"`
+	SHA                   string              `json:"sha"`
+	PreviousSHA           string              `json:"previous_sha,omitempty"`
+	Title                 string              `json:"title"`
+	Author                string              `json:"author,omitempty"`
+	Summary               string              `json:"summary,omitempty"`
+	Files                 []string            `json:"files"`
+	PipelineURL           string              `json:"pipeline_url,omitempty"`
+	ChangeType            string              `json:"change_type"`
+	Status                string              `json:"status"`
+	WatchMinutes          int                 `json:"watch_minutes"`
+	WatchStartedAt        *time.Time          `json:"watch_started_at,omitempty"`
+	WatchUntil            *time.Time          `json:"watch_until,omitempty"`
+	RequestID             *int                `json:"request_id,omitempty"`
+	LinkedIncidents       int                 `json:"linked_incidents"`
+	Baseline              *serviceMetrics     `json:"baseline,omitempty"`
+	LatestMetrics         *serviceMetrics     `json:"latest_metrics,omitempty"`
+	WatchRemainingMinutes int                 `json:"watch_remaining_minutes"`
 	RollbackHint          string              `json:"rollback_hint,omitempty"`
 	RollbackPlan          *changeRollbackPlan `json:"rollback_plan,omitempty"`
-	CABStatus             string          `json:"cab_status,omitempty"`
-	CABWindowStart        *time.Time      `json:"cab_window_start,omitempty"`
-	CABWindowEnd          *time.Time      `json:"cab_window_end,omitempty"`
-	LinkedIncidentID      *int            `json:"linked_incident_id,omitempty"`
-	LinkedIncidentNumber  string          `json:"linked_incident_number,omitempty"`
-	CABApprovedAt         *time.Time      `json:"cab_approved_at,omitempty"`
-	CABApprovedBy         *int            `json:"cab_approved_by,omitempty"`
-	CABApprovedByUsername string          `json:"cab_approved_by_username,omitempty"`
-	WatchResult           string          `json:"watch_result,omitempty"`
-	AssigneeUserID        *int            `json:"assignee_user_id,omitempty"`
-	AssigneeUsername      string          `json:"assignee_username,omitempty"`
-	Priority              string          `json:"priority,omitempty"`
-	RiskLevel             string          `json:"risk_level,omitempty"`
-	Impact                string          `json:"impact,omitempty"`
-	BackoutPlan           string          `json:"backout_plan,omitempty"`
-	SbomURL               string          `json:"sbom_url,omitempty"`
-	AttestationURL        string          `json:"attestation_url,omitempty"`
-	ImageDigest           string          `json:"image_digest,omitempty"`
-	ProvenanceJSON        string          `json:"provenance_json,omitempty"`
-	ProvenanceSigned      bool            `json:"provenance_signed"`
-	RolloutStage          string          `json:"rollout_stage,omitempty"`
-	RolloutPercent        int             `json:"rollout_percent"`
-	RolloutHalted         bool            `json:"rollout_halted"`
-	RolloutNote           string          `json:"rollout_note,omitempty"`
-	CostDeltaUSD          float64         `json:"cost_delta_usd"`
-	CostMonthlyAfter      float64         `json:"cost_monthly_after"`
-	CostCurrency          string          `json:"cost_currency,omitempty"`
-	PolicyStatus          string          `json:"policy_status,omitempty"`
-	PolicyReasons         []string        `json:"policy_reasons,omitempty"`
-	CreatedAt             time.Time       `json:"created_at"`
-	UpdatedAt             time.Time       `json:"updated_at"`
+	CABStatus             string              `json:"cab_status,omitempty"`
+	CABWindowStart        *time.Time          `json:"cab_window_start,omitempty"`
+	CABWindowEnd          *time.Time          `json:"cab_window_end,omitempty"`
+	LinkedIncidentID      *int                `json:"linked_incident_id,omitempty"`
+	LinkedIncidentNumber  string              `json:"linked_incident_number,omitempty"`
+	CABApprovedAt         *time.Time          `json:"cab_approved_at,omitempty"`
+	CABApprovedBy         *int                `json:"cab_approved_by,omitempty"`
+	CABApprovedByUsername string              `json:"cab_approved_by_username,omitempty"`
+	WatchResult           string              `json:"watch_result,omitempty"`
+	AssigneeUserID        *int                `json:"assignee_user_id,omitempty"`
+	AssigneeUsername      string              `json:"assignee_username,omitempty"`
+	Priority              string              `json:"priority,omitempty"`
+	RiskLevel             string              `json:"risk_level,omitempty"`
+	Impact                string              `json:"impact,omitempty"`
+	BackoutPlan           string              `json:"backout_plan,omitempty"`
+	SbomURL               string              `json:"sbom_url,omitempty"`
+	AttestationURL        string              `json:"attestation_url,omitempty"`
+	ImageDigest           string              `json:"image_digest,omitempty"`
+	ProvenanceJSON        string              `json:"provenance_json,omitempty"`
+	ProvenanceSigned      bool                `json:"provenance_signed"`
+	RolloutStage          string              `json:"rollout_stage,omitempty"`
+	RolloutPercent        int                 `json:"rollout_percent"`
+	RolloutHalted         bool                `json:"rollout_halted"`
+	RolloutNote           string              `json:"rollout_note,omitempty"`
+	CostDeltaUSD          float64             `json:"cost_delta_usd"`
+	CostMonthlyAfter      float64             `json:"cost_monthly_after"`
+	CostCurrency          string              `json:"cost_currency,omitempty"`
+	PolicyStatus          string              `json:"policy_status,omitempty"`
+	PolicyReasons         []string            `json:"policy_reasons,omitempty"`
+	Drift                 *liveChangeDrift    `json:"drift,omitempty"`
+	CreatedAt             time.Time           `json:"created_at"`
+	UpdatedAt             time.Time           `json:"updated_at"`
 }
 
 func formatChangeNumber(id int) string {
@@ -902,6 +903,8 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		"change":           item,
 		"change_brief":     changeBriefFromChangeRequest(*item),
 		"linked_incidents": listIncidentsForChange(item.ID),
+		"blast_radius":     blastRadiusForChange(*item),
+		"drift":            detectServiceDrift(item.Service, item.Environment, item.SHA, item.ImageDigest),
 		"status":           "ok",
 	})
 }

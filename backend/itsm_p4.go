@@ -61,7 +61,7 @@ func shouldOpenProblem(fingerprint string, incidents []requestIncident, now time
 func emergencyBypassesFreeze(service, environment string) bool {
 	items, err := listChangeRequests(0, environment, "", "")
 	if err != nil {
-		return false
+		return emergencyIncidentBypassesFreeze(service, environment)
 	}
 	now := time.Now()
 	for _, item := range items {
@@ -79,7 +79,7 @@ func emergencyBypassesFreeze(service, environment string) bool {
 			return true
 		}
 	}
-	return false
+	return emergencyIncidentBypassesFreeze(service, environment)
 }
 
 func resolveLinkedIncidentID(id int, number string) int {

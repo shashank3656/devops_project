@@ -89,6 +89,7 @@ interface RepoSummary {
     attestation_url?: string;
     policy_status?: string;
     status?: string;
+    drift?: { drifted?: boolean; detail?: string; live_marker?: string };
     rollback?: {
       allowed?: boolean;
       previous_sha?: string;
@@ -530,6 +531,9 @@ export default function DeployIntelligenceRepoPage() {
               <span className={`ig-chip ig-chip--${repoMeta.last_change.provenance_signed ? 'ok' : 'medium'}`}>
                 {repoMeta.last_change.provenance_signed ? 'Signed provenance' : 'Unsigned'}
               </span>
+              {repoMeta.last_change.drift?.drifted ? (
+                <span className="ig-chip ig-chip--medium">{repoMeta.last_change.drift.detail || 'Live image drifted from last CHG'}</span>
+              ) : null}
             </div>
             <div className="portal-page__actions" style={{ justifyContent: 'flex-start' }}>
               <Link href={`/changes/${repoMeta.last_change.id}`} className="btn btn-secondary">
