@@ -264,7 +264,7 @@ export default function UsersList() {
             </span>
           </div>
 
-          <div className="card ig-table-card">
+          <div className="portal-surface portal-surface--table ig-table-card">
             <DataTable<User>
               label="Users"
               columns={userColumns}

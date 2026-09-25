@@ -1423,6 +1423,12 @@ func adminSSOSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		encodeAdminTeamJSON(w, map[string]interface{}{
 			"status":   "ok",
 			"settings": settings,
+			"oidc": map[string]interface{}{
+				"issuer_set":        oidcIssuer() != "",
+				"client_id_set":     oidcClientID() != "",
+				"client_secret_set": oidcClientSecret() != "",
+				"redirect_url":      oidcRedirectURL(),
+			},
 		})
 		return
 	case "PUT", "PATCH":
