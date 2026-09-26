@@ -14,10 +14,9 @@ export default function CloudHubNav({
   onProviderChange?: (provider: CloudProviderId | '') => void;
   showAllProvider?: boolean;
 }) {
-  const inventoryHref =
-    provider && provider !== ''
-      ? `/cloud-resources?cloud=${encodeURIComponent(provider)}`
-      : '/cloud-resources';
+  const inventoryHref = provider
+    ? `/cloud-resources?cloud=${encodeURIComponent(provider)}`
+    : '/cloud-resources';
 
   return (
     <nav className="cloud-hub-nav portal-surface" aria-label="Cloud workspace">
