@@ -15,6 +15,7 @@ export function parseInventoryAccountQuery(
 ): { cloud: CloudProviderId; accountId: string } | null {
   const accountId = (Array.isArray(accountRaw) ? accountRaw[0] : accountRaw)?.trim() || '';
   if (!accountId) return null;
-  const cloud = normalizeCloudProvider(Array.isArray(cloudRaw) ? cloudRaw[0] : cloudRaw);
+  const cloudInput = Array.isArray(cloudRaw) ? cloudRaw[0] : cloudRaw;
+  const cloud = normalizeCloudProvider(cloudInput?.trim() || 'aws');
   return { cloud, accountId };
 }
