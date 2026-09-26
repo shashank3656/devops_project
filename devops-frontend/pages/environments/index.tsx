@@ -4,6 +4,10 @@ import { useRouter } from 'next/router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import {
+  cloudAccountDetailHref,
+  inventoryListHref,
+} from '../../lib/cloudCatalogLinks';
 import { DataTable, PageHeader, portalFetch, queryString, readWorkspaceScope, type DataTableColumn } from '@infragate/ui';
 
 interface EnvironmentCatalogRow {
@@ -14,6 +18,7 @@ interface EnvironmentCatalogRow {
   env_type: string;
   cloud_account_id?: number | null;
   cloud_account_label?: string;
+  cloud_account_external_id?: string;
   cloud_provider?: string;
   default_region?: string;
   default_cluster?: string;
@@ -53,6 +58,13 @@ export default function EnvironmentsCatalogPage() {
   const [editOwners, setEditOwners] = useState('');
   const [editCloudAccountId, setEditCloudAccountId] = useState('');
   const projectFilter = queryString(router.query, 'project_id') || readWorkspaceScope().projectId;
+  const envHighlight = queryString(router.query, 'env');
+
+  useEffect(() => {
+    if (envHighlight && !query) {
+      setQuery(envHighlight);
+    }
+  }, [envHighlight, query]);
 
   useEffect(() => {
     try {
@@ -196,11 +208,33 @@ export default function EnvironmentsCatalogPage() {
       id: 'cloud',
       header: 'Cloud account',
       cell: (row: EnvironmentCatalogRow) =>
-        row.cloud_account_label ? (
-          <span>
+        row.cloud_account_id ? (
+          <Link href={cloudAccountDetailHref(row.cloud_account_id)} className="ig-cell-link">
             {row.cloud_provider ? `${row.cloud_provider.toUpperCase()} · ` : ''}
-            {row.cloud_account_label}
-          </span>
+            {row.cloud_account_label || `Account #${row.cloud_account_id}`}
+          </Link>
+        ) : row.cloud_account_label ? (
+          <span>{row.cloud_account_label}</span>
+        ) : (
+          '—'
+        ),
+    },
+    {
+      id: 'links',
+      header: 'Links',
+      cell: (row: EnvironmentCatalogRow) =>
+        row.cloud_account_external_id ? (
+          <Link
+            href={inventoryListHref({
+              cloud: row.cloud_provider,
+              accountId: row.cloud_account_external_id,
+              projectId: String(row.project_id),
+              environment: row.name,
+            })}
+            className="ig-cell-link"
+          >
+            View inventory
+          </Link>
         ) : (
           '—'
         ),

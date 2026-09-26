@@ -690,6 +690,7 @@ func main() {
 	http.HandleFunc("/api/verify-email", verifyEmailHandler)
 	http.HandleFunc("/api/verify-otp", verifyOtpHandler)
 	http.HandleFunc("/api/auth/verify-2fa", verify2faHandler)
+	http.HandleFunc("/api/auth/resend-2fa", resend2faHandler)
 	http.HandleFunc("/api/resend-verification", resendVerificationHandler)
 	http.HandleFunc("/api/users/", adminUsersHandler)
 	http.HandleFunc("/api/admin/users", adminUsersRouter)

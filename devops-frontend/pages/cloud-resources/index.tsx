@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { environmentCatalogHref, inventoryListHref, mergeInventoryScope } from '../../lib/cloudCatalogLinks';
 import { cloudInventoryAccountHref } from '../../lib/cloudInventoryRoutes';
 import {
   inventoryAccountPlaceholder,
@@ -57,6 +58,11 @@ export default function CloudResourcesPage() {
   const [env, setEnv] = useState('');
   const [region, setRegion] = useState('');
   const [cloud, setCloud] = useState<CloudProviderId>('aws');
+  const [accountContext, setAccountContext] = useState<{
+    message?: string;
+    account_status?: string;
+    onboarded_account_id?: number;
+  } | null>(null);
 
   const projectId = Array.isArray(router.query.project_id) ? router.query.project_id[0] : router.query.project_id;
   const scopeEnv = Array.isArray(router.query.environment) ? router.query.environment[0] : router.query.environment;
@@ -113,6 +119,9 @@ export default function CloudResourcesPage() {
         if (!res.ok) throw new Error(data?.error || 'Failed to load cloud resources');
         setRows(Array.isArray(data.resources) ? data.resources : []);
         setTotal(typeof data.total === 'number' ? data.total : 0);
+        setAccountContext(
+          data.account_context && typeof data.account_context === 'object' ? data.account_context : null,
+        );
       })
       .catch((err) => {
         setRows([]);
@@ -155,7 +164,22 @@ export default function CloudResourcesPage() {
           </Link>
         ),
       },
-      { id: 'environment', header: 'Env', cell: (row) => row.environment },
+      {
+        id: 'environment',
+        header: 'Env',
+        cell: (row) =>
+          row.environment ? (
+            <Link
+              href={`/environments?env=${encodeURIComponent(row.environment)}`}
+              onClick={(e) => e.stopPropagation()}
+              className="ig-cell-link"
+            >
+              {row.environment}
+            </Link>
+          ) : (
+            '—'
+          ),
+      },
       { id: 'region', header: 'Region', cell: (row) => row.region },
       {
         id: 'status',
@@ -236,7 +260,47 @@ export default function CloudResourcesPage() {
           eyebrow="Cloud workspace"
           title="Resource inventory"
           subtitle="Read-only resources for your DevOps teams. Pick a cloud, then filter — only connected onboarded accounts apply."
+          actions={
+            projectId ? (
+              <>
+                <Link href={environmentCatalogHref(Number(projectId))} className="btn btn-secondary">
+                  Environment catalog
+                </Link>
+                <Link
+                  href={mergeInventoryScope(inventoryListHref({ cloud, projectId: String(projectId) }), {
+                    projectId: String(projectId),
+                    environment: env.trim() || scopeEnv || undefined,
+                  })}
+                  className="btn btn-secondary"
+                >
+                  Project inventory
+                </Link>
+              </>
+            ) : (
+              <Link href="/environments" className="btn btn-secondary">
+                Environment catalog
+              </Link>
+            )
+          }
         />
+
+        {accountContext?.message ? (
+          <div
+            className={`alert ${accountContext.account_status === 'disabled' ? 'alert-error' : 'alert-info'}`}
+            role="status"
+            style={{ marginBottom: 16 }}
+          >
+            {accountContext.message}
+            {accountContext.onboarded_account_id ? (
+              <>
+                {' '}
+                <Link href={`/cloud-accounts/${accountContext.onboarded_account_id}`} className="ig-link">
+                  Open cloud account
+                </Link>
+              </>
+            ) : null}
+          </div>
+        ) : null}
 
         {!forbidden ? (
           <CloudHubNav active="inventory" provider={cloud} onProviderChange={onCloudChange} />

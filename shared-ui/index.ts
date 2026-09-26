@@ -25,6 +25,7 @@ export {
   type GuardedActionKind,
   type GuardedIncidentBrief,
 } from './guardedActions';
+export { pending2FAFromLoginResponse, resendLogin2FACode, type Pending2FA } from './login2faHelpers';
 export { applyTheme, getTheme, openCommandPalette, setTheme, toggleTheme, type ThemeMode } from './theme';
 export { AuthPipeline, SearchTrigger, ThemeToggle } from './ShellControls';
 export { formatRelativeTime, greetingFor, initialsFor } from './time';

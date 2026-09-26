@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import CloudTrustSetupGuide from '../../components/CloudTrustSetupGuide';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { environmentCatalogHref, inventoryListHref } from '../../lib/cloudCatalogLinks';
 import { cloudInventoryAccountHref } from '../../lib/cloudInventoryRoutes';
 import { normalizeCloudProvider, providerFormCopy, providerLabel } from '../../lib/cloudProviders';
 import { EmptyState, PageHeader, portalFetch, useConfirm } from '@infragate/ui';
@@ -52,6 +53,9 @@ export default function CloudAccountDetailPage() {
   const [externalId, setExternalId] = useState('');
   const [secretRef, setSecretRef] = useState('');
   const [operatorActivity, setOperatorActivity] = useState<OperatorEvent[]>([]);
+  const [catalogEnvs, setCatalogEnvs] = useState<
+    { project_id: number; project_name: string; name: string; frozen?: boolean }[]
+  >([]);
 
   const copy = useMemo(
     () => providerFormCopy(item ? normalizeCloudProvider(item.provider) : 'aws'),
@@ -96,6 +100,25 @@ export default function CloudAccountDetailPage() {
   useEffect(() => {
     load();
   }, [apiUrl, id]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('devops_token');
+    const accountDbId = Number.parseInt(String(id), 10);
+    if (!token || !Number.isFinite(accountDbId) || accountDbId <= 0) {
+      setCatalogEnvs([]);
+      return;
+    }
+    portalFetch(`${apiUrl}/api/devops/environment-catalog`, { token })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const envs = Array.isArray(data.environments) ? data.environments : [];
+        setCatalogEnvs(
+          envs.filter((row: { cloud_account_id?: number }) => row.cloud_account_id === accountDbId),
+        );
+      })
+      .catch(() => setCatalogEnvs([]));
+  }, [apiUrl, id, item?.id]);
 
   const testConnection = async () => {
     const token = localStorage.getItem('devops_token');
@@ -307,7 +330,60 @@ export default function CloudAccountDetailPage() {
                 <Link href={inventoryHref} className="btn btn-secondary">
                   View {providerLabel(item.provider)} inventory
                 </Link>
+                <Link
+                  href={inventoryListHref({ cloud: item.provider, accountId: item.account_id })}
+                  className="btn btn-secondary"
+                >
+                  All inventory for this account
+                </Link>
+                <Link href="/environments" className="btn btn-secondary">
+                  Environment catalog
+                </Link>
               </div>
+            </section>
+
+            <section className="portal-surface" style={{ marginTop: 16 }}>
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Catalog</span>
+                  <h2 className="portal-surface__title">Linked environment catalog rows</h2>
+                  <p className="portal-surface__subtitle">
+                    Projects that bind this onboarded account to an environment in the catalog.
+                  </p>
+                </div>
+              </div>
+              {catalogEnvs.length === 0 ? (
+                <p className="portal-surface__subtitle">
+                  No catalog rows reference this account yet. Managers can link one from{' '}
+                  <Link href="/environments" className="ig-link">
+                    Environment catalog
+                  </Link>
+                  .
+                </p>
+              ) : (
+                <ul className="ig-simple-list">
+                  {catalogEnvs.map((row) => (
+                    <li key={`${row.project_id}-${row.name}`}>
+                      <Link href={environmentCatalogHref(row.project_id, row.name)} className="ig-cell-link">
+                        {row.project_name} · {row.name}
+                      </Link>
+                      {row.frozen ? ' · frozen' : ''}
+                      {' · '}
+                      <Link
+                        href={inventoryListHref({
+                          cloud: item.provider,
+                          accountId: item.account_id,
+                          projectId: String(row.project_id),
+                          environment: row.name,
+                        })}
+                        className="ig-cell-link"
+                      >
+                        Inventory
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
 
             <section className="portal-surface" style={{ marginTop: 16 }}>

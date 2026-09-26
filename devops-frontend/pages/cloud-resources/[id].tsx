@@ -5,7 +5,12 @@ import { useEffect, useState } from 'react';
 import CloudHubNav from '../../components/CloudHubNav';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { cloudInventoryAccountHref } from '../../lib/cloudInventoryRoutes';
+import {
+  cloudAccountDetailHref,
+  cloudInventoryAccountHref,
+  environmentCatalogHref,
+  inventoryListHref,
+} from '../../lib/cloudCatalogLinks';
 import { normalizeCloudProvider, providerChipTone, providerLabel } from '../../lib/cloudProviders';
 import { buildPortalApiUrl, EmptyState, PageHeader, parsePortalNumericId, portalFetch } from '@infragate/ui';
 
@@ -22,6 +27,19 @@ interface CloudResource {
   display_name: string;
   status: string;
   updated_at?: string;
+  onboarded_account_id?: number | null;
+}
+
+interface CatalogLink {
+  project_id: number;
+  project_name: string;
+  environment: string;
+}
+
+interface AccountContext {
+  onboarded_account_id?: number;
+  account_status?: string;
+  message?: string;
 }
 
 export default function CloudResourceDetailPage() {
@@ -30,6 +48,8 @@ export default function CloudResourceDetailPage() {
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
   const resourceId = parsePortalNumericId(id);
   const [item, setItem] = useState<CloudResource | null>(null);
+  const [catalogLinks, setCatalogLinks] = useState<CatalogLink[]>([]);
+  const [accountContext, setAccountContext] = useState<AccountContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -50,6 +70,8 @@ export default function CloudResourceDetailPage() {
         }
         if (!res.ok) throw new Error(data?.error || 'Resource not found');
         setItem(data.resource || null);
+        setCatalogLinks(Array.isArray(data.catalog_links) ? data.catalog_links : []);
+        setAccountContext(data.account_context && typeof data.account_context === 'object' ? data.account_context : null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false));
@@ -70,9 +92,35 @@ export default function CloudResourceDetailPage() {
           subtitle="Read-only context before any future day-2 action."
           actions={
             <>
+              {item?.onboarded_account_id ? (
+                <Link href={cloudAccountDetailHref(item.onboarded_account_id)} className="btn btn-secondary">
+                  Cloud account
+                </Link>
+              ) : null}
+              {catalogLinks.length === 1 ? (
+                <Link
+                  href={environmentCatalogHref(catalogLinks[0].project_id, catalogLinks[0].environment)}
+                  className="btn btn-secondary"
+                >
+                  Environment catalog
+                </Link>
+              ) : null}
               {item ? (
                 <Link href={accountLandingHref} className="btn btn-secondary">
-                  Account overview
+                  Account inventory
+                </Link>
+              ) : null}
+              {item ? (
+                <Link
+                  href={inventoryListHref({
+                    cloud: item.cloud,
+                    accountId: item.account_id,
+                    environment: item.environment,
+                    team: item.team_slug,
+                  })}
+                  className="btn btn-secondary"
+                >
+                  Filtered inventory
                 </Link>
               ) : null}
               <Link href={`/cloud-resources?cloud=${encodeURIComponent(cloud)}`} className="btn btn-secondary">
@@ -91,6 +139,12 @@ export default function CloudResourceDetailPage() {
               void router.push(`/cloud-resources?cloud=${encodeURIComponent(value)}`);
             }}
           />
+        ) : null}
+
+        {accountContext?.message ? (
+          <div className={`alert ${accountContext.account_status === 'disabled' ? 'alert-error' : 'alert-info'}`} role="status">
+            {accountContext.message}
+          </div>
         ) : null}
 
         {loading ? (
@@ -144,6 +198,14 @@ export default function CloudResourceDetailPage() {
                     <Link href={accountLandingHref} className="cloud-meta-list__link">
                       {item.account_name} ({item.account_id})
                     </Link>
+                    {item.onboarded_account_id ? (
+                      <>
+                        {' · '}
+                        <Link href={cloudAccountDetailHref(item.onboarded_account_id)} className="cloud-meta-list__link">
+                          Connection & trust
+                        </Link>
+                      </>
+                    ) : null}
                   </dd>
                 </div>
                 <div className="cloud-meta-list__row">
@@ -158,6 +220,26 @@ export default function CloudResourceDetailPage() {
                 </div>
               </dl>
             </section>
+
+            {catalogLinks.length > 0 ? (
+              <section className="portal-surface" style={{ marginTop: 16 }}>
+                <div className="portal-surface__header">
+                  <div>
+                    <span className="portal-surface__eyebrow">Catalog</span>
+                    <h2 className="portal-surface__title">Linked environment catalog rows</h2>
+                  </div>
+                </div>
+                <ul className="ig-simple-list">
+                  {catalogLinks.map((link) => (
+                    <li key={`${link.project_id}-${link.environment}`}>
+                      <Link href={environmentCatalogHref(link.project_id, link.environment)} className="ig-cell-link">
+                        {link.project_name} · {link.environment}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
           </>
         ) : null}
       </div>

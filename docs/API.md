@@ -50,7 +50,8 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | Method | Path | Auth | Body / query | What it does |
 | --- | --- | --- | --- | --- |
 | POST | `/api/auth/signup` | none | `{ username, email, password }` | Creates unverified viewer. Password min 6. Conflict if username/email taken. `otp_for_testing` is returned only when `ALLOW_TEST_OTP=true` and `APP_ENV` is not production. |
-| POST | `/api/auth/login` | none | `{ username_or_email, password }` or `{ email, password }` | Returns `{ token, user }`. If 2FA is on, returns a challenge then call verify-2fa. Blocked when portal SSO is required (except admin). |
+| POST | `/api/auth/login` | none | `{ username, password, portal? }` | Returns `{ token, user }`. If email 2FA is enabled (`totp_enabled`), returns `{ requires_otp, pending_2fa_token, email_hint }` and sends the OTP via **SMTP** (synchronous). Blocked when portal SSO is required (except admin). |
+| POST | `/api/auth/resend-2fa` | none | `{ pending_2fa_token }` | Issues a new OTP email for an in-progress login challenge. Returns a new `pending_2fa_token`. |
 | GET | `/api/public/sso/options` | none | `?portal=user\|devops` | `{ enabled, mode, provider, login_url }`. OIDC login_url defaults to `/api/auth/oidc/start`. |
 | GET | `/api/auth/oidc/start` | none | `?portal=` | Redirects to the IdP. |
 | GET | `/api/auth/oidc/callback` | none | `code`, `state` | Exchanges the code and redirects to the portal `/login?sso_token=`. |
@@ -467,8 +468,8 @@ All require a DevOps user. Writes (onboard, actions, terminal) typically require
 | PATCH | `/api/devops/cloud/accounts/:id` | manager (same team) | Update `display_name`, `environments`, `status` (`disabled` / re-enable), or rotate trust (`auth_mode`, `role_arn`, `external_id`, `secret_ref`, optional `retest`, default true). Trust updates audit as `cloud_account_trust_update`. |
 | POST | `/api/devops/cloud/accounts/:id/test` | manager (same team) | Server-side connection test (AWS STS when host creds exist; Azure/GCP/AWS validate trust inputs). Sets `connected` or `error` with generic client message. |
 | GET | `/api/admin/cloud/accounts` | admin | Read-only catalog of all onboarded accounts. |
-| GET | `/api/devops/cloud/resources` | devops | Paginated read-only inventory for **`cloud`** (`aws` / `azure` / `gcp`). Rows limited to **DevOps teams the user belongs to**. When accounts exist for that cloud, only **connected** account IDs for those teams appear. Query: `team`, `account_id`, `environment`, `region`, `q`, `project_id`, `page`, `limit`. |
-| GET | `/api/devops/cloud/resources/:id` | devops | Single inventory row if `team_slug` is visible to the user. |
+| GET | `/api/devops/cloud/resources` | devops | Paginated read-only inventory for **`cloud`** (`aws` / `azure` / `gcp`). Rows limited to **DevOps teams the user belongs to**. When accounts exist for that cloud, only **connected** account IDs for those teams appear. Query: `team`, `account_id`, `environment`, `region`, `q`, `project_id`, `page`, `limit`. With `account_id`, response may include **`account_context`** (status + message for disabled / not onboarded). |
+| GET | `/api/devops/cloud/resources/:id` | devops | Single inventory row if `team_slug` is visible to the user. Includes **`onboarded_account_id`**, optional **`catalog_links`**, and **`account_context`**. |
 
 **DevOps UI (no extra API):** Account-scoped inventory landing is `/cloud-resources/account?cloud=&account_id=` — it calls the same list endpoint with `account_id` set. See [FEATURES.md](./FEATURES.md) § Cloud workspace.
 | GET | `/api/devops/evidence` | devops | Evidence pack. `?format=md` downloads Markdown. |

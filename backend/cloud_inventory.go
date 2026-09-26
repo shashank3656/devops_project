@@ -10,18 +10,19 @@ import (
 )
 
 type cloudResourceRow struct {
-	ID          int    `json:"id"`
-	TeamSlug    string `json:"team_slug"`
-	Cloud       string `json:"cloud"`
-	AccountID   string `json:"account_id"`
-	AccountName string `json:"account_name"`
-	Environment string `json:"environment"`
-	Region      string `json:"region"`
-	ServiceType string `json:"service_type"`
-	ResourceID  string `json:"resource_id"`
-	DisplayName string `json:"display_name"`
-	Status      string `json:"status"`
-	UpdatedAt   string `json:"updated_at"`
+	ID                 int    `json:"id"`
+	TeamSlug           string `json:"team_slug"`
+	Cloud              string `json:"cloud"`
+	AccountID          string `json:"account_id"`
+	AccountName        string `json:"account_name"`
+	OnboardedAccountID *int   `json:"onboarded_account_id,omitempty"`
+	Environment        string `json:"environment"`
+	Region             string `json:"region"`
+	ServiceType        string `json:"service_type"`
+	ResourceID         string `json:"resource_id"`
+	DisplayName        string `json:"display_name"`
+	Status             string `json:"status"`
+	UpdatedAt          string `json:"updated_at"`
 }
 
 func seedCloudResourceInventoryDemo() {
@@ -105,13 +106,19 @@ func devopsCloudResourcesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+	payload := map[string]interface{}{
 		"resources": items,
 		"page":      page,
 		"limit":     limit,
 		"total":     total,
-	})
+	}
+	if acct := strings.TrimSpace(filters.Account); acct != "" {
+		if ctx := resolveInventoryAccountContext(filters.Cloud, acct, visibleTeams); ctx != nil {
+			payload["account_context"] = ctx
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(payload)
 }
 
 func devopsCloudResourceDetailHandler(w http.ResponseWriter, r *http.Request) {
@@ -157,8 +164,22 @@ func devopsCloudResourceDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusNotFound, "resource not found", nil)
 		return
 	}
+	var catalogLinks []cloudInventoryCatalogLink
+	if onboardedID := lookupCloudAccountDBID(item.TeamSlug, item.Cloud, item.AccountID); onboardedID > 0 {
+		item.OnboardedAccountID = &onboardedID
+		if links, err := catalogLinksForOnboardedAccount(onboardedID, item.Environment); err == nil {
+			catalogLinks = links
+		}
+	}
+	detail := map[string]interface{}{"resource": item}
+	if len(catalogLinks) > 0 {
+		detail["catalog_links"] = catalogLinks
+	}
+	if ctx := resolveInventoryAccountContext(item.Cloud, item.AccountID, visibleTeams); ctx != nil {
+		detail["account_context"] = ctx
+	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"resource": item})
+	_ = json.NewEncoder(w).Encode(detail)
 }
 
 func devopsCloudResourcesRouter(w http.ResponseWriter, r *http.Request) {
