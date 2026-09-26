@@ -60,6 +60,17 @@ function environmentsHref(projectId?: number, environment?: string) {
   return qs ? `/environments?${qs}` : '/environments';
 }
 
+function normalizeResourceContextId(raw: number | string | null | undefined): number | null {
+  if (raw == null) return null;
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : null;
+  }
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  return parsed > 0 ? parsed : null;
+}
+
 function LoadingSkeleton() {
   return (
     <div className="resource-context-panel resource-context-panel--loading" aria-busy="true" aria-label="Loading resource context">
@@ -82,17 +93,19 @@ export default function ResourceContextPanel({
   apiUrl: string;
   token: string | null;
   kind: ResourceContextKind;
-  resourceId: number | null;
+  /** Numeric id or digits-only string (e.g. from `parsePortalNumericId`). */
+  resourceId: number | string | null | undefined;
   /** When parent already renders DeliveryVisibilityCard (tickets / CHGs). */
   hideDelivery?: boolean;
   className?: string;
 }) {
+  const numericId = normalizeResourceContextId(resourceId);
   const [data, setData] = useState<ResourceContextPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState('');
 
   useEffect(() => {
-    if (!token || !resourceId || resourceId <= 0) {
+    if (!token || !numericId) {
       setData(null);
       setFetchError('');
       return;
@@ -100,7 +113,7 @@ export default function ResourceContextPanel({
     let cancelled = false;
     setLoading(true);
     setFetchError('');
-    const params = new URLSearchParams({ kind, id: String(resourceId) });
+    const params = new URLSearchParams({ kind, id: String(numericId) });
     portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/resource-context?${params.toString()}`), { token })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
@@ -124,7 +137,7 @@ export default function ResourceContextPanel({
     return () => {
       cancelled = true;
     };
-  }, [apiUrl, token, kind, resourceId]);
+  }, [apiUrl, token, kind, numericId]);
 
   const incidents = data?.open_incidents || [];
   const activity = data?.operator_activity || [];
@@ -140,7 +153,7 @@ export default function ResourceContextPanel({
     return data?.environment || '';
   }, [data]);
 
-  if (!resourceId || resourceId <= 0 || !token) return null;
+  if (!numericId || !token) return null;
 
   return (
     <section
