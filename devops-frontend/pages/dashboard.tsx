@@ -4,7 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
-import { WorkspaceHome, type WorkspacePayload } from '@infragate/ui';
+import { WorkspaceHome, readWorkspaceScope, type WorkspacePayload } from '@infragate/ui';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const emptyWorkspace: WorkspacePayload = {
@@ -72,7 +72,12 @@ export default function DevOpsDashboard() {
     }
     setLoading(true);
     setError(null);
-    fetch(`${apiUrl}/api/devops/workspace`, { headers: { Authorization: `Bearer ${token}` } })
+    const scope = readWorkspaceScope();
+    const workspaceUrl =
+      scope.projectId.trim() !== ''
+        ? `${apiUrl}/api/devops/workspace?project_id=${encodeURIComponent(scope.projectId)}`
+        : `${apiUrl}/api/devops/workspace`;
+    fetch(workspaceUrl, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
         if (res.status === 401) {
           router.replace('/login');
