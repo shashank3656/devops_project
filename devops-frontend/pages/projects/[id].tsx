@@ -1018,7 +1018,18 @@ export default function DevOpsProjectDetailPage() {
               <article className="portal-stat-card">
                 <span className="portal-stat-card__label">Environments</span>
                 <span className="portal-stat-card__value">{project.environments.length}</span>
-                <p className="portal-stat-card__copy">{project.environments.join(', ')}</p>
+                <p className="portal-stat-card__copy">
+                  {project.environments.join(', ') || 'None configured'}
+                  {project.id ? (
+                    <>
+                      {' '}
+                      ·{' '}
+                      <Link href={`/environments?project_id=${project.id}`} className="ig-cell-link">
+                        View catalog
+                      </Link>
+                    </>
+                  ) : null}
+                </p>
               </article>
             </section>
 

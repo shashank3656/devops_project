@@ -10,6 +10,7 @@ import {
 export type ConfirmOptions = {
   title: string;
   message: string;
+  detailLines?: string[];
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
@@ -58,6 +59,13 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             <p id="ig-confirm-message" className="ig-confirm__message">
               {options.message}
             </p>
+            {options.detailLines && options.detailLines.length > 0 ? (
+              <ul className="ig-confirm__details">
+                {options.detailLines.map((line, index) => (
+                  <li key={`${index}-${line}`}>{line}</li>
+                ))}
+              </ul>
+            ) : null}
             <div className="ig-confirm__actions">
               <button type="button" className="btn btn-secondary" onClick={() => close(false)}>
                 {options.cancelLabel || 'Cancel'}

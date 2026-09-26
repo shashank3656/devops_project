@@ -4155,6 +4155,14 @@ html[data-theme] .changes-page__sample {
   line-height: 1.5;
 }
 
+.ig-confirm__details {
+  margin: 0 0 18px;
+  padding-left: 18px;
+  color: var(--ig-muted, #94a3b8);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .ig-confirm__actions {
   display: flex;
   justify-content: flex-end;

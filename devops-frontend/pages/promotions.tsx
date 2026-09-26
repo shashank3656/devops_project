@@ -2,8 +2,10 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { useConfirm } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { confirmGuardedDay2Action, notifyDay2ActionComplete } from '../lib/guardedDay2Action';
 import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -236,6 +238,7 @@ function getPromoteActionHint(item: PromotionItem): string {
 export default function DevOpsPromotionsPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const confirm = useConfirm();
   const [items, setItems] = useState<PromotionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [promotingId, setPromotingId] = useState<number | null>(null);
@@ -475,9 +478,26 @@ export default function DevOpsPromotionsPage() {
       return;
     }
 
-    setPromotingId(item.request_id);
     setError('');
     setNotice('');
+    const gate = await confirmGuardedDay2Action({
+      apiUrl,
+      token,
+      confirm,
+      action: 'promote',
+      params: { request_id: String(item.request_id) },
+      title: `Promote to ${item.next_environment.toUpperCase()}`,
+      message: `Promote request #${item.request_id} (${item.service}) from ${item.environment} into ${item.next_environment}?`,
+      confirmLabel: 'Promote request',
+      destructive: item.next_environment.toLowerCase() === 'prod',
+    });
+    if (gate.blocked) {
+      setError(gate.blocked);
+      return;
+    }
+    if (!gate.confirmed) return;
+
+    setPromotingId(item.request_id);
     try {
       const response = await fetch(`${apiUrl}/api/devops/promotions/${item.request_id}/promote`, {
         method: 'POST',
@@ -512,6 +532,7 @@ export default function DevOpsPromotionsPage() {
       } else {
         setNotice(`Created draft request #${requestID} for the next environment.`);
       }
+      notifyDay2ActionComplete();
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to promote request');

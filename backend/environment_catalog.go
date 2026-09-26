@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -46,22 +47,141 @@ func devopsEnvironmentCatalogHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, r, http.MethodGet)
-		return
-	}
 	if DB == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
-	projectFilter := strings.TrimSpace(r.URL.Query().Get("project_id"))
-	rows, err := listEnvironmentCatalogForDevops(userID, projectFilter)
-	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "failed to list environment catalog", err)
-		return
+	switch r.Method {
+	case http.MethodGet:
+		projectFilter := strings.TrimSpace(r.URL.Query().Get("project_id"))
+		rows, err := listEnvironmentCatalogForDevops(userID, projectFilter)
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list environment catalog", err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "environments": rows})
+	case http.MethodPatch:
+		managerID, ok := requireDevopsManager(w, r)
+		if !ok {
+			return
+		}
+		row, err := patchEnvironmentCatalogMetadata(managerID, r)
+		if err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "environment": row})
+	default:
+		writeMethodNotAllowed(w, r, http.MethodGet, http.MethodPatch, http.MethodOptions)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "environments": rows})
+}
+
+type environmentCatalogPatchInput struct {
+	ProjectID        int      `json:"project_id"`
+	Environment      string   `json:"environment"`
+	EnvType          string   `json:"env_type"`
+	DefaultRegion    string   `json:"default_region"`
+	DefaultCluster   string   `json:"default_cluster_name"`
+	Owners           []string `json:"owners"`
+	CloudAccountID   *int     `json:"cloud_account_id"`
+	ClearCloudAccount bool    `json:"clear_cloud_account"`
+}
+
+func patchEnvironmentCatalogMetadata(managerID int, r *http.Request) (*environmentCatalogRow, error) {
+	var input environmentCatalogPatchInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		return nil, fmt.Errorf("invalid json")
+	}
+	input.Environment = strings.TrimSpace(input.Environment)
+	if input.ProjectID <= 0 || input.Environment == "" {
+		return nil, fmt.Errorf("project_id and environment are required")
+	}
+	project, err := getProjectCatalogByID(input.ProjectID)
+	if err != nil || project == nil {
+		return nil, fmt.Errorf("project not found")
+	}
+	if !devopsUserCanViewProject(managerID, *project) {
+		return nil, fmt.Errorf("project not found")
+	}
+	envAllowed := false
+	for _, env := range project.Environments {
+		if strings.EqualFold(strings.TrimSpace(env), input.Environment) {
+			envAllowed = true
+			break
+		}
+	}
+	if !envAllowed {
+		return nil, fmt.Errorf("environment is not defined on this project")
+	}
+	envType := strings.TrimSpace(input.EnvType)
+	if envType == "" {
+		envType = inferEnvironmentType(input.Environment)
+	}
+	ownersJSON := "[]"
+	if len(input.Owners) > 0 {
+		clean := make([]string, 0, len(input.Owners))
+		for _, owner := range input.Owners {
+			owner = strings.TrimSpace(owner)
+			if owner != "" {
+				clean = append(clean, owner)
+			}
+		}
+		if encoded, err := json.Marshal(clean); err == nil {
+			ownersJSON = string(encoded)
+		}
+	}
+	meta, _ := loadProjectEnvironmentMeta(input.ProjectID)
+	existing := meta[strings.ToLower(input.Environment)]
+	var cloudAccountID interface{}
+	if input.ClearCloudAccount {
+		cloudAccountID = nil
+	} else if input.CloudAccountID != nil && *input.CloudAccountID > 0 {
+		acct, err := getCloudAccountByID(*input.CloudAccountID)
+		if err != nil || acct == nil {
+			return nil, fmt.Errorf("cloud account not found")
+		}
+		if !devopsManagerCanOnboardTeamSlug(managerID, acct.TeamSlug) {
+			return nil, fmt.Errorf("cloud account not available for this project")
+		}
+		teamSlug := projectOwnerTeamSlug(*project)
+		if teamSlug != "" && !strings.EqualFold(strings.TrimSpace(acct.TeamSlug), teamSlug) {
+			return nil, fmt.Errorf("cloud account team does not match project owner team")
+		}
+		cloudAccountID = *input.CloudAccountID
+	} else if existing.CloudAccountID != nil && *existing.CloudAccountID > 0 {
+		cloudAccountID = *existing.CloudAccountID
+	}
+	_, err = DB.Exec(`
+		INSERT INTO project_environments (
+			project_id, environment, env_type, default_region, default_cluster_name, owners_json, cloud_account_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (project_id, environment) DO UPDATE SET
+			env_type = EXCLUDED.env_type,
+			default_region = EXCLUDED.default_region,
+			default_cluster_name = EXCLUDED.default_cluster_name,
+			owners_json = EXCLUDED.owners_json,
+			cloud_account_id = EXCLUDED.cloud_account_id
+	`, input.ProjectID, input.Environment, envType, strings.TrimSpace(input.DefaultRegion),
+		strings.TrimSpace(input.DefaultCluster), ownersJSON, cloudAccountID)
+	if err != nil {
+		return nil, err
+	}
+	details := fmt.Sprintf("project=%d env=%s type=%s", input.ProjectID, input.Environment, envType)
+	AppendAuditLog(&managerID, "environment_catalog_update", "project_environment",
+		fmt.Sprintf("%d:%s", input.ProjectID, strings.ToLower(input.Environment)), details)
+	accountsByTeam, _ := loadCloudAccountsByTeamSlug()
+	rows, err := buildEnvironmentCatalogRows(*project, accountsByTeam)
+	if err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		if rows[i].ProjectID == input.ProjectID && strings.EqualFold(rows[i].Name, input.Environment) {
+			return &rows[i], nil
+		}
+	}
+	return nil, fmt.Errorf("updated row not found")
 }
 
 func inferEnvironmentType(name string) string {
