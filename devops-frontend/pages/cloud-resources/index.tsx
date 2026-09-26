@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { cloudInventoryAccountHref } from '../../lib/cloudInventoryRoutes';
 import {
   inventoryAccountPlaceholder,
   normalizeCloudProvider,
@@ -65,6 +66,12 @@ export default function CloudResourcesPage() {
     const raw = Array.isArray(fromQuery) ? fromQuery[0] : fromQuery;
     if (raw) setCloud(normalizeCloudProvider(raw));
   }, [router.query.cloud]);
+
+  useEffect(() => {
+    const raw = router.query.account_id;
+    const fromQuery = Array.isArray(raw) ? raw[0] : raw;
+    if (fromQuery?.trim()) setAccount(fromQuery.trim());
+  }, [router.query.account_id]);
 
   useEffect(() => {
     if (scopeEnv && !env) setEnv(scopeEnv);
@@ -135,7 +142,19 @@ export default function CloudResourcesPage() {
       },
       { id: 'service_type', header: 'Service', cell: (row) => row.service_type },
       { id: 'team_slug', header: 'Team', cell: (row) => row.team_slug },
-      { id: 'account_id', header: 'Account', cell: (row) => row.account_id },
+      {
+        id: 'account_id',
+        header: 'Account',
+        cell: (row) => (
+          <Link
+            href={cloudInventoryAccountHref(row.cloud, row.account_id)}
+            onClick={(e) => e.stopPropagation()}
+            style={{ fontWeight: 500 }}
+          >
+            {row.account_name?.trim() ? `${row.account_name} (${row.account_id})` : row.account_id}
+          </Link>
+        ),
+      },
       { id: 'environment', header: 'Env', cell: (row) => row.environment },
       { id: 'region', header: 'Region', cell: (row) => row.region },
       {

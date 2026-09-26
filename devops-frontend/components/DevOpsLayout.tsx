@@ -134,6 +134,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/profile': 'Profile',
   '/cloud-accounts': 'Cloud accounts',
   '/cloud-resources': 'Cloud inventory',
+  '/cloud-resources/account': 'Cloud account inventory',
 };
 
 function getPageTitle(pathname: string): string {
