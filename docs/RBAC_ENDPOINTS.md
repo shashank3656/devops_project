@@ -41,6 +41,7 @@ Any authenticated DevOps user (or admin acting in DevOps) may call read-heavy De
 | GET | `/api/devops/k8s-connections` | devops user | Projects, connections, auth modes (`has_auth_credential` only) |
 | GET | `/api/devops/operator-activity` | devops user | Operator audit trail; filtered to visible projects (optional `project_id`, `environment`, `resource_type` + `resource_id`) |
 | GET | `/api/devops/guarded-action-context` | devops user | NF-05 pre-flight (permissions, freeze, incidents, SHA); does not mutate |
+| GET | `/api/devops/resource-context` | devops user / manager | NF-07 read-only context panel (`kind` + `id`); ticket/change require manager; no mutate |
 | GET | `/api/devops/environment-catalog` | devops user | NF-03 environment catalog for visible projects |
 | PATCH | `/api/devops/environment-catalog` | manager | NF-03 catalog metadata (type, region, cluster override, owners, cloud account link) |
 | GET | `/api/admin/cloud/accounts` | admin | All onboarded accounts (read-only) |

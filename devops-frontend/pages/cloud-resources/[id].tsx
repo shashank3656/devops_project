@@ -12,7 +12,14 @@ import {
   inventoryListHref,
 } from '../../lib/cloudCatalogLinks';
 import { normalizeCloudProvider, providerChipTone, providerLabel } from '../../lib/cloudProviders';
-import { buildPortalApiUrl, EmptyState, PageHeader, parsePortalNumericId, portalFetch } from '@infragate/ui';
+import {
+  buildPortalApiUrl,
+  EmptyState,
+  PageHeader,
+  parsePortalNumericId,
+  portalFetch,
+  ResourceContextPanel,
+} from '@infragate/ui';
 
 interface CloudResource {
   id: number;
@@ -36,12 +43,6 @@ interface CatalogLink {
   environment: string;
 }
 
-interface AccountContext {
-  onboarded_account_id?: number;
-  account_status?: string;
-  message?: string;
-}
-
 export default function CloudResourceDetailPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
@@ -49,9 +50,9 @@ export default function CloudResourceDetailPage() {
   const resourceId = parsePortalNumericId(id);
   const [item, setItem] = useState<CloudResource | null>(null);
   const [catalogLinks, setCatalogLinks] = useState<CatalogLink[]>([]);
-  const [accountContext, setAccountContext] = useState<AccountContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const token = typeof window !== 'undefined' ? localStorage.getItem('devops_token') : null;
 
   useEffect(() => {
     if (!resourceId) return;
@@ -71,7 +72,6 @@ export default function CloudResourceDetailPage() {
         if (!res.ok) throw new Error(data?.error || 'Resource not found');
         setItem(data.resource || null);
         setCatalogLinks(Array.isArray(data.catalog_links) ? data.catalog_links : []);
-        setAccountContext(data.account_context && typeof data.account_context === 'object' ? data.account_context : null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false));
@@ -139,12 +139,6 @@ export default function CloudResourceDetailPage() {
               void router.push(`/cloud-resources?cloud=${encodeURIComponent(value)}`);
             }}
           />
-        ) : null}
-
-        {accountContext?.message ? (
-          <div className={`alert ${accountContext.account_status === 'disabled' ? 'alert-error' : 'alert-info'}`} role="status">
-            {accountContext.message}
-          </div>
         ) : null}
 
         {loading ? (
@@ -220,6 +214,14 @@ export default function CloudResourceDetailPage() {
                 </div>
               </dl>
             </section>
+
+            <ResourceContextPanel
+              apiUrl={apiUrl}
+              token={token}
+              kind="cloud_resource"
+              resourceId={resourceId}
+              className="cloud-resource-context-panel"
+            />
 
             {catalogLinks.length > 0 ? (
               <section className="portal-surface" style={{ marginTop: 16 }}>
