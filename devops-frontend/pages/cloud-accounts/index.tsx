@@ -59,26 +59,26 @@ export default function CloudAccountsPage() {
   const columns: DataTableColumn<CloudAccount>[] = useMemo(
     () => [
       {
-        key: 'display_name',
+        id: 'display_name',
         header: 'Account',
-        render: (row) => (
+        cell: (row) => (
           <Link href={`/cloud-accounts/${row.id}`} onClick={(e) => e.stopPropagation()} style={{ fontWeight: 600 }}>
             {row.display_name}
           </Link>
         ),
       },
-      { key: 'provider', header: 'Provider', render: (r) => r.provider.toUpperCase() },
-      { key: 'account_id', header: 'Account ID', render: (r) => <span className="ig-mono">{r.account_id}</span> },
-      { key: 'team_slug', header: 'Team' },
+      { id: 'provider', header: 'Provider', cell: (row) => row.provider.toUpperCase() },
+      { id: 'account_id', header: 'Account ID', cell: (row) => <span className="ig-mono">{row.account_id}</span> },
+      { id: 'team_slug', header: 'Team', cell: (row) => row.team_slug },
       {
-        key: 'environments',
+        id: 'environments',
         header: 'Environments',
-        render: (r) => (r.environments?.length ? r.environments.join(', ') : '—'),
+        cell: (row) => (row.environments?.length ? row.environments.join(', ') : '—'),
       },
       {
-        key: 'status',
+        id: 'status',
         header: 'Status',
-        render: (r) => STATUS_LABEL[r.status] || r.status,
+        cell: (row) => STATUS_LABEL[row.status] || row.status,
       },
     ],
     [],

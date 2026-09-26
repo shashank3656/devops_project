@@ -35,17 +35,17 @@ export default function AdminCloudAccountsPage() {
   }, [apiUrl]);
 
   const columns: DataTableColumn<CloudAccount>[] = [
-    { key: 'display_name', header: 'Name', render: (r) => r.display_name },
-    { key: 'provider', header: 'Provider', render: (r) => r.provider.toUpperCase() },
-    { key: 'account_id', header: 'Account ID' },
-    { key: 'team_slug', header: 'Team' },
+    { id: 'display_name', header: 'Name', cell: (row) => row.display_name },
+    { id: 'provider', header: 'Provider', cell: (row) => row.provider.toUpperCase() },
+    { id: 'account_id', header: 'Account ID', cell: (row) => row.account_id },
+    { id: 'team_slug', header: 'Team', cell: (row) => row.team_slug },
     {
-      key: 'environments',
+      id: 'environments',
       header: 'Environments',
-      render: (r) => (r.environments?.length ? r.environments.join(', ') : '—'),
+      cell: (row) => (row.environments?.length ? row.environments.join(', ') : '—'),
     },
-    { key: 'status', header: 'Status' },
-    { key: 'onboarded_by_username', header: 'Onboarded by', render: (r) => r.onboarded_by_username || '—' },
+    { id: 'status', header: 'Status', cell: (row) => row.status },
+    { id: 'onboarded_by_username', header: 'Onboarded by', cell: (row) => row.onboarded_by_username || '—' },
   ];
 
   return (
