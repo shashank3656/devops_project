@@ -107,7 +107,7 @@ Primary nav: Home, Requests, Projects, Changes, Incidents. Mobile tabs: Home, Re
 | Submit request | same forms | `POST /api/request`. Status starts as pending manager or pending DevOps depending on team rules. |
 | Request success | `/request-success` | Confirmation with request id. |
 | My requests | `/history` | `GET /api/history`. Filter by team/status. Badge uses `updated_at` vs last-seen. |
-| Request detail | `/history` row → `/api/history/:id` or `/api/request/:id` | Shows status, config (masked secrets), comments, CI plan output. |
+| Request detail | `/history` row → `/api/history/:id` or `/api/request/:id` | Shows **delivery** snapshot, status, config (masked secrets), comments, CI plan output. |
 | Saved configs | forms | `GET/POST /api/me/saved-configs` so a user can reuse a filled form. |
 | Manager inbox | Home badge | `GET /api/me/pending-manager-approval`. Team leads approve their people's requests before DevOps sees them. |
 | Templates (read) | `/templates`, `/templates/[id]` | `GET /api/templates`. Users pick; they do not author the catalog. |
@@ -126,7 +126,7 @@ Primary nav: Home, Requests, Projects, Changes, Incidents. Mobile tabs: Home, Re
 | Feature | Page | How it works |
 | --- | --- | --- |
 | Changes catalog | `/changes` | `GET /api/me/changes`. Only CHGs whose `project_id` is in the user's visible projects. Unmapped CHGs stay hidden. |
-| Change detail | `/changes/[id]` | `GET /api/me/changes/:id`. Status, assignee, priority, risk, watch window, linked incidents. Files only if CI sent them. |
+| Change detail | `/changes/[id]` | `GET /api/me/changes/:id`. **Delivery** card (pipeline/SHA/links), status, assignee, priority, risk, watch window, linked incidents. Files only if CI sent them. |
 | Incidents catalog | `/incidents` | `GET /api/me/incidents`. Incidents assigned to the user **or** on a visible project. |
 | Incident detail | `/incidents/[id]` | `GET /api/me/incidents/:id`. Source (`ticket`, `alert`, `manual`, `change_regression`), severity, suspected CHG. |
 
@@ -187,7 +187,7 @@ Primary nav (manager): Home, Requests, Changes, Deployments, Kubernetes, GitOps,
 | --- | --- | --- |
 | Home | `/dashboard` | Attention dashboard from `GET /api/devops/workspace`: needs my action, failed or blocked deliveries (including failed CHGs), recent operations, and environments I own. Freeze and on-call stay in the aside. Loading, empty, and error + retry are shown. |
 | My tickets | `/tickets` | `GET /api/devops/tickets` — tickets assigned to the current user. |
-| Request list / actions | `/tickets` + inspector | `GET /api/devops/requests` (filters: id, team, cloud, status, requester, at_risk). `POST /api/devops/requests/:id/approve` or `/reject`. Bulk approve/reject. Approve opens the GitOps PR. |
+| Request list / actions | `/tickets` + inspector | `GET /api/devops/requests` (filters: id, team, cloud, status, requester, at_risk). Inspector shows **delivery** (pipeline/SHA/promote) plus plan/policy/cost checks. `POST /api/devops/requests/:id/approve` or `/reject`. Bulk approve/reject. Approve opens the GitOps PR. |
 | Workload | `/workload` | `GET /api/devops/workload`. Open / in-progress / completed-this-week by team and person. Manager only. |
 | Notifications | header | `GET /api/devops/notifications`. |
 
@@ -207,13 +207,20 @@ Primary nav (manager): Home, Requests, Changes, Deployments, Kubernetes, GitOps,
 | --- | --- | --- |
 | Catalog | `/changes` | `GET /api/devops/changes`. Filters: `project_id`, `environment`, `status`, `q`, `change_type`. Webhook sample is on this page. |
 | New change | `/changes/new` | `POST /api/devops/changes`. Title required. Service from Services catalog. Assigned to = all portal users (`GET /api/devops/users?audience=portal`). No environment field (filled from service map or stored as `unspecified`). No files field. Priority, risk, planned window, impact, backout. If repo/sha empty, backend sets `repo=manual` and `sha=manual-{nano}`. |
-| Change detail | `/changes/[id]` | `GET /api/devops/changes/:id`. Actions: Resolve, Close, Fail, Cancel, Reopen, CAB approve. Resolve/close blocked while linked incidents are open. A clean watch auto-resolves. |
+| Change detail | `/changes/[id]` | `GET /api/devops/changes/:id` includes **delivery** (repo, SHA, pipeline links, rollout/promote state). Actions: Resolve, Close, Fail, Cancel, Reopen, CAB approve. Resolve/close blocked while linked incidents are open. A clean watch auto-resolves. |
 | Services catalog | `/services` | `GET /api/devops/services`. Feeds the CHG dropdown. |
 | Add service | `/services/new` | `POST /api/devops/services`. Name + project (and optional default env). |
 | Service detail | `/services/[id]` | `GET /api/devops/services/:id`. |
 | Calendar | `/change-calendar` | `GET /api/devops/change-calendar`. Planned windows and CAB slots. |
 | Release notes | `/release-notes` | `GET /api/devops/release-notes`. Weekly notes assembled from closed CHGs. |
 | Change risk | `/change-risk` | `GET /api/devops/change-risk`. Risk heatmap for upcoming changes. |
+
+### Cloud inventory (BRD-07)
+
+| Feature | Page | How it works |
+| --- | --- | --- |
+| Resource list | `/cloud-resources` | `GET /api/devops/cloud/resources` — read-only AWS rows with server pagination. Filters: ScopeBar `project_id` / `environment`, plus team, account, region, and search. Empty, loading, and error states. |
+| Resource detail | `/cloud-resources/[id]` | `GET /api/devops/cloud/resources/:id`. No credentials in API responses. |
 
 ### Incidents and problems
 

@@ -6,6 +6,7 @@ import {
   CostCheckCard,
   DataTable,
   Day2Banner,
+  DeliveryVisibilityCard,
   InspectorDrawer,
   PlanReviewCard,
   PolicyChecksCard,
@@ -17,6 +18,7 @@ import {
   queryString,
   useUndoQueue,
   type DataTableColumn,
+  type DeliveryVisibility,
   type PlanReview,
   type PolicyCheckSummary,
   type RequestCostCheck,
@@ -195,6 +197,7 @@ interface TicketDetail extends TicketRow {
     change_brief?: { headline?: string; risk_because?: string[]; changing?: { label: string; count: number }[] };
     similar_merges?: { pr_number: number; title?: string; headline?: string; later_revert?: { pr_number: number } }[];
   } | null;
+  delivery?: DeliveryVisibility | null;
   high_risk_merge?: {
     required?: boolean;
     acknowledged?: boolean;
@@ -1191,6 +1194,7 @@ export default function DevOpsTickets() {
                   {detailRequest ? (
                     <>
                       <Day2Banner operation={detailRequest.operation} />
+                      <DeliveryVisibilityCard delivery={detailRequest.delivery} portal="devops" />
                       <PlanReviewCard review={detailRequest.plan_review} env={detailRequest.env} onAcknowledge={acknowledgePlan} />
                       <PolicyChecksCard summary={detailRequest.policy_checks} />
                       <CostCheckCard check={detailRequest.cost_check} />

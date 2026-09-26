@@ -128,5 +128,6 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 		"plan_review":            buildPlanReview(req),
 		"policy_checks":          buildPolicyCheckSummary(req.ID),
 		"cost_check":             buildRequestCostCheck(req),
+		"delivery":               buildRequestDeliveryVisibility(req),
 	})
 }

@@ -896,6 +896,7 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		"linked_incidents": listIncidentsForChange(item.ID),
 		"blast_radius":     blastRadiusForChange(*item),
 		"drift":            detectServiceDrift(item.Service, item.Environment, item.SHA, item.ImageDigest),
+		"delivery":         buildChangeDeliveryVisibility(item),
 		"status":           "ok",
 	})
 }

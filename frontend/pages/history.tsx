@@ -6,12 +6,14 @@ import {
   BulkBar,
   DataTable,
   InspectorDrawer,
+  DeliveryVisibilityCard,
   PlanReviewCard,
   PolicyChecksCard,
   PageFilters,
   formatRelativeTime,
   queryString,
   type DataTableColumn,
+  type DeliveryVisibility,
   type RowKey,
   type PlanReview,
   type PolicyCheckSummary,
@@ -319,6 +321,7 @@ export default function History() {
   const [page, setPage] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [detailRequest, setDetailRequest] = useState<PRRequest | null>(null);
+  const [detailDelivery, setDetailDelivery] = useState<DeliveryVisibility | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [canApproveByManager, setCanApproveByManager] = useState(false);
   const [comments, setComments] = useState<RequestComment[]>([]);
@@ -594,6 +597,7 @@ export default function History() {
     detailSeq.current += 1;
     setDetailLoading(false);
     setDetailRequest(null);
+    setDetailDelivery(null);
   };
 
   const openDetail = async (req: PRRequest) => {
@@ -601,6 +605,7 @@ export default function History() {
     const seq = detailSeq.current;
     const isStale = () => seq !== detailSeq.current;
     setDetailRequest(null);
+    setDetailDelivery(null);
     setCanApproveByManager(false);
     setComments([]);
     setTags([]);
@@ -632,6 +637,7 @@ export default function History() {
         setDependsOn(Array.isArray(data.depends_on) ? data.depends_on : []);
         setBlockedBy(Array.isArray(data.blocked_by) ? data.blocked_by : []);
         setLifetime(data.lifetime || null);
+        setDetailDelivery((data.delivery as DeliveryVisibility | undefined) ?? null);
         const enriched: PRRequest = {
           ...full,
           plan_review: (data.plan_review as PlanReview | undefined) ?? full.plan_review,
@@ -701,6 +707,7 @@ export default function History() {
       if (res.ok) {
         toast('Draft submitted for approval', 'success');
         setDetailRequest(null);
+    setDetailDelivery(null);
         fetchHistory();
       } else {
         const d = await res.json().catch(() => ({}));
@@ -723,6 +730,7 @@ export default function History() {
       if (res.ok) {
         toast(d?.message || 'Approved; request is now pending DevOps approval', 'success');
         setDetailRequest(null);
+    setDetailDelivery(null);
         fetchHistory();
         window.dispatchEvent(new CustomEvent('pending-manager-approval-refresh'));
       } else {
@@ -745,6 +753,7 @@ export default function History() {
       if (res.ok) {
         toast(d?.message || 'Request cloned as draft. Edit and submit from History.', 'success');
         setDetailRequest(null);
+    setDetailDelivery(null);
         fetchHistory();
       } else {
         toast(d?.error || 'Failed to resubmit', 'error');
@@ -766,6 +775,7 @@ export default function History() {
       if (res.ok) {
         toast(d?.message || 'Request cloned as draft. Edit and submit from History.', 'success');
         setDetailRequest(null);
+    setDetailDelivery(null);
         fetchHistory();
       } else {
         toast(d?.error || 'Failed to clone', 'error');
@@ -787,6 +797,7 @@ export default function History() {
       if (res.ok) {
         toast(d?.message || `Request created for ${d?.env || 'next env'}. Edit and submit from History.`, 'success');
         setDetailRequest(null);
+    setDetailDelivery(null);
         fetchHistory();
       } else {
         toast(d?.error || 'Failed to promote', 'error');
@@ -841,6 +852,7 @@ export default function History() {
       if (res.ok) {
         toast('Draft deleted', 'success');
         setDetailRequest(null);
+    setDetailDelivery(null);
         fetchHistory();
       } else {
         const d = await res.json().catch(() => ({}));
@@ -866,6 +878,7 @@ export default function History() {
       if (res.ok) {
         toast(d?.message || 'Request cancelled', 'success');
         setDetailRequest(null);
+    setDetailDelivery(null);
         fetchHistory();
       } else {
         toast(d?.error || 'Failed to cancel ticket', 'error');
@@ -970,6 +983,7 @@ export default function History() {
         config: rawConfig,
       }));
       setDetailRequest(null);
+    setDetailDelivery(null);
       router.push('/custom-json');
       toast('Template loaded. Edit and submit in Custom JSON.', 'success');
     } catch (_) {
@@ -1637,6 +1651,7 @@ export default function History() {
                         <p className="history-detail-modal__notice-copy history-detail-modal__notice-copy--prewrap">{detailRequest.reject_reason}</p>
                       </div>
                     )}
+                    <DeliveryVisibilityCard delivery={detailDelivery} portal="user" />
                     {(detailRequest.plan_review || detailRequest.policy_checks || detailRequest.cost_check) && (
                       <div className="history-detail-modal__section history-detail-modal__section--muted">
                         <div className="history-detail-modal__section-head">
@@ -1856,6 +1871,7 @@ export default function History() {
                         onRequestCreated={(id) => {
                           fetchHistory();
                           setDetailRequest(null);
+    setDetailDelivery(null);
                           openDetail({ id } as PRRequest);
                         }}
                       />

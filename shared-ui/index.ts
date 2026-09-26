@@ -40,6 +40,7 @@ export {
 } from './useWorkspaceScope';
 export { default as PageFilters, type PageFilterChip } from './PageFilters';
 export { default as PlanReviewCard } from './PlanReviewCard';
+export { default as DeliveryVisibilityCard } from './DeliveryVisibilityCard';
 export { default as PolicyChecksCard } from './PolicyChecksCard';
 export { default as PRImpactBrief } from './PRImpactBrief';
 export { default as RequestPRImpact } from './RequestPRImpact';
@@ -81,6 +82,7 @@ export type {
   DeployIntelSimilarMerge,
   DeployIntelAck,
   PRImpactBriefData,
+  DeliveryVisibility,
   ProjectCostSummary,
   ProjectHealth,
   ProjectInfraSettings,
