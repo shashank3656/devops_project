@@ -23,7 +23,7 @@ import {
   IconChevronDown,
   IconAlertCircle,
 } from './Icons';
-import SupportHub from './SupportHub';
+import { SupportHub } from '@infragate/ui';
 import { clearAdminSession, readAdminToken } from '../lib/session';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
 import {

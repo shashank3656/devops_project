@@ -16,7 +16,7 @@ import {
   IconFileText,
   IconChevronDown,
 } from './Icons';
-import SupportHub from './SupportHub';
+import { SupportHub } from '@infragate/ui';
 import { clearUserSession } from '../lib/session';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
 import {

@@ -4110,3 +4110,42 @@ html[data-theme] .changes-page__sample {
     margin-left: 0;
   }
 }
+
+.ig-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(2, 6, 23, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.ig-confirm {
+  width: min(420px, 100%);
+  padding: 22px;
+  border-radius: 16px;
+  border: 1px solid var(--ig-border, rgba(148, 163, 184, 0.2));
+  background: var(--ig-surface, #0f172a);
+  box-shadow: 0 24px 48px rgba(2, 6, 23, 0.35);
+}
+
+.ig-confirm__title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.ig-confirm__message {
+  margin: 0 0 18px;
+  color: var(--ig-muted, #94a3b8);
+  line-height: 1.5;
+}
+
+.ig-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { useConfirm } from '@infragate/ui';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import { asRecord, getString } from '../../../lib/payload';
@@ -20,6 +21,7 @@ const DEVOPS_TOKEN_KEY = 'devops_token';
 export default function DevOpsTemplateCloudPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const askConfirm = useConfirm();
   const [templates, setTemplates] = useState<RequestTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -124,7 +126,13 @@ export default function DevOpsTemplateCloudPage() {
   }, [tableRows]);
 
   const handleDelete = async (template: RequestTemplate) => {
-    if (!confirm(`Delete template "${template.name}"?`)) return;
+    const ok = await askConfirm({
+      title: 'Delete template',
+      message: `Delete template "${template.name}"?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     setDeletingId(template.id);
     setError('');
     try {

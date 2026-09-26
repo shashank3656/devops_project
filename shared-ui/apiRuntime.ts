@@ -38,6 +38,30 @@ type PatchedWindow = Window & { __infragateApiRewrite?: boolean };
  * Patches window.fetch once so requests aimed at the built API URL go to the
  * runtime API URL instead. Safe to call more than once.
  */
+export type PortalFetchInit = RequestInit & {
+  token?: string | null;
+  timeoutMs?: number;
+};
+
+/**
+ * Shared fetch wrapper: optional bearer token, timeout, surfaces 401 for callers.
+ */
+export async function portalFetch(input: string, init: PortalFetchInit = {}): Promise<Response> {
+  const { token, timeoutMs = 30000, ...rest } = init;
+  const headers = new Headers(rest.headers);
+  if (token && token !== 'undefined') {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  const controller = new AbortController();
+  const timer =
+    typeof window !== 'undefined' ? window.setTimeout(() => controller.abort(), timeoutMs) : undefined;
+  try {
+    return await fetch(input, { ...rest, headers, signal: rest.signal ?? controller.signal });
+  } finally {
+    if (timer !== undefined) window.clearTimeout(timer);
+  }
+}
+
 export function installApiUrlRewrite(builtUrl: string | undefined): void {
   if (typeof window === 'undefined') return;
   const win = window as PatchedWindow;

@@ -25,7 +25,7 @@ import {
   type SavedView,
 } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
-import RequestPRImpact from '../components/RequestPRImpact';
+import { RequestPRImpact, useConfirm } from '@infragate/ui';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
 import { asRecord, getString } from '../lib/payload';
@@ -342,6 +342,7 @@ function getRequestBundleCount(request: Pick<TicketRow, 'config'> | null | undef
 export default function DevOpsTickets() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const confirm = useConfirm();
   const [requests, setRequests] = useState<TicketRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -663,18 +664,22 @@ export default function DevOpsTickets() {
         } catch (err) {
           const gateErr = err as Error & { runbookRequired?: boolean; highRiskMergeRequired?: boolean; changeBriefHeadline?: string };
           if (action === 'approve' && gateErr.runbookRequired) {
-            const ok = window.confirm(
-              `${gateErr.message}\n\nAcknowledge that the production runbook is linked (or add one under Guides) and approve anyway?`
-            );
+            const ok = await confirm({
+              title: 'Runbook acknowledgment',
+              message: `${gateErr.message}\n\nAcknowledge that the production runbook is linked (or add one under Guides) and approve anyway?`,
+              confirmLabel: 'Approve anyway',
+            });
             if (!ok) throw err;
             await sendDevopsAction(`/api/devops/requests/${id}/${action}`, { runbook_acknowledged: true });
             return;
           }
           if (action === 'approve' && gateErr.highRiskMergeRequired) {
             const headline = gateErr.changeBriefHeadline ? `\n\nChanging: ${gateErr.changeBriefHeadline}` : '';
-            const ok = window.confirm(
-              `${gateErr.message}${headline}\n\nAcknowledge the high-risk merge change brief and approve anyway?`
-            );
+            const ok = await confirm({
+              title: 'High-risk merge',
+              message: `${gateErr.message}${headline}\n\nAcknowledge the high-risk merge change brief and approve anyway?`,
+              confirmLabel: 'Approve anyway',
+            });
             if (!ok) throw err;
             await sendDevopsAction(`/api/devops/requests/${id}/${action}`, {
               high_risk_merge_acknowledged: true,
@@ -1458,7 +1463,7 @@ export default function DevOpsTickets() {
                               Open PR
                             </a>
                           ) : null}
-                          <RequestPRImpact apiUrl={apiUrl} token={typeof window === 'undefined' ? null : localStorage.getItem(DEVOPS_TOKEN_KEY)} requestId={detailRequest.id} />
+                          <RequestPRImpact compact apiUrl={apiUrl} token={typeof window === 'undefined' ? null : localStorage.getItem(DEVOPS_TOKEN_KEY)} requestId={detailRequest.id} />
                           <a href={`/incidents`} className="btn btn-secondary btn-sm">
                             Incident panel
                           </a>

@@ -8,6 +8,9 @@
 | [Full API reference](./API.md) | Every HTTP route: method, auth, body, what it does |
 | [README](../README.md) | Product picture plus the same two lists |
 
+- [RBAC matrix (BRD-06)](./RBAC_MATRIX.md)
+- [RBAC endpoint inventory (BRD-06)](./RBAC_ENDPOINTS.md)
+
 Notion (narrative / BRDs):
 
 | Document | Link |

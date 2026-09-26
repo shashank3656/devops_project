@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { asRecord, getString } from '../lib/payload';
-import { PageFilters } from '@infragate/ui';
+import { IncidentCatalogTable, PageFilters } from '@infragate/ui';
 import { SITE_NAME } from '../lib/site';
 
 interface Incident {
@@ -72,10 +72,6 @@ function formatTimestamp(value: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return 'Unknown';
   return parsed.toLocaleString();
-}
-
-function getIncidentReference(incident: Pick<Incident, 'id' | 'incident_number'>): string {
-  return incident.incident_number || `INC${String(incident.id).padStart(7, '0')}`;
 }
 
 function parseProjectID(value: string | string[] | undefined): number {
@@ -221,50 +217,18 @@ export default function UserIncidentsPage() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="empty-state">Loading incidents...</div>
-          ) : filteredIncidents.length === 0 ? (
-            <div className="empty-state">No incidents match the current filter.</div>
-          ) : (
-            <div className="incidents-page__table-wrap">
-              <table className="templates-table">
-                <thead>
-                  <tr>
-                    <th>Incident</th>
-                    <th>Source</th>
-                    <th>Severity</th>
-                    <th>Status</th>
-                    <th>Project</th>
-                    <th>Change</th>
-                    <th>Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredIncidents.map((incident) => (
-                    <tr key={incident.id} style={{ cursor: 'pointer' }} onClick={() => void router.push(`/incidents/${incident.id}`)}>
-                      <td>
-                        <div>
-                          <strong>{getIncidentReference(incident)}</strong>
-                          <div className="incidents-page__meta">
-                            {[incident.service || incident.request_service || 'service', incident.environment || incident.request_env || '']
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </div>
-                          <div className="incidents-page__notes">{incident.summary || 'No summary yet'}</div>
-                        </div>
-                      </td>
-                      <td>{incident.source || 'ticket'}</td>
-                      <td>{incident.severity}</td>
-                      <td>{incident.status}</td>
-                      <td>{incident.project_name ? `${incident.project_name} (${incident.project_code})` : 'No project'}</td>
-                      <td>{incident.suspected_change_number || '—'}</td>
-                      <td>{formatTimestamp(incident.updated_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <div className="incidents-page__table-wrap">
+            <IncidentCatalogTable
+              variant="user"
+              rows={filteredIncidents.map((incident) => ({
+                ...incident,
+                updated_at: formatTimestamp(incident.updated_at),
+              }))}
+              loading={loading}
+              empty={<div className="empty-state">No incidents match the current filter.</div>}
+              onOpen={(incident) => void router.push(`/incidents/${incident.id}`)}
+            />
+          </div>
         </section>
       </div>
     </>
