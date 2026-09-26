@@ -7258,6 +7258,17 @@ body {
   font-size: 13px;
 }
 
+.history-requests-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+}
+
 .history-pagination {
   display: flex;
   justify-content: space-between;
@@ -7266,6 +7277,12 @@ body {
   border-top: 1px solid var(--border-color);
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.history-pagination--below {
+  margin-top: 16px;
+  padding: 0;
+  border-top: none;
 }
 
 .history-pagination__info,

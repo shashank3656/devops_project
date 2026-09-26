@@ -173,7 +173,12 @@ export default function DataTable<T>({
   };
 
   const handleRowClick = (event: MouseEvent<HTMLTableRowElement>, row: T, index: number) => {
-    if ((event.target as HTMLElement).closest(INTERACTIVE)) return;
+    const target = event.target as HTMLElement;
+    if (target.closest(INTERACTIVE)) return;
+    if (selectable && target.closest('.ig-table__select')) {
+      toggleRow(row);
+      return;
+    }
     setFocusIndex(index);
     if (selectable && (event.shiftKey || event.metaKey || event.ctrlKey)) {
       toggleRow(row);
@@ -272,14 +277,18 @@ export default function DataTable<T>({
                 onFocus={() => setFocusIndex(index)}
               >
                 {selectable ? (
-                  <td className="ig-table__select">
+                  <td className="ig-table__select" onClick={(event) => event.stopPropagation()}>
                     <input
                       type="checkbox"
                       tabIndex={-1}
                       aria-label={`Select row ${key}`}
                       checked={isSelected}
                       disabled={!canSelect}
-                      onChange={() => toggleRow(row)}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={(event) => {
+                        event.stopPropagation();
+                        toggleRow(row);
+                      }}
                     />
                   </td>
                 ) : null}

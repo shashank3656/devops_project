@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
+import { DeliveryVisibilityCard, type DeliveryVisibility } from '@infragate/ui';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -87,6 +88,7 @@ export default function ChangeDetailPage() {
   const [incidents, setIncidents] = useState<LinkedIncident[]>([]);
   const [blastRadius, setBlastRadius] = useState<string[]>([]);
   const [drift, setDrift] = useState<{ drifted?: boolean; detail?: string } | null>(null);
+  const [delivery, setDelivery] = useState<DeliveryVisibility | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState('');
@@ -180,6 +182,7 @@ export default function ChangeDetailPage() {
         setIncidents(Array.isArray(data.linked_incidents) ? data.linked_incidents : []);
         setBlastRadius(Array.isArray(data.blast_radius) ? data.blast_radius : []);
         setDrift(data.drift && typeof data.drift === 'object' ? data.drift : null);
+        setDelivery((data.delivery as DeliveryVisibility | undefined) ?? null);
       })
       .catch(() => setError('Failed to load change'))
       .finally(() => setLoading(false));
@@ -272,6 +275,8 @@ export default function ChangeDetailPage() {
         {error ? <div className="alert alert-error">{error}</div> : null}
         {loading ? <div className="empty-state">Loading change...</div> : null}
         {item ? (
+          <>
+            <DeliveryVisibilityCard delivery={delivery} portal="devops" />
           <section className="portal-surface">
             <div className="portal-form-grid">
               <label className="label">
@@ -467,6 +472,7 @@ export default function ChangeDetailPage() {
               </>
             ) : null}
           </section>
+          </>
         ) : null}
       </div>
     </DevOpsLayout>

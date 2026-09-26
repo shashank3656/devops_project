@@ -23,7 +23,7 @@ import {
   IconFileText,
   IconChevronDown,
 } from './Icons';
-import SupportHub from './SupportHub';
+import { SupportHub } from '@infragate/ui';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
 import {
   CommandPalette,
@@ -132,6 +132,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/team': 'Team',
   '/credential-audit': 'Secrets',
   '/profile': 'Profile',
+  '/cloud-resources': 'Cloud inventory',
 };
 
 function getPageTitle(pathname: string): string {
@@ -187,6 +188,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const scopeHydrated = useRef(false);
   const notifyRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const [keyboardHelp, setKeyboardHelp] = useState('');
+  const keyboardHelpTimer = useRef<number | null>(null);
 
   const clearSessionAndRedirect = useCallback(() => {
     localStorage.removeItem(DEVOPS_TOKEN_KEY);
@@ -403,7 +406,9 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         const msg = isManager
           ? 'Shortcuts: ? help, g then d = Home, g then t = Requests, g then a = Approval queue'
           : 'Shortcuts: ? help, g then d = Home';
-        alert(msg);
+        setKeyboardHelp(msg);
+        if (keyboardHelpTimer.current) window.clearTimeout(keyboardHelpTimer.current);
+        keyboardHelpTimer.current = window.setTimeout(() => setKeyboardHelp(''), 10000);
         return;
       }
       if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey && !inInput) {
@@ -510,6 +515,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       Icon: IconProjects,
       children: [
         { href: '/projects', label: 'Catalog' },
+        { href: '/cloud-resources', label: 'Cloud inventory' },
         { href: '/team', label: 'Teams' },
       ],
     });
@@ -909,6 +915,14 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
         <main id="main-content" tabIndex={-1} className="devops-main-new ig-page">
+          {keyboardHelp ? (
+            <div className="devops-keyboard-hint" role="status">
+              <span>{keyboardHelp}</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setKeyboardHelp('')}>
+                Dismiss
+              </button>
+            </div>
+          ) : null}
           {children}
         </main>
       </div>
@@ -964,6 +978,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         quickPrompts={supportQuickPrompts}
         apiUrl={apiUrl}
         token={typeof window === 'undefined' ? null : localStorage.getItem(DEVOPS_TOKEN_KEY)}
+        remapIncidentCitationLinks
         externalDocsHref={process.env.NEXT_PUBLIC_DOCS_URL || ''}
         escalationActions={[
           {

@@ -3720,6 +3720,17 @@ html[data-theme] .ig-table tbody tr.ig-tree-row--cloud td:first-child { box-shad
 .ig-plan__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .ig-plan__empty { margin: 0; color: var(--ig-muted); font-size: var(--ig-text-sm); }
 
+.ig-delivery__grid {
+  display: grid;
+  grid-template-columns: minmax(88px, auto) 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: var(--ig-text-sm);
+}
+.ig-delivery__grid dt { margin: 0; color: var(--ig-muted); }
+.ig-delivery__grid dd { margin: 0; color: var(--ig-text); }
+.ig-delivery__links { display: flex; flex-wrap: wrap; gap: 8px; }
+
 .ig-plan__counts {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4109,4 +4120,43 @@ html[data-theme] .changes-page__sample {
     flex: 1 1 100%;
     margin-left: 0;
   }
+}
+
+.ig-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(2, 6, 23, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.ig-confirm {
+  width: min(420px, 100%);
+  padding: 22px;
+  border-radius: 16px;
+  border: 1px solid var(--ig-border, rgba(148, 163, 184, 0.2));
+  background: var(--ig-surface, #0f172a);
+  box-shadow: 0 24px 48px rgba(2, 6, 23, 0.35);
+}
+
+.ig-confirm__title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.ig-confirm__message {
+  margin: 0 0 18px;
+  color: var(--ig-muted, #94a3b8);
+  line-height: 1.5;
+}
+
+.ig-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }

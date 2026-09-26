@@ -138,6 +138,33 @@ func checkCanCreatePR(r *http.Request) (userID int, ok bool) {
 	return id, true
 }
 
+// checkPortalUser returns a verified portal user (viewer, contributor, or admin). Used for history, manager approval, and read-only request actions.
+func checkPortalUser(r *http.Request) (userID int, ok bool) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		return 0, false
+	}
+	token := strings.TrimSpace(authHeader[7:])
+	id, scopes, err := validateTokenOrAPIKey(token)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	if scopes != "" && !hasScope(scopes, "history:read") && !hasScope(scopes, "request:create") {
+		return 0, false
+	}
+	user, err := GetUserByID(id)
+	if err != nil || user == nil {
+		return 0, false
+	}
+	if !user.Verified {
+		return id, false
+	}
+	if user.Role != "contributor" && user.Role != "admin" && user.Role != "viewer" {
+		return id, false
+	}
+	return id, true
+}
+
 func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 
@@ -729,6 +756,8 @@ func main() {
 	http.HandleFunc("/api/devops/approval-notification-analytics", devopsApprovalNotificationAnalyticsHandler)
 	http.HandleFunc("/api/devops/requests", devopsRequestsListHandler)
 	http.HandleFunc("/api/devops/requests/", devopsRequestActionHandler)
+	http.HandleFunc("/api/devops/cloud/resources", devopsCloudResourcesRouter)
+	http.HandleFunc("/api/devops/cloud/resources/", devopsCloudResourcesRouter)
 	http.HandleFunc("/api/devops/project-options", devopsProjectOptionsHandler)
 	http.HandleFunc("/api/devops/project-analytics", devopsProjectAnalyticsHandler)
 	http.HandleFunc("/api/devops/change-calendar", devopsChangeCalendarHandler)
@@ -828,10 +857,6 @@ func main() {
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/ready", readyHandler)
 
-	// Swagger/OpenAPI endpoint (will be served from static files or generated)
-	http.HandleFunc("/swagger.json", swaggerHandler)
-	http.HandleFunc("/api-docs", swaggerUIHandler)
-
 	addr := listenAddr()
 	log.Printf("Backend server starting on %s", addr)
 	log.Printf("Public API URL: %s", strings.TrimRight(os.Getenv("NEXT_PUBLIC_API_URL"), "/"))
@@ -885,7 +910,6 @@ func main() {
 	log.Println("  POST /api/admin/request-bundle-normalization - Apply legacy bundle normalization (admin only)")
 	log.Println("  GET  /api/admin/stats     - Dashboard stats for all PRs (admin only)")
 	log.Println("  GET  /health         - Health check")
-	log.Println("  GET  /swagger.json    - OpenAPI spec")
 	log.Println("  GET  /api-docs       - Swagger UI")
 
 	if err := http.ListenAndServe(addr, withCORS(withObservability(withRecovery(http.DefaultServeMux)))); err != nil {

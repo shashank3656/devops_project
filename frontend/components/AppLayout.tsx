@@ -16,7 +16,7 @@ import {
   IconFileText,
   IconChevronDown,
 } from './Icons';
-import SupportHub from './SupportHub';
+import { SupportHub } from '@infragate/ui';
 import { clearUserSession } from '../lib/session';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
 import {
@@ -675,14 +675,22 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         Open request history
                       </Link>
                       {hasManagedTeams && (
-                        <Link href="/history" className="user-topbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                        <Link
+                          href="/history?view=team&status=pending_user_manager_approval"
+                          className="user-topbar__notify-link"
+                          onClick={() => setNotifyOpen(false)}
+                        >
                           Review approvals
                         </Link>
                       )}
                     </div>
                     <div className="user-topbar__notify-list">
-                      {hasManagedTeams && pendingManagerApprovalCount > 0 && (
-                        <Link href="/history" className="user-topbar__notify-ticket" onClick={() => setNotifyOpen(false)}>
+                      {pendingManagerApprovalCount > 0 && (
+                        <Link
+                          href="/history?view=team&status=pending_user_manager_approval"
+                          className="user-topbar__notify-ticket"
+                          onClick={() => setNotifyOpen(false)}
+                        >
                           <strong>Manager approvals</strong>
                           <span>{pendingManagerApprovalCount} request(s) are waiting for your review.</span>
                           <small>Open request history</small>

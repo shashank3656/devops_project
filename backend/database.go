@@ -3230,13 +3230,30 @@ func GetPendingManagerApprovalCount(managerUserID int) (int, error) {
 		SELECT COUNT(DISTINCT r.id) FROM pr_requests r
 		WHERE r.status = 'pending_user_manager_approval'
 		AND r.created_by IS NOT NULL
+		AND r.created_by != $1
 		AND (
 			EXISTS (SELECT 1 FROM users u WHERE u.id = r.created_by AND u.manager_id = $1)
 			OR EXISTS (
 				SELECT 1 FROM team_members m1
-				INNER JOIN teams t ON t.id = m1.team_id AND COALESCE(t.team_type,'portal') = 'portal' AND (t.name = r.team OR t.slug = r.team)
+				INNER JOIN teams t ON t.id = m1.team_id AND COALESCE(t.team_type,'portal') = 'portal'
+				  AND (LOWER(t.name) = LOWER(r.team) OR LOWER(t.slug) = LOWER(r.team))
 				INNER JOIN team_members m2 ON m2.team_id = t.id AND m2.role = 'manager' AND m2.user_id = $1
 				WHERE m1.user_id = r.created_by
+			)
+			OR EXISTS (
+				SELECT 1 FROM users approver
+				WHERE approver.id = $1 AND COALESCE(approver.is_portal_manager, false) = true
+				AND EXISTS (
+					SELECT 1 FROM team_members mgr
+					INNER JOIN teams t ON t.id = mgr.team_id AND COALESCE(t.team_type,'portal') = 'portal'
+					  AND (
+					    NULLIF(TRIM(r.team), '') IS NULL
+					    OR LOWER(t.name) = LOWER(r.team)
+					    OR LOWER(t.slug) = LOWER(r.team)
+					  )
+					INNER JOIN team_members creator ON creator.team_id = t.id AND creator.user_id = r.created_by
+					WHERE mgr.user_id = $1
+				)
 			)
 		)
 	`, managerUserID).Scan(&count)
@@ -3576,7 +3593,7 @@ func GetGroupManagerForUserInTeam(userID int, teamNameOrSlug string) int {
 	err := DB.QueryRow(`
 		SELECT m2.user_id FROM team_members m1
 		INNER JOIN teams t ON t.id = m1.team_id AND COALESCE(t.team_type,'portal') = 'portal'
-		  AND (t.name = $2 OR t.slug = $2)
+		  AND (LOWER(t.name) = LOWER($2) OR LOWER(t.slug) = LOWER($2))
 		INNER JOIN team_members m2 ON m2.team_id = t.id AND m2.role = 'manager' AND m2.user_id != $1
 		WHERE m1.user_id = $1
 		LIMIT 1

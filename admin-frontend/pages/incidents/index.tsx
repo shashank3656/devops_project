@@ -1,6 +1,7 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { IncidentCatalogTable } from '@infragate/ui';
 import AdminLayout from '../../components/AdminLayout';
 import { ADMIN_SITE_NAME } from '../../lib/site';
 
@@ -141,43 +142,13 @@ export default function AdminIncidentsCatalogPage() {
               </select>
             </div>
           </div>
-          {loading ? (
-            <div className="empty-state">Loading incidents...</div>
-          ) : visible.length === 0 ? (
-            <div className="empty-state">No incidents in this scope yet.</div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="templates-table">
-                <thead>
-                  <tr>
-                    <th>Incident</th>
-                    <th>Source</th>
-                    <th>Severity</th>
-                    <th>Status</th>
-                    <th>Service</th>
-                    <th>Change</th>
-                    <th>Owner</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((item) => (
-                    <tr key={item.id} style={{ cursor: 'pointer' }} onClick={() => void router.push(`/incidents/${item.id}`)}>
-                      <td>
-                        <strong>{item.incident_number || `INC${String(item.id).padStart(7, '0')}`}</strong>
-                        <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.summary || 'No summary'}</div>
-                      </td>
-                      <td>{item.source || 'ticket'}</td>
-                      <td>{item.severity}</td>
-                      <td>{item.status}</td>
-                      <td>{item.service || item.request_service || '—'}</td>
-                      <td>{item.suspected_change_number || '—'}</td>
-                      <td>{item.owner_username || 'Unassigned'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <IncidentCatalogTable
+            variant="admin"
+            rows={visible}
+            loading={loading}
+            empty={<div className="empty-state">No incidents in this scope yet.</div>}
+            onOpen={(item) => void router.push(`/incidents/${item.id}`)}
+          />
         </section>
       </div>
     </AdminLayout>

@@ -1,7 +1,7 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
-import { PageFilters } from '@infragate/ui';
+import { ChangeCatalogTable, PageFilters } from '@infragate/ui';
 import { SITE_NAME } from '../../lib/site';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -169,52 +169,12 @@ export default function UserChangesCatalogPage() {
               </select>
             </div>
           </div>
-          {loading ? (
-            <div className="empty-state">Loading changes...</div>
-          ) : visible.length === 0 ? (
-            <div className="empty-state">No change requests for your projects yet.</div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="templates-table">
-                <thead>
-                  <tr>
-                    <th>Change</th>
-                    <th>Repo / PR</th>
-                    <th>Service</th>
-                    <th>Env</th>
-                    <th>Assigned to</th>
-                    <th>Priority</th>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th>Incidents</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((item) => (
-                    <tr key={item.id} style={{ cursor: 'pointer' }} onClick={() => void router.push(`/changes/${item.id}`)}>
-                      <td>
-                        <strong>{item.change_number || `CHG${String(item.id).padStart(7, '0')}`}</strong>
-                        <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.title || item.sha}</div>
-                      </td>
-                      <td>
-                        {item.repo}
-                        <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
-                          {item.pr_number ? `PR #${item.pr_number}` : 'No PR'} · {(item.sha || '').slice(0, 7)}
-                        </div>
-                      </td>
-                      <td>{item.service || '—'}</td>
-                      <td>{item.environment === 'unspecified' ? '—' : item.environment}</td>
-                      <td>{item.assignee_username || '—'}</td>
-                      <td>{item.priority || 'medium'}</td>
-                      <td>{item.change_type}</td>
-                      <td>{item.status}</td>
-                      <td>{item.linked_incidents || 0}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <ChangeCatalogTable
+            rows={visible}
+            loading={loading}
+            empty={<div className="empty-state">No change requests for your projects yet.</div>}
+            onOpen={(item) => void router.push(`/changes/${item.id}`)}
+          />
         </section>
       </div>
     </>

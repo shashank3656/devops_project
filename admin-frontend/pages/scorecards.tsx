@@ -1,6 +1,7 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import { ScorecardTable } from '@infragate/ui';
 import AdminLayout from '../components/AdminLayout';
 import { ADMIN_SITE_NAME } from '../lib/site';
 
@@ -60,43 +61,14 @@ export default function AdminScorecardsPage() {
           </div>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
-        {loading ? <div className="empty-state">Loading…</div> : null}
-        {items.length > 0 ? (
-          <section className="portal-surface">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Service</th>
-                  <th>Score</th>
-                  <th>Incidents</th>
-                  <th>DORA</th>
-                  <th>Last change</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={`${item.service}-${item.environment || ''}`}>
-                    <td>
-                      <strong>{item.service}</strong>
-                      <div className="portal-surface__subtitle">{item.team || item.environment || '—'}</div>
-                    </td>
-                    <td>{item.score}</td>
-                    <td>{item.open_incidents}</td>
-                    <td>
-                      {(item.dora || []).filter((metric) => metric.key === 'change_failure_rate').map((metric) => (
-                        <span key={metric.key}>{metric.value}% ({metric.band})</span>
-                      ))}
-                    </td>
-                    <td>
-                      {item.last_change || 'no CHG'}{item.slo_burned ? ' · SLO burning' : ''}
-                      {item.drift?.drifted ? <div className="portal-surface__subtitle">{item.drift.detail || 'Live image drifted from last CHG'}</div> : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        ) : !loading ? <div className="empty-state">No services in the catalog.</div> : null}
+        <section className="portal-surface">
+          <ScorecardTable
+            variant="admin"
+            rows={items}
+            loading={loading}
+            empty={<div className="empty-state">No services in the catalog.</div>}
+          />
+        </section>
       </div>
     </AdminLayout>
   );
