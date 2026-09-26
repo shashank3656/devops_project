@@ -187,6 +187,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [advancedNavOpen, setAdvancedNavOpen] = useState(false);
   const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({});
   const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
+  const [catalogEnvironments, setCatalogEnvironments] = useState<string[]>([]);
   const { scope, updateScope } = useWorkspaceScope();
   const scopeHydrated = useRef(false);
   const notifyRef = useRef<HTMLDivElement>(null);
@@ -256,6 +257,24 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       .then((data) => setScopeProjects(normalizeScopeProjects(data?.projects)))
       .catch(() => setScopeProjects([]));
   }, [apiUrl]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token || !scope.projectId) {
+      setCatalogEnvironments([]);
+      return;
+    }
+    const params = new URLSearchParams({ project_id: scope.projectId });
+    fetch(`${apiUrl}/api/devops/environment-catalog?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const names = Array.isArray(data?.environments)
+          ? data.environments.map((row: { name?: string }) => String(row?.name || '').trim()).filter(Boolean)
+          : [];
+        setCatalogEnvironments(names);
+      })
+      .catch(() => setCatalogEnvironments([]));
+  }, [apiUrl, scope.projectId]);
 
   useEffect(() => {
     if (!router.isReady || scopeHydrated.current) return;
@@ -518,6 +537,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       Icon: IconProjects,
       children: [
         { href: '/projects', label: 'Catalog' },
+        { href: '/environments', label: 'Environments' },
         { href: '/cloud-accounts', label: 'Cloud accounts' },
         { href: '/cloud-resources', label: 'Cloud inventory' },
         { href: '/team', label: 'Teams' },
@@ -788,6 +808,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             <ScopeBar
               projects={scopeProjects}
               scope={scope}
+              catalogEnvironments={catalogEnvironments}
               onChange={(partial) => writeScopeQuery(updateScope(partial))}
               onClear={() => writeScopeQuery(updateScope({ projectId: '', environment: '' }))}
             />
