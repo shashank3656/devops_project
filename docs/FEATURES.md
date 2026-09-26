@@ -260,6 +260,27 @@ DevOps **Cloud workspace** uses shared hub nav: **Accounts** ↔ **Inventory**, 
 
 Notion: [NF-01 Cloud Account Onboarding](https://app.notion.com/p/3e60f430ed10810793f7c3c1ae2d9a82) · [BRD-07 Cloud Resource Inventory](https://app.notion.com/p/3e60f430ed10810a8e2accfa0ca11116)
 
+### Kubernetes workspace (NF-02)
+
+**Who:** DevOps operators and managers (`devops_token`). User and Admin portals have no K8s workspace.
+
+**End goal:** One **cluster-scoped workspace** instead of ~15 sibling top-level routes — pick **cluster → namespace → resource type**, then drill into pod logs, terminal, or rollout detail without losing context.
+
+| Feature | Page | How it works |
+| --- | --- | --- |
+| Cluster catalog | `/k8s` | Onboarded cluster list (unchanged landing). ScopeBar `project_id` / `environment`. Row opens **workspace**. |
+| Cluster workspace | `/k8s/workspace?cluster_name=&…` | Overview + resource-type tabs (workloads, pods, networking, config, events, logs). Query preserves `project_id`, `cluster_name`, `namespace`, `environment`. |
+| Resource lists | `/k8s/workloads`, `/k8s/pods`, … | Same APIs as before; **K8sWorkspaceShell** keeps scoped tabs when `cluster_name` is set. |
+| Drill-down | `/k8s/pods/[pod]`, terminal, rollout, etc. | Unchanged detail flows. |
+| Connections | `/k8s/onboard`, `/k8s/onboard/new` | Secure cluster onboarding (separate from workspace rail). **AWS / Azure / GCP** connection types: cloud-native IAM or workload identity (recommended), server **secret_ref**, or encrypted kubeconfig/token. **Test connection** before save; list APIs never return credentials. |
+| Legacy redirect | `/k8s/clusters/[cluster]` | Redirects to `/k8s/workspace` with the same query params. |
+| Unscoped list URLs | `/k8s/pods`, `/k8s/logs`, … (no `cluster_name`) | Redirect to `/k8s` catalog so operators pick a cluster first. |
+| Namespace filter | Workspace rail | Dropdown loads namespaces for the scoped cluster; updates query on all resource tabs. |
+
+**Sidebar:** Single **Kubernetes** item → `/k8s` (not separate Pods/Logs commands).
+
+Notion: [NF-02 Kubernetes Workspace](https://app.notion.com/p/3e60f430ed1081d2a06ef9c037bbcde3)
+
 ### Incidents and problems
 
 | Feature | Page | How it works |
@@ -292,14 +313,18 @@ Alert-created incidents skip the form: Grafana POSTs `/api/webhooks/alerts`. Sam
 | Onboard repo | `/deploy-intelligence/onboard` | Registers owner/repo. After onboard, open PRs are fetched from GitHub (repo does not have to be a GitOps project). |
 | Repo detail | `/deploy-intelligence/[owner]/[repo]` | Change brief, similar past merges, plan vs apply, watchlist, stack conflicts, protect-branch, suggest-ticket. Posts `infragate/deploy-intel` check. |
 
-### Kubernetes
+### Kubernetes (day-2 detail)
+
+See **Kubernetes workspace (NF-02)** above for navigation and secure onboarding. This table is the API-oriented index.
 
 | Feature | Page | How it works |
 | --- | --- | --- |
 | Catalog | `/k8s` | Connected clusters overview. |
-| Onboard | `/k8s/onboard`, `/k8s/onboard/new` | Store a kube connection (cluster name + credentials reference). |
+| Onboard | `/k8s/onboard`, `/k8s/onboard/new` | Per-cloud secure connect (EKS IAM, AKS/GKE workload identity, secret ref, encrypted secrets). HTTPS endpoints only. `POST /api/devops/k8s-connections/test` before save. |
 | Cluster / workloads / pods / logs / services / ingress / secrets / configmaps / storage / events / certificates | `/k8s/...` | Live reads from the cluster via the stored connection. Terminal and log stream are attach endpoints. |
 | Workload actions | cluster pages | Restart / scale via `POST /api/devops/k8s-workload-actions`. |
+
+**Server config:** [CONFIGURATION.md](./CONFIGURATION.md#kubernetes-cluster-connections-devops) · **Failures:** [TROUBLESHOOTING.md](./TROUBLESHOOTING.md#kubernetes-connection-test-fails-devops)
 
 ### Projects and day-2 ops
 
