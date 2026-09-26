@@ -1118,10 +1118,10 @@ export default function DevOpsTickets() {
                 <span className="ig-kbd">J</span>/<span className="ig-kbd">K</span> move · <span className="ig-kbd">Enter</span> open ·{' '}
                 <span className="ig-kbd">X</span> select · <span className="ig-kbd">Esc</span> close
               </p>
-              {requests.length > 0 && total > limit && (
+              {requests.length > 0 ? (
                 <div className="devops-tickets-pagination">
                   <span className="devops-tickets-pagination-info">
-                    Page {Math.floor(offset / limit) + 1} of {Math.ceil(total / limit)}
+                    Page {Math.floor(offset / limit) + 1} of {Math.max(1, Math.ceil(total / limit))} ({total} total)
                   </span>
                   <div className="devops-tickets-pagination__actions">
                     <button type="button" className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => setOffset((value) => Math.max(0, value - limit))}>
@@ -1132,7 +1132,7 @@ export default function DevOpsTickets() {
                     </button>
                   </div>
                 </div>
-              )}
+              ) : null}
             </>
           )}
 
