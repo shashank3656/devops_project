@@ -97,12 +97,20 @@ function formatEnvironmentLabel(value: string): string {
 }
 
 function normalizePathPreviewSegment(value: string, fallback: string): string {
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return normalized || fallback;
+  const lower = value.trim().toLowerCase();
+  let out = '';
+  for (let i = 0; i < lower.length; i++) {
+    const code = lower.charCodeAt(i);
+    const isAlnum = (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
+    if (isAlnum) {
+      out += lower[i];
+    } else if (out.length > 0 && out.charCodeAt(out.length - 1) !== 45) {
+      out += '-';
+    }
+  }
+  while (out.startsWith('-')) out = out.slice(1);
+  while (out.endsWith('-')) out = out.slice(0, -1);
+  return out || fallback;
 }
 
 function groupBundledServiceSummaryByEnvironment(entries: BundledServiceSummaryEntry[]) {
