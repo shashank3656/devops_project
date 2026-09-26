@@ -458,6 +458,7 @@ All require a DevOps user. Writes (onboard, actions, terminal) typically require
 | POST | `/api/devops/changes/:id/rollout` | manager | `{ stage: canary|10|50|100 }` progressive delivery. |
 | GET | `/api/devops/scorecards` | devops | Service scorecards from the catalog + CHG/INC/SLO + live-vs-CHG drift. |
 | GET | `/api/devops/environment-catalog` | devops | Environment catalog for accessible projects. Query `project_id` optional. Rows include type, linked cloud account, default cluster/region, owners, and active freeze from `deployment_freezes`. |
+| GET | `/api/devops/operator-activity` | devops | Append-only DevOps operator audit (`devops_operator_audit_log`). Query: `project_id`, `environment`, `resource_type` + `resource_id`, `limit`, `offset`. No secrets in payloads. Scoped to visible projects. |
 | GET | `/api/devops/cloud/accounts` | devops | Cloud accounts for teams the user belongs to. No secrets in response. |
 | POST | `/api/devops/cloud/accounts` | manager (member of target devops team) | Onboard **AWS, Azure, or GCP** with provider-specific trust fields (`role_arn`, optional `external_id`, or `static_ref` env name). Runs server connection test on create. Credentials stay on server. |
 | GET | `/api/devops/cloud/accounts/:id` | devops | Account detail if user's DevOps team matches `team_slug`. |

@@ -272,6 +272,19 @@ Notion: [NF-01 Cloud Account Onboarding](https://app.notion.com/p/3e60f430ed1081
 
 Notion: [NF-03 Environment Catalog](https://app.notion.com/p/3e60f430ed1081408816e01b8a36daf9)
 
+### Operator audit trail (NF-04)
+
+| Feature | Page | How it works |
+| --- | --- | --- |
+| Activity catalog | `/activity` (ITSM tree) | `GET /api/devops/operator-activity` — append-only log mirrored from DevOps writes (approve/reject/promote/rollback, K8s day-2, cloud account, templates). Filter by ScopeBar `project_id` / `environment`; reloads when scope changes. |
+| Ticket detail | `/tickets` inspector | `GET /api/devops/requests/:id` includes `operator_activity` (last 10) merged into Request Activity timeline. Successful promote also writes an event on the **source** request id. |
+| Cloud account detail | `/cloud-accounts/[id]` | Same API returns `operator_activity` (last 10) for the account. |
+| Home recent ops | `/dashboard` | `GET /api/devops/workspace` activity feed merges operator audit rows (visible projects) with request/incident updates. |
+| K8s resource activity | K8s drill-down APIs | K8s operator feed reads `devops_operator_audit_log` (falls back to legacy admin audit if table missing). |
+| Failed promote | API | Blocked/failed promote writes `result=blocked` or `failed` with a safe summary (no secrets). |
+
+Notion: [NF-04 Operator Audit Trail](https://app.notion.com/p/3e60f430ed10810298b4d9a214383335)
+
 ### Kubernetes workspace (NF-02)
 
 **Who:** DevOps operators and managers (`devops_token`). User and Admin portals have no K8s workspace.

@@ -727,6 +727,14 @@ func workspaceRecentActivity(portal string, viewerID int) []workspaceActivity {
 		_ = rows.Close()
 	}
 
+	if portal == "devops" && viewerID > 0 {
+		if opRows, err := listOperatorAuditForDevops(viewerID, 16, 0, 0, "", "", ""); err == nil {
+			for _, op := range opRows {
+				events = append(events, operatorAuditToWorkspaceActivity(op, portal))
+			}
+		}
+	}
+
 	return sortWorkspaceActivity(events, 8)
 }
 
