@@ -28,7 +28,34 @@ type operatorAuditRow struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+const (
+	operatorAuditDefaultLimit = 50
+	operatorAuditMaxLimit     = 200
+	operatorAuditMaxOffset    = 10_000
+	operatorAuditResourceMax  = 10
+)
+
 var operatorAuditSecretPattern = regexp.MustCompile(`(?i)(password|secret|token|bearer|kubeconfig|api[_-]?key|authorization)\s*[:=]\s*\S+`)
+
+func normalizeOperatorAuditLimit(limit int) int {
+	if limit <= 0 {
+		return operatorAuditDefaultLimit
+	}
+	if limit > operatorAuditMaxLimit {
+		return operatorAuditMaxLimit
+	}
+	return limit
+}
+
+func normalizeOperatorAuditOffset(offset int) int {
+	if offset < 0 {
+		return 0
+	}
+	if offset > operatorAuditMaxOffset {
+		return operatorAuditMaxOffset
+	}
+	return offset
+}
 
 func migrateOperatorAuditSchema() {
 	if DB == nil {
@@ -262,12 +289,8 @@ func listOperatorAuditForDevops(userID, limit, offset int, projectIDFilter int, 
 	if DB == nil {
 		return []operatorAuditRow{}, nil
 	}
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 200 {
-		limit = 200
-	}
+	limit = normalizeOperatorAuditLimit(limit)
+	offset = normalizeOperatorAuditOffset(offset)
 	query := `
 		SELECT o.id, o.actor_user_id, COALESCE(u.username, ''), COALESCE(o.team_slug, ''),
 		       o.project_id, COALESCE(p.name, ''), COALESCE(p.code, ''),
@@ -312,7 +335,7 @@ func listOperatorAuditForDevops(userID, limit, offset int, projectIDFilter int, 
 	}
 	defer func() { _ = rows.Close() }()
 
-	candidates := make([]operatorAuditRow, 0, limit)
+	candidates := make([]operatorAuditRow, 0, operatorAuditMaxLimit)
 	for rows.Next() {
 		var row operatorAuditRow
 		var actorID, projectID sql.NullInt64
@@ -345,7 +368,7 @@ func listOperatorAuditForDevops(userID, limit, offset int, projectIDFilter int, 
 	for _, p := range projects {
 		projectByID[p.ID] = p
 	}
-	out := make([]operatorAuditRow, 0, len(candidates))
+	out := make([]operatorAuditRow, 0, operatorAuditMaxLimit)
 	for _, row := range candidates {
 		if row.ProjectID == nil || *row.ProjectID <= 0 {
 			out = append(out, row)
@@ -367,8 +390,11 @@ func filterOperatorAuditVisible(userID int, rows []operatorAuditRow) []operatorA
 	for _, p := range projects {
 		projectByID[p.ID] = p
 	}
-	out := make([]operatorAuditRow, 0, len(rows))
+	out := make([]operatorAuditRow, 0, operatorAuditMaxLimit)
 	for _, row := range rows {
+		if len(out) >= operatorAuditMaxLimit {
+			break
+		}
 		if row.ProjectID == nil || *row.ProjectID <= 0 {
 			out = append(out, row)
 			continue
@@ -395,8 +421,8 @@ func devopsOperatorActivityHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	offset, _ := strconv.Atoi(q.Get("offset"))
+	limit := normalizeOperatorAuditLimit(parseIntQueryDefault(q.Get("limit"), operatorAuditDefaultLimit))
+	offset := normalizeOperatorAuditOffset(parseIntQueryDefault(q.Get("offset"), 0))
 	projectID, _ := strconv.Atoi(strings.TrimSpace(q.Get("project_id")))
 	environment := strings.TrimSpace(q.Get("environment"))
 	resourceType := strings.TrimSpace(q.Get("resource_type"))
@@ -414,9 +440,24 @@ func devopsOperatorActivityHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "events": items})
 }
 
+func parseIntQueryDefault(raw string, fallback int) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
 func operatorAuditEventsForResource(userID int, resourceType, resourceID string, limit int) ([]operatorAuditRow, error) {
 	if limit <= 0 {
-		limit = 10
+		limit = operatorAuditResourceMax
+	}
+	if limit > operatorAuditResourceMax {
+		limit = operatorAuditResourceMax
 	}
 	return listOperatorAuditForDevops(userID, limit, 0, 0, "", resourceType, resourceID)
 }
