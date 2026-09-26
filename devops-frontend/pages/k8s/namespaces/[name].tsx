@@ -6,6 +6,7 @@ import DevOpsLayout from '../../../components/DevOpsLayout';
 import K8sOperatorNextSteps from '../../../components/K8sOperatorNextSteps';
 import K8sWorkspaceShell from '../../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../../context/ApiUrlContext';
+import { buildClusterWorkspaceEntry } from '../../../lib/k8sWorkspaceNav';
 import {
   buildK8sHref,
   fetchK8sClusterDetail,
@@ -144,9 +145,9 @@ export default function DevOpsK8sNamespaceDetailPage() {
     };
   }, [healthRow, namespaceEvents, namespaceLogs]);
 
-  const clusterHref = buildK8sHref(`/k8s/clusters/${encodeURIComponent(scopeCluster)}`, {
+  const clusterHref = buildClusterWorkspaceEntry(scopeCluster, {
     project_id: scopeProjectId || undefined,
-    cluster_name: scopeCluster || undefined,
+    namespace: namespaceName || undefined,
     environment: scopeEnvironment || undefined,
   });
 

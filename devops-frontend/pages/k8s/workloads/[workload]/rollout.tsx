@@ -6,6 +6,7 @@ import DevOpsLayout from '../../../../components/DevOpsLayout';
 import K8sOperatorNextSteps from '../../../../components/K8sOperatorNextSteps';
 import K8sWorkspaceShell from '../../../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../../../context/ApiUrlContext';
+import { buildClusterWorkspaceEntry } from '../../../../lib/k8sWorkspaceNav';
 import {
   buildK8sHref,
   fetchK8sActivity,
@@ -264,9 +265,9 @@ export default function DevOpsK8sWorkloadRolloutPage() {
       detail: 'Compare rollout checkpoints with the most recent event churn in this namespace.',
     },
     {
-      href: buildK8sHref(`/k8s/clusters/${encodeURIComponent(scopeCluster)}`, {
+      href: buildClusterWorkspaceEntry(scopeCluster, {
         project_id: scopeProjectId || undefined,
-        cluster_name: scopeCluster || undefined,
+        namespace: namespace || undefined,
         environment: environment || undefined,
       }),
       label: 'Cluster blast radius',

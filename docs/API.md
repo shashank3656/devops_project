@@ -414,7 +414,8 @@ All require a DevOps user. Writes (onboard, actions, terminal) typically require
 
 | Method | Path | What it does |
 | --- | --- | --- |
-| GET/POST | `/api/devops/k8s-connections` | List or onboard a cluster connection. |
+| GET/POST | `/api/devops/k8s-connections` | List or onboard a cluster connection. GET returns `auth_modes_by_cloud` (AWS EKS IAM, Azure AKS workload identity, GCP GKE workload identity, `secret_ref`, kubeconfig/token, in-cluster). POST encrypts pasted secrets at rest; `secret_ref` resolves on the server only. |
+| POST | `/api/devops/k8s-connections/test` | DevOps manager — validate HTTPS endpoint, trust JSON, and secret ref before save. |
 | GET | `/api/devops/k8s-overview` | Cross-cluster summary. |
 | GET | `/api/devops/k8s-clusters` | Cluster list. |
 | GET | `/api/devops/k8s-cluster-detail` | One cluster. |

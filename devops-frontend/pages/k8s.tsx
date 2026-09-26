@@ -298,7 +298,7 @@ export default function DevOpsK8sClustersPage() {
                       <tr key={`${cluster.project_id}-${cluster.cloud}-${cluster.cluster_name}-${cluster.environment}`}>
                         <td>
                           <Link
-                            href={buildK8sHref(`/k8s/clusters/${encodeURIComponent(cluster.cluster_name)}`, {
+                            href={buildK8sHref('/k8s/workspace', {
                               project_id: cluster.project_id,
                               cluster_name: cluster.cluster_name,
                               environment: cluster.environment,

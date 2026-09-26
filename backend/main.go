@@ -773,6 +773,7 @@ func main() {
 	http.HandleFunc("/api/devops/cost-digest", devopsCostDigestHandler)
 	http.HandleFunc("/api/devops/project-dependencies", devopsProjectDependenciesHandler)
 	http.HandleFunc("/api/devops/k8s-connections", devopsK8sConnectionsHandler)
+	http.HandleFunc("/api/devops/k8s-connections/test", devopsK8sConnectionsTestHandler)
 	http.HandleFunc("/api/devops/k8s-overview", devopsK8sOverviewHandler)
 	http.HandleFunc("/api/devops/k8s-clusters", devopsK8sClustersHandler)
 	http.HandleFunc("/api/devops/k8s-cluster-detail", devopsK8sClusterDetailHandler)
