@@ -1,7 +1,7 @@
 import Head from 'next/head';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import { ScorecardTable } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 
@@ -72,49 +72,14 @@ export default function ScorecardsPage() {
           </div>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
-        {loading ? <div className="empty-state">Loading scorecards…</div> : null}
-        {!loading && items.length === 0 ? <div className="empty-state">Add services to see scorecards.</div> : null}
-        {items.length > 0 ? (
-          <section className="portal-surface">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Service</th>
-                  <th>Score</th>
-                  <th>DORA</th>
-                  <th>Checks</th>
-                  <th>Last change</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={`${item.service}-${item.environment || ''}`}>
-                    <td>
-                      <strong>{item.service}</strong>
-                      <div className="portal-surface__subtitle">{item.team || item.project_name || item.environment || '—'}</div>
-                    </td>
-                    <td>{item.score}</td>
-                    <td>
-                      {(item.dora || []).filter((metric) => metric.key === 'change_failure_rate' || metric.key === 'deploy_frequency').map((metric) => (
-                        <div key={metric.key}>{metric.label}: {metric.value} {metric.unit} ({metric.band})</div>
-                      ))}
-                    </td>
-                    <td>
-                      {(item.checks || []).map((check) => (
-                        <div key={check.key}>{check.passed ? 'pass' : 'fail'} · {check.label}</div>
-                      ))}
-                    </td>
-                    <td>
-                      {item.last_change_id ? <Link href={`/changes/${item.last_change_id}`}>{item.last_change}</Link> : '—'}
-                      {item.slo_burned ? <div className="portal-surface__subtitle">SLO burning</div> : null}
-                      {item.drift?.drifted ? <div className="portal-surface__subtitle">{item.drift.detail || 'Live image drifted from last CHG'}</div> : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        ) : null}
+        <section className="portal-surface">
+          <ScorecardTable
+            variant="devops"
+            rows={items}
+            loading={loading}
+            empty={<div className="empty-state">Add services to see scorecards.</div>}
+          />
+        </section>
       </div>
     </DevOpsLayout>
   );

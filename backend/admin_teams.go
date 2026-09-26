@@ -25,12 +25,17 @@ func adminBreakGlassUserID(r *http.Request) (int, bool) {
 	if secret == "" || r.Header.Get("X-Admin-Secret") != secret {
 		return 0, false
 	}
+	if origin := strings.TrimSpace(r.Header.Get("Origin")); origin != "" {
+		log.Printf("admin break-glass rejected (browser Origin) origin=%s path=%s", origin, r.URL.Path)
+		return 0, false
+	}
 	id, err := strconv.Atoi(strings.TrimSpace(os.Getenv("ADMIN_BREAKGLASS_USER_ID")))
 	if err != nil || id <= 0 {
 		log.Printf("admin break-glass rejected (ADMIN_BREAKGLASS_USER_ID unset) path=%s remote=%s", r.URL.Path, r.RemoteAddr)
 		return 0, false
 	}
 	log.Printf("admin break-glass used user_id=%d path=%s remote=%s", id, r.URL.Path, r.RemoteAddr)
+	AppendAuditLog(&id, "admin_break_glass", "auth", r.URL.Path, r.RemoteAddr)
 	return id, true
 }
 

@@ -23,7 +23,7 @@ import {
   IconFileText,
   IconChevronDown,
 } from './Icons';
-import SupportHub from './SupportHub';
+import { SupportHub } from '@infragate/ui';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
 import {
   CommandPalette,
@@ -132,6 +132,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/team': 'Team',
   '/credential-audit': 'Secrets',
   '/profile': 'Profile',
+  '/cloud-resources': 'Cloud inventory',
 };
 
 function getPageTitle(pathname: string): string {
@@ -510,6 +511,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       Icon: IconProjects,
       children: [
         { href: '/projects', label: 'Catalog' },
+        { href: '/cloud-resources', label: 'Cloud inventory' },
         { href: '/team', label: 'Teams' },
       ],
     });
@@ -964,6 +966,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         quickPrompts={supportQuickPrompts}
         apiUrl={apiUrl}
         token={typeof window === 'undefined' ? null : localStorage.getItem(DEVOPS_TOKEN_KEY)}
+        remapIncidentCitationLinks
         externalDocsHref={process.env.NEXT_PUBLIC_DOCS_URL || ''}
         escalationActions={[
           {

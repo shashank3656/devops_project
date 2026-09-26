@@ -1,7 +1,7 @@
 import Head from 'next/head';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import { ScorecardTable } from '@infragate/ui';
 import { SITE_NAME } from '../lib/site';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -67,46 +67,14 @@ export default function UserScorecardsPage() {
           </div>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
-        {loading ? <div className="empty-state">Loading…</div> : null}
-        {!loading && items.length === 0 ? <div className="empty-state">No services on your projects yet.</div> : null}
-        {items.length > 0 ? (
-          <section className="portal-surface">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Service</th>
-                  <th>Score</th>
-                  <th>Incidents</th>
-                  <th>DORA</th>
-                  <th>Last change</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={`${item.service}-${item.environment || ''}`}>
-                    <td>
-                      <strong>{item.service}</strong>
-                      <div className="portal-surface__subtitle">
-                        {(item.checks || []).filter((check) => !check.passed).map((check) => check.label).join(' · ') || 'All checks passed'}
-                      </div>
-                    </td>
-                    <td>{item.score}</td>
-                    <td>{item.open_incidents}</td>
-                    <td>
-                      {(item.dora || []).filter((metric) => metric.key === 'change_failure_rate').map((metric) => (
-                        <span key={metric.key}>{metric.value}{metric.unit === 'percent' ? '%' : ` ${metric.unit}`} ({metric.band})</span>
-                      ))}
-                    </td>
-                    <td>
-                      {item.last_change_id ? <Link href={`/changes/${item.last_change_id}`}>{item.last_change}</Link> : '—'}
-                      {item.drift?.drifted ? <div className="portal-surface__subtitle">{item.drift.detail || 'Live image drifted from last CHG'}</div> : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        ) : null}
+        <section className="portal-surface">
+          <ScorecardTable
+            variant="user"
+            rows={items}
+            loading={loading}
+            empty={<div className="empty-state">No services on your projects yet.</div>}
+          />
+        </section>
       </div>
     </>
   );

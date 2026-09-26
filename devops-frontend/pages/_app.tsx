@@ -1,7 +1,7 @@
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { useEffect } from 'react';
-import { applyTheme, installApiUrlRewrite } from '@infragate/ui';
+import { applyTheme, ConfirmProvider, installApiUrlRewrite, PortalErrorBoundary } from '@infragate/ui';
 import { ApiUrlProvider } from '../context/ApiUrlContext';
 import { purgeUnsignedDevopsSession } from '../lib/session';
 import { DEVOPS_SITE_NAME } from '../lib/site';
@@ -28,7 +28,11 @@ export default function App({ Component, pageProps }: AppProps) {
         <meta name="theme-color" content="#0d9488" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
       </Head>
-      <Component {...pageProps} />
+      <ConfirmProvider>
+        <PortalErrorBoundary>
+          <Component {...pageProps} />
+        </PortalErrorBoundary>
+      </ConfirmProvider>
     </ApiUrlProvider>
   );
 }

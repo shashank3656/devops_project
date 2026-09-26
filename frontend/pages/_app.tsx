@@ -2,7 +2,7 @@ import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect } from 'react';
-import { applyTheme, installApiUrlRewrite } from '@infragate/ui';
+import { applyTheme, installApiUrlRewrite, PortalErrorBoundary } from '@infragate/ui';
 import AppLayout from '../components/AppLayout';
 import { ToastProvider } from '../context/ToastContext';
 import { installUserSessionGuard, purgeUnsignedUserSession } from '../lib/session';
@@ -38,13 +38,15 @@ export default function App({ Component, pageProps }: AppProps) {
         <meta name="theme-color" content="#0d9488" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
       </Head>
-      {showLayout ? (
-        <AppLayout>
+      <PortalErrorBoundary>
+        {showLayout ? (
+          <AppLayout>
+            <Component {...pageProps} />
+          </AppLayout>
+        ) : (
           <Component {...pageProps} />
-        </AppLayout>
-      ) : (
-        <Component {...pageProps} />
-      )}
+        )}
+      </PortalErrorBoundary>
     </ToastProvider>
   );
 }

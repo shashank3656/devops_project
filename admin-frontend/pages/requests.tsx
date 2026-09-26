@@ -24,7 +24,7 @@ import {
   type SavedView,
 } from '@infragate/ui';
 import AdminLayout from '../components/AdminLayout';
-import RequestPRImpact from '../components/RequestPRImpact';
+import { RequestPRImpact } from '@infragate/ui';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
 
 interface BlockedByItem {

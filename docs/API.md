@@ -455,6 +455,8 @@ All require a DevOps user. Writes (onboard, actions, terminal) typically require
 | GET | `/api/devops/previews` | devops | Ephemeral preview environments and estimated cost. Merge graduates a standard CHG; close without merge cancels. |
 | POST | `/api/devops/changes/:id/rollout` | manager | `{ stage: canary|10|50|100 }` progressive delivery. |
 | GET | `/api/devops/scorecards` | devops | Service scorecards from the catalog + CHG/INC/SLO + live-vs-CHG drift. |
+| GET | `/api/devops/cloud/resources` | devops | Paginated read-only cloud inventory. Query: `cloud` (default `aws`), `team`, `account_id`, `environment`, `region`, `q`, `project_id`, `page`, `limit`. |
+| GET | `/api/devops/cloud/resources/:id` | devops | Single inventory row by id. |
 | GET | `/api/devops/evidence` | devops | Evidence pack. `?format=md` downloads Markdown. |
 | GET | `/api/devops/policies` | devops | Stored Rego deny rules. |
 | POST | `/api/devops/policies` | manager | `{ name, target, rego }` target `change` or `request`. |

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { SupportAction, SupportArticle } from '../lib/supportContent';
+import type { SupportAction, SupportArticle } from './supportTypes';
 
 type SupportTab = 'chat' | 'docs';
 
@@ -31,6 +31,8 @@ interface SupportHubProps {
   escalationActions?: SupportAction[];
   apiUrl?: string;
   token?: string | null;
+  /** DevOps portal: open incident editor from copilot citation links. */
+  remapIncidentCitationLinks?: boolean;
 }
 
 function matchesRoute(article: SupportArticle, currentPath: string): boolean {
@@ -126,6 +128,7 @@ export default function SupportHub({
   escalationActions = [],
   apiUrl,
   token,
+  remapIncidentCitationLinks = false,
 }: SupportHubProps) {
   const [activeTab, setActiveTab] = useState<SupportTab>(initialTab);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -226,12 +229,19 @@ export default function SupportHub({
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         const text = typeof data?.reply === 'string' && data.reply.trim() ? data.reply : fallback.text;
-        const citations = Array.isArray(data?.citations) ? data.citations.map((item: ChatCitation) => {
-          if (item.href && item.href.startsWith('/incidents/') && !item.href.includes('/edit')) {
-            return { ...item, href: `${item.href}/edit` };
-          }
-          return item;
-        }) : [];
+        const citations = Array.isArray(data?.citations)
+          ? data.citations.map((item: ChatCitation) => {
+              if (
+                remapIncidentCitationLinks &&
+                item.href &&
+                item.href.startsWith('/incidents/') &&
+                !item.href.includes('/edit')
+              ) {
+                return { ...item, href: `${item.href}/edit` };
+              }
+              return item;
+            })
+          : [];
         setMessages((current) => [...current, { id: `assistant-${Date.now()}`, role: 'assistant', text, actions: fallback.actions, citations }]);
       })
       .catch(() => setMessages((current) => [...current, fallback]));

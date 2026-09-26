@@ -729,6 +729,8 @@ func main() {
 	http.HandleFunc("/api/devops/approval-notification-analytics", devopsApprovalNotificationAnalyticsHandler)
 	http.HandleFunc("/api/devops/requests", devopsRequestsListHandler)
 	http.HandleFunc("/api/devops/requests/", devopsRequestActionHandler)
+	http.HandleFunc("/api/devops/cloud/resources", devopsCloudResourcesRouter)
+	http.HandleFunc("/api/devops/cloud/resources/", devopsCloudResourcesRouter)
 	http.HandleFunc("/api/devops/project-options", devopsProjectOptionsHandler)
 	http.HandleFunc("/api/devops/project-analytics", devopsProjectAnalyticsHandler)
 	http.HandleFunc("/api/devops/change-calendar", devopsChangeCalendarHandler)
@@ -828,10 +830,6 @@ func main() {
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/ready", readyHandler)
 
-	// Swagger/OpenAPI endpoint (will be served from static files or generated)
-	http.HandleFunc("/swagger.json", swaggerHandler)
-	http.HandleFunc("/api-docs", swaggerUIHandler)
-
 	addr := listenAddr()
 	log.Printf("Backend server starting on %s", addr)
 	log.Printf("Public API URL: %s", strings.TrimRight(os.Getenv("NEXT_PUBLIC_API_URL"), "/"))
@@ -885,7 +883,6 @@ func main() {
 	log.Println("  POST /api/admin/request-bundle-normalization - Apply legacy bundle normalization (admin only)")
 	log.Println("  GET  /api/admin/stats     - Dashboard stats for all PRs (admin only)")
 	log.Println("  GET  /health         - Health check")
-	log.Println("  GET  /swagger.json    - OpenAPI spec")
 	log.Println("  GET  /api-docs       - Swagger UI")
 
 	if err := http.ListenAndServe(addr, withCORS(withObservability(withRecovery(http.DefaultServeMux)))); err != nil {

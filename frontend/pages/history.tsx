@@ -18,7 +18,7 @@ import {
 } from '@infragate/ui';
 import { useToast } from '../context/ToastContext';
 import CalendarDateInput from '../components/CalendarDateInput';
-import RequestPRImpact from '../components/RequestPRImpact';
+import { RequestPRImpact } from '@infragate/ui';
 import RequestLifecyclePanel from '../components/RequestLifecyclePanel';
 
 import { maskSensitiveJson } from '../lib/maskSensitive';
@@ -1729,7 +1729,7 @@ export default function History() {
                           Open pull request →
                         </a>
                       ) : null}
-                      <RequestPRImpact apiUrl={apiUrl} token={typeof window === 'undefined' ? null : localStorage.getItem('token')} requestId={detailRequest.id} />
+                      <RequestPRImpact compact apiUrl={apiUrl} token={typeof window === 'undefined' ? null : localStorage.getItem('token')} requestId={detailRequest.id} />
                       <button
                         type="button"
                         onClick={() => applyAsTemplate(detailRequest)}
