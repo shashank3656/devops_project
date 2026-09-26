@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import {
   CostCheckCard,
+  BulkBar,
   DataTable,
   InspectorDrawer,
   PlanReviewCard,
@@ -11,6 +12,7 @@ import {
   formatRelativeTime,
   queryString,
   type DataTableColumn,
+  type RowKey,
   type PlanReview,
   type PolicyCheckSummary,
   type RequestCostCheck,
@@ -315,6 +317,7 @@ export default function History() {
   const [toDate, setToDate] = useState('');
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [detailRequest, setDetailRequest] = useState<PRRequest | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [canApproveByManager, setCanApproveByManager] = useState(false);
@@ -385,8 +388,22 @@ export default function History() {
     if (!router.isReady) return;
     setProjectId(queryString(router.query, 'project_id'));
     setScopeEnv(queryString(router.query, 'environment'));
+    const view = queryString(router.query, 'view');
+    if (view === 'team') {
+      setViewMode('team');
+      setShowAdvancedFilters(true);
+    }
+    const status = queryString(router.query, 'status');
+    if (status) {
+      setStatusFilter(status);
+    }
+    const requestId = queryString(router.query, 'id');
+    if (requestId) {
+      setFilterType('pr_number');
+      setFilterValue(requestId);
+    }
     setPage(0);
-  }, [router.isReady, router.query.project_id, router.query.environment]);
+  }, [router.isReady, router.query.project_id, router.query.environment, router.query.view, router.query.status, router.query.id]);
 
   useEffect(() => {
     setRecentIds(getRecentRequestIds());
@@ -421,6 +438,10 @@ export default function History() {
     }
     fetchHistory();
   }, [filterType, filterValue, projectId, scopeEnv, page, viewMode, statusFilter, fromDate, toDate]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [page]);
 
   useEffect(() => {
     try {
@@ -485,14 +506,25 @@ export default function History() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token || token === 'undefined') return;
-    fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => {
-        if (data?.user?.id != null) setCurrentUserId(data.user.id);
-        // Default to Group tickets view once for portal managers so they see all their group requests
-        if (data?.user?.is_portal_manager === true && !defaultedToTeamView.current) {
+    Promise.all([
+      fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => (res.ok ? res.json() : null)),
+      fetch(`${apiUrl}/api/me/managed-teams`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => (res.ok ? res.json() : null)),
+      fetch(`${apiUrl}/api/me/pending-manager-approval`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => (res.ok ? res.json() : null)),
+    ])
+      .then(([meData, managedData, pendingData]) => {
+        if (meData?.user?.id != null) setCurrentUserId(meData.user.id);
+        const managedTeams = Array.isArray(managedData?.teams) ? managedData.teams.length : 0;
+        const pendingApprovals =
+          typeof pendingData?.pending_manager_approval_count === 'number' ? pendingData.pending_manager_approval_count : 0;
+        const shouldUseTeamView =
+          meData?.user?.is_portal_manager === true || managedTeams > 0 || pendingApprovals > 0;
+        if (shouldUseTeamView && !defaultedToTeamView.current && queryString(router.query, 'view') !== 'mine') {
           defaultedToTeamView.current = true;
           setViewMode('team');
+          setShowAdvancedFilters(true);
+          if (pendingApprovals > 0 && !queryString(router.query, 'status')) {
+            setStatusFilter('pending_user_manager_approval');
+          }
         }
       })
       .catch(() => {});
@@ -500,7 +532,7 @@ export default function History() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setProjects(Array.isArray(data?.projects) ? data.projects : []))
       .catch(() => setProjects([]));
-  }, [apiUrl]);
+  }, [apiUrl, router.isReady, router.query.view, router.query.status]);
 
   const fetchHistory = async () => {
     setLoading(true);
@@ -1335,6 +1367,15 @@ export default function History() {
           ) : null}
         </div>
 
+          {!loading && !error && sortedRequests.length > 0 ? (
+            <p className="history-requests-summary">
+              <span>
+                Showing {sortedRequests.length} of {totalCount} requests
+              </span>
+              <span>Open a row to view details without leaving this page.</span>
+            </p>
+          ) : null}
+
           {/* Table */}
           <div className="card history-table-card ig-table-card">
             {!loading && error ? (
@@ -1360,6 +1401,9 @@ export default function History() {
                   rowKey={(req) => req.id}
                   loading={loading}
                   skeletonRows={PAGE_SIZE}
+                  selectable
+                  selectedKeys={selectedIds as Set<RowKey>}
+                  onSelectionChange={(next) => setSelectedIds(new Set(Array.from(next).map(Number)))}
                   activeKey={detailRequest?.id ?? null}
                   onRowOpen={(req) => void openDetail(req)}
                   sort={{ key: sortBy, direction: sortDesc ? 'desc' : 'asc' }}
@@ -1387,34 +1431,56 @@ export default function History() {
                 />
               </>
             )}
-            {/* Pagination */}
-            {!loading && !error && totalCount > 0 && (
-              <div className="history-pagination">
-                <span className="history-pagination__info">
-                  Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount}
-                </span>
-                <div className="history-pagination__actions">
-                  <button
-                    onClick={() => setPage(p => Math.max(0, p - 1))}
-                    disabled={page === 0}
-                    className="btn btn-secondary"
-                  >
-                    Previous
-                  </button>
-                  <span className="history-pagination__page">
-                    Page {page + 1} of {totalPages}
-                  </span>
-                  <button
-                    onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                    disabled={page >= totalPages - 1}
-                    className="btn btn-secondary"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
+
+          {!loading && error ? null : (
+            <>
+              <p className="ig-table-hint">
+                <span className="ig-kbd">J</span>/<span className="ig-kbd">K</span> move · <span className="ig-kbd">Enter</span> open ·{' '}
+                <span className="ig-kbd">X</span> select · <span className="ig-kbd">Esc</span> close drawer
+              </p>
+              {!loading && totalCount > 0 ? (
+                <div className="history-pagination history-pagination--below">
+                  <span className="history-pagination__info">
+                    Page {page + 1} of {totalPages} ({totalCount} total)
+                  </span>
+                  <div className="history-pagination__actions">
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.max(0, p - 1))}
+                      disabled={page === 0}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                      disabled={page >= totalPages - 1}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
+
+          <BulkBar count={selectedIds.size} noun="request" onClear={() => setSelectedIds(new Set())}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={selectedIds.size !== 1}
+              onClick={() => {
+                const id = Array.from(selectedIds)[0];
+                const req = sortedRequests.find((row) => row.id === id);
+                if (req) void openDetail(req);
+              }}
+            >
+              Open selected
+            </button>
+          </BulkBar>
 
           {/* View Details Modal */}
           {(detailRequest !== null || detailLoading) && (

@@ -1327,6 +1327,15 @@ export default function AdminRequests() {
             ) : null}
           </form>
 
+          {!loading && requests.length > 0 ? (
+            <p className="admin-requests-summary">
+              <span>
+                Showing {requests.length} of {total} requests
+              </span>
+              <span>Open a row to work the request without leaving this page.</span>
+            </p>
+          ) : null}
+
           <div className="portal-surface portal-surface--table ig-table-card">
             {!loading && error && requests.length === 0 ? (
               <div className="admin-queue-state admin-queue-state--error">
@@ -1367,10 +1376,17 @@ export default function AdminRequests() {
                     </div>
                   }
                 />
-                <p className="ig-table-hint">
-                  <span className="ig-kbd">J</span>/<span className="ig-kbd">K</span> move · <span className="ig-kbd">Enter</span> open ·{' '}
-                  <span className="ig-kbd">X</span> select · <span className="ig-kbd">Esc</span> close
-                </p>
+              </>
+            )}
+          </div>
+
+          {!loading && error && requests.length === 0 ? null : (
+            <>
+              <p className="ig-table-hint">
+                <span className="ig-kbd">J</span>/<span className="ig-kbd">K</span> move · <span className="ig-kbd">Enter</span> open ·{' '}
+                <span className="ig-kbd">X</span> select · <span className="ig-kbd">Esc</span> close
+              </p>
+              {requests.length > 0 ? (
                 <div className="admin-requests-pagination">
                   <span className="admin-requests-pagination__info">
                     Page {currentPage} of {totalPages} ({total} total)
@@ -1394,9 +1410,9 @@ export default function AdminRequests() {
                     </button>
                   </div>
                 </div>
-              </>
-            )}
-          </div>
+              ) : null}
+            </>
+          )}
 
           <BulkBar count={selectedIds.size} noun="request" onClear={() => setSelectedIds(new Set())}>
             <button

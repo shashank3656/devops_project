@@ -138,6 +138,33 @@ func checkCanCreatePR(r *http.Request) (userID int, ok bool) {
 	return id, true
 }
 
+// checkPortalUser returns a verified portal user (viewer, contributor, or admin). Used for history, manager approval, and read-only request actions.
+func checkPortalUser(r *http.Request) (userID int, ok bool) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		return 0, false
+	}
+	token := strings.TrimSpace(authHeader[7:])
+	id, scopes, err := validateTokenOrAPIKey(token)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	if scopes != "" && !hasScope(scopes, "history:read") && !hasScope(scopes, "request:create") {
+		return 0, false
+	}
+	user, err := GetUserByID(id)
+	if err != nil || user == nil {
+		return 0, false
+	}
+	if !user.Verified {
+		return id, false
+	}
+	if user.Role != "contributor" && user.Role != "admin" && user.Role != "viewer" {
+		return id, false
+	}
+	return id, true
+}
+
 func createPRHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 

@@ -32,9 +32,8 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, canCreate := checkCanCreatePR(r)
-	if !canCreate {
-		// Allow admin for comments
+	userID, portalOK := checkPortalUser(r)
+	if !portalOK {
 		adminID, isAdmin := requireAdmin(w, r)
 		if !isAdmin {
 			return
@@ -265,6 +264,9 @@ func CanApproveByManager(req *PRRequest, userID int) bool {
 		return false
 	}
 	creatorID := *req.CreatedBy
+	if creatorID == userID {
+		return false
+	}
 	groupManagerID := GetGroupManagerForUserInTeam(creatorID, req.Team)
 	if groupManagerID == 0 {
 		groupManagerID = GetGroupManagerForUser(creatorID)
@@ -273,10 +275,42 @@ func CanApproveByManager(req *PRRequest, userID int) bool {
 		return true
 	}
 	creator, err := GetUserByID(creatorID)
-	if err != nil || creator == nil || creator.ManagerID == nil {
+	if err == nil && creator != nil && creator.ManagerID != nil && *creator.ManagerID == userID {
+		return true
+	}
+	return portalManagerCanApproveRequest(userID, creatorID, req.Team)
+}
+
+func portalManagerCanApproveRequest(approverID, creatorID int, requestTeam string) bool {
+	if approverID <= 0 || creatorID <= 0 || approverID == creatorID || DB == nil {
 		return false
 	}
-	return *creator.ManagerID == userID
+	approver, err := GetUserByID(approverID)
+	if err != nil || approver == nil || !approver.IsPortalManager {
+		return false
+	}
+	team := strings.TrimSpace(requestTeam)
+	if team != "" {
+		var ok bool
+		err := DB.QueryRow(`
+			SELECT EXISTS (
+				SELECT 1 FROM team_members mgr
+				INNER JOIN teams t ON t.id = mgr.team_id AND COALESCE(t.team_type,'portal') = 'portal'
+				  AND (LOWER(t.name) = LOWER($3) OR LOWER(t.slug) = LOWER($3))
+				INNER JOIN team_members creator ON creator.team_id = t.id AND creator.user_id = $2
+				WHERE mgr.user_id = $1
+			)`, approverID, creatorID, team).Scan(&ok)
+		return err == nil && ok
+	}
+	var ok bool
+	err = DB.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1 FROM team_members mgr
+			INNER JOIN team_members creator ON creator.team_id = mgr.team_id
+			INNER JOIN teams t ON t.id = mgr.team_id AND COALESCE(t.team_type,'portal') = 'portal'
+			WHERE mgr.user_id = $1 AND creator.user_id = $2
+		)`, approverID, creatorID).Scan(&ok)
+	return err == nil && ok
 }
 
 // handleRequestApproveByManager lets the creator's manager move request from pending_user_manager_approval to pending_devops_approval
