@@ -464,6 +464,8 @@ All require a DevOps user. Writes (onboard, actions, terminal) typically require
 | GET | `/api/admin/cloud/accounts` | admin | Read-only catalog of all onboarded accounts. |
 | GET | `/api/devops/cloud/resources` | devops | Paginated read-only inventory for **`cloud`** (`aws` / `azure` / `gcp`). Rows limited to **DevOps teams the user belongs to**. When accounts exist for that cloud, only **connected** account IDs for those teams appear. Query: `team`, `account_id`, `environment`, `region`, `q`, `project_id`, `page`, `limit`. |
 | GET | `/api/devops/cloud/resources/:id` | devops | Single inventory row if `team_slug` is visible to the user. |
+
+**DevOps UI (no extra API):** Account-scoped inventory landing is `/cloud-resources/account?cloud=&account_id=` — it calls the same list endpoint with `account_id` set. See [FEATURES.md](./FEATURES.md) § Cloud workspace.
 | GET | `/api/devops/evidence` | devops | Evidence pack. `?format=md` downloads Markdown. |
 | GET | `/api/devops/policies` | devops | Stored Rego deny rules. |
 | POST | `/api/devops/policies` | manager | `{ name, target, rego }` target `change` or `request`. |
