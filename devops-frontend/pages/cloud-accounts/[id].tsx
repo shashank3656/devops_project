@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import CloudTrustSetupGuide from '../../components/CloudTrustSetupGuide';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { cloudInventoryAccountHref } from '../../lib/cloudInventoryRoutes';
 import { normalizeCloudProvider, providerFormCopy, providerLabel } from '../../lib/cloudProviders';
 import { EmptyState, PageHeader, portalFetch } from '@infragate/ui';
 
@@ -167,7 +168,7 @@ export default function CloudAccountDetailPage() {
   };
 
   const inventoryHref = item
-    ? `/cloud-resources?cloud=${encodeURIComponent(normalizeCloudProvider(item.provider))}`
+    ? cloudInventoryAccountHref(item.provider, item.account_id)
     : '/cloud-resources';
 
   return (
