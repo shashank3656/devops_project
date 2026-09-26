@@ -180,7 +180,7 @@ Primary nav: Home, Approvals, Requests, People, Projects, Catalog, More. Mobile 
 
 Who: `devops_user` (and admins for some template routes). **Managers** (`is_manager`) own the request queue, CHGs, incidents, promotions, and GitOps writes.
 
-Primary nav (manager): Home, Requests, Changes, Deployments, Kubernetes, GitOps, Projects. Health, problems, policy as code, evidence, and credential audit stay under More tools. `/gitops` redirects to `/gitops-projects`; `/deployments` redirects to `/promotions`. Mobile tabs: Home, Requests, Changes, Kubernetes.
+Primary nav: Home, Requests, **ITSM**, then (managers only) Deployments, Kubernetes, GitOps, Projects. **ITSM** is one expandable tree for all DevOps users — Change, Incident, and Problem records plus Knowledge: changes catalog, change calendar, services, release notes, incidents, incident notes, problems, knowledge. Parent link lands on `/changes`. Write actions on those pages still follow manager RBAC on the API. Health, policy as code, evidence, and credential audit stay under **More tools** (managers). `/gitops` redirects to `/gitops-projects`; `/deployments` redirects to `/promotions`. Mobile tabs: Home, Requests, ITSM, Kubernetes.
 
 ### Home and requests
 
@@ -260,6 +260,18 @@ DevOps **Cloud workspace** uses shared hub nav: **Accounts** ↔ **Inventory**, 
 
 Notion: [NF-01 Cloud Account Onboarding](https://app.notion.com/p/3e60f430ed10810793f7c3c1ae2d9a82) · [BRD-07 Cloud Resource Inventory](https://app.notion.com/p/3e60f430ed10810a8e2accfa0ca11116)
 
+### Environment catalog (NF-03)
+
+**Who:** DevOps users on projects their team owns or is granted; managers see all projects.
+
+| Feature | Page | How it works |
+| --- | --- | --- |
+| Catalog | `/environments` | `GET /api/devops/environment-catalog` — per-project environments with type, linked **cloud account** (NF-01), **default cluster** (NF-02 onboard), region/owners metadata, and **freeze** from `deployment_freezes`. |
+| ScopeBar | Header (all DevOps pages) | When a project is selected, environment dropdown loads catalog names for that project instead of hardcoded `dev/uat/prod`. |
+| Home pipeline | `/dashboard` | Pipeline stages mark env-specific freezes; queue surfaces active env freezes with link to catalog. Respects ScopeBar `project_id` on workspace load. |
+
+Notion: [NF-03 Environment Catalog](https://app.notion.com/p/3e60f430ed1081408816e01b8a36daf9)
+
 ### Kubernetes workspace (NF-02)
 
 **Who:** DevOps operators and managers (`devops_token`). User and Admin portals have no K8s workspace.
@@ -282,6 +294,8 @@ Notion: [NF-01 Cloud Account Onboarding](https://app.notion.com/p/3e60f430ed1081
 Notion: [NF-02 Kubernetes Workspace](https://app.notion.com/p/3e60f430ed1081d2a06ef9c037bbcde3)
 
 ### Incidents and problems
+
+DevOps sidebar: all pages below are linked under primary **ITSM** (with Changes and Knowledge in the same tree).
 
 | Feature | Page | How it works |
 | --- | --- | --- |

@@ -8,22 +8,29 @@ export default function ScopeBar({
   scope,
   onChange,
   onClear,
+  catalogEnvironments,
 }: {
   projects: ScopeProject[];
   scope: WorkspaceScope;
   onChange: (next: Partial<WorkspaceScope>) => void;
   onClear?: () => void;
+  /** NF-03: when set for the selected project, overrides project.environments */
+  catalogEnvironments?: string[];
 }) {
   const selected = useMemo(
     () => projects.find((project) => String(project.id) === String(scope.projectId)) || null,
     [projects, scope.projectId],
   );
   const environments = useMemo(() => {
+    const fromCatalog = (catalogEnvironments || []).map((item) => item.trim()).filter(Boolean);
+    if (scope.projectId && fromCatalog.length) {
+      return Array.from(new Set(fromCatalog));
+    }
     const fromProject = selected?.environments?.length ? selected.environments : [];
     const fromAll = projects.flatMap((project) => project.environments || []);
     const unique = Array.from(new Set((fromProject.length ? fromProject : fromAll).map((item) => item.trim()).filter(Boolean)));
     return unique.length ? unique : FALLBACK_ENVIRONMENTS;
-  }, [projects, selected]);
+  }, [projects, selected, catalogEnvironments, scope.projectId]);
   const hasScope = Boolean(scope.projectId || scope.environment);
 
   return (
