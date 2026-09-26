@@ -13,6 +13,15 @@ func TestSanitizeOperatorAuditSummary(t *testing.T) {
 	}
 }
 
+func TestNormalizeOperatorAuditLimit(t *testing.T) {
+	if got := normalizeOperatorAuditLimit(0); got != operatorAuditDefaultLimit {
+		t.Fatalf("default limit = %d, want %d", got, operatorAuditDefaultLimit)
+	}
+	if got := normalizeOperatorAuditLimit(9999); got != operatorAuditMaxLimit {
+		t.Fatalf("capped limit = %d, want %d", got, operatorAuditMaxLimit)
+	}
+}
+
 func TestParsePromoteSourceRequestID(t *testing.T) {
 	if got := parsePromoteSourceRequestID("devops:42->prod:gate-approved"); got != 42 {
 		t.Fatalf("parsePromoteSourceRequestID = %d, want 42", got)

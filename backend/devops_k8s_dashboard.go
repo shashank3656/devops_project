@@ -2556,11 +2556,15 @@ func devopsK8sActivityHandler(w http.ResponseWriter, r *http.Request) {
 	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
 	workloadName := strings.TrimSpace(r.URL.Query().Get("workload_name"))
 	podName := strings.TrimSpace(r.URL.Query().Get("pod_name"))
+	const k8sActivityMaxLimit = 50
 	limit := 12
 	if rawLimit := strings.TrimSpace(r.URL.Query().Get("limit")); rawLimit != "" {
-		if parsed, err := strconv.Atoi(rawLimit); err == nil && parsed > 0 && parsed <= 50 {
+		if parsed, err := strconv.Atoi(rawLimit); err == nil && parsed > 0 {
 			limit = parsed
 		}
+	}
+	if limit > k8sActivityMaxLimit {
+		limit = k8sActivityMaxLimit
 	}
 
 	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
@@ -2629,7 +2633,7 @@ func devopsK8sActivityHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	items := make([]k8sOperatorActivityItem, 0, limit)
+	items := make([]k8sOperatorActivityItem, 0, k8sActivityMaxLimit)
 	for rows.Next() {
 		var (
 			entryID      int
