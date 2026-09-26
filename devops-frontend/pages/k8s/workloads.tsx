@@ -2,11 +2,13 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
-import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
+import { DataTable, EmptyState, useConfirm, type DataTableColumn } from '@infragate/ui';
+import { confirmGuardedDay2Action, notifyDay2ActionComplete } from '../../lib/guardedDay2Action';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import {
+  DEVOPS_TOKEN_KEY,
   DEVOPS_USER_KEY,
   buildK8sHref,
   fetchK8sWorkloads,
@@ -31,6 +33,7 @@ function workloadTone(status: string) {
 export default function DevOpsK8sWorkloadsPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
+  const confirm = useConfirm();
   const [overview, setOverview] = useState<K8sWorkloadsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -161,6 +164,33 @@ export default function DevOpsK8sWorkloadsPage() {
       setError('Select a project-scoped cluster before running a workload action.');
       return;
     }
+    const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
+    if (!token) {
+      setError('Sign in again to run workload actions.');
+      return;
+    }
+    setError('');
+    const gate = await confirmGuardedDay2Action({
+      apiUrl,
+      token,
+      confirm,
+      action: 'restart',
+      params: {
+        project_id: String(targetProjectId),
+        environment: environment || '',
+        workload_name: item.name,
+        image: item.image || '',
+      },
+      title: 'Restart workload',
+      message: `Restart ${item.name} in ${item.namespace}? Pods will roll and traffic may blip briefly.`,
+      confirmLabel: 'Restart workload',
+      destructive: true,
+    });
+    if (gate.blocked) {
+      setError(gate.blocked);
+      return;
+    }
+    if (!gate.confirmed) return;
 
     setSubmittingKey(rowKey);
     setScaleTargetKey('');
@@ -177,6 +207,7 @@ export default function DevOpsK8sWorkloadsPage() {
         reason: 'Requested from the DevOps K8s workloads workspace',
       });
       setNotice(response || `Restart request queued for ${item.name}.`);
+      notifyDay2ActionComplete();
       setRefreshKey((value) => value + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to restart ${item.name}`);
@@ -192,6 +223,32 @@ export default function DevOpsK8sWorkloadsPage() {
       setError('Select a project-scoped cluster before running a workload action.');
       return;
     }
+    const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
+    if (!token) {
+      setError('Sign in again to run workload actions.');
+      return;
+    }
+    setError('');
+    const gate = await confirmGuardedDay2Action({
+      apiUrl,
+      token,
+      confirm,
+      action: 'resume',
+      params: {
+        project_id: String(targetProjectId),
+        environment: environment || '',
+        workload_name: item.name,
+        image: item.image || '',
+      },
+      title: 'Resume rollout',
+      message: `Resume the paused rollout for ${item.name} in ${item.namespace}?`,
+      confirmLabel: 'Resume rollout',
+    });
+    if (gate.blocked) {
+      setError(gate.blocked);
+      return;
+    }
+    if (!gate.confirmed) return;
 
     setSubmittingKey(rowKey);
     setScaleTargetKey('');
@@ -208,6 +265,7 @@ export default function DevOpsK8sWorkloadsPage() {
         reason: 'Requested from the DevOps K8s workloads workspace',
       });
       setNotice(response || `Rollout resume queued for ${item.name}.`);
+      notifyDay2ActionComplete();
       setRefreshKey((value) => value + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to resume rollout for ${item.name}`);
@@ -229,6 +287,33 @@ export default function DevOpsK8sWorkloadsPage() {
       setError('Enter a valid replica count of 0 or greater.');
       return;
     }
+    const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
+    if (!token) {
+      setError('Sign in again to run workload actions.');
+      return;
+    }
+    setError('');
+    const gate = await confirmGuardedDay2Action({
+      apiUrl,
+      token,
+      confirm,
+      action: 'scale',
+      params: {
+        project_id: String(targetProjectId),
+        environment: environment || '',
+        workload_name: item.name,
+        image: item.image || '',
+      },
+      title: 'Scale workload',
+      message: `Scale ${item.name} in ${item.namespace} to ${replicas} replica(s)?`,
+      confirmLabel: 'Scale workload',
+      destructive: replicas === 0,
+    });
+    if (gate.blocked) {
+      setError(gate.blocked);
+      return;
+    }
+    if (!gate.confirmed) return;
 
     setSubmittingKey(rowKey);
     setNotice('');
@@ -245,6 +330,7 @@ export default function DevOpsK8sWorkloadsPage() {
         reason: 'Requested from the DevOps K8s workloads workspace',
       });
       setNotice(response || `Scale request queued for ${item.name}.`);
+      notifyDay2ActionComplete();
       setScaleTargetKey('');
       setScaleReplicas('');
       setRefreshKey((value) => value + 1);

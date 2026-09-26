@@ -2014,6 +2014,7 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 			approval, gate, err := approvePromotionGateAsDevops(requestID, managerID, body.Note, body.ExpiresInHours)
 			if err != nil {
 				if gate != nil && gate.Status == "blocked" {
+					recordPromotionOperatorFailure(managerID, requestID, "deployment_gate_approve", gate, err)
 					if writeErr := writeJSONResponse(w, http.StatusConflict, map[string]any{
 						"status": "error",
 						"error":  "promotion blocked by deployment gate policy",

@@ -1427,6 +1427,11 @@ func devopsRollbackConsoleHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		operation, rollbackRequest, err := createRollbackConsoleRequest(managerID, body.SourceRequestID, body.HistoryID, body.Reason, body.Notes)
 		if err != nil {
+			if body.SourceRequestID > 0 {
+				if req, reqErr := GetPRRequestByID(body.SourceRequestID); reqErr == nil && req != nil {
+					RecordOperatorAuditFailure(managerID, "request_rollback_prepare", "pr_request", strconv.Itoa(body.SourceRequestID), "failed", err.Error(), req.ProjectID, req.Env, req.Team)
+				}
+			}
 			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
 		}

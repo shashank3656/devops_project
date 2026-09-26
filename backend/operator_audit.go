@@ -104,7 +104,7 @@ func operatorAuditActionTracked(action string) bool {
 	switch action {
 	case "request_approve", "request_reject", "request_promote",
 		"deployment_gate_approve", "deployment_gate_revoke",
-		"request_rollback_prepare",
+		"request_rollback_prepare", "environment_catalog_update",
 		"cloud_account_onboard", "cloud_account_disable", "cloud_account_enable",
 		"cloud_account_trust_update", "cloud_account_test",
 		"template_create", "template_update", "template_delete":
