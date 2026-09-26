@@ -89,6 +89,8 @@ Primary nav: Home, Requests, Projects, Changes, Incidents. Mobile tabs: Home, Re
 | API keys | `/profile` | `GET/POST /api/me/api-keys`, `DELETE /api/me/api-keys/:id`. Session token only; keys are for automation. |
 | Notification prefs | `/profile` | `GET/PATCH /api/me/notification-preferences`. |
 
+User, DevOps, and Admin portals share the same profile edit blocks (password, notification prefs, 2FA, API keys, resend verification) via shared `PortalProfileSettings`. DevOps and Admin call the same `/api/me/*` routes with their session token; DevOps `GET /api/me` also returns `devops_profile` and DevOps teams.
+
 ### Home and search
 
 | Feature | Page | How it works |
@@ -150,6 +152,7 @@ Primary nav: Home, Approvals, Requests, People, Projects, Catalog, More. Mobile 
 | Access review | `/access-review` | `GET /api/admin/access-review`. Who has what, stale access. |
 | Team ownership | `/team-ownership` | `GET /api/admin/team-ownership`. Which team owns which project. |
 | User activity | `/activity` | `GET /api/admin/user-activity` plus `/api/admin/audit-log`. |
+| Profile settings | `/profile` | Same account controls as the user portal (password, 2FA, API keys, notification prefs, resend verification) via `GET /api/me` with `admin_token`. |
 
 ### Requests and governance
 
@@ -191,6 +194,7 @@ Primary nav: Home, Requests, **ITSM**, then (managers only) Deployments, Kuberne
 | Request list / actions | `/tickets` + inspector | `GET /api/devops/requests` (filters: id, team, cloud, status, requester, at_risk). Inspector shows **delivery** (pipeline/SHA/promote) plus plan/policy/cost checks. `POST /api/devops/requests/:id/approve` or `/reject`. Bulk approve/reject. Approve opens the GitOps PR. |
 | Workload | `/workload` | `GET /api/devops/workload`. Open / in-progress / completed-this-week by team and person. Manager only. |
 | Notifications | header | `GET /api/devops/notifications`. |
+| Profile settings | `/profile` | Same account controls as the user portal (password, 2FA, API keys, notification prefs) plus read-only DevOps role/teams from `GET /api/me`. |
 
 ### Approvals
 
@@ -297,6 +301,20 @@ Notion: [NF-04 Operator Audit Trail](https://app.notion.com/p/3e60f430ed10810298
 | Activity refresh | Home / `/activity` | Successful day-2 actions dispatch scope refresh so operator activity reloads without a full page refresh. |
 
 Notion: [NF-05 Guarded Day-2 Actions](https://app.notion.com/p/3e60f430ed1081e3b453fc319f80b588)
+
+### Resource context panel (NF-07)
+
+Read-only **Resource context** on DevOps surfaces where operators decide — without new mutate actions from the panel.
+
+| Surface | Route | How it works |
+| --- | --- | --- |
+| Ticket inspector | `/tickets` drawer | `GET /api/devops/resource-context?kind=ticket&id=` — target-env freeze, open incidents, catalog row, promote gate hints (NF-05 parity), last 5 operator events on the request. Loads in parallel; inspector works if the panel API fails. |
+| Change detail | `/changes/[id]` | Same API with `kind=change` — delivery scope, catalog, freeze/incidents for the promote hop, operator activity from linked request or project/env. |
+| Cloud resource | `/cloud-resources/[id]` | `kind=cloud_resource` — disabled account messaging, catalog env row, incidents when linked to a project, account-level operator audit. |
+
+Shared UI: `ResourceContextPanel` in `@infragate/ui`.
+
+Notion: [NF-07 Resource Context Panel](https://app.notion.com/p/3e70f430ed1081e3a844f62961c2cc28)
 
 ### Inventory ↔ catalog links (NF-06)
 

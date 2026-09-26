@@ -6,6 +6,7 @@ import DevOpsLayout from '../../components/DevOpsLayout';
 import {
   buildPortalApiUrl,
   DeliveryVisibilityCard,
+  ResourceContextPanel,
   parsePortalNumericId,
   parsePortalPathSegment,
   portalFetch,
@@ -101,6 +102,7 @@ export default function ChangeDetailPage() {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState('');
   const [approving, setApproving] = useState(false);
+  const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
   const resourceId = parsePortalNumericId(id);
   const status = (item?.status || '').toLowerCase();
@@ -287,6 +289,14 @@ export default function ChangeDetailPage() {
         {item ? (
           <>
             <DeliveryVisibilityCard delivery={delivery} portal="devops" />
+            <ResourceContextPanel
+              apiUrl={apiUrl}
+              token={token}
+              kind="change"
+              resourceId={resourceId}
+              hideDelivery
+              className="devops-change-context-panel"
+            />
           <section className="portal-surface">
             <div className="portal-form-grid">
               <label className="label">

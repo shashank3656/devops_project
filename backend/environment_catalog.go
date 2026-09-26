@@ -269,6 +269,36 @@ func devopsUserCanViewProject(userID int, project ProjectCatalog) bool {
 	return false
 }
 
+func environmentCatalogRowForDevops(userID, projectID int, env string) (*environmentCatalogRow, error) {
+	env = strings.TrimSpace(env)
+	if projectID <= 0 || env == "" {
+		return nil, nil
+	}
+	project, err := getProjectCatalogByID(projectID)
+	if err != nil || project == nil {
+		return nil, err
+	}
+	if !devopsUserCanViewProject(userID, *project) {
+		return nil, nil
+	}
+	accountsByTeam, err := loadCloudAccountsByTeamSlug()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := buildEnvironmentCatalogRows(*project, accountsByTeam)
+	if err != nil {
+		return nil, err
+	}
+	envKey := strings.ToLower(env)
+	for i := range rows {
+		if strings.ToLower(rows[i].Name) == envKey {
+			row := rows[i]
+			return &row, nil
+		}
+	}
+	return nil, nil
+}
+
 func listEnvironmentCatalogForDevops(userID int, projectIDFilter string) ([]environmentCatalogRow, error) {
 	projects, err := listProjectCatalogs()
 	if err != nil {

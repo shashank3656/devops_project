@@ -1,19 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import AdminLayout from '../components/AdminLayout';
 import { ADMIN_SITE_NAME } from '../lib/site';
+import {
+  PortalProfileSettings,
+  buildPortalApiUrl,
+  portalFetch,
+  type PortalProfileAccount,
+} from '@infragate/ui';
 
 const ADMIN_TOKEN_KEY = 'admin_token';
-
-interface User {
-  id: number;
-  username: string;
-  email: string;
-  role?: string;
-  verified?: boolean;
-  created_at: string;
-}
 
 interface Team {
   id: number;
@@ -24,21 +21,29 @@ interface Team {
 
 export default function AdminProfilePage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+  const [user, setUser] = useState<PortalProfileAccount | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [managerUsername, setManagerUsername] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState('');
+  const [token, setToken] = useState<string | null>(null);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+  const notify = useCallback((message: string, kind: 'success' | 'error') => {
+    setNotice(message);
+    setTimeout(() => setNotice(''), kind === 'error' ? 8000 : 5000);
+  }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem(ADMIN_TOKEN_KEY);
-    if (!token) {
+    const sessionToken = localStorage.getItem(ADMIN_TOKEN_KEY);
+    if (!sessionToken) {
       router.replace('/login');
       return;
     }
-    fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => {
+    setToken(sessionToken);
+    setLoading(true);
+    portalFetch(buildPortalApiUrl(apiUrl, '/api/me'), { token: sessionToken })
+      .then(async (r) => {
         if (r.status === 401 || r.status === 403) {
           router.replace('/login');
           return null;
@@ -47,36 +52,44 @@ export default function AdminProfilePage() {
       })
       .then((data) => {
         if (data?.user) {
-          setUser(data.user);
+          setUser(data.user as PortalProfileAccount);
           setTeams(Array.isArray(data.teams) ? data.teams : []);
           setManagerUsername(data.manager_username || null);
         }
       })
-      .catch(() => {})
+      .catch(() => notify('Failed to load profile', 'error'))
       .finally(() => setLoading(false));
-  }, [apiUrl, router]);
+  }, [apiUrl, notify, router]);
 
   return (
     <AdminLayout>
-      <Head><title>Profile - {ADMIN_SITE_NAME}</title></Head>
+      <Head>
+        <title>Profile - {ADMIN_SITE_NAME}</title>
+      </Head>
       <div className="portal-page portal-page--narrow">
+        {notice ? (
+          <div className={`alert ${notice.includes('Failed') ? 'alert-error' : 'alert-success'}`} role="status">
+            {notice}
+          </div>
+        ) : null}
         {loading ? (
           <div className="portal-surface">
             <div className="empty-state">Loading...</div>
           </div>
-        ) : user ? (
+        ) : user && token ? (
           <>
             <div className="portal-surface">
               <div className="portal-profile-hero">
-                <div className="portal-avatar">
-                  {(user.username || user.email || 'A').slice(0, 2).toUpperCase()}
-                </div>
+                <div className="portal-avatar">{(user.username || user.email || 'A').slice(0, 2).toUpperCase()}</div>
                 <div>
                   <h1 className="portal-profile-hero__title">{user.username}</h1>
                   <p className="portal-profile-hero__meta">{user.email}</p>
-                  <span className="portal-badge portal-badge--neutral">
-                    {user.role || 'admin'}
-                  </span>
+                  <div className="portal-page__actions">
+                    <span className={`portal-badge ${user.verified ? 'portal-badge--success' : 'portal-badge--warning'}`}>
+                      {user.verified ? 'Verified' : 'Not verified'}
+                    </span>
+                    <span className="portal-badge portal-badge--neutral">{user.role || 'admin'}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -85,28 +98,48 @@ export default function AdminProfilePage() {
               <div className="portal-surface portal-surface--tight">
                 <div className="portal-kv">
                   <span className="portal-kv__label">Teams</span>
-                {teams.length === 0 ? <p style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>-</p> : (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {teams.map((t) => (
-                      <span key={t.id} className="portal-pill">{t.name}</span>
-                    ))}
-                  </div>
-                )}
+                  {teams.length === 0 ? (
+                    <span className="portal-kv__value">—</span>
+                  ) : (
+                    <div className="portal-pill-row">
+                      {teams.map((t) => (
+                        <span key={t.id} className="portal-pill">
+                          {t.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="portal-surface portal-surface--tight">
                 <div className="portal-kv">
                   <span className="portal-kv__label">Manager</span>
-                  <span className="portal-kv__value">{managerUsername || '-'}</span>
+                  <span className="portal-kv__value">{managerUsername || '—'}</span>
                 </div>
               </div>
               <div className="portal-surface portal-surface--tight">
                 <div className="portal-kv">
                   <span className="portal-kv__label">Member since</span>
-                  <span className="portal-kv__value">{new Date(user.created_at).toLocaleDateString()}</span>
+                  <span className="portal-kv__value">
+                    {user.created_at ? new Date(user.created_at).toLocaleDateString() : '—'}
+                  </span>
+                </div>
+              </div>
+              <div className="portal-surface portal-surface--tight">
+                <div className="portal-kv">
+                  <span className="portal-kv__label">2FA</span>
+                  <span className="portal-kv__value">{user.totp_enabled ? 'Enabled' : 'Disabled'}</span>
                 </div>
               </div>
             </div>
+
+            <PortalProfileSettings
+              apiUrl={apiUrl}
+              token={token}
+              user={user}
+              onUserPatch={(patch) => setUser((prev) => (prev ? { ...prev, ...patch } : prev))}
+              onNotify={notify}
+            />
           </>
         ) : (
           <div className="portal-surface">

@@ -78,6 +78,15 @@ func TestDevopsGuardedActionContextRequiresAuth(t *testing.T) {
 	}
 }
 
+func TestDevopsResourceContextRequiresAuth(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/devops/resource-context?kind=ticket&id=1", nil)
+	devopsResourceContextHandler(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET resource-context without auth = %d, want 401", rec.Code)
+	}
+}
+
 func TestDevopsEnvironmentCatalogRequiresAuth(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/devops/environment-catalog", nil)
