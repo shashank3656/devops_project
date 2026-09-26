@@ -298,6 +298,21 @@ Notion: [NF-04 Operator Audit Trail](https://app.notion.com/p/3e60f430ed10810298
 
 Notion: [NF-05 Guarded Day-2 Actions](https://app.notion.com/p/3e60f430ed1081e3b453fc319f80b588)
 
+### Inventory ↔ catalog links (NF-06)
+
+Cross-links between cloud inventory, onboarded accounts, and the environment catalog (ScopeBar-friendly query params).
+
+| Surface | Links |
+| --- | --- |
+| `/cloud-resources` | Account column → account landing; env column → catalog search |
+| `/cloud-resources/[id]` | Connection & trust (onboarded account), filtered inventory, environment catalog |
+| `/environments` | Cloud account → `/cloud-accounts/[id]`; **View inventory** per row |
+| `/cloud-accounts/[id]` | Linked catalog rows + inventory deep links |
+
+List/detail inventory APIs may include **`account_context`** (disabled / not onboarded messaging) and resource detail includes **`catalog_links`** when a catalog row shares the onboarded account + environment.
+
+Login **email OTP (2FA)**: codes are sent with `SendEmail` (SMTP required). UIs never show `otp_for_testing`; use **Resend code** on the login step. DevOps login supports the same 2FA flow as User and Admin.
+
 ### Kubernetes workspace (NF-02)
 
 **Who:** DevOps operators and managers (`devops_token`). User and Admin portals have no K8s workspace.

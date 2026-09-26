@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
-import { AuthPipeline, ThemeToggle } from '@infragate/ui';
+import { AuthPipeline, pending2FAFromLoginResponse, resendLogin2FACode, ThemeToggle, type Pending2FA } from '@infragate/ui';
 import { asRecord, getString } from '../lib/payload';
 import { clearAdminSession, isSignedSessionToken } from '../lib/session';
 
@@ -15,8 +15,9 @@ export default function AdminLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [pending2fa, setPending2fa] = useState<{ token: string } | null>(null);
+  const [pending2fa, setPending2fa] = useState<Pending2FA | null>(null);
   const [otp, setOtp] = useState('');
+  const [resendingOtp, setResendingOtp] = useState(false);
   const [effectiveApiUrl, setEffectiveApiUrl] = useState(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080');
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -119,8 +120,9 @@ export default function AdminLogin() {
       if (chosenApi !== primaryApi) {
         rememberWorkingApiUrl(chosenApi);
       }
-      if (data.requires_otp && typeof data.pending_2fa_token === 'string') {
-        setPending2fa({ token: data.pending_2fa_token });
+      const pending = pending2FAFromLoginResponse(data);
+      if (pending) {
+        setPending2fa(pending);
         setError('');
         setPassword('');
         return;
@@ -140,6 +142,21 @@ export default function AdminLogin() {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (!pending2fa) return;
+    setResendingOtp(true);
+    setError('');
+    try {
+      const next = await resendLogin2FACode(effectiveApiUrl, pending2fa.token);
+      setPending2fa(next);
+      setOtp('');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not resend code');
+    } finally {
+      setResendingOtp(false);
     }
   };
 
@@ -206,7 +223,7 @@ export default function AdminLogin() {
             {pending2fa ? (
               <form onSubmit={handleVerify2FA}>
                 <p className="login-page__card-subtitle" style={{ marginBottom: '1rem' }}>
-                  Enter the 6-digit code sent to your email
+                  Enter the 6-digit code sent to <strong>{pending2fa.emailHint}</strong>
                 </p>
                 <div className="form-group">
                   <label className="label" htmlFor="admin-otp">Verification code</label>
@@ -228,6 +245,15 @@ export default function AdminLogin() {
                 </div>
                 <button type="submit" className="btn btn-primary login-page__submit" disabled={loading || otp.length !== 6}>
                   {loading ? 'Verifying…' : 'Verify'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ marginTop: '12px', width: '100%' }}
+                  onClick={() => void handleResendOtp()}
+                  disabled={loading || resendingOtp}
+                >
+                  {resendingOtp ? 'Sending…' : 'Resend code'}
                 </button>
                 <button
                   type="button"

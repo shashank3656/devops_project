@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
-import { AuthPipeline, ThemeToggle } from '@infragate/ui';
+import { AuthPipeline, pending2FAFromLoginResponse, resendLogin2FACode, ThemeToggle, type Pending2FA } from '@infragate/ui';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord } from '../lib/payload';
 import { isSignedSessionToken } from '../lib/session';
@@ -32,6 +32,9 @@ export default function DevOpsLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pending2fa, setPending2fa] = useState<Pending2FA | null>(null);
+  const [otp, setOtp] = useState('');
+  const [resendingOtp, setResendingOtp] = useState(false);
   const [sso, setSso] = useState<PublicSSOState>({ enabled: false, mode: 'disabled', provider: 'none', login_url: '' });
 
   useEffect(() => {
@@ -77,6 +80,72 @@ export default function DevOpsLogin() {
     window.location.assign(sso.login_url);
   };
 
+  const finishDevOpsSession = async (sessionToken: string) => {
+    const meRes = await fetch(`${apiUrl}/api/devops/me`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    });
+    const meData = await meRes.json().catch(() => ({}));
+    if (!meRes.ok || meData.error) {
+      setError(meData.error || 'This portal is for DevOps users or admins only. Create a DevOps user from the Admin portal.');
+      return;
+    }
+    const userType = meData.user?.user_type;
+    const isAdmin = meData.user?.role === 'admin';
+    if (userType !== 'devops_user' && !isAdmin) {
+      setError('This portal is for DevOps users or admins only.');
+      return;
+    }
+    localStorage.setItem(DEVOPS_TOKEN_KEY, sessionToken);
+    if (typeof meData.token === 'string' && isSignedSessionToken(meData.token)) {
+      localStorage.setItem(DEVOPS_TOKEN_KEY, meData.token.trim());
+    }
+    localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(meData.user || {}));
+    router.push('/dashboard');
+  };
+
+  const handleResendOtp = async () => {
+    if (!pending2fa) return;
+    setResendingOtp(true);
+    setError('');
+    try {
+      const next = await resendLogin2FACode(apiUrl, pending2fa.token);
+      setPending2fa(next);
+      setOtp('');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not resend code');
+    } finally {
+      setResendingOtp(false);
+    }
+  };
+
+  const handleVerify2FA = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pending2fa || !otp.trim()) return;
+    setError('');
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/auth/verify-2fa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pending_2fa_token: pending2fa.token, otp: otp.trim() }),
+      });
+      const data = asRecord(await res.json().catch(() => ({})));
+      if (!res.ok) {
+        setError(typeof data.error === 'string' ? data.error : 'Invalid OTP');
+        return;
+      }
+      if (typeof data.token !== 'string' || !isSignedSessionToken(data.token)) {
+        setError('Verification failed');
+        return;
+      }
+      await finishDevOpsSession(data.token);
+    } catch {
+      setError('Verification failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -92,31 +161,17 @@ export default function DevOpsLogin() {
         setError(loginData.error || 'Login failed');
         return;
       }
+      const pending = pending2FAFromLoginResponse(loginData);
+      if (pending) {
+        setPending2fa(pending);
+        setPassword('');
+        return;
+      }
       if (typeof loginData.token !== 'string' || !isSignedSessionToken(loginData.token)) {
         setError('Login failed');
         return;
       }
-      const meRes = await fetch(`${apiUrl}/api/devops/me`, {
-        headers: { Authorization: `Bearer ${loginData.token}` },
-      });
-      const meData = await meRes.json().catch(() => ({}));
-      if (!meRes.ok || meData.error) {
-        setError(meData.error || 'This portal is for DevOps users or admins only. Create a DevOps user from the Admin portal.');
-        return;
-      }
-      // Allow devops_user or admin (role=admin) to access DevOps portal
-      const userType = meData.user?.user_type;
-      const isAdmin = meData.user?.role === 'admin';
-      if (userType !== 'devops_user' && !isAdmin) {
-        setError('This portal is for DevOps users or admins only.');
-        return;
-      }
-      localStorage.setItem(DEVOPS_TOKEN_KEY, loginData.token);
-      if (typeof meData.token === 'string' && isSignedSessionToken(meData.token)) {
-        localStorage.setItem(DEVOPS_TOKEN_KEY, meData.token.trim());
-      }
-      localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(meData.user || {}));
-      router.push('/dashboard');
+      await finishDevOpsSession(loginData.token);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
       const isNetwork = /failed to fetch|network error|load failed|err_connection/i.test(String(msg));
@@ -155,6 +210,52 @@ export default function DevOpsLogin() {
             {error && (
               <div className="alert alert-error" role="alert">{error}</div>
             )}
+            {pending2fa ? (
+              <form onSubmit={handleVerify2FA}>
+                <p className="login-page__card-subtitle" style={{ marginBottom: '1rem' }}>
+                  Enter the 6-digit code sent to <strong>{pending2fa.emailHint}</strong>
+                </p>
+                <div className="form-group">
+                  <label className="label" htmlFor="devops-otp">Verification code</label>
+                  <input
+                    id="devops-otp"
+                    className="input"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                    required
+                    disabled={loading}
+                    autoComplete="one-time-code"
+                    autoFocus
+                    placeholder="000000"
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary login-page__submit" disabled={loading || otp.length !== 6}>
+                  {loading ? 'Verifying…' : 'Verify'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ marginTop: '12px', width: '100%' }}
+                  onClick={() => void handleResendOtp()}
+                  disabled={loading || resendingOtp}
+                >
+                  {resendingOtp ? 'Sending…' : 'Resend code'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ marginTop: '12px', width: '100%' }}
+                  onClick={() => { setPending2fa(null); setOtp(''); setError(''); }}
+                  disabled={loading}
+                >
+                  Back to login
+                </button>
+              </form>
+            ) : (
             <form onSubmit={handleSubmit}>
               {sso.enabled && (
                 <>
@@ -203,14 +304,19 @@ export default function DevOpsLogin() {
                 </>
               )}
             </form>
+            )}
+            {!pending2fa ? (
             <p className="login-page__hint" style={{ marginTop: 16 }}>
               <Link href="/forgot-password" style={{ color: 'var(--color-primary)', textDecoration: 'none' }}>
                 Forgot password?
               </Link>
             </p>
+            ) : null}
+            {!pending2fa ? (
             <p className="login-page__hint">
               Users are created from the Admin portal.
             </p>
+            ) : null}
           </div>
         </div>
       </div>

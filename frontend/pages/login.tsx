@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
-import { AuthPipeline, ThemeToggle } from '@infragate/ui';
+import { AuthPipeline, pending2FAFromLoginResponse, resendLogin2FACode, ThemeToggle, type Pending2FA } from '@infragate/ui';
 import { useToast } from '../context/ToastContext';
 import { asRecord, getString } from '../lib/payload';
 import { clearUserSession, isSignedSessionToken } from '../lib/session';
@@ -30,8 +30,9 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [pending2fa, setPending2fa] = useState<{ token: string } | null>(null);
+  const [pending2fa, setPending2fa] = useState<Pending2FA | null>(null);
   const [otp, setOtp] = useState('');
+  const [resendingOtp, setResendingOtp] = useState(false);
   const [sso, setSso] = useState<PublicSSOState>({ enabled: false, mode: 'disabled', provider: 'none', login_url: '' });
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -113,15 +114,12 @@ export default function Login() {
         toast(msg, 'error');
         return;
       }
-      if (data.requires_otp && typeof data.pending_2fa_token === 'string') {
-        setPending2fa({ token: data.pending_2fa_token });
+      const pending = pending2FAFromLoginResponse(data);
+      if (pending) {
+        setPending2fa(pending);
         setError('');
         setPassword('');
-        if (typeof data.otp_for_testing === 'string') {
-          toast(`OTP for testing: ${data.otp_for_testing}`, 'success');
-        } else {
-          toast('Enter the 6-digit code sent to your email', 'success');
-        }
+        toast(`We sent a verification code to ${pending.emailHint}`, 'success');
         return;
       }
       if (typeof data.token !== 'string' || !isSignedSessionToken(data.token)) {
@@ -147,6 +145,24 @@ export default function Login() {
     }
   };
 
+  const handleResendOtp = async () => {
+    if (!pending2fa) return;
+    setResendingOtp(true);
+    setError('');
+    try {
+      const next = await resendLogin2FACode(apiUrl, pending2fa.token);
+      setPending2fa(next);
+      setOtp('');
+      toast(`A new code was sent to ${next.emailHint}`, 'success');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not resend code';
+      setError(msg);
+      toast(msg, 'error');
+    } finally {
+      setResendingOtp(false);
+    }
+  };
+
   const handleVerify2FA = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pending2fa || !otp.trim()) return;
@@ -156,7 +172,7 @@ export default function Login() {
       const res = await fetch(`${apiUrl}/api/auth/verify-2fa`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pending_2fa_token: pending2fa.token, otp: otp.trim() }),
+        body: JSON.stringify({ pending_2fa_token: pending2fa!.token, otp: otp.trim() }),
       });
       const data = asRecord(await res.json().catch(() => ({})));
       if (!res.ok) {
@@ -217,7 +233,7 @@ export default function Login() {
             {pending2fa ? (
               <form onSubmit={handleVerify2FA}>
                 <p className="login-page__card-subtitle" style={{ marginBottom: '1rem' }}>
-                  Enter the 6-digit code sent to your email
+                  Enter the 6-digit code sent to <strong>{pending2fa.emailHint}</strong>
                 </p>
                 <div className="form-group">
                   <label className="label" htmlFor="otp">Verification code</label>
@@ -246,6 +262,15 @@ export default function Login() {
                   ) : (
                     'Verify'
                   )}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ marginTop: '12px', width: '100%' }}
+                  onClick={() => void handleResendOtp()}
+                  disabled={loading || resendingOtp}
+                >
+                  {resendingOtp ? 'Sending…' : 'Resend code'}
                 </button>
                 <button
                   type="button"
