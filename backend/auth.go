@@ -382,6 +382,19 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]interface{}{"user": user}
+	if user.UserType == "devops_user" {
+		if prof, err := GetDevopsProfile(userID); err == nil && prof != nil {
+			resp["devops_profile"] = map[string]interface{}{
+				"is_manager": prof.IsManager, "position": prof.Position,
+				"onboard_date": prof.OnboardDate, "level": prof.Level,
+			}
+		}
+		if teams, err := GetDevopsTeamsForUser(userID); err == nil && len(teams) > 0 {
+			resp["teams"] = teams
+		} else {
+			resp["teams"] = []interface{}{}
+		}
+	}
 	// Portal users: add teams, manager_username for profile
 	if user.UserType == "portal_user" || user.Role == "admin" {
 		if teams, err := GetTeamsForUserWithDetails(userID); err == nil && len(teams) > 0 {

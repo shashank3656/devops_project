@@ -63,6 +63,16 @@ export {
 export { default as PageFilters, type PageFilterChip } from './PageFilters';
 export { default as PlanReviewCard } from './PlanReviewCard';
 export { default as DeliveryVisibilityCard } from './DeliveryVisibilityCard';
+export {
+  default as ResourceContextPanel,
+  type ResourceContextKind,
+  type ResourceContextPayload,
+} from './ResourceContextPanel';
+export {
+  default as PortalProfileSettings,
+  type PortalProfileAccount,
+  type PortalProfileNotify,
+} from './PortalProfileSettings';
 export { default as PolicyChecksCard } from './PolicyChecksCard';
 export { default as PRImpactBrief } from './PRImpactBrief';
 export { default as RequestPRImpact } from './RequestPRImpact';

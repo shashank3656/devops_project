@@ -8,6 +8,7 @@ import {
   Day2Banner,
   DeliveryVisibilityCard,
   InspectorDrawer,
+  ResourceContextPanel,
   PlanReviewCard,
   PolicyChecksCard,
   PageFilters,
@@ -1207,6 +1208,15 @@ export default function DevOpsTickets() {
               }
             >
               <div className="devops-approval-workspace">
+              {detailId ? (
+                <ResourceContextPanel
+                  apiUrl={apiUrl}
+                  token={token}
+                  kind="ticket"
+                  resourceId={detailId}
+                  hideDelivery
+                />
+              ) : null}
               {detailLoading && !detailRequest ? (
                 <div className="empty-state">Loading approval workspace...</div>
               ) : (

@@ -1,10 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { DEVOPS_SITE_NAME } from '../lib/site';
-import { asRecord } from '../lib/payload';
+import { asRecord, getString } from '../lib/payload';
+import {
+  PortalProfileSettings,
+  buildPortalApiUrl,
+  portalFetch,
+  type PortalProfileAccount,
+} from '@infragate/ui';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -15,34 +21,42 @@ interface DevopsTeam {
   team_type?: string;
 }
 
-interface DevopsUser {
-  id: number;
-  username: string;
-  email?: string;
-  user_type?: string;
-  teams?: DevopsTeam[];
-  devops_profile?: {
-    is_manager: boolean;
-    level?: string;
-    position?: string;
-    onboard_date?: string;
-  };
+interface DevopsProfile {
+  is_manager: boolean;
+  level?: string;
+  position?: string;
+  onboard_date?: string;
 }
 
 export default function DevOpsProfilePage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
-  const [user, setUser] = useState<DevopsUser | null>(null);
+  const [user, setUser] = useState<PortalProfileAccount | null>(null);
+  const [devopsProfile, setDevopsProfile] = useState<DevopsProfile | null>(null);
+  const [teams, setTeams] = useState<DevopsTeam[]>([]);
   const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState('');
+  const [token, setToken] = useState<string | null>(null);
+
+  const notify = useCallback((message: string, kind: 'success' | 'error') => {
+    setNotice(message);
+    if (kind === 'error') {
+      setTimeout(() => setNotice(''), 8000);
+    } else {
+      setTimeout(() => setNotice(''), 5000);
+    }
+  }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token) {
+    const sessionToken = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!sessionToken) {
       router.replace('/login');
       return;
     }
-    fetch(`${apiUrl}/api/devops/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((response) => {
+    setToken(sessionToken);
+    setLoading(true);
+    portalFetch(buildPortalApiUrl(apiUrl, '/api/me'), { token: sessionToken })
+      .then(async (response) => {
         if (response.status === 401) {
           router.replace('/login');
           return null;
@@ -53,14 +67,19 @@ export default function DevOpsProfilePage() {
         const data = asRecord(rawData);
         const nextUser = data.user;
         if (nextUser && typeof nextUser === 'object') {
-          setUser(nextUser as DevopsUser);
+          const u = nextUser as PortalProfileAccount;
+          setUser(u);
         }
+        const dp = data.devops_profile;
+        if (dp && typeof dp === 'object') {
+          setDevopsProfile(dp as DevopsProfile);
+        }
+        setTeams(Array.isArray(data.teams) ? (data.teams as DevopsTeam[]) : []);
       })
-      .catch(() => {})
+      .catch(() => notify('Failed to load profile', 'error'))
       .finally(() => setLoading(false));
-  }, [apiUrl, router]);
+  }, [apiUrl, notify, router]);
 
-  const teams = user?.teams || [];
   const initials = (user?.username || 'U').slice(0, 2).toUpperCase();
 
   return (
@@ -69,21 +88,24 @@ export default function DevOpsProfilePage() {
         <title>Profile - {DEVOPS_SITE_NAME}</title>
       </Head>
       <div className="portal-page portal-page--narrow">
+        {notice ? (
+          <div className={`alert ${notice.includes('Failed') ? 'alert-error' : 'alert-success'}`} role="status">
+            {notice}
+          </div>
+        ) : null}
         {loading ? (
           <section className="portal-surface">
             <div className="portal-empty">
               <p>Loading profile...</p>
             </div>
           </section>
-        ) : user ? (
+        ) : user && token ? (
           <>
             <header className="portal-page__header">
               <div className="portal-page__header-main">
                 <span className="portal-page__eyebrow">Profile</span>
-                <h1 className="portal-page__title">Profile Settings</h1>
-                <p className="portal-page__subtitle">
-                  Current profile data is unchanged; this redesign makes role, level, and team ownership easier to scan.
-                </p>
+                <h1 className="portal-page__title">Profile settings</h1>
+                <p className="portal-page__subtitle">Account security and notifications, plus your DevOps role and team assignments.</p>
               </div>
             </header>
 
@@ -94,11 +116,14 @@ export default function DevOpsProfilePage() {
                   <h2 className="portal-profile-hero__title">{user.username}</h2>
                   {user.email && <p className="portal-profile-hero__meta">{user.email}</p>}
                   <div className="portal-pill-row">
-                    <span className="portal-badge portal-badge--neutral">
-                      {user.devops_profile?.is_manager ? 'DevOps Manager' : 'DevOps Member'}
+                    <span className={`portal-badge ${user.verified ? 'portal-badge--success' : 'portal-badge--warning'}`}>
+                      {user.verified ? 'Verified' : 'Not verified'}
                     </span>
-                    {user.devops_profile?.level && <span className="portal-pill">{user.devops_profile.level}</span>}
-                    {user.devops_profile?.position && <span className="portal-pill">{user.devops_profile.position}</span>}
+                    <span className="portal-badge portal-badge--neutral">
+                      {devopsProfile?.is_manager ? 'DevOps Manager' : 'DevOps Member'}
+                    </span>
+                    {devopsProfile?.level ? <span className="portal-pill">{devopsProfile.level}</span> : null}
+                    {devopsProfile?.position ? <span className="portal-pill">{devopsProfile.position}</span> : null}
                   </div>
                 </div>
               </div>
@@ -113,9 +138,7 @@ export default function DevOpsProfilePage() {
                   </div>
                 </div>
                 {teams.length === 0 ? (
-                  <div className="portal-empty" style={{ padding: 0, textAlign: 'left' }}>
-                    <p>No team assignments yet.</p>
-                  </div>
+                  <p className="portal-surface__subtitle">No team assignments yet.</p>
                 ) : (
                   <div className="portal-pill-row">
                     {teams.map((team) => (
@@ -137,30 +160,38 @@ export default function DevOpsProfilePage() {
                 <div className="portal-profile-grid">
                   <div className="portal-kv">
                     <span className="portal-kv__label">Role</span>
-                    <span className="portal-kv__value">{user.devops_profile?.is_manager ? 'Manager' : 'Member'}</span>
+                    <span className="portal-kv__value">{devopsProfile?.is_manager ? 'Manager' : 'Member'}</span>
                   </div>
                   <div className="portal-kv">
                     <span className="portal-kv__label">Level</span>
-                    <span className="portal-kv__value">{user.devops_profile?.level || '-'}</span>
-                  </div>
-                  <div className="portal-kv">
-                    <span className="portal-kv__label">Position</span>
-                    <span className="portal-kv__value">{user.devops_profile?.position || '-'}</span>
+                    <span className="portal-kv__value">{devopsProfile?.level || '—'}</span>
                   </div>
                   <div className="portal-kv">
                     <span className="portal-kv__label">Onboard date</span>
                     <span className="portal-kv__value">
-                      {user.devops_profile?.onboard_date ? new Date(user.devops_profile.onboard_date).toLocaleDateString() : '-'}
+                      {devopsProfile?.onboard_date ? new Date(devopsProfile.onboard_date).toLocaleDateString() : '—'}
                     </span>
+                  </div>
+                  <div className="portal-kv">
+                    <span className="portal-kv__label">2FA</span>
+                    <span className="portal-kv__value">{user.totp_enabled ? 'Enabled' : 'Disabled'}</span>
                   </div>
                 </div>
               </article>
             </section>
+
+            <PortalProfileSettings
+              apiUrl={apiUrl}
+              token={token}
+              user={user}
+              onUserPatch={(patch) => setUser((prev) => (prev ? { ...prev, ...patch } : prev))}
+              onNotify={notify}
+            />
           </>
         ) : (
           <section className="portal-surface">
             <div className="portal-empty">
-              <p>Could not load profile.</p>
+              <p>{getString(notice, 'Could not load profile.')}</p>
             </div>
           </section>
         )}
