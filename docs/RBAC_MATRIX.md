@@ -28,6 +28,10 @@ Phase 1 uses existing roles only (no new role product).
 | Admin API | Any | Bearer admin JWT **or** break-glass (no browser Origin) | `requireAdmin` |
 | Team membership | Add / remove | Admin | `admin_teams.go` |
 | SSO settings | Update | Admin | `sso_management.go` |
+| Cloud account | Onboard / test / trust / disable | DevOps **manager** on account `team_slug` | `cloud_accounts.go` |
+| Cloud account | List / detail | DevOps user on **member** devops teams | `cloud_accounts.go` |
+| Cloud inventory | List / detail | DevOps user on **member** devops teams; **read-only** | `cloud_inventory.go` |
+| Cloud account (all teams) | List | Admin JWT | `cloud_accounts.go` admin handler |
 
 ## Audit (sample actions logged)
 

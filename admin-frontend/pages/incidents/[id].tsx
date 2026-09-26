@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
+import { buildPortalApiUrl, parsePortalNumericId, portalFetch } from '@infragate/ui';
 import { ADMIN_SITE_NAME } from '../../lib/site';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -67,18 +68,17 @@ export default function AdminIncidentDetailPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
+  const resourceId = parsePortalNumericId(id);
 
   useEffect(() => {
-    if (!id) return;
+    if (!resourceId) return;
     const token = localStorage.getItem('admin_token');
     if (!token) {
       router.replace('/login');
       return;
     }
     setLoading(true);
-    fetch(`${apiUrl}/api/admin/incidents/${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/admin/incidents/${resourceId}`), { token })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {

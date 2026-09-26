@@ -18,6 +18,8 @@ Notion (narrative / BRDs):
 | SetuOps — Portal Features and Flows (parent hub) | https://app.notion.com/p/3e50f430ed10816699fec83b1b270288 |
 | Change Request, Alert Incidents, and Health Plan (child BRD) | https://app.notion.com/p/3e50f430ed1081adb731c7f64bdfa1b2 |
 | W5–W7 Shipped Features (child) | https://app.notion.com/p/3e60f430ed1081599374cdb7a48c56be |
+| NF-01 Cloud account onboarding (shipped — DevOps) | https://app.notion.com/p/3e60f430ed10810793f7c3c1ae2d9a82 |
+| BRD-07 Cloud resource inventory (shipped — DevOps, read-only) | https://app.notion.com/p/3e60f430ed10810a8e2accfa0ca11116 |
 
 ## Operators
 

@@ -4,9 +4,19 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { cloudInventoryAccountHref } from '../../lib/cloudInventoryRoutes';
+import {
+  inventoryAccountPlaceholder,
+  normalizeCloudProvider,
+  providerChipTone,
+  providerInventoryTitle,
+  providerLabel,
+  type CloudProviderId,
+} from '../../lib/cloudProviders';
+import CloudHubNav from '../../components/CloudHubNav';
+import CloudStatePanel, { CloudEmptyCatalogAction } from '../../components/CloudStatePanel';
 import {
   DataTable,
-  EmptyState,
   PageFilters,
   PageHeader,
   portalFetch,
@@ -40,14 +50,28 @@ export default function CloudResourcesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [forbidden, setForbidden] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
   const [q, setQ] = useState('');
   const [team, setTeam] = useState('');
   const [account, setAccount] = useState('');
   const [env, setEnv] = useState('');
   const [region, setRegion] = useState('');
+  const [cloud, setCloud] = useState<CloudProviderId>('aws');
 
   const projectId = Array.isArray(router.query.project_id) ? router.query.project_id[0] : router.query.project_id;
   const scopeEnv = Array.isArray(router.query.environment) ? router.query.environment[0] : router.query.environment;
+
+  useEffect(() => {
+    const fromQuery = router.query.cloud;
+    const raw = Array.isArray(fromQuery) ? fromQuery[0] : fromQuery;
+    if (raw) setCloud(normalizeCloudProvider(raw));
+  }, [router.query.cloud]);
+
+  useEffect(() => {
+    const raw = router.query.account_id;
+    const fromQuery = Array.isArray(raw) ? raw[0] : raw;
+    if (fromQuery?.trim()) setAccount(fromQuery.trim());
+  }, [router.query.account_id]);
 
   useEffect(() => {
     if (scopeEnv && !env) setEnv(scopeEnv);
@@ -55,7 +79,7 @@ export default function CloudResourcesPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [team, account, env, region, q, projectId]);
+  }, [team, account, env, region, q, projectId, cloud]);
 
   useEffect(() => {
     const token = localStorage.getItem('devops_token');
@@ -63,7 +87,7 @@ export default function CloudResourcesPage() {
       router.replace('/login');
       return;
     }
-    const params = new URLSearchParams({ cloud: 'aws', limit: String(PAGE_SIZE), page: String(page) });
+    const params = new URLSearchParams({ cloud, limit: String(PAGE_SIZE), page: String(page) });
     if (team.trim()) params.set('team', team.trim());
     if (account.trim()) params.set('account_id', account.trim());
     if (env.trim()) params.set('environment', env.trim());
@@ -90,9 +114,13 @@ export default function CloudResourcesPage() {
         setRows(Array.isArray(data.resources) ? data.resources : []);
         setTotal(typeof data.total === 'number' ? data.total : 0);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
+      .catch((err) => {
+        setRows([]);
+        setTotal(0);
+        setError(err instanceof Error ? err.message : 'Failed to load cloud resources');
+      })
       .finally(() => setLoading(false));
-  }, [apiUrl, router, team, account, env, region, q, projectId, page]);
+  }, [apiUrl, router, team, account, env, region, q, projectId, page, reloadToken, cloud]);
 
   const columns: DataTableColumn<CloudResource>[] = useMemo(
     () => [
@@ -105,12 +133,35 @@ export default function CloudResourcesPage() {
           </Link>
         ),
       },
+      {
+        id: 'cloud',
+        header: 'Cloud',
+        cell: (row) => (
+          <span className={`ig-chip ig-chip--${providerChipTone(row.cloud)}`}>{providerLabel(row.cloud)}</span>
+        ),
+      },
       { id: 'service_type', header: 'Service', cell: (row) => row.service_type },
       { id: 'team_slug', header: 'Team', cell: (row) => row.team_slug },
-      { id: 'account_id', header: 'Account', cell: (row) => row.account_id },
+      {
+        id: 'account_id',
+        header: 'Account',
+        cell: (row) => (
+          <Link
+            href={cloudInventoryAccountHref(row.cloud, row.account_id)}
+            onClick={(e) => e.stopPropagation()}
+            style={{ fontWeight: 500 }}
+          >
+            {row.account_name?.trim() ? `${row.account_name} (${row.account_id})` : row.account_id}
+          </Link>
+        ),
+      },
       { id: 'environment', header: 'Env', cell: (row) => row.environment },
       { id: 'region', header: 'Region', cell: (row) => row.region },
-      { id: 'status', header: 'Status', cell: (row) => row.status },
+      {
+        id: 'status',
+        header: 'Status',
+        cell: (row) => <span className="ig-chip ig-chip--ok">{row.status}</span>,
+      },
     ],
     [],
   );
@@ -118,18 +169,33 @@ export default function CloudResourcesPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const filterChips: PageFilterChip[] = useMemo(
-    () => [
-      { key: 'project', label: 'Project scope', value: projectId ? `#${projectId}` : '' },
-      { key: 'environment', label: 'Environment', value: env.trim() || scopeEnv || '' },
-      { key: 'team', label: 'Team', value: team.trim() },
-      { key: 'account', label: 'Account', value: account.trim() },
-      { key: 'region', label: 'Region', value: region.trim() },
-    ],
-    [projectId, env, scopeEnv, team, account, region],
+    () =>
+      [
+        { key: 'cloud', label: 'Cloud', value: providerLabel(cloud) },
+        projectId ? { key: 'project', label: 'Project scope', value: `#${projectId}` } : null,
+        env.trim() || scopeEnv ? { key: 'environment', label: 'Environment', value: env.trim() || scopeEnv || '' } : null,
+        team.trim() ? { key: 'team', label: 'Team', value: team.trim() } : null,
+        account.trim() ? { key: 'account', label: 'Account', value: account.trim() } : null,
+        region.trim() ? { key: 'region', label: 'Region', value: region.trim() } : null,
+        q.trim() ? { key: 'q', label: 'Search', value: q.trim() } : null,
+      ].filter((chip): chip is PageFilterChip => Boolean(chip)),
+    [cloud, projectId, env, scopeEnv, team, account, region, q],
   );
+
+  const hasLocalFilters = Boolean(team.trim() || account.trim() || env.trim() || region.trim() || q.trim());
+
+  const onCloudChange = (next: string) => {
+    const value = normalizeCloudProvider(next);
+    setCloud(value);
+    void router.replace({ pathname: router.pathname, query: { ...router.query, cloud: value } }, undefined, {
+      shallow: true,
+    });
+  };
 
   const removeChip = (key: string) => {
     switch (key) {
+      case 'cloud':
+        break;
       case 'environment':
         setEnv('');
         break;
@@ -141,6 +207,9 @@ export default function CloudResourcesPage() {
         break;
       case 'region':
         setRegion('');
+        break;
+      case 'q':
+        setQ('');
         break;
       default:
         break;
@@ -155,87 +224,194 @@ export default function CloudResourcesPage() {
     setQ('');
   };
 
+  const activeRegions = useMemo(() => new Set(rows.map((row) => row.region).filter(Boolean)).size, [rows]);
+
   return (
     <DevOpsLayout>
       <Head>
         <title>Cloud inventory - DevOps</title>
       </Head>
-      <div className="portal-page">
+      <div className="portal-page cloud-workspace-page">
         <PageHeader
-          eyebrow="Cloud"
+          eyebrow="Cloud workspace"
           title="Resource inventory"
-          subtitle="Read-only AWS inventory by team, account, environment, and region. Use the header ScopeBar for project and environment; refine below. Credentials never leave the API host."
+          subtitle="Read-only resources for your DevOps teams. Pick a cloud, then filter — only connected onboarded accounts apply."
         />
+
+        {!forbidden ? (
+          <CloudHubNav active="inventory" provider={cloud} onProviderChange={onCloudChange} />
+        ) : null}
+
         {forbidden ? (
           <div className="alert alert-error" role="alert">
             You do not have permission to view cloud inventory. Ask a DevOps manager if you need access.
           </div>
         ) : null}
-        {error ? (
-          <div className="alert alert-error" role="alert">
-            {error}
-          </div>
+
+        {!forbidden && !error ? (
+          <section className="k8s-summary-strip" aria-label="Inventory summary">
+            <div className="k8s-summary-card">
+              <span className="k8s-summary-card__label">Total resources</span>
+              <strong className="k8s-summary-card__value">{loading ? '—' : total}</strong>
+            </div>
+            <div className="k8s-summary-card">
+              <span className="k8s-summary-card__label">On this page</span>
+              <strong className="k8s-summary-card__value">{loading ? '—' : rows.length}</strong>
+            </div>
+            <div className="k8s-summary-card">
+              <span className="k8s-summary-card__label">Regions (page)</span>
+              <strong className="k8s-summary-card__value">{loading ? '—' : activeRegions}</strong>
+            </div>
+            <div className="k8s-summary-card">
+              <span className="k8s-summary-card__label">Page</span>
+              <strong className="k8s-summary-card__value">{loading ? '—' : `${page} / ${totalPages}`}</strong>
+            </div>
+          </section>
         ) : null}
-        <div className="portal-surface portal-surface--table">
-          <PageFilters
-            search={q}
-            onSearchChange={setQ}
-            searchPlaceholder="Search name or resource id"
-            chips={filterChips}
-            onRemoveChip={removeChip}
-            onClear={clearLocalFilters}
-          />
-          <div className="ig-table-toolbar" style={{ marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
-            <input className="input" placeholder="Team slug" value={team} onChange={(e) => setTeam(e.target.value)} aria-label="Team slug" />
-            <input className="input" placeholder="Account id" value={account} onChange={(e) => setAccount(e.target.value)} aria-label="Account id" />
-            <input className="input" placeholder="Environment" value={env} onChange={(e) => setEnv(e.target.value)} aria-label="Environment" />
-            <input className="input" placeholder="Region" value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Region" />
-            <span className="ig-table-toolbar__count">
-              {loading ? 'Loading…' : `${rows.length} on page · ${total} total`}
-            </span>
-          </div>
-          {loading ? (
-            <EmptyState title="Loading resources" body="Fetching inventory from the API…" />
-          ) : rows.length === 0 && !forbidden ? (
-            <EmptyState
-              title="No resources match"
-              body="Adjust filters or seed demo data by running a fresh API migration."
-            />
-          ) : (
-            <>
-              <DataTable
-                columns={columns}
-                rows={rows}
-                rowKey={(r) => r.id}
-                label="Cloud resources"
-                onRowOpen={(row) => void router.push(`/cloud-resources/${row.id}`)}
+
+        {!forbidden ? (
+          <section className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <span className="portal-surface__eyebrow">Inventory</span>
+                <h2 className="portal-surface__title">{providerInventoryTitle(cloud)}</h2>
+                <p className="portal-surface__subtitle">
+                  Filter by team, account, environment, or region. Inventory lists resources for{' '}
+                  <strong>{providerLabel(cloud)}</strong> when matching onboarded accounts are connected.
+                </p>
+              </div>
+            </div>
+
+            {error ? (
+              <CloudStatePanel
+                kind="error"
+                title="Could not load inventory"
+                message={error}
+                onRetry={() => setReloadToken((value) => value + 1)}
               />
-              {total > PAGE_SIZE ? (
-                <div className="ig-table-toolbar" style={{ marginTop: 16, justifyContent: 'space-between' }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={page <= 1 || loading}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  >
-                    Previous
-                  </button>
-                  <span>
-                    Page {page} of {totalPages}
-                  </span>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={page >= totalPages || loading}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    Next
-                  </button>
-                </div>
-              ) : null}
-            </>
-          )}
-        </div>
+            ) : (
+              <>
+                {filterChips.length > 0 ? (
+                  <PageFilters chips={filterChips} onRemoveChip={removeChip} onClear={clearLocalFilters} />
+                ) : null}
+
+                <section className="devops-incident-filter-surface cloud-inventory-filters">
+                  <div className="devops-incident-filter-row">
+                    <input
+                      className="input"
+                      type="search"
+                      placeholder="Search name or resource ID"
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      aria-label="Search resources"
+                    />
+                    <label className="devops-incident-filter-chip">
+                      <span className="devops-incident-filter-chip__label">Team</span>
+                      <input
+                        className="devops-incident-filter-chip__control"
+                        placeholder="slug"
+                        value={team}
+                        onChange={(e) => setTeam(e.target.value)}
+                        aria-label="Team slug"
+                      />
+                    </label>
+                    <label className="devops-incident-filter-chip">
+                      <span className="devops-incident-filter-chip__label">Account</span>
+                      <input
+                        className="devops-incident-filter-chip__control"
+                        placeholder={inventoryAccountPlaceholder(cloud)}
+                        value={account}
+                        onChange={(e) => setAccount(e.target.value)}
+                        aria-label="Account id"
+                      />
+                    </label>
+                    <label className="devops-incident-filter-chip">
+                      <span className="devops-incident-filter-chip__label">Env</span>
+                      <input
+                        className="devops-incident-filter-chip__control"
+                        placeholder="dev, prod…"
+                        value={env}
+                        onChange={(e) => setEnv(e.target.value)}
+                        aria-label="Environment"
+                      />
+                    </label>
+                    <label className="devops-incident-filter-chip">
+                      <span className="devops-incident-filter-chip__label">Region</span>
+                      <input
+                        className="devops-incident-filter-chip__control"
+                        placeholder="us-east-1"
+                        value={region}
+                        onChange={(e) => setRegion(e.target.value)}
+                        aria-label="Region"
+                      />
+                    </label>
+                    <div className="devops-incident-filter-row__actions">
+                      {hasLocalFilters ? (
+                        <span className="devops-incident-filter-row__badge">{filterChips.length} active</span>
+                      ) : null}
+                      {hasLocalFilters ? (
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={clearLocalFilters}>
+                          Clear
+                        </button>
+                      ) : null}
+                      <span className="ig-table-toolbar__count">
+                        {loading ? 'Loading…' : `${rows.length} on page · ${total} total`}
+                      </span>
+                    </div>
+                  </div>
+                </section>
+
+                <DataTable
+                  columns={columns}
+                  rows={rows}
+                  rowKey={(r) => r.id}
+                  label="Cloud resources"
+                  loading={loading}
+                  onRowOpen={(row) => void router.push(`/cloud-resources/${row.id}`)}
+                  empty={
+                    <CloudStatePanel
+                      kind="empty"
+                      title="No resources match"
+                      message={`No ${providerLabel(cloud)} rows for your teams with the current filters. Onboard and connect an account, or try another cloud.`}
+                      action={
+                        <>
+                          <CloudEmptyCatalogAction />
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={clearLocalFilters}>
+                            Clear filters
+                          </button>
+                        </>
+                      }
+                    />
+                  }
+                />
+
+                {total > PAGE_SIZE ? (
+                  <div className="ig-table-toolbar" style={{ marginTop: 16, justifyContent: 'space-between' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={page <= 1 || loading}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </button>
+                    <span>
+                      Page {page} of {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={page >= totalPages || loading}
+                      onClick={() => setPage((p) => p + 1)}
+                    >
+                      Next
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </section>
+        ) : null}
       </div>
     </DevOpsLayout>
   );

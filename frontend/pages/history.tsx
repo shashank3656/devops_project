@@ -974,13 +974,13 @@ export default function History() {
     try {
       const rawConfig = rawConfigByRequestId.current[req.id] ?? req.config ?? '';
       sessionStorage.setItem(TEMPLATE_KEY, JSON.stringify({
+        request_id: req.id,
         project_id: req.project_id,
         team: req.team,
         env: req.env,
         cloud: req.cloud,
         service: req.service,
         client_name: req.client_name,
-        config: rawConfig,
       }));
       setDetailRequest(null);
     setDetailDelivery(null);
