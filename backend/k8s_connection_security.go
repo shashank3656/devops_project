@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -184,11 +185,101 @@ func validateK8sClusterEndpoint(raw string) error {
 		return fmt.Errorf("cluster endpoint cannot target localhost")
 	}
 	if ip := net.ParseIP(host); ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
-			return fmt.Errorf("cluster endpoint cannot target private or loopback addresses")
+		return assertK8sProbeIPAllowed(ip)
+	}
+	return nil
+}
+
+func assertK8sProbeIPAllowed(ip net.IP) error {
+	if ip == nil {
+		return fmt.Errorf("cluster endpoint host is not a valid IP")
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		return fmt.Errorf("cluster endpoint cannot target private or link-local addresses")
+	}
+	if ip.Equal(net.IPv4(169, 254, 169, 254)) {
+		return fmt.Errorf("cluster endpoint cannot target cloud metadata addresses")
+	}
+	return nil
+}
+
+func assertK8sProbeHostSafe(host string) error {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return fmt.Errorf("cluster endpoint host is required")
+	}
+	switch host {
+	case "metadata", "metadata.google.internal", "kubernetes.default.svc":
+		return fmt.Errorf("cluster endpoint host is not allowed")
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return assertK8sProbeIPAllowed(ip)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return fmt.Errorf("cluster endpoint DNS lookup failed: %w", err)
+	}
+	if len(addrs) == 0 {
+		return fmt.Errorf("cluster endpoint host did not resolve")
+	}
+	for _, addr := range addrs {
+		if err := assertK8sProbeIPAllowed(addr.IP); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// buildK8sProbeURL rebuilds a fixed HTTPS /version URL from a validated host only (SSRF mitigation).
+func buildK8sProbeURL(rawEndpoint string) (string, error) {
+	if err := validateK8sClusterEndpoint(rawEndpoint); err != nil {
+		return "", err
+	}
+	parsed, err := url.Parse(rawEndpoint)
+	if err != nil || parsed.Host == "" {
+		return "", fmt.Errorf("cluster endpoint must be a valid URL")
+	}
+	host := parsed.Hostname()
+	if err := assertK8sProbeHostSafe(host); err != nil {
+		return "", err
+	}
+	port := parsed.Port()
+	if port == "" {
+		port = "443"
+	}
+	safe := &url.URL{
+		Scheme: "https",
+		Host:   net.JoinHostPort(host, port),
+		Path:   "/version",
+	}
+	return safe.Redacted(), nil
+}
+
+func k8sProbeHTTPClient() *http.Client {
+	dialer := &net.Dialer{Timeout: 8 * time.Second}
+	return &http.Client{
+		Timeout: 8 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				host, _, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+				if ip := net.ParseIP(host); ip != nil {
+					if err := assertK8sProbeIPAllowed(ip); err != nil {
+						return nil, err
+					}
+				}
+				return dialer.DialContext(ctx, network, addr)
+			},
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 }
 
 type k8sCloudTrustConfig struct {
@@ -286,19 +377,15 @@ func k8sSkipEndpointProbe() bool {
 }
 
 func probeK8sClusterEndpoint(endpoint string) error {
-	if err := validateK8sClusterEndpoint(endpoint); err != nil {
-		return err
-	}
 	if k8sSkipEndpointProbe() {
 		return nil
 	}
-	client := &http.Client{
-		Timeout: 8 * time.Second,
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-		},
+	probeURL, err := buildK8sProbeURL(endpoint)
+	if err != nil {
+		return err
 	}
-	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(endpoint, "/")+"/version", nil)
+	client := k8sProbeHTTPClient()
+	req, err := http.NewRequest(http.MethodGet, probeURL, nil)
 	if err != nil {
 		return err
 	}

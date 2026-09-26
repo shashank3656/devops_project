@@ -27,6 +27,26 @@ func TestValidateK8sClusterEndpointRejectsInsecure(t *testing.T) {
 	}
 }
 
+func TestBuildK8sProbeURLUsesFixedPath(t *testing.T) {
+	t.Setenv("SESSION_SECRET", "test-secret")
+	// Use a public IP literal so the test does not depend on external DNS.
+	got, err := buildK8sProbeURL("https://8.8.8.8/evil/path?redirect=http://169.254.169.254")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "https://8.8.8.8:443/version"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestBuildK8sProbeURLRejectsPrivateIP(t *testing.T) {
+	_, err := buildK8sProbeURL("https://10.0.0.1")
+	if err == nil {
+		t.Fatal("expected private IP to be rejected")
+	}
+}
+
 func TestEncryptK8sCredentialRoundTrip(t *testing.T) {
 	t.Setenv("SESSION_SECRET", "test-secret")
 	plain := "super-secret-token"
