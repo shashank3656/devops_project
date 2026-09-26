@@ -5554,6 +5554,117 @@ th,
   margin-bottom: 8px;
 }
 
+.k8s-workspace-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(34, 112, 177, 0.16);
+  background: rgba(4, 16, 30, 0.42);
+}
+
+.k8s-workspace-rail__label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.k8s-workspace-rail__link {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-accent, #38bdf8);
+  text-decoration: none;
+}
+
+.k8s-workspace-rail__link:hover {
+  text-decoration: underline;
+}
+
+.k8s-workspace-rail__link.is-active {
+  color: var(--color-text);
+  text-decoration: none;
+  cursor: default;
+}
+
+.k8s-workspace-rail__sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(34, 112, 177, 0.22);
+}
+
+.k8s-workspace-rail__namespace {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.k8s-workspace-rail__select {
+  min-width: 160px;
+  min-height: 32px;
+  font-size: 12px;
+}
+
+.k8s-workspace-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.k8s-workspace-tabs__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+}
+
+.k8s-workspace-tabs__group-label {
+  min-width: 72px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.ig-k8s-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ig-k8s-tabs a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 112, 177, 0.2);
+  background: rgba(5, 18, 34, 0.5);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.ig-k8s-tabs a:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+  color: var(--color-text);
+}
+
+.ig-k8s-tabs a.is-active {
+  border-color: rgba(56, 189, 248, 0.55);
+  background: rgba(14, 116, 144, 0.22);
+  color: #e0f2fe;
+}
+
 .k8s-operator-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

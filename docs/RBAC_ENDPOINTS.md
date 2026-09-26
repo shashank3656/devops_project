@@ -22,6 +22,8 @@ Companion to [RBAC_MATRIX.md](./RBAC_MATRIX.md). Lists high-risk routes and the 
 | POST | `/api/devops/cloud/accounts` | Cloud account onboard (manager **and** member of target devops team) |
 | PATCH | `/api/devops/cloud/accounts/:id` | Disable, metadata, or trust rotation (same team manager) |
 | POST | `/api/devops/cloud/accounts/:id/test` | Connection test (same team manager) |
+| POST | `/api/devops/k8s-connections` | Register or update cluster connection (encrypted credentials / secret refs) |
+| POST | `/api/devops/k8s-connections/test` | Validate K8s trust config and endpoint before save |
 
 Additional manager gates exist on K8s mutating routes, deployment gate approvals, project lifecycle writes, and deploy-intelligence branch protection — see `requireDevopsManager` in the backend tree.
 
@@ -33,6 +35,7 @@ Any authenticated DevOps user (or admin acting in DevOps) may call read-heavy De
 | GET | `/api/devops/cloud/resources/:id` | devops member teams | Read-only row |
 | GET | `/api/devops/cloud/accounts` | devops member teams | Catalog (no credentials) |
 | GET | `/api/devops/cloud/accounts/:id` | devops member teams | Detail (no credentials) |
+| GET | `/api/devops/k8s-connections` | devops user | Projects, connections, auth modes (`has_auth_credential` only) |
 | GET | `/api/admin/cloud/accounts` | admin | All onboarded accounts (read-only) |
 
 **User portal** has no cloud account or inventory routes. **Admin** does not onboard accounts in the UI (DevOps managers only).

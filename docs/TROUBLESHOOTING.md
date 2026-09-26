@@ -68,3 +68,13 @@ Check:
 - `DATABASE_URL` or `DB_*` settings
 - `REDIS_ADDR` and `REDIS_PASSWORD`
 - network reachability from the backend pod/container
+
+## Kubernetes connection test fails (DevOps)
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `cluster endpoint must use https` | HTTP or invalid URL | Use the cloud control plane HTTPS URL from EKS/AKS/GKE. |
+| `cannot target private or loopback` | Minikube / kind URL | Use a reachable endpoint, `in_cluster` mode, or set `K8S_SKIP_ENDPOINT_PROBE=true` locally only. |
+| `secret_ref … is not configured` | Missing server env | Set `K8S_SECRET_REF_<REF>` or `K8S_SECRET_REFS` on the API host ([CONFIGURATION.md](./CONFIGURATION.md)). |
+| `could not reach cluster endpoint` | Network / firewall | Ensure the API host can reach the cluster API (443). For dev without reachability, use `K8S_SKIP_ENDPOINT_PROBE=true`. |
+| Test passes but workspace empty | Synthetic vs live data | Dashboard data may be seeded/demo until live K8s API integration is enabled for that environment. |

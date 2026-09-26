@@ -125,7 +125,7 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 | Promotions / freezes / rollback | Env promotion with gates. Each hop writes a CHG. Freeze blocks risky ships. |
 | Deploy intel | Onboard repo → open PRs + change brief + `infragate/deploy-intel` check. |
 | GitOps control | Which repo/path gets `request.json`. |
-| Kubernetes | Onboard cluster, then pods/logs/workloads/terminal. |
+| Kubernetes workspace (NF-02) | Cluster catalog → scoped workspace (overview + resource tabs); logs/terminal/rollout as drill-down. **Secure connect:** AWS/Azure/GCP IAM or workload identity, server `secret_ref`, encrypted kubeconfig/token — see [CONFIGURATION.md](./docs/CONFIGURATION.md#kubernetes-cluster-connections-devops). |
 | **Cloud workspace** (NF-01 + BRD-07) | **Accounts:** managers onboard AWS/Azure/GCP (trust on API host). **Inventory:** read-only resources by team/account/env/region; account landing + resource detail. Operators read; User/Admin do not browse inventory. See [FEATURES.md](./docs/FEATURES.md). |
 | Runbooks / access exceptions / secrets / retries / alerts | Day-2 ops. |
 
@@ -185,7 +185,7 @@ Auth: User / Admin / DevOps send `Authorization: Bearer …`. Admin may send `X-
 `/api/devops/promotions` · `/rollback-console` · `/freezes` · `/oncall`  
 `/api/devops/cloud/accounts` (+ onboard, test, PATCH trust) · `/api/devops/cloud/resources` (read-only) · `/api/admin/cloud/accounts` (read-only)  
 `/api/devops/deploy-intelligence` · `/repos` · `/suggest-ticket` · `/protect-branch`  
-`/api/devops/gitops/...` · `/projects` · `/templates` · `/k8s-*` · `/ops-command-center` · `/environment-drift` · `/credential-audit` · `/access-overrides` · `/retry-center` · `/notification-settings`
+`/api/devops/gitops/...` · `/projects` · `/templates` · `/k8s-*` (incl. `k8s-connections/test`) · `/ops-command-center` · `/environment-drift` · `/credential-audit` · `/access-overrides` · `/retry-center` · `/notification-settings`
 
 ### Webhooks
 

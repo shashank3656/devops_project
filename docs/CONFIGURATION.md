@@ -56,6 +56,16 @@ docker compose --env-file config/.env --profile dev up -d --build
 | `AWS_WORKLOAD_ROLE_ARN` | Optional IAM role assumed after GitHub/GitLab OIDC verify (repo as subject) |
 | `GCP_WORKLOAD_SERVICE_ACCOUNT` | Optional GCP SA recorded after OIDC verify; no GCP key is minted |
 
+### Kubernetes cluster connections (DevOps)
+
+| Variable | Purpose |
+| --- | --- |
+| `K8S_SECRET_REF_<REF>` | Server-side secret for onboarding `secret_ref` mode. `<REF>` is the uppercase ref with `-` and `.` → `_` (e.g. ref `prod-eks` → `K8S_SECRET_REF_PROD_EKS`). |
+| `K8S_SECRET_REFS` | Optional JSON map `{"ref-name":"credential material"}` when you prefer one env var for many refs. |
+| `K8S_SKIP_ENDPOINT_PROBE` | If `true` / `1`, **Test connection** skips live HTTPS probe to the cluster `/version` (local dev only; keep false in production). |
+
+Pasted kubeconfigs and tokens are encrypted at rest (`enc:v1:`) using the same key material as `SESSION_SECRET` / `JWT_SECRET`. List APIs never return credential bodies.
+
 ### Frontend core settings
 
 All frontends rely on:
@@ -87,6 +97,7 @@ Use this split consistently:
 - SMTP passwords
 - JWT / API key hashing secrets
 - SSO shared secrets
+- `K8S_SECRET_REF_*` values and entries in `K8S_SECRET_REFS`
 
 ## Helm Values
 

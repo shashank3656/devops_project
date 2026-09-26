@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -71,7 +72,7 @@ func planChangeSHARollback(incidentID, changeID int) (*changeRollbackPlan, error
 	if clusters, err := listK8sConnections(); err == nil && len(clusters) > 0 {
 		name := strings.TrimSpace(clusters[0].ClusterName)
 		if name != "" {
-			plan.K8sHref = "/k8s/clusters/" + name
+			plan.K8sHref = "/k8s/workspace?cluster_name=" + url.QueryEscape(name)
 		} else {
 			plan.K8sHref = "/k8s/onboard"
 		}

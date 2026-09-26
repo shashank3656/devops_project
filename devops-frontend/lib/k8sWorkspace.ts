@@ -234,6 +234,7 @@ export interface K8sOnboardingData {
   projects: ProjectOption[];
   connections: K8sConnection[];
   auth_modes: string[];
+  auth_modes_by_cloud: Record<string, string[]>;
 }
 
 export interface K8sConnectionPayload {
@@ -1337,12 +1338,22 @@ function normalizeIngressDetailData(value: unknown): K8sIngressDetailData {
   };
 }
 
+function normalizeAuthModesByCloud(value: unknown): Record<string, string[]> {
+  const data = asRecord(value);
+  const out: Record<string, string[]> = {};
+  for (const [key, modes] of Object.entries(data)) {
+    out[key] = normalizeStringArray(modes);
+  }
+  return out;
+}
+
 function normalizeOnboardingData(value: unknown): K8sOnboardingData {
   const data = asRecord(value);
   return {
     projects: normalizeProjects(data.projects),
     connections: normalizeConnections(data.connections),
     auth_modes: normalizeStringArray(data.auth_modes),
+    auth_modes_by_cloud: normalizeAuthModesByCloud(data.auth_modes_by_cloud),
   };
 }
 
@@ -1711,6 +1722,17 @@ export async function saveK8sConnection(apiUrl: string, body: K8sConnectionPaylo
     body: JSON.stringify(body),
   });
   return getString(payload.message, 'K8s cluster saved');
+}
+
+export async function testK8sConnection(apiUrl: string, body: K8sConnectionPayload): Promise<string> {
+  const payload = await fetchAuthorizedJson(apiUrl, '/api/devops/k8s-connections/test', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  return getString(payload.message, 'Connection test passed');
 }
 
 export async function triggerK8sWorkloadAction(apiUrl: string, body: K8sWorkloadActionPayload): Promise<string> {
