@@ -286,38 +286,16 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 2FA: if totp_enabled, require OTP before issuing token
 	if user.TotpEnabled {
-		otpBytes := make([]byte, 6)
-		if _, err := rand.Read(otpBytes); err != nil {
-			writeAPIError(w, r, http.StatusInternalServerError, "failed to generate OTP", err)
+		resp, err := beginLoginEmail2FA(user.ID)
+		if err != nil {
+			msg := "Could not send verification email. Check SMTP settings or contact your administrator."
+			if strings.Contains(err.Error(), "no email") {
+				msg = "Your account has no email address. Ask an administrator to add one before using 2FA."
+			}
+			writeAPIError(w, r, http.StatusServiceUnavailable, msg, err)
 			return
 		}
-		var otp string
-		for _, b := range otpBytes {
-			otp += fmt.Sprintf("%d", b%10)
-		}
-		otpExpires := time.Now().Add(10 * time.Minute)
-		if err := SetUserVerificationToken(user.ID, otp, otpExpires); err != nil {
-			writeAPIError(w, r, http.StatusInternalServerError, "failed to persist OTP", err)
-			return
-		}
-		pendingBytes := make([]byte, 32)
-		if _, err := rand.Read(pendingBytes); err != nil {
-			writeAPIError(w, r, http.StatusInternalServerError, "failed to generate pending 2FA token", err)
-			return
-		}
-		pendingToken := hex.EncodeToString(pendingBytes)
-		_, _ = DB.Exec("INSERT INTO pending_2fa (token, user_id, expires_at) VALUES ($1, $2, $3)",
-			pendingToken, user.ID, otpExpires)
-		subj, body := EmailTemplate2FA(otp)
-		sendNotificationEmailIfConfigured(user.ID, "2fa", subj, body)
-		w.Header().Set("Content-Type", "application/json")
-		twoFAResp := map[string]interface{}{
-			"requires_otp":      true,
-			"pending_2fa_token": pendingToken,
-			"message":           "Enter the 6-digit code sent to your email",
-		}
-		maybeAttachTestOTP(twoFAResp, otp)
-		encodeAuthJSON(w, twoFAResp)
+		writeLogin2FARequired(w, resp)
 		return
 	}
 
