@@ -180,7 +180,7 @@ Primary nav: Home, Approvals, Requests, People, Projects, Catalog, More. Mobile 
 
 Who: `devops_user` (and admins for some template routes). **Managers** (`is_manager`) own the request queue, CHGs, incidents, promotions, and GitOps writes.
 
-Primary nav (manager): Home, Requests, Changes, Deployments, Kubernetes, GitOps, Projects. Health, problems, policy as code, evidence, and credential audit stay under More tools. `/gitops` redirects to `/gitops-projects`; `/deployments` redirects to `/promotions`. Mobile tabs: Home, Requests, Changes, Kubernetes.
+Primary nav: Home, Requests, **ITSM**, then (managers only) Deployments, Kubernetes, GitOps, Projects. **ITSM** is one expandable tree for all DevOps users — Change, Incident, and Problem records plus Knowledge: changes catalog, change calendar, services, release notes, incidents, incident notes, problems, knowledge. Parent link lands on `/changes`. Write actions on those pages still follow manager RBAC on the API. Health, policy as code, evidence, and credential audit stay under **More tools** (managers). `/gitops` redirects to `/gitops-projects`; `/deployments` redirects to `/promotions`. Mobile tabs: Home, Requests, ITSM, Kubernetes.
 
 ### Home and requests
 
@@ -294,6 +294,8 @@ Notion: [NF-03 Environment Catalog](https://app.notion.com/p/3e60f430ed108140881
 Notion: [NF-02 Kubernetes Workspace](https://app.notion.com/p/3e60f430ed1081d2a06ef9c037bbcde3)
 
 ### Incidents and problems
+
+DevOps sidebar: all pages below are linked under primary **ITSM** (with Changes and Knowledge in the same tree).
 
 | Feature | Page | How it works |
 | --- | --- | --- |
