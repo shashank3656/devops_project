@@ -7,9 +7,11 @@ import { useApiUrl } from '../../context/ApiUrlContext';
 import {
   DataTable,
   EmptyState,
+  PageFilters,
   PageHeader,
   portalFetch,
   type DataTableColumn,
+  type PageFilterChip,
 } from '@infragate/ui';
 
 interface CloudResource {
@@ -115,6 +117,44 @@ export default function CloudResourcesPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  const filterChips: PageFilterChip[] = useMemo(
+    () => [
+      { key: 'project', label: 'Project scope', value: projectId ? `#${projectId}` : '' },
+      { key: 'environment', label: 'Environment', value: env.trim() || scopeEnv || '' },
+      { key: 'team', label: 'Team', value: team.trim() },
+      { key: 'account', label: 'Account', value: account.trim() },
+      { key: 'region', label: 'Region', value: region.trim() },
+    ],
+    [projectId, env, scopeEnv, team, account, region],
+  );
+
+  const removeChip = (key: string) => {
+    switch (key) {
+      case 'environment':
+        setEnv('');
+        break;
+      case 'team':
+        setTeam('');
+        break;
+      case 'account':
+        setAccount('');
+        break;
+      case 'region':
+        setRegion('');
+        break;
+      default:
+        break;
+    }
+  };
+
+  const clearLocalFilters = () => {
+    setTeam('');
+    setAccount('');
+    setEnv('');
+    setRegion('');
+    setQ('');
+  };
+
   return (
     <DevOpsLayout>
       <Head>
@@ -124,7 +164,7 @@ export default function CloudResourcesPage() {
         <PageHeader
           eyebrow="Cloud"
           title="Resource inventory"
-          subtitle="Read-only AWS inventory by team, account, environment, and region. Credentials never leave the API host."
+          subtitle="Read-only AWS inventory by team, account, environment, and region. Use the header ScopeBar for project and environment; refine below. Credentials never leave the API host."
         />
         {forbidden ? (
           <div className="alert alert-error" role="alert">
@@ -137,18 +177,19 @@ export default function CloudResourcesPage() {
           </div>
         ) : null}
         <div className="portal-surface portal-surface--table">
+          <PageFilters
+            search={q}
+            onSearchChange={setQ}
+            searchPlaceholder="Search name or resource id"
+            chips={filterChips}
+            onRemoveChip={removeChip}
+            onClear={clearLocalFilters}
+          />
           <div className="ig-table-toolbar" style={{ marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
-            <input
-              className="input"
-              placeholder="Search name or resource id"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              aria-label="Search resources"
-            />
-            <input className="input" placeholder="Team slug" value={team} onChange={(e) => setTeam(e.target.value)} />
-            <input className="input" placeholder="Account id" value={account} onChange={(e) => setAccount(e.target.value)} />
-            <input className="input" placeholder="Environment" value={env} onChange={(e) => setEnv(e.target.value)} />
-            <input className="input" placeholder="Region" value={region} onChange={(e) => setRegion(e.target.value)} />
+            <input className="input" placeholder="Team slug" value={team} onChange={(e) => setTeam(e.target.value)} aria-label="Team slug" />
+            <input className="input" placeholder="Account id" value={account} onChange={(e) => setAccount(e.target.value)} aria-label="Account id" />
+            <input className="input" placeholder="Environment" value={env} onChange={(e) => setEnv(e.target.value)} aria-label="Environment" />
+            <input className="input" placeholder="Region" value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Region" />
             <span className="ig-table-toolbar__count">
               {loading ? 'Loading…' : `${rows.length} on page · ${total} total`}
             </span>

@@ -3720,6 +3720,17 @@ html[data-theme] .ig-table tbody tr.ig-tree-row--cloud td:first-child { box-shad
 .ig-plan__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .ig-plan__empty { margin: 0; color: var(--ig-muted); font-size: var(--ig-text-sm); }
 
+.ig-delivery__grid {
+  display: grid;
+  grid-template-columns: minmax(88px, auto) 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: var(--ig-text-sm);
+}
+.ig-delivery__grid dt { margin: 0; color: var(--ig-muted); }
+.ig-delivery__grid dd { margin: 0; color: var(--ig-text); }
+.ig-delivery__links { display: flex; flex-wrap: wrap; gap: 8px; }
+
 .ig-plan__counts {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

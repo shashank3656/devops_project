@@ -892,6 +892,7 @@ func devopsRequestDetailHandler(w http.ResponseWriter, id int) {
 	if lastMerge, err := latestMergeForRequest(id); err == nil && lastMerge != nil {
 		resp["last_merge"] = lastMerge
 	}
+	resp["delivery"] = buildRequestDeliveryVisibility(req)
 	w.Header().Set("Content-Type", "application/json")
 	encodeDevopsJSON(w, map[string]interface{}{"request": resp, "status": "ok"})
 }

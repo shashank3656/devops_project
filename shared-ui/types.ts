@@ -238,6 +238,20 @@ export interface DeployIntelPlanDelta {
   flags?: string[];
 }
 
+export interface DeliveryVisibility {
+  environment?: string;
+  pipeline_status: 'success' | 'failed' | 'running' | 'pending' | 'unknown' | string;
+  pipeline_label: string;
+  ci_result?: string;
+  last_sha?: string;
+  promote_state?: string;
+  pipeline_url?: string;
+  pr_url?: string;
+  deploy_intel_href?: string;
+  repo?: string;
+  updated_at?: string;
+}
+
 export interface PRImpactBriefData {
   request_id?: number;
   pr_number?: number;

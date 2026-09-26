@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import { DeliveryVisibilityCard, type DeliveryVisibility } from '@infragate/ui';
 import { SITE_NAME } from '../../lib/site';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -63,6 +64,7 @@ export default function UserChangeDetailPage() {
   const [incidents, setIncidents] = useState<LinkedIncident[]>([]);
   const [blastRadius, setBlastRadius] = useState<string[]>([]);
   const [drift, setDrift] = useState<{ drifted?: boolean; detail?: string } | null>(null);
+  const [delivery, setDelivery] = useState<DeliveryVisibility | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
@@ -92,6 +94,7 @@ export default function UserChangeDetailPage() {
         setIncidents(Array.isArray(data.linked_incidents) ? data.linked_incidents : []);
         setBlastRadius(Array.isArray(data.blast_radius) ? data.blast_radius : []);
         setDrift(data.drift && typeof data.drift === 'object' ? data.drift : null);
+        setDelivery((data.delivery as DeliveryVisibility | undefined) ?? null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load change'))
       .finally(() => setLoading(false));
@@ -116,6 +119,8 @@ export default function UserChangeDetailPage() {
         {error ? <div className="alert alert-error">{error}</div> : null}
         {loading ? <div className="empty-state">Loading change...</div> : null}
         {item ? (
+          <>
+            <DeliveryVisibilityCard delivery={delivery} portal="user" />
           <section className="portal-surface">
             <div className="portal-form-grid">
               <label className="label">Status<input className="input" readOnly value={item.status} /></label>
@@ -190,6 +195,7 @@ export default function UserChangeDetailPage() {
               </>
             ) : null}
           </section>
+          </>
         ) : null}
       </div>
     </>

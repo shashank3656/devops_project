@@ -44,6 +44,8 @@ Phase 1 uses existing roles only (no new role product).
 
 See also [RBAC_ENDPOINTS.md](./RBAC_ENDPOINTS.md) for a route-level inventory and URL bypass notes.
 
+Automated checks (no DB): `backend/test/rbac_foundation_test.go` covers unauthenticated DevOps approve, cloud inventory, and user-portal CHG writes (`POST /api/me/changes` → 401). DevOps ticket approve/reject routes require `requireDevopsManager` (contributors and non-managers receive 403 once authenticated).
+
 ## Out of scope (BRD-06)
 
 - Per-resource IAM graph
