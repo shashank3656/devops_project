@@ -122,8 +122,12 @@ func devopsCloudAccountsListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := listCloudAccountsForTeams(teamSlugs)
 	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "failed to list cloud accounts", err)
-		return
+		if isMissingDatabaseRelation(err, "cloud_accounts") {
+			items = []cloudAccountRecord{}
+		} else {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list cloud accounts", err)
+			return
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "accounts": items})
@@ -406,8 +410,12 @@ func adminCloudAccountsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := listAllCloudAccounts()
 	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "failed to list cloud accounts", err)
-		return
+		if isMissingDatabaseRelation(err, "cloud_accounts") {
+			items = []cloudAccountRecord{}
+		} else {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list cloud accounts", err)
+			return
+		}
 	}
 	_ = adminID
 	w.Header().Set("Content-Type", "application/json")

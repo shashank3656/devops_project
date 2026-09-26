@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import {
-  CLOUD_PROVIDER_SEGMENT,
   inventoryAccountPlaceholder,
   normalizeCloudProvider,
   providerChipTone,
@@ -13,11 +12,12 @@ import {
   providerLabel,
   type CloudProviderId,
 } from '../../lib/cloudProviders';
+import CloudHubNav from '../../components/CloudHubNav';
+import CloudStatePanel, { CloudEmptyCatalogAction } from '../../components/CloudStatePanel';
 import {
   DataTable,
   PageFilters,
   PageHeader,
-  SegmentedControl,
   portalFetch,
   type DataTableColumn,
   type PageFilterChip,
@@ -212,23 +212,15 @@ export default function CloudResourcesPage() {
       <Head>
         <title>Cloud inventory - DevOps</title>
       </Head>
-      <div className="portal-page">
+      <div className="portal-page cloud-workspace-page">
         <PageHeader
-          eyebrow="Cloud"
+          eyebrow="Cloud workspace"
           title="Resource inventory"
-          subtitle="Read-only inventory for AWS, Azure, and GCP. Pick a cloud below; onboarded accounts scope what your teams can see."
+          subtitle="Read-only resources for your DevOps teams. Pick a cloud, then filter — only connected onboarded accounts apply."
         />
 
-        {!forbidden && !error ? (
-          <div className="portal-surface cloud-provider-switch" style={{ padding: '14px 16px', marginBottom: 16 }}>
-            <SegmentedControl
-              label="Cloud provider"
-              name="inventory-cloud"
-              options={CLOUD_PROVIDER_SEGMENT}
-              value={cloud}
-              onChange={onCloudChange}
-            />
-          </div>
+        {!forbidden ? (
+          <CloudHubNav active="inventory" provider={cloud} onProviderChange={onCloudChange} />
         ) : null}
 
         {forbidden ? (
@@ -272,18 +264,12 @@ export default function CloudResourcesPage() {
             </div>
 
             {error ? (
-              <div className="empty-state" role="alert">
-                <strong>Could not load inventory</strong>
-                <p className="ig-muted">{error}</p>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  style={{ marginTop: 12 }}
-                  onClick={() => setReloadToken((value) => value + 1)}
-                >
-                  Retry
-                </button>
-              </div>
+              <CloudStatePanel
+                kind="error"
+                title="Could not load inventory"
+                message={error}
+                onRetry={() => setReloadToken((value) => value + 1)}
+              />
             ) : (
               <>
                 {filterChips.length > 0 ? (
@@ -364,13 +350,19 @@ export default function CloudResourcesPage() {
                   loading={loading}
                   onRowOpen={(row) => void router.push(`/cloud-resources/${row.id}`)}
                   empty={
-                    <div className="empty-state">
-                      <strong>No resources match</strong>
-                      <p className="ig-muted">
-                        Adjust filters, switch cloud provider, or onboard a connected {providerLabel(cloud)} account for
-                        your team.
-                      </p>
-                    </div>
+                    <CloudStatePanel
+                      kind="empty"
+                      title="No resources match"
+                      message={`No ${providerLabel(cloud)} rows for your teams with the current filters. Onboard and connect an account, or try another cloud.`}
+                      action={
+                        <>
+                          <CloudEmptyCatalogAction />
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={clearLocalFilters}>
+                            Clear filters
+                          </button>
+                        </>
+                      }
+                    />
                   }
                 />
 
