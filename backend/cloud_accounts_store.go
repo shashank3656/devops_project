@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -243,15 +244,25 @@ func recordCloudAccountTestResult(id int, testErr error) (*cloudAccountRecord, e
 	return getCloudAccountByID(id)
 }
 
-func listConnectedCloudAccountIDs(provider string) ([]string, error) {
+func listConnectedCloudAccountIDsForTeams(provider string, teamSlugs []string) ([]string, error) {
 	if DB == nil {
 		return nil, sql.ErrConnDone
 	}
+	if len(teamSlugs) == 0 {
+		return []string{}, nil
+	}
 	provider = normalizeCloudProvider(provider)
-	rows, err := DB.Query(`
+	placeholders := make([]string, len(teamSlugs))
+	args := []interface{}{provider}
+	for i, slug := range teamSlugs {
+		args = append(args, strings.TrimSpace(slug))
+		placeholders[i] = "$" + strconv.Itoa(len(args))
+	}
+	query := `
 		SELECT account_id FROM cloud_accounts
 		WHERE provider = $1 AND status = 'connected' AND disabled_at IS NULL
-	`, provider)
+		  AND team_slug IN (` + strings.Join(placeholders, ",") + `)`
+	rows, err := DB.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -267,6 +278,16 @@ func listConnectedCloudAccountIDs(provider string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+func updateCloudAccountTrust(id int, authMode, roleARN, externalID, secretRef string) error {
+	_, err := DB.Exec(`
+		UPDATE cloud_accounts
+		SET auth_mode = $2, role_arn = $3, external_id = $4, secret_ref = $5,
+		    status = 'pending', last_error = '', updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+	`, id, authMode, roleARN, externalID, secretRef)
+	return err
 }
 
 func cloudAccountsConfigured(provider string) (bool, error) {

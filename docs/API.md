@@ -457,13 +457,13 @@ All require a DevOps user. Writes (onboard, actions, terminal) typically require
 | POST | `/api/devops/changes/:id/rollout` | manager | `{ stage: canary|10|50|100 }` progressive delivery. |
 | GET | `/api/devops/scorecards` | devops | Service scorecards from the catalog + CHG/INC/SLO + live-vs-CHG drift. |
 | GET | `/api/devops/cloud/accounts` | devops | Cloud accounts for teams the user belongs to. No secrets in response. |
-| POST | `/api/devops/cloud/accounts` | manager (member of target devops team) | Onboard AWS (role ARN + external ID, or `static_ref` env name). Runs server connection test on create. Credentials stay on server. |
-| GET | `/api/devops/cloud/accounts/:id` | devops | Account detail if team-visible. |
-| PATCH | `/api/devops/cloud/accounts/:id` | manager | Update metadata or `status: disabled` / re-enable. |
-| POST | `/api/devops/cloud/accounts/:id/test` | manager (same team) | Server-side STS AssumeRole when host AWS creds exist; otherwise configuration validation. Sets `connected` or `error` with generic client message. |
+| POST | `/api/devops/cloud/accounts` | manager (member of target devops team) | Onboard **AWS, Azure, or GCP** with provider-specific trust fields (`role_arn`, optional `external_id`, or `static_ref` env name). Runs server connection test on create. Credentials stay on server. |
+| GET | `/api/devops/cloud/accounts/:id` | devops | Account detail if user's DevOps team matches `team_slug`. |
+| PATCH | `/api/devops/cloud/accounts/:id` | manager (same team) | Update `display_name`, `environments`, `status` (`disabled` / re-enable), or rotate trust (`auth_mode`, `role_arn`, `external_id`, `secret_ref`, optional `retest`, default true). Trust updates audit as `cloud_account_trust_update`. |
+| POST | `/api/devops/cloud/accounts/:id/test` | manager (same team) | Server-side connection test (AWS STS when host creds exist; Azure/GCP/AWS validate trust inputs). Sets `connected` or `error` with generic client message. |
 | GET | `/api/admin/cloud/accounts` | admin | Read-only catalog of all onboarded accounts. |
-| GET | `/api/devops/cloud/resources` | devops | Paginated read-only cloud inventory. Query: `cloud` (default `aws`), `team`, `account_id`, `environment`, `region`, `q`, `project_id`, `page`, `limit`. When any cloud account exists, only **connected** accounts appear in inventory. |
-| GET | `/api/devops/cloud/resources/:id` | devops | Single inventory row by id. |
+| GET | `/api/devops/cloud/resources` | devops | Paginated read-only inventory for **`cloud`** (`aws` / `azure` / `gcp`). Rows limited to **DevOps teams the user belongs to**. When accounts exist for that cloud, only **connected** account IDs for those teams appear. Query: `team`, `account_id`, `environment`, `region`, `q`, `project_id`, `page`, `limit`. |
+| GET | `/api/devops/cloud/resources/:id` | devops | Single inventory row if `team_slug` is visible to the user. |
 | GET | `/api/devops/evidence` | devops | Evidence pack. `?format=md` downloads Markdown. |
 | GET | `/api/devops/policies` | devops | Stored Rego deny rules. |
 | POST | `/api/devops/policies` | manager | `{ name, target, rego }` target `change` or `request`. |

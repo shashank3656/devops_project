@@ -9120,12 +9120,94 @@ body {
   font-size: 11px;
   font-weight: 600;
 }
+
+/* Cloud inventory — horizontal filter bar (avoid stacked full-width inputs) */
+.cloud-trust-guide {
+  margin-bottom: 16px;
+}
+
+.cloud-trust-guide__steps {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.cloud-trust-guide__steps li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.cloud-trust-guide__step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary);
+  background: rgba(17, 216, 255, 0.12);
+  border: 1px solid rgba(17, 216, 255, 0.25);
+}
+
+.cloud-trust-guide__steps p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.cloud-inventory-filters {
+  margin-bottom: 16px;
+}
+
+.cloud-inventory-filters .devops-incident-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.cloud-inventory-filters .devops-incident-filter-row > .input {
+  flex: 2 1 220px;
+  min-width: 180px;
+  width: auto;
+  max-width: none;
+  height: 40px;
+}
+
+.cloud-inventory-filters .devops-incident-filter-chip {
+  flex: 1 1 150px;
+  min-width: 130px;
+}
+
+.cloud-inventory-filters .devops-incident-filter-row__actions {
+  flex: 1 1 100%;
+  justify-content: flex-end;
+  margin-left: 0;
+}
+
+@media (min-width: 900px) {
+  .cloud-inventory-filters .devops-incident-filter-row__actions {
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+}
+
 @media (max-width: 980px) {
   .devops-incident-filter-surface {
     padding: 12px;
   }
   .devops-incident-filter-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cloud-inventory-filters .devops-incident-filter-row {
+    display: flex;
   }
   .devops-incident-filter-row__actions {
     justify-content: flex-start;

@@ -87,6 +87,63 @@ func TestAWSAssumeRoleUsesInjectedLiveFn(t *testing.T) {
 	}
 }
 
+func TestAzureCloudAccountValidation(t *testing.T) {
+	sub := "12345678-1234-1234-1234-123456789012"
+	item := &cloudAccountRecord{Provider: "azure", AccountID: sub}
+	creds := &cloudAccountCredentials{
+		AuthMode:   "assume_role",
+		RoleARN:    "/subscriptions/123/resourceGroups/rg/providers/Microsoft.Authorization/roleDefinitions/reader",
+		ExternalID: "87654321-4321-4321-4321-210987654321",
+	}
+	if err := testAzureCloudAccount(item, creds); err != nil {
+		t.Fatalf("expected valid azure config, got %v", err)
+	}
+}
+
+func TestDevopsUserCanViewInventoryTeam(t *testing.T) {
+	visible := []string{"platform-team", "devopsteam"}
+	if !devopsUserCanViewInventoryTeam(visible, "platform-team") {
+		t.Fatal("expected platform-team visible")
+	}
+	if devopsUserCanViewInventoryTeam(visible, "other-team") {
+		t.Fatal("expected other-team hidden")
+	}
+}
+
+func TestResolveInventoryTeamFilter(t *testing.T) {
+	visible := []string{"platform-team", "devopsteam"}
+	team, ok := resolveInventoryTeamFilter("", visible)
+	if !ok || team != "" {
+		t.Fatalf("expected all visible teams, got team=%q ok=%v", team, ok)
+	}
+	team, ok = resolveInventoryTeamFilter("platform-team", visible)
+	if !ok || team != "platform-team" {
+		t.Fatalf("expected platform-team filter, got %q ok=%v", team, ok)
+	}
+	_, ok = resolveInventoryTeamFilter("finance-team", visible)
+	if ok {
+		t.Fatal("expected forbidden team filter")
+	}
+}
+
+func TestValidateCloudAccountCredentialsAWS(t *testing.T) {
+	err := validateCloudAccountCredentials("aws", "111122223333", "assume_role", "arn:aws:iam::999988887777:role/X", "", "")
+	if err == nil {
+		t.Fatal("expected account mismatch error")
+	}
+}
+
+func TestGCPCloudAccountValidation(t *testing.T) {
+	item := &cloudAccountRecord{Provider: "gcp", AccountID: "my-platform-prod"}
+	creds := &cloudAccountCredentials{
+		AuthMode: "assume_role",
+		RoleARN:  "inventory@my-platform-prod.iam.gserviceaccount.com",
+	}
+	if err := testGCPCloudAccount(item, creds); err != nil {
+		t.Fatalf("expected valid gcp config, got %v", err)
+	}
+}
+
 type testError struct{ s string }
 
 func (e *testError) Error() string { return e.s }
