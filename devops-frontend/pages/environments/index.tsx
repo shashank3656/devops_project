@@ -93,20 +93,20 @@ export default function EnvironmentsCatalogPage() {
 
   const columns: DataTableColumn<EnvironmentCatalogRow>[] = [
     {
-      key: 'project',
+      id: 'project',
       header: 'Project',
-      render: (row) => (
+      cell: (row: EnvironmentCatalogRow) => (
         <Link href={`/projects/${row.project_id}`} className="ig-link">
           {row.project_code ? `${row.project_name} (${row.project_code})` : row.project_name}
         </Link>
       ),
     },
-    { key: 'name', header: 'Environment', render: (row) => <strong>{row.name}</strong> },
-    { key: 'env_type', header: 'Type', render: (row) => row.env_type || '—' },
+    { id: 'name', header: 'Environment', cell: (row: EnvironmentCatalogRow) => <strong>{row.name}</strong> },
+    { id: 'env_type', header: 'Type', cell: (row: EnvironmentCatalogRow) => row.env_type || '—' },
     {
-      key: 'cloud',
+      id: 'cloud',
       header: 'Cloud account',
-      render: (row) =>
+      cell: (row: EnvironmentCatalogRow) =>
         row.cloud_account_label ? (
           <span>
             {row.cloud_account_label}
@@ -117,9 +117,9 @@ export default function EnvironmentsCatalogPage() {
         ),
     },
     {
-      key: 'cluster',
+      id: 'cluster',
       header: 'Cluster',
-      render: (row) =>
+      cell: (row: EnvironmentCatalogRow) =>
         row.default_cluster ? (
           <Link href={`/k8s/workspace?cluster_name=${encodeURIComponent(row.default_cluster)}`} className="ig-link">
             {row.default_cluster}
@@ -128,9 +128,13 @@ export default function EnvironmentsCatalogPage() {
           <span className="ig-muted">—</span>
         ),
     },
-    { key: 'region', header: 'Region', render: (row) => row.default_region || '—' },
-    { key: 'owners', header: 'Owners', render: (row) => (row.owners?.length ? row.owners.join(', ') : '—') },
-    { key: 'freeze', header: 'Freeze', render: freezeCell },
+    { id: 'region', header: 'Region', cell: (row: EnvironmentCatalogRow) => row.default_region || '—' },
+    {
+      id: 'owners',
+      header: 'Owners',
+      cell: (row: EnvironmentCatalogRow) => (row.owners?.length ? row.owners.join(', ') : '—'),
+    },
+    { id: 'freeze', header: 'Freeze', cell: freezeCell },
   ];
 
   return (
@@ -139,6 +143,7 @@ export default function EnvironmentsCatalogPage() {
         <title>Environment catalog · SetuOps DevOps</title>
       </Head>
       <PageHeader
+        eyebrow="Projects"
         title="Environment catalog"
         subtitle="Project environments with cloud account, cluster, and freeze state (NF-03)."
         actions={
@@ -169,7 +174,14 @@ export default function EnvironmentsCatalogPage() {
         />
       </div>
       {error ? <p className="ig-alert ig-alert--danger">{error}</p> : null}
-      <DataTable columns={columns} rows={visible} loading={loading} emptyMessage="No environments match your access." />
+      <DataTable<EnvironmentCatalogRow>
+        columns={columns}
+        rows={visible}
+        rowKey={(row) => `${row.project_id}-${row.name}`}
+        label="Environment catalog"
+        loading={loading}
+        empty={<p className="ig-muted">No environments match your access.</p>}
+      />
     </DevOpsLayout>
   );
 }
