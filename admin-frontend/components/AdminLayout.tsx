@@ -139,6 +139,7 @@ const MORE_NAV: { href: string; label: string; Icon: ComponentType<{ className?:
   { href: '/sla', label: 'Service levels', Icon: IconTrendingUp },
   { href: '/access-review', label: 'Access review', Icon: IconShield },
   { href: '/activity', label: 'Activity', Icon: IconActivity },
+  { href: '/cloud-accounts', label: 'Cloud accounts', Icon: IconLayers },
   { href: '/webhooks', label: 'Integrations', Icon: IconWebhook },
   { href: '/maintenance', label: 'Maintenance', Icon: IconLayers },
   { href: '/deploy-intelligence', label: 'Deploy intel', Icon: IconActivity },

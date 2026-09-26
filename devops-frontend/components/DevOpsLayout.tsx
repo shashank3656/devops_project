@@ -132,6 +132,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/team': 'Team',
   '/credential-audit': 'Secrets',
   '/profile': 'Profile',
+  '/cloud-accounts': 'Cloud accounts',
   '/cloud-resources': 'Cloud inventory',
 };
 
@@ -515,6 +516,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       Icon: IconProjects,
       children: [
         { href: '/projects', label: 'Catalog' },
+        { href: '/cloud-accounts', label: 'Cloud accounts' },
         { href: '/cloud-resources', label: 'Cloud inventory' },
         { href: '/team', label: 'Teams' },
       ],
