@@ -69,6 +69,33 @@ func TestDevopsOperatorActivityRequiresAuth(t *testing.T) {
 	}
 }
 
+func TestDevopsGuardedActionContextRequiresAuth(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/devops/guarded-action-context?action=restart", nil)
+	devopsGuardedActionContextHandler(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET guarded-action-context without auth = %d, want 401", rec.Code)
+	}
+}
+
+func TestDevopsEnvironmentCatalogRequiresAuth(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/devops/environment-catalog", nil)
+	devopsEnvironmentCatalogHandler(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET environment-catalog without auth = %d, want 401", rec.Code)
+	}
+}
+
+func TestDevopsK8sWorkloadActionsRequiresAuth(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/devops/k8s-workload-actions", nil)
+	devopsK8sWorkloadActionsHandler(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("POST k8s-workload-actions without auth = %d, want 401", rec.Code)
+	}
+}
+
 func TestDevopsCloudAccountTestRequiresAuth(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/devops/cloud/accounts/1/test", nil)

@@ -222,7 +222,7 @@ SetuOps **Cloud workspace** is two linked catalogs in the DevOps portal: **Accou
 
 #### End goal
 
-Give platform engineers a **team-scoped, multi-cloud view** of what already exists in AWS, Azure, and GCP **before** day-2 actions, incidents, or changes — without opening three vendor consoles. Inventory rows are meant to come from **connected onboarded accounts** (NF-01). The UI is **read-only** today; future guarded actions (NF-05) will use this catalog for scope and identity (team, account, environment, region, resource id).
+Give platform engineers a **team-scoped, multi-cloud view** of what already exists in AWS, Azure, and GCP **before** day-2 actions, incidents, or changes — without opening three vendor consoles. Inventory rows are meant to come from **connected onboarded accounts** (NF-01). The UI is **read-only** today; guarded day-2 actions (NF-05) use onboarded account scope for disable/trust flows and complement inventory identity (team, account, environment, region, resource id).
 
 **Today:** resources are stored in `cloud_resources` (demo seed + DB provider). **Next:** live sync from cloud APIs using onboarded trust (`CloudInventoryProvider` abstraction).
 
@@ -266,7 +266,7 @@ Notion: [NF-01 Cloud Account Onboarding](https://app.notion.com/p/3e60f430ed1081
 
 | Feature | Page | How it works |
 | --- | --- | --- |
-| Catalog | `/environments` | `GET /api/devops/environment-catalog` — per-project environments with type, linked **cloud account** (NF-01), **default cluster** (NF-02 onboard), region/owners metadata, and **freeze** from `deployment_freezes`. |
+| Catalog | `/environments` | `GET /api/devops/environment-catalog` — per-project environments with type, linked **cloud account** (NF-01), **default cluster** (NF-02 onboard), region/owners metadata, and **freeze** from `deployment_freezes`. Managers can **Edit metadata** (`PATCH` same route). Project detail links **View catalog**. |
 | ScopeBar | Header (all DevOps pages) | When a project is selected, environment dropdown loads catalog names for that project instead of hardcoded `dev/uat/prod`. |
 | Home pipeline | `/dashboard` | Pipeline stages mark env-specific freezes; queue surfaces active env freezes with link to catalog. Respects ScopeBar `project_id` on workspace load. |
 
@@ -281,9 +281,22 @@ Notion: [NF-03 Environment Catalog](https://app.notion.com/p/3e60f430ed108140881
 | Cloud account detail | `/cloud-accounts/[id]` | Same API returns `operator_activity` (last 10) for the account. |
 | Home recent ops | `/dashboard` | `GET /api/devops/workspace` activity feed merges operator audit rows (visible projects) with request/incident updates. |
 | K8s resource activity | K8s drill-down APIs | K8s operator feed reads `devops_operator_audit_log` (falls back to legacy admin audit if table missing). |
-| Failed promote | API | Blocked/failed promote writes `result=blocked` or `failed` with a safe summary (no secrets). |
+| Failed promote / gate | API | Blocked/failed promote or **blocked gate approve** writes `result=blocked` or `failed` with a safe summary (no secrets). |
 
 Notion: [NF-04 Operator Audit Trail](https://app.notion.com/p/3e60f430ed10810298b4d9a214383335)
+
+### Guarded day-2 actions (NF-05)
+
+| Feature | Page | How it works |
+| --- | --- | --- |
+| Pre-flight context | Shared confirm | `GET /api/devops/guarded-action-context` loads freeze, open incidents, delivery SHA, and permission outcome before destructive confirms. |
+| K8s restart / scale / resume | `/k8s/workloads` | Managers only (actions column hidden for contributors); **ConfirmProvider** shows freeze/incidents/image/SHA; server enforces manager RBAC, project access, and **blocks** mutating actions during an env freeze (**409** + audit). |
+| Promote | `/promotions` | Confirm shows target env, freeze, and incidents; frozen prod promote blocked server-side with reason in audit. |
+| Rollback prepare | `/rollback-console` | Confirm before draft rollback request; failed prepare writes operator audit. |
+| Disable cloud account | `/cloud-accounts/[id]` | Managers on the account team only (test/disable hidden for others); destructive confirm before `status=disabled`; re-enable stays a one-click action. |
+| Activity refresh | Home / `/activity` | Successful day-2 actions dispatch scope refresh so operator activity reloads without a full page refresh. |
+
+Notion: [NF-05 Guarded Day-2 Actions](https://app.notion.com/p/3e60f430ed1081e3b453fc319f80b588)
 
 ### Kubernetes workspace (NF-02)
 

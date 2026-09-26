@@ -2,8 +2,10 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { useConfirm } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { confirmGuardedDay2Action, notifyDay2ActionComplete } from '../lib/guardedDay2Action';
 import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -88,6 +90,7 @@ function formatDateTime(value?: string | null): string {
 export default function RollbackConsolePage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const confirm = useConfirm();
   const [consoleData, setConsoleData] = useState<RollbackPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -185,9 +188,26 @@ export default function RollbackConsolePage() {
       clearSessionAndRedirect(router);
       return;
     }
-    setSubmitting(true);
     setError('');
     setNotice('');
+    const gate = await confirmGuardedDay2Action({
+      apiUrl,
+      token,
+      confirm,
+      action: 'rollback',
+      params: { request_id: String(focusCandidate.request_id) },
+      title: 'Prepare rollback request',
+      message: `Create a draft rollback for #${focusCandidate.request_id} (${focusCandidate.service}) in ${focusCandidate.environment}?`,
+      confirmLabel: 'Prepare rollback',
+      destructive: true,
+    });
+    if (gate.blocked) {
+      setError(gate.blocked);
+      return;
+    }
+    if (!gate.confirmed) return;
+
+    setSubmitting(true);
     try {
       const response = await fetch(`${apiUrl}/api/devops/rollback-console`, {
         method: 'POST',
@@ -215,6 +235,7 @@ export default function RollbackConsolePage() {
         : {};
       const rollbackRequestId = typeof rollbackRequest.id === 'number' ? rollbackRequest.id : '';
       setNotice(`Prepared rollback draft request #${rollbackRequestId}.`);
+      notifyDay2ActionComplete();
       setReason('');
       setNotes('');
       await loadConsole();

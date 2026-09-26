@@ -21,6 +21,9 @@ Notion (narrative / BRDs):
 | NF-01 Cloud account onboarding (shipped — DevOps) | https://app.notion.com/p/3e60f430ed10810793f7c3c1ae2d9a82 |
 | BRD-07 Cloud resource inventory (shipped — DevOps, read-only) | https://app.notion.com/p/3e60f430ed10810a8e2accfa0ca11116 |
 | NF-02 Kubernetes workspace (shipped — DevOps) | https://app.notion.com/p/3e60f430ed1081d2a06ef9c037bbcde3 |
+| NF-03 Environment catalog (shipped — DevOps) | https://app.notion.com/p/3e60f430ed1081408816e01b8a36daf9 |
+| NF-04 Operator audit trail (shipped — DevOps) | https://app.notion.com/p/3e60f430ed10810298b4d9a214383335 |
+| NF-05 Guarded day-2 actions (shipped — DevOps) | https://app.notion.com/p/3e60f430ed1081e3b453fc319f80b588 |
 
 Repo docs for NF-02 and secure cluster onboarding:
 

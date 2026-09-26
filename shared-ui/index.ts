@@ -18,6 +18,13 @@ export {
   USER_RECENT_KEY,
 } from './persistRecentRequests';
 export { ConfirmProvider, useConfirm, type ConfirmOptions } from './ConfirmDialog';
+export {
+  buildGuardedConfirmOptions,
+  guardedContextDetailLines,
+  type GuardedActionContext,
+  type GuardedActionKind,
+  type GuardedIncidentBrief,
+} from './guardedActions';
 export { applyTheme, getTheme, openCommandPalette, setTheme, toggleTheme, type ThemeMode } from './theme';
 export { AuthPipeline, SearchTrigger, ThemeToggle } from './ShellControls';
 export { formatRelativeTime, greetingFor, initialsFor } from './time';

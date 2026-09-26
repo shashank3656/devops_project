@@ -3574,28 +3574,51 @@ func devopsK8sWorkloadActionsHandler(w http.ResponseWriter, r *http.Request) {
 	input.Reason = strings.TrimSpace(input.Reason)
 
 	if input.ProjectID <= 0 {
+		recordK8sWorkloadActionFailure(managerID, input, "failed", "project is required")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		encodeDevopsJSON(w, map[string]any{"error": "project is required", "status": "error"})
 		return
 	}
 	if input.ClusterName == "" || input.Namespace == "" || input.WorkloadName == "" {
+		recordK8sWorkloadActionFailure(managerID, input, "failed", "cluster, namespace, and workload are required")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		encodeDevopsJSON(w, map[string]any{"error": "cluster, namespace, and workload are required", "status": "error"})
 		return
 	}
 	if input.Action != "restart" && input.Action != "scale" && input.Action != "resume" {
+		recordK8sWorkloadActionFailure(managerID, input, "failed", "unsupported workload action")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		encodeDevopsJSON(w, map[string]any{"error": "unsupported workload action", "status": "error"})
 		return
 	}
 	if input.Action == "scale" && input.Replicas < 0 {
+		recordK8sWorkloadActionFailure(managerID, input, "failed", "replicas must be zero or greater")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		encodeDevopsJSON(w, map[string]any{"error": "replicas must be zero or greater", "status": "error"})
 		return
+	}
+
+	project, projectErr := getProjectCatalogByID(input.ProjectID)
+	if projectErr != nil || project == nil || !devopsUserCanViewProject(managerID, *project) {
+		recordK8sWorkloadActionFailure(managerID, input, "failed", "project access denied")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		encodeDevopsJSON(w, map[string]any{"error": "project access denied", "status": "error"})
+		return
+	}
+	if input.Environment != "" {
+		if blocked, reason := deploymentFreezeBlocksDay2(input.ProjectID, input.Environment); blocked {
+			msg := "deployment freeze is active: " + reason
+			recordK8sWorkloadActionFailure(managerID, input, "blocked", msg)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			encodeDevopsJSON(w, map[string]any{"error": msg, "status": "error"})
+			return
+		}
 	}
 
 	payload, err := buildK8sDashboard(input.ProjectID, input.ClusterName, input.Namespace, input.Environment, false)
@@ -3617,6 +3640,7 @@ func devopsK8sWorkloadActionsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !foundWorkload {
+		recordK8sWorkloadActionFailure(managerID, input, "failed", "workload not found in current cluster scope")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
 		encodeDevopsJSON(w, map[string]any{"error": "workload not found in current cluster scope", "status": "error"})

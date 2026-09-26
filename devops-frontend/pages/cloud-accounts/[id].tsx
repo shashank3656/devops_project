@@ -7,7 +7,8 @@ import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { cloudInventoryAccountHref } from '../../lib/cloudInventoryRoutes';
 import { normalizeCloudProvider, providerFormCopy, providerLabel } from '../../lib/cloudProviders';
-import { EmptyState, PageHeader, portalFetch } from '@infragate/ui';
+import { EmptyState, PageHeader, portalFetch, useConfirm } from '@infragate/ui';
+import { confirmGuardedDay2Action, notifyDay2ActionComplete } from '../../lib/guardedDay2Action';
 
 interface OperatorEvent {
   id: number;
@@ -38,6 +39,7 @@ interface CloudAccount {
 export default function CloudAccountDetailPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
+  const confirm = useConfirm();
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
   const [item, setItem] = useState<CloudAccount | null>(null);
   const [loading, setLoading] = useState(true);
@@ -158,8 +160,27 @@ export default function CloudAccountDetailPage() {
   const setDisabled = async (disabled: boolean) => {
     const token = localStorage.getItem('devops_token');
     if (!token || !id) return;
-    setActing(disabled ? 'disable' : 'enable');
     setError('');
+    setNotice('');
+    if (disabled) {
+      const gate = await confirmGuardedDay2Action({
+        apiUrl,
+        token,
+        confirm,
+        action: 'disable_cloud_account',
+        params: { cloud_account_id: String(id) },
+        title: 'Disable cloud account',
+        message: 'Disable this cloud account? Inventory sync and day-2 actions will stop using it until you re-enable.',
+        confirmLabel: 'Disable account',
+        destructive: true,
+      });
+      if (gate.blocked) {
+        setError(gate.blocked);
+        return;
+      }
+      if (!gate.confirmed) return;
+    }
+    setActing(disabled ? 'disable' : 'enable');
     try {
       const res = await portalFetch(`${apiUrl}/api/devops/cloud/accounts/${id}`, {
         token,
@@ -171,6 +192,7 @@ export default function CloudAccountDetailPage() {
       if (!res.ok) throw new Error(data?.error || 'Update failed');
       setItem(data.account || item);
       setNotice(disabled ? 'Account disabled. Inventory will ignore this account.' : 'Account re-enabled.');
+      notifyDay2ActionComplete();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Update failed');
     } finally {
@@ -257,22 +279,30 @@ export default function CloudAccountDetailPage() {
               </div>
               {item.last_error ? <p className="portal-surface__subtitle">Last error: {item.last_error}</p> : null}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={!!acting || item.status === 'disabled'}
-                  onClick={() => void testConnection()}
-                >
-                  {acting === 'test' ? 'Testing…' : 'Test connection'}
-                </button>
-                {item.status === 'disabled' ? (
-                  <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={() => void setDisabled(false)}>
-                    {acting === 'enable' ? 'Enabling…' : 'Re-enable account'}
-                  </button>
+                {isManager ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={!!acting || item.status === 'disabled'}
+                      onClick={() => void testConnection()}
+                    >
+                      {acting === 'test' ? 'Testing…' : 'Test connection'}
+                    </button>
+                    {item.status === 'disabled' ? (
+                      <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={() => void setDisabled(false)}>
+                        {acting === 'enable' ? 'Enabling…' : 'Re-enable account'}
+                      </button>
+                    ) : (
+                      <button type="button" className="btn btn-danger" disabled={!!acting} onClick={() => void setDisabled(true)}>
+                        {acting === 'disable' ? 'Disabling…' : 'Disable account'}
+                      </button>
+                    )}
+                  </>
                 ) : (
-                  <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={() => void setDisabled(true)}>
-                    {acting === 'disable' ? 'Disabling…' : 'Disable account'}
-                  </button>
+                  <p className="portal-surface__subtitle" style={{ margin: 0 }}>
+                    Connection test and disable are available to DevOps managers on this account&apos;s team.
+                  </p>
                 )}
                 <Link href={inventoryHref} className="btn btn-secondary">
                   View {providerLabel(item.provider)} inventory
