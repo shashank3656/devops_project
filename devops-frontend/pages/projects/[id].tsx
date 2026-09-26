@@ -1027,6 +1027,10 @@ export default function DevOpsProjectDetailPage() {
                       <Link href={`/environments?project_id=${project.id}`} className="ig-cell-link">
                         View catalog
                       </Link>
+                      {' · '}
+                      <Link href={`/cloud-resources?project_id=${project.id}`} className="ig-cell-link">
+                        View inventory
+                      </Link>
                     </>
                   ) : null}
                 </p>

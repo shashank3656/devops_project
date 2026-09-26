@@ -15,9 +15,10 @@ type environmentCatalogRow struct {
 	ProjectCode        string   `json:"project_code,omitempty"`
 	Name               string   `json:"name"`
 	EnvType            string   `json:"env_type"`
-	CloudAccountID     *int     `json:"cloud_account_id,omitempty"`
-	CloudAccountLabel  string   `json:"cloud_account_label,omitempty"`
-	CloudProvider      string   `json:"cloud_provider,omitempty"`
+	CloudAccountID          *int   `json:"cloud_account_id,omitempty"`
+	CloudAccountLabel       string `json:"cloud_account_label,omitempty"`
+	CloudAccountExternalID  string `json:"cloud_account_external_id,omitempty"`
+	CloudProvider           string `json:"cloud_provider,omitempty"`
 	DefaultRegion      string   `json:"default_region,omitempty"`
 	DefaultCluster     string   `json:"default_cluster,omitempty"`
 	Owners             []string `json:"owners"`
@@ -402,6 +403,7 @@ func buildEnvironmentCatalogRows(project ProjectCatalog, accountsByTeam map[stri
 		if account != nil {
 			row.CloudAccountID = &account.ID
 			row.CloudProvider = account.Provider
+			row.CloudAccountExternalID = strings.TrimSpace(account.AccountID)
 			label := strings.TrimSpace(account.DisplayName)
 			if label == "" {
 				label = account.AccountID

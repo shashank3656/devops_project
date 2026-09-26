@@ -93,6 +93,30 @@ func getCloudAccountByID(id int) (*cloudAccountRecord, error) {
 	return scanCloudAccount(DB.QueryRow(cloudAccountSelect+` WHERE ca.id = $1`, id))
 }
 
+// lookupCloudAccountDBID returns the onboarded cloud_accounts.id for a provider account id visible to the team.
+func lookupCloudAccountDBID(teamSlug, provider, externalAccountID string) int {
+	if DB == nil {
+		return 0
+	}
+	teamSlug = strings.TrimSpace(teamSlug)
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	externalAccountID = strings.TrimSpace(externalAccountID)
+	if teamSlug == "" || provider == "" || externalAccountID == "" {
+		return 0
+	}
+	var id int
+	err := DB.QueryRow(`
+		SELECT id FROM cloud_accounts
+		WHERE team_slug = $1 AND LOWER(provider) = $2 AND account_id = $3
+		ORDER BY CASE WHEN status = 'disabled' THEN 1 ELSE 0 END, id DESC
+		LIMIT 1
+	`, teamSlug, provider, externalAccountID).Scan(&id)
+	if err != nil || id <= 0 {
+		return 0
+	}
+	return id
+}
+
 func getCloudAccountCredentials(id int) (*cloudAccountRecord, *cloudAccountCredentials, error) {
 	item, err := getCloudAccountByID(id)
 	if err != nil || item == nil {
