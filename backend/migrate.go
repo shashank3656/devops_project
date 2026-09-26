@@ -1514,6 +1514,7 @@ func MigrateDatabase() error {
 	migrateCloudAccountsSchema()
 	migrateK8sCredentialsEncryption()
 	migrateEnvironmentCatalogSchema()
+	migrateOperatorAuditSchema()
 
 	log.Println("Database schema is up to date")
 	return nil

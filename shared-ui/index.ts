@@ -47,6 +47,8 @@ export {
   scopeToQuery,
   useWorkspaceScope,
   writeWorkspaceScope,
+  WORKSPACE_SCOPE_EVENT,
+  WORKSPACE_SCOPE_KEY,
   type ScopeProject,
   type WorkspaceScope,
 } from './useWorkspaceScope';

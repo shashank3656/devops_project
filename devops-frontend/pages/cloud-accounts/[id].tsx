@@ -9,6 +9,15 @@ import { cloudInventoryAccountHref } from '../../lib/cloudInventoryRoutes';
 import { normalizeCloudProvider, providerFormCopy, providerLabel } from '../../lib/cloudProviders';
 import { EmptyState, PageHeader, portalFetch } from '@infragate/ui';
 
+interface OperatorEvent {
+  id: number;
+  actor_username?: string;
+  action: string;
+  result: string;
+  summary?: string;
+  created_at: string;
+}
+
 interface CloudAccount {
   id: number;
   provider: string;
@@ -40,6 +49,7 @@ export default function CloudAccountDetailPage() {
   const [roleArn, setRoleArn] = useState('');
   const [externalId, setExternalId] = useState('');
   const [secretRef, setSecretRef] = useState('');
+  const [operatorActivity, setOperatorActivity] = useState<OperatorEvent[]>([]);
 
   const copy = useMemo(
     () => providerFormCopy(item ? normalizeCloudProvider(item.provider) : 'aws'),
@@ -70,6 +80,7 @@ export default function CloudAccountDetailPage() {
         }
         if (!res.ok) throw new Error(data?.error || 'Failed to load account');
         const account = data.account || null;
+        setOperatorActivity(Array.isArray(data.operator_activity) ? data.operator_activity : []);
         setItem(account);
         if (account) {
           setAuthMode(account.auth_mode || 'assume_role');
@@ -267,6 +278,32 @@ export default function CloudAccountDetailPage() {
                   View {providerLabel(item.provider)} inventory
                 </Link>
               </div>
+            </section>
+
+            <section className="portal-surface" style={{ marginTop: 16 }}>
+              <div className="portal-surface__header">
+                <div>
+                  <span className="portal-surface__eyebrow">Audit</span>
+                  <h2 className="portal-surface__title">Recent operator activity</h2>
+                  <p className="portal-surface__subtitle">Last 10 audited actions on this account (server-written).</p>
+                </div>
+                <Link href="/activity" className="btn btn-secondary btn-sm">
+                  All activity
+                </Link>
+              </div>
+              {operatorActivity.length === 0 ? (
+                <p className="portal-surface__subtitle">No operator events yet for this account.</p>
+              ) : (
+                <ul className="ig-simple-list">
+                  {operatorActivity.map((event) => (
+                    <li key={event.id}>
+                      <strong>{event.action}</strong> ({event.result}) — {event.actor_username || 'Operator'} ·{' '}
+                      {new Date(event.created_at).toLocaleString()}
+                      {event.summary ? ` — ${event.summary}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
 
             {isManager ? (

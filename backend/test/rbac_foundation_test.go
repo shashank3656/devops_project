@@ -60,6 +60,15 @@ func TestDevopsCloudAccountCreateRequiresAuth(t *testing.T) {
 	}
 }
 
+func TestDevopsOperatorActivityRequiresAuth(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/devops/operator-activity", nil)
+	devopsOperatorActivityHandler(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET operator-activity without auth = %d, want 401", rec.Code)
+	}
+}
+
 func TestDevopsCloudAccountTestRequiresAuth(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/devops/cloud/accounts/1/test", nil)

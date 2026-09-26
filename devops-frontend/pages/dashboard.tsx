@@ -4,7 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
-import { WorkspaceHome, readWorkspaceScope, type WorkspacePayload } from '@infragate/ui';
+import { WorkspaceHome, WORKSPACE_SCOPE_EVENT, readWorkspaceScope, type WorkspacePayload } from '@infragate/ui';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const emptyWorkspace: WorkspacePayload = {
@@ -107,6 +107,14 @@ export default function DevOpsDashboard() {
     loadOpsControls();
   }, [apiUrl, loadWorkspace]);
 
+  useEffect(() => {
+    const onScope = () => {
+      loadWorkspace();
+    };
+    window.addEventListener(WORKSPACE_SCOPE_EVENT, onScope);
+    return () => window.removeEventListener(WORKSPACE_SCOPE_EVENT, onScope);
+  }, [loadWorkspace]);
+
   const startFreeze = () => {
     fetch(`${apiUrl}/api/devops/freezes`, {
       method: 'POST',
@@ -159,7 +167,7 @@ export default function DevOpsDashboard() {
           loading={loading}
           error={error}
           onRetry={loadWorkspace}
-          activityHref="/tickets"
+          activityHref="/activity"
           actions={
             <>
               <Link href="/promotions" className="btn btn-secondary">Promotions</Link>

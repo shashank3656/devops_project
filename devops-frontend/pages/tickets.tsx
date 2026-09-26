@@ -484,7 +484,30 @@ export default function DevOpsTickets() {
       const detailRequestData = asRecord(detailData.request);
       setDetailRequest((detailData.request as TicketDetail | null) || null);
       setDetailComments(Array.isArray(commentsData.comments) ? (commentsData.comments as RequestComment[]) : []);
-      setDetailTimeline(Array.isArray(timelineData.timeline) ? (timelineData.timeline as RequestTimelineEvent[]) : []);
+      const baseTimeline = Array.isArray(timelineData.timeline) ? (timelineData.timeline as RequestTimelineEvent[]) : [];
+      const operatorRaw = detailRequestData.operator_activity;
+      const operatorEvents = Array.isArray(operatorRaw) ? operatorRaw : [];
+      const mergedTimeline: RequestTimelineEvent[] = [...baseTimeline];
+      for (const raw of operatorEvents) {
+        const op = asRecord(raw);
+        const opId = typeof op.id === 'number' ? op.id : Number(op.id) || 0;
+        const action = getString(op.action, 'operator_action');
+        const result = getString(op.result, '');
+        const summary = getString(op.summary, '');
+        mergedTimeline.push({
+          id: opId > 0 ? opId : mergedTimeline.length + 1,
+          kind: 'operator_audit',
+          action,
+          username: getString(op.actor_username, 'Operator'),
+          details: summary,
+          body: result ? `${action} (${result})${summary ? ` — ${summary}` : ''}` : action,
+          created_at: getString(op.created_at, new Date().toISOString()),
+        });
+      }
+      mergedTimeline.sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+      setDetailTimeline(mergedTimeline);
       setRejectReason(getString(detailRequestData.reject_reason));
       setAckHighRiskMerge(false);
       setAckReasons('');
