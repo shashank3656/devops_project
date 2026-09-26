@@ -9,8 +9,23 @@
 
 export const RAILWAY_PRODUCTION_API_URL = 'https://backend-api-production-ed.up.railway.app';
 
-const LOCAL_HOST_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/|$)/i;
 const LOCAL_API_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0']);
+
+function isLocalApiBaseUrl(built: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(built);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return false;
+  }
+  if (!LOCAL_API_HOSTS.has(url.hostname.toLowerCase())) {
+    return false;
+  }
+  return url.pathname === '' || url.pathname === '/';
+}
 
 export function trimSlash(value: string): string {
   let end = value.length;
@@ -89,7 +104,7 @@ export function resolveRuntimeApiUrl(builtUrl: string | undefined): string {
   const built = trimSlash((builtUrl || '').trim() || 'http://localhost:8080');
   if (typeof window === 'undefined') return built;
   if (isLocalPageHost(window.location.hostname)) return built;
-  if (!LOCAL_HOST_PATTERN.test(built)) return built;
+  if (!isLocalApiBaseUrl(built)) return built;
   return RAILWAY_PRODUCTION_API_URL;
 }
 
