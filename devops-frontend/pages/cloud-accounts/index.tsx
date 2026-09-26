@@ -2,6 +2,8 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import CloudHubNav from '../../components/CloudHubNav';
+import CloudStatePanel, { CloudEmptyCatalogAction } from '../../components/CloudStatePanel';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { providerChipTone, providerLabel, normalizeCloudProvider, type CloudProviderId } from '../../lib/cloudProviders';
@@ -58,7 +60,7 @@ export default function CloudAccountsPage() {
   const [reloadToken, setReloadToken] = useState(0);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [providerFilter, setProviderFilter] = useState('');
+  const [providerFilter, setProviderFilter] = useState<CloudProviderId | ''>('');
 
   useEffect(() => {
     const token = localStorage.getItem('devops_token');
@@ -100,7 +102,12 @@ export default function CloudAccountsPage() {
     const connected = rows.filter((r) => r.status === 'connected').length;
     const errored = rows.filter((r) => r.status === 'error').length;
     const disabled = rows.filter((r) => r.status === 'disabled').length;
-    return { total: rows.length, connected, errored, disabled };
+    const byCloud = {
+      aws: rows.filter((r) => normalizeCloudProvider(r.provider) === 'aws').length,
+      azure: rows.filter((r) => normalizeCloudProvider(r.provider) === 'azure').length,
+      gcp: rows.filter((r) => normalizeCloudProvider(r.provider) === 'gcp').length,
+    };
+    return { total: rows.length, connected, errored, disabled, byCloud };
   }, [rows]);
 
   const columns: DataTableColumn<CloudAccount>[] = useMemo(
@@ -134,13 +141,6 @@ export default function CloudAccountsPage() {
   );
 
   const hasLocalFilters = Boolean(query.trim() || statusFilter || providerFilter);
-
-  const PROVIDER_FILTER_OPTIONS: { value: '' | CloudProviderId; label: string }[] = [
-    { value: '', label: 'All clouds' },
-    { value: 'aws', label: 'AWS' },
-    { value: 'azure', label: 'Azure' },
-    { value: 'gcp', label: 'GCP' },
-  ];
   const showEmptyCatalog = !loading && !error && rows.length === 0;
   const showEmptyFilter = !loading && !error && rows.length > 0 && visible.length === 0;
 
@@ -149,16 +149,23 @@ export default function CloudAccountsPage() {
       <Head>
         <title>Cloud accounts - DevOps</title>
       </Head>
-      <div className="portal-page">
+      <div className="portal-page cloud-workspace-page">
         <PageHeader
-          eyebrow="Cloud"
+          eyebrow="Cloud workspace"
           title="Cloud accounts"
-          subtitle="Register AWS, Azure, or GCP accounts for your DevOps teams. Trust configuration and secrets stay on the API host only."
+          subtitle="Onboard AWS, Azure, or GCP for your teams. Trust stays on the API — switch to Inventory when accounts are connected."
           actions={
             <Link href="/cloud-accounts/new" className="btn btn-primary">
               Onboard account
             </Link>
           }
+        />
+
+        <CloudHubNav
+          active="accounts"
+          provider={providerFilter}
+          showAllProvider
+          onProviderChange={setProviderFilter}
         />
 
         {!error ? (
@@ -172,122 +179,130 @@ export default function CloudAccountsPage() {
               <strong className="k8s-summary-card__value">{loading ? '—' : summary.connected}</strong>
             </div>
             <div className="k8s-summary-card">
-              <span className="k8s-summary-card__label">Needs attention</span>
-              <strong className="k8s-summary-card__value">{loading ? '—' : summary.errored}</strong>
+              <span className="k8s-summary-card__label">AWS / Azure / GCP</span>
+              <strong className="k8s-summary-card__value">
+                {loading ? '—' : `${summary.byCloud.aws} / ${summary.byCloud.azure} / ${summary.byCloud.gcp}`}
+              </strong>
             </div>
             <div className="k8s-summary-card">
-              <span className="k8s-summary-card__label">Disabled</span>
-              <strong className="k8s-summary-card__value">{loading ? '—' : summary.disabled}</strong>
+              <span className="k8s-summary-card__label">Needs attention</span>
+              <strong className="k8s-summary-card__value">{loading ? '—' : summary.errored}</strong>
             </div>
           </section>
         ) : null}
 
-        <section className="portal-surface">
+        <section className="portal-surface portal-surface--table">
           <div className="portal-surface__header">
             <div>
               <span className="portal-surface__eyebrow">Catalog</span>
               <h2 className="portal-surface__title">Team accounts</h2>
               <p className="portal-surface__subtitle">
-                Visible for DevOps teams you belong to. Open a row to test the connection or disable an account.
+                Rows are limited to DevOps teams you belong to. Open a row to test trust or rotate credentials.
               </p>
             </div>
-            {!error ? (
-              <div className="ig-filter-bar devops-incident-filter-row">
-                <input
-                  className="input"
-                  type="search"
-                  placeholder="Search name, account ID, or team"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  aria-label="Search cloud accounts"
-                />
-                <select
-                  className="input"
-                  value={providerFilter}
-                  onChange={(e) => setProviderFilter(e.target.value)}
-                  aria-label="Filter by cloud provider"
-                >
-                  {PROVIDER_FILTER_OPTIONS.map((option) => (
-                    <option key={option.value || 'all'} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="input"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  aria-label="Filter by status"
-                >
-                  {STATUS_FILTER_OPTIONS.map((option) => (
-                    <option key={option.value || 'all'} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <div className="devops-incident-filter-row__actions">
-                  {hasLocalFilters ? (
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => {
-                        setQuery('');
-                        setStatusFilter('');
-                        setProviderFilter('');
-                      }}
-                    >
-                      Clear
-                    </button>
-                  ) : null}
-                  <span className="ig-table-toolbar__count">
-                    {loading ? 'Loading…' : `${visible.length} shown`}
-                  </span>
-                </div>
-              </div>
-            ) : null}
           </div>
 
           {error ? (
-            <div className="empty-state" role="alert">
-              <strong>Could not load cloud accounts</strong>
-              <p className="ig-muted">{error}</p>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                style={{ marginTop: 12 }}
-                onClick={() => setReloadToken((value) => value + 1)}
-              >
-                Retry
-              </button>
-            </div>
-          ) : (
-            <DataTable
-              columns={columns}
-              rows={visible}
-              rowKey={(r) => r.id}
-              label="Cloud accounts"
-              loading={loading}
-              onRowOpen={(row) => void router.push(`/cloud-accounts/${row.id}`)}
-              empty={
-                showEmptyCatalog ? (
-                  <div className="empty-state">
-                    <strong>No cloud accounts yet</strong>
-                    <p className="ig-muted">
-                      Onboard AWS, Azure, or GCP using the provider-specific trust fields, then run{' '}
-                      <strong>Test connection</strong> on the detail page. Use <strong>Onboard account</strong> in the
-                      page header to get started.
-                    </p>
-                  </div>
-                ) : showEmptyFilter ? (
-                  <div className="empty-state">
-                    <strong>No accounts match these filters</strong>
-                    <p className="ig-muted">Clear search or status filters to see the full list.</p>
-                  </div>
-                ) : (
-                  <div className="empty-state">No cloud accounts to show.</div>
-                )
-              }
+            <CloudStatePanel
+              kind="error"
+              title="Could not load cloud accounts"
+              message={error}
+              onRetry={() => setReloadToken((v) => v + 1)}
             />
+          ) : (
+            <>
+              <section className="devops-incident-filter-surface cloud-accounts-filter-surface">
+                <div className="devops-incident-filter-row">
+                  <input
+                    className="input"
+                    type="search"
+                    placeholder="Search name, account ID, or team"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    aria-label="Search cloud accounts"
+                  />
+                  <label className="devops-incident-filter-chip">
+                    <span className="devops-incident-filter-chip__label">Status</span>
+                    <select
+                      className="devops-incident-filter-chip__control"
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      aria-label="Filter by status"
+                    >
+                      {STATUS_FILTER_OPTIONS.map((option) => (
+                        <option key={option.value || 'all'} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="devops-incident-filter-row__actions">
+                    {hasLocalFilters ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                          setQuery('');
+                          setStatusFilter('');
+                        }}
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                    <span className="ig-table-toolbar__count">
+                      {loading ? 'Loading…' : `${visible.length} shown`}
+                    </span>
+                  </div>
+                </div>
+              </section>
+
+              <DataTable
+                columns={columns}
+                rows={visible}
+                rowKey={(r) => r.id}
+                label="Cloud accounts"
+                loading={loading}
+                onRowOpen={(row) => void router.push(`/cloud-accounts/${row.id}`)}
+                empty={
+                  showEmptyCatalog ? (
+                    <CloudStatePanel
+                      kind="empty"
+                      title="No cloud accounts yet"
+                      message="Onboard AWS, Azure, or GCP with the trust checklist, then run Test connection on the account page."
+                      action={
+                        <>
+                          <CloudEmptyCatalogAction />
+                          <Link href="/cloud-resources" className="btn btn-secondary btn-sm">
+                            Browse inventory
+                          </Link>
+                        </>
+                      }
+                    />
+                  ) : showEmptyFilter ? (
+                    <CloudStatePanel
+                      kind="info"
+                      title="No accounts match these filters"
+                      message="Try another cloud pill above or clear search and status filters."
+                      action={
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => {
+                            setQuery('');
+                            setStatusFilter('');
+                            setProviderFilter('');
+                          }}
+                        >
+                          Reset filters
+                        </button>
+                      }
+                    />
+                  ) : (
+                    <CloudStatePanel kind="info" title="No accounts to show" message="Adjust filters to see more rows." />
+                  )
+                }
+              />
+            </>
           )}
         </section>
       </div>

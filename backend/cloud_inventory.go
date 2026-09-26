@@ -96,8 +96,13 @@ func devopsCloudResourcesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	items, total, err := cloudInventoryProvider.List(r.Context(), filters)
 	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "failed to list resources", err)
-		return
+		if isMissingDatabaseRelation(err, "cloud_resources") {
+			items = []cloudResourceRow{}
+			total = 0
+		} else {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list resources", err)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
