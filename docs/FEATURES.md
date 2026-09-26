@@ -215,6 +215,15 @@ Primary nav (manager): Home, Requests, Changes, Deployments, Kubernetes, GitOps,
 | Release notes | `/release-notes` | `GET /api/devops/release-notes`. Weekly notes assembled from closed CHGs. |
 | Change risk | `/change-risk` | `GET /api/devops/change-risk`. Risk heatmap for upcoming changes. |
 
+### Cloud accounts (NF-01)
+
+| Feature | Page | How it works |
+| --- | --- | --- |
+| Account catalog | `/cloud-accounts` | `GET /api/devops/cloud/accounts` — accounts for teams you belong to. No credentials in responses. |
+| Onboard | `/cloud-accounts/new` | `POST /api/devops/cloud/accounts` — AWS role ARN + external ID (or server `secret_ref`). DevOps **manager on that team** only. Server runs an immediate connection test; secrets never returned to the client. |
+| Account detail | `/cloud-accounts/[id]` | Test connection (`POST …/test`), disable/re-enable. Team members see accounts for their teams only. Audit logged. |
+| Admin view | Admin `/cloud-accounts` | `GET /api/admin/cloud/accounts` — which team owns which account. |
+
 ### Cloud inventory (BRD-07)
 
 | Feature | Page | How it works |

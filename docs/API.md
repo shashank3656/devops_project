@@ -456,7 +456,13 @@ All require a DevOps user. Writes (onboard, actions, terminal) typically require
 | GET | `/api/devops/previews` | devops | Ephemeral preview environments and estimated cost. Merge graduates a standard CHG; close without merge cancels. |
 | POST | `/api/devops/changes/:id/rollout` | manager | `{ stage: canary|10|50|100 }` progressive delivery. |
 | GET | `/api/devops/scorecards` | devops | Service scorecards from the catalog + CHG/INC/SLO + live-vs-CHG drift. |
-| GET | `/api/devops/cloud/resources` | devops | Paginated read-only cloud inventory. Query: `cloud` (default `aws`), `team`, `account_id`, `environment`, `region`, `q`, `project_id`, `page`, `limit`. |
+| GET | `/api/devops/cloud/accounts` | devops | Cloud accounts for teams the user belongs to. No secrets in response. |
+| POST | `/api/devops/cloud/accounts` | manager (member of target devops team) | Onboard AWS (role ARN + external ID, or `static_ref` env name). Runs server connection test on create. Credentials stay on server. |
+| GET | `/api/devops/cloud/accounts/:id` | devops | Account detail if team-visible. |
+| PATCH | `/api/devops/cloud/accounts/:id` | manager | Update metadata or `status: disabled` / re-enable. |
+| POST | `/api/devops/cloud/accounts/:id/test` | manager (same team) | Server-side STS AssumeRole when host AWS creds exist; otherwise configuration validation. Sets `connected` or `error` with generic client message. |
+| GET | `/api/admin/cloud/accounts` | admin | Read-only catalog of all onboarded accounts. |
+| GET | `/api/devops/cloud/resources` | devops | Paginated read-only cloud inventory. Query: `cloud` (default `aws`), `team`, `account_id`, `environment`, `region`, `q`, `project_id`, `page`, `limit`. When any cloud account exists, only **connected** accounts appear in inventory. |
 | GET | `/api/devops/cloud/resources/:id` | devops | Single inventory row by id. |
 | GET | `/api/devops/evidence` | devops | Evidence pack. `?format=md` downloads Markdown. |
 | GET | `/api/devops/policies` | devops | Stored Rego deny rules. |

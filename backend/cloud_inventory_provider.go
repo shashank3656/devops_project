@@ -82,6 +82,19 @@ func (dbCloudInventoryProvider) List(_ context.Context, filters CloudInventoryLi
 		args = append(args, "%"+strings.TrimSpace(filters.Search)+"%")
 		where = append(where, "(display_name ILIKE $"+strconv.Itoa(len(args))+" OR resource_id ILIKE $"+strconv.Itoa(len(args))+")")
 	}
+	if configured, err := cloudAccountsConfigured(cloud); err == nil && configured {
+		if ids, err := listConnectedCloudAccountIDs(cloud); err == nil {
+			if len(ids) == 0 {
+				return []cloudResourceRow{}, 0, nil
+			}
+			placeholders := make([]string, len(ids))
+			for i, id := range ids {
+				args = append(args, id)
+				placeholders[i] = "$" + strconv.Itoa(len(args))
+			}
+			where = append(where, "account_id IN ("+strings.Join(placeholders, ",")+")")
+		}
+	}
 	whereSQL := strings.Join(where, " AND ")
 
 	var total int
