@@ -2,6 +2,7 @@ import Head from 'next/head';
 import { useEffect, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import { ADMIN_SITE_NAME } from '../../lib/site';
+import { providerChipTone, providerLabel } from '../../lib/cloudProviders';
 import { DataTable, EmptyState, PageHeader, portalFetch, type DataTableColumn } from '@infragate/ui';
 
 interface CloudAccount {
@@ -36,7 +37,13 @@ export default function AdminCloudAccountsPage() {
 
   const columns: DataTableColumn<CloudAccount>[] = [
     { id: 'display_name', header: 'Name', cell: (row) => row.display_name },
-    { id: 'provider', header: 'Provider', cell: (row) => row.provider.toUpperCase() },
+    {
+      id: 'provider',
+      header: 'Provider',
+      cell: (row) => (
+        <span className={`ig-chip ig-chip--${providerChipTone(row.provider)}`}>{providerLabel(row.provider)}</span>
+      ),
+    },
     { id: 'account_id', header: 'Account ID', cell: (row) => row.account_id },
     { id: 'team_slug', header: 'Team', cell: (row) => row.team_slug },
     {
@@ -57,7 +64,7 @@ export default function AdminCloudAccountsPage() {
         <PageHeader
           eyebrow="Cloud"
           title="Cloud accounts"
-          subtitle="Read-only view of which DevOps team owns each onboarded account. Credentials are never shown here."
+          subtitle="Read-only view of AWS, Azure, and GCP accounts by DevOps team. Credentials are never shown here."
         />
         {error ? <div className="alert alert-error">{error}</div> : null}
         <div className="portal-surface portal-surface--table">

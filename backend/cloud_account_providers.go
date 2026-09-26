@@ -1,7 +1,5 @@
 package main
 
-import "fmt"
-
 // cloudAccountProviderConnector tests onboarded cloud account credentials on the server.
 // Azure and GCP are catalog-ready stubs until their adapters are implemented.
 type cloudAccountProviderConnector interface {
@@ -12,8 +10,10 @@ func cloudConnectorForProvider(provider string) cloudAccountProviderConnector {
 	switch normalizeCloudProvider(provider) {
 	case "aws":
 		return awsCloudAccountConnector{}
-	case "azure", "gcp":
-		return stubCloudAccountConnector{provider: normalizeCloudProvider(provider)}
+	case "azure":
+		return azureCloudAccountConnector{}
+	case "gcp":
+		return gcpCloudAccountConnector{}
 	default:
 		return awsCloudAccountConnector{}
 	}
@@ -25,12 +25,14 @@ func (awsCloudAccountConnector) TestConnection(item *cloudAccountRecord, creds *
 	return testAWSCloudAccount(item, creds)
 }
 
-type stubCloudAccountConnector struct {
-	provider string
+type azureCloudAccountConnector struct{}
+
+func (azureCloudAccountConnector) TestConnection(item *cloudAccountRecord, creds *cloudAccountCredentials) error {
+	return testAzureCloudAccount(item, creds)
 }
 
-func (s stubCloudAccountConnector) TestConnection(item *cloudAccountRecord, creds *cloudAccountCredentials) error {
-	_ = item
-	_ = creds
-	return fmt.Errorf("%s onboarding is catalog-ready; connection test is not implemented yet", s.provider)
+type gcpCloudAccountConnector struct{}
+
+func (gcpCloudAccountConnector) TestConnection(item *cloudAccountRecord, creds *cloudAccountCredentials) error {
+	return testGCPCloudAccount(item, creds)
 }

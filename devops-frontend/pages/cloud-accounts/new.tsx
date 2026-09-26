@@ -1,10 +1,17 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { PageHeader, portalFetch } from '@infragate/ui';
+import {
+  CLOUD_PROVIDER_SEGMENT,
+  normalizeCloudProvider,
+  providerFormCopy,
+  type CloudProviderId,
+} from '../../lib/cloudProviders';
+import CloudTrustSetupGuide from '../../components/CloudTrustSetupGuide';
+import { PageHeader, SegmentedControl, portalFetch } from '@infragate/ui';
 
 interface DevopsTeam {
   id: number;
@@ -18,7 +25,7 @@ export default function CloudAccountOnboardPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
   const [teams, setTeams] = useState<DevopsTeam[]>([]);
-  const [provider, setProvider] = useState('aws');
+  const [provider, setProvider] = useState<CloudProviderId>('aws');
   const [accountId, setAccountId] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [teamSlug, setTeamSlug] = useState('');
@@ -29,6 +36,8 @@ export default function CloudAccountOnboardPage() {
   const [secretRef, setSecretRef] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const copy = useMemo(() => providerFormCopy(provider), [provider]);
 
   useEffect(() => {
     const token = localStorage.getItem('devops_token');
@@ -47,6 +56,16 @@ export default function CloudAccountOnboardPage() {
       .catch(() => {});
   }, [apiUrl, router]);
 
+  const onProviderChange = (next: string) => {
+    const id = normalizeCloudProvider(next);
+    setProvider(id);
+    setAccountId('');
+    setRoleArn('');
+    setExternalId('');
+    setSecretRef('');
+    setError('');
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const token = localStorage.getItem('devops_token');
@@ -54,7 +73,7 @@ export default function CloudAccountOnboardPage() {
     setSaving(true);
     setError('');
     const environments = envInput
-      .split(/[,\\s]+/)
+      .split(/[,\s]+/)
       .map((v) => v.trim())
       .filter(Boolean);
     try {
@@ -86,6 +105,16 @@ export default function CloudAccountOnboardPage() {
     }
   };
 
+  const accountInputProps =
+    provider === 'aws'
+      ? { pattern: '[0-9]{12}', title: '12-digit AWS account ID' }
+      : provider === 'azure'
+        ? {
+            pattern: '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
+            title: 'Azure subscription GUID',
+          }
+        : { pattern: '[a-z][a-z0-9-]{4,28}[a-z0-9]', title: 'GCP project ID' };
+
   return (
     <DevOpsLayout>
       <Head>
@@ -95,25 +124,34 @@ export default function CloudAccountOnboardPage() {
         <PageHeader
           eyebrow="Cloud"
           title="Onboard cloud account"
-          subtitle="Register the account and role trust here. Access keys are never sent to the browser — use IAM role assumption or a server-side secret reference."
+          subtitle={copy.onboardBlurb}
         />
         {error ? <div className="alert alert-error">{error}</div> : null}
+        <CloudTrustSetupGuide provider={provider} />
         <form className="portal-surface portal-form-grid" onSubmit={(e) => void submit(e)}>
+          <div className="label" style={{ gridColumn: '1 / -1' }}>
+            <span>Cloud provider</span>
+            <SegmentedControl
+              label="Cloud provider"
+              name="cloud-provider"
+              options={CLOUD_PROVIDER_SEGMENT}
+              value={provider}
+              onChange={onProviderChange}
+            />
+          </div>
           <label className="label">
-            Provider
-            <select className="input" value={provider} onChange={(e) => setProvider(e.target.value)}>
-              <option value="aws">AWS</option>
-              <option value="azure" disabled>
-                Azure (catalog only)
-              </option>
-              <option value="gcp" disabled>
-                GCP (catalog only)
-              </option>
-            </select>
-          </label>
-          <label className="label">
-            AWS account ID
-            <input className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)} required pattern="[0-9]{12}" placeholder="111122223333" />
+            {copy.accountIdLabel}
+            <input
+              className="input"
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+              required
+              placeholder={copy.accountIdPlaceholder}
+              {...accountInputProps}
+            />
+            <span className="ig-muted" style={{ fontSize: 12 }}>
+              {copy.accountIdHint}
+            </span>
           </label>
           <label className="label">
             Display name
@@ -137,19 +175,19 @@ export default function CloudAccountOnboardPage() {
           <label className="label">
             Auth mode
             <select className="input" value={authMode} onChange={(e) => setAuthMode(e.target.value)}>
-              <option value="assume_role">Assume IAM role (recommended)</option>
-              <option value="static_ref">Server secret reference (last resort)</option>
+              <option value="assume_role">{copy.assumeAuthLabel}</option>
+              <option value="static_ref">{copy.staticAuthLabel}</option>
             </select>
           </label>
           {authMode === 'assume_role' ? (
             <>
               <label className="label">
-                Role ARN
-                <input className="input" value={roleArn} onChange={(e) => setRoleArn(e.target.value)} required placeholder="arn:aws:iam::111122223333:role/SetuOpsInventory" />
+                {copy.roleLabel}
+                <input className="input" value={roleArn} onChange={(e) => setRoleArn(e.target.value)} required placeholder={copy.rolePlaceholder} />
               </label>
               <label className="label">
-                External ID
-                <input className="input" value={externalId} onChange={(e) => setExternalId(e.target.value)} placeholder="Trust external ID (recommended)" />
+                {copy.externalIdLabel}
+                <input className="input" value={externalId} onChange={(e) => setExternalId(e.target.value)} placeholder={copy.externalIdPlaceholder} />
               </label>
             </>
           ) : (
@@ -158,9 +196,9 @@ export default function CloudAccountOnboardPage() {
               <input className="input" value={secretRef} onChange={(e) => setSecretRef(e.target.value)} required placeholder="CLOUD_ACCOUNT_PLATFORM_KEYS" />
             </label>
           )}
-          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
+          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving…' : 'Save and test next'}
+              {saving ? 'Saving…' : 'Save and test on server'}
             </button>
             <Link href="/cloud-accounts" className="btn btn-secondary">
               Cancel

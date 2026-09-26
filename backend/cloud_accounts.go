@@ -169,18 +169,8 @@ func devopsCloudAccountCreateHandler(w http.ResponseWriter, r *http.Request) {
 	roleARN := strings.TrimSpace(body.RoleARN)
 	externalID := strings.TrimSpace(body.ExternalID)
 	secretRef := strings.TrimSpace(body.SecretRef)
-	if authMode == "assume_role" && provider == "aws" && roleARN == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "role_arn is required for AWS role assumption", nil)
-		return
-	}
-	if authMode == "assume_role" && provider == "aws" && roleARN != "" {
-		if arnAcct := awsAccountIDFromRoleARN(roleARN); arnAcct != "" && arnAcct != accountID {
-			writeAPIError(w, r, http.StatusBadRequest, "role_arn account must match account_id", nil)
-			return
-		}
-	}
-	if authMode == "static_ref" && secretRef == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "secret_ref is required for static_ref mode (server-side env var name only)", nil)
+	if err := validateCloudAccountCredentials(provider, accountID, authMode, roleARN, externalID, secretRef); err != nil {
+		writeCloudAccountValidationError(w, r, err)
 		return
 	}
 	item, err := insertCloudAccount(cloudAccountInsert{
@@ -259,6 +249,11 @@ func devopsCloudAccountPatchHandler(w http.ResponseWriter, r *http.Request, user
 		DisplayName  *string  `json:"display_name"`
 		Environments []string `json:"environments"`
 		Status       string   `json:"status"`
+		AuthMode     string   `json:"auth_mode"`
+		RoleARN      *string  `json:"role_arn"`
+		ExternalID   *string  `json:"external_id"`
+		SecretRef    *string  `json:"secret_ref"`
+		Retest       *bool    `json:"retest"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
@@ -287,10 +282,60 @@ func devopsCloudAccountPatchHandler(w http.ResponseWriter, r *http.Request, user
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "account": updated})
 		return
 	}
-	updated, err := updateCloudAccountMeta(item.ID, body.DisplayName, body.Environments)
-	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "failed to update account", err)
-		return
+	trustTouched := strings.TrimSpace(body.AuthMode) != "" || body.RoleARN != nil || body.ExternalID != nil || body.SecretRef != nil
+	var updated *cloudAccountRecord
+	if trustTouched {
+		_, creds, credErr := getCloudAccountCredentials(item.ID)
+		if credErr != nil || creds == nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to load account credentials", credErr)
+			return
+		}
+		authMode := creds.AuthMode
+		if strings.TrimSpace(body.AuthMode) != "" {
+			authMode = normalizeCloudAccountAuthMode(body.AuthMode)
+		}
+		roleARN := creds.RoleARN
+		if body.RoleARN != nil {
+			roleARN = strings.TrimSpace(*body.RoleARN)
+		}
+		externalID := creds.ExternalID
+		if body.ExternalID != nil {
+			externalID = strings.TrimSpace(*body.ExternalID)
+		}
+		secretRef := creds.SecretRef
+		if body.SecretRef != nil {
+			secretRef = strings.TrimSpace(*body.SecretRef)
+		}
+		if err := validateCloudAccountCredentials(item.Provider, item.AccountID, authMode, roleARN, externalID, secretRef); err != nil {
+			writeCloudAccountValidationError(w, r, err)
+			return
+		}
+		if err := updateCloudAccountTrust(item.ID, authMode, roleARN, externalID, secretRef); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to update trust configuration", err)
+			return
+		}
+		AppendAuditLog(&managerID, "cloud_account_trust_update", "cloud_account", strconv.Itoa(item.ID), item.AccountID)
+		updated, _ = getCloudAccountByID(item.ID)
+		retest := body.Retest == nil || *body.Retest
+		if retest && updated != nil {
+			_, credsAfter, _ := getCloudAccountCredentials(item.ID)
+			testErr := testCloudAccountConnection(updated, credsAfter)
+			if tested, err := recordCloudAccountTestResult(item.ID, testErr); err == nil {
+				updated = tested
+			}
+			AppendAuditLog(&managerID, "cloud_account_test", "cloud_account", strconv.Itoa(item.ID), updated.Status)
+		}
+	}
+	if body.DisplayName != nil || body.Environments != nil {
+		meta, err := updateCloudAccountMeta(item.ID, body.DisplayName, body.Environments)
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to update account", err)
+			return
+		}
+		updated = meta
+	}
+	if updated == nil {
+		updated = item
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "account": updated})

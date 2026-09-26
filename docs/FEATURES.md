@@ -220,15 +220,15 @@ Primary nav (manager): Home, Requests, Changes, Deployments, Kubernetes, GitOps,
 | Feature | Page | How it works |
 | --- | --- | --- |
 | Account catalog | `/cloud-accounts` | `GET /api/devops/cloud/accounts` — accounts for teams you belong to. No credentials in responses. |
-| Onboard | `/cloud-accounts/new` | `POST /api/devops/cloud/accounts` — AWS role ARN + external ID (or server `secret_ref`). DevOps **manager on that team** only. Server runs an immediate connection test; secrets never returned to the client. |
-| Account detail | `/cloud-accounts/[id]` | Test connection (`POST …/test`), disable/re-enable. Team members see accounts for their teams only. Audit logged. |
+| Onboard | `/cloud-accounts/new` | `POST /api/devops/cloud/accounts` — **AWS, Azure, or GCP** with provider-specific trust fields (IAM role, Azure scope/tenant, GCP service account). DevOps **manager on that team** only. Server runs an immediate connection test; secrets never returned to the client. |
+| Account detail | `/cloud-accounts/[id]` | Provider setup guide, test connection, disable/re-enable. Managers can **rotate trust** (role / external ID / secret ref) with automatic re-test. Team members see accounts for their teams only. Audit logged. |
 | Admin view | Admin `/cloud-accounts` | `GET /api/admin/cloud/accounts` — which team owns which account. |
 
 ### Cloud inventory (BRD-07)
 
 | Feature | Page | How it works |
 | --- | --- | --- |
-| Resource list | `/cloud-resources` | `GET /api/devops/cloud/resources` — read-only AWS rows with server pagination. Filters: ScopeBar `project_id` / `environment`, plus team, account, region, and search. Empty, loading, and error states. |
+| Resource list | `/cloud-resources` | `GET /api/devops/cloud/resources` — read-only inventory with **AWS / Azure / GCP** selector (`?cloud=`). Limited to **your DevOps teams** and connected onboarded accounts. Server pagination; ScopeBar `project_id` / `environment`; team, account, region, and search filters. |
 | Resource detail | `/cloud-resources/[id]` | `GET /api/devops/cloud/resources/:id`. No credentials in API responses. |
 
 ### Incidents and problems
