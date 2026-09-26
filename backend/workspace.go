@@ -149,7 +149,9 @@ func workspaceNeedsYou(portal string, viewerID int) []workspaceQueueItem {
 		items = append(items, workspaceRiskyPRQueue(portal, false)...)
 	}
 
-	if reason := activeFreezeReason(); reason != "" {
+	if envFreezes := workspaceEnvironmentFreezeQueue(portal, viewerID); len(envFreezes) > 0 {
+		items = append(envFreezes, items...)
+	} else if reason := activeFreezeReason(); reason != "" {
 		items = append([]workspaceQueueItem{{
 			ID:     "freeze-active",
 			Kind:   "freeze",
@@ -590,7 +592,6 @@ func workspacePipeline(portal, projectID string, viewerID int) (string, []worksp
 		envs = []string{"dev", "uat", "prod"}
 	}
 	envs = sortEnvironments(envs)
-	freezeActive := activeFreezeReason() != ""
 	for _, env := range envs {
 		var latestStatus, service string
 		var requestID int
@@ -611,7 +612,18 @@ func workspacePipeline(portal, projectID string, viewerID int) (string, []worksp
 		if service != "" {
 			summary = service + " · " + strings.ReplaceAll(latestStatus, "_", " ")
 		}
-		blocked := strings.Contains(strings.ToLower(latestStatus), "reject") || (envEqualsProd(env) && freezeActive)
+		blocked := strings.Contains(strings.ToLower(latestStatus), "reject")
+		if frozen, freezeReason, _ := activeDeploymentFreeze(&id, env); frozen {
+			blocked = true
+			if freezeReason != "" {
+				summary = "Frozen · " + freezeReason
+			} else {
+				summary = "Frozen"
+			}
+		} else if envEqualsProd(env) && activeFreezeReason() != "" {
+			blocked = true
+			summary = "Frozen · " + activeFreezeReason()
+		}
 		stages = append(stages, workspacePipelineStage{
 			Env:       env,
 			Status:    strings.ReplaceAll(latestStatus, "_", " "),
@@ -906,6 +918,9 @@ func portalFreezeHref(portal string) string {
 	}
 	if portal == "user" {
 		return "/history"
+	}
+	if portal == "devops" {
+		return "/environments"
 	}
 	return "/promotions"
 }

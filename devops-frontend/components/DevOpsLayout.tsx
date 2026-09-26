@@ -187,6 +187,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [advancedNavOpen, setAdvancedNavOpen] = useState(false);
   const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({});
   const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
+  const [catalogEnvironments, setCatalogEnvironments] = useState<string[]>([]);
   const { scope, updateScope } = useWorkspaceScope();
   const scopeHydrated = useRef(false);
   const notifyRef = useRef<HTMLDivElement>(null);
@@ -256,6 +257,24 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       .then((data) => setScopeProjects(normalizeScopeProjects(data?.projects)))
       .catch(() => setScopeProjects([]));
   }, [apiUrl]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token || !scope.projectId) {
+      setCatalogEnvironments([]);
+      return;
+    }
+    const params = new URLSearchParams({ project_id: scope.projectId });
+    fetch(`${apiUrl}/api/devops/environment-catalog?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const names = Array.isArray(data?.environments)
+          ? data.environments.map((row: { name?: string }) => String(row?.name || '').trim()).filter(Boolean)
+          : [];
+        setCatalogEnvironments(names);
+      })
+      .catch(() => setCatalogEnvironments([]));
+  }, [apiUrl, scope.projectId]);
 
   useEffect(() => {
     if (!router.isReady || scopeHydrated.current) return;
@@ -452,9 +471,26 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     children?: NavChild[];
   };
 
+  /** ITSM hub: CHG / INC / PRB (+ knowledge) share one sidebar tree; default landing is the change catalog. */
+  const itsmNavHref = '/changes';
+
+  const itsmNavChildren: NavChild[] = [
+    { href: '/changes', label: 'Changes' },
+    { href: '/change-calendar', label: 'Change calendar' },
+    { href: '/services', label: 'Services' },
+    { href: '/release-notes', label: 'Release notes' },
+    { href: '/incidents', label: 'Incidents' },
+    { href: '/incident-workspace', label: 'Incident notes' },
+    { href: '/problems', label: 'Problems' },
+    { href: '/knowledge', label: 'Knowledge' },
+  ];
+
   const leafIsActive = (href: string) => {
     if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/');
     if (href === '/dashboard') return pathname === '/dashboard' || pathname === '/';
+    if (href === itsmNavHref) {
+      return itsmNavChildren.some((child) => pathname === child.href || pathname.startsWith(`${child.href}/`));
+    }
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
@@ -477,17 +513,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         : undefined,
     },
     {
-      href: '/changes',
-      label: 'Changes',
+      href: itsmNavHref,
+      label: 'ITSM',
       Icon: IconFileText,
-      children: isManager
-        ? [
-            { href: '/changes', label: 'Catalog' },
-            { href: '/services', label: 'Services' },
-            { href: '/change-calendar', label: 'Calendar' },
-            { href: '/release-notes', label: 'Release notes' },
-          ]
-        : undefined,
+      children: itsmNavChildren,
     },
   ];
   if (isManager) {
@@ -518,6 +547,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       Icon: IconProjects,
       children: [
         { href: '/projects', label: 'Catalog' },
+        { href: '/environments', label: 'Environments' },
         { href: '/cloud-accounts', label: 'Cloud accounts' },
         { href: '/cloud-resources', label: 'Cloud inventory' },
         { href: '/team', label: 'Teams' },
@@ -528,15 +558,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const advancedNavItems: NavItem[] = isManager
     ? [
         {
-          href: '/incidents',
-          label: 'Incidents',
-          Icon: IconAlertTriangle,
-          children: [
-            { href: '/incidents', label: 'Open' },
-            { href: '/incident-workspace', label: 'Notes' },
-          ],
-        },
-        {
           href: '/health',
           label: 'Health',
           Icon: IconArrowUpRight,
@@ -545,8 +566,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             { href: '/identity', label: 'Identity' },
           ],
         },
-        { href: '/problems', label: 'Problems', Icon: IconAlertTriangle },
-        { href: '/knowledge', label: 'Knowledge', Icon: IconBookOpen },
         { href: '/previews', label: 'Previews', Icon: IconFileText },
         { href: '/scorecards', label: 'Scorecards', Icon: IconFileText },
         { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
@@ -673,7 +692,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const mobileTabs: MobileTab[] = [
     { href: '/dashboard', label: 'Home', Icon: IconWorkload },
     { href: '/tickets', label: 'Requests', Icon: IconTickets },
-    { href: '/changes', label: 'Changes', Icon: IconFileText },
+    { href: itsmNavHref, label: 'ITSM', Icon: IconFileText },
     { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
   ].map((tab) => ({ ...tab, active: isNavActive(tab.href), badge: getSidebarBadge(tab.href) }));
 
@@ -788,6 +807,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             <ScopeBar
               projects={scopeProjects}
               scope={scope}
+              catalogEnvironments={catalogEnvironments}
               onChange={(partial) => writeScopeQuery(updateScope(partial))}
               onClear={() => writeScopeQuery(updateScope({ projectId: '', environment: '' }))}
             />
@@ -946,6 +966,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'promotion-history', label: 'Promotion history', href: '/gate-approvals' },
           { id: 'promotion-rules', label: 'Promotion rules', href: '/gate-policies' },
           { id: 'approval-timing', label: 'Approval timing', href: '/approval-sla' },
+          { id: 'itsm', label: 'ITSM (changes catalog)', href: '/changes' },
           { id: 'changes', label: 'Changes', href: '/changes' },
           { id: 'deployments', label: 'Deployments', href: '/promotions' },
           { id: 'k8s', label: 'Kubernetes', href: '/k8s' },
@@ -960,6 +981,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'services', label: 'Services', href: '/services' },
           { id: 'add-service', label: 'Add service', href: '/services/new' },
           { id: 'incidents', label: 'Incidents', href: '/incidents' },
+          { id: 'incident-notes', label: 'Incident notes', href: '/incident-workspace' },
           { id: 'problems', label: 'Problems', href: '/problems' },
           { id: 'create-problem', label: 'Create problem', href: '/problems/new' },
           { id: 'knowledge', label: 'Knowledge', href: '/knowledge' },
