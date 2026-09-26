@@ -68,7 +68,7 @@ export default function CloudResourceDetailPage() {
           }
         />
         {loading ? (
-          <EmptyState title="Loading" description="Fetching resource details…" />
+          <EmptyState title="Loading" body="Fetching resource details…" />
         ) : error ? (
           <div className="alert alert-error">{error}</div>
         ) : item ? (

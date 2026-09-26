@@ -154,11 +154,11 @@ export default function CloudResourcesPage() {
             </span>
           </div>
           {loading ? (
-            <EmptyState title="Loading resources" description="Fetching inventory from the API…" />
+            <EmptyState title="Loading resources" body="Fetching inventory from the API…" />
           ) : rows.length === 0 && !forbidden ? (
             <EmptyState
               title="No resources match"
-              description="Adjust filters or seed demo data by running a fresh API migration."
+              body="Adjust filters or seed demo data by running a fresh API migration."
             />
           ) : (
             <>
