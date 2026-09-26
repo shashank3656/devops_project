@@ -1,7 +1,7 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
-import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
+import { DataTable, EmptyState, useConfirm, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -82,6 +82,7 @@ function normalizeQueryValue(value: string | string[] | undefined): string {
 export default function DevOpsRunbooksPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const confirm = useConfirm();
   const [activePanel, setActivePanel] = useState<'editor' | null>(null);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [runbooks, setRunbooks] = useState<Runbook[]>([]);
@@ -321,7 +322,8 @@ export default function DevOpsRunbooksPage() {
       clearSessionAndRedirect();
       return;
     }
-    if (!window.confirm('Delete this runbook?')) return;
+    const ok = await confirm({ title: 'Delete runbook', message: 'Delete this runbook?', confirmLabel: 'Delete', destructive: true });
+    if (!ok) return;
     try {
       const response = await fetch(`${apiUrl}/api/devops/runbooks/${id}`, {
         method: 'DELETE',

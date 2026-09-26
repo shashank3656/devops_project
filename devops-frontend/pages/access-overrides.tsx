@@ -1,6 +1,7 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useConfirm } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -84,6 +85,7 @@ function clearSessionAndRedirect() {
 
 export default function DevOpsAccessOverridesPage() {
   const apiUrl = useApiUrl();
+  const confirm = useConfirm();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [overrides, setOverrides] = useState<OverrideItem[]>([]);
@@ -131,7 +133,13 @@ export default function DevOpsAccessOverridesPage() {
       clearSessionAndRedirect();
       return;
     }
-    if (!window.confirm('Revoke this override?')) return;
+    const ok = await confirm({
+      title: 'Revoke override',
+      message: 'Revoke this override?',
+      confirmLabel: 'Revoke',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       const response = await fetch(`${apiUrl}/api/devops/access-overrides/${id}`, {
         method: 'DELETE',

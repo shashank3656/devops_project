@@ -2,7 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
-import { ProjectHealthCard, type ProjectHealth } from '@infragate/ui';
+import { ProjectHealthCard, useConfirm, type ProjectHealth } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import DriftFixPanel from '../../components/DriftFixPanel';
 import { useApiUrl } from '../../context/ApiUrlContext';
@@ -800,6 +800,7 @@ function normalizeReleaseDashboard(rawValue: unknown): ProjectReleaseDashboard |
 export default function DevOpsProjectDetailPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const confirm = useConfirm();
   const [project, setProject] = useState<ProjectOption | null>(null);
   const [releaseDashboard, setReleaseDashboard] = useState<ProjectReleaseDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -929,7 +930,12 @@ export default function DevOpsProjectDetailPage() {
       router.replace('/login');
       return;
     }
-    const confirmed = window.confirm(`${action.label} this project?`);
+    const confirmed = await confirm({
+      title: `${action.label} project`,
+      message: `${action.label} this project?`,
+      confirmLabel: action.label,
+      destructive: action.action === 'archive' || action.action === 'retire',
+    });
     if (!confirmed) return;
     setLifecycleAction(action.action);
     setActionError('');

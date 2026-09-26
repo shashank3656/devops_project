@@ -1464,6 +1464,27 @@ func MigrateDatabase() error {
 		)
 	`)
 
+	// Migration: cloud resource inventory (BRD-07, AWS-first read model)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS cloud_resources (
+			id SERIAL PRIMARY KEY,
+			team_slug VARCHAR(120) NOT NULL DEFAULT '',
+			cloud VARCHAR(20) NOT NULL DEFAULT 'aws',
+			account_id VARCHAR(64) NOT NULL DEFAULT '',
+			account_name VARCHAR(120) NOT NULL DEFAULT '',
+			environment VARCHAR(32) NOT NULL DEFAULT '',
+			region VARCHAR(32) NOT NULL DEFAULT '',
+			service_type VARCHAR(64) NOT NULL DEFAULT '',
+			resource_id VARCHAR(256) NOT NULL DEFAULT '',
+			display_name VARCHAR(256) NOT NULL DEFAULT '',
+			status VARCHAR(64) NOT NULL DEFAULT '',
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_cloud_resources_scope ON cloud_resources(team_slug, cloud, account_id, environment, region)`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_cloud_resources_name ON cloud_resources(display_name, resource_id)`)
+	seedCloudResourceInventoryDemo()
+
 	log.Println("Database schema is up to date")
 	return nil
 }

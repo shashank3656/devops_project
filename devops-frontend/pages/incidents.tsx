@@ -1,6 +1,7 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { DataTable, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { downloadCSV } from '../lib/csv';
@@ -287,6 +288,84 @@ export default function DevOpsIncidentsPage() {
       assigned,
     };
   }, [filteredIncidents]);
+
+  const incidentQueueColumns: DataTableColumn<Incident>[] = useMemo(
+    () => [
+      {
+        id: 'reference',
+        header: 'Incident reference',
+        cell: (incident) => (
+          <div>
+            <strong>{getIncidentReference(incident)}</strong>
+            <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
+              {[incident.request_service ? `Target: ${incident.request_service}` : '', incident.request_env || '', incident.request_cloud || '']
+                .filter(Boolean)
+                .join(' · ')}
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: 'source',
+        header: 'Source',
+        cell: (incident) => (
+          <>
+            {incident.source === 'alert' ? incident.alert_source || 'alert' : incident.source || 'ticket'}
+            {incident.fingerprint ? (
+              <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{incident.fingerprint}</div>
+            ) : null}
+            {incident.suspected_change_number ? (
+              <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Caused by {incident.suspected_change_number}</div>
+            ) : null}
+          </>
+        ),
+      },
+      {
+        id: 'project',
+        header: 'Project',
+        cell: (incident) => (incident.project_name ? `${incident.project_name} (${incident.project_code})` : 'No project'),
+      },
+      { id: 'priority', header: 'Priority', cell: (incident) => priorityLabel(incident.severity) },
+      { id: 'state', header: 'State', cell: (incident) => incidentStateLabel(incident.status) },
+      { id: 'group', header: 'Assignment group', cell: (incident) => incident.team_name || incident.request_team || 'No group' },
+      {
+        id: 'response_sla',
+        header: 'Response SLA',
+        cell: (incident) => (
+          <span style={{ color: incident.sla?.response_breached ? 'var(--color-danger, #b42318)' : undefined }}>
+            {slaClockLabel(incident.sla, 'response')}
+          </span>
+        ),
+      },
+      {
+        id: 'resolve_sla',
+        header: 'Resolve SLA',
+        cell: (incident) => (
+          <span style={{ color: incident.sla?.resolve_breached ? 'var(--color-danger, #b42318)' : undefined }}>
+            {slaClockLabel(incident.sla, 'resolve')}
+          </span>
+        ),
+      },
+      { id: 'assignee', header: 'Assignee', cell: (incident) => incident.owner_username || 'Unassigned' },
+      {
+        id: 'action',
+        header: 'Action',
+        cell: (incident) => (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={(event) => {
+              event.stopPropagation();
+              void router.push(`/incidents/${incident.id}/edit`);
+            }}
+          >
+            Edit
+          </button>
+        ),
+      },
+    ],
+    [router],
+  );
 
   const loadData = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -600,77 +679,19 @@ export default function DevOpsIncidentsPage() {
               </p>
             </div>
           </div>
-          {loading ? (
-            <div className="empty-state">Loading incidents...</div>
-          ) : filteredIncidents.length === 0 ? (
-            <div className="empty-state">
-              {hasActiveFilters ? 'No incidents match the current filters.' : 'No incidents recorded yet.'}
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="templates-table">
-                <thead>
-                  <tr>
-                    <th>Incident reference</th>
-                    <th>Source</th>
-                    <th>Project</th>
-                    <th>Priority</th>
-                    <th>State</th>
-                    <th>Assignment group</th>
-                    <th>Response SLA</th>
-                    <th>Resolve SLA</th>
-                    <th>Assignee</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredIncidents.map((incident) => (
-                    <tr key={incident.id}>
-                      <td>
-                        <div>
-                          <strong>{getIncidentReference(incident)}</strong>
-                          <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
-                            {[
-                              incident.request_service ? `Target: ${incident.request_service}` : '',
-                              incident.request_env || '',
-                              incident.request_cloud || '',
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        {incident.source === 'alert' ? incident.alert_source || 'alert' : incident.source || 'ticket'}
-                        {incident.fingerprint ? (
-                          <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{incident.fingerprint}</div>
-                        ) : null}
-                        {incident.suspected_change_number ? (
-                          <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Caused by {incident.suspected_change_number}</div>
-                        ) : null}
-                      </td>
-                      <td>{incident.project_name ? `${incident.project_name} (${incident.project_code})` : 'No project'}</td>
-                      <td>{priorityLabel(incident.severity)}</td>
-                      <td>{incidentStateLabel(incident.status)}</td>
-                      <td>{incident.team_name || incident.request_team || 'No group'}</td>
-                      <td style={{ color: incident.sla?.response_breached ? 'var(--color-danger, #b42318)' : undefined }}>{slaClockLabel(incident.sla, 'response')}</td>
-                      <td style={{ color: incident.sla?.resolve_breached ? 'var(--color-danger, #b42318)' : undefined }}>{slaClockLabel(incident.sla, 'resolve')}</td>
-                      <td>{incident.owner_username || 'Unassigned'}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => void router.push(`/incidents/${incident.id}/edit`)}
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <DataTable
+            columns={incidentQueueColumns}
+            rows={filteredIncidents}
+            rowKey={(incident) => incident.id}
+            label="Incident queue"
+            loading={loading}
+            empty={
+              <div className="empty-state">
+                {hasActiveFilters ? 'No incidents match the current filters.' : 'No incidents recorded yet.'}
+              </div>
+            }
+            onRowOpen={(incident) => void router.push(`/incidents/${incident.id}/edit`)}
+          />
         </section>
       </div>
     </DevOpsLayout>

@@ -1,19 +1,5 @@
-export interface SupportAction {
-  label: string;
-  href?: string;
-  externalHref?: string;
-}
-
-export interface SupportArticle {
-  id: string;
-  category: string;
-  title: string;
-  summary: string;
-  content: string;
-  keywords: string[];
-  routePrefixes: string[];
-  actions: SupportAction[];
-}
+export type { SupportAction, SupportArticle } from '@infragate/ui';
+import type { SupportArticle } from '@infragate/ui';
 
 export const supportQuickPrompts = [
   'How do I review pending approvals?',

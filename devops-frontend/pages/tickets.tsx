@@ -6,6 +6,7 @@ import {
   CostCheckCard,
   DataTable,
   Day2Banner,
+  DeliveryVisibilityCard,
   InspectorDrawer,
   PlanReviewCard,
   PolicyChecksCard,
@@ -17,6 +18,7 @@ import {
   queryString,
   useUndoQueue,
   type DataTableColumn,
+  type DeliveryVisibility,
   type PlanReview,
   type PolicyCheckSummary,
   type RequestCostCheck,
@@ -25,7 +27,7 @@ import {
   type SavedView,
 } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
-import RequestPRImpact from '../components/RequestPRImpact';
+import { RequestPRImpact, useConfirm } from '@infragate/ui';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
 import { asRecord, getString } from '../lib/payload';
@@ -195,6 +197,7 @@ interface TicketDetail extends TicketRow {
     change_brief?: { headline?: string; risk_because?: string[]; changing?: { label: string; count: number }[] };
     similar_merges?: { pr_number: number; title?: string; headline?: string; later_revert?: { pr_number: number } }[];
   } | null;
+  delivery?: DeliveryVisibility | null;
   high_risk_merge?: {
     required?: boolean;
     acknowledged?: boolean;
@@ -342,6 +345,7 @@ function getRequestBundleCount(request: Pick<TicketRow, 'config'> | null | undef
 export default function DevOpsTickets() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const confirm = useConfirm();
   const [requests, setRequests] = useState<TicketRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -663,18 +667,22 @@ export default function DevOpsTickets() {
         } catch (err) {
           const gateErr = err as Error & { runbookRequired?: boolean; highRiskMergeRequired?: boolean; changeBriefHeadline?: string };
           if (action === 'approve' && gateErr.runbookRequired) {
-            const ok = window.confirm(
-              `${gateErr.message}\n\nAcknowledge that the production runbook is linked (or add one under Guides) and approve anyway?`
-            );
+            const ok = await confirm({
+              title: 'Runbook acknowledgment',
+              message: `${gateErr.message}\n\nAcknowledge that the production runbook is linked (or add one under Guides) and approve anyway?`,
+              confirmLabel: 'Approve anyway',
+            });
             if (!ok) throw err;
             await sendDevopsAction(`/api/devops/requests/${id}/${action}`, { runbook_acknowledged: true });
             return;
           }
           if (action === 'approve' && gateErr.highRiskMergeRequired) {
             const headline = gateErr.changeBriefHeadline ? `\n\nChanging: ${gateErr.changeBriefHeadline}` : '';
-            const ok = window.confirm(
-              `${gateErr.message}${headline}\n\nAcknowledge the high-risk merge change brief and approve anyway?`
-            );
+            const ok = await confirm({
+              title: 'High-risk merge',
+              message: `${gateErr.message}${headline}\n\nAcknowledge the high-risk merge change brief and approve anyway?`,
+              confirmLabel: 'Approve anyway',
+            });
             if (!ok) throw err;
             await sendDevopsAction(`/api/devops/requests/${id}/${action}`, {
               high_risk_merge_acknowledged: true,
@@ -1113,10 +1121,10 @@ export default function DevOpsTickets() {
                 <span className="ig-kbd">J</span>/<span className="ig-kbd">K</span> move · <span className="ig-kbd">Enter</span> open ·{' '}
                 <span className="ig-kbd">X</span> select · <span className="ig-kbd">Esc</span> close
               </p>
-              {requests.length > 0 && total > limit && (
+              {requests.length > 0 ? (
                 <div className="devops-tickets-pagination">
                   <span className="devops-tickets-pagination-info">
-                    Page {Math.floor(offset / limit) + 1} of {Math.ceil(total / limit)}
+                    Page {Math.floor(offset / limit) + 1} of {Math.max(1, Math.ceil(total / limit))} ({total} total)
                   </span>
                   <div className="devops-tickets-pagination__actions">
                     <button type="button" className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => setOffset((value) => Math.max(0, value - limit))}>
@@ -1127,7 +1135,7 @@ export default function DevOpsTickets() {
                     </button>
                   </div>
                 </div>
-              )}
+              ) : null}
             </>
           )}
 
@@ -1186,6 +1194,7 @@ export default function DevOpsTickets() {
                   {detailRequest ? (
                     <>
                       <Day2Banner operation={detailRequest.operation} />
+                      <DeliveryVisibilityCard delivery={detailRequest.delivery} portal="devops" />
                       <PlanReviewCard review={detailRequest.plan_review} env={detailRequest.env} onAcknowledge={acknowledgePlan} />
                       <PolicyChecksCard summary={detailRequest.policy_checks} />
                       <CostCheckCard check={detailRequest.cost_check} />
@@ -1458,7 +1467,7 @@ export default function DevOpsTickets() {
                               Open PR
                             </a>
                           ) : null}
-                          <RequestPRImpact apiUrl={apiUrl} token={typeof window === 'undefined' ? null : localStorage.getItem(DEVOPS_TOKEN_KEY)} requestId={detailRequest.id} />
+                          <RequestPRImpact compact apiUrl={apiUrl} token={typeof window === 'undefined' ? null : localStorage.getItem(DEVOPS_TOKEN_KEY)} requestId={detailRequest.id} />
                           <a href={`/incidents`} className="btn btn-secondary btn-sm">
                             Incident panel
                           </a>

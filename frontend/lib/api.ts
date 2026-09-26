@@ -1,17 +1,14 @@
-// Centralized API configuration
-// Note: NEXT_PUBLIC_* variables are baked into the build at build time
-// Make sure to rebuild the frontend after changing NEXT_PUBLIC_API_URL in .env
-export const getApiUrl = (): string => {
-  // NEXT_PUBLIC_API_URL is available at build time and runtime
-  // It's baked into the Next.js build, so it will be available in the browser
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-  
-  if (!apiUrl) {
-    console.warn('NEXT_PUBLIC_API_URL is not set, falling back to localhost:8080');
-    return 'http://localhost:8080';
-  }
-  
-  return apiUrl;
-};
+import { portalFetch, resolveRuntimeApiUrl, type PortalFetchInit } from '@infragate/ui';
 
-export const API_BASE_URL = getApiUrl();
+const defaultBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+
+export function getApiBaseUrl(): string {
+  return resolveRuntimeApiUrl(defaultBase);
+}
+
+/** User portal authenticated fetch (Bearer from caller). */
+export function apiFetch(path: string, init: PortalFetchInit = {}) {
+  const base = getApiBaseUrl().replace(/\/+$/, '');
+  const url = path.startsWith('http') ? path : `${base}${path.startsWith('/') ? path : `/${path}`}`;
+  return portalFetch(url, init);
+}

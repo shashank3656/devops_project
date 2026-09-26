@@ -1,4 +1,11 @@
-export { installApiUrlRewrite, resolveRuntimeApiUrl, RAILWAY_PRODUCTION_API_URL } from './apiRuntime';
+export {
+  installApiUrlRewrite,
+  portalFetch,
+  resolveRuntimeApiUrl,
+  RAILWAY_PRODUCTION_API_URL,
+  type PortalFetchInit,
+} from './apiRuntime';
+export { ConfirmProvider, useConfirm, type ConfirmOptions } from './ConfirmDialog';
 export { applyTheme, getTheme, openCommandPalette, setTheme, toggleTheme, type ThemeMode } from './theme';
 export { AuthPipeline, SearchTrigger, ThemeToggle } from './ShellControls';
 export { formatRelativeTime, greetingFor, initialsFor } from './time';
@@ -33,8 +40,20 @@ export {
 } from './useWorkspaceScope';
 export { default as PageFilters, type PageFilterChip } from './PageFilters';
 export { default as PlanReviewCard } from './PlanReviewCard';
+export { default as DeliveryVisibilityCard } from './DeliveryVisibilityCard';
 export { default as PolicyChecksCard } from './PolicyChecksCard';
 export { default as PRImpactBrief } from './PRImpactBrief';
+export { default as RequestPRImpact } from './RequestPRImpact';
+export { default as ChangeCatalogTable, buildChangeCatalogColumns, type ChangeCatalogRow } from './ChangeCatalogTable';
+export {
+  default as IncidentCatalogTable,
+  incidentReference,
+  type IncidentCatalogRow,
+} from './IncidentCatalogTable';
+export { default as ScorecardTable, type ScorecardRow, type ScorecardCheckRow, type ScorecardDoraRow } from './ScorecardTable';
+export { default as PortalErrorBoundary } from './PortalErrorBoundary';
+export { default as SupportHub } from './SupportHub';
+export type { SupportAction, SupportArticle } from './supportTypes';
 export { default as ProjectHealthCard } from './ProjectHealthCard';
 export { default as SavedViews, type SavedView } from './SavedViews';
 export { useSavedFilterViews } from './useSavedFilterViews';
@@ -63,6 +82,7 @@ export type {
   DeployIntelSimilarMerge,
   DeployIntelAck,
   PRImpactBriefData,
+  DeliveryVisibility,
   ProjectCostSummary,
   ProjectHealth,
   ProjectInfraSettings,

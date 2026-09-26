@@ -11,6 +11,7 @@ import {
   type DataTableColumn,
   type DeployIntelChangeBrief,
   type PRImpactBriefData,
+  useConfirm,
 } from '@infragate/ui';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
@@ -152,6 +153,7 @@ function riskChipTone(level: string): 'low' | 'medium' | 'high' | 'danger' | 'ok
 export default function DeployIntelligenceRepoPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const confirm = useConfirm();
   const owner = typeof router.query.owner === 'string' ? router.query.owner : '';
   const repo = typeof router.query.repo === 'string' ? router.query.repo : '';
 
@@ -231,9 +233,11 @@ export default function DeployIntelligenceRepoPage() {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
     const branch = insights?.branch_protection.base_branch || repoMeta?.base_branch || 'main';
-    const ok = window.confirm(
-      `Apply recommended SetuOps checks on ${owner}/${repo} branch ${branch}?\n\nThis will require infragate/plan-review and infragate/policy, and will create branch protection if it is missing.`,
-    );
+    const ok = await confirm({
+      title: 'Apply branch protection',
+      message: `Apply recommended SetuOps checks on ${owner}/${repo} branch ${branch}?\n\nThis will require infragate/plan-review and infragate/policy, and will create branch protection if it is missing.`,
+      confirmLabel: 'Apply',
+    });
     if (!ok) return;
     setProtecting(true);
     setProtectMessage('');

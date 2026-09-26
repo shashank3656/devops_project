@@ -6022,6 +6022,17 @@ body {
   font-size: 13px;
 }
 
+.admin-requests-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: var(--color-text-muted);
+  margin: 0 0 12px;
+}
+
 .admin-requests-pagination {
   margin-top: 16px;
   display: flex;
@@ -7033,12 +7044,15 @@ body {
 .admin-setup-steps > li {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
-  gap: 12px;
+  gap: 12px 14px;
+  align-items: start;
   counter-increment: setup;
 }
 
 .admin-setup-steps > li::before {
   content: counter(setup);
+  grid-column: 1;
+  grid-row: 1 / -1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -7049,6 +7063,11 @@ body {
   color: var(--color-primary);
   font-size: 12px;
   font-weight: 700;
+}
+
+.admin-setup-steps > li > * {
+  grid-column: 2;
+  min-width: 0;
 }
 
 .admin-setup-steps h3 {
@@ -7062,6 +7081,8 @@ body {
   color: var(--color-text-muted);
   font-size: 13px;
   line-height: 1.55;
+  word-spacing: normal;
+  overflow-wrap: normal;
 }
 
 .admin-setup-env {

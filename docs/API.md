@@ -89,7 +89,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | GET | `/api/request/:id` | user | — | Request detail (must be visible to the user). |
 | POST | `/create-pr` | verified contributor / admin | same shape as request | Skip the queue and open a GitOps PR immediately. Rare; most users use `/api/request`. |
 | GET | `/api/history` | user | `?project_id=&environment=`/`env=` `&team=&status=` | The user's requests. ScopeBar sends project and environment. |
-| GET | `/api/history/:id` | user | — | Single history row + timeline. |
+| GET | `/api/history/:id` | user | — | Single history row + `delivery` (pipeline/SHA/promote snapshot, BRD-08). |
 | GET | `/api/stats` | user | — | Home counters. |
 | GET | `/api/search` | user | `?q=` | Search requests / projects / templates. |
 | GET | `/api/golden-paths` | user | — | Suggested request paths. |
@@ -118,7 +118,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | GET | `/api/me/teams/:id/members` | manager | — | Members. |
 | POST | `/api/me/teams/:id/members` | manager | `{ user_id }` | Add member. |
 | GET | `/api/me/changes` | user | `project_id`, `environment`, `status`, `q`, `change_type` | CHGs on visible projects only. Unmapped CHGs omitted. |
-| GET | `/api/me/changes/:id` | user | — | One CHG if visible. Includes cost delta, policy status, `blast_radius`, and live-vs-CHG `drift`. |
+| GET | `/api/me/changes/:id` | user | — | One CHG if visible. Includes `delivery`, cost delta, policy status, `blast_radius`, and live-vs-CHG `drift`. |
 | GET | `/api/me/scorecards` | user | `environment` | Scorecards for services on visible projects, including live-vs-CHG drift. |
 | GET | `/api/me/incidents` | user | `project_id`, `environment`, `status` | Assigned to the user **or** on a visible project. |
 | GET | `/api/me/incidents/:id` | user | — | One INC if visible. Includes generated `review` and saved `postmortem` (read). |
@@ -234,6 +234,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | --- | --- | --- | --- | --- |
 | GET | `/api/devops/tickets` | devops | — | Tickets assigned to **me**. |
 | GET | `/api/devops/requests` | manager | `id`, `team`, `project_id`, `env`/`environment`, `cloud`, `status`, `requester`, `sort`, `at_risk` | Full queue. ScopeBar sends project and environment. |
+| GET | `/api/devops/requests/:id` | manager | — | Inspector payload includes `delivery` (CI/plan/promote snapshot). |
 | POST | `/api/devops/requests/:id/approve` | manager | optional note | Approve and open GitOps PR. |
 | POST | `/api/devops/requests/:id/reject` | manager | `{ reason }` | Reject. |
 | POST | `/api/devops/requests/bulk-approve` | manager | `{ ids }` | Bulk approve. |
@@ -260,7 +261,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | GET | `/api/devops/changes` | manager | `project_id`, `environment`, `status`, `q`, `change_type` | Catalog. |
 | GET | `/api/devops/changes?mode=preview` | manager | — | Next `change_number` for the form. |
 | POST | `/api/devops/changes` | manager | see body below | Manual create. Title required. Environment not required. |
-| GET | `/api/devops/changes/:id` | manager | — | `{ change, change_brief, linked_incidents, blast_radius, drift }`. |
+| GET | `/api/devops/changes/:id` | manager | — | `{ change, change_brief, linked_incidents, blast_radius, drift, delivery }`. |
 | PATCH | `/api/devops/changes/:id` | manager | `{ status }` | Move status (`resolved`, `closed`, `failed`, `cancelled`, `implementing` / `reopen`). Blocked if linked incidents are still open. |
 | POST | `/api/devops/changes/:id/resolve` | manager | — | Watch/deploy succeeded. |
 | POST | `/api/devops/changes/:id/close` | manager | — | Formal close. Prefer after resolved. |
@@ -455,6 +456,8 @@ All require a DevOps user. Writes (onboard, actions, terminal) typically require
 | GET | `/api/devops/previews` | devops | Ephemeral preview environments and estimated cost. Merge graduates a standard CHG; close without merge cancels. |
 | POST | `/api/devops/changes/:id/rollout` | manager | `{ stage: canary|10|50|100 }` progressive delivery. |
 | GET | `/api/devops/scorecards` | devops | Service scorecards from the catalog + CHG/INC/SLO + live-vs-CHG drift. |
+| GET | `/api/devops/cloud/resources` | devops | Paginated read-only cloud inventory. Query: `cloud` (default `aws`), `team`, `account_id`, `environment`, `region`, `q`, `project_id`, `page`, `limit`. |
+| GET | `/api/devops/cloud/resources/:id` | devops | Single inventory row by id. |
 | GET | `/api/devops/evidence` | devops | Evidence pack. `?format=md` downloads Markdown. |
 | GET | `/api/devops/policies` | devops | Stored Rego deny rules. |
 | POST | `/api/devops/policies` | manager | `{ name, target, rego }` target `change` or `request`. |
