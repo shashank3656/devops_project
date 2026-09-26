@@ -42,6 +42,33 @@ func TestDevopsCloudResourcesRequiresAuth(t *testing.T) {
 	}
 }
 
+func TestDevopsCloudAccountsRequiresAuth(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/devops/cloud/accounts", nil)
+	devopsCloudAccountsListHandler(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET cloud accounts without auth = %d, want 401", rec.Code)
+	}
+}
+
+func TestDevopsCloudAccountCreateRequiresAuth(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/devops/cloud/accounts", nil)
+	devopsCloudAccountsListHandler(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("POST cloud accounts without auth = %d, want 401", rec.Code)
+	}
+}
+
+func TestDevopsCloudAccountTestRequiresAuth(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/devops/cloud/accounts/1/test", nil)
+	devopsCloudAccountTestHandler(rec, req, 1)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("POST cloud account test without auth = %d, want 401", rec.Code)
+	}
+}
+
 func TestAdminBreakGlassRejectsBrowserOrigin(t *testing.T) {
 	t.Setenv("ADMIN_SECRET", "break-glass")
 	t.Setenv("ADMIN_BREAKGLASS_USER_ID", "42")

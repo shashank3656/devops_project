@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
+import { buildPortalApiUrl, portalFetch } from './apiRuntime';
 import { OPEN_PALETTE_EVENT } from './theme';
 import type { PaletteCommand, SearchHit } from './types';
 
@@ -53,8 +54,8 @@ export default function CommandPalette({ apiUrl, token, commands }: CommandPalet
       return;
     }
     const handle = window.setTimeout(() => {
-      fetch(`${apiUrl.replace(/\/+$/, '')}/api/search?q=${encodeURIComponent(query.trim())}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      portalFetch(buildPortalApiUrl(apiUrl, `/api/search?q=${encodeURIComponent(query.trim())}`), {
+        token,
       })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => setHits(Array.isArray(data?.hits) ? data.hits : []))

@@ -9,15 +9,16 @@ import (
 
 // CloudInventoryListFilters are normalized query filters for inventory providers.
 type CloudInventoryListFilters struct {
-	Cloud     string
-	Team      string
-	Account   string
-	Env       string
-	Region    string
-	Search    string
-	Page      int
-	Limit     int
-	ProjectID int
+	Cloud             string
+	Team              string
+	Account           string
+	Env               string
+	Region            string
+	Search            string
+	Page              int
+	Limit             int
+	ProjectID         int
+	VisibleTeamSlugs  []string
 }
 
 // CloudInventoryProvider abstracts cloud inventory reads (AWS first; live sync optional).
@@ -46,6 +47,10 @@ func (dbCloudInventoryProvider) List(_ context.Context, filters CloudInventoryLi
 	}
 	offset := (page - 1) * limit
 
+	if len(filters.VisibleTeamSlugs) == 0 {
+		return []cloudResourceRow{}, 0, nil
+	}
+
 	team := strings.TrimSpace(filters.Team)
 	if team == "" && filters.ProjectID > 0 {
 		var slug string
@@ -60,11 +65,23 @@ func (dbCloudInventoryProvider) List(_ context.Context, filters CloudInventoryLi
 		team = strings.TrimSpace(slug)
 	}
 
+	team, teamOK := resolveInventoryTeamFilter(team, filters.VisibleTeamSlugs)
+	if !teamOK {
+		return []cloudResourceRow{}, 0, nil
+	}
+
 	where := []string{"cloud = $1"}
 	args := []interface{}{cloud}
 	if team != "" {
 		args = append(args, team)
 		where = append(where, "team_slug = $"+strconv.Itoa(len(args)))
+	} else {
+		placeholders := make([]string, len(filters.VisibleTeamSlugs))
+		for i, slug := range filters.VisibleTeamSlugs {
+			args = append(args, strings.TrimSpace(slug))
+			placeholders[i] = "$" + strconv.Itoa(len(args))
+		}
+		where = append(where, "team_slug IN ("+strings.Join(placeholders, ",")+")")
 	}
 	if strings.TrimSpace(filters.Account) != "" {
 		args = append(args, strings.TrimSpace(filters.Account))
@@ -81,6 +98,19 @@ func (dbCloudInventoryProvider) List(_ context.Context, filters CloudInventoryLi
 	if strings.TrimSpace(filters.Search) != "" {
 		args = append(args, "%"+strings.TrimSpace(filters.Search)+"%")
 		where = append(where, "(display_name ILIKE $"+strconv.Itoa(len(args))+" OR resource_id ILIKE $"+strconv.Itoa(len(args))+")")
+	}
+	if configured, err := cloudAccountsConfigured(cloud); err == nil && configured {
+		if ids, err := listConnectedCloudAccountIDsForTeams(cloud, filters.VisibleTeamSlugs); err == nil {
+			if len(ids) == 0 {
+				return []cloudResourceRow{}, 0, nil
+			}
+			placeholders := make([]string, len(ids))
+			for i, id := range ids {
+				args = append(args, id)
+				placeholders[i] = "$" + strconv.Itoa(len(args))
+			}
+			where = append(where, "account_id IN ("+strings.Join(placeholders, ",")+")")
+		}
 	}
 	whereSQL := strings.Join(where, " AND ")
 

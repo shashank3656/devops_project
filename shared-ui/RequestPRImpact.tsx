@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import PRImpactBrief from './PRImpactBrief';
 import type { PRImpactBriefData } from './types';
-import { portalFetch } from './apiRuntime';
+import { buildPortalApiUrl, portalFetch } from './apiRuntime';
 
 export default function RequestPRImpact({
   apiUrl,
@@ -18,8 +18,7 @@ export default function RequestPRImpact({
 
   useEffect(() => {
     if (!requestId || !token) return;
-    const base = apiUrl.replace(/\/+$/, '');
-    portalFetch(`${base}/api/request/${requestId}/pr-impact`, { token })
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/request/${requestId}/pr-impact`), { token })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.impact) setBrief(data.impact);

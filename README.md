@@ -126,6 +126,7 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 | Deploy intel | Onboard repo → open PRs + change brief + `infragate/deploy-intel` check. |
 | GitOps control | Which repo/path gets `request.json`. |
 | Kubernetes | Onboard cluster, then pods/logs/workloads/terminal. |
+| **Cloud workspace** (NF-01 + BRD-07) | **Accounts:** managers onboard AWS/Azure/GCP (trust on API host). **Inventory:** read-only resources by team/account/env/region; account landing + resource detail. Operators read; User/Admin do not browse inventory. See [FEATURES.md](./docs/FEATURES.md). |
 | Runbooks / access exceptions / secrets / retries / alerts | Day-2 ops. |
 
 ### Inbound (no form)
@@ -182,6 +183,7 @@ Auth: User / Admin / DevOps send `Authorization: Bearer …`. Admin may send `X-
 `/api/devops/incidents` · `/incidents/:id/review` · `/problems` · `/runbooks` · `/incident-workspace`  
 `/api/devops/health` · `/slos` · `/identity` · `/previews` · `/scorecards` · `/evidence` · `/policies`  
 `/api/devops/promotions` · `/rollback-console` · `/freezes` · `/oncall`  
+`/api/devops/cloud/accounts` (+ onboard, test, PATCH trust) · `/api/devops/cloud/resources` (read-only) · `/api/admin/cloud/accounts` (read-only)  
 `/api/devops/deploy-intelligence` · `/repos` · `/suggest-ticket` · `/protect-branch`  
 `/api/devops/gitops/...` · `/projects` · `/templates` · `/k8s-*` · `/ops-command-center` · `/environment-drift` · `/credential-audit` · `/access-overrides` · `/retry-center` · `/notification-settings`
 

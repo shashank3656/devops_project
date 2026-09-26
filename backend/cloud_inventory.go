@@ -57,7 +57,8 @@ func devopsCloudResourcesHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 	if DB == nil {
@@ -66,6 +67,11 @@ func devopsCloudResourcesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method != http.MethodGet {
 		writeMethodNotAllowed(w, r)
+		return
+	}
+	visibleTeams, err := devopsVisibleTeamSlugs(userID)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to resolve teams", err)
 		return
 	}
 	q := r.URL.Query()
@@ -77,20 +83,26 @@ func devopsCloudResourcesHandler(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	projectID, _ := strconv.Atoi(strings.TrimSpace(q.Get("project_id")))
 	filters := CloudInventoryListFilters{
-		Cloud:     strings.TrimSpace(q.Get("cloud")),
-		Team:      strings.TrimSpace(q.Get("team")),
-		Account:   strings.TrimSpace(q.Get("account_id")),
-		Env:       env,
-		Region:    strings.TrimSpace(q.Get("region")),
-		Search:    strings.TrimSpace(q.Get("q")),
-		Page:      page,
-		Limit:     limit,
-		ProjectID: projectID,
+		Cloud:            strings.TrimSpace(q.Get("cloud")),
+		Team:             strings.TrimSpace(q.Get("team")),
+		Account:          strings.TrimSpace(q.Get("account_id")),
+		Env:              env,
+		Region:           strings.TrimSpace(q.Get("region")),
+		Search:           strings.TrimSpace(q.Get("q")),
+		Page:             page,
+		Limit:            limit,
+		ProjectID:        projectID,
+		VisibleTeamSlugs: visibleTeams,
 	}
 	items, total, err := cloudInventoryProvider.List(r.Context(), filters)
 	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "failed to list resources", err)
-		return
+		if isMissingDatabaseRelation(err, "cloud_resources") {
+			items = []cloudResourceRow{}
+			total = 0
+		} else {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list resources", err)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -108,7 +120,8 @@ func devopsCloudResourceDetailHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 	if DB == nil {
@@ -117,6 +130,11 @@ func devopsCloudResourceDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method != http.MethodGet {
 		writeMethodNotAllowed(w, r)
+		return
+	}
+	visibleTeams, err := devopsVisibleTeamSlugs(userID)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to resolve teams", err)
 		return
 	}
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/devops/cloud/resources/")
@@ -133,6 +151,10 @@ func devopsCloudResourceDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to load resource", err)
+		return
+	}
+	if !devopsUserCanViewInventoryTeam(visibleTeams, item.TeamSlug) {
+		writeAPIError(w, r, http.StatusNotFound, "resource not found", nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

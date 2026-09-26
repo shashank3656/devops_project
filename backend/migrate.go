@@ -1485,6 +1485,34 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_cloud_resources_name ON cloud_resources(display_name, resource_id)`)
 	seedCloudResourceInventoryDemo()
 
+	// NF-01: cloud account onboarding (credentials stay on API host)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS cloud_accounts (
+			id SERIAL PRIMARY KEY,
+			provider VARCHAR(20) NOT NULL DEFAULT 'aws',
+			account_id VARCHAR(64) NOT NULL,
+			display_name VARCHAR(120) NOT NULL DEFAULT '',
+			team_slug VARCHAR(120) NOT NULL DEFAULT '',
+			environments_json TEXT NOT NULL DEFAULT '[]',
+			auth_mode VARCHAR(32) NOT NULL DEFAULT 'assume_role',
+			role_arn VARCHAR(256) NOT NULL DEFAULT '',
+			external_id VARCHAR(128) NOT NULL DEFAULT '',
+			secret_ref VARCHAR(128) NOT NULL DEFAULT '',
+			status VARCHAR(32) NOT NULL DEFAULT 'pending',
+			last_error TEXT NOT NULL DEFAULT '',
+			last_test_at TIMESTAMP,
+			onboarded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			disabled_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			disabled_at TIMESTAMP,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(provider, account_id)
+		)
+	`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_cloud_accounts_team ON cloud_accounts(team_slug)`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_cloud_accounts_status ON cloud_accounts(status)`)
+	migrateCloudAccountsSchema()
+
 	log.Println("Database schema is up to date")
 	return nil
 }

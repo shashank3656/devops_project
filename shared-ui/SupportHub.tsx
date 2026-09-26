@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { buildPortalApiUrl, portalFetch } from './apiRuntime';
 import type { SupportAction, SupportArticle } from './supportTypes';
 
 type SupportTab = 'chat' | 'docs';
@@ -215,9 +216,10 @@ export default function SupportHub({
       setMessages((current) => [...current, fallback]);
       return;
     }
-    fetch(`${apiUrl.replace(/\/+$/, '')}/api/copilot`, {
+    portalFetch(buildPortalApiUrl(apiUrl, '/api/copilot'), {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      token,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query: question,
         path: currentPath,

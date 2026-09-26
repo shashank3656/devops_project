@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { buildPortalApiUrl, portalFetch } from '@infragate/ui';
 import { useToast } from '../context/ToastContext';
 import CalendarDateInput from '../components/CalendarDateInput';
 import { environments } from '../config/clouds';
@@ -92,6 +93,7 @@ export default function CustomJSON() {
       router.push('/login');
       return;
     }
+    const token = localStorage.getItem('token');
     const template = sessionStorage.getItem(TEMPLATE_KEY);
     if (template) {
       try {
@@ -100,14 +102,26 @@ export default function CustomJSON() {
         if (data.team) setTeam(data.team);
         if (data.env) setEnv(String(data.env).trim().toLowerCase());
         if (data.client_name) setClientName(data.client_name);
-        if (data.config && typeof data.config === 'string') setJson(data.config);
-        else if (data.config && typeof data.config === 'object') setJson(JSON.stringify(data.config, null, 2));
+        const requestId = Number(data.request_id);
+        if (Number.isInteger(requestId) && requestId > 0 && token && token !== 'undefined') {
+          void portalFetch(buildPortalApiUrl(apiUrl, `/api/history/${requestId}`), { token })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((payload) => {
+              const cfg = payload?.request?.config ?? payload?.config;
+              if (typeof cfg === 'string' && cfg.trim()) setJson(cfg);
+              else if (cfg && typeof cfg === 'object') setJson(JSON.stringify(cfg, null, 2));
+            })
+            .catch(() => undefined);
+        } else if (data.config && typeof data.config === 'string') {
+          setJson(data.config);
+        } else if (data.config && typeof data.config === 'object') {
+          setJson(JSON.stringify(data.config, null, 2));
+        }
         sessionStorage.removeItem(TEMPLATE_KEY);
       } catch (_) {
         sessionStorage.removeItem(TEMPLATE_KEY);
       }
     }
-    const token = localStorage.getItem('token');
     if (token && token !== 'undefined') {
       Promise.all([
         fetch(`${apiUrl}/api/me`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => res.ok ? res.json() : null),

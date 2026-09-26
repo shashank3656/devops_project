@@ -2,7 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
-import { DeliveryVisibilityCard, type DeliveryVisibility } from '@infragate/ui';
+import { buildPortalApiUrl, DeliveryVisibilityCard, parsePortalNumericId, portalFetch, type DeliveryVisibility } from '@infragate/ui';
 import { SITE_NAME } from '../../lib/site';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -68,18 +68,17 @@ export default function UserChangeDetailPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
+  const resourceId = parsePortalNumericId(id);
 
   useEffect(() => {
-    if (!id) return;
+    if (!resourceId) return;
     const token = localStorage.getItem('token');
     if (!token || token === 'undefined') {
       router.replace('/login');
       return;
     }
     setLoading(true);
-    fetch(`${apiUrl}/api/me/changes/${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/me/changes/${resourceId}`), { token })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (res.status === 401 || res.status === 403) {
@@ -98,7 +97,7 @@ export default function UserChangeDetailPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load change'))
       .finally(() => setLoading(false));
-  }, [id, router]);
+  }, [resourceId, router]);
 
   return (
     <>

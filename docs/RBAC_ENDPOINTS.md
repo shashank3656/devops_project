@@ -19,12 +19,23 @@ Companion to [RBAC_MATRIX.md](./RBAC_MATRIX.md). Lists high-risk routes and the 
 | GET/PATCH | `/api/devops/notification-settings` | Ops notification routing |
 | POST | `/api/devops/retry-center/:id` | Retry failed delivery |
 | POST | `/api/devops/expiry-tracker/actions` | Credential expiry actions |
+| POST | `/api/devops/cloud/accounts` | Cloud account onboard (manager **and** member of target devops team) |
+| PATCH | `/api/devops/cloud/accounts/:id` | Disable, metadata, or trust rotation (same team manager) |
+| POST | `/api/devops/cloud/accounts/:id/test` | Connection test (same team manager) |
 
 Additional manager gates exist on K8s mutating routes, deployment gate approvals, project lifecycle writes, and deploy-intelligence branch protection — see `requireDevopsManager` in the backend tree.
 
 ## DevOps user (`requireDevopsUser` → 401/403)
 
-Any authenticated DevOps user (or admin acting in DevOps) may call read-heavy DevOps APIs: tickets list, incidents, changes, scorecards, cloud inventory list, health, etc. Mutations that change production state still require manager where noted above.
+Any authenticated DevOps user (or admin acting in DevOps) may call read-heavy DevOps APIs: tickets list, incidents, changes, scorecards, **cloud inventory** list/detail (scoped to **member devops teams**; **read-only**, no cloud mutate routes), **cloud account** catalog/detail (scoped to **member devops teams**; no secrets in JSON), health, etc. Mutations that change production state still require manager where noted above.
+
+| GET | `/api/devops/cloud/resources` | devops member teams | Read-only inventory |
+| GET | `/api/devops/cloud/resources/:id` | devops member teams | Read-only row |
+| GET | `/api/devops/cloud/accounts` | devops member teams | Catalog (no credentials) |
+| GET | `/api/devops/cloud/accounts/:id` | devops member teams | Detail (no credentials) |
+| GET | `/api/admin/cloud/accounts` | admin | All onboarded accounts (read-only) |
+
+**User portal** has no cloud account or inventory routes. **Admin** does not onboard accounts in the UI (DevOps managers only).
 
 ## User portal
 

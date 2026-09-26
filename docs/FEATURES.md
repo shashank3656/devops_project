@@ -172,6 +172,7 @@ Primary nav: Home, Approvals, Requests, People, Projects, Catalog, More. Mobile 
 | Changes (read) | `/changes`, `/changes/[id]` | `GET /api/admin/changes`. Full catalog. No create. |
 | Incidents (read) | `/incidents`, `/incidents/[id]` | `GET /api/admin/incidents`. Full catalog. No create. |
 | Deploy intel feed | `/deploy-intelligence` | `GET /api/admin/deploy-intelligence/feed`. Read-only stream of briefs. |
+| Cloud accounts (read) | `/cloud-accounts` | `GET /api/admin/cloud/accounts` — which DevOps team owns which onboarded AWS/Azure/GCP account. **No onboarding in Admin** (DevOps managers onboard). No credentials in responses. Admin does **not** get cloud **inventory** (DevOps-only). |
 
 ---
 
@@ -215,12 +216,49 @@ Primary nav (manager): Home, Requests, Changes, Deployments, Kubernetes, GitOps,
 | Release notes | `/release-notes` | `GET /api/devops/release-notes`. Weekly notes assembled from closed CHGs. |
 | Change risk | `/change-risk` | `GET /api/devops/change-risk`. Risk heatmap for upcoming changes. |
 
+### Cloud workspace (NF-01 + BRD-07)
+
+SetuOps **Cloud workspace** is two linked catalogs in the DevOps portal: **Accounts** (trust + onboarding) and **Inventory** (read-only resource catalog). Credentials and connection tests stay on the **API host**; portals never receive keys, external IDs, or secret refs in API responses.
+
+#### End goal
+
+Give platform engineers a **team-scoped, multi-cloud view** of what already exists in AWS, Azure, and GCP **before** day-2 actions, incidents, or changes — without opening three vendor consoles. Inventory rows are meant to come from **connected onboarded accounts** (NF-01). The UI is **read-only** today; future guarded actions (NF-05) will use this catalog for scope and identity (team, account, environment, region, resource id).
+
+**Today:** resources are stored in `cloud_resources` (demo seed + DB provider). **Next:** live sync from cloud APIs using onboarded trust (`CloudInventoryProvider` abstraction).
+
+#### Who uses what
+
+| Persona | Portal | Cloud accounts (NF-01) | Cloud inventory (BRD-07) |
+| --- | --- | --- | --- |
+| **DevOps operator** (team member, not manager) | DevOps | List and open accounts for **DevOps teams they belong to**. Test/trust/onboard **not** allowed. | List, filter, open resources and **account landing** for those teams. **Read-only.** |
+| **DevOps manager** (`devops_profile.is_manager`) | DevOps | **Onboard** AWS/Azure/GCP, **test connection**, disable/re-enable, **rotate trust** for teams they manage. | Same read-only inventory as operators; no mutate-from-inventory. |
+| **Admin** | Admin | **Read-only catalog** of all onboarded accounts (`GET /api/admin/cloud/accounts`) — which team owns which account. No onboarding in Admin UI. | No Admin inventory UI (DevOps-only surface). |
+| **User** (developer / portal) | User | **No access.** Users request infra via templates/tickets; they do not onboard cloud accounts or browse inventory. | **No access.** |
+
+RBAC: inventory and account **reads** require DevOps auth and **team membership**; writes (onboard, PATCH trust, test) require **manager on the account’s DevOps team**. See [RBAC_ENDPOINTS.md](./RBAC_ENDPOINTS.md) and [RBAC_MATRIX.md](./RBAC_MATRIX.md) (inventory is explicitly read-only; no per-resource IAM grants).
+
+#### Hub navigation
+
+DevOps **Cloud workspace** uses shared hub nav: **Accounts** ↔ **Inventory**, plus provider pills (**AWS / Azure / GCP**). ScopeBar **project** and **environment** apply to inventory lists where configured.
+
+### Cloud accounts (NF-01)
+
+| Feature | Page | How it works |
+| --- | --- | --- |
+| Account catalog | `/cloud-accounts` | `GET /api/devops/cloud/accounts` — accounts for teams you belong to. Filter by provider/status/search. Empty, error, and retry states. No credentials in responses. |
+| Onboard | `/cloud-accounts/new` | `POST /api/devops/cloud/accounts` — **AWS, Azure, or GCP** with provider-specific trust fields (IAM role, Azure scope/tenant, GCP service account). DevOps **manager on that team** only. Server runs an immediate connection test; secrets never returned to the client. In-app **trust setup guide** per provider. |
+| Account detail | `/cloud-accounts/[id]` | Provider setup guide, test connection, disable/re-enable. Managers can **rotate trust** (role / external ID / secret ref) with automatic re-test. Link **View inventory** opens **account landing** for that provider + account id. |
+| Admin view | Admin `/cloud-accounts` | `GET /api/admin/cloud/accounts` — which team owns which account (read-only). |
+
 ### Cloud inventory (BRD-07)
 
 | Feature | Page | How it works |
 | --- | --- | --- |
-| Resource list | `/cloud-resources` | `GET /api/devops/cloud/resources` — read-only AWS rows with server pagination. Filters: ScopeBar `project_id` / `environment`, plus team, account, region, and search. Empty, loading, and error states. |
-| Resource detail | `/cloud-resources/[id]` | `GET /api/devops/cloud/resources/:id`. No credentials in API responses. |
+| Resource list | `/cloud-resources` | `GET /api/devops/cloud/resources` — read-only inventory with **AWS / Azure / GCP** selector (`?cloud=`). Limited to **your DevOps teams** and **connected** onboarded account IDs for that cloud. Server pagination; ScopeBar `project_id` / `environment`; team, account, region, and search filters. URL `?account_id=` pre-fills account filter. |
+| Account landing | `/cloud-resources/account?cloud=&account_id=` | Same list API scoped to one account: summary strip (resource count, envs/regions on page), resource table, links to **Connection & trust** (onboarded record) and **All inventory**. Click **Account** column from the main list to open this page. |
+| Resource detail | `/cloud-resources/[id]` | `GET /api/devops/cloud/resources/:id`. Aligned label/value detail (team, region, account link, resource id). **Account overview** button → account landing. No credentials in API responses. |
+
+Notion: [NF-01 Cloud Account Onboarding](https://app.notion.com/p/3e60f430ed10810793f7c3c1ae2d9a82) · [BRD-07 Cloud Resource Inventory](https://app.notion.com/p/3e60f430ed10810a8e2accfa0ca11116)
 
 ### Incidents and problems
 
