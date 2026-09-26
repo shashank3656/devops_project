@@ -760,6 +760,7 @@ func main() {
 	http.HandleFunc("/api/devops/cloud/accounts", devopsCloudAccountsRouter)
 	http.HandleFunc("/api/devops/cloud/accounts/", devopsCloudAccountsRouter)
 	http.HandleFunc("/api/devops/environment-catalog", devopsEnvironmentCatalogHandler)
+	http.HandleFunc("/api/devops/operator-activity", devopsOperatorActivityHandler)
 	http.HandleFunc("/api/devops/cloud/resources", devopsCloudResourcesRouter)
 	http.HandleFunc("/api/devops/cloud/resources/", devopsCloudResourcesRouter)
 	http.HandleFunc("/api/devops/project-options", devopsProjectOptionsHandler)

@@ -2592,19 +2592,35 @@ func devopsK8sActivityHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := DB.Query(`
-		SELECT a.id,
+		SELECT o.id,
 		       COALESCE(u.username, ''),
-		       a.action,
-		       a.resource_type,
-		       COALESCE(a.resource_id, ''),
-		       COALESCE(a.details, ''),
-		       a.created_at
-		  FROM admin_audit_log a
-		  LEFT JOIN users u ON u.id = a.admin_user_id
-		 WHERE a.action LIKE 'k8s_%'
-		 ORDER BY a.created_at DESC
+		       o.action,
+		       o.resource_type,
+		       COALESCE(o.resource_id, ''),
+		       COALESCE(o.summary, ''),
+		       o.created_at
+		  FROM devops_operator_audit_log o
+		  LEFT JOIN users u ON u.id = o.actor_user_id
+		 WHERE o.action LIKE 'k8s_%'
+		 ORDER BY o.created_at DESC
 		 LIMIT $1
 	`, queryLimit)
+	if err != nil && isMissingDatabaseRelation(err, "devops_operator_audit_log") {
+		rows, err = DB.Query(`
+			SELECT a.id,
+			       COALESCE(u.username, ''),
+			       a.action,
+			       a.resource_type,
+			       COALESCE(a.resource_id, ''),
+			       COALESCE(a.details, ''),
+			       a.created_at
+			  FROM admin_audit_log a
+			  LEFT JOIN users u ON u.id = a.admin_user_id
+			 WHERE a.action LIKE 'k8s_%'
+			 ORDER BY a.created_at DESC
+			 LIMIT $1
+		`, queryLimit)
+	}
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)

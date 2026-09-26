@@ -116,6 +116,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/problems': 'Problems',
   '/problems/new': 'Create problem',
   '/knowledge': 'Knowledge',
+  '/activity': 'Operator activity',
   '/health': 'Health',
   '/health/slo/new': 'Define SLO',
   '/identity': 'Identity',
@@ -483,6 +484,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     { href: '/incident-workspace', label: 'Incident notes' },
     { href: '/problems', label: 'Problems' },
     { href: '/knowledge', label: 'Knowledge' },
+    { href: '/activity', label: 'Activity' },
   ];
 
   const leafIsActive = (href: string) => {
@@ -980,6 +982,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'release-notes', label: 'Release notes', href: '/release-notes' },
           { id: 'services', label: 'Services', href: '/services' },
           { id: 'add-service', label: 'Add service', href: '/services/new' },
+          { id: 'operator-activity', label: 'Operator activity', href: '/activity' },
           { id: 'incidents', label: 'Incidents', href: '/incidents' },
           { id: 'incident-notes', label: 'Incident notes', href: '/incident-workspace' },
           { id: 'problems', label: 'Problems', href: '/problems' },

@@ -846,7 +846,7 @@ func devopsBulkActionHandler(w http.ResponseWriter, r *http.Request, managerID i
 	encodeDevopsJSON(w, resp)
 }
 
-func devopsRequestDetailHandler(w http.ResponseWriter, id int) {
+func devopsRequestDetailHandler(w http.ResponseWriter, id, viewerID int) {
 	req, err := GetPRRequestByID(id)
 	if err != nil || req == nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -893,6 +893,11 @@ func devopsRequestDetailHandler(w http.ResponseWriter, id int) {
 		resp["last_merge"] = lastMerge
 	}
 	resp["delivery"] = buildRequestDeliveryVisibility(req)
+	if viewerID > 0 {
+		if events, err := operatorAuditEventsForResource(viewerID, "pr_request", strconv.Itoa(id), 10); err == nil {
+			resp["operator_activity"] = events
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeDevopsJSON(w, map[string]interface{}{"request": resp, "status": "ok"})
 }
@@ -996,7 +1001,7 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	if len(parts) == 1 && parts[0] != "" && r.Method == "GET" {
 		id, err := strconv.Atoi(parts[0])
 		if err == nil && id > 0 {
-			devopsRequestDetailHandler(w, id)
+			devopsRequestDetailHandler(w, id, managerID)
 			return
 		}
 	}
