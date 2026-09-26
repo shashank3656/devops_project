@@ -122,36 +122,42 @@ export default function CloudResourceDetailPage() {
               </div>
             </section>
 
-            <div className="portal-surface">
-              <dl className="admin-status-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            <section className="portal-surface cloud-resource-detail">
+              <div className="portal-surface__header">
                 <div>
+                  <span className="portal-surface__eyebrow">Details</span>
+                  <h2 className="portal-surface__title">Scope & identity</h2>
+                </div>
+              </div>
+              <dl className="cloud-meta-list">
+                <div className="cloud-meta-list__row">
                   <dt>Team</dt>
                   <dd>{item.team_slug}</dd>
                 </div>
-                <div>
+                <div className="cloud-meta-list__row">
                   <dt>Region</dt>
                   <dd>{item.region}</dd>
                 </div>
-                <div>
+                <div className="cloud-meta-list__row">
                   <dt>Account</dt>
                   <dd>
-                    <Link href={accountLandingHref} style={{ fontWeight: 500 }}>
+                    <Link href={accountLandingHref} className="cloud-meta-list__link">
                       {item.account_name} ({item.account_id})
                     </Link>
                   </dd>
                 </div>
-                <div>
+                <div className="cloud-meta-list__row">
                   <dt>Last updated</dt>
                   <dd>{item.updated_at ? new Date(item.updated_at).toLocaleString() : '—'}</dd>
                 </div>
-                <div style={{ gridColumn: '1 / -1' }}>
+                <div className="cloud-meta-list__row cloud-meta-list__row--full">
                   <dt>Resource id</dt>
                   <dd>
-                    <code>{item.resource_id}</code>
+                    <code className="portal-code-block cloud-meta-list__code">{item.resource_id}</code>
                   </dd>
                 </div>
               </dl>
-            </div>
+            </section>
           </>
         ) : null}
       </div>
