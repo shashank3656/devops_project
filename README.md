@@ -122,7 +122,9 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 | Incidents / problems / workspace | Manual pages plus Grafana. Problems group repeats. DevOps generates a PIR from the INC timeline; Admin/User read it. SEV1/SEV2 pages the scorecard team. |
 | Health / SLO / Identity | Watch window, baseline vs latest, rollback hint, DORA. Burned SLO writes a deploy freeze. Identity flags static keys, last cloud-role exchange, and OIDC verifies. |
 | Scorecards / Evidence / Policies | Per-service health score, including live-vs-last-CHG drift. 30-day evidence pack. Lightweight Rego deny on CHG and request.json (`infragate/policy`). |
-| Promotions / freezes / rollback | Env promotion with gates. Each hop writes a CHG. Freeze blocks risky ships. |
+| Promotions / freezes / rollback | Env promotion with gates. Each hop writes a CHG. Freeze blocks risky ships. **NF-05:** shared guarded confirm on promote, rollback prepare, K8s day-2, and cloud disable — see [FEATURES.md](./docs/FEATURES.md). |
+| Environment catalog (NF-03) | `/environments` + ScopeBar env names from `GET /api/devops/environment-catalog`. |
+| Operator audit (NF-04) | `/activity` — `GET /api/devops/operator-activity`; ticket/cloud detail embed recent events. |
 | Deploy intel | Onboard repo → open PRs + change brief + `infragate/deploy-intel` check. |
 | GitOps control | Which repo/path gets `request.json`. |
 | Kubernetes workspace (NF-02) | Cluster catalog → scoped workspace (overview + resource tabs); logs/terminal/rollout as drill-down. **Secure connect:** AWS/Azure/GCP IAM or workload identity, server `secret_ref`, encrypted kubeconfig/token — see [CONFIGURATION.md](./docs/CONFIGURATION.md#kubernetes-cluster-connections-devops). |

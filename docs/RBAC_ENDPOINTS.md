@@ -24,6 +24,9 @@ Companion to [RBAC_MATRIX.md](./RBAC_MATRIX.md). Lists high-risk routes and the 
 | POST | `/api/devops/cloud/accounts/:id/test` | Connection test (same team manager) |
 | POST | `/api/devops/k8s-connections` | Register or update cluster connection (encrypted credentials / secret refs) |
 | POST | `/api/devops/k8s-connections/test` | Validate K8s trust config and endpoint before save |
+| POST | `/api/devops/k8s-workload-actions` | K8s restart / scale / resume (manager; project access; env freeze → **409** + operator audit) |
+| POST | `/api/devops/promotions/:id/promote` | Environment promote (manager; freeze + gates enforced server-side) |
+| POST | `/api/devops/rollback-console` | Prepare rollback draft (manager) |
 
 Additional manager gates exist on K8s mutating routes, deployment gate approvals, project lifecycle writes, and deploy-intelligence branch protection — see `requireDevopsManager` in the backend tree.
 
@@ -37,6 +40,9 @@ Any authenticated DevOps user (or admin acting in DevOps) may call read-heavy De
 | GET | `/api/devops/cloud/accounts/:id` | devops member teams | Detail (no credentials) |
 | GET | `/api/devops/k8s-connections` | devops user | Projects, connections, auth modes (`has_auth_credential` only) |
 | GET | `/api/devops/operator-activity` | devops user | Operator audit trail; filtered to visible projects (optional `project_id`, `environment`, `resource_type` + `resource_id`) |
+| GET | `/api/devops/guarded-action-context` | devops user | NF-05 pre-flight (permissions, freeze, incidents, SHA); does not mutate |
+| GET | `/api/devops/environment-catalog` | devops user | NF-03 environment catalog for visible projects |
+| PATCH | `/api/devops/environment-catalog` | manager | NF-03 catalog metadata (type, region, cluster override, owners, cloud account link) |
 | GET | `/api/admin/cloud/accounts` | admin | All onboarded accounts (read-only) |
 
 **User portal** has no cloud account or inventory routes. **Admin** does not onboard accounts in the UI (DevOps managers only).
@@ -69,3 +75,6 @@ Any authenticated DevOps user (or admin acting in DevOps) may call read-heavy De
 
 - `TestAdminBreakGlassRejectsBrowserOrigin` — break-glass cannot be used from a browser Origin.
 - `TestDevopsUsersHandlerRequiresAuth` — manager route rejects missing Bearer token.
+- `TestDevopsGuardedActionContextRequiresAuth` — guarded pre-flight rejects missing Bearer token.
+- `TestDevopsEnvironmentCatalogRequiresAuth` — environment catalog rejects missing Bearer token.
+- `TestDevopsK8sWorkloadActionsRequiresAuth` — K8s day-2 actions reject missing Bearer token.
