@@ -20,6 +20,17 @@ Notion (narrative / BRDs):
 | W5–W7 Shipped Features (child) | https://app.notion.com/p/3e60f430ed1081599374cdb7a48c56be |
 | NF-01 Cloud account onboarding (shipped — DevOps) | https://app.notion.com/p/3e60f430ed10810793f7c3c1ae2d9a82 |
 | BRD-07 Cloud resource inventory (shipped — DevOps, read-only) | https://app.notion.com/p/3e60f430ed10810a8e2accfa0ca11116 |
+| NF-02 Kubernetes workspace (shipped — DevOps) | https://app.notion.com/p/3e60f430ed1081d2a06ef9c037bbcde3 |
+
+Repo docs for NF-02 and secure cluster onboarding:
+
+| Document | Topic |
+| --- | --- |
+| [FEATURES.md](./FEATURES.md) | Kubernetes workspace (NF-02) + connection inventory |
+| [API.md](./API.md) | `k8s-connections`, `k8s-connections/test` |
+| [CONFIGURATION.md](./CONFIGURATION.md) | `K8S_SECRET_REF_*`, encryption, `K8S_SKIP_ENDPOINT_PROBE` |
+| [RBAC_ENDPOINTS.md](./RBAC_ENDPOINTS.md) | Manager vs user on K8s onboard routes |
+| [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | Connection test failures |
 
 ## Operators
 

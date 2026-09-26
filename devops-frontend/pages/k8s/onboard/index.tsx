@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import K8sWorkspaceShell from '../../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../../context/ApiUrlContext';
+import { k8sAuthModeLabel } from '../../../lib/k8sConnectionOptions';
+import { buildClusterWorkspaceEntry } from '../../../lib/k8sWorkspaceNav';
 import {
   buildK8sHref,
   fetchK8sConnections,
@@ -32,7 +34,12 @@ function matchesConnectionSearch(item: K8sOnboardingData['connections'][number],
 export default function DevOpsK8sOnboardCatalogPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
-  const [data, setData] = useState<K8sOnboardingData>({ projects: [], connections: [], auth_modes: [] });
+  const [data, setData] = useState<K8sOnboardingData>({
+    projects: [],
+    connections: [],
+    auth_modes: [],
+    auth_modes_by_cloud: {},
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -59,7 +66,7 @@ export default function DevOpsK8sOnboardCatalogPage() {
       })
       .catch((err) => {
         if (!active) return;
-        setData({ projects: [], connections: [], auth_modes: [] });
+        setData({ projects: [], connections: [], auth_modes: [], auth_modes_by_cloud: {} });
         setError(err instanceof Error ? err.message : 'Failed to load cluster connections');
       })
       .finally(() => {
@@ -250,9 +257,8 @@ export default function DevOpsK8sOnboardCatalogPage() {
                       <tr key={connection.id}>
                         <td>
                           <Link
-                            href={buildK8sHref('/k8s/workloads', {
-                              project_id: connection.project_id,
-                              cluster_name: connection.cluster_name,
+                            href={buildClusterWorkspaceEntry(connection.cluster_name, {
+                              project_id: String(connection.project_id),
                               environment: connection.environment,
                             })}
                             className="k8s-link-cell"
@@ -271,7 +277,7 @@ export default function DevOpsK8sOnboardCatalogPage() {
                         <td>
                           <span className="portal-pill k8s-data-pill k8s-data-pill--env">{connection.environment.toUpperCase()}</span>
                         </td>
-                        <td>{connection.auth_mode}</td>
+                        <td>{k8sAuthModeLabel(connection.auth_mode)}</td>
                         <td>
                           <span className={`ig-chip ig-chip--${connection.has_auth_credential ? 'low' : 'medium'}`}>
                             {connection.has_auth_credential ? 'Configured' : 'Missing'}

@@ -1512,6 +1512,7 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_cloud_accounts_team ON cloud_accounts(team_slug)`)
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_cloud_accounts_status ON cloud_accounts(status)`)
 	migrateCloudAccountsSchema()
+	migrateK8sCredentialsEncryption()
 
 	log.Println("Database schema is up to date")
 	return nil

@@ -618,7 +618,17 @@ type k8sWorkloadActionInput struct {
 }
 
 func k8sAuthModes() []string {
-	return []string{"kubeconfig", "service_account", "token", "oidc", "in_cluster"}
+	return []string{
+		"eks_iam",
+		"aks_workload_identity",
+		"gke_workload_identity",
+		"secret_ref",
+		"kubeconfig",
+		"service_account",
+		"token",
+		"oidc",
+		"in_cluster",
+	}
 }
 
 func k8sSafeToken(value string) string {
@@ -982,7 +992,7 @@ func listK8sConnections() ([]k8sConnectionRecord, error) {
 	return out, nil
 }
 
-func sanitizeK8sOnboardingInput(input k8sOnboardingInput) (k8sOnboardingInput, *ProjectCatalog, error) {
+func sanitizeK8sOnboardingInput(input k8sOnboardingInput, requireCredential bool) (k8sOnboardingInput, *ProjectCatalog, error) {
 	input.Cloud = strings.ToLower(strings.TrimSpace(input.Cloud))
 	input.ClusterName = strings.TrimSpace(input.ClusterName)
 	input.ClusterEndpoint = strings.TrimSpace(input.ClusterEndpoint)
@@ -1006,28 +1016,51 @@ func sanitizeK8sOnboardingInput(input k8sOnboardingInput) (k8sOnboardingInput, *
 	if input.ClusterName == "" {
 		return input, nil, fmt.Errorf("cluster name is required")
 	}
-	if input.ClusterEndpoint == "" {
-		return input, nil, fmt.Errorf("cluster endpoint is required")
+	if err := validateK8sClusterEndpoint(input.ClusterEndpoint); err != nil {
+		return input, nil, err
 	}
 	if input.Environment == "" {
 		return input, nil, fmt.Errorf("environment is required")
 	}
 	if input.AuthMode == "" {
-		input.AuthMode = "service_account"
+		modes := k8sAuthModesForCloud(input.Cloud)
+		if len(modes) > 0 {
+			input.AuthMode = modes[0]
+		} else {
+			input.AuthMode = "service_account"
+		}
 	}
 
 	validAuth := false
-	for _, mode := range k8sAuthModes() {
+	for _, mode := range k8sAuthModesForCloud(input.Cloud) {
 		if input.AuthMode == mode {
 			validAuth = true
 			break
 		}
 	}
 	if !validAuth {
-		return input, nil, fmt.Errorf("invalid auth mode")
+		for _, mode := range k8sAuthModes() {
+			if input.AuthMode == mode {
+				validAuth = true
+				break
+			}
+		}
 	}
-	if input.AuthMode != "in_cluster" && input.AuthCredential == "" {
+	if !validAuth {
+		return input, nil, fmt.Errorf("invalid auth mode for cloud %s", input.Cloud)
+	}
+	if requireCredential && input.AuthMode != "in_cluster" && input.AuthCredential == "" {
 		return input, nil, fmt.Errorf("authentication credential is required for %s mode", input.AuthMode)
+	}
+	if input.AuthCredential != "" && k8sCredentialUsesCloudTrust(input.AuthMode) {
+		if err := validateK8sCloudTrustCredential(input.Cloud, input.AuthMode, input.AuthCredential); err != nil {
+			return input, nil, err
+		}
+	}
+	if input.AuthCredential != "" && k8sCredentialUsesServerSideRef(input.AuthMode) {
+		if !k8sSecretRefPattern.MatchString(input.AuthCredential) {
+			return input, nil, fmt.Errorf("secret_ref must be 1-128 chars (letters, numbers, ., _, -)")
+		}
 	}
 
 	allowedEnv := false
@@ -1055,11 +1088,49 @@ func sanitizeK8sOnboardingInput(input k8sOnboardingInput) (k8sOnboardingInput, *
 	return input, project, nil
 }
 
+func loadK8sConnectionCredential(projectID int, clusterName, environment string) (string, error) {
+	ctx, cancel := dbTimeoutContext()
+	defer cancel()
+	var stored string
+	err := DB.QueryRowContext(ctx, `
+		SELECT COALESCE(auth_credential, '')
+		FROM project_k8s_connections
+		WHERE project_id = $1 AND cluster_name = $2 AND environment = $3
+	`, projectID, clusterName, environment).Scan(&stored)
+	if err != nil {
+		return "", err
+	}
+	return stored, nil
+}
+
 func createOrUpdateK8sConnection(input k8sOnboardingInput, updatedBy *int) (*k8sConnectionRecord, error) {
-	input, project, err := sanitizeK8sOnboardingInput(input)
+	requireCredential := strings.TrimSpace(input.AuthCredential) != ""
+	input, project, err := sanitizeK8sOnboardingInput(input, requireCredential)
 	if err != nil {
 		return nil, err
 	}
+	storedCredential := strings.TrimSpace(input.AuthCredential)
+	if storedCredential == "" {
+		existing, loadErr := loadK8sConnectionCredential(input.ProjectID, input.ClusterName, input.Environment)
+		if loadErr != nil {
+			return nil, fmt.Errorf("authentication credential is required for %s mode", input.AuthMode)
+		}
+		reenc, reErr := maybeReencryptK8sStoredCredential(input.AuthMode, existing)
+		if reErr != nil {
+			return nil, reErr
+		}
+		storedCredential = reenc
+	} else {
+		prepared, prepErr := prepareK8sCredentialForStorage(input.AuthMode, storedCredential)
+		if prepErr != nil {
+			return nil, prepErr
+		}
+		storedCredential = prepared
+	}
+	if strings.TrimSpace(storedCredential) == "" && input.AuthMode != "in_cluster" {
+		return nil, fmt.Errorf("authentication credential is required for %s mode", input.AuthMode)
+	}
+
 	namespace := namespaceForProject(*project, input.Environment)
 	ctx, cancel := dbTimeoutContext()
 	defer cancel()
@@ -1074,9 +1145,12 @@ func createOrUpdateK8sConnection(input k8sOnboardingInput, updatedBy *int) (*k8s
 			cluster_endpoint = EXCLUDED.cluster_endpoint,
 			namespace = EXCLUDED.namespace,
 			auth_mode = EXCLUDED.auth_mode,
-			auth_credential = EXCLUDED.auth_credential,
+			auth_credential = CASE
+				WHEN EXCLUDED.auth_credential <> '' THEN EXCLUDED.auth_credential
+				ELSE project_k8s_connections.auth_credential
+			END,
 			updated_at = CURRENT_TIMESTAMP
-	`, input.ProjectID, input.Cloud, input.ClusterName, input.ClusterEndpoint, input.Environment, namespace, input.AuthMode, input.AuthCredential)
+	`, input.ProjectID, input.Cloud, input.ClusterName, input.ClusterEndpoint, input.Environment, namespace, input.AuthMode, storedCredential)
 	if err != nil {
 		return nil, err
 	}
@@ -1807,7 +1881,8 @@ func devopsK8sConnectionsHandler(w http.ResponseWriter, r *http.Request) {
 			"data": map[string]any{
 				"projects":    buildK8sProjectOptions(projects),
 				"connections": connections,
-				"auth_modes":  k8sAuthModes(),
+				"auth_modes":        k8sAuthModes(),
+				"auth_modes_by_cloud": k8sAuthModesByCloud(),
 			},
 		})
 	case "POST":
@@ -1838,6 +1913,40 @@ func devopsK8sConnectionsHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeMethodNotAllowed(w, r)
 	}
+}
+
+func devopsK8sConnectionsTestHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	if _, ok := requireDevopsManager(w, r); !ok {
+		return
+	}
+	var input k8sOnboardingInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "invalid json", "status": "error"})
+		return
+	}
+	message, err := testK8sConnectionInput(input)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status":  "ok",
+		"message": message,
+	})
 }
 
 func devopsK8sQuerySelection(r *http.Request) (int, string, string, string) {
