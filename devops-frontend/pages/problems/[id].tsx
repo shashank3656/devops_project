@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import { buildPortalApiUrl, parsePortalNumericId, portalFetch } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import ITSMClock from '../../components/ITSMClock';
 import ITSMJournal from '../../components/ITSMJournal';
@@ -44,12 +45,13 @@ export default function ProblemDetailPage() {
   const [journal, setJournal] = useState<ITSMJournalEntry[]>([]);
   const [articleId, setArticleId] = useState(0);
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
+  const resourceId = parsePortalNumericId(id);
 
   const load = () => {
-    if (!id) return;
+    if (!resourceId) return;
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
-    fetch(`${apiUrl}/api/devops/problems/${id}`, { headers: { Authorization: `Bearer ${token}` } })
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/problems/${resourceId}`), { token })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -70,15 +72,16 @@ export default function ProblemDetailPage() {
 
   useEffect(() => {
     load();
-  }, [apiUrl, id]);
+  }, [apiUrl, resourceId]);
 
   const setStatus = (status: string) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token || !id) return;
+    if (!token || !resourceId) return;
     setSaving(true);
-    fetch(`${apiUrl}/api/devops/problems/${id}`, {
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/problems/${resourceId}`), {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      token,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     })
       .then(async (res) => {
@@ -120,11 +123,12 @@ export default function ProblemDetailPage() {
                 disabled={publishing || !item?.known_error}
                 onClick={() => {
                   const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-                  if (!token || !id) return;
+                  if (!token || !resourceId) return;
                   setPublishing(true);
-                  fetch(`${apiUrl}/api/devops/problems/${id}/knowledge`, {
+                  portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/problems/${resourceId}/knowledge`), {
                     method: 'POST',
-                    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    token,
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({}),
                   })
                     .then(async (res) => {
@@ -196,11 +200,12 @@ export default function ProblemDetailPage() {
                 disabled={saving}
                 onChange={(event) => {
                   const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-                  if (!token || !id) return;
+                  if (!token || !resourceId) return;
                   setSaving(true);
-                  fetch(`${apiUrl}/api/devops/problems/${id}`, {
+                  portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/problems/${resourceId}`), {
                     method: 'PATCH',
-                    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    token,
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ priority: event.target.value }),
                   })
                     .then(async (res) => {

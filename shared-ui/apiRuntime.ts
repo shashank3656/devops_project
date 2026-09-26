@@ -10,13 +10,74 @@
 export const RAILWAY_PRODUCTION_API_URL = 'https://backend-api-production-ed.up.railway.app';
 
 const LOCAL_HOST_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/|$)/i;
+const LOCAL_API_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0']);
 
-function trimSlash(value: string): string {
-  return value.replace(/\/+$/, '');
+export function trimSlash(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+  return end === value.length ? value : value.slice(0, end);
 }
 
 function isLocalPageHost(hostname: string): boolean {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0';
+  return LOCAL_API_HOSTS.has(hostname);
+}
+
+function isAllowedApiHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (LOCAL_API_HOSTS.has(host)) return true;
+  if (host === 'backend-api-production-ed.up.railway.app') return true;
+  return host.endsWith('.railway.app');
+}
+
+/**
+ * Validates a fully resolved portal API URL before fetch (mitigates SSRF from tainted path segments).
+ */
+export function assertPortalApiUrl(urlString: string): string {
+  let url: URL;
+  try {
+    const base =
+      typeof window !== 'undefined' ? window.location.href : `${trimSlash(RAILWAY_PRODUCTION_API_URL)}/`;
+    url = new URL(urlString, base);
+  } catch {
+    throw new Error('Invalid API URL');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Invalid API URL scheme');
+  }
+  if (!isAllowedApiHostname(url.hostname)) {
+    throw new Error('Disallowed API host');
+  }
+  if (!url.pathname.startsWith('/api/') || url.pathname.includes('..')) {
+    throw new Error('Invalid API path');
+  }
+  return url.toString();
+}
+
+/** Numeric resource ids from Next.js dynamic routes (e.g. `[id]`). */
+export function parsePortalNumericId(raw: string | string[] | undefined): string | null {
+  const id = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof id !== 'string' || !/^\d+$/.test(id)) return null;
+  return id;
+}
+
+/** Safe single path segment for whitelisted actions (e.g. change status transitions). */
+export function parsePortalPathSegment(raw: string, allowed: ReadonlySet<string>): string | null {
+  if (!allowed.has(raw) || !/^[a-z0-9_-]+$/i.test(raw)) return null;
+  return raw;
+}
+
+/**
+ * Builds an absolute API URL under the configured portal base. Path must start with `/api/`.
+ */
+export function buildPortalApiUrl(apiBase: string, path: string): string {
+  const base = trimSlash(resolveRuntimeApiUrl(apiBase));
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  if (!normalized.startsWith('/api/')) {
+    throw new Error('Portal API path must start with /api/');
+  }
+  return assertPortalApiUrl(`${base}${normalized}`);
 }
 
 /**
@@ -44,9 +105,10 @@ export type PortalFetchInit = RequestInit & {
 };
 
 /**
- * Shared fetch wrapper: optional bearer token, timeout, surfaces 401 for callers.
+ * Shared fetch wrapper: optional bearer token, timeout, allowed API hosts only.
  */
 export async function portalFetch(input: string, init: PortalFetchInit = {}): Promise<Response> {
+  const safeUrl = assertPortalApiUrl(input);
   const { token, timeoutMs = 30000, ...rest } = init;
   const headers = new Headers(rest.headers);
   if (token && token !== 'undefined') {
@@ -56,7 +118,7 @@ export async function portalFetch(input: string, init: PortalFetchInit = {}): Pr
   const timer =
     typeof window !== 'undefined' ? window.setTimeout(() => controller.abort(), timeoutMs) : undefined;
   try {
-    return await fetch(input, { ...rest, headers, signal: rest.signal ?? controller.signal });
+    return await fetch(safeUrl, { ...rest, headers, signal: rest.signal ?? controller.signal });
   } finally {
     if (timer !== undefined) window.clearTimeout(timer);
   }

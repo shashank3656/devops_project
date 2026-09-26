@@ -1,10 +1,22 @@
 export {
+  assertPortalApiUrl,
+  buildPortalApiUrl,
   installApiUrlRewrite,
+  parsePortalNumericId,
+  parsePortalPathSegment,
   portalFetch,
   resolveRuntimeApiUrl,
   RAILWAY_PRODUCTION_API_URL,
+  trimSlash,
   type PortalFetchInit,
 } from './apiRuntime';
+export {
+  addRecentRequestId,
+  getRecentRequestIds,
+  ADMIN_RECENT_KEY,
+  DEVOPS_RECENT_KEY,
+  USER_RECENT_KEY,
+} from './persistRecentRequests';
 export { ConfirmProvider, useConfirm, type ConfirmOptions } from './ConfirmDialog';
 export { applyTheme, getTheme, openCommandPalette, setTheme, toggleTheme, type ThemeMode } from './theme';
 export { AuthPipeline, SearchTrigger, ThemeToggle } from './ShellControls';

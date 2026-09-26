@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
+import { buildPortalApiUrl, parsePortalNumericId, portalFetch } from '@infragate/ui';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -26,12 +27,13 @@ export default function ServiceDetailPage() {
   const [item, setItem] = useState<ServiceDetail | null>(null);
   const [error, setError] = useState('');
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
+  const resourceId = parsePortalNumericId(id);
 
   useEffect(() => {
-    if (!id) return;
+    if (!resourceId) return;
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
-    fetch(`${apiUrl}/api/devops/services/${id}`, { headers: { Authorization: `Bearer ${token}` } })
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/services/${resourceId}`), { token })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -41,7 +43,7 @@ export default function ServiceDetailPage() {
         setItem(data.service || null);
       })
       .catch(() => setError('Failed to load service'));
-  }, [apiUrl, id]);
+  }, [apiUrl, resourceId]);
 
   return (
     <DevOpsLayout>
