@@ -2051,6 +2051,7 @@ func devopsPromotionsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		item, gate, change, err := promoteRequestAsDevops(requestID, managerID)
 		if err != nil {
+			recordPromotionOperatorFailure(managerID, requestID, "request_promote", gate, err)
 			if gate != nil && (gate.Status == "blocked" || gate.RequiresAcknowledgement) {
 				if req, reqErr := GetPRRequestByID(requestID); reqErr == nil && req != nil && gate.Status == "blocked" {
 					if notifyErr := notifyBlockedPromotion(req, gate); notifyErr != nil {

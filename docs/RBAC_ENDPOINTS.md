@@ -36,6 +36,7 @@ Any authenticated DevOps user (or admin acting in DevOps) may call read-heavy De
 | GET | `/api/devops/cloud/accounts` | devops member teams | Catalog (no credentials) |
 | GET | `/api/devops/cloud/accounts/:id` | devops member teams | Detail (no credentials) |
 | GET | `/api/devops/k8s-connections` | devops user | Projects, connections, auth modes (`has_auth_credential` only) |
+| GET | `/api/devops/operator-activity` | devops user | Operator audit trail; filtered to visible projects (optional `project_id`, `environment`, `resource_type` + `resource_id`) |
 | GET | `/api/admin/cloud/accounts` | admin | All onboarded accounts (read-only) |
 
 **User portal** has no cloud account or inventory routes. **Admin** does not onboard accounts in the UI (DevOps managers only).

@@ -231,8 +231,12 @@ func devopsCloudAccountDetailHandler(w http.ResponseWriter, r *http.Request, id 
 	}
 	switch r.Method {
 	case http.MethodGet:
+		payload := map[string]interface{}{"status": "ok", "account": item}
+		if events, err := operatorAuditEventsForResource(userID, "cloud_account", strconv.Itoa(id), 10); err == nil {
+			payload["operator_activity"] = events
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "account": item})
+		_ = json.NewEncoder(w).Encode(payload)
 	case http.MethodPatch:
 		devopsCloudAccountPatchHandler(w, r, userID, item)
 	default:

@@ -2947,6 +2947,7 @@ func AppendAuditLog(adminUserID *int, action, resourceType, resourceID, details 
 		"INSERT INTO admin_audit_log (admin_user_id, action, resource_type, resource_id, details) VALUES ($1, $2, $3, $4, $5)",
 		adminUserID, action, resourceType, resourceID, details,
 	)
+	mirrorAdminAuditToOperatorLog(adminUserID, action, resourceType, resourceID, details)
 }
 
 // GetAuditLogs returns recent audit log entries with optional filters (action, date range from/to YYYY-MM-DD)
