@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import PRImpactBrief, { type PRImpactBriefData } from './PRImpactBrief';
+import PRImpactBrief from './PRImpactBrief';
+import type { PRImpactBriefData } from './types';
 import { portalFetch } from './apiRuntime';
 
 export default function RequestPRImpact({
