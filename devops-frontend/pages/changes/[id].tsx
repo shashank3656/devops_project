@@ -3,10 +3,18 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
-import { DeliveryVisibilityCard, type DeliveryVisibility } from '@infragate/ui';
+import {
+  buildPortalApiUrl,
+  DeliveryVisibilityCard,
+  parsePortalNumericId,
+  parsePortalPathSegment,
+  portalFetch,
+  type DeliveryVisibility,
+} from '@infragate/ui';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
+const CHANGE_STATUS_ACTIONS = new Set(['resolve', 'close', 'fail', 'cancel', 'reopen']);
 
 interface ChangeBrief {
   headline?: string;
@@ -94,17 +102,19 @@ export default function ChangeDetailPage() {
   const [acting, setActing] = useState('');
   const [approving, setApproving] = useState(false);
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
+  const resourceId = parsePortalNumericId(id);
   const status = (item?.status || '').toLowerCase();
   const finished = status === 'resolved' || status === 'closed' || status === 'failed' || status === 'cancelled';
 
   const applyStatus = (action: string) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token || !id) return;
+    const safeAction = parsePortalPathSegment(action, CHANGE_STATUS_ACTIONS);
+    if (!token || !resourceId || !safeAction) return;
     setActing(action);
     setError('');
-    fetch(`${apiUrl}/api/devops/changes/${id}/${action}`, {
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/changes/${resourceId}/${safeAction}`), {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      token,
     })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -120,13 +130,15 @@ export default function ChangeDetailPage() {
 
   const applyRollout = (stage: string) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token || !id) return;
+    const safeStage = parsePortalPathSegment(stage, new Set(['canary', '10', '50', '100']));
+    if (!token || !resourceId || !safeStage) return;
     setActing(`rollout-${stage}`);
     setError('');
-    fetch(`${apiUrl}/api/devops/changes/${id}/rollout`, {
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/changes/${resourceId}/rollout`), {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stage }),
+      token,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage: safeStage }),
     })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -142,12 +154,12 @@ export default function ChangeDetailPage() {
 
   const applyRollback = () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token || !id) return;
+    if (!token || !resourceId) return;
     setActing('rollback');
     setError('');
-    fetch(`${apiUrl}/api/devops/changes/${id}/rollback`, {
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/changes/${resourceId}/rollback`), {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      token,
     })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -164,13 +176,11 @@ export default function ChangeDetailPage() {
   };
 
   useEffect(() => {
-    if (!id) return;
+    if (!resourceId) return;
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
     setLoading(true);
-    fetch(`${apiUrl}/api/devops/changes/${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/changes/${resourceId}`), { token })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -186,7 +196,7 @@ export default function ChangeDetailPage() {
       })
       .catch(() => setError('Failed to load change'))
       .finally(() => setLoading(false));
-  }, [apiUrl, id]);
+  }, [apiUrl, resourceId]);
 
   return (
     <DevOpsLayout>
@@ -208,11 +218,11 @@ export default function ChangeDetailPage() {
                 disabled={approving}
                 onClick={() => {
                   const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-                  if (!token || !id) return;
+                  if (!token || !resourceId) return;
                   setApproving(true);
-                  fetch(`${apiUrl}/api/devops/changes/${id}/cab-approve`, {
+                  portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/changes/${resourceId}/cab-approve`), {
                     method: 'POST',
-                    headers: { Authorization: `Bearer ${token}` },
+                    token,
                   })
                     .then(async (res) => {
                       const data = await res.json().catch(() => ({}));

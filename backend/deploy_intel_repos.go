@@ -203,17 +203,15 @@ type deployIntelGitHubFetch struct {
 const deployIntelMaxOpenPRList = 100
 
 func fetchGitHubOpenPullRequests(ctx context.Context, client *github.Client, owner, name string, max int) ([]*github.PullRequest, int, bool, error) {
-	if max <= 0 {
-		max = deployIntelMaxOpenPRList
-	}
-	if max > deployIntelMaxOpenPRList {
-		max = deployIntelMaxOpenPRList
+	listCap := deployIntelMaxOpenPRList
+	if max > 0 && max < listCap {
+		listCap = max
 	}
 	opts := &github.PullRequestListOptions{
 		State:       "open",
 		ListOptions: github.ListOptions{PerPage: 100},
 	}
-	collected := make([]*github.PullRequest, 0, max)
+	collected := make([]*github.PullRequest, 0, deployIntelMaxOpenPRList)
 	truncated := false
 	for {
 		prs, resp, err := client.PullRequests.List(ctx, owner, name, opts)
@@ -221,14 +219,14 @@ func fetchGitHubOpenPullRequests(ctx context.Context, client *github.Client, own
 			return collected, len(collected), truncated, err
 		}
 		for _, pr := range prs {
-			if len(collected) >= max {
+			if len(collected) >= listCap {
 				truncated = true
 				break
 			}
 			collected = append(collected, pr)
 		}
 		if truncated || resp == nil || resp.NextPage == 0 {
-			if !truncated && resp != nil && resp.NextPage != 0 && len(collected) >= max {
+			if !truncated && resp != nil && resp.NextPage != 0 && len(collected) >= listCap {
 				truncated = true
 			}
 			break

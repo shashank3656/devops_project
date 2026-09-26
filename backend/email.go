@@ -5,10 +5,14 @@ import (
 	"crypto/tls"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/mail"
 	"net/smtp"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -69,15 +73,17 @@ func sanitizeEmailTextContent(value string) string {
 	return b.String()
 }
 
-func buildEscapedEmailHTML(subject, escapedBody string) string {
-	subjectEscaped := template.HTMLEscapeString(subject)
-	bodyWithBreaks := strings.ReplaceAll(escapedBody, "\n", "<br>\n")
-	return `<!DOCTYPE html>
+type emailHTMLPayload struct {
+	Subject string
+	Body    template.HTML
+}
+
+var emailHTMLTemplate = template.Must(template.New("setuops-email").Parse(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>` + subjectEscaped + `</title>
+  <title>{{.Subject}}</title>
 </head>
 <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.6;color:#334155;background:#f8fafc;">
   <div style="max-width:600px;margin:24px auto;padding:24px;background:#fff;border-radius:12px;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
@@ -86,14 +92,44 @@ func buildEscapedEmailHTML(subject, escapedBody string) string {
       <p style="margin:4px 0 0;font-size:12px;color:#64748b;">Infrastructure Request Portal</p>
     </div>
     <div style="color:#334155;">
-      ` + bodyWithBreaks + `
+      {{.Body}}
     </div>
     <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;">
       This is an automated message from SetuOps. Do not reply to this email.
     </div>
   </div>
 </body>
-</html>`
+</html>`))
+
+func htmlBodyFromEscapedPlain(escapedBody string) template.HTML {
+	return template.HTML(strings.ReplaceAll(escapedBody, "\n", "<br>\n"))
+}
+
+func buildEscapedEmailHTML(subjectPlain, escapedBody string) (string, error) {
+	var buf bytes.Buffer
+	err := emailHTMLTemplate.Execute(&buf, emailHTMLPayload{
+		Subject: subjectPlain,
+		Body:    htmlBodyFromEscapedPlain(escapedBody),
+	})
+	if err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+func sanitizeEmailURL(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return ""
+	}
+	if strings.ContainsAny(parsed.String(), "\r\n") {
+		return ""
+	}
+	return sanitizeEmailTextContent(parsed.String())
 }
 
 // SendEmail sends an email via SMTP if configured. No-op if SMTP_HOST is empty.
@@ -126,22 +162,26 @@ func SendEmail(to, subject, body string) error {
 	if err != nil {
 		return err
 	}
-	subject, err = sanitizeEmailHeaderValue(subject, "subject")
+	subjectPlain, err := sanitizeEmailHeaderValue(subject, "subject")
 	if err != nil {
 		return err
 	}
-	subject = template.HTMLEscapeString(subject)
 	body = sanitizeEmailTextContent(body)
 	escapedBody := template.HTMLEscapeString(body)
 
 	useTLS := strings.ToLower(os.Getenv("SMTP_USE_TLS")) != "false"
 
-	log.Printf("[Email] Sending to=%s subject=%q host=%s port=%d useTLS=%v", to, subject, host, port, useTLS)
+	log.Printf("[Email] Sending to=%s subject=%q host=%s port=%d useTLS=%v", to, subjectPlain, host, port, useTLS)
 
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	boundary := fmt.Sprintf("boundary_%d", time.Now().UnixNano())
-	htmlBody := buildEscapedEmailHTML(subject, escapedBody)
-	msg := buildMIMEMessage(from, to, subject, escapedBody, htmlBody, boundary)
+	htmlBody, err := buildEscapedEmailHTML(subjectPlain, escapedBody)
+	if err != nil {
+		return fmt.Errorf("email html: %w", err)
+	}
+	msg, err := buildSanitizedMIMEMessage(from, to, subjectPlain, escapedBody, htmlBody)
+	if err != nil {
+		return err
+	}
 
 	var auth smtp.Auth
 	if user != "" && pass != "" {
@@ -209,7 +249,7 @@ func SendEmail(to, subject, body string) error {
 			log.Printf("[Email] SMTP Data failed: %v", err)
 			return fmt.Errorf("smtp data: %w", err)
 		}
-		_, err = w.Write(msg)
+		err = writeEmailPayload(w, msg)
 		if err != nil {
 			log.Printf("[Email] SMTP Write failed: %v", err)
 			return fmt.Errorf("smtp write: %w", err)
@@ -235,33 +275,82 @@ func SendEmail(to, subject, body string) error {
 	return nil
 }
 
-func buildMIMEMessage(from, to, subject, textBody, htmlBody, boundary string) []byte {
-	var b bytes.Buffer
-	b.WriteString("From: " + from + "\r\n")
-	b.WriteString("To: " + to + "\r\n")
-	b.WriteString("Subject: " + subject + "\r\n")
-	b.WriteString("MIME-Version: 1.0\r\n")
-	b.WriteString("Content-Type: multipart/alternative; boundary=" + boundary + "\r\n\r\n")
-	b.WriteString("--" + boundary + "\r\n")
-	b.WriteString("Content-Type: text/plain; charset=UTF-8\r\n\r\n")
-	b.WriteString(textBody)
-	b.WriteString("\r\n\r\n--" + boundary + "\r\n")
-	b.WriteString("Content-Type: text/html; charset=UTF-8\r\n\r\n")
-	b.WriteString(htmlBody)
-	b.WriteString("\r\n--" + boundary + "--\r\n")
-	return b.Bytes()
+type sanitizedEmailMIME struct {
+	from, to, subject, textBody, htmlBody string
+}
+
+func buildSanitizedMIMEMessage(from, to, subjectPlain, textBody, htmlBody string) ([]byte, error) {
+	payload := sanitizedEmailMIME{
+		from:     from,
+		to:       to,
+		subject:  subjectPlain,
+		textBody: textBody,
+		htmlBody: htmlBody,
+	}
+	return payload.encode()
+}
+
+func (m sanitizedEmailMIME) encode() ([]byte, error) {
+	var headers bytes.Buffer
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	plainPart, err := writer.CreatePart(map[string][]string{
+		"Content-Type": {"text/plain; charset=UTF-8"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := io.WriteString(plainPart, m.textBody); err != nil {
+		return nil, err
+	}
+
+	htmlPart, err := writer.CreatePart(map[string][]string{
+		"Content-Type": {"text/html; charset=UTF-8"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := io.WriteString(htmlPart, m.htmlBody); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+
+	subjectHeader := mime.QEncoding.Encode("utf-8", m.subject)
+	fmt.Fprintf(&headers, "From: %s\r\n", m.from)
+	fmt.Fprintf(&headers, "To: %s\r\n", m.to)
+	fmt.Fprintf(&headers, "Subject: %s\r\n", subjectHeader)
+	fmt.Fprintf(&headers, "MIME-Version: 1.0\r\n")
+	fmt.Fprintf(&headers, "Content-Type: multipart/alternative; boundary=%s\r\n\r\n", writer.Boundary())
+
+	var msg bytes.Buffer
+	msg.Write(headers.Bytes())
+	msg.Write(body.Bytes())
+	return msg.Bytes(), nil
+}
+
+func writeEmailPayload(w io.Writer, msg []byte) error {
+	_, err := w.Write(msg)
+	return err
 }
 
 // WrapEmailHTML wraps plain text in a simple HTML email template
 func WrapEmailHTML(subject, body string) string {
 	escaped := template.HTMLEscapeString(sanitizeEmailTextContent(body))
-	return buildEscapedEmailHTML(subject, escaped)
+	htmlBody, err := buildEscapedEmailHTML(subject, escaped)
+	if err != nil {
+		return escaped
+	}
+	return htmlBody
 }
 
 // EmailTemplatePasswordReset returns HTML and plain text for password reset email
 func EmailTemplatePasswordReset(resetURL string) (subject, plainText, htmlBody string) {
 	subject = "Password reset - SetuOps"
-	plainText = "You requested a password reset. Click the link below to set a new password (valid for 1 hour):\n\n" + resetURL + "\n\nIf you did not request this, ignore this email."
+	safeURL := sanitizeEmailURL(resetURL)
+	plainText = "You requested a password reset. Click the link below to set a new password (valid for 1 hour):\n\n" + safeURL + "\n\nIf you did not request this, ignore this email."
 	htmlBody = WrapEmailHTML(subject, plainText)
 	return subject, plainText, htmlBody
 }
