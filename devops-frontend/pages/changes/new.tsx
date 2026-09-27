@@ -233,7 +233,9 @@ export default function NewChangeRequestPage() {
       }
       const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(getString(data.error, 'Failed to create change request'));
+        const base = getString(data.error, 'Failed to create change request');
+        const cause = getString(data.cause, '');
+        throw new Error(cause ? `${base} (${cause})` : base);
       }
       const change = data.change && typeof data.change === 'object' ? (data.change as Record<string, unknown>) : {};
       const id = typeof change.id === 'number' ? change.id : 0;
