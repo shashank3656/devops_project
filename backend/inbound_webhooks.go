@@ -567,6 +567,10 @@ func changeWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	item, created, err := upsertChangeRequest(payload)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "planned end") {
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+			return
+		}
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to record change", err)
 		return
 	}
