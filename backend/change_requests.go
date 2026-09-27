@@ -83,8 +83,11 @@ func formatChangeNumber(id int) string {
 
 func lookupProjectID(projectID int, projectCode string) *int {
 	if projectID > 0 {
-		value := projectID
-		return &value
+		if project, err := getProjectCatalogByID(projectID); err == nil && project != nil {
+			value := projectID
+			return &value
+		}
+		return nil
 	}
 	code := strings.TrimSpace(projectCode)
 	if code == "" || DB == nil {
@@ -96,6 +99,36 @@ func lookupProjectID(projectID int, projectCode string) *int {
 	}
 	value := projects[0].ID
 	return &value
+}
+
+func optionalChangeRequestID(id int) any {
+	if id <= 0 || DB == nil {
+		return nil
+	}
+	if req, err := GetPRRequestByID(id); err == nil && req != nil {
+		return id
+	}
+	return nil
+}
+
+func optionalChangeAssigneeUserID(id int) any {
+	if id <= 0 || DB == nil {
+		return nil
+	}
+	if user, err := GetUserByID(id); err == nil && user != nil {
+		return id
+	}
+	return nil
+}
+
+func isChangeUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate key") ||
+		strings.Contains(msg, "unique constraint") ||
+		strings.Contains(msg, "idx_change_requests")
 }
 
 func encodeChangeFiles(files []string) string {
@@ -154,6 +187,10 @@ func decodeChangeFiles(raw string) []string {
 }
 
 func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, bool, error) {
+	return upsertChangeRequestWithRetry(payload, false)
+}
+
+func upsertChangeRequestWithRetry(payload parsedChangeWebhook, retried bool) (*changeRequestRecord, bool, error) {
 	if DB == nil {
 		return nil, false, fmt.Errorf("database not available")
 	}
@@ -198,14 +235,8 @@ func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, boo
 	if projectID != nil {
 		projectAny = *projectID
 	}
-	var requestAny any
-	if payload.RequestID > 0 {
-		requestAny = payload.RequestID
-	}
-	var assigneeAny any
-	if payload.AssigneeUserID > 0 {
-		assigneeAny = payload.AssigneeUserID
-	}
+	requestAny := optionalChangeRequestID(payload.RequestID)
+	assigneeAny := optionalChangeAssigneeUserID(payload.AssigneeUserID)
 	filesJSON := encodeChangeFiles(payload.Files)
 	var existingID int
 	var existingStatus string
@@ -311,6 +342,9 @@ func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, boo
 		windowStartAny, windowEndAny,
 	).Scan(&id)
 	if err != nil {
+		if !retried && isChangeUniqueViolation(err) {
+			return upsertChangeRequestWithRetry(payload, true)
+		}
 		return nil, false, err
 	}
 	if _, err := execContext(`
