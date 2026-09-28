@@ -171,6 +171,12 @@ func TestShouldNotAutoResolveSEV1(t *testing.T) {
 }
 
 func TestChangeStatusRankForwardOnly(t *testing.T) {
+	if changeStatusRank("scheduled") <= changeStatusRank("new") {
+		t.Fatal("scheduled should rank above new")
+	}
+	if changeStatusRank("implementing") <= changeStatusRank("scheduled") {
+		t.Fatal("implementing should rank above scheduled")
+	}
 	if changeStatusRank("implemented") <= changeStatusRank("implementing") {
 		t.Fatal("implemented should rank above implementing")
 	}

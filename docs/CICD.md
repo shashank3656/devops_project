@@ -211,20 +211,29 @@ Use repository variables for shared defaults or environment variables when they 
 
 After merge to `main`, CI should POST `/api/webhooks/change` with `X-CI-Secret` or `X-Hub-Signature-256`. Omit `environment` so SetuOps fills service, project, and env from the Services catalog when the repo matches. Idempotency is `repo + sha + resolved environment`. Grafana, Alertmanager, or a logger POSTs `/api/webhooks/alerts`. Optional post-deploy samples go to `/api/webhooks/watch-metrics`. Do not store these secrets in git.
 
+**GitHub secrets:** `SETUOPS_API_URL`, `CHANGE_WEBHOOK_SECRET` (same value as Admin → Webhooks → inbound change secret).
+
+**Portal lifecycle vs CI:** In DevOps, operators **Approve** (→ `scheduled`) and **Start implementation** when CAB applies. CI updates the same CHG with `status` (`implementing` → `implemented`) using the same `repo`, `sha`, and resolved environment. Map PR/release notes to JSON **`summary`**.
+
+### Single POST after successful deploy
+
 ```yaml
 - name: Record SetuOps change
-  if: github.ref == 'refs/heads/main'
+  if: success() && github.ref == 'refs/heads/main'
   env:
     SETUOPS_API: ${{ secrets.SETUOPS_API_URL }}
     SETUOPS_SECRET: ${{ secrets.CHANGE_WEBHOOK_SECRET }}
     CHANGE_TITLE: ${{ github.event.head_commit.message }}
+    CHANGE_SUMMARY: ${{ github.event.pull_request.body || github.event.head_commit.message }}
     CHANGE_AUTHOR: ${{ github.actor }}
     PR_NUMBER: ${{ github.event.pull_request.number || 0 }}
-    PR_URL: ${{ github.event.pull_request.html_url }}
+    PR_URL: ${{ github.event.pull_request.html_url || '' }}
   run: |
+    set -euo pipefail
     SERVICE="${GITHUB_REPOSITORY##*/}"
     TITLE="$(printf '%s' "$CHANGE_TITLE" | head -n1)"
-    curl -sS -X POST "$SETUOPS_API/api/webhooks/change" \
+    SUMMARY="$(printf '%s' "$CHANGE_SUMMARY" | head -c 8000)"
+    curl -sf -X POST "${SETUOPS_API%/}/api/webhooks/change" \
       -H "Content-Type: application/json" \
       -H "X-CI-Secret: $SETUOPS_SECRET" \
       --data "$(jq -n \
@@ -233,9 +242,11 @@ After merge to `main`, CI should POST `/api/webhooks/change` with `X-CI-Secret` 
         --arg previous_sha "${GITHUB_EVENT_BEFORE:-}" \
         --arg service "$SERVICE" \
         --arg title "$TITLE" \
+        --arg summary "$SUMMARY" \
         --arg author "$CHANGE_AUTHOR" \
         --arg pr_url "$PR_URL" \
         --arg pipeline_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+        --arg status "implemented" \
         --arg sbom_url "${SBOM_URL:-}" \
         --arg attestation_url "${ATTESTATION_URL:-}" \
         --arg image_digest "${IMAGE_DIGEST:-}" \
@@ -247,10 +258,12 @@ After merge to `main`, CI should POST `/api/webhooks/change` with `X-CI-Secret` 
           previous_sha: $previous_sha,
           service: $service,
           title: $title,
+          summary: $summary,
           author: $author,
           pr_number: $pr_number,
           pr_url: $pr_url,
           pipeline_url: $pipeline_url,
+          status: $status,
           change_type: "standard",
           priority: "medium",
           risk_level: "medium",
@@ -260,6 +273,93 @@ After merge to `main`, CI should POST `/api/webhooks/change` with `X-CI-Secret` 
           image_digest: $image_digest,
           infracost_report: $infracost_report
         }')"
+```
+
+### Two-phase POST (deploy start + deploy finish)
+
+Use the same `repo` and `sha` for both calls so SetuOps upserts one CHG.
+
+```yaml
+      - name: SetuOps — deploy started
+        if: success() && github.ref == 'refs/heads/main'
+        env:
+          SETUOPS_API: ${{ secrets.SETUOPS_API_URL }}
+          SETUOPS_SECRET: ${{ secrets.CHANGE_WEBHOOK_SECRET }}
+          CHANGE_TITLE: ${{ github.event.head_commit.message }}
+          CHANGE_SUMMARY: ${{ github.event.pull_request.body || github.event.head_commit.message }}
+          CHANGE_AUTHOR: ${{ github.actor }}
+          PR_URL: ${{ github.event.pull_request.html_url || '' }}
+        run: |
+          set -euo pipefail
+          SERVICE="${GITHUB_REPOSITORY##*/}"
+          TITLE="$(printf '%s' "$CHANGE_TITLE" | head -n1)"
+          SUMMARY="$(printf '%s' "$CHANGE_SUMMARY" | head -c 8000)"
+          curl -sf -X POST "${SETUOPS_API%/}/api/webhooks/change" \
+            -H "Content-Type: application/json" \
+            -H "X-CI-Secret: $SETUOPS_SECRET" \
+            --data "$(jq -n \
+              --arg repo "$GITHUB_REPOSITORY" \
+              --arg sha "$GITHUB_SHA" \
+              --arg service "$SERVICE" \
+              --arg title "$TITLE" \
+              --arg summary "$SUMMARY" \
+              --arg author "$CHANGE_AUTHOR" \
+              --arg pr_url "$PR_URL" \
+              --arg pipeline_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+              --arg status "implementing" \
+              '{ repo: $repo, sha: $sha, service: $service, title: $title, summary: $summary,
+                 author: $author, pr_url: $pr_url, pipeline_url: $pipeline_url, status: $status,
+                 change_type: "standard", watch_minutes: 120 }')"
+
+      # … deploy steps …
+
+      - name: SetuOps — deploy finished
+        if: success() && github.ref == 'refs/heads/main'
+        env:
+          SETUOPS_API: ${{ secrets.SETUOPS_API_URL }}
+          SETUOPS_SECRET: ${{ secrets.CHANGE_WEBHOOK_SECRET }}
+          CHANGE_AUTHOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          curl -sf -X POST "${SETUOPS_API%/}/api/webhooks/change" \
+            -H "Content-Type: application/json" \
+            -H "X-CI-Secret: $SETUOPS_SECRET" \
+            --data "$(jq -n \
+              --arg repo "$GITHUB_REPOSITORY" \
+              --arg sha "$GITHUB_SHA" \
+              --arg service "${GITHUB_REPOSITORY##*/}" \
+              --arg author "$CHANGE_AUTHOR" \
+              --arg pipeline_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+              --arg status "implemented" \
+              '{ repo: $repo, sha: $sha, service: $service, author: $author,
+                 pipeline_url: $pipeline_url, status: $status, change_type: "standard", watch_minutes: 120 }')"
+
+      - name: SetuOps — deploy failed
+        if: failure() && github.ref == 'refs/heads/main'
+        env:
+          SETUOPS_API: ${{ secrets.SETUOPS_API_URL }}
+          SETUOPS_SECRET: ${{ secrets.CHANGE_WEBHOOK_SECRET }}
+        run: |
+          curl -sf -X POST "${SETUOPS_API%/}/api/webhooks/change" \
+            -H "Content-Type: application/json" \
+            -H "X-CI-Secret: $SETUOPS_SECRET" \
+            --data "$(jq -n \
+              --arg repo "$GITHUB_REPOSITORY" \
+              --arg sha "$GITHUB_SHA" \
+              --arg service "${GITHUB_REPOSITORY##*/}" \
+              --arg status "failed" \
+              '{ repo: $repo, sha: $sha, service: $service, status: $status, change_type: "standard" }')" || true
+```
+
+### Local smoke test
+
+```bash
+export SETUOPS_API="https://your-api"
+export SETUOPS_SECRET="your-inbound-secret"
+curl -sf -X POST "$SETUOPS_API/api/webhooks/change" \
+  -H "Content-Type: application/json" \
+  -H "X-CI-Secret: $SETUOPS_SECRET" \
+  -d '{"repo":"org/my-service","sha":"'"$(git rev-parse HEAD)"'","title":"CI sample","summary":"Release notes","author":"you","change_type":"standard","status":"implemented","watch_minutes":120}'
 ```
 
 ## Helm Values Files

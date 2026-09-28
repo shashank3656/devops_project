@@ -449,7 +449,7 @@ CI posts a GitHub Actions OIDC token to `POST /api/auth/workload/github` or a Gi
 Alert labels `pagerduty_incident` / `grafana_alert_uid` attach an external id. Ack or resolve in SetuOps pushes to PagerDuty / Grafana IRM / Opsgenie. Those tools POST the same status to `/api/webhooks/irm` or `/api/webhooks/pagerduty`.
 
 ### SBOM / provenance on each CHG
-`POST /api/webhooks/change` accepts `sbom_url`, `attestation_url`, `image_digest`, optional `signed` / `provenance`. Detail pages and the Deploy intel repo last-change card show Signed or Unsigned. The Changes catalog webhook sample includes the fields.
+`POST /api/webhooks/change` accepts `sbom_url`, `attestation_url`, `image_digest`, optional `signed` / `provenance`. Detail pages and the Deploy intel repo last-change card show Signed or Unsigned. The Changes catalog webhook sample includes `summary`, `status`, and SBOM fields; see [CICD.md](./CICD.md) for single- and two-phase GitHub Actions jobs.
 
 ### MCP
 `POST /mcp` is JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`) authenticated with a session token or API key from `POST /api/me/api-keys`. Read tools: `list_changes`, `get_change`, `list_incidents`, `get_incident`, `ask_catalog`, `health_for_service`, `list_identity_findings`, `list_tickets`, `get_ticket`, `list_scorecards`. `get_change` includes blast radius, live-vs-CHG drift, and a rollback plan when `previous_sha` exists. `get_incident` includes rollback plus the generated review. Write tools (`GET /mcp` `write_tools`): `comment_incident` and `request_rollback`. Same freeze/CAB as the portal. Terraform/kubectl apply is refused. Static keys also appear on the DevOps expiry tracker.
@@ -585,7 +585,7 @@ The incident workspace form is no longer a blank second ITSM. `w5_incident_revie
 
 **Infra request:** `pending_user_manager` → `pending_devops_approval` → `in_progress` → `completed` / `rejected`.
 
-**Change Request:** `new` → `implementing` → `implemented` → `monitoring` → `resolved` → `closed`. Also `failed`, `cancelled`. A clean watch window **resolves** the CHG; an operator then **closes** it. Resolve/close is blocked while linked incidents are still open. Reopen brings a finished CHG back to `implementing`.
+**Change Request:** `new` → **Approve** (CAB when required) → `scheduled` → **Start implementation** → `implementing` → `implemented` → `monitoring` → `resolved` → `closed`. Also `failed`, `cancelled`. CI webhooks can still advance status directly. Approve is allowed for **admin**, **DevOps users**, **DevOps managers**, and **portal team managers**. Schedule/implement actions require a DevOps manager. Resolve/close is blocked while linked incidents are still open.
 
 **Incident:** `draft` → `open` → `acknowledged` → `investigating` → `mitigating` → `resolved` → `closed`. Also `cancelled` (false alarm). Sources: `ticket`, `alert`, `manual`, `change_regression`. Acknowledged still counts as active.
 

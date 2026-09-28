@@ -104,23 +104,53 @@ func resolveLinkedIncidentID(id int, number string) int {
 	return 0
 }
 
+func userCanAuthorizeChange(userID int) bool {
+	user, err := GetUserByID(userID)
+	if err != nil || user == nil {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(user.Role), "admin") {
+		return true
+	}
+	if user.IsPortalManager {
+		return true
+	}
+	if user.UserType == "devops_user" {
+		return true
+	}
+	if prof, err := GetDevopsProfile(userID); err == nil && prof != nil && prof.IsManager {
+		return true
+	}
+	return false
+}
+
 func approveChangeCAB(id, userID int) (*changeRequestRecord, error) {
+	if !userCanAuthorizeChange(userID) {
+		return nil, fmt.Errorf("not authorized to approve changes")
+	}
 	item, err := getChangeRequestByID(id)
 	if err != nil {
 		return nil, err
 	}
-	if !changeRequiresCAB(item.ChangeType, item.Environment) && item.CABStatus != "pending" {
+	if item.CABStatus == "approved" && normalizeChangeStatus(item.Status) == "scheduled" {
 		return item, nil
+	}
+	if item.CABStatus != "pending" && item.CABStatus != "" {
+		return nil, fmt.Errorf("change is not awaiting approval")
+	}
+	nextStatus := normalizeChangeStatus(item.Status)
+	if nextStatus == "new" || nextStatus == "" {
+		nextStatus = "scheduled"
 	}
 	if _, err := execContext(`
 		UPDATE change_requests
 		SET cab_status = 'approved',
 		    cab_approved_by = $2,
 		    cab_approved_at = CURRENT_TIMESTAMP,
-		    status = CASE WHEN status = 'new' THEN 'implementing' ELSE status END,
+		    status = $3,
 		    updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
-	`, id, userID); err != nil {
+	`, id, userID, nextStatus); err != nil {
 		return nil, err
 	}
 	item, err = getChangeRequestByID(id)
@@ -139,6 +169,31 @@ func approveChangeCAB(id, userID int) (*changeRequestRecord, error) {
 		"change_id": item.ID, "change_number": item.ChangeNumber, "status": item.Status, "cab_status": item.CABStatus,
 	})
 	return item, nil
+}
+
+func scheduleChangeRequest(id, userID int) (*changeRequestRecord, error) {
+	item, err := getChangeRequestByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if normalizeChangeStatus(item.Status) != "new" {
+		return nil, fmt.Errorf("only new changes can be scheduled")
+	}
+	if item.CABStatus == "pending" {
+		return nil, fmt.Errorf("approve the change before scheduling")
+	}
+	return transitionChangeStatus(id, "scheduled")
+}
+
+func startChangeImplementation(id, userID int) (*changeRequestRecord, error) {
+	item, err := getChangeRequestByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if normalizeChangeStatus(item.Status) != "scheduled" {
+		return nil, fmt.Errorf("change must be scheduled before implementation")
+	}
+	return transitionChangeStatus(id, "implementing")
 }
 
 func applyMajorIncidentMode(item *requestIncident, major bool, statusNote string) (*requestIncident, error) {

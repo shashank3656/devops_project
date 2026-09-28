@@ -241,16 +241,33 @@ func adminChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireAdmin(w, r); !ok {
-		return
-	}
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, r)
+	adminID, ok := requireAdmin(w, r)
+	if !ok {
 		return
 	}
 	id := portalRecordIDFromPath("/api/admin/changes/", r)
 	if id == 0 {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid change id", nil)
+		return
+	}
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/admin/changes/"), "/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 2 && parts[1] == "cab-approve" {
+		if r.Method != http.MethodPost {
+			writeMethodNotAllowed(w, r)
+			return
+		}
+		item, err := approveChangeCAB(id, adminID)
+		if err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"change": item, "status": "ok"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	item, err := getChangeRequestByID(id)
