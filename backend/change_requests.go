@@ -358,12 +358,12 @@ func upsertChangeRequestWithRetry(payload parsedChangeWebhook, retried bool) (*c
 			        ELSE watch_started_at
 			    END,
 			    watch_until = CASE
-			        WHEN $24 IN ('implemented', 'monitoring') AND watch_until IS NULL THEN CURRENT_TIMESTAMP + ($14 * INTERVAL '1 minute')
+			        WHEN $24 IN ('implemented', 'monitoring') AND watch_until IS NULL THEN CURRENT_TIMESTAMP + ($25 * INTERVAL '1 minute')
 			        ELSE watch_until
 			    END,
 			    updated_at = CURRENT_TIMESTAMP
 			WHERE id = $1
-		`, existingID, payload.Title, payload.Author, payload.Summary, filesJSON, payload.PipelineURL, payload.PRNumber, payload.PRURL, payload.PreviousSHA, payload.Service, projectSQL, requestSQL, nextStatus, payload.WatchMinutes, linkedIncidentSQL, cabStatus, assigneeSQL, payload.Priority, payload.RiskLevel, payload.Impact, payload.BackoutPlan, windowStartAny, windowEndAny, nextStatus)
+		`, existingID, payload.Title, payload.Author, payload.Summary, filesJSON, payload.PipelineURL, payload.PRNumber, payload.PRURL, payload.PreviousSHA, payload.Service, projectSQL, requestSQL, nextStatus, payload.WatchMinutes, linkedIncidentSQL, cabStatus, assigneeSQL, payload.Priority, payload.RiskLevel, payload.Impact, payload.BackoutPlan, windowStartAny, windowEndAny, nextStatus, payload.WatchMinutes)
 		if err != nil {
 			return nil, false, err
 		}
@@ -400,13 +400,13 @@ func upsertChangeRequestWithRetry(payload parsedChangeWebhook, retried bool) (*c
 			$18, $19, $20, $21, $22, $23, $24,
 			$25, $26,
 			CASE WHEN $27 IN ('implemented', 'monitoring') THEN CURRENT_TIMESTAMP ELSE NULL END,
-			CASE WHEN $27 IN ('implemented', 'monitoring') THEN CURRENT_TIMESTAMP + ($16 * INTERVAL '1 minute') ELSE NULL END
+			CASE WHEN $27 IN ('implemented', 'monitoring') THEN CURRENT_TIMESTAMP + ($28 * INTERVAL '1 minute') ELSE NULL END
 		)
 		RETURNING id
 	`, projectSQL, payload.Service, payload.Environment, payload.Repo, payload.PRNumber, payload.PRURL, payload.SHA, payload.PreviousSHA,
 		payload.Title, payload.Author, payload.Summary, filesJSON, payload.PipelineURL, payload.ChangeType, payload.Status, payload.WatchMinutes, requestSQL,
 		linkedIncidentSQL, cabStatus, assigneeSQL, payload.Priority, payload.RiskLevel, payload.Impact, payload.BackoutPlan,
-		windowStartAny, windowEndAny, watchStatus,
+		windowStartAny, windowEndAny, watchStatus, payload.WatchMinutes,
 	).Scan(&id)
 	if err != nil {
 		if !retried && isChangeUniqueViolation(err) {
