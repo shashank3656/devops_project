@@ -78,6 +78,12 @@ export { default as PRImpactBrief } from './PRImpactBrief';
 export { default as RequestPRImpact } from './RequestPRImpact';
 export { default as ChangeCatalogTable, buildChangeCatalogColumns, type ChangeCatalogRow } from './ChangeCatalogTable';
 export {
+  default as ChangeDetailPanel,
+  buildChangeDetailActions,
+  type ChangeDetailModel,
+  type ChangeDetailActions,
+} from './ChangeDetailPanel';
+export {
   default as IncidentCatalogTable,
   incidentReference,
   type IncidentCatalogRow,

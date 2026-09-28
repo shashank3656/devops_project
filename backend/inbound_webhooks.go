@@ -179,6 +179,10 @@ func normalizeChangeStatus(status string) string {
 	switch strings.ToLower(strings.ReplaceAll(strings.TrimSpace(status), " ", "_")) {
 	case "new", "open", "queued":
 		return "new"
+	case "scheduled", "schedule":
+		return "scheduled"
+	case "authorized", "approved", "authorize":
+		return "scheduled"
 	case "implementing", "in_progress", "running", "deploying":
 		return "implementing"
 	case "implemented", "merged", "deployed", "apply_success", "deploy_success":
@@ -211,20 +215,22 @@ func changeStatusRank(status string) int {
 	switch normalizeChangeStatus(status) {
 	case "new":
 		return 0
+	case "scheduled":
+		return 1
 	case "implementing":
-		return 1
-	case "implemented":
 		return 2
-	case "monitoring":
+	case "implemented":
 		return 3
-	case "resolved":
+	case "monitoring":
 		return 4
-	case "closed":
+	case "resolved":
 		return 5
-	case "failed", "cancelled":
+	case "closed":
 		return 6
+	case "failed", "cancelled":
+		return 7
 	default:
-		return 1
+		return 2
 	}
 }
 

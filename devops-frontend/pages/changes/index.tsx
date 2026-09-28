@@ -29,18 +29,21 @@ interface ChangeRow {
 }
 
 const CHANGE_WEBHOOK_SAMPLE = `- name: Record SetuOps change
-  if: github.ref == 'refs/heads/main'
+  if: success() && github.ref == 'refs/heads/main'
   env:
     SETUOPS_API: \${{ secrets.SETUOPS_API_URL }}
     SETUOPS_SECRET: \${{ secrets.CHANGE_WEBHOOK_SECRET }}
     CHANGE_TITLE: \${{ github.event.head_commit.message }}
+    CHANGE_SUMMARY: \${{ github.event.pull_request.body || github.event.head_commit.message }}
     CHANGE_AUTHOR: \${{ github.actor }}
     PR_NUMBER: \${{ github.event.pull_request.number || 0 }}
-    PR_URL: \${{ github.event.pull_request.html_url }}
+    PR_URL: \${{ github.event.pull_request.html_url || '' }}
   run: |
+    set -euo pipefail
     SERVICE="\${GITHUB_REPOSITORY##*/}"
     TITLE="$(printf '%s' "$CHANGE_TITLE" | head -n1)"
-    curl -sS -X POST "$SETUOPS_API/api/webhooks/change" \\
+    SUMMARY="$(printf '%s' "$CHANGE_SUMMARY" | head -c 8000)"
+    curl -sf -X POST "\${SETUOPS_API%/}/api/webhooks/change" \\
       -H "Content-Type: application/json" \\
       -H "X-CI-Secret: $SETUOPS_SECRET" \\
       --data "$(jq -n \\
@@ -49,9 +52,11 @@ const CHANGE_WEBHOOK_SAMPLE = `- name: Record SetuOps change
         --arg previous_sha "\${GITHUB_EVENT_BEFORE:-}" \\
         --arg service "$SERVICE" \\
         --arg title "$TITLE" \\
+        --arg summary "$SUMMARY" \\
         --arg author "$CHANGE_AUTHOR" \\
         --arg pr_url "$PR_URL" \\
         --arg pipeline_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \\
+        --arg status "implemented" \\
         --arg sbom_url "\${SBOM_URL:-}" \\
         --arg attestation_url "\${ATTESTATION_URL:-}" \\
         --arg image_digest "\${IMAGE_DIGEST:-}" \\
@@ -63,10 +68,12 @@ const CHANGE_WEBHOOK_SAMPLE = `- name: Record SetuOps change
           previous_sha: $previous_sha,
           service: $service,
           title: $title,
+          summary: $summary,
           author: $author,
           pr_number: $pr_number,
           pr_url: $pr_url,
           pipeline_url: $pipeline_url,
+          status: $status,
           change_type: "standard",
           priority: "medium",
           risk_level: "medium",
@@ -76,6 +83,34 @@ const CHANGE_WEBHOOK_SAMPLE = `- name: Record SetuOps change
           image_digest: $image_digest,
           infracost_report: $infracost_report
         }')"`;
+
+const CHANGE_WEBHOOK_LIFECYCLE_SAMPLE = `# Two-phase: same repo + sha — implementing before deploy, implemented after.
+- name: SetuOps — deploy started
+  if: success() && github.ref == 'refs/heads/main'
+  env:
+    SETUOPS_API: \${{ secrets.SETUOPS_API_URL }}
+    SETUOPS_SECRET: \${{ secrets.CHANGE_WEBHOOK_SECRET }}
+    CHANGE_TITLE: \${{ github.event.head_commit.message }}
+    CHANGE_SUMMARY: \${{ github.event.pull_request.body || github.event.head_commit.message }}
+    CHANGE_AUTHOR: \${{ github.actor }}
+  run: |
+    curl -sf -X POST "\${SETUOPS_API%/}/api/webhooks/change" -H "Content-Type: application/json" -H "X-CI-Secret: $SETUOPS_SECRET" \\
+      --data "$(jq -n --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" \\
+        --arg service "\${GITHUB_REPOSITORY##*/}" --arg title "$(printf '%s' "$CHANGE_TITLE" | head -n1)" \\
+        --arg summary "$(printf '%s' "$CHANGE_SUMMARY" | head -c 8000)" --arg author "$CHANGE_AUTHOR" \\
+        --arg status "implementing" \\
+        '{ repo: $repo, sha: $sha, service: $service, title: $title, summary: $summary, author: $author, status: $status, change_type: "standard", watch_minutes: 120 }')"
+# … deploy …
+- name: SetuOps — deploy finished
+  if: success() && github.ref == 'refs/heads/main'
+  env:
+    SETUOPS_API: \${{ secrets.SETUOPS_API_URL }}
+    SETUOPS_SECRET: \${{ secrets.CHANGE_WEBHOOK_SECRET }}
+  run: |
+    curl -sf -X POST "\${SETUOPS_API%/}/api/webhooks/change" -H "Content-Type: application/json" -H "X-CI-Secret: $SETUOPS_SECRET" \\
+      --data "$(jq -n --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" --arg service "\${GITHUB_REPOSITORY##*/}" \\
+        --arg status "implemented" \\
+        '{ repo: $repo, sha: $sha, service: $service, status: $status, change_type: "standard", watch_minutes: 120 }')"`;
 
 function parseProjectID(value: string | string[] | undefined): number {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -249,7 +284,7 @@ export default function ChangesCatalogPage() {
             </summary>
             <div className="portal-surface__header" style={{ marginTop: 16 }}>
               <p className="portal-surface__subtitle">
-                POST from GitHub Actions after merge to main. Send <code>X-CI-Secret</code> or HMAC. Omit environment — SetuOps fills service, project, and env from the Services catalog when the repo matches. Same SHA + repo + resolved env updates the existing change.
+                POST from GitHub Actions after merge to main. Send <code>X-CI-Secret</code> or HMAC. Map PR body to JSON <code>summary</code>. Omit <code>environment</code> so the Services catalog fills service, project, and env. Approve and schedule in the CHG UI first when CAB applies; CI then sends <code>status</code> (<code>implementing</code> → <code>implemented</code>). Full doc: <code>docs/CICD.md</code>.
               </p>
               <button type="button" className="btn btn-secondary" onClick={() => void copyWebhook()}>
                 {copied ? 'Copied' : 'Copy webhook URL'}
@@ -258,7 +293,14 @@ export default function ChangesCatalogPage() {
             <p className="portal-surface__subtitle" style={{ marginBottom: 8 }}>
               <code className="changes-page__webhook-url">{webhookUrl}</code>
             </p>
+            <p className="portal-surface__subtitle" style={{ marginTop: 12, fontWeight: 600 }}>
+              Single POST (after deploy)
+            </p>
             <pre className="code-block changes-page__sample">{CHANGE_WEBHOOK_SAMPLE}</pre>
+            <p className="portal-surface__subtitle" style={{ marginTop: 12, fontWeight: 600 }}>
+              Two-phase lifecycle
+            </p>
+            <pre className="code-block changes-page__sample">{CHANGE_WEBHOOK_LIFECYCLE_SAMPLE}</pre>
           </details>
         </section>
       </div>

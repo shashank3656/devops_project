@@ -257,12 +257,30 @@ func validateChangeTransition(current, next string, blockingIncidents bool) (str
 		if current == "resolved" && (want == "closed" || want == "failed" || want == "cancelled") {
 			return want, nil
 		}
-		if want == "implementing" || want == "new" || want == "monitoring" {
+		if want == "implementing" || want == "new" || want == "scheduled" || want == "monitoring" {
 			return "implementing", nil
 		}
 		return "", fmt.Errorf("reopen this change before moving it to %s", want)
 	}
+	if current == "new" && want != "scheduled" && want != "cancelled" && want != "failed" && changeStatusRank(want) > changeStatusRank("scheduled") {
+		if itemNeedsScheduleGate(current, want) {
+			return "", fmt.Errorf("schedule the change before moving to %s", want)
+		}
+	}
+	if current == "scheduled" && want == "new" {
+		return "", fmt.Errorf("cannot move a scheduled change back to new")
+	}
 	return want, nil
+}
+
+func itemNeedsScheduleGate(current, want string) bool {
+	_ = current
+	switch want {
+	case "implementing", "implemented", "monitoring", "resolved", "closed":
+		return true
+	default:
+		return false
+	}
 }
 
 func transitionChangeStatus(id int, next string) (*changeRequestRecord, error) {

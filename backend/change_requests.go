@@ -909,7 +909,7 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	userID, ok := requireDevopsManager(w, r)
+	userID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
 	}
@@ -927,6 +927,9 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 				writeMethodNotAllowed(w, r)
 				return
 			}
+			if _, ok := requireDevopsManager(w, r); !ok {
+				return
+			}
 			item, plan, err := executeChangeSHARollback(userID, 0, id)
 			if err != nil {
 				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
@@ -939,6 +942,9 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		if action == "rollout" {
 			if r.Method != "POST" {
 				writeMethodNotAllowed(w, r)
+				return
+			}
+			if _, ok := requireDevopsManager(w, r); !ok {
 				return
 			}
 			var body struct {
@@ -957,9 +963,46 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"change": item, "status": "ok"})
 			return
 		}
+		if action == "schedule" {
+			if r.Method != "POST" {
+				writeMethodNotAllowed(w, r)
+				return
+			}
+			if _, ok := requireDevopsManager(w, r); !ok {
+				return
+			}
+			item, err := scheduleChangeRequest(id, userID)
+			if err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"change": item, "status": "ok"})
+			return
+		}
+		if action == "implement" {
+			if r.Method != "POST" {
+				writeMethodNotAllowed(w, r)
+				return
+			}
+			if _, ok := requireDevopsManager(w, r); !ok {
+				return
+			}
+			item, err := startChangeImplementation(id, userID)
+			if err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"change": item, "status": "ok"})
+			return
+		}
 		if action == "resolve" || action == "close" || action == "fail" || action == "cancel" || action == "reopen" {
 			if r.Method != "POST" {
 				writeMethodNotAllowed(w, r)
+				return
+			}
+			if _, ok := requireDevopsManager(w, r); !ok {
 				return
 			}
 			next := action
@@ -980,6 +1023,9 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if r.Method == "PATCH" && len(parts) == 1 {
+		if _, ok := requireDevopsManager(w, r); !ok {
+			return
+		}
 		var body struct {
 			Status string `json:"status"`
 		}
@@ -999,6 +1045,10 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if len(parts) == 2 && parts[1] == "cab-approve" {
 		if r.Method != "POST" {
 			writeMethodNotAllowed(w, r)
+			return
+		}
+		if !userCanAuthorizeChange(userID) {
+			writeAPIError(w, r, http.StatusForbidden, "not authorized to approve changes", nil)
 			return
 		}
 		item, err := approveChangeCAB(id, userID)
