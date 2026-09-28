@@ -154,33 +154,52 @@ func writeChangeUpsertError(w http.ResponseWriter, r *http.Request, message stri
 }
 
 func optionalChangeRequestID(id int) any {
+	return optionalChangeRequestSQL(id)
+}
+
+func optionalChangeRequestSQL(id int) sql.NullInt64 {
 	if id <= 0 || DB == nil {
-		return nil
+		return sql.NullInt64{}
 	}
 	if req, err := GetPRRequestByID(id); err == nil && req != nil {
-		return id
+		return sql.NullInt64{Int64: int64(id), Valid: true}
 	}
-	return nil
+	return sql.NullInt64{}
 }
 
 func optionalChangeAssigneeUserID(id int) any {
+	return optionalChangeAssigneeSQL(id)
+}
+
+func optionalChangeAssigneeSQL(id int) sql.NullInt64 {
 	if id <= 0 || DB == nil {
-		return nil
+		return sql.NullInt64{}
 	}
 	if portalUserExists(id) {
-		return id
+		return sql.NullInt64{Int64: int64(id), Valid: true}
 	}
-	return nil
+	return sql.NullInt64{}
 }
 
 func optionalLinkedIncidentID(id int) any {
+	return optionalLinkedIncidentSQL(id)
+}
+
+func optionalLinkedIncidentSQL(id int) sql.NullInt64 {
 	if id <= 0 || DB == nil {
-		return nil
+		return sql.NullInt64{}
 	}
 	if item, err := getRequestIncidentByID(id); err == nil && item != nil {
-		return id
+		return sql.NullInt64{Int64: int64(id), Valid: true}
 	}
-	return nil
+	return sql.NullInt64{}
+}
+
+func projectIDSQL(id *int) sql.NullInt64 {
+	if id == nil || *id <= 0 {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: int64(*id), Valid: true}
 }
 
 func isChangeUniqueViolation(err error) bool {
@@ -273,7 +292,7 @@ func upsertChangeRequestWithRetry(payload parsedChangeWebhook, retried bool) (*c
 	if windowEnd != nil {
 		windowEndAny = *windowEnd
 	}
-	linkedAny := optionalLinkedIncidentID(resolveLinkedIncidentID(payload.LinkedIncidentID, payload.LinkedIncidentNumber))
+	linkedIncidentSQL := optionalLinkedIncidentSQL(resolveLinkedIncidentID(payload.LinkedIncidentID, payload.LinkedIncidentNumber))
 	cabStatus := ""
 	if changeRequiresCAB(payload.ChangeType, payload.Environment) {
 		cabStatus = "pending"
@@ -281,12 +300,10 @@ func upsertChangeRequestWithRetry(payload parsedChangeWebhook, retried bool) (*c
 			payload.Status = "new"
 		}
 	}
-	var projectAny any
-	if projectID != nil {
-		projectAny = *projectID
-	}
-	requestAny := optionalChangeRequestID(payload.RequestID)
-	assigneeAny := optionalChangeAssigneeUserID(payload.AssigneeUserID)
+	projectSQL := projectIDSQL(projectID)
+	requestSQL := optionalChangeRequestSQL(payload.RequestID)
+	assigneeSQL := optionalChangeAssigneeSQL(payload.AssigneeUserID)
+	watchStatus := payload.Status
 	filesJSON := encodeChangeFiles(payload.Files)
 	var existingID int
 	var existingStatus string
@@ -337,16 +354,16 @@ func upsertChangeRequestWithRetry(payload parsedChangeWebhook, retried bool) (*c
 			    status = $13,
 			    watch_minutes = $14,
 			    watch_started_at = CASE
-			        WHEN $13 IN ('implemented', 'monitoring') AND watch_started_at IS NULL THEN CURRENT_TIMESTAMP
+			        WHEN $24 IN ('implemented', 'monitoring') AND watch_started_at IS NULL THEN CURRENT_TIMESTAMP
 			        ELSE watch_started_at
 			    END,
 			    watch_until = CASE
-			        WHEN $13 IN ('implemented', 'monitoring') AND watch_until IS NULL THEN CURRENT_TIMESTAMP + ($14 * INTERVAL '1 minute')
+			        WHEN $24 IN ('implemented', 'monitoring') AND watch_until IS NULL THEN CURRENT_TIMESTAMP + ($14 * INTERVAL '1 minute')
 			        ELSE watch_until
 			    END,
 			    updated_at = CURRENT_TIMESTAMP
 			WHERE id = $1
-		`, existingID, payload.Title, payload.Author, payload.Summary, filesJSON, payload.PipelineURL, payload.PRNumber, payload.PRURL, payload.PreviousSHA, payload.Service, projectAny, requestAny, nextStatus, payload.WatchMinutes, linkedAny, cabStatus, assigneeAny, payload.Priority, payload.RiskLevel, payload.Impact, payload.BackoutPlan, windowStartAny, windowEndAny)
+		`, existingID, payload.Title, payload.Author, payload.Summary, filesJSON, payload.PipelineURL, payload.PRNumber, payload.PRURL, payload.PreviousSHA, payload.Service, projectSQL, requestSQL, nextStatus, payload.WatchMinutes, linkedIncidentSQL, cabStatus, assigneeSQL, payload.Priority, payload.RiskLevel, payload.Impact, payload.BackoutPlan, windowStartAny, windowEndAny, nextStatus)
 		if err != nil {
 			return nil, false, err
 		}
@@ -382,14 +399,14 @@ func upsertChangeRequestWithRetry(payload parsedChangeWebhook, retried bool) (*c
 			$9, $10, $11, $12, $13, $14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23, $24,
 			$25, $26,
-			CASE WHEN $15 IN ('implemented', 'monitoring') THEN CURRENT_TIMESTAMP ELSE NULL END,
-			CASE WHEN $15 IN ('implemented', 'monitoring') THEN CURRENT_TIMESTAMP + ($16 * INTERVAL '1 minute') ELSE NULL END
+			CASE WHEN $27 IN ('implemented', 'monitoring') THEN CURRENT_TIMESTAMP ELSE NULL END,
+			CASE WHEN $27 IN ('implemented', 'monitoring') THEN CURRENT_TIMESTAMP + ($16 * INTERVAL '1 minute') ELSE NULL END
 		)
 		RETURNING id
-	`, projectAny, payload.Service, payload.Environment, payload.Repo, payload.PRNumber, payload.PRURL, payload.SHA, payload.PreviousSHA,
-		payload.Title, payload.Author, payload.Summary, filesJSON, payload.PipelineURL, payload.ChangeType, payload.Status, payload.WatchMinutes, requestAny,
-		linkedAny, cabStatus, assigneeAny, payload.Priority, payload.RiskLevel, payload.Impact, payload.BackoutPlan,
-		windowStartAny, windowEndAny,
+	`, projectSQL, payload.Service, payload.Environment, payload.Repo, payload.PRNumber, payload.PRURL, payload.SHA, payload.PreviousSHA,
+		payload.Title, payload.Author, payload.Summary, filesJSON, payload.PipelineURL, payload.ChangeType, payload.Status, payload.WatchMinutes, requestSQL,
+		linkedIncidentSQL, cabStatus, assigneeSQL, payload.Priority, payload.RiskLevel, payload.Impact, payload.BackoutPlan,
+		windowStartAny, windowEndAny, watchStatus,
 	).Scan(&id)
 	if err != nil {
 		if !retried && isChangeUniqueViolation(err) {
