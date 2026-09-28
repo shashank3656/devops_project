@@ -775,6 +775,43 @@ func devopsChangesHandler(w http.ResponseWriter, r *http.Request) {
 			"status":  "ok",
 		})
 	case "POST":
+		if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("mode")), "bulk") ||
+			strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Change-Bulk")), "1") {
+			var body struct {
+				IDs    []int  `json:"ids"`
+				Action string `json:"action"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
+				return
+			}
+			if len(body.IDs) == 0 || strings.TrimSpace(body.Action) == "" {
+				writeAPIError(w, r, http.StatusBadRequest, "ids and action are required", nil)
+				return
+			}
+			updated := []changeRequestRecord{}
+			errors := []string{}
+			for _, changeID := range body.IDs {
+				if changeID <= 0 {
+					continue
+				}
+				item, err := applyChangePortalAction(changeID, userID, body.Action)
+				if err != nil {
+					errors = append(errors, fmt.Sprintf("%d: %s", changeID, err.Error()))
+					continue
+				}
+				if item != nil {
+					updated = append(updated, *item)
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"changes": updated,
+				"errors":  errors,
+				"status":  "ok",
+			})
+			return
+		}
 		var payload parsedChangeWebhook
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)

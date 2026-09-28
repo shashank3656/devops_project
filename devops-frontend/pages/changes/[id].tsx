@@ -164,7 +164,12 @@ export default function ChangeDetailPage() {
 
   const detailActions = useMemo(() => {
     if (!item) return undefined;
-    const base = buildChangeDetailActions(item, { portal: 'devops', isManager, finished });
+    const base = buildChangeDetailActions(item, {
+      portal: 'devops',
+      isManager,
+      canAuthorize: true,
+      finished,
+    });
     return {
       ...base,
       acting,

@@ -1,7 +1,7 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { useEffect, useMemo, useState } from 'react';
-import { ChangeCatalogTable } from '@infragate/ui';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { BulkBar, ChangeCatalogTable, type RowKey } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
@@ -18,8 +18,10 @@ interface ChangeRow {
   pr_number: number;
   sha: string;
   title: string;
+  summary?: string;
   author?: string;
   status: string;
+  cab_status?: string;
   change_type: string;
   linked_incidents: number;
   assignee_username?: string;
@@ -123,16 +125,18 @@ export default function ChangesCatalogPage() {
   const router = useRouter();
   const [items, setItems] = useState<ChangeRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bulkActing, setBulkActing] = useState('');
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [selectedKeys, setSelectedKeys] = useState<Set<RowKey>>(new Set());
   const [copied, setCopied] = useState(false);
   const webhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/change`;
   const projectID = parseProjectID(router.query.project_id);
   const environment = Array.isArray(router.query.environment) ? router.query.environment[0] : router.query.environment || '';
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
     setLoading(true);
@@ -158,17 +162,17 @@ export default function ChangesCatalogPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiUrl, projectID, environment, statusFilter, typeFilter, query]);
 
   useEffect(() => {
     void load();
-  }, [apiUrl, projectID, environment, statusFilter, typeFilter]);
+  }, [load]);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return items;
     return items.filter((item) =>
-      `${item.change_number} ${item.repo} ${item.title} ${item.service} ${item.sha} ${item.pr_number}`
+      `${item.change_number} ${item.repo} ${item.title} ${item.summary || ''} ${item.service} ${item.sha} ${item.pr_number}`
         .toLowerCase()
         .includes(needle),
     );
@@ -177,6 +181,40 @@ export default function ChangesCatalogPage() {
   const implementedCount = items.filter((item) => item.status === 'implemented' || item.status === 'monitoring' || item.status === 'resolved' || item.status === 'closed').length;
   const failedCount = items.filter((item) => item.status === 'failed').length;
   const watchingCount = items.filter((item) => item.status === 'monitoring' || item.status === 'implemented').length;
+  const pendingApprove = items.filter((item) => item.status === 'new' && item.cab_status !== 'approved').length;
+
+  const runBulk = async (action: string) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    const ids = Array.from(selectedKeys).map((key) => Number(key)).filter((id) => id > 0);
+    if (!token || ids.length === 0) return;
+    setBulkActing(action);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/devops/changes?mode=bulk`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-Change-Bulk': '1',
+        },
+        body: JSON.stringify({ ids, action }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error || `Bulk ${action} failed`);
+        return;
+      }
+      if (Array.isArray(data.errors) && data.errors.length) {
+        setError(data.errors.slice(0, 3).join('; '));
+      }
+      setSelectedKeys(new Set());
+      await load();
+    } catch {
+      setError(`Bulk ${action} failed`);
+    } finally {
+      setBulkActing('');
+    }
+  };
 
   const copyWebhook = async () => {
     try {
@@ -199,7 +237,7 @@ export default function ChangesCatalogPage() {
             <span className="portal-page__eyebrow">Deployments</span>
             <h1 className="portal-page__title">Changes</h1>
             <p className="portal-page__subtitle">
-              Application deploys recorded from CI, plus change requests created here. The catalog is the landing page — use the button to open the form.
+              Select changes to Approve, Schedule, Implement, Cancel, or Close manually. CI can also record deploys via webhook.
             </p>
           </div>
           <div className="portal-page__actions">
@@ -217,18 +255,40 @@ export default function ChangesCatalogPage() {
             <strong className="k8s-summary-card__value">{items.length}</strong>
           </div>
           <div className="k8s-summary-card">
-            <span className="k8s-summary-card__label">Shipped</span>
-            <strong className="k8s-summary-card__value">{implementedCount}</strong>
+            <span className="k8s-summary-card__label">Awaiting approve</span>
+            <strong className="k8s-summary-card__value">{pendingApprove}</strong>
           </div>
           <div className="k8s-summary-card">
             <span className="k8s-summary-card__label">Watching</span>
             <strong className="k8s-summary-card__value">{watchingCount}</strong>
           </div>
           <div className="k8s-summary-card">
+            <span className="k8s-summary-card__label">Shipped</span>
+            <strong className="k8s-summary-card__value">{implementedCount}</strong>
+          </div>
+          <div className="k8s-summary-card">
             <span className="k8s-summary-card__label">Failed</span>
             <strong className="k8s-summary-card__value">{failedCount}</strong>
           </div>
         </section>
+
+        <BulkBar count={selectedKeys.size} noun="change" onClear={() => setSelectedKeys(new Set())}>
+          <button type="button" className="btn btn-primary" disabled={!!bulkActing} onClick={() => void runBulk('approve')}>
+            {bulkActing === 'approve' ? 'Approving…' : 'Approve'}
+          </button>
+          <button type="button" className="btn btn-secondary" disabled={!!bulkActing} onClick={() => void runBulk('schedule')}>
+            {bulkActing === 'schedule' ? 'Scheduling…' : 'Schedule'}
+          </button>
+          <button type="button" className="btn btn-secondary" disabled={!!bulkActing} onClick={() => void runBulk('implement')}>
+            {bulkActing === 'implement' ? 'Starting…' : 'Implement'}
+          </button>
+          <button type="button" className="btn btn-secondary" disabled={!!bulkActing} onClick={() => void runBulk('cancel')}>
+            {bulkActing === 'cancel' ? 'Cancelling…' : 'Cancel'}
+          </button>
+          <button type="button" className="btn btn-secondary" disabled={!!bulkActing} onClick={() => void runBulk('close')}>
+            {bulkActing === 'close' ? 'Closing…' : 'Close'}
+          </button>
+        </BulkBar>
 
         <section className="portal-surface">
           <div className="portal-surface__header">
@@ -239,13 +299,14 @@ export default function ChangesCatalogPage() {
             <div className="ig-filter-bar devops-incident-filter-row">
               <input
                 className="input"
-                placeholder="Search repo, PR, SHA, title"
+                placeholder="Search repo, PR, SHA, title, summary"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
               <select className="input" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                 <option value="">All status</option>
                 <option value="new">New</option>
+                <option value="scheduled">Scheduled</option>
                 <option value="implementing">Implementing</option>
                 <option value="implemented">Implemented</option>
                 <option value="monitoring">Monitoring</option>
@@ -268,6 +329,9 @@ export default function ChangesCatalogPage() {
             rows={visible}
             loading={loading}
             showRisk
+            selectable
+            selectedKeys={selectedKeys}
+            onSelectionChange={setSelectedKeys}
             empty={
               <div className="empty-state">
                 No changes yet. Create one here or point a CI job at the webhook when code merges to main.
@@ -284,7 +348,7 @@ export default function ChangesCatalogPage() {
             </summary>
             <div className="portal-surface__header" style={{ marginTop: 16 }}>
               <p className="portal-surface__subtitle">
-                POST from GitHub Actions after merge to main. Send <code>X-CI-Secret</code> or HMAC. Map PR body to JSON <code>summary</code>. Omit <code>environment</code> so the Services catalog fills service, project, and env. Approve and schedule in the CHG UI first when CAB applies; CI then sends <code>status</code> (<code>implementing</code> → <code>implemented</code>). Full doc: <code>docs/CICD.md</code>.
+                POST from GitHub Actions after merge to main. Send <code>X-CI-Secret</code> or HMAC. Map PR body to JSON <code>summary</code>. Omit <code>environment</code> so the Services catalog fills service, project, and env. Manual Approve / Schedule / Implement / Close are available in the catalog and detail pages. Full doc: <code>docs/CICD.md</code>.
               </p>
               <button type="button" className="btn btn-secondary" onClick={() => void copyWebhook()}>
                 {copied ? 'Copied' : 'Copy webhook URL'}
