@@ -4253,6 +4253,29 @@ html[data-theme] .changes-page__sample {
   flex: 1;
 }
 
+.chg-detail__summary-card {
+  padding: var(--ig-space-4) var(--ig-space-5);
+}
+
+.chg-detail__title-line {
+  margin: 4px 0 0;
+  color: var(--ig-text-2);
+  font-size: var(--ig-text-sm);
+  line-height: 1.45;
+}
+
+.chg-detail__summary-text {
+  margin-top: var(--ig-space-3);
+  padding: var(--ig-space-3);
+  border-radius: var(--ig-radius);
+  background: var(--ig-surface-2, color-mix(in srgb, var(--ig-border) 35%, transparent));
+  white-space: pre-wrap;
+}
+
+.chg-detail__summary-meta {
+  margin-top: var(--ig-space-4);
+}
+
 .profile-page__api-state,
 .profile-page__table-wrap {
   margin-top: 16px;

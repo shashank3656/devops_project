@@ -35,7 +35,6 @@ export default function AdminChangeDetailPage() {
   const [brief, setBrief] = useState<ChangeBrief | null>(null);
   const [incidents, setIncidents] = useState<LinkedIncident[]>([]);
   const [blastRadius, setBlastRadius] = useState<string[]>([]);
-  const [drift, setDrift] = useState<{ drifted?: boolean; detail?: string } | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState('');
@@ -43,6 +42,28 @@ export default function AdminChangeDetailPage() {
   const resourceId = parsePortalNumericId(id);
   const status = (item?.status || '').toLowerCase();
   const finished = status === 'resolved' || status === 'closed' || status === 'failed' || status === 'cancelled';
+
+  const postAction = (action: string, actingKey: string) => {
+    const token = localStorage.getItem('admin_token');
+    if (!token || !resourceId) return;
+    setActing(actingKey);
+    setError('');
+    const path = action === 'approve' ? 'cab-approve' : action;
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/admin/changes/${resourceId}/${path}`), {
+      method: 'POST',
+      token,
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data?.error || `Failed to ${actingKey} change`);
+          return;
+        }
+        if (data.change) setItem(data.change);
+      })
+      .catch(() => setError(`Failed to ${actingKey} change`))
+      .finally(() => setActing(''));
+  };
 
   useEffect(() => {
     if (!resourceId) return;
@@ -62,7 +83,6 @@ export default function AdminChangeDetailPage() {
         setBrief(data.change_brief || null);
         setIncidents(Array.isArray(data.linked_incidents) ? data.linked_incidents : []);
         setBlastRadius(Array.isArray(data.blast_radius) ? data.blast_radius : []);
-        setDrift(data.drift && typeof data.drift === 'object' ? data.drift : null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load change'))
       .finally(() => setLoading(false));
@@ -70,30 +90,18 @@ export default function AdminChangeDetailPage() {
 
   const detailActions = useMemo(() => {
     if (!item) return undefined;
-    const base = buildChangeDetailActions(item, { portal: 'admin', finished });
+    const base = buildChangeDetailActions(item, { portal: 'admin', canAuthorize: true, finished });
     return {
       ...base,
       acting,
-      onApprove: () => {
-        const token = localStorage.getItem('admin_token');
-        if (!token || !resourceId) return;
-        setActing('approve');
-        setError('');
-        portalFetch(buildPortalApiUrl(apiUrl, `/api/admin/changes/${resourceId}/cab-approve`), {
-          method: 'POST',
-          token,
-        })
-          .then(async (res) => {
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-              setError(data?.error || 'Failed to approve change');
-              return;
-            }
-            if (data.change) setItem(data.change);
-          })
-          .catch(() => setError('Failed to approve change'))
-          .finally(() => setActing(''));
-      },
+      onApprove: () => postAction('approve', 'approve'),
+      onSchedule: () => postAction('schedule', 'schedule'),
+      onImplement: () => postAction('implement', 'implement'),
+      onResolve: () => postAction('resolve', 'resolve'),
+      onClose: () => postAction('close', 'close'),
+      onFail: () => postAction('fail', 'fail'),
+      onCancel: () => postAction('cancel', 'cancel'),
+      onReopen: () => postAction('reopen', 'reopen'),
     };
   }, [item, finished, acting, resourceId]);
 
@@ -107,7 +115,7 @@ export default function AdminChangeDetailPage() {
           <div>
             <span className="portal-page__eyebrow">Change request</span>
             <h1 className="portal-page__title">{item?.change_number || 'Change'}</h1>
-            <p className="portal-page__subtitle">{item?.title || 'Read-only view with approval for admins.'}</p>
+            <p className="portal-page__subtitle">{item?.title || 'Approve, schedule, implement, or close this change.'}</p>
           </div>
           <Link href="/changes" className="btn btn-secondary">
             Back to changes

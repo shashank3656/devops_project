@@ -132,13 +132,18 @@ func approveChangeCAB(id, userID int) (*changeRequestRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	if item.CABStatus == "approved" && normalizeChangeStatus(item.Status) == "scheduled" {
+	status := normalizeChangeStatus(item.Status)
+	if item.CABStatus == "approved" && (status == "scheduled" || status == "implementing") {
 		return item, nil
 	}
-	if item.CABStatus != "pending" && item.CABStatus != "" {
+	if changeIsFinished(status) {
+		return nil, fmt.Errorf("cannot approve a finished change")
+	}
+	// Manual approve is allowed for new/pending changes even when CAB was not auto-required.
+	if status != "new" && item.CABStatus != "pending" && item.CABStatus != "" {
 		return nil, fmt.Errorf("change is not awaiting approval")
 	}
-	nextStatus := normalizeChangeStatus(item.Status)
+	nextStatus := status
 	if nextStatus == "new" || nextStatus == "" {
 		nextStatus = "scheduled"
 	}
@@ -172,11 +177,16 @@ func approveChangeCAB(id, userID int) (*changeRequestRecord, error) {
 }
 
 func scheduleChangeRequest(id, userID int) (*changeRequestRecord, error) {
+	_ = userID
 	item, err := getChangeRequestByID(id)
 	if err != nil {
 		return nil, err
 	}
-	if normalizeChangeStatus(item.Status) != "new" {
+	status := normalizeChangeStatus(item.Status)
+	if status == "scheduled" {
+		return item, nil
+	}
+	if status != "new" {
 		return nil, fmt.Errorf("only new changes can be scheduled")
 	}
 	if item.CABStatus == "pending" {

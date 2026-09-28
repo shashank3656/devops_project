@@ -77,7 +77,7 @@ function lifecycleIndex(item: ChangeDetailModel): number {
   if (status === 'resolved') return 5;
   if (status === 'monitoring' || status === 'implemented') return 4;
   if (status === 'implementing') return 3;
-  if (status === 'scheduled') return cab === 'approved' || cab === '' ? 2 : 2;
+  if (status === 'scheduled') return 2;
   if (cab === 'approved') return 2;
   if (cab === 'pending') return 1;
   if (status === 'new') return 0;
@@ -140,26 +140,66 @@ export default function ChangeDetailPanel({
   const finished = status === 'resolved' || status === 'closed' || status === 'failed' || status === 'cancelled';
   const stepIdx = lifecycleIndex(item);
   const acting = actions?.acting || '';
+  const hasManualActions = Boolean(
+    actions &&
+      (actions.canApprove ||
+        actions.canSchedule ||
+        actions.canImplement ||
+        actions.canResolve ||
+        actions.canClose ||
+        actions.canFail ||
+        actions.canCancel ||
+        actions.canReopen ||
+        actions.canRollout),
+  );
 
   return (
     <div className="chg-detail">
+      <section className="chg-detail__summary-card portal-surface">
+        <div className="chg-detail__lifecycle-head">
+          <div>
+            <span className="portal-surface__eyebrow">Change summary</span>
+            <h2 className="chg-detail__section-title">{item.change_number || `CHG${item.id}`}</h2>
+            <p className="chg-detail__title-line">{item.title || 'Untitled change'}</p>
+          </div>
+          <StatusChip tone={statusTone(item.status)} label={item.status || 'unknown'} />
+        </div>
+        <p className="chg-detail__prose chg-detail__summary-text">
+          {item.summary?.trim()
+            ? item.summary
+            : 'No summary provided yet. Add one when creating the change or send summary from CI so reviewers understand what ships.'}
+        </p>
+        <div className="portal-detail-grid chg-detail__grid chg-detail__summary-meta">
+          <DetailField label="Service" value={item.service || '—'} />
+          <DetailField label="Environment" value={item.environment === 'unspecified' ? '—' : item.environment || '—'} />
+          <DetailField label="Type" value={item.change_type || '—'} />
+          <DetailField label="Priority" value={item.priority || 'medium'} />
+          <DetailField label="Risk" value={item.risk_level || 'medium'} />
+          <DetailField label="Assigned to" value={item.assignee_username || '—'} />
+          <DetailField label="Author" value={item.author || '—'} />
+          <DetailField label="CAB" value={item.cab_status || 'not required'} />
+        </div>
+        {item.impact ? <p className="chg-detail__prose"><strong>Impact:</strong> {item.impact}</p> : null}
+        {item.backout_plan ? <p className="chg-detail__prose"><strong>Backout:</strong> {item.backout_plan}</p> : null}
+      </section>
+
       <section className="chg-detail__lifecycle devops-workflow-card">
         <div className="chg-detail__lifecycle-head">
           <div>
             <h2 className="chg-detail__section-title">Lifecycle</h2>
-            <p className="chg-detail__hint">ServiceNow-style path: approve, schedule, then implement.</p>
+            <p className="chg-detail__hint">Manual path: Approve → Schedule → Implement → Close. CI can also advance status after deploy.</p>
           </div>
-          <StatusChip tone={statusTone(item.status)} label={item.status || 'unknown'} />
         </div>
         <ol className="chg-lifecycle" aria-label="Change lifecycle">
           {LIFECYCLE_STEPS.map((step, index) => {
             const done = stepIdx >= 0 && index < stepIdx;
             const current = stepIdx === index;
             const authorizedDone = step.key === 'authorized' && (item.cab_status === 'approved' || stepIdx > 1);
-            const isDone = step.key === 'authorized' ? authorizedDone : done || (current && stepIdx > index);
+            const isDone = step.key === 'authorized' ? authorizedDone : done;
             const isCurrent =
               step.key === 'authorized'
-                ? item.cab_status === 'pending' || (item.cab_status === 'approved' && normalizeStatus(item.status) === 'new')
+                ? item.cab_status === 'pending' ||
+                  ((item.cab_status || '') !== 'approved' && normalizeStatus(item.status) === 'new')
                 : current;
             return (
               <li
@@ -177,52 +217,53 @@ export default function ChangeDetailPanel({
         ) : null}
       </section>
 
-      {actions ? (
+      {hasManualActions ? (
         <section className="chg-detail__actions devops-action-card">
-          <h2 className="chg-detail__section-title">Actions</h2>
+          <h2 className="chg-detail__section-title">Manual actions</h2>
+          <p className="chg-detail__hint">Use these when you are not waiting on CI, or to move a change through approval and close-out.</p>
           <div className="chg-detail__action-row">
-            {actions.canApprove ? (
+            {actions?.canApprove ? (
               <button type="button" className="btn btn-primary" disabled={!!acting} onClick={actions.onApprove}>
                 {acting === 'approve' ? 'Approving…' : 'Approve'}
               </button>
             ) : null}
-            {actions.canSchedule ? (
+            {actions?.canSchedule ? (
               <button type="button" className="btn btn-primary" disabled={!!acting} onClick={actions.onSchedule}>
                 {acting === 'schedule' ? 'Scheduling…' : 'Schedule'}
               </button>
             ) : null}
-            {actions.canImplement ? (
+            {actions?.canImplement ? (
               <button type="button" className="btn btn-primary" disabled={!!acting} onClick={actions.onImplement}>
-                {acting === 'implement' ? 'Starting…' : 'Start implementation'}
+                {acting === 'implement' ? 'Starting…' : 'Implement'}
               </button>
             ) : null}
-            {actions.canResolve && !finished ? (
+            {actions?.canResolve && !finished ? (
               <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={actions.onResolve}>
                 {acting === 'resolve' ? 'Resolving…' : 'Resolve'}
               </button>
             ) : null}
-            {actions.canClose && !finished ? (
+            {actions?.canClose && !finished ? (
               <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={actions.onClose}>
                 {acting === 'close' ? 'Closing…' : 'Close'}
               </button>
             ) : null}
-            {actions.canFail && !finished ? (
-              <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={actions.onFail}>
-                {acting === 'fail' ? 'Updating…' : 'Mark failed'}
-              </button>
-            ) : null}
-            {actions.canCancel && !finished ? (
+            {actions?.canCancel && !finished ? (
               <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={actions.onCancel}>
                 {acting === 'cancel' ? 'Cancelling…' : 'Cancel'}
               </button>
             ) : null}
-            {actions.canReopen && finished ? (
+            {actions?.canFail && !finished ? (
+              <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={actions.onFail}>
+                {acting === 'fail' ? 'Updating…' : 'Mark failed'}
+              </button>
+            ) : null}
+            {actions?.canReopen && finished ? (
               <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={actions.onReopen}>
                 {acting === 'reopen' ? 'Reopening…' : 'Reopen'}
               </button>
             ) : null}
           </div>
-          {actions.canRollout && !finished ? (
+          {actions?.canRollout && !finished ? (
             <div className="chg-detail__action-row">
               {['canary', '10', '50', '100'].map((stage) => (
                 <button
@@ -241,18 +282,8 @@ export default function ChangeDetailPanel({
       ) : null}
 
       <section className="chg-detail__summary portal-surface">
-        <h2 className="chg-detail__section-title">Overview</h2>
+        <h2 className="chg-detail__section-title">Details</h2>
         <div className="portal-detail-grid chg-detail__grid">
-          <DetailField label="Type" value={item.change_type} />
-          <DetailField label="Priority" value={item.priority || 'medium'} />
-          <DetailField label="Risk" value={item.risk_level || 'medium'} />
-          <DetailField label="Service" value={item.service} />
-          <DetailField
-            label="Environment"
-            value={item.environment === 'unspecified' ? '—' : item.environment}
-          />
-          <DetailField label="Assigned to" value={item.assignee_username || '—'} />
-          <DetailField label="Author" value={item.author || '—'} />
           <DetailField
             label="Project"
             value={item.project_name ? `${item.project_name} (${item.project_code})` : '—'}
@@ -267,11 +298,9 @@ export default function ChangeDetailPanel({
             value={`${item.watch_minutes} min${item.watch_until ? ` · until ${formatWhen(item.watch_until)}` : ''}`}
           />
           <DetailField label="Linked incidents" value={String(item.linked_incidents || 0)} />
-          <DetailField label="CAB" value={item.cab_status || '—'} />
+          <DetailField label="Created" value={formatWhen(item.created_at)} />
+          <DetailField label="Previous SHA" value={item.previous_sha || '—'} />
         </div>
-        {item.summary ? <p className="chg-detail__prose">{item.summary}</p> : null}
-        {item.impact ? <p className="chg-detail__prose"><strong>Impact:</strong> {item.impact}</p> : null}
-        {item.backout_plan ? <p className="chg-detail__prose"><strong>Backout:</strong> {item.backout_plan}</p> : null}
         {(item.pr_url || item.pipeline_url) ? (
           <p className="chg-detail__links">
             {item.pr_url ? (
@@ -297,25 +326,28 @@ export function buildChangeDetailActions(
   opts: {
     portal: 'devops' | 'admin' | 'user';
     isManager?: boolean;
+    canAuthorize?: boolean;
     finished: boolean;
   },
 ): ChangeDetailActions {
   const status = normalizeStatus(item.status);
   const cab = (item.cab_status || '').toLowerCase();
-  const canOps = opts.portal === 'devops' && opts.isManager;
+  const canAuthorize =
+    opts.canAuthorize ?? (opts.portal === 'admin' || opts.portal === 'devops' || Boolean(opts.isManager));
+  const canOperate =
+    opts.portal === 'admin' ||
+    (opts.portal === 'devops' && Boolean(opts.isManager)) ||
+    (opts.portal === 'user' && Boolean(opts.isManager || opts.canAuthorize));
+  const open = !opts.finished;
   return {
-    canApprove: (opts.portal === 'devops' || opts.portal === 'admin') && cab === 'pending',
-    canSchedule:
-      opts.portal === 'devops' &&
-      opts.isManager &&
-      status === 'new' &&
-      cab !== 'pending',
-    canImplement: opts.portal === 'devops' && opts.isManager && status === 'scheduled',
-    canResolve: canOps && !opts.finished && status !== 'resolved',
-    canClose: canOps && !opts.finished,
-    canFail: canOps && !opts.finished,
-    canCancel: canOps && !opts.finished,
-    canReopen: canOps && opts.finished,
-    canRollout: canOps && !opts.finished,
+    canApprove: canAuthorize && open && status === 'new' && cab !== 'approved',
+    canSchedule: canOperate && open && status === 'new' && cab !== 'pending',
+    canImplement: canOperate && open && status === 'scheduled',
+    canResolve: canOperate && open && status !== 'resolved',
+    canClose: canOperate && open,
+    canFail: canOperate && open,
+    canCancel: canOperate && open,
+    canReopen: canOperate && opts.finished,
+    canRollout: opts.portal === 'devops' && canOperate && open,
   };
 }
