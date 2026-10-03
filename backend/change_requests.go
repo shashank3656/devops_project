@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -83,8 +84,11 @@ func formatChangeNumber(id int) string {
 
 func lookupProjectID(projectID int, projectCode string) *int {
 	if projectID > 0 {
-		value := projectID
-		return &value
+		if project, err := getProjectCatalogByID(projectID); err == nil && project != nil {
+			value := projectID
+			return &value
+		}
+		return nil
 	}
 	code := strings.TrimSpace(projectCode)
 	if code == "" || DB == nil {
@@ -96,6 +100,116 @@ func lookupProjectID(projectID int, projectCode string) *int {
 	}
 	value := projects[0].ID
 	return &value
+}
+
+func resolveChangeProjectID(payload *parsedChangeWebhook) *int {
+	if payload == nil {
+		return nil
+	}
+	if id := lookupProjectID(payload.ProjectID, payload.ProjectCode); id != nil {
+		return id
+	}
+	mapped := lookupServiceMap(payload.Service, payload.Repo, payload.Environment)
+	if mapped == nil {
+		return nil
+	}
+	if payload.Service == "" {
+		payload.Service = mapped.Service
+	}
+	if mapped.ProjectID == nil {
+		return nil
+	}
+	return lookupProjectID(*mapped.ProjectID, "")
+}
+
+func isDBForeignKeyViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "foreign key") ||
+		strings.Contains(msg, "violates foreign key constraint") ||
+		strings.Contains(msg, "23503")
+}
+
+func writeChangeUpsertError(w http.ResponseWriter, r *http.Request, message string, err error) {
+	if err == nil {
+		writeAPIError(w, r, http.StatusInternalServerError, message, nil)
+		return
+	}
+	lower := strings.ToLower(err.Error())
+	if strings.Contains(lower, "planned end") {
+		writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+	if isDBForeignKeyViolation(err) {
+		writeAPIError(w, r, http.StatusBadRequest, "invalid project, assignee, or linked incident reference", err)
+		return
+	}
+	if isChangeUniqueViolation(err) {
+		writeAPIError(w, r, http.StatusConflict, "a change already exists for this repo, commit, and environment", err)
+		return
+	}
+	writeAPIError(w, r, http.StatusInternalServerError, message, err)
+}
+
+func optionalChangeRequestID(id int) any {
+	return optionalChangeRequestSQL(id)
+}
+
+func optionalChangeRequestSQL(id int) sql.NullInt64 {
+	if id <= 0 || DB == nil {
+		return sql.NullInt64{}
+	}
+	if req, err := GetPRRequestByID(id); err == nil && req != nil {
+		return sql.NullInt64{Int64: int64(id), Valid: true}
+	}
+	return sql.NullInt64{}
+}
+
+func optionalChangeAssigneeUserID(id int) any {
+	return optionalChangeAssigneeSQL(id)
+}
+
+func optionalChangeAssigneeSQL(id int) sql.NullInt64 {
+	if id <= 0 || DB == nil {
+		return sql.NullInt64{}
+	}
+	if portalUserExists(id) {
+		return sql.NullInt64{Int64: int64(id), Valid: true}
+	}
+	return sql.NullInt64{}
+}
+
+func optionalLinkedIncidentID(id int) any {
+	return optionalLinkedIncidentSQL(id)
+}
+
+func optionalLinkedIncidentSQL(id int) sql.NullInt64 {
+	if id <= 0 || DB == nil {
+		return sql.NullInt64{}
+	}
+	if item, err := getRequestIncidentByID(id); err == nil && item != nil {
+		return sql.NullInt64{Int64: int64(id), Valid: true}
+	}
+	return sql.NullInt64{}
+}
+
+func projectIDSQL(id *int) sql.NullInt64 {
+	if id == nil || *id <= 0 {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: int64(*id), Valid: true}
+}
+
+func isChangeUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate key") ||
+		strings.Contains(msg, "unique constraint") ||
+		strings.Contains(msg, "idx_change_requests")
 }
 
 func encodeChangeFiles(files []string) string {
@@ -154,18 +268,14 @@ func decodeChangeFiles(raw string) []string {
 }
 
 func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, bool, error) {
+	return upsertChangeRequestWithRetry(payload, false)
+}
+
+func upsertChangeRequestWithRetry(payload parsedChangeWebhook, retried bool) (*changeRequestRecord, bool, error) {
 	if DB == nil {
 		return nil, false, fmt.Errorf("database not available")
 	}
-	projectID := lookupProjectID(payload.ProjectID, payload.ProjectCode)
-	if projectID == nil {
-		if mapped := lookupServiceMap(payload.Service, payload.Repo, payload.Environment); mapped != nil {
-			projectID = mapped.ProjectID
-			if payload.Service == "" {
-				payload.Service = mapped.Service
-			}
-		}
-	}
+	projectID := resolveChangeProjectID(&payload)
 	payload.ChangeType = normalizeChangeType(payload.ChangeType)
 	payload.Priority = normalizeChangePriority(payload.Priority)
 	payload.RiskLevel = normalizeChangeRisk(payload.RiskLevel)
@@ -182,11 +292,7 @@ func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, boo
 	if windowEnd != nil {
 		windowEndAny = *windowEnd
 	}
-	linkedIncidentID := resolveLinkedIncidentID(payload.LinkedIncidentID, payload.LinkedIncidentNumber)
-	var linkedAny any
-	if linkedIncidentID > 0 {
-		linkedAny = linkedIncidentID
-	}
+	linkedIncidentSQL := optionalLinkedIncidentSQL(resolveLinkedIncidentID(payload.LinkedIncidentID, payload.LinkedIncidentNumber))
 	cabStatus := ""
 	if changeRequiresCAB(payload.ChangeType, payload.Environment) {
 		cabStatus = "pending"
@@ -194,18 +300,10 @@ func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, boo
 			payload.Status = "new"
 		}
 	}
-	var projectAny any
-	if projectID != nil {
-		projectAny = *projectID
-	}
-	var requestAny any
-	if payload.RequestID > 0 {
-		requestAny = payload.RequestID
-	}
-	var assigneeAny any
-	if payload.AssigneeUserID > 0 {
-		assigneeAny = payload.AssigneeUserID
-	}
+	projectSQL := projectIDSQL(projectID)
+	requestSQL := optionalChangeRequestSQL(payload.RequestID)
+	assigneeSQL := optionalChangeAssigneeSQL(payload.AssigneeUserID)
+	watchStatus := payload.Status
 	filesJSON := encodeChangeFiles(payload.Files)
 	var existingID int
 	var existingStatus string
@@ -256,16 +354,16 @@ func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, boo
 			    status = $13,
 			    watch_minutes = $14,
 			    watch_started_at = CASE
-			        WHEN $13 IN ('implemented', 'monitoring') AND watch_started_at IS NULL THEN CURRENT_TIMESTAMP
+			        WHEN $24 IN ('implemented', 'monitoring') AND watch_started_at IS NULL THEN CURRENT_TIMESTAMP
 			        ELSE watch_started_at
 			    END,
 			    watch_until = CASE
-			        WHEN $13 IN ('implemented', 'monitoring') AND watch_until IS NULL THEN CURRENT_TIMESTAMP + ($14 * INTERVAL '1 minute')
+			        WHEN $24 IN ('implemented', 'monitoring') AND watch_until IS NULL THEN CURRENT_TIMESTAMP + ($25 * INTERVAL '1 minute')
 			        ELSE watch_until
 			    END,
 			    updated_at = CURRENT_TIMESTAMP
 			WHERE id = $1
-		`, existingID, payload.Title, payload.Author, payload.Summary, filesJSON, payload.PipelineURL, payload.PRNumber, payload.PRURL, payload.PreviousSHA, payload.Service, projectAny, requestAny, nextStatus, payload.WatchMinutes, linkedAny, cabStatus, assigneeAny, payload.Priority, payload.RiskLevel, payload.Impact, payload.BackoutPlan, windowStartAny, windowEndAny)
+		`, existingID, payload.Title, payload.Author, payload.Summary, filesJSON, payload.PipelineURL, payload.PRNumber, payload.PRURL, payload.PreviousSHA, payload.Service, projectSQL, requestSQL, nextStatus, payload.WatchMinutes, linkedIncidentSQL, cabStatus, assigneeSQL, payload.Priority, payload.RiskLevel, payload.Impact, payload.BackoutPlan, windowStartAny, windowEndAny, nextStatus, payload.WatchMinutes)
 		if err != nil {
 			return nil, false, err
 		}
@@ -301,16 +399,19 @@ func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, boo
 			$9, $10, $11, $12, $13, $14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23, $24,
 			$25, $26,
-			CASE WHEN $15 IN ('implemented', 'monitoring') THEN CURRENT_TIMESTAMP ELSE NULL END,
-			CASE WHEN $15 IN ('implemented', 'monitoring') THEN CURRENT_TIMESTAMP + ($16 * INTERVAL '1 minute') ELSE NULL END
+			CASE WHEN $27 IN ('implemented', 'monitoring') THEN CURRENT_TIMESTAMP ELSE NULL END,
+			CASE WHEN $27 IN ('implemented', 'monitoring') THEN CURRENT_TIMESTAMP + ($28 * INTERVAL '1 minute') ELSE NULL END
 		)
 		RETURNING id
-	`, projectAny, payload.Service, payload.Environment, payload.Repo, payload.PRNumber, payload.PRURL, payload.SHA, payload.PreviousSHA,
-		payload.Title, payload.Author, payload.Summary, filesJSON, payload.PipelineURL, payload.ChangeType, payload.Status, payload.WatchMinutes, requestAny,
-		linkedAny, cabStatus, assigneeAny, payload.Priority, payload.RiskLevel, payload.Impact, payload.BackoutPlan,
-		windowStartAny, windowEndAny,
+	`, projectSQL, payload.Service, payload.Environment, payload.Repo, payload.PRNumber, payload.PRURL, payload.SHA, payload.PreviousSHA,
+		payload.Title, payload.Author, payload.Summary, filesJSON, payload.PipelineURL, payload.ChangeType, payload.Status, payload.WatchMinutes, requestSQL,
+		linkedIncidentSQL, cabStatus, assigneeSQL, payload.Priority, payload.RiskLevel, payload.Impact, payload.BackoutPlan,
+		windowStartAny, windowEndAny, watchStatus, payload.WatchMinutes,
 	).Scan(&id)
 	if err != nil {
+		if !retried && isChangeUniqueViolation(err) {
+			return upsertChangeRequestWithRetry(payload, true)
+		}
 		return nil, false, err
 	}
 	if _, err := execContext(`
@@ -328,6 +429,31 @@ func upsertChangeRequest(payload parsedChangeWebhook) (*changeRequestRecord, boo
 	persistChangeCost(id, payload)
 	applyChangePolicies(id, payload)
 	item, getErr := getChangeRequestByID(id)
+	if getErr != nil {
+		log.Printf("[Change] created id=%d but reload failed: %v", id, getErr)
+		item = &changeRequestRecord{
+			ID:           id,
+			ChangeNumber: formatChangeNumber(id),
+			ProjectID:    projectID,
+			Service:      payload.Service,
+			Environment:  payload.Environment,
+			Repo:         payload.Repo,
+			SHA:          payload.SHA,
+			Title:        payload.Title,
+			Author:       payload.Author,
+			Summary:      payload.Summary,
+			ChangeType:   payload.ChangeType,
+			Status:       payload.Status,
+			WatchMinutes: payload.WatchMinutes,
+			Priority:     payload.Priority,
+			RiskLevel:    payload.RiskLevel,
+			Impact:       payload.Impact,
+			BackoutPlan:  payload.BackoutPlan,
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
+		}
+		getErr = nil
+	}
 	return item, true, getErr
 }
 
@@ -577,9 +703,14 @@ func prepareManualChange(payload parsedChangeWebhook, author string) (parsedChan
 	if payload.Status == "" {
 		payload.Status = "new"
 	}
+	if payload.ProjectID > 0 && lookupProjectID(payload.ProjectID, "") == nil {
+		return payload, fmt.Errorf("selected project is not valid")
+	}
 	if payload.ProjectID <= 0 && (payload.Service != "" || payload.Repo != "") {
 		if mapped := lookupServiceMap(payload.Service, payload.Repo, payload.Environment); mapped != nil && mapped.ProjectID != nil {
-			payload.ProjectID = *mapped.ProjectID
+			if validated := lookupProjectID(*mapped.ProjectID, ""); validated != nil {
+				payload.ProjectID = *validated
+			}
 		}
 	}
 	if payload.AssigneeUserID > 0 && DB != nil && !portalUserExists(payload.AssigneeUserID) {
@@ -644,6 +775,43 @@ func devopsChangesHandler(w http.ResponseWriter, r *http.Request) {
 			"status":  "ok",
 		})
 	case "POST":
+		if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("mode")), "bulk") ||
+			strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Change-Bulk")), "1") {
+			var body struct {
+				IDs    []int  `json:"ids"`
+				Action string `json:"action"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
+				return
+			}
+			if len(body.IDs) == 0 || strings.TrimSpace(body.Action) == "" {
+				writeAPIError(w, r, http.StatusBadRequest, "ids and action are required", nil)
+				return
+			}
+			updated := []changeRequestRecord{}
+			errors := []string{}
+			for _, changeID := range body.IDs {
+				if changeID <= 0 {
+					continue
+				}
+				item, err := applyChangePortalAction(changeID, userID, body.Action)
+				if err != nil {
+					errors = append(errors, fmt.Sprintf("%d: %s", changeID, err.Error()))
+					continue
+				}
+				if item != nil {
+					updated = append(updated, *item)
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"changes": updated,
+				"errors":  errors,
+				"status":  "ok",
+			})
+			return
+		}
 		var payload parsedChangeWebhook
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
@@ -660,7 +828,7 @@ func devopsChangesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		item, created, err := upsertChangeRequest(prepared)
 		if err != nil {
-			writeAPIError(w, r, http.StatusInternalServerError, "failed to create change", err)
+			writeChangeUpsertError(w, r, "failed to create change", err)
 			return
 		}
 		if created {
@@ -778,7 +946,7 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	userID, ok := requireDevopsManager(w, r)
+	userID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
 	}
@@ -796,6 +964,9 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 				writeMethodNotAllowed(w, r)
 				return
 			}
+			if _, ok := requireDevopsManager(w, r); !ok {
+				return
+			}
 			item, plan, err := executeChangeSHARollback(userID, 0, id)
 			if err != nil {
 				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
@@ -808,6 +979,9 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		if action == "rollout" {
 			if r.Method != "POST" {
 				writeMethodNotAllowed(w, r)
+				return
+			}
+			if _, ok := requireDevopsManager(w, r); !ok {
 				return
 			}
 			var body struct {
@@ -826,9 +1000,46 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"change": item, "status": "ok"})
 			return
 		}
+		if action == "schedule" {
+			if r.Method != "POST" {
+				writeMethodNotAllowed(w, r)
+				return
+			}
+			if _, ok := requireDevopsManager(w, r); !ok {
+				return
+			}
+			item, err := scheduleChangeRequest(id, userID)
+			if err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"change": item, "status": "ok"})
+			return
+		}
+		if action == "implement" {
+			if r.Method != "POST" {
+				writeMethodNotAllowed(w, r)
+				return
+			}
+			if _, ok := requireDevopsManager(w, r); !ok {
+				return
+			}
+			item, err := startChangeImplementation(id, userID)
+			if err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"change": item, "status": "ok"})
+			return
+		}
 		if action == "resolve" || action == "close" || action == "fail" || action == "cancel" || action == "reopen" {
 			if r.Method != "POST" {
 				writeMethodNotAllowed(w, r)
+				return
+			}
+			if _, ok := requireDevopsManager(w, r); !ok {
 				return
 			}
 			next := action
@@ -849,6 +1060,9 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if r.Method == "PATCH" && len(parts) == 1 {
+		if _, ok := requireDevopsManager(w, r); !ok {
+			return
+		}
 		var body struct {
 			Status string `json:"status"`
 		}
@@ -868,6 +1082,10 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if len(parts) == 2 && parts[1] == "cab-approve" {
 		if r.Method != "POST" {
 			writeMethodNotAllowed(w, r)
+			return
+		}
+		if !userCanAuthorizeChange(userID) {
+			writeAPIError(w, r, http.StatusForbidden, "not authorized to approve changes", nil)
 			return
 		}
 		item, err := approveChangeCAB(id, userID)
