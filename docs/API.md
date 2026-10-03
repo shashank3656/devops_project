@@ -269,7 +269,10 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | POST | `/api/devops/changes/:id/fail` | manager | — | Deploy failed. |
 | POST | `/api/devops/changes/:id/cancel` | manager | — | Never shipped. |
 | POST | `/api/devops/changes/:id/reopen` | manager | — | Back to `implementing`. |
-| POST | `/api/devops/changes/:id/cab-approve` | manager | — | CAB approve. |
+| POST | `/api/devops/changes/:id/cab-approve` | devops user (authorizer) | — | Approve; moves `new` → `scheduled` when CAB pending. |
+| POST | `/api/devops/changes/:id/schedule` | manager | — | `new` → `scheduled` (after approval or when CAB not required). |
+| POST | `/api/devops/changes/:id/implement` | manager | — | `scheduled` → `implementing`. |
+| POST | `/api/admin/changes/:id/cab-approve` | admin | — | Same approve as DevOps. |
 | POST | `/api/devops/changes/:id/rollback` | manager | — | Record emergency CHG to `previous_sha`. Does not apply. Freeze/CAB still apply. |
 | GET | `/api/devops/change-calendar` | devops | — | Planned windows. |
 | GET | `/api/devops/change-risk` | devops | — | Risk view. |
@@ -546,39 +549,7 @@ ChatOps slash commands (on-call, status). Signed with the Slack/Teams app secret
 
 ## Example: record a Change Request from GitHub Actions
 
-```yaml
-- name: Record SetuOps change
-  env:
-    SETUOPS_URL: ${{ secrets.SETUOPS_API_URL }}
-    SETUOPS_SECRET: ${{ secrets.CHANGE_WEBHOOK_SECRET }}
-  run: |
-    jq -n \
-      --arg repo "$GITHUB_REPOSITORY" \
-      --arg sha "$GITHUB_SHA" \
-      --arg title "${{ github.event.head_commit.message }}" \
-      --arg author "${{ github.actor }}" \
-      --arg service "${GITHUB_REPOSITORY#*/}" \
-      --arg pr_url "${{ github.event.pull_request.html_url }}" \
-      --arg pipeline_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-      '{
-        repo: $repo,
-        sha: $sha,
-        title: $title,
-        author: $author,
-        service: $service,
-        pr_url: $pr_url,
-        pipeline_url: $pipeline_url,
-        change_type: "standard",
-        priority: "medium",
-        risk_level: "low",
-        watch_minutes: 30
-      }' | curl -sS -X POST "$SETUOPS_URL/api/webhooks/change" \
-        -H "Content-Type: application/json" \
-        -H "X-CI-Secret: $SETUOPS_SECRET" \
-        --data-binary @-
-```
-
-Do **not** send a hardcoded `environment: dev` or `pr_number: 0`. The full sample is also on DevOps **Changes** and in [CICD.md](./CICD.md).
+See [CICD.md](./CICD.md) for the full **single POST** and **two-phase** (`implementing` → `implemented`) samples, including `summary` from the PR body. Do **not** send a hardcoded `environment: dev` unless you must pin env. The same snippets are on DevOps **Changes** (webhook panel).
 
 ---
 

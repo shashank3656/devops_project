@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -235,22 +236,102 @@ func adminChangesHandler(w http.ResponseWriter, r *http.Request) {
 	writeChangeCatalog(w, items, r.URL.Query().Get("change_type"))
 }
 
+func applyChangePortalAction(id, userID int, action string) (*changeRequestRecord, error) {
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "cab-approve", "approve":
+		return approveChangeCAB(id, userID)
+	case "schedule":
+		return scheduleChangeRequest(id, userID)
+	case "implement":
+		return startChangeImplementation(id, userID)
+	case "resolve":
+		return transitionChangeStatus(id, "resolved")
+	case "close":
+		return transitionChangeStatus(id, "closed")
+	case "fail":
+		return transitionChangeStatus(id, "failed")
+	case "cancel":
+		return transitionChangeStatus(id, "cancelled")
+	case "reopen":
+		return transitionChangeStatus(id, "reopen")
+	default:
+		return nil, fmt.Errorf("unsupported change action %q", action)
+	}
+}
+
+func writeChangeActionResult(w http.ResponseWriter, r *http.Request, item *changeRequestRecord, err error) {
+	if err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"change": item, "status": "ok"})
+}
+
 func adminChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireAdmin(w, r); !ok {
+	adminID, ok := requireAdmin(w, r)
+	if !ok {
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, r)
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/admin/changes/"), "/")
+	if r.Method == http.MethodPost && path == "bulk" {
+		var body struct {
+			IDs    []int  `json:"ids"`
+			Action string `json:"action"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
+			return
+		}
+		updated := []changeRequestRecord{}
+		errors := []string{}
+		for _, changeID := range body.IDs {
+			if changeID <= 0 {
+				continue
+			}
+			item, err := applyChangePortalAction(changeID, adminID, body.Action)
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("%d: %s", changeID, err.Error()))
+				continue
+			}
+			if item != nil {
+				updated = append(updated, *item)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"changes": updated,
+			"errors":  errors,
+			"status":  "ok",
+		})
 		return
 	}
 	id := portalRecordIDFromPath("/api/admin/changes/", r)
 	if id == 0 {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid change id", nil)
+		return
+	}
+	parts := strings.Split(path, "/")
+	if len(parts) == 2 {
+		action := strings.ToLower(strings.TrimSpace(parts[1]))
+		switch action {
+		case "cab-approve", "approve", "schedule", "implement", "resolve", "close", "fail", "cancel", "reopen":
+			if r.Method != http.MethodPost {
+				writeMethodNotAllowed(w, r)
+				return
+			}
+			item, err := applyChangePortalAction(id, adminID, action)
+			writeChangeActionResult(w, r, item, err)
+			return
+		}
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	item, err := getChangeRequestByID(id)
@@ -340,10 +421,6 @@ func meChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, r)
-		return
-	}
 	id := portalRecordIDFromPath("/api/me/changes/", r)
 	if id == 0 {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid change id", nil)
@@ -352,6 +429,29 @@ func meChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	item, err := getChangeRequestByID(id)
 	if err != nil || !changeVisibleToUser(*item, projectIDSet(visibleProjectIDsForUser(userID))) {
 		writeAPIError(w, r, http.StatusNotFound, "change not found", err)
+		return
+	}
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/me/changes/"), "/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 2 {
+		action := strings.ToLower(strings.TrimSpace(parts[1]))
+		switch action {
+		case "cab-approve", "approve", "schedule", "implement", "close", "cancel":
+			if r.Method != http.MethodPost {
+				writeMethodNotAllowed(w, r)
+				return
+			}
+			if !userCanAuthorizeChange(userID) {
+				writeAPIError(w, r, http.StatusForbidden, "not authorized to update changes", nil)
+				return
+			}
+			updated, actionErr := applyChangePortalAction(id, userID, action)
+			writeChangeActionResult(w, r, updated, actionErr)
+			return
+		}
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
 		return
 	}
 	writeChangeDetailJSON(w, item)
