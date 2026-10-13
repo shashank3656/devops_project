@@ -95,10 +95,10 @@ func latestServiceMetrics(service, environment string) *serviceMetrics {
 	return normalizeServiceMetrics(&item)
 }
 
-func applyServiceMetricsToWatchingChanges(service, environment string, sample serviceMetrics) int {
+func applyServiceMetricsToWatchingChanges(service, environment string, sample serviceMetrics, projectID int) int {
 	applied := 0
 	now := time.Now()
-	watching, err := listWatchingChanges(0, "", now)
+	watching, err := listWatchingChanges(projectID, "", now)
 	if err != nil {
 		return 0
 	}
@@ -266,20 +266,38 @@ func otlpMetricsHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid body", err)
 		return
 	}
-	if !inboundWebhookAuthorized(inboundKindChange, r.Header, body) && !inboundWebhookAuthorized(inboundKindAlert, r.Header, body) {
+	changeConnection, changeOK := matchedInboundConnection(inboundKindChange, r.Header, body)
+	alertConnection, alertOK := matchedInboundConnection(inboundKindAlert, r.Header, body)
+	if !changeOK && !alertOK {
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid secret", nil)
 		return
+	}
+	if changeConnection.Bound && alertConnection.Bound && changeConnection.ProjectID != alertConnection.ProjectID {
+		writeAPIError(w, r, http.StatusForbidden, "worker cannot leave its connection project", nil)
+		return
+	}
+	connection := workerConnection{}
+	if changeConnection.Bound {
+		connection = changeConnection
+	} else if alertConnection.Bound {
+		connection = alertConnection
 	}
 	metrics := parseOTLPMetrics(body)
 	if len(metrics) == 0 {
 		writeAPIError(w, r, http.StatusBadRequest, "no otlp metrics recognized", nil)
 		return
 	}
+	projectFilter := 0
+	if connection.Bound {
+		projectFilter = connection.ProjectID
+	}
 	applied := 0
 	for _, item := range metrics {
 		item.Sample.Source = firstNonEmpty(item.Sample.Source, "otlp")
-		upsertLatestServiceMetrics(item.Service, item.Environment, item.Sample)
-		applied += applyServiceMetricsToWatchingChanges(item.Service, item.Environment, item.Sample)
+		if !connection.Bound {
+			upsertLatestServiceMetrics(item.Service, item.Environment, item.Sample)
+		}
+		applied += applyServiceMetricsToWatchingChanges(item.Service, item.Environment, item.Sample, projectFilter)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{

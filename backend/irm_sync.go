@@ -205,7 +205,8 @@ func irmWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid body", err)
 		return
 	}
-	if !inboundWebhookAuthorized(inboundKindAlert, r.Header, body) {
+	connection, authorized := matchedInboundConnection(inboundKindAlert, r.Header, body)
+	if !authorized {
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid secret", nil)
 		return
 	}
@@ -228,7 +229,7 @@ func irmWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	action := "updated"
 	if item == nil {
-		created, _, upsertErr := upsertAlertIncident(parsedAlertEvent{
+		event := parsedAlertEvent{
 			Source:      provider,
 			Fingerprint: fingerprint,
 			Severity:    "sev2",
@@ -237,7 +238,12 @@ func irmWebhookHandler(w http.ResponseWriter, r *http.Request) {
 			Service:     service,
 			Status:      mapExternalIncidentStatus(provider, status),
 			StartsAt:    time.Now(),
-		})
+		}
+		if err := bindAlertWorker(&event, connection); err != nil {
+			writeAPIError(w, r, http.StatusForbidden, "worker cannot leave its connection project", nil)
+			return
+		}
+		created, _, upsertErr := upsertAlertIncident(event)
 		if upsertErr != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to upsert incident", upsertErr)
 			return
@@ -245,6 +251,10 @@ func irmWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		item = created
 		action = "created"
 	} else {
+		if err := workerOwnsRecord(connection, item.ProjectID); err != nil {
+			writeAPIError(w, r, http.StatusForbidden, "worker cannot leave its connection project", nil)
+			return
+		}
 		item, err = applyInboundIRMStatus(item, status)
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to apply irm status", err)

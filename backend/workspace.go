@@ -324,19 +324,16 @@ func workspaceIncidentQueue(portal string, viewerID int) []workspaceQueueItem {
 	if err != nil {
 		return items
 	}
-	allowed := map[int]struct{}{}
-	if portal == "user" {
-		if viewerID <= 0 {
-			return items
-		}
-		allowed = projectIDSet(visibleProjectIDsForUser(viewerID))
+	if viewerID <= 0 {
+		return items
 	}
+	subject := authzSubjectForUser(viewerID)
 	for _, item := range listed {
 		status := strings.ToLower(strings.TrimSpace(item.Status))
 		if status == "closed" || status == "resolved" || status == "draft" {
 			continue
 		}
-		if portal == "user" && !incidentVisibleToUser(item, viewerID, allowed) {
+		if !incidentInScope(subject, item, authzRead) {
 			continue
 		}
 		if !incidentNeedsViewerAction(item, portal, viewerID) {
@@ -371,13 +368,10 @@ func workspaceChangeQueue(portal string, viewerID int, failedOnly bool) []worksp
 	if err != nil {
 		return items
 	}
-	allowed := map[int]struct{}{}
-	if portal == "user" {
-		if viewerID <= 0 {
-			return items
-		}
-		allowed = projectIDSet(visibleProjectIDsForUser(viewerID))
+	if viewerID <= 0 {
+		return items
 	}
+	subject := authzSubjectForUser(viewerID)
 	for _, item := range listed {
 		status := strings.ToLower(strings.TrimSpace(item.Status))
 		if failedOnly {
@@ -387,7 +381,7 @@ func workspaceChangeQueue(portal string, viewerID int, failedOnly bool) []worksp
 		} else if !workspaceChangeNeedsAction(status) {
 			continue
 		}
-		if portal == "user" && !changeVisibleToUser(item, allowed) {
+		if !changeInScope(subject, item, authzRead) {
 			continue
 		}
 		if !failedOnly && !changeNeedsViewerAction(item, portal, viewerID) {

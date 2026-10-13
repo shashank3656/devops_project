@@ -25,6 +25,10 @@ func adminBreakGlassUserID(r *http.Request) (int, bool) {
 	if secret == "" || r.Header.Get("X-Admin-Secret") != secret {
 		return 0, false
 	}
+	if isProductionRuntime() {
+		log.Printf("admin break-glass rejected (disabled in production) path=%s", r.URL.Path)
+		return 0, false
+	}
 	if origin := strings.TrimSpace(r.Header.Get("Origin")); origin != "" {
 		log.Printf("admin break-glass rejected (browser Origin) origin=%s path=%s", origin, r.URL.Path)
 		return 0, false

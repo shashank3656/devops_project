@@ -76,6 +76,33 @@ func withCORS(next http.Handler) http.Handler {
 	})
 }
 
+func browserMutation(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
+}
+
+func browserMutationAllowed(r *http.Request) bool {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin != "" {
+		return corsOriginAllowed(origin)
+	}
+	return !strings.EqualFold(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")), "cross-site")
+}
+
+func withBrowserCSRF(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if browserMutation(r.Method) && !browserMutationAllowed(r) {
+			writeAPIError(w, r, http.StatusForbidden, "cross-site request blocked", nil)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func handleOptions(w http.ResponseWriter, r *http.Request) {
 	applyCORSHeaders(w, r)
 	origin := strings.TrimRight(strings.TrimSpace(r.Header.Get("Origin")), "/")
@@ -218,6 +245,14 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusBadRequest)
 		encodeJSON(w, errorResponse)
+		return
+	}
+	if err := applyTemplateRender(payload); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+	if err := recordSandboxVerification(payload, "9c7c3a7a", listSandboxObservations()); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
 
@@ -435,6 +470,14 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
 		return
 	}
+	if err := applyTemplateRender(payload); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+	if err := recordSandboxVerification(payload, "9c7c3a7a", listSandboxObservations()); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
 
 	// Ensure user can only submit requests for a team they belong to
 	if userID > 0 && DB != nil {
@@ -621,7 +664,7 @@ func main() {
 				log.Printf("user_activity table OK (%d rows)", n)
 			}
 		}
-		// Ensure default admin exists (credentials from env or admin/admin123)
+		// Ensure default admin exists only when DEFAULT_ADMIN_PASSWORD is set to a non-default value.
 		EnsureDefaultAdmin()
 		startLifecycleScheduler()
 		startCostDigestScheduler()
@@ -651,6 +694,7 @@ func main() {
 	http.HandleFunc("/api/logs/github", logsGitHubHandler)
 	http.HandleFunc("/api/auth/signup", signupHandler)
 	http.HandleFunc("/api/auth/login", loginHandler)
+	http.HandleFunc("/api/auth/logout", logoutHandler)
 	http.HandleFunc("/api/auth/sso/login", authSSOLoginHandler)
 	http.HandleFunc("/api/auth/oidc/start", oidcStartHandler)
 	http.HandleFunc("/api/auth/oidc/callback", oidcCallbackHandler)
@@ -814,6 +858,17 @@ func main() {
 	http.HandleFunc("/api/devops/slos", devopsSLOsHandler)
 	http.HandleFunc("/api/devops/services", devopsServiceMapHandler)
 	http.HandleFunc("/api/devops/services/", devopsServiceMapDetailHandler)
+	http.HandleFunc("/api/catalog/services", catalogServicesHandler)
+	http.HandleFunc("/api/catalog/services/", catalogServiceDetailHandler)
+	http.HandleFunc("/api/catalog/triage", catalogTriageHandler)
+	http.HandleFunc("/api/connections", connectionListHandler)
+	http.HandleFunc("/api/connections/", connectionDetailHandler)
+	http.HandleFunc("/api/outbox/events", outboxEventsHandler)
+	http.HandleFunc("/api/jobs/", jobActionHandler)
+	http.HandleFunc("/api/webhooks/inbox/", webhookInboxHandler)
+	http.HandleFunc("/api/webhooks/activity", webhookActivityHandler)
+	http.HandleFunc("/api/webhooks/mappings", webhookMappingHandler)
+	http.HandleFunc("/api/webhooks/mappings/", webhookMappingHandler)
 	http.HandleFunc("/api/devops/problems", devopsProblemsHandler)
 	http.HandleFunc("/api/devops/problems/", devopsProblemDetailHandler)
 	http.HandleFunc("/api/devops/itsm-catalog", devopsITSMCatalogHandler)
@@ -921,7 +976,7 @@ func main() {
 	log.Println("  GET  /health         - Health check")
 	log.Println("  GET  /api-docs       - Swagger UI")
 
-	if err := http.ListenAndServe(addr, withCORS(withObservability(withRecovery(http.DefaultServeMux)))); err != nil {
+	if err := http.ListenAndServe(addr, withCORS(withBrowserCSRF(withObservability(withRecovery(http.DefaultServeMux))))); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }
