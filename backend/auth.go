@@ -7,14 +7,75 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
+
+const (
+	authAttemptLimit  = 8
+	authAttemptWindow = time.Minute
+)
+
+var authAttempts = struct {
+	sync.Mutex
+	hits map[string][]time.Time
+}{hits: map[string][]time.Time{}}
+
+func configuredDefaultAdminPassword() (string, error) {
+	password := strings.TrimSpace(os.Getenv("DEFAULT_ADMIN_PASSWORD"))
+	if password == "" {
+		return "", fmt.Errorf("DEFAULT_ADMIN_PASSWORD is unset")
+	}
+	if password == "admin123" {
+		return "", fmt.Errorf("DEFAULT_ADMIN_PASSWORD must not be the well-known default")
+	}
+	return password, nil
+}
+
+func resetAuthAttempts() {
+	authAttempts.Lock()
+	authAttempts.hits = map[string][]time.Time{}
+	authAttempts.Unlock()
+}
+
+func allowAuthAttempt(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil || host == "" {
+		host = r.RemoteAddr
+	}
+	now := sessionNow()
+	cutoff := now.Add(-authAttemptWindow)
+	authAttempts.Lock()
+	defer authAttempts.Unlock()
+	prev := authAttempts.hits[host]
+	recent := make([]time.Time, 0, len(prev)+1)
+	for _, ts := range prev {
+		if ts.After(cutoff) {
+			recent = append(recent, ts)
+		}
+	}
+	if len(recent) >= authAttemptLimit {
+		authAttempts.hits[host] = recent
+		return false
+	}
+	authAttempts.hits[host] = append(recent, now)
+	return true
+}
+
+func denyIfAuthRateLimited(w http.ResponseWriter, r *http.Request) bool {
+	if allowAuthAttempt(r) {
+		return false
+	}
+	writeAPIError(w, r, http.StatusTooManyRequests, "too many authentication attempts", nil)
+	return true
+}
 
 func encodeAuthJSON(w http.ResponseWriter, payload interface{}) {
 	setSafeJSONResponseHeaders(w.Header())
@@ -75,9 +136,10 @@ func EnsureDefaultAdmin() {
 	if username == "" {
 		username = "admin"
 	}
-	password := os.Getenv("DEFAULT_ADMIN_PASSWORD")
-	if password == "" {
-		password = "admin123"
+	password, err := configuredDefaultAdminPassword()
+	if err != nil {
+		log.Printf("Skipping default admin: %v", err)
+		return
 	}
 	email := os.Getenv("DEFAULT_ADMIN_EMAIL")
 	if email == "" {
@@ -217,6 +279,33 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 	encodeAuthJSON(w, signupResp)
 }
 
+func logoutHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != "POST" {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
+		return
+	}
+	token := strings.TrimSpace(authHeader[7:])
+	if err := revokePresentedSession(token); err != nil {
+		if strings.Contains(err.Error(), "persist revoked session") {
+			writeAPIError(w, r, http.StatusServiceUnavailable, "could not revoke session", nil)
+			return
+		}
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid or expired token", nil)
+		return
+	}
+	encodeAuthJSON(w, map[string]interface{}{"status": "ok", "message": "session revoked"})
+}
+
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 
@@ -227,6 +316,9 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != "POST" {
 		writeMethodNotAllowed(w, r)
+		return
+	}
+	if denyIfAuthRateLimited(w, r) {
 		return
 	}
 
@@ -358,10 +450,6 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if DB == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
-		return
-	}
 
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
@@ -372,6 +460,10 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 	userID, err := validateToken(token)
 	if err != nil {
 		writeAPIError(w, r, http.StatusUnauthorized, err.Error(), nil)
+		return
+	}
+	if DB == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
 	}
 
@@ -1069,6 +1161,9 @@ func verify2faHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
+	if denyIfAuthRateLimited(w, r) {
+		return
+	}
 	if DB == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
@@ -1329,6 +1424,9 @@ func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
+	if denyIfAuthRateLimited(w, r) {
+		return
+	}
 	if DB == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
 		return
@@ -1348,7 +1446,7 @@ func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := GetUserByEmailOrUsername(email)
 	if err != nil {
-		log.Printf("[Auth] Forgot-password: GetUserByEmailOrUsername failed for %q: %v", email, err)
+		log.Printf("[Auth] Forgot-password: lookup failed: %v", err)
 		if err == sql.ErrNoRows {
 			writeAPIError(w, r, http.StatusNotFound, "No account found with that email", nil)
 			return
@@ -1357,11 +1455,11 @@ func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if user == nil || user.Email == "" {
-		log.Printf("[Auth] Forgot-password: no user found for email/username %q - not sending email", email)
+		log.Printf("[Auth] Forgot-password: no matching account")
 		writeAPIError(w, r, http.StatusNotFound, "No account found with that email", nil)
 		return
 	}
-	log.Printf("[Auth] Forgot-password: user found id=%d email=%s - sending reset link", user.ID, user.Email)
+	log.Printf("[Auth] Forgot-password: sending reset link user_id=%d", user.ID)
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to generate password reset token", err)
@@ -1378,13 +1476,12 @@ func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		resetBaseURL = DevOpsFrontendURL
 	}
 	resetURL := strings.TrimSuffix(resetBaseURL, "/") + "/reset-password?token=" + token
-	log.Printf("[Auth] Forgot-password: user=%s resetURL=%s", user.Email, resetURL)
 	subject, bodyText, _ := EmailTemplatePasswordReset(resetURL)
 	if err := SendEmail(user.Email, subject, bodyText); err != nil {
 		log.Printf("[Auth] SendEmail forgot-password failed: %v", err)
 		// Still return success to not reveal user existence
 	} else {
-		log.Printf("[Auth] Forgot-password email sent to %s", user.Email)
+		log.Printf("[Auth] Forgot-password email sent user_id=%d", user.ID)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	encodeAuthJSON(w, map[string]interface{}{"status": "ok", "message": "If an account exists with that email, you will receive a reset link."})
@@ -1399,6 +1496,9 @@ func resetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method != "POST" {
 		writeMethodNotAllowed(w, r)
+		return
+	}
+	if denyIfAuthRateLimited(w, r) {
 		return
 	}
 	if DB == nil {

@@ -170,6 +170,14 @@ func (c *RedisClient) LPush(ctx context.Context, queue, value string) error {
 	return err
 }
 
+func (c *RedisClient) Del(ctx context.Context, key string) error {
+	if c == nil || !c.enabled {
+		return errRedisDisabled
+	}
+	_, err := c.command(ctx, "DEL", key)
+	return err
+}
+
 func (c *RedisClient) BRPop(ctx context.Context, queue string, timeout time.Duration) (string, error) {
 	if c == nil || !c.enabled {
 		return "", errRedisDisabled

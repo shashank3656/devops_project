@@ -106,6 +106,10 @@ func resolveChangeProjectID(payload *parsedChangeWebhook) *int {
 	if payload == nil {
 		return nil
 	}
+	if payload.WorkerBoundProject > 0 {
+		value := payload.WorkerBoundProject
+		return &value
+	}
 	if id := lookupProjectID(payload.ProjectID, payload.ProjectCode); id != nil {
 		return id
 	}
@@ -769,6 +773,7 @@ func devopsChangesHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			items = filtered
 		}
+		items = filterChangesInScope(items, authzSubjectForUser(userID))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"changes": items,
@@ -791,8 +796,14 @@ func devopsChangesHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			updated := []changeRequestRecord{}
 			errors := []string{}
+			subject := authzSubjectForUser(userID)
 			for _, changeID := range body.IDs {
 				if changeID <= 0 {
+					continue
+				}
+				current, lookupErr := getChangeRequestByID(changeID)
+				if lookupErr != nil || current == nil || !changeInScope(subject, *current, authzWrite) {
+					errors = append(errors, fmt.Sprintf("%d: change scope denied", changeID))
 					continue
 				}
 				item, err := applyChangePortalAction(changeID, userID, body.Action)
@@ -955,6 +966,16 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(parts[0])
 	if err != nil || id <= 0 {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid change id", err)
+		return
+	}
+	record, lookupErr := getChangeRequestByID(id)
+	subject := authzSubjectForUser(userID)
+	if lookupErr != nil || record == nil || !changeInScope(subject, *record, authzRead) {
+		writeAPIError(w, r, http.StatusNotFound, "change not found", lookupErr)
+		return
+	}
+	if r.Method != http.MethodGet && !changeInScope(subject, *record, authzWrite) {
+		writeAPIError(w, r, http.StatusForbidden, "not authorized for this project", nil)
 		return
 	}
 	if len(parts) == 2 {

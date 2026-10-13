@@ -729,8 +729,14 @@ func upsertAlertIncident(event parsedAlertEvent) (*requestIncident, string, erro
 		}
 		return item, "updated", getErr
 	}
-	projectID := lookupProjectID(event.ProjectID, event.ProjectCode)
-	if projectID == nil {
+	var projectID *int
+	if event.BoundProject > 0 {
+		value := event.BoundProject
+		projectID = &value
+	} else {
+		projectID = lookupProjectID(event.ProjectID, event.ProjectCode)
+	}
+	if projectID == nil && event.BoundProject <= 0 {
 		if mapped := lookupServiceMap(event.Service, "", event.Environment); mapped != nil {
 			projectID = mapped.ProjectID
 			if event.Service == "" {
@@ -1646,13 +1652,13 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incidents", err)
 			return
 		}
-		items = filterIncidentsForPortal(
+		items = filterIncidentsInScope(filterIncidentsForPortal(
 			items,
 			parsePositiveQueryID(r, "project_id"),
 			requestQueryEnv(r),
 			r.URL.Query().Get("source"),
 			r.URL.Query().Get("q"),
-		)
+		), authzSubjectForUser(managerID))
 		teams, err := listPortalIncidentTeams()
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incident teams", err)
@@ -1760,6 +1766,16 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(parts[0])
 	if err != nil || id <= 0 {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid incident id", err)
+		return
+	}
+	current, lookupErr := getRequestIncidentByID(id)
+	subject := authzSubjectForUser(managerID)
+	if lookupErr != nil || current == nil || !incidentInScope(subject, *current, authzRead) {
+		writeAPIError(w, r, http.StatusNotFound, "incident not found", lookupErr)
+		return
+	}
+	if r.Method != http.MethodGet && !incidentInScope(subject, *current, authzWrite) {
+		writeAPIError(w, r, http.StatusForbidden, "not authorized for this project", nil)
 		return
 	}
 	if len(parts) == 2 && strings.EqualFold(parts[1], "journal") {

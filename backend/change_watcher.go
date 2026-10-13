@@ -327,7 +327,8 @@ func watchMetricsWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid body", err)
 		return
 	}
-	if !inboundWebhookAuthorized(inboundKindChange, r.Header, body) {
+	connection, authorized := matchedInboundConnection(inboundKindChange, r.Header, body)
+	if !authorized {
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid secret", nil)
 		return
 	}
@@ -355,6 +356,10 @@ func watchMetricsWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if change == nil {
 		writeAPIError(w, r, http.StatusNotFound, "watching change not found", nil)
+		return
+	}
+	if err := workerOwnsRecord(connection, change.ProjectID); err != nil {
+		writeAPIError(w, r, http.StatusForbidden, "worker cannot leave its connection project", nil)
 		return
 	}
 	incident, reasons, err := applyWatchSample(*change, sample)

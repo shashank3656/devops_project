@@ -1515,6 +1515,13 @@ func MigrateDatabase() error {
 	migrateK8sCredentialsEncryption()
 	migrateEnvironmentCatalogSchema()
 	migrateOperatorAuditSchema()
+	migrateRevokedSessionsSchema()
+	loadRevokedSessions()
+	migrateCatalogSchema()
+	migrateConnectionContractSchema()
+	migrateOutboxSchema()
+	migrateJobSchema()
+	migrateWebhookInboxSchema()
 
 	log.Println("Database schema is up to date")
 	return nil

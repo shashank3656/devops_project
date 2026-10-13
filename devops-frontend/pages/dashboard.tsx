@@ -4,7 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
-import { WorkspaceHome, WORKSPACE_SCOPE_EVENT, readWorkspaceScope, type WorkspacePayload } from '@infragate/ui';
+import { WORKSPACE_SCOPE_EVENT, readWorkspaceScope, type WorkspacePayload } from '@infragate/ui';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const emptyWorkspace: WorkspacePayload = {
@@ -31,8 +31,6 @@ export default function DevOpsDashboard() {
   const [workspace, setWorkspace] = useState<WorkspacePayload>(emptyWorkspace);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [freezeReason, setFreezeReason] = useState('');
-  const [activeFreeze, setActiveFreeze] = useState('');
   const [rotations, setRotations] = useState<OncallRotation[]>([]);
   const [healthWatching, setHealthWatching] = useState(0);
   const [healthRegressions, setHealthRegressions] = useState(0);
@@ -45,10 +43,6 @@ export default function DevOpsDashboard() {
   };
 
   const loadOpsControls = () => {
-    fetch(`${apiUrl}/api/devops/freezes`, { headers: tokenHeaders() })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setActiveFreeze(data?.active_reason || ''))
-      .catch(() => {});
     fetch(`${apiUrl}/api/devops/oncall`, { headers: tokenHeaders() })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setRotations(Array.isArray(data?.rotations) ? data.rotations : []))
@@ -115,116 +109,110 @@ export default function DevOpsDashboard() {
     return () => window.removeEventListener(WORKSPACE_SCOPE_EVENT, onScope);
   }, [loadWorkspace]);
 
-  const startFreeze = () => {
-    fetch(`${apiUrl}/api/devops/freezes`, {
-      method: 'POST',
-      headers: { ...tokenHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ environment: 'prod', reason: freezeReason || 'Production freeze' }),
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then(() => {
-        setActiveFreeze(freezeReason || 'Production freeze');
-        loadOpsControls();
-      })
-      .catch(() => {});
-  };
-
-  const endFreeze = () => {
-    fetch(`${apiUrl}/api/devops/freezes`, {
-      method: 'POST',
-      headers: { ...tokenHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'clear' }),
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then(() => {
-        setActiveFreeze('');
-        loadOpsControls();
-      })
-      .catch(() => {});
-  };
-
-  const takeOncall = () => {
-    fetch(`${apiUrl}/api/devops/oncall`, {
-      method: 'POST',
-      headers: { ...tokenHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then(() => loadOpsControls())
-      .catch(() => {});
-  };
-
   const pagingNow = rotations.find((item) => item.active);
+  const queue = [...(workspace.needs_you || []), ...(workspace.failed || [])].slice(0, 3);
+  const incidentCount = (workspace.needs_you || []).filter((item) => String(item.kind || '').toLowerCase().includes('incident')).length || healthHighRisk;
+  const blockedCount = workspace.failed?.length || 0;
+  const healthyLabel = loading ? '…' : error ? 'Unknown' : healthWatching > 0 ? String(healthWatching) : 'Unknown';
 
   return (
     <>
       <Head>
-        <title>Home - SetuOps DevOps</title>
+        <title>Overview - SetuOps</title>
       </Head>
       <DevOpsLayout>
-        <WorkspaceHome
-          payload={workspace}
-          loading={loading}
-          error={error}
-          onRetry={loadWorkspace}
-          activityHref="/activity"
-          actions={
-            <>
-              <Link href="/promotions" className="btn btn-secondary">Promotions</Link>
-              <Link href="/tickets" className="btn btn-primary">Requests</Link>
-            </>
-          }
-          aside={
-            <>
-              <section className="ig-home-panel ig-home-ops" aria-label="Change freeze">
-                <span className="ig-home-ops__label">Change freeze</span>
-                <h3 className="ig-home-ops__title">
-                  <span className={`ig-dot ${activeFreeze ? 'ig-dot--danger' : ''}`} aria-hidden />
-                  {activeFreeze ? 'Production freeze is active' : 'No freeze window'}
-                </h3>
-                <p className="ig-home-ops__copy">
-                  {activeFreeze || 'Pause promotions to production while you investigate.'}
-                </p>
-                {activeFreeze ? (
-                  <button type="button" className="btn btn-danger btn-sm" onClick={endFreeze}>End freeze</button>
-                ) : (
-                  <div className="ig-home-ops__row">
-                    <input
-                      className="input"
-                      placeholder="Reason (optional)"
-                      aria-label="Freeze reason"
-                      value={freezeReason}
-                      onChange={(e) => setFreezeReason(e.target.value)}
-                    />
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={startFreeze}>Start</button>
-                  </div>
-                )}
-              </section>
-              <section className="ig-home-panel ig-home-ops" aria-label="On-call">
-                <span className="ig-home-ops__label">On-call</span>
-                <h3 className="ig-home-ops__title">
-                  <span className={`ig-dot ${pagingNow ? 'ig-dot--ok' : ''}`} aria-hidden />
-                  {pagingNow ? `${pagingNow.username || 'Someone'} is on call` : 'No one is on call'}
-                </h3>
-                <p className="ig-home-ops__copy">
-                  {pagingNow?.team_name ? `${pagingNow.team_name} rotation` : 'Take the next eight-hour shift.'}
-                </p>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={takeOncall}>Take on-call</button>
-              </section>
-              <section className="ig-home-panel ig-home-ops" aria-label="Health">
-                <span className="ig-home-ops__label">Health</span>
-                <h3 className="ig-home-ops__title">
-                  <span className={`ig-dot ${healthRegressions || healthHighRisk ? 'ig-dot--danger' : 'ig-dot--ok'}`} aria-hidden />
-                  {healthRegressions > 0 ? `${healthRegressions} change-linked alert${healthRegressions === 1 ? '' : 's'}` : 'No post-deploy regressions'}
-                </h3>
-                <p className="ig-home-ops__copy">
-                  {healthWatching} watching · {healthHighRisk} SEV1/SEV2 · {healthBurned} burned SLO{healthBurned === 1 ? '' : 's'}
-                </p>
-                <Link href="/health" className="btn btn-secondary btn-sm">Open health</Link>
-              </section>
-            </>
-          }
-        />
+        <div className="v3-overview">
+          <header className="v3-overview__hero">
+            <p className="v3-overview__kicker">Operator workspace</p>
+            <div className="v3-overview__hero-row">
+              <div>
+                <h1>Focus on what needs attention</h1>
+                <p>Respond to incidents, unblock releases and keep services healthy.</p>
+              </div>
+              <Link href="/service-desk" className="btn btn-primary">Open service desk</Link>
+            </div>
+          </header>
+
+          {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
+
+          <section className="v3-metrics" aria-label="At a glance">
+            <Link href="/incidents" className="v3-metric">
+              <span>Active incidents</span>
+              <strong>{loading ? '…' : incidentCount}</strong>
+              <em>{healthHighRisk > 0 ? `${healthHighRisk} critical · respond now →` : 'Open incidents →'}</em>
+            </Link>
+            <Link href="/promotions" className="v3-metric">
+              <span>Blocked releases</span>
+              <strong>{loading ? '…' : blockedCount}</strong>
+              <em>Review deployment gates →</em>
+            </Link>
+            <Link href="/credential-audit" className="v3-metric">
+              <span>Critical findings</span>
+              <strong>—</strong>
+              <em>Scanner not connected →</em>
+            </Link>
+            <Link href="/health" className="v3-metric">
+              <span>Services watching</span>
+              <strong>{healthyLabel}</strong>
+              <em>{healthRegressions > 0 ? `${healthRegressions} need attention →` : 'Open service status →'}</em>
+            </Link>
+          </section>
+
+          <section className="v3-split">
+            <div className="v3-panel">
+              <div className="v3-panel__head">
+                <h2>Your priority queue</h2>
+                <Link href="/service-desk" className="btn btn-secondary">View all</Link>
+              </div>
+              {loading ? <p className="v3-muted">Loading workspace…</p> : null}
+              {!loading && queue.length === 0 ? (
+                <p className="v3-muted">Nothing is waiting. New incidents, blocked releases and findings will show up here.</p>
+              ) : null}
+              <ul className="v3-queue">
+                {queue.map((item) => (
+                  <li key={item.id}>
+                    <Link href={item.href || '/service-desk'}>
+                      <span>
+                        <strong>{item.title}</strong>
+                        <small>{item.meta}</small>
+                      </span>
+                      <em className={item.tone === 'danger' ? 'is-critical' : 'is-blocked'}>{item.tone === 'danger' ? 'Critical' : item.action || 'Open'}</em>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <aside className="v3-panel">
+              <h2>Service health</h2>
+              <p className="v3-muted">{error ? 'Health could not be loaded.' : 'Live workspace · missing telemetry stays unknown.'}</p>
+              <dl className="v3-health">
+                <div><dt>Watching</dt><dd>{loading ? '…' : healthWatching || 'Unknown'}</dd></div>
+                <div><dt>Needs attention</dt><dd>{loading ? '…' : healthRegressions}</dd></div>
+                <div><dt>Active incidents</dt><dd>{loading ? '…' : healthHighRisk}</dd></div>
+                <div><dt>Burned SLOs</dt><dd>{loading ? '…' : healthBurned}</dd></div>
+              </dl>
+              {pagingNow ? <p className="v3-muted">On call: {pagingNow.username || 'Assigned'}</p> : null}
+              <Link href="/health" className="btn btn-secondary">Open Service Status</Link>
+            </aside>
+          </section>
+
+          <section>
+            <h2 className="v3-shortcuts__title">Your shortcuts</h2>
+            <div className="v3-shortcuts">
+              <Link href="/incidents"><strong>Incidents →</strong><span>Respond and coordinate recovery</span></Link>
+              <Link href="/promotions"><strong>Deployments →</strong><span>Review releases and blockers</span></Link>
+              <Link href="/health"><strong>Cloud scans →</strong><span>Check coverage and findings</span></Link>
+            </div>
+          </section>
+
+          <section className="v3-connect">
+            <div>
+              <strong>Bring your tools into one workspace</strong>
+              <p>Review connected tools and resolve missing data at its source.</p>
+            </div>
+            <Link href="/cloud-accounts" className="btn btn-secondary">View connections</Link>
+          </section>
+        </div>
       </DevOpsLayout>
     </>
   );

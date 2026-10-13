@@ -22,6 +22,7 @@ import {
   IconHelpCircle,
   IconFileText,
   IconChevronDown,
+  IconUser,
 } from './Icons';
 import { SupportHub } from '@infragate/ui';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
@@ -71,7 +72,8 @@ function getProfileInitials(): string {
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'Home',
+  '/dashboard': 'Overview',
+  '/service-desk': 'Service desk',
   '/approval-center': 'Approval queue',
   '/approval-sla': 'Approval timing',
   '/gate-policies': 'Promotion rules',
@@ -472,26 +474,26 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     children?: NavChild[];
   };
 
-  /** ITSM hub: CHG / INC / PRB (+ knowledge) share one sidebar tree; default landing is the change catalog. */
-  const itsmNavHref = '/changes';
+  /** Service desk hub: unified INC / CHG / PRB / requests landing. */
+  const serviceDeskHref = '/service-desk';
 
-  const itsmNavChildren: NavChild[] = [
-    { href: '/changes', label: 'Changes' },
-    { href: '/change-calendar', label: 'Change calendar' },
-    { href: '/services', label: 'Services' },
-    { href: '/release-notes', label: 'Release notes' },
+  const serviceDeskChildren: NavChild[] = [
+    { href: '/service-desk', label: 'All tickets' },
     { href: '/incidents', label: 'Incidents' },
-    { href: '/incident-workspace', label: 'Incident notes' },
+    { href: '/changes', label: 'Change requests' },
     { href: '/problems', label: 'Problems' },
+    { href: '/tickets', label: 'Requests' },
     { href: '/knowledge', label: 'Knowledge' },
-    { href: '/activity', label: 'Activity' },
   ];
 
   const leafIsActive = (href: string) => {
     if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/');
     if (href === '/dashboard') return pathname === '/dashboard' || pathname === '/';
-    if (href === itsmNavHref) {
-      return itsmNavChildren.some((child) => pathname === child.href || pathname.startsWith(`${child.href}/`));
+    if (href === serviceDeskHref) {
+      return (
+        pathname === '/service-desk' ||
+        serviceDeskChildren.some((child) => child.href !== '/service-desk' && (pathname === child.href || pathname.startsWith(`${child.href}/`)))
+      );
     }
     return pathname === href || pathname.startsWith(`${href}/`);
   };
@@ -500,61 +502,44 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     Boolean(item.children?.some((child) => leafIsActive(child.href))) || leafIsActive(item.href);
 
   const primaryNavItems: NavItem[] = [
-    { href: '/dashboard', label: 'Home', Icon: IconWorkload },
+    { href: '/dashboard', label: 'Overview', Icon: IconWorkload },
     {
-      href: '/tickets',
-      label: 'Requests',
+      href: serviceDeskHref,
+      label: 'Service desk',
       Icon: IconTickets,
-      children: isManager
-        ? [
-            { href: '/approval-center', label: 'Approval queue' },
-            { href: '/gate-approvals', label: 'Promotion history' },
-            { href: '/gate-policies', label: 'Promotion rules' },
-            { href: '/approval-sla', label: 'Approval timing' },
-          ]
-        : undefined,
+      children: serviceDeskChildren,
     },
-    {
-      href: itsmNavHref,
-      label: 'ITSM',
-      Icon: IconFileText,
-      children: itsmNavChildren,
-    },
+    { href: '/services', label: 'Services', Icon: IconProjects },
+    { href: '/catalog', label: 'Catalog', Icon: IconProjects },
+    { href: '/connections', label: 'Connections', Icon: IconGitOps },
+    { href: '/webhooks', label: 'Webhooks', Icon: IconRefreshCw },
   ];
   if (isManager) {
     primaryNavItems.push({
-      href: '/promotions',
-      label: 'Deployments',
-      Icon: IconArrowUpRight,
-      children: [
-        { href: '/promotions', label: 'Promotions' },
-        { href: '/deploy-intelligence', label: 'Deploy intel' },
-      ],
-    });
-  }
-  primaryNavItems.push({ href: '/k8s', label: 'Kubernetes', Icon: IconK8s });
-  if (isManager) {
-    primaryNavItems.push({
-      href: '/gitops-projects',
-      label: 'GitOps',
-      Icon: IconGitOps,
-      children: [
-        { href: '/gitops-projects', label: 'Projects' },
-        { href: '/gitops-control', label: 'Control' },
-      ],
-    });
-    primaryNavItems.push({
       href: '/projects',
-      label: 'Projects',
-      Icon: IconProjects,
+      label: 'Infrastructure',
+      Icon: IconK8s,
       children: [
-        { href: '/projects', label: 'Catalog' },
+        { href: '/projects', label: 'Projects' },
         { href: '/environments', label: 'Environments' },
         { href: '/cloud-accounts', label: 'Cloud accounts' },
         { href: '/cloud-resources', label: 'Cloud inventory' },
-        { href: '/team', label: 'Teams' },
+        { href: '/k8s', label: 'Kubernetes' },
+        { href: '/promotions', label: 'Releases' },
       ],
     });
+    primaryNavItems.push({
+      href: '/credential-audit',
+      label: 'Security',
+      Icon: IconShield,
+    });
+    primaryNavItems.push({
+      href: '/cloud-accounts',
+      label: 'Integrations',
+      Icon: IconGitOps,
+    });
+  } else {
+    primaryNavItems.push({ href: '/k8s', label: 'Infrastructure', Icon: IconK8s });
   }
 
   const advancedNavItems: NavItem[] = isManager
@@ -570,7 +555,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         },
         { href: '/previews', label: 'Previews', Icon: IconFileText },
         { href: '/scorecards', label: 'Scorecards', Icon: IconFileText },
-        { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
         { href: '/evidence', label: 'Evidence', Icon: IconFileText },
         { href: '/policies', label: 'Policy as code', Icon: IconShield },
         { href: '/ops-command-center', label: 'Operations', Icon: IconAlertTriangle },
@@ -617,14 +601,14 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   const pageTitle = getPageTitle(pathname);
-  const roleLabel = isManager ? 'Manager' : 'Contributor';
+  const roleLabel = isManager ? 'Manager' : 'Operator';
   const statusLabel = isManager
     ? pendingCount > 0
       ? `${pendingCount} pending approvals`
       : 'No pending approvals'
     : 'Active session';
   const getSidebarBadge = (href: string): string | null => {
-    if (href === '/tickets' && isManager && pendingCount > 0) {
+    if ((href === '/service-desk' || href === '/tickets') && isManager && pendingCount > 0) {
       return pendingCount > 99 ? '99+' : String(pendingCount);
     }
     return null;
@@ -692,10 +676,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     );
   };
   const mobileTabs: MobileTab[] = [
-    { href: '/dashboard', label: 'Home', Icon: IconWorkload },
-    { href: '/tickets', label: 'Requests', Icon: IconTickets },
-    { href: itsmNavHref, label: 'ITSM', Icon: IconFileText },
-    { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
+    { href: '/dashboard', label: 'Overview', Icon: IconWorkload },
+    { href: '/service-desk', label: 'Service desk', Icon: IconFileText },
+    { href: '/services', label: 'Services', Icon: IconProjects },
+    { href: '/k8s', label: 'Infra', Icon: IconK8s },
   ].map((tab) => ({ ...tab, active: isNavActive(tab.href), badge: getSidebarBadge(tab.href) }));
 
   return (
@@ -717,14 +701,14 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </button>
           {!sidebarCollapsed && (
             <Link href="/dashboard" className="devops-sidebar-new__brand">
+              <span className="devops-sidebar-new__brand-mark" aria-hidden>S</span>
               <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">SetuOps</span>
-              <span className="devops-sidebar-new__brand-word">DevOps</span>
             </Link>
           )}
         </div>
         <div className="devops-sidebar-new__body">
           <nav className="devops-sidebar-new__nav" aria-label="Primary">
-            {!sidebarCollapsed && <span className="devops-sidebar-new__nav-title">Modules</span>}
+            {!sidebarCollapsed && <span className="devops-sidebar-new__nav-title">Workspace</span>}
             {primaryNavItems.map((item) => renderNavItem(item))}
             {!sidebarCollapsed && advancedNavItems.length > 0 && (
               <div className="devops-sidebar-new__section">
@@ -749,21 +733,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             )}
           </nav>
           <div className="devops-sidebar-new__footer">
-            <button
-              type="button"
-              className="devops-sidebar-new__link"
-              onClick={() => {
-                setNotifyOpen(false);
-                setProfileOpen(false);
-                setSupportTab('chat');
-                setSupportOpen(true);
-                setMobileMenuOpen(false);
-              }}
-              title="Support"
-            >
-              <IconHelpCircle className="devops-sidebar-new__icon" />
-              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Support</span>}
-            </button>
+            <Link href="/profile" className="devops-sidebar-new__link" onClick={() => setMobileMenuOpen(false)}>
+              <IconUser className="devops-sidebar-new__icon" />
+              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Settings</span>}
+            </Link>
             <button
               type="button"
               className="devops-sidebar-new__link"
@@ -774,10 +747,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 setSupportOpen(true);
                 setMobileMenuOpen(false);
               }}
-              title="Documentation"
+              title="Help"
             >
-              <IconFileText className="devops-sidebar-new__icon" />
-              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Documentation</span>}
+              <IconHelpCircle className="devops-sidebar-new__icon" />
+              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Help & guides</span>}
             </button>
             <button type="button" className="devops-sidebar-new__link" onClick={handleLogout}>
               <IconLogout className="devops-sidebar-new__icon" />
@@ -818,7 +791,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             </span>
           </div>
           <div className="devops-navbar__right">
-            <SearchTrigger placeholder="Search tickets, services, pods…" />
+            <SearchTrigger placeholder="Search tickets, services, infrastructure, people…" />
             <div className="devops-navbar__actions">
               <button
                 type="button"
@@ -833,8 +806,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 <IconHelpCircle />
                 <span>Help</span>
               </button>
-              {user && <span className="devops-navbar__username">{user.username}</span>}
-              <span className="devops-navbar__role">{roleLabel}</span>
               <ThemeToggle />
               {isManager && (
                 <div className="devops-navbar__notify-wrap" ref={notifyRef}>
@@ -920,7 +891,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 title="Profile"
               >
                 <span className="devops-navbar__avatar">{profileInitials}</span>
-                <span className="devops-navbar__profile-label">{user?.username || 'DevOps'}</span>
+                <span className="devops-navbar__profile-copy">
+                  <span className="devops-navbar__profile-label">{user?.username || 'DevOps'}</span>
+                  <span className="devops-navbar__role">{roleLabel}</span>
+                </span>
               </button>
               {profileOpen && (
                 <div className="devops-navbar__dropdown">
@@ -982,6 +956,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'release-notes', label: 'Release notes', href: '/release-notes' },
           { id: 'services', label: 'Services', href: '/services' },
           { id: 'add-service', label: 'Add service', href: '/services/new' },
+          { id: 'catalog', label: 'Service catalog', href: '/catalog' },
+          { id: 'catalog-new', label: 'Onboard service', href: '/catalog/new' },
+          { id: 'connections', label: 'Connection health', href: '/connections' },
+          { id: 'webhooks', label: 'Webhook activity', href: '/webhooks' },
           { id: 'operator-activity', label: 'Operator activity', href: '/activity' },
           { id: 'incidents', label: 'Incidents', href: '/incidents' },
           { id: 'incident-notes', label: 'Incident notes', href: '/incident-workspace' },
