@@ -182,13 +182,21 @@ export function parseWorkView(body: unknown, projectId: string, environment: str
 }
 
 export function workspaceFailure(status: number, body: unknown): { hidden: boolean; state: DeskState; message: string } {
+  if (status === 404) return { hidden: true, state: 'empty', message: '' };
   const message = deskErrorText(body && typeof body === 'object' ? body : { error: 'workspace request failed' });
-  if (status === 404) return { hidden: true, state: 'empty', message };
   return { hidden: false, state: 'error', message: message === 'request failed' ? 'workspace request failed' : message };
 }
 
 export function hiddenWorkView(): WorkView {
   return emptyView();
+}
+
+export function errorWorkView(): WorkView {
+  return {
+    ...emptyView(),
+    state: 'error',
+    sections: WORK_KINDS.map((kind) => ({ kind, state: 'error', count: 0 })),
+  };
 }
 
 export function unknownWorkView(): WorkView {

@@ -514,15 +514,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const primaryNavItems: NavItem[] = [
     { href: '/dashboard', label: 'Overview', Icon: IconWorkload },
     { href: '/my-work', label: 'My work', Icon: IconBookOpen },
-    { href: '/temporary-access', label: 'Temporary access', Icon: IconKey },
-    { href: '/infrastructure-drift', label: 'Infrastructure drift', Icon: IconK8s },
-    { href: '/backup-restore', label: 'Backup and restore', Icon: IconRefreshCw },
-    { href: '/service-bootstrap', label: 'Service bootstrap', Icon: IconTemplates },
-    { href: '/change-monitoring', label: 'Change monitoring', Icon: IconShield },
-    { href: '/readiness-signals', label: 'Readiness signals', Icon: IconAlertTriangle },
-    { href: '/pilot-acceptance', label: 'Pilot and acceptance', Icon: IconBookOpen },
-    { href: '/reports-automation', label: 'Reports and automation', Icon: IconFileText },
-    { href: '/desk-language', label: 'Desk language', Icon: IconFileText },
     {
       href: serviceDeskHref,
       label: 'Service desk',
@@ -577,6 +568,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/previews', label: 'Previews', Icon: IconFileText },
         { href: '/scorecards', label: 'Scorecards', Icon: IconFileText },
         { href: '/evidence', label: 'Evidence', Icon: IconFileText },
+        { href: '/desk-language', label: 'Desk language', Icon: IconFileText },
         { href: '/policies', label: 'Policy as code', Icon: IconShield },
         { href: '/ops-command-center', label: 'Operations', Icon: IconAlertTriangle },
         { href: '/backup-restore', label: 'Backup and restore', Icon: IconRefreshCw },
@@ -611,6 +603,14 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             { href: '/identity', label: 'Identity' },
           ],
         },
+        { href: '/desk-language', label: 'Desk language', Icon: IconFileText },
+        { href: '/infrastructure-drift', label: 'Infrastructure drift', Icon: IconK8s },
+        { href: '/backup-restore', label: 'Backup and restore', Icon: IconRefreshCw },
+        { href: '/service-bootstrap', label: 'Service bootstrap', Icon: IconTemplates },
+        { href: '/change-monitoring', label: 'Change monitoring', Icon: IconShield },
+        { href: '/readiness-signals', label: 'Readiness signals', Icon: IconAlertTriangle },
+        { href: '/pilot-acceptance', label: 'Pilot and acceptance', Icon: IconBookOpen },
+        { href: '/reports-automation', label: 'Reports and automation', Icon: IconFileText },
       ];
   const advancedNavActive = advancedNavItems.some((item) => itemIsActive(item));
   const k8sNavActive = pathname === '/k8s' || pathname.startsWith('/k8s/');

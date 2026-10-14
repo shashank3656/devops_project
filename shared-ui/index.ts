@@ -101,6 +101,7 @@ export { DeskEnvironmentForm, DeskError, DeskRecordList, DeskStateChip } from '.
 export {
   WORK_KINDS,
   WORK_PAGE_SIZES,
+  errorWorkView,
   hiddenWorkView,
   parseWorkView,
   unknownWorkView,
@@ -130,6 +131,7 @@ export {
   deskCanWrite,
   deskValueRejected,
   deskErrorText,
+  deskWord,
   deskStateLabel,
   deskSubmitBlock,
   normalizeDeskState,

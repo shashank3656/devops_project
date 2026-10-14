@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useApiUrl } from '../context/ApiUrlContext';
 import {
@@ -16,6 +15,7 @@ import {
   automationRunBlock,
   deskCanWrite,
   deskErrorText,
+  deskWord,
   parseAutomationRule,
   parseReportView,
   reportCoverageState,
@@ -35,7 +35,7 @@ function staticError(body: unknown, fallback: string): string {
 export default function ReportDesk() {
   const apiUrl = useApiUrl();
   const scope = useDeskScope();
-  const [role, setRole] = useState<'viewer' | 'operator'>(sessionRole());
+  const role = sessionRole();
   const [metric, setMetric] = useState<(typeof REPORT_METRICS)[number]>('delivery');
   const [view, setView] = useState<ReportViewModel | null>(null);
   const [draftText, setDraftText] = useState('');
@@ -162,56 +162,58 @@ export default function ReportDesk() {
 
   return (
     <div className="desk-language">
-      <p className="desk-language__intro">A report names a numerator and a denominator in UTC. Drafts stay off until the gate is enabled. Automation can notify and cannot execute.</p>
-      <div className="desk-language__bar">
-        <span>{role === 'viewer' ? 'Viewer' : 'Operator'}</span>
-        <button type="button" onClick={() => setRole((item) => (item === 'viewer' ? 'operator' : 'viewer'))}>{role === 'viewer' ? 'Preview operator' : 'Preview viewer'}</button>
-        <Link href="/dashboard">Overview</Link>
-      </div>
-      <form className="desk-language__form" onSubmit={onDefine}>
+      <header className="desk-landing">
+        <h2>Reports and automation</h2>
+        <p>A report names a numerator and a denominator in UTC. Drafts stay off. Automation can notify and cannot execute.</p>
+      </header>
+      <section className="desk-language__panel desk-language__rail" aria-label="Report"><h2>Report</h2><form className="desk-language__form" onSubmit={onDefine}>
         <label>Metric
           <select value={metric} onChange={(event) => setMetric(event.target.value as (typeof REPORT_METRICS)[number])}>
-            {REPORT_METRICS.map((item) => <option key={item} value={item}>{item}</option>)}
+            {REPORT_METRICS.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
           </select>
         </label>
         <label>Timezone<input value={REPORT_TIMEZONE} readOnly /></label>
-        <button type="submit" disabled={!canWrite}>{canWrite ? 'Save report' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Save report' : 'Read only'}</button>
       </form>
       <form className="desk-language__form" onSubmit={onView}>
-        <button type="submit">Read view</button>
+        <button type="submit" className="btn btn-primary">Read view</button>
       </form>
       <form className="desk-language__form" onSubmit={onDraft}>
         <label>Draft text<input value={draftText} onChange={(event) => setDraftText(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite}>{canWrite ? 'Save draft' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Save draft' : 'Read only'}</button>
       </form>
       <form className="desk-language__form" onSubmit={onPublish}>
-        <label>Reviewer user id<input value={reviewerId} onChange={(event) => setReviewerId(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite}>{canWrite ? 'Publish draft' : 'Read only'}</button>
+        <label>Reviewer<input value={reviewerId} onChange={(event) => setReviewerId(event.target.value)} /></label>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Publish draft' : 'Read only'}</button>
       </form>
+      </section>
+      <section className="desk-language__panel" aria-label="Automation">
+      <h2>Automation</h2>
       <form className="desk-language__form" onSubmit={onRule}>
         <label>Trigger
           <select value={trigger} onChange={(event) => setTrigger(event.target.value as (typeof AUTOMATION_TRIGGERS)[number])}>
-            {AUTOMATION_TRIGGERS.map((item) => <option key={item} value={item}>{item}</option>)}
+            {AUTOMATION_TRIGGERS.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
           </select>
         </label>
         <label>Action<input value={AUTOMATION_ACTION} readOnly /></label>
-        <button type="submit" disabled={!canWrite}>{canWrite ? 'Save rule' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Save rule' : 'Read only'}</button>
       </form>
       <form className="desk-language__form" onSubmit={onRun}>
         <label>Source
           <select value={sourceKind} onChange={(event) => setSourceKind(event.target.value as (typeof AUTOMATION_SOURCES)[number])}>
-            {AUTOMATION_SOURCES.map((item) => <option key={item} value={item}>{item}</option>)}
+            {AUTOMATION_SOURCES.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
           </select>
         </label>
         <label>Source id<input value={sourceId} onChange={(event) => setSourceId(event.target.value)} /></label>
         <label>Result
           <select value={resultName} onChange={(event) => setResultName(event.target.value as (typeof AUTOMATION_RESULTS)[number])}>
-            {AUTOMATION_RESULTS.map((item) => <option key={item} value={item}>{item}</option>)}
+            {AUTOMATION_RESULTS.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
           </select>
         </label>
         <label>Depth<input value={depth} onChange={(event) => setDepth(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite}>{canWrite ? 'Record notification' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Record notification' : 'Read only'}</button>
       </form>
+      </section>
       {error ? <DeskError message={error} /> : null}
       {notice ? <p className="desk-language__copy">{notice}</p> : null}
       {view ? (

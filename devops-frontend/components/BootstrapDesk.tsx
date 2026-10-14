@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
 import { useApiUrl } from '../context/ApiUrlContext';
 import {
@@ -14,6 +13,7 @@ import {
   bootstrapStepBlock,
   deskCanWrite,
   deskErrorText,
+  deskWord,
   parseBootstrap,
   parseBootstrapStep,
   parseBootstraps,
@@ -31,7 +31,7 @@ function staticError(body: unknown): string {
 export default function BootstrapDesk() {
   const apiUrl = useApiUrl();
   const scope = useDeskScope();
-  const [role, setRole] = useState<'viewer' | 'operator'>(sessionRole());
+  const role = sessionRole();
   const [service, setService] = useState('');
   const [version, setVersion] = useState('1');
   const [selectedId, setSelectedId] = useState(0);
@@ -186,41 +186,49 @@ export default function BootstrapDesk() {
 
   return (
     <div className="desk-language">
-      <p className="desk-language__intro">One staged Go service. Catalog, telemetry, and security pass in order. Generated CI validates only after those three. A failed step resumes on the same row.</p>
-      <div className="desk-language__bar">
-        <span>{role === 'viewer' ? 'Viewer' : 'Operator'}</span>
-        <button type="button" onClick={() => setRole((item) => (item === 'viewer' ? 'operator' : 'viewer'))}>
-          {role === 'viewer' ? 'Preview operator' : 'Preview viewer'}
-        </button>
-        <Link href="/templates">Request templates</Link>
-      </div>
-      <form className="desk-language__form" onSubmit={onRecord}>
+      <header className="desk-landing">
+        <h2>Service bootstrap</h2>
+        <p>One staged Go service. Catalog, telemetry, and security pass in order. A failed step resumes on the same row.</p>
+      </header>
+      <section className="desk-language__panel desk-language__rail" aria-label="Stage"><h2>Stage service</h2><form className="desk-language__form" onSubmit={onRecord}>
         <label>Service<input value={service} onChange={(event) => setService(event.target.value)} /></label>
         <label>Language<input value={BOOTSTRAP_LANGUAGE} readOnly /></label>
         <label>Version<input value={version} onChange={(event) => setVersion(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite}>{canWrite ? 'Stage service' : 'Read only'}</button>
-      </form>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Stage service' : 'Read only'}</button>
+      </form></section>
+      {selected ? (
+      <>
       <form className="desk-language__form" onSubmit={onStep}>
         <label>Step
           <select value={stepName} onChange={(event) => setStepName(event.target.value as (typeof BOOTSTRAP_STEPS)[number])}>
-            {BOOTSTRAP_STEPS.map((item) => <option key={item} value={item}>{item}</option>)}
+            {BOOTSTRAP_STEPS.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
           </select>
         </label>
         <label><input type="checkbox" checked={passed} onChange={(event) => setPassed(event.target.checked)} /> Step passed</label>
-        <button type="submit" disabled={!canWrite || !selected}>{canWrite ? 'Record step' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite || !selected}>{canWrite ? 'Record step' : 'Read only'}</button>
       </form>
       <form className="desk-language__form" onSubmit={onPipeline}>
-        <button type="submit" disabled={!canWrite || !selected}>{canWrite ? 'Validate pipeline' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite || !selected}>{canWrite ? 'Validate pipeline' : 'Read only'}</button>
       </form>
       <form className="desk-language__form" onSubmit={onReview}>
-        <label>Reviewer user id<input value={reviewerId} onChange={(event) => setReviewerId(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite || !selected || !selected.ciValid}>{canWrite ? 'Propose review' : 'Read only'}</button>
+        <label>Reviewer<input value={reviewerId} onChange={(event) => setReviewerId(event.target.value)} /></label>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite || !selected || !selected.ciValid}>{canWrite ? 'Propose review' : 'Read only'}</button>
       </form>
-      {!selected ? <p className="desk-language__copy">Select a staged service before recording a step.</p> : null}
-      {error ? <DeskError message={error} /> : null}
+      </>
+      ) : (
+        <p className="desk-language__note">Select a staged service before recording a step.</p>
+      )}
+      {error && error !== workspaceScopeBlock(scope.projectId, scope.environment) ? <DeskError message={error} /> : null}
       {notice ? <p className="desk-language__copy">{notice}</p> : null}
       <section className="desk-language__records" aria-label="Bootstraps">
-        {records.length === 0 ? <p>No staged services in this project.</p> : null}
+        <h2>Staged services</h2>
+        {workspaceScopeBlock(scope.projectId, scope.environment) ? (
+          <div className="desk-language__empty"><DeskStateChip value="unknown" /><p>{workspaceScopeBlock(scope.projectId, scope.environment)}</p></div>
+        ) : records.length === 0 && error.endsWith('request failed') ? (
+          <div className="desk-language__empty"><DeskStateChip value="error" /></div>
+        ) : records.length === 0 ? (
+          <div className="desk-language__empty"><DeskStateChip value="empty" /><p>No staged services in this project.</p></div>
+        ) : null}
         <ul>
           {records.map((item) => (
             <li key={item.id} aria-current={item.id === selectedId ? 'true' : undefined}>

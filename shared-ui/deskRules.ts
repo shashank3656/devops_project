@@ -92,3 +92,52 @@ export function deskSubmitBlock(canWrite: boolean, environment: string): string 
   if (deskValueRejected(environment)) return DESK_REJECTED_MESSAGE;
   return '';
 }
+
+const DESK_WORDS: Record<string, string> = {
+  api_error: 'API error',
+  assignment: 'Assignment',
+  azure: 'Azure',
+  catalog: 'Catalog',
+  cloud_throttle: 'Cloud throttle',
+  credential_expiry: 'Credential expiry',
+  cross_project: 'Cross project',
+  database: 'Database',
+  delivered: 'Delivered',
+  delivery: 'Delivery',
+  deployment: 'Deployment',
+  empty: 'Empty',
+  evidence: 'Evidence',
+  exception: 'Exception',
+  expiry: 'Expiry',
+  failed: 'Failed',
+  finding: 'Finding',
+  fix: 'Fix',
+  gcp: 'GCP',
+  incident: 'Incident',
+  out_of_order: 'Out of order',
+  overdue: 'Overdue',
+  parser_abuse: 'Parser abuse',
+  partial: 'Partial',
+  production: 'Production',
+  provisioning: 'Provisioning',
+  queue_age: 'Queue age',
+  ready: 'Ready',
+  remediation: 'Remediation',
+  restore: 'Restore',
+  runtime: 'Runtime',
+  scan: 'Scan',
+  scan_coverage: 'Scan coverage',
+  scan_health: 'Scan health',
+  security: 'Security',
+  staging: 'Staging',
+  succeeded: 'Succeeded',
+  sync_lag: 'Sync lag',
+  telemetry: 'Telemetry',
+  unknown: 'Unknown',
+  webhook_replay: 'Webhook replay',
+  worker_crash: 'Worker crash',
+};
+
+export function deskWord(value: string): string {
+  return DESK_WORDS[value] || value;
+}

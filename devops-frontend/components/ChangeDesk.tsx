@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
 import { useApiUrl } from '../context/ApiUrlContext';
 import {
@@ -24,7 +23,7 @@ function staticError(body: unknown): string {
 export default function ChangeDesk() {
   const apiUrl = useApiUrl();
   const scope = useDeskScope();
-  const [role, setRole] = useState<'viewer' | 'operator'>(sessionRole());
+  const role = sessionRole();
   const [eventKey, setEventKey] = useState('');
   const [identity, setIdentity] = useState('');
   const [resource, setResource] = useState('');
@@ -144,32 +143,33 @@ export default function ChangeDesk() {
 
   return (
     <div className="desk-language">
-      <p className="desk-language__intro">An authenticated event schedules one rescan. A missed event is reconciled by a periodic scan. Delivery loss stays visible. The finding stays suspected until a different reviewer verifies scan evidence.</p>
-      <div className="desk-language__bar">
-        <span>{role === 'viewer' ? 'Viewer' : 'Operator'}</span>
-        <button type="button" onClick={() => setRole((item) => (item === 'viewer' ? 'operator' : 'viewer'))}>{role === 'viewer' ? 'Preview operator' : 'Preview viewer'}</button>
-        <Link href="/service-bootstrap">Service bootstrap</Link>
-      </div>
-      <form className="desk-language__form" onSubmit={onEvent}>
+      <header className="desk-landing">
+        <h2>Change monitoring</h2>
+        <p>An authenticated event schedules one rescan. A missed event stays visible until a different reviewer verifies it.</p>
+      </header>
+      <section className="desk-language__panel desk-language__rail" aria-label="Event"><h2>Change event</h2><form className="desk-language__form" onSubmit={onEvent}>
         <label>Event key<input value={eventKey} onChange={(event) => setEventKey(event.target.value)} /></label>
         <label>Identity<input value={identity} onChange={(event) => setIdentity(event.target.value)} /></label>
         <label>Resource<input value={resource} onChange={(event) => setResource(event.target.value)} /></label>
         <label>Revision<input value={revision} onChange={(event) => setRevision(event.target.value)} /></label>
         <label><input type="checkbox" checked={authenticated} onChange={(event) => setAuthenticated(event.target.checked)} /> Authenticated</label>
-        <button type="submit" disabled={!canWrite}>{canWrite ? 'Record event' : 'Read only'}</button>
-      </form>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Record event' : 'Read only'}</button>
+      </form></section>
       <form className="desk-language__form" onSubmit={onScan}>
         <label><input type="checkbox" checked={seen} onChange={(event) => setSeen(event.target.checked)} /> Scan saw the event</label>
-        <button type="submit" disabled={!canWrite}>{canWrite ? 'Record scan' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Record scan' : 'Read only'}</button>
       </form>
-      <form className="desk-language__form" onSubmit={onVerify}>
-        <label>Reviewer user id<input value={reviewerId} onChange={(event) => setReviewerId(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite || !selected}>{canWrite ? 'Verify finding' : 'Read only'}</button>
-      </form>
-      {error ? <DeskError message={error} /> : null}
+      {error && error !== workspaceScopeBlock(scope.projectId, scope.environment) ? <DeskError message={error} /> : null}
       {notice ? <p className="desk-language__copy">{notice}</p> : null}
       <section className="desk-language__records" aria-label="Change events">
-        {events.length === 0 ? <p>No change events in this project.</p> : null}
+        <h2>Events</h2>
+        {workspaceScopeBlock(scope.projectId, scope.environment) ? (
+          <div className="desk-language__empty"><DeskStateChip value="unknown" /><p>{workspaceScopeBlock(scope.projectId, scope.environment)}</p></div>
+        ) : events.length === 0 && error.endsWith('request failed') ? (
+          <div className="desk-language__empty"><DeskStateChip value="error" /></div>
+        ) : events.length === 0 ? (
+          <div className="desk-language__empty"><DeskStateChip value="empty" /><p>No change events in this project.</p></div>
+        ) : null}
         <ul>
           {events.map((item) => (
             <li key={item.id} aria-current={item.id === selectedId ? 'true' : undefined}>
@@ -183,6 +183,14 @@ export default function ChangeDesk() {
           ))}
         </ul>
       </section>
+      {selected ? (
+        <form className="desk-language__form" onSubmit={onVerify}>
+          <label>Reviewer<input value={reviewerId} inputMode="numeric" onChange={(event) => setReviewerId(event.target.value)} /></label>
+          <button type="submit" className="btn btn-secondary" disabled={!canWrite}>{canWrite ? 'Verify finding' : 'Read only'}</button>
+        </form>
+      ) : events.length > 0 ? (
+        <p className="desk-language__note">Select an event before verifying the finding.</p>
+      ) : null}
     </div>
   );
 }

@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
 import { useApiUrl } from '../context/ApiUrlContext';
 import {
@@ -16,6 +15,7 @@ import {
   acceptanceRiskBlock,
   deskCanWrite,
   deskErrorText,
+  deskWord,
   parseAcceptanceCases,
   parsePilotJourney,
   pilotExpansionBlock,
@@ -36,7 +36,7 @@ function staticError(body: unknown, fallback: string): string {
 export default function PilotDesk() {
   const apiUrl = useApiUrl();
   const scope = useDeskScope();
-  const [role, setRole] = useState<'viewer' | 'operator'>(sessionRole());
+  const role = sessionRole();
   const [teamId, setTeamId] = useState('');
   const [service, setService] = useState('');
   const [account, setAccount] = useState('');
@@ -425,53 +425,53 @@ export default function PilotDesk() {
 
   return (
     <div className="desk-language">
-      <p className="desk-language__intro">One team, one service, and an account label across staging and production. Blank evidence stays Unknown. An expansion acceptance creates no cloud resource.</p>
-      <div className="desk-language__bar">
-        <span>{role === 'viewer' ? 'Viewer' : 'Operator'}</span>
-        <button type="button" onClick={() => setRole((item) => (item === 'viewer' ? 'operator' : 'viewer'))}>{role === 'viewer' ? 'Preview operator' : 'Preview viewer'}</button>
-        <Link href="/readiness-signals">Readiness signals</Link>
-      </div>
-      <form className="desk-language__form" onSubmit={onJourney}>
-        <label>Team id<input value={teamId} onChange={(event) => setTeamId(event.target.value)} /></label>
+      <header className="desk-landing">
+        <h2>Pilot and acceptance</h2>
+        <p>One team, one service, and an account label. Blank evidence stays Unknown. Accepting an expansion creates no cloud resource.</p>
+      </header>
+      <section className="desk-language__panel desk-language__rail" aria-label="Journey"><h2>Pilot journey</h2><form className="desk-language__form" onSubmit={onJourney}>
+        <label>Team<input value={teamId} onChange={(event) => setTeamId(event.target.value)} /></label>
         <label>Service<input value={service} onChange={(event) => setService(event.target.value)} /></label>
         <label>Account label<input value={account} onChange={(event) => setAccount(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite}>{canWrite ? 'Open journey' : 'Read only'}</button>
-      </form>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Open journey' : 'Read only'}</button>
+      </form></section>
+      {journey ? (
+      <>
       <form className="desk-language__form" onSubmit={onStep}>
         <label>Step environment
           <select value={stepEnv} onChange={(event) => setStepEnv(event.target.value as (typeof PILOT_ENVIRONMENTS)[number])}>
-            {PILOT_ENVIRONMENTS.map((item) => <option key={item} value={item}>{item}</option>)}
+            {PILOT_ENVIRONMENTS.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
           </select>
         </label>
         <label>Step
           <select value={step} onChange={(event) => setStep(event.target.value as (typeof PILOT_STEPS)[number])}>
-            {PILOT_STEPS.map((item) => <option key={item} value={item}>{item}</option>)}
+            {PILOT_STEPS.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
           </select>
         </label>
         <label>Evidence<input value={evidence} onChange={(event) => setEvidence(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite || !journey}>{canWrite ? 'Record step' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite || !journey}>{canWrite ? 'Record step' : 'Read only'}</button>
       </form>
       <form className="desk-language__form" onSubmit={onRollback}>
         <label><input type="checkbox" checked={elapsedSet} onChange={(event) => setElapsedSet(event.target.checked)} /> Elapsed time is set</label>
         <label>Elapsed seconds<input value={elapsed} onChange={(event) => setElapsed(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite || !journey}>{canWrite ? 'Rehearse rollback' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite || !journey}>{canWrite ? 'Rehearse rollback' : 'Read only'}</button>
       </form>
       <form className="desk-language__form" onSubmit={onPublish}>
-        <label>Reviewer user id<input value={reviewerId} onChange={(event) => setReviewerId(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite || !journey}>{canWrite ? 'Publish release' : 'Read only'}</button>
+        <label>Reviewer<input value={reviewerId} onChange={(event) => setReviewerId(event.target.value)} /></label>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite || !journey}>{canWrite ? 'Publish release' : 'Read only'}</button>
       </form>
       <form className="desk-language__form" onSubmit={onExpansion}>
         <label>Provider
           <select value={provider} onChange={(event) => setProvider(event.target.value as (typeof PILOT_PROVIDERS)[number])}>
-            {PILOT_PROVIDERS.map((item) => <option key={item} value={item}>{item}</option>)}
+            {PILOT_PROVIDERS.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
           </select>
         </label>
         <label>Expansion scope<input value={expansionScope} onChange={(event) => setExpansionScope(event.target.value)} /></label>
-        <label>Owner user id<input value={ownerId} onChange={(event) => setOwnerId(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite || !journey}>{canWrite ? 'Propose expansion' : 'Read only'}</button>
+        <label>Owner<input value={ownerId} onChange={(event) => setOwnerId(event.target.value)} /></label>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite || !journey}>{canWrite ? 'Propose expansion' : 'Read only'}</button>
       </form>
       <form className="desk-language__form" onSubmit={onAcceptExpansion}>
-        <button type="submit" disabled={!canWrite || !expansionId}>{canWrite ? 'Accept expansion' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite || !expansionId}>{canWrite ? 'Accept expansion' : 'Read only'}</button>
       </form>
       <form className="desk-language__form" onSubmit={onBlocker}>
         <label>Blocker severity
@@ -481,19 +481,23 @@ export default function PilotDesk() {
           </select>
         </label>
         <label>Blocker summary<input value={summary} onChange={(event) => setSummary(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite || !journey}>{canWrite ? 'Open blocker' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite || !journey}>{canWrite ? 'Open blocker' : 'Read only'}</button>
       </form>
       <form className="desk-language__form" onSubmit={onResolve}>
-        <button type="submit" disabled={!canWrite || !blockerId}>{canWrite ? 'Resolve blocker' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite || !blockerId}>{canWrite ? 'Resolve blocker' : 'Read only'}</button>
       </form>
       <form className="desk-language__form" onSubmit={onFeedback}>
         <label>Feedback<input value={note} onChange={(event) => setNote(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite || !journey}>{canWrite ? 'Save feedback' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite || !journey}>{canWrite ? 'Save feedback' : 'Read only'}</button>
       </form>
+      </>
+      ) : (
+        <p className="desk-language__note">Open a journey before recording a step, rollback, or release.</p>
+      )}
       <form className="desk-language__form" onSubmit={onCase}>
         <label>Scenario
           <select value={scenario} onChange={(event) => setScenario(event.target.value as (typeof PILOT_SCENARIOS)[number])}>
-            {PILOT_SCENARIOS.map((item) => <option key={item} value={item}>{item}</option>)}
+            {PILOT_SCENARIOS.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
           </select>
         </label>
         <label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} /></label>
@@ -501,23 +505,35 @@ export default function PilotDesk() {
         <label><input type="checkbox" checked={partial} onChange={(event) => setPartial(event.target.checked)} /> Partial result</label>
         <label>Detail<input value={detail} onChange={(event) => setDetail(event.target.value)} /></label>
         <label>Read project<input value={readProject} onChange={(event) => setReadProject(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite}>{canWrite ? 'Record case' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Record case' : 'Read only'}</button>
       </form>
+      {selectedCase ? (
+      <>
       <form className="desk-language__form" onSubmit={onClose}>
-        <button type="submit" disabled={!canWrite || !selectedCase}>{canWrite ? 'Close finding' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite || !selectedCase}>{canWrite ? 'Close finding' : 'Read only'}</button>
       </form>
       <form className="desk-language__form" onSubmit={onRisk}>
         <label>Residual risk<input value={riskSummary} onChange={(event) => setRiskSummary(event.target.value)} /></label>
-        <button type="submit" disabled={!canWrite || !selectedCase}>{canWrite ? 'Record risk' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite || !selectedCase}>{canWrite ? 'Record risk' : 'Read only'}</button>
       </form>
       <form className="desk-language__form" onSubmit={onAcceptRisk}>
-        <button type="submit" disabled={!canWrite || !riskId}>{canWrite ? 'Accept risk' : 'Read only'}</button>
+        <button type="submit" className="btn btn-primary" disabled={!canWrite || !riskId}>{canWrite ? 'Accept risk' : 'Read only'}</button>
       </form>
-      {error ? <DeskError message={error} /> : null}
+      </>
+      ) : (
+        <p className="desk-language__note">Select a case before closing a finding or recording a risk.</p>
+      )}
+      {error && error !== workspaceScopeBlock(scope.projectId, scope.environment) ? <DeskError message={error} /> : null}
       {notice ? <p className="desk-language__copy">{notice}</p> : null}
       {journey ? <p className="desk-language__copy">{journey.service} · account {journey.account}</p> : null}
       <section className="desk-language__records" aria-label="Acceptance cases">
-        {hiddenRead || visibleCases.length === 0 ? <p>No acceptance cases in this project.</p> : null}
+        {workspaceScopeBlock(scope.projectId, scope.environment) ? (
+          <div className="desk-language__empty"><DeskStateChip value="unknown" /><p>{workspaceScopeBlock(scope.projectId, scope.environment)}</p></div>
+        ) : !hiddenRead && visibleCases.length === 0 && error.endsWith('request failed') ? (
+          <div className="desk-language__empty"><DeskStateChip value="error" /></div>
+        ) : visibleCases.length === 0 ? (
+          <div className="desk-language__empty"><DeskStateChip value="empty" /><p>No acceptance cases in this project.</p></div>
+        ) : null}
         <ul>
           {visibleCases.map((item) => (
             <li key={item.id} aria-current={item.id === selectedCase ? 'true' : undefined}>
