@@ -212,12 +212,12 @@ export default function ReportDesk() {
         <label>Depth<input value={depth} onChange={(event) => setDepth(event.target.value)} /></label>
         <button type="submit" disabled={!canWrite}>{canWrite ? 'Record notification' : 'Read only'}</button>
       </form>
-      {error ? <DeskError>{error}</DeskError> : null}
+      {error ? <DeskError message={error} /> : null}
       {notice ? <p className="desk-language__copy">{notice}</p> : null}
       {view ? (
         <p className="desk-language__copy">
           {view.numeratorName} {view.numerator} / {view.denominatorName} {view.denominator}. {view.timezone}.
-          <DeskStateChip state={reportCoverageState(view.coverage)} />
+          <DeskStateChip value={reportCoverageState(view.coverage)} />
           {view.coverage === 'partial' ? <span>Partial</span> : null}
         </p>
       ) : null}

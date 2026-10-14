@@ -513,7 +513,7 @@ export default function PilotDesk() {
       <form className="desk-language__form" onSubmit={onAcceptRisk}>
         <button type="submit" disabled={!canWrite || !riskId}>{canWrite ? 'Accept risk' : 'Read only'}</button>
       </form>
-      {error ? <DeskError>{error}</DeskError> : null}
+      {error ? <DeskError message={error} /> : null}
       {notice ? <p className="desk-language__copy">{notice}</p> : null}
       {journey ? <p className="desk-language__copy">{journey.service} · account {journey.account}</p> : null}
       <section className="desk-language__records" aria-label="Acceptance cases">
@@ -524,7 +524,7 @@ export default function PilotDesk() {
               <button type="button" onClick={() => setSelectedCase(item.id)}>{item.subject}</button>
               <span>{item.scenario}</span>
               <span>{item.findingOpen ? 'Finding open' : 'Finding closed'}</span>
-              <DeskStateChip state={item.state === 'unknown' ? 'unknown' : 'ready'} />
+              <DeskStateChip value={item.state === 'unknown' ? 'unknown' : 'ready'} />
               {item.reason ? <span>{item.reason}</span> : null}
             </li>
           ))}

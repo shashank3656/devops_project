@@ -193,7 +193,7 @@ export default function BackupDesk() {
         <button type="submit" disabled={!canWrite || !selected}>{canWrite ? 'Record drill' : 'Read only'}</button>
       </form>
       {!selected ? <p className="desk-language__copy">Select a backup before linking a dependency or recording a drill.</p> : null}
-      {error ? <DeskError>{error}</DeskError> : null}
+      {error ? <DeskError message={error} /> : null}
       {notice ? <p className="desk-language__copy">{notice}</p> : null}
       {drill ? <p className="desk-language__copy">Drill {drill.state}. Can launch off.</p> : null}
       <section className="desk-language__records" aria-label="Backups">
@@ -205,7 +205,7 @@ export default function BackupDesk() {
               <span>{item.scope}</span>
               <span>{item.verified ? 'Verified' : 'Unverified'}</span>
               <span>{item.retentionDays} days</span>
-              <DeskStateChip state={item.observed} />
+              <DeskStateChip value={item.observed} />
               <span>Can launch off</span>
             </li>
           ))}

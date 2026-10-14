@@ -217,7 +217,7 @@ export default function BootstrapDesk() {
         <button type="submit" disabled={!canWrite || !selected || !selected.ciValid}>{canWrite ? 'Propose review' : 'Read only'}</button>
       </form>
       {!selected ? <p className="desk-language__copy">Select a staged service before recording a step.</p> : null}
-      {error ? <DeskError>{error}</DeskError> : null}
+      {error ? <DeskError message={error} /> : null}
       {notice ? <p className="desk-language__copy">{notice}</p> : null}
       <section className="desk-language__records" aria-label="Bootstraps">
         {records.length === 0 ? <p>No staged services in this project.</p> : null}
@@ -229,7 +229,7 @@ export default function BootstrapDesk() {
               <span>Version {item.version}</span>
               <span>{item.state}</span>
               <span>{item.ciValid ? 'CI validated' : 'CI not validated'}</span>
-              <DeskStateChip state={item.observed} />
+              <DeskStateChip value={item.observed} />
               <span>Can apply off</span>
             </li>
           ))}
