@@ -16,7 +16,7 @@ const SAMPLE = [
   { key: 'catalog', label: 'Catalog', state: 'stale' },
 ];
 
-function DeskLanguageScreen() {
+function DeskLanguageScreen({ showTitle }: { showTitle: boolean }) {
   const [role, setRole] = useState('operator');
   const [project, setProject] = useState('this');
   const [environment, setEnvironment] = useState('staging');
@@ -44,13 +44,9 @@ function DeskLanguageScreen() {
 
   return (
         <div className="desk-language">
-          <header className="sd-hero">
-            <div>
-              <h1 className="sd-hero__title">Desk language</h1>
-              <p className="sd-hero__subtitle">
-                Empty, error, stale, unknown, or ready. Missing data stays unknown.
-              </p>
-            </div>
+          <header className="desk-landing">
+            {showTitle ? <h1>Desk language</h1> : <h2>Desk language</h2>}
+            <p>Empty, error, stale, unknown, or ready. Missing data stays unknown.</p>
           </header>
 
           <section className="desk-language__panel" aria-label="State language">
@@ -59,6 +55,8 @@ function DeskLanguageScreen() {
               {DESK_STATES.map((state) => (
                 <DeskStateChip key={state} value={state} />
               ))}
+            </div>
+            <div className="desk-language__samples">
               <span className="desk-language__sample">
                 Source labeled healthy
                 <DeskStateChip value="healthy" />
@@ -99,6 +97,7 @@ function DeskLanguageScreen() {
 
           <section className="desk-language__panel" aria-label="Environment">
             <h2>Environment</h2>
+            <p className="desk-language__note">This check is a sample. It does not change the project bar.</p>
             <DeskEnvironmentForm
               environment={environment}
               canWrite={canWrite}
@@ -126,7 +125,7 @@ export default function DeskLanguagePage() {
     setSignedIn(Boolean(localStorage.getItem('devops_token')));
   }, []);
 
-  const screen = <DeskLanguageScreen />;
+  const screen = <DeskLanguageScreen showTitle={!signedIn} />;
   return (
     <>
       <Head>

@@ -5,6 +5,7 @@ import {
   DeskStateChip,
   WORK_KINDS,
   WORK_PAGE_SIZES,
+  errorWorkView,
   hiddenWorkView,
   parseWorkView,
   unknownWorkView,
@@ -44,7 +45,7 @@ async function loadWorkspace(apiUrl: string, path: string, projectId: string, en
   }
   if (!response.ok) {
     const failure = workspaceFailure(response.status, body);
-    return { view: { ...hiddenWorkView(), state: failure.state }, message: failure.message };
+    return { view: failure.state === 'error' ? errorWorkView() : hiddenWorkView(), message: failure.message };
   }
   return { view: parseWorkView(body, projectId, environment), message: '' };
 }
@@ -72,7 +73,7 @@ export function MyWorkSummary() {
       })
       .catch(() => {
         if (cancel) return;
-        setView({ ...hiddenWorkView(), state: 'error' });
+        setView(errorWorkView());
         setMessage('workspace request failed');
       });
     return () => {
@@ -80,18 +81,19 @@ export function MyWorkSummary() {
     };
   }, [apiUrl, block, scope.environment, scope.projectId]);
 
+  const shown = block ? unknownWorkView() : view;
   const href = block ? '/my-work' : `/my-work?${workspaceQuery(scope.projectId, scope.environment)}`;
 
   return (
     <section className="v3-panel" aria-label="My work and services">
       <div className="v3-panel__head">
         <h2>My work and services</h2>
-        <DeskStateChip value={view.state} />
+        <DeskStateChip value={shown.state} />
         <Link href={href} className="btn btn-secondary">Open</Link>
       </div>
-      <DeskError message={message} />
+      <DeskError message={block || message} />
       <ul className="my-work__sections">
-        {view.sections.map((section) => (
+        {shown.sections.map((section) => (
           <li key={section.kind}>
             <Link href={block ? href : workRecordHref(scope.projectId, scope.environment, section.kind, '')}>
               <span>{workKindLabel(section.kind)}</span>
@@ -166,14 +168,15 @@ export function MyWorkDesk({
     ])
       .then(([pageResult, workResult]) => {
         if (cancel) return;
-        setPageView(pageResult.view);
-        setWorkView(workResult.view);
-        setMessage(pageResult.message || workResult.message);
+        const failed = pageResult.view.state === 'error' || workResult.view.state === 'error';
+        setPageView(failed ? errorWorkView() : pageResult.view);
+        setWorkView(failed ? errorWorkView() : workResult.view);
+        setMessage(failed ? pageResult.message || workResult.message || 'workspace request failed' : '');
       })
       .catch(() => {
         if (cancel) return;
-        setPageView({ ...hiddenWorkView(), state: 'error' });
-        setWorkView({ ...hiddenWorkView(), state: 'error' });
+        setPageView(errorWorkView());
+        setWorkView(errorWorkView());
         setMessage('workspace request failed');
       });
     return () => {
@@ -201,7 +204,7 @@ export function MyWorkDesk({
       })
       .catch(() => {
         if (cancel) return;
-        setServiceView({ ...hiddenWorkView(), state: 'error' });
+        setServiceView(errorWorkView());
         setServiceMessage('workspace request failed');
       });
     return () => {
@@ -220,22 +223,25 @@ export function MyWorkDesk({
   }
 
   const focused = sourceId && workView.items.some((item) => item.key.endsWith(`:${sourceId}`));
-  const lastPage = Math.max(1, Math.ceil(workView.total / pageSize));
+  const lastPage = Math.max(1, Math.ceil((block ? 0 : workView.total) / pageSize));
+  const shownPage = block ? unknownWorkView() : pageView;
+  const shownWork = block ? unknownWorkView() : workView;
+  const shownMessage = block ? block : shownPage.state === 'error' ? message : '';
 
   return (
     <div className="desk-language">
-      <header className="sd-hero">
-        <div>
-          <h1 className="sd-hero__title">My work and services</h1>
-          <p className="sd-hero__subtitle">Deployment, incident, security, resource, and owner records for one project and one environment.</p>
+      <header className="desk-landing">
+        <div className="desk-landing__title">
+          <h2>My work</h2>
+          <DeskStateChip value={shownPage.state} />
         </div>
-        <DeskStateChip value={pageView.state} />
+        <p>Deployment, incident, security, resource, and owner records for one project and one environment.</p>
       </header>
-      <DeskError message={message} />
+      <DeskError message={shownMessage} />
       <section className="desk-language__panel" aria-label="Page state">
         <h2>Sections</h2>
         <ul className="my-work__sections">
-          {pageView.sections.map((section) => (
+          {shownPage.sections.map((section) => (
             <li key={section.kind}>
               <button type="button" onClick={() => onKind(section.kind)}>
                 <span>{workKindLabel(section.kind)}</span>
@@ -262,14 +268,14 @@ export function MyWorkDesk({
             </button>
           ))}
         </div>
-        {workView.items.length === 0 ? (
+        {block || shownWork.state !== 'empty' ? null : shownWork.items.length === 0 ? (
           <div className="desk-language__empty">
-            <DeskStateChip value={workView.state === 'error' ? 'error' : 'empty'} />
-            <p>{block ? 'Choose one project and one environment.' : 'No work in this environment.'}</p>
+            <DeskStateChip value="empty" />
+            <p>No work in this environment.</p>
           </div>
         ) : (
           <ul className="desk-language__records">
-            {workView.items.map((item) => (
+            {shownWork.items.map((item) => (
               <li key={item.key} aria-current={focused && item.key.endsWith(`:${sourceId}`) ? 'true' : undefined}>
                 <Link href={item.href}>{item.label}</Link>
                 <DeskStateChip value={item.state} />
@@ -277,10 +283,12 @@ export function MyWorkDesk({
             ))}
           </ul>
         )}
-        <div className="desk-language__choices">
-          <button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)}>Previous</button>
-          <button type="button" disabled={page >= lastPage} onClick={() => onPage(page + 1)}>Next</button>
-        </div>
+        {block || shownWork.state !== 'empty' ? null : (
+          <div className="desk-language__choices">
+            <button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)}>Previous</button>
+            <button type="button" disabled={page >= lastPage} onClick={() => onPage(page + 1)}>Next</button>
+          </div>
+        )}
       </section>
       <section className="desk-language__panel" aria-label="Service list">
         <h2>Service</h2>
@@ -291,14 +299,22 @@ export function MyWorkDesk({
             applyService();
           }}
         >
-          <label htmlFor="work-service">Service</label>
-          <input id="work-service" name="service" value={draftService} autoComplete="off" onChange={(event) => setDraftService(event.target.value)} />
-          <button type="submit" className="btn btn-primary">Show service</button>
+          <div className="desk-language__field">
+            <label htmlFor="work-service">Service</label>
+            <input id="work-service" name="service" value={draftService} autoComplete="off" onChange={(event) => setDraftService(event.target.value)} />
+          </div>
+          <div className="desk-language__actions">
+            <button type="submit" className="btn btn-primary">Show service</button>
+          </div>
         </form>
         <DeskError message={serviceMessage} />
-        {serviceView.items.length === 0 ? (
+        {serviceView.state === 'error' ? (
           <div className="desk-language__empty">
-            <DeskStateChip value={service && !serviceMessage ? serviceView.state : 'empty'} />
+            <DeskStateChip value="error" />
+          </div>
+        ) : block || serviceMessage ? null : serviceView.items.length === 0 ? (
+          <div className="desk-language__empty">
+            <DeskStateChip value="empty" />
             <p>{service ? 'No records for this service.' : 'One service is required.'}</p>
           </div>
         ) : (

@@ -5112,3 +5112,26 @@ html[data-theme] .portal-detail-grid.chg-detail__grid {
     align-items: flex-start;
   }
 }
+
+/* Desk pages carry their own title, so the cramped navbar name can step aside. */
+html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .devops-navbar__title-wrap {
+  display: none;
+}
+
+html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .devops-navbar__left {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .ig-scope-bar {
+  flex: 1 1 100%;
+}
+
+html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .ig-scope-bar__label {
+  white-space: nowrap;
+}
+
+html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .ig-scope-bar__control {
+  min-width: 140px;
+  max-width: 200px;
+}

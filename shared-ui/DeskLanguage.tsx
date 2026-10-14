@@ -76,19 +76,23 @@ export function DeskEnvironmentForm({
 
   return (
     <form className="desk-language__form" onSubmit={handleSubmit}>
-      <label htmlFor="desk-environment">Environment</label>
-      <input
-        id="desk-environment"
-        name="environment"
-        value={environment}
-        autoComplete="off"
-        onChange={(event) => onEnvironment(event.target.value)}
-      />
-      <button type="submit" className="btn btn-primary" disabled={Boolean(block)}>
-        {canWrite ? 'Check environment' : 'Read only'}
-      </button>
+      <div className="desk-language__field">
+        <label htmlFor="desk-environment">Environment</label>
+        <input
+          id="desk-environment"
+          name="environment"
+          value={environment}
+          autoComplete="off"
+          onChange={(event) => onEnvironment(event.target.value)}
+        />
+      </div>
+      <div className="desk-language__actions">
+        <button type="submit" className="btn btn-primary" disabled={Boolean(block)}>
+          {canWrite ? 'Check environment' : 'Read only'}
+        </button>
+        {children}
+      </div>
       <DeskError message={message || block} />
-      {children}
     </form>
   );
 }
