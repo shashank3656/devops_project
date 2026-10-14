@@ -294,7 +294,7 @@ export default function ReadinessDesk() {
         <label>Job key<input value={jobKey} onChange={(event) => setJobKey(event.target.value)} /></label>
         <button type="submit" disabled={!canWrite}>{canWrite ? 'Queue job' : 'Read only'}</button>
       </form>
-      {error ? <DeskError>{error}</DeskError> : null}
+      {error ? <DeskError message={error} /> : null}
       {notice ? <p className="desk-language__copy">{notice}</p> : null}
       {target ? <p className="desk-language__copy">Target {target.state}. RPO {target.rpoSeconds}. RTO {target.rtoSeconds}.</p> : null}
       {restoreState ? <p className="desk-language__copy">Restore {restoreState}.</p> : null}
@@ -306,7 +306,7 @@ export default function ReadinessDesk() {
               <span>{item.kind}</span>
               <span>{item.coverage}</span>
               <span>{item.count}</span>
-              <DeskStateChip state={readinessObservedState(item.state)} />
+              <DeskStateChip value={readinessObservedState(item.state)} />
             </li>
           ))}
         </ul>

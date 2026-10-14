@@ -166,7 +166,7 @@ export default function ChangeDesk() {
         <label>Reviewer user id<input value={reviewerId} onChange={(event) => setReviewerId(event.target.value)} /></label>
         <button type="submit" disabled={!canWrite || !selected}>{canWrite ? 'Verify finding' : 'Read only'}</button>
       </form>
-      {error ? <DeskError>{error}</DeskError> : null}
+      {error ? <DeskError message={error} /> : null}
       {notice ? <p className="desk-language__copy">{notice}</p> : null}
       <section className="desk-language__records" aria-label="Change events">
         {events.length === 0 ? <p>No change events in this project.</p> : null}
@@ -177,7 +177,7 @@ export default function ChangeDesk() {
               <span>{item.state}</span>
               <span>{item.suspected ? 'Suspected' : 'Not suspected'}</span>
               <span>Work {item.workCount}</span>
-              <DeskStateChip state={item.observed} />
+              <DeskStateChip value={item.observed} />
               {item.reason ? <span>{item.reason}</span> : null}
             </li>
           ))}
