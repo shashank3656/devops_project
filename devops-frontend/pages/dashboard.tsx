@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
+import { MyWorkSummary } from '../components/MyWorkPanel';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { WORKSPACE_SCOPE_EVENT, readWorkspaceScope, type WorkspacePayload } from '@infragate/ui';
 
@@ -195,6 +196,8 @@ export default function DevOpsDashboard() {
               <Link href="/health" className="btn btn-secondary">Open Service Status</Link>
             </aside>
           </section>
+
+          <MyWorkSummary />
 
           <section>
             <h2 className="v3-shortcuts__title">Your shortcuts</h2>

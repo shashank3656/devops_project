@@ -108,7 +108,7 @@ func operatorAuditActionTracked(action string) bool {
 		"cloud_account_onboard", "cloud_account_disable", "cloud_account_enable",
 		"cloud_account_trust_update", "cloud_account_test",
 		"template_create", "template_update", "template_delete",
-		"security_gate_policy", "security_gate_override", "finding_due_date", "risk_exception":
+		"security_gate_policy", "security_gate_override", "finding_due_date", "risk_exception", "slo_definition", "pod_failure", "sre_incident", "sre_episode", "automation_rule", "report_definition", "outbound_sync", "readiness_signal", "acceptance_case", "pilot_journey", "webhook_lifecycle", "access_grant", "drift_plan", "backup_record", "service_bootstrap", "change_monitor":
 		return true
 	default:
 		return false
