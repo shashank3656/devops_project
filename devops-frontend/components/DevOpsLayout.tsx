@@ -73,6 +73,16 @@ function getProfileInitials(): string {
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Overview',
+  '/my-work': 'My work',
+  '/desk-language': 'Desk language',
+  '/temporary-access': 'Temporary access',
+  '/infrastructure-drift': 'Infrastructure drift',
+  '/backup-restore': 'Backup and restore',
+  '/service-bootstrap': 'Service bootstrap',
+  '/change-monitoring': 'Change monitoring',
+  '/readiness-signals': 'Readiness signals',
+  '/pilot-acceptance': 'Pilot and acceptance',
+  '/reports-automation': 'Reports and automation',
   '/service-desk': 'Service desk',
   '/approval-center': 'Approval queue',
   '/approval-sla': 'Approval timing',
@@ -503,6 +513,16 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
 
   const primaryNavItems: NavItem[] = [
     { href: '/dashboard', label: 'Overview', Icon: IconWorkload },
+    { href: '/my-work', label: 'My work', Icon: IconBookOpen },
+    { href: '/temporary-access', label: 'Temporary access', Icon: IconKey },
+    { href: '/infrastructure-drift', label: 'Infrastructure drift', Icon: IconK8s },
+    { href: '/backup-restore', label: 'Backup and restore', Icon: IconRefreshCw },
+    { href: '/service-bootstrap', label: 'Service bootstrap', Icon: IconTemplates },
+    { href: '/change-monitoring', label: 'Change monitoring', Icon: IconShield },
+    { href: '/readiness-signals', label: 'Readiness signals', Icon: IconAlertTriangle },
+    { href: '/pilot-acceptance', label: 'Pilot and acceptance', Icon: IconBookOpen },
+    { href: '/reports-automation', label: 'Reports and automation', Icon: IconFileText },
+    { href: '/desk-language', label: 'Desk language', Icon: IconFileText },
     {
       href: serviceDeskHref,
       label: 'Service desk',
@@ -526,6 +546,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/cloud-resources', label: 'Cloud inventory' },
         { href: '/k8s', label: 'Kubernetes' },
         { href: '/promotions', label: 'Releases' },
+        { href: '/infrastructure-drift', label: 'Infrastructure drift' },
       ],
     });
     primaryNavItems.push({
@@ -558,9 +579,15 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/evidence', label: 'Evidence', Icon: IconFileText },
         { href: '/policies', label: 'Policy as code', Icon: IconShield },
         { href: '/ops-command-center', label: 'Operations', Icon: IconAlertTriangle },
+        { href: '/backup-restore', label: 'Backup and restore', Icon: IconRefreshCw },
+        { href: '/readiness-signals', label: 'Readiness signals', Icon: IconAlertTriangle },
+        { href: '/pilot-acceptance', label: 'Pilot and acceptance', Icon: IconBookOpen },
         { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
         { href: '/templates', label: 'Request templates', Icon: IconTemplates },
+        { href: '/service-bootstrap', label: 'Service bootstrap', Icon: IconTemplates },
+        { href: '/change-monitoring', label: 'Change monitoring', Icon: IconShield },
         { href: '/access-overrides', label: 'Access exceptions', Icon: IconKey },
+        { href: '/temporary-access', label: 'Temporary access', Icon: IconKey },
         { href: '/rollback-console', label: 'Rollback', Icon: IconRefreshCw },
         {
           href: '/notification-settings',
@@ -568,6 +595,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           Icon: IconBell,
           children: [
             { href: '/notification-settings', label: 'Settings' },
+            { href: '/reports-automation', label: 'Reports and automation' },
             { href: '/retry-center', label: 'Retries' },
             { href: '/approval-notification-analytics', label: 'Analytics' },
           ],
