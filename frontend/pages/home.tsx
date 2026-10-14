@@ -73,12 +73,17 @@ export default function Home() {
         activityHref="/history"
         actions={
           <>
-            <Link href="/changes" className="btn btn-secondary">Changes</Link>
-            <Link href="/incidents" className="btn btn-secondary">Incidents</Link>
-            <Link href="/create-infrastructure" className="btn btn-primary">New request</Link>
+            <Link href="/create-infrastructure" className="btn btn-primary">Create request</Link>
+            <Link href="/history" className="btn btn-secondary">My requests</Link>
           </>
         }
-      />
+      >
+        <p className="v3-muted">
+          {workspace.pipeline?.project_name
+            ? `Project: ${workspace.pipeline.project_name}`
+            : 'Open My projects when this home has no project yet.'}
+        </p>
+      </WorkspaceHome>
     </>
   );
 }

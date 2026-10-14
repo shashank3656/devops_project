@@ -1552,6 +1552,10 @@ func MigrateDatabase() error {
 	migrateBackupSchema()
 	migrateBootstrapSchema()
 	migrateMonitorSchema()
+	migrateOncallCoverageSchema()
+	migrateCapacityPlanSchema()
+	migrateMaintenanceNoticeSchema()
+	migrateRetirementCaseSchema()
 
 	log.Println("Database schema is up to date")
 	return nil

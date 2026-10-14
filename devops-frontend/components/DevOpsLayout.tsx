@@ -26,6 +26,7 @@ import {
 } from './Icons';
 import { SupportHub } from '@infragate/ui';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
+import { rememberReturn } from '../lib/returnPath';
 import {
   CommandPalette,
   MobileTabBar,
@@ -45,7 +46,8 @@ import {
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
 const SIDEBAR_COLLAPSED_KEY = 'devops-sidebar-collapsed';
-const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@setuops.example';
+const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || '';
+const supportEmailReady = supportEmail.includes('@') && !supportEmail.includes('example');
 
 interface DevopsUser {
   id: number;
@@ -83,6 +85,10 @@ const PAGE_TITLES: Record<string, string> = {
   '/readiness-signals': 'Readiness signals',
   '/pilot-acceptance': 'Pilot and acceptance',
   '/reports-automation': 'Reports and automation',
+  '/on-call': 'On-call',
+  '/capacity': 'Capacity',
+  '/maintenance': 'Maintenance',
+  '/retirement': 'Retirement',
   '/service-desk': 'Service desk',
   '/approval-center': 'Approval queue',
   '/approval-sla': 'Approval timing',
@@ -145,6 +151,9 @@ const PAGE_TITLES: Record<string, string> = {
   '/projects': 'Projects',
   '/team': 'Team',
   '/credential-audit': 'Secrets',
+  '/security/cloud-scan': 'Cloud scan',
+  '/security/code-scan': 'Code scan',
+  '/security/findings': 'Findings',
   '/profile': 'Profile',
   '/cloud-accounts': 'Cloud accounts',
   '/cloud-resources': 'Cloud inventory',
@@ -187,6 +196,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const apiUrl = useApiUrl();
   const pathname = router.pathname;
   const [user, setUser] = useState<DevopsUser | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -209,6 +219,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const keyboardHelpTimer = useRef<number | null>(null);
 
   const clearSessionAndRedirect = useCallback(() => {
+    rememberReturn(router.asPath || '');
     localStorage.removeItem(DEVOPS_TOKEN_KEY);
     localStorage.removeItem(DEVOPS_USER_KEY);
     if (typeof window !== 'undefined') {
@@ -224,8 +235,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      const u = localStorage.getItem(DEVOPS_USER_KEY);
-      if (u) setUser(JSON.parse(u));
       const c = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
       setSidebarCollapsed(c === 'true');
     } catch (_) {}
@@ -246,7 +255,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           return null;
         }
         if (!response.ok) {
-          return null;
+          return {};
         }
         return response.json().catch(() => null);
       })
@@ -257,9 +266,12 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           if (typeof data.token === 'string' && data.token.trim()) {
             localStorage.setItem(DEVOPS_TOKEN_KEY, data.token.trim());
           }
+          setSessionReady(true);
+          return;
         }
+        if (data !== null) setSessionReady(true);
       })
-      .catch(() => {});
+      .catch(() => setSessionReady(true));
   }, [apiUrl, clearSessionAndRedirect]);
 
   useEffect(() => {
@@ -522,8 +534,15 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     },
     { href: '/services', label: 'Services', Icon: IconProjects },
     { href: '/catalog', label: 'Catalog', Icon: IconProjects },
-    { href: '/connections', label: 'Connections', Icon: IconGitOps },
-    { href: '/webhooks', label: 'Webhooks', Icon: IconRefreshCw },
+    {
+      href: '/connections',
+      label: 'Connections',
+      Icon: IconGitOps,
+      children: [
+        { href: '/connections', label: 'Health' },
+        { href: '/webhooks', label: 'Webhook recovery' },
+      ],
+    },
   ];
   if (isManager) {
     primaryNavItems.push({
@@ -544,14 +563,25 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       href: '/credential-audit',
       label: 'Security',
       Icon: IconShield,
-    });
-    primaryNavItems.push({
-      href: '/cloud-accounts',
-      label: 'Integrations',
-      Icon: IconGitOps,
+      children: [
+        { href: '/credential-audit', label: 'Secrets' },
+        { href: '/security/cloud-scan', label: 'Cloud scan' },
+        { href: '/security/code-scan', label: 'Code scan' },
+        { href: '/security/findings', label: 'Findings' },
+      ],
     });
   } else {
     primaryNavItems.push({ href: '/k8s', label: 'Infrastructure', Icon: IconK8s });
+    primaryNavItems.push({
+      href: '/security/cloud-scan',
+      label: 'Security',
+      Icon: IconShield,
+      children: [
+        { href: '/security/cloud-scan', label: 'Cloud scan' },
+        { href: '/security/code-scan', label: 'Code scan' },
+        { href: '/security/findings', label: 'Findings' },
+      ],
+    });
   }
 
   const advancedNavItems: NavItem[] = isManager
@@ -571,6 +601,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/desk-language', label: 'Desk language', Icon: IconFileText },
         { href: '/policies', label: 'Policy as code', Icon: IconShield },
         { href: '/ops-command-center', label: 'Operations', Icon: IconAlertTriangle },
+        { href: '/on-call', label: 'On-call', Icon: IconBell },
+        { href: '/capacity', label: 'Capacity', Icon: IconWorkload },
+        { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
+        { href: '/retirement', label: 'Retirement', Icon: IconKey },
         { href: '/backup-restore', label: 'Backup and restore', Icon: IconRefreshCw },
         { href: '/readiness-signals', label: 'Readiness signals', Icon: IconAlertTriangle },
         { href: '/pilot-acceptance', label: 'Pilot and acceptance', Icon: IconBookOpen },
@@ -604,6 +638,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           ],
         },
         { href: '/desk-language', label: 'Desk language', Icon: IconFileText },
+        { href: '/on-call', label: 'On-call', Icon: IconBell },
+        { href: '/capacity', label: 'Capacity', Icon: IconWorkload },
+        { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
+        { href: '/retirement', label: 'Retirement', Icon: IconKey },
         { href: '/infrastructure-drift', label: 'Infrastructure drift', Icon: IconK8s },
         { href: '/backup-restore', label: 'Backup and restore', Icon: IconRefreshCw },
         { href: '/service-bootstrap', label: 'Service bootstrap', Icon: IconTemplates },
@@ -629,8 +667,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   const pageTitle = getPageTitle(pathname);
-  const roleLabel = isManager ? 'Manager' : 'Operator';
-  const statusLabel = isManager
+  const roleLabel = !sessionReady ? '' : isManager ? 'Manager' : 'Operator';
+  const statusLabel = !sessionReady
+    ? 'Checking session'
+    : isManager
     ? pendingCount > 0
       ? `${pendingCount} pending approvals`
       : 'No pending approvals'
@@ -737,8 +777,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         <div className="devops-sidebar-new__body">
           <nav className="devops-sidebar-new__nav" aria-label="Primary">
             {!sidebarCollapsed && <span className="devops-sidebar-new__nav-title">Workspace</span>}
-            {primaryNavItems.map((item) => renderNavItem(item))}
-            {!sidebarCollapsed && advancedNavItems.length > 0 && (
+            {sessionReady ? primaryNavItems.map((item) => renderNavItem(item)) : null}
+            {sessionReady && !sidebarCollapsed && advancedNavItems.length > 0 && (
               <div className="devops-sidebar-new__section">
                 <button
                   type="button"
@@ -821,19 +861,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           <div className="devops-navbar__right">
             <SearchTrigger placeholder="Search tickets, services, infrastructure, people…" />
             <div className="devops-navbar__actions">
-              <button
-                type="button"
-                className="devops-navbar__assist-btn"
-                onClick={() => {
-                  setSupportTab('chat');
-                  setSupportOpen(true);
-                  setNotifyOpen(false);
-                  setProfileOpen(false);
-                }}
-              >
-                <IconHelpCircle />
-                <span>Help</span>
-              </button>
               <ThemeToggle />
               {isManager && (
                 <div className="devops-navbar__notify-wrap" ref={notifyRef}>
@@ -920,8 +947,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               >
                 <span className="devops-navbar__avatar">{profileInitials}</span>
                 <span className="devops-navbar__profile-copy">
-                  <span className="devops-navbar__profile-label">{user?.username || 'DevOps'}</span>
-                  <span className="devops-navbar__role">{roleLabel}</span>
+                  <span className="devops-navbar__profile-label">{sessionReady ? user?.username || 'DevOps' : '…'}</span>
+                  {roleLabel ? <span className="devops-navbar__role">{roleLabel}</span> : null}
                 </span>
               </button>
               {profileOpen && (
@@ -943,7 +970,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
         <main id="main-content" tabIndex={-1} className="devops-main-new ig-page">
-          {keyboardHelp ? (
+          {sessionReady ? null : <p className="v3-muted">Checking session…</p>}
+          {sessionReady && keyboardHelp ? (
             <div className="devops-keyboard-hint" role="status">
               <span>{keyboardHelp}</span>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setKeyboardHelp('')}>
@@ -951,7 +979,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               </button>
             </div>
           ) : null}
-          {children}
+          {sessionReady ? children : null}
         </main>
       </div>
       <MobileTabBar
@@ -1013,12 +1041,13 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         remapIncidentCitationLinks
         externalDocsHref={process.env.NEXT_PUBLIC_DOCS_URL || ''}
         escalationActions={[
-          {
-            label: 'Email platform support',
-            externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`SetuOps support: ${pageTitle}`)}`,
-          },
+          ...(supportEmailReady
+            ? [{
+                label: 'Email platform support',
+                externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`SetuOps support: ${pageTitle}`)}`,
+              }]
+            : []),
           { label: 'Open incidents', href: '/incidents' },
-          { label: 'Open command center', href: '/ops-command-center' },
         ]}
       />
     </div>

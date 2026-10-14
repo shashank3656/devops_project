@@ -72,10 +72,18 @@ export default function AdminDashboard() {
           activityHref="/activity"
           actions={
             <>
-              <Link href="/changes" className="btn btn-secondary">Changes</Link>
-              <Link href="/incidents" className="btn btn-secondary">Incidents</Link>
-              <Link href="/approval-center" className="btn btn-primary">Approvals</Link>
+              <Link href="/approval-center" className="btn btn-primary">Pending approvals</Link>
+              <Link href="/users/new" className="btn btn-secondary">Invite</Link>
             </>
+          }
+          aside={
+            <section className="ig-home__section" aria-label="Setup">
+              <h2>Setup</h2>
+              <p>Sign-in and connections stay here, separate from the daily approval queue.</p>
+              <Link href="/sso">Sign-in setup</Link>
+              {' · '}
+              <Link href="/cloud-accounts">Connections</Link>
+            </section>
           }
         />
       </AdminLayout>

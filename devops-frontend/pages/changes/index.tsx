@@ -358,11 +358,11 @@ export default function ChangesCatalogPage() {
               <code className="changes-page__webhook-url">{webhookUrl}</code>
             </p>
             <p className="portal-surface__subtitle" style={{ marginTop: 12, fontWeight: 600 }}>
-              Single POST (after deploy)
+              Sample payload, single POST after deploy. This is not a recorded event.
             </p>
             <pre className="code-block changes-page__sample">{CHANGE_WEBHOOK_SAMPLE}</pre>
             <p className="portal-surface__subtitle" style={{ marginTop: 12, fontWeight: 600 }}>
-              Two-phase lifecycle
+              Sample payload, two-phase lifecycle. This is not a recorded event.
             </p>
             <pre className="code-block changes-page__sample">{CHANGE_WEBHOOK_LIFECYCLE_SAMPLE}</pre>
           </details>

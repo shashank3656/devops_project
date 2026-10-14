@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AuthPipeline, pending2FAFromLoginResponse, resendLogin2FACode, ThemeToggle, type Pending2FA } from '@infragate/ui';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord } from '../lib/payload';
+import { consumeReturn, readChangeDraft } from '../lib/returnPath';
 import { isSignedSessionToken } from '../lib/session';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -36,12 +37,17 @@ export default function DevOpsLogin() {
   const [otp, setOtp] = useState('');
   const [resendingOtp, setResendingOtp] = useState(false);
   const [sso, setSso] = useState<PublicSSOState>({ enabled: false, mode: 'disabled', provider: 'none', login_url: '' });
+  const [draftSaved, setDraftSaved] = useState(false);
+
+  useEffect(() => {
+    setDraftSaved(readChangeDraft());
+  }, []);
 
   useEffect(() => {
     const token = typeof router.query.sso_token === 'string' ? router.query.sso_token : '';
     if (!token || !isSignedSessionToken(token)) return;
     localStorage.setItem(DEVOPS_TOKEN_KEY, token);
-    router.replace('/dashboard');
+    router.replace(consumeReturn());
   }, [router, router.query.sso_token]);
 
   useEffect(() => {
@@ -86,7 +92,7 @@ export default function DevOpsLogin() {
     });
     const meData = await meRes.json().catch(() => ({}));
     if (!meRes.ok || meData.error) {
-      setError(meData.error || 'This portal is for DevOps users or admins only. Create a DevOps user from the Admin portal.');
+      setError('Sign-in was not accepted.');
       return;
     }
     const userType = meData.user?.user_type;
@@ -100,7 +106,7 @@ export default function DevOpsLogin() {
       localStorage.setItem(DEVOPS_TOKEN_KEY, meData.token.trim());
     }
     localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(meData.user || {}));
-    router.push('/dashboard');
+    router.push(consumeReturn());
   };
 
   const handleResendOtp = async () => {
@@ -112,7 +118,7 @@ export default function DevOpsLogin() {
       setPending2fa(next);
       setOtp('');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Could not resend code');
+      setError('Could not resend the code.');
     } finally {
       setResendingOtp(false);
     }
@@ -131,7 +137,7 @@ export default function DevOpsLogin() {
       });
       const data = asRecord(await res.json().catch(() => ({})));
       if (!res.ok) {
-        setError(typeof data.error === 'string' ? data.error : 'Invalid OTP');
+        setError('The code was not accepted.');
         return;
       }
       if (typeof data.token !== 'string' || !isSignedSessionToken(data.token)) {
@@ -158,7 +164,7 @@ export default function DevOpsLogin() {
       });
       const loginData = await loginRes.json().catch(() => ({}));
       if (!loginRes.ok) {
-        setError(loginData.error || 'Login failed');
+        setError('Sign-in was not accepted.');
         return;
       }
       const pending = pending2FAFromLoginResponse(loginData);
@@ -207,6 +213,9 @@ export default function DevOpsLogin() {
             <span className="ig-portal-pill">DevOps console</span>
             <h2 className="login-page__card-title">Welcome back</h2>
             <p className="login-page__card-subtitle">Sign in with your DevOps account</p>
+            {draftSaved ? (
+              <p className="alert" role="status">A change draft is saved in this browser. Sign in to continue it.</p>
+            ) : null}
             {error && (
               <div className="alert alert-error" role="alert">{error}</div>
             )}

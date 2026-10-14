@@ -94,6 +94,7 @@ export default function ServiceDeskPage() {
   const [priorityFilter, setPriorityFilter] = useState('');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [username, setUsername] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -270,12 +271,20 @@ export default function ServiceDeskPage() {
             <p className="sd-hero__subtitle">Track incidents, plan changes and solve recurring issues.</p>
           </div>
           <div className="sd-hero__actions">
-            <Link href="/changes" className="btn btn-secondary sd-btn-ghost">
+            <Link href="/webhooks" className="btn btn-secondary sd-btn-ghost">
               Connect webhook
             </Link>
-            <Link href="/changes/new" className="btn btn-primary">
+            <button type="button" className="btn btn-primary" onClick={() => setCreateOpen((open) => !open)}>
               + Create ticket
-            </Link>
+            </button>
+            {createOpen ? (
+              <div className="sd-hero__actions">
+                <Link href="/incidents/new" className="btn btn-secondary">Incident</Link>
+                <Link href="/changes/new" className="btn btn-secondary">Change</Link>
+                <Link href="/problems/new" className="btn btn-secondary">Problem</Link>
+                <Link href="/tickets" className="btn btn-secondary">Request</Link>
+              </div>
+            ) : null}
           </div>
         </header>
 
@@ -354,10 +363,11 @@ export default function ServiceDeskPage() {
                   <strong>No tickets yet</strong>
                   <p>Connect a webhook or create a change, incident, or problem to populate this desk.</p>
                   <div className="sd-empty__actions">
-                    <Link href="/changes/new" className="btn btn-primary">
-                      + Create ticket
-                    </Link>
-                    <Link href="/changes" className="btn btn-secondary sd-btn-ghost">
+                    <Link href="/incidents/new" className="btn btn-primary">Incident</Link>
+                    <Link href="/changes/new" className="btn btn-secondary">Change</Link>
+                    <Link href="/problems/new" className="btn btn-secondary">Problem</Link>
+                    <Link href="/tickets" className="btn btn-secondary">Request</Link>
+                    <Link href="/webhooks" className="btn btn-secondary sd-btn-ghost">
                       Connect webhook
                     </Link>
                   </div>

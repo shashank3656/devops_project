@@ -346,6 +346,10 @@ export default function EditIncidentPage() {
       setError('Invalid incident id');
       return;
     }
+    if ((status === 'resolved' || status === 'closed') && !statusNote.trim()) {
+      setError('Resolve needs fresh recovery evidence in the status note.');
+      return;
+    }
     setSaving(true);
     setError('');
     setNotice('');
@@ -457,8 +461,9 @@ export default function EditIncidentPage() {
                   <input className="input" value={requestId ? `#${requestId}` : 'Not linked'} readOnly />
                 </label>
                 <label className="label">
-                  Source
-                  <input className="input" readOnly value={source === 'alert' ? `${alertSource || 'alert'}${fingerprint ? ` · ${fingerprint}` : ''}` : source} />
+                  Provenance
+                  <input className="input" readOnly value={source === 'alert' ? `${alertSource || 'alert'}${fingerprint ? ` · ${fingerprint}` : ''}` : source || 'Unknown'} />
+                  <small>Manual form, webhook, or alert. Assignment is not acknowledgement.</small>
                 </label>
                 <label className="label">
                   External IRM
@@ -621,7 +626,7 @@ export default function EditIncidentPage() {
               ) : null}
               <label className="label">
                 Status note
-                <input className="input" value={statusNote} onChange={(event) => setStatusNote(event.target.value)} placeholder="Payments checkout is degraded. Investigating." />
+                <input className="input" value={statusNote} onChange={(event) => setStatusNote(event.target.value)} placeholder="Recovery evidence is required before Resolved or Closed." />
               </label>
               <label className="label">
                 Summary notes
