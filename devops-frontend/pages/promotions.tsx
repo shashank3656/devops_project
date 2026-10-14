@@ -783,9 +783,10 @@ export default function DevOpsPromotionsPage() {
                       </td>
                       <td>{item.status}</td>
                       <td>
-                        {item.latest_promoted_id
-                          ? `#${item.latest_promoted_id} (${item.latest_promoted_env} · ${item.latest_promoted_status})`
-                          : 'No downstream promotion yet'}
+                        <div>{item.latest_promoted_id
+                          ? `Attempt #${item.latest_promoted_id} (${item.latest_promoted_env} · ${item.latest_promoted_status})`
+                          : 'Attempt Unknown'}</div>
+                        <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Commit SHA Unknown · Digest Unknown</div>
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

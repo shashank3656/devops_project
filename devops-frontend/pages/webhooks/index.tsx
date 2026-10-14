@@ -30,6 +30,7 @@ export default function WebhookActivityPage() {
   const [alias, setAlias] = useState('');
   const [serviceID, setServiceID] = useState('');
   const [preview, setPreview] = useState('');
+  const [outcome, setOutcome] = useState('');
   const [pending, setPending] = useState('');
   const canRecover = activity.some((item) => item.can_replay);
 
@@ -42,7 +43,7 @@ export default function WebhookActivityPage() {
       .then(async (response) => {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-          setError(data?.error || 'Failed to load webhook activity');
+          setError('Failed to load webhook activity');
           setActivity([]);
           return;
         }
@@ -70,8 +71,8 @@ export default function WebhookActivityPage() {
         body: JSON.stringify({ project_id: projectID, alias, service_id: Number(serviceID) }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || 'Preview failed');
-      setPreview(`Dry run version ${data.next_version}. Effects ${data.effects}.`);
+      if (!response.ok) throw new Error('Preview failed');
+      setPreview(`Dry run version ${data.next_version ?? 'Unknown'}. Effects ${data.effects ?? 'Unknown'}. This preview does not activate the mapping.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Preview failed');
     } finally {
@@ -92,7 +93,7 @@ export default function WebhookActivityPage() {
         body: JSON.stringify({ project_id: projectID, alias, service_id: Number(serviceID) }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || 'Activate failed');
+      if (!response.ok) throw new Error('Activate failed');
       setPreview(`Active version ${data.version}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Activate failed');
@@ -113,8 +114,9 @@ export default function WebhookActivityPage() {
         body: JSON.stringify({ reason }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || 'Replay failed');
+      if (!response.ok) throw new Error('Replay failed');
       if (data.approval_state === 'approved') throw new Error('Replay must not approve the record');
+      setOutcome(data.duplicate || data.already_recorded ? 'Duplicate. The replay did not create a second record.' : 'Replay recorded once. It did not approve the record.');
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Replay failed');
@@ -128,19 +130,22 @@ export default function WebhookActivityPage() {
       <Head>
         <title>Webhook activity — DevOps</title>
       </Head>
-      <div className="portal-page">
-        <header className="portal-page-header">
+      <div className="portal-page desk-landing">
+        <header className="portal-page__header">
           <div>
-            <h1>Webhook activity</h1>
-            <p>Scoped source events, mapping state, and recovery. Payloads stay on the server.</p>
+            <h1 className="portal-page__title">Webhook recovery</h1>
+            <p className="portal-page__subtitle">Unmapped events stay quarantined. Payloads and secrets stay on the server. This page does not approve a record.</p>
+          </div>
+          <div className="portal-page__actions">
+            <a className="btn btn-secondary" href="/connections">Connection health</a>
           </div>
         </header>
-        {error ? <p className="portal-error">{error}</p> : null}
+        {error ? <div className="alert alert-error">{error}</div> : null}
         <section className="portal-surface">
-          <div className="portal-toolbar">
-            <label>
-              State
+          <div className="portal-field-grid portal-field-grid--two">
+            <label className="label">State
               <select
+                className="input"
                 value={state}
                 onChange={(event) => {
                   setState(event.target.value);
@@ -154,28 +159,26 @@ export default function WebhookActivityPage() {
                 <option value="stale">Stale</option>
               </select>
             </label>
-            <label>
-              Alias
-              <input value={alias} onChange={(event) => setAlias(event.target.value)} />
+            <label className="label">Alias
+              <input className="input" value={alias} onChange={(event) => setAlias(event.target.value)} />
             </label>
-            <label>
-              Service
-              <input value={serviceID} onChange={(event) => setServiceID(event.target.value)} inputMode="numeric" />
+            <label className="label">Service
+              <input className="input" value={serviceID} onChange={(event) => setServiceID(event.target.value)} inputMode="numeric" />
             </label>
             {canRecover ? (
-              <>
-                <button type="button" disabled={pending === 'preview'} onClick={previewMapping}>Preview</button>
-                <button type="button" disabled={pending === 'activate'} onClick={activateMapping}>Activate</button>
-              </>
+              <label className="label">Replay reason
+                <input className="input" value={reason} onChange={(event) => setReason(event.target.value)} />
+              </label>
             ) : null}
           </div>
-          {preview ? <p>{preview}</p> : null}
           {canRecover ? (
-            <label>
-              Replay reason
-              <input value={reason} onChange={(event) => setReason(event.target.value)} />
-            </label>
+            <div className="portal-page__actions">
+              <button className="btn btn-secondary" type="button" disabled={pending === 'preview'} onClick={previewMapping}>Preview</button>
+              <button className="btn btn-primary" type="button" disabled={pending === 'activate'} onClick={activateMapping}>Activate</button>
+            </div>
           ) : null}
+          {preview ? <p>{preview}</p> : null}
+          {outcome ? <p>{outcome}</p> : null}
           {loading ? <p>Loading activity…</p> : null}
           <table className="templates-table">
             <thead>
@@ -193,7 +196,7 @@ export default function WebhookActivityPage() {
                 <tr key={item.inbox_id}>
                   <td>{item.received_at}</td>
                   <td>{item.event_id}</td>
-                  <td>{item.processing_state}</td>
+                  <td>{item.service_id > 0 ? item.processing_state : 'Quarantined · unmapped scope'}</td>
                   <td>{item.service_alias || '—'}</td>
                   <td>
                     {item.record_id > 0 ? (
@@ -207,8 +210,8 @@ export default function WebhookActivityPage() {
                     )}
                   </td>
                   <td>
-                    {canRecover && item.processing_state === 'quarantined' ? (
-                      <button type="button" disabled={pending === `replay-${item.inbox_id}`} onClick={() => replay(item)}>
+                    {canRecover && (item.processing_state === 'quarantined' || item.service_id <= 0) ? (
+                      <button className="btn btn-secondary" type="button" disabled={pending === `replay-${item.inbox_id}`} onClick={() => replay(item)}>
                         Replay
                       </button>
                     ) : null}

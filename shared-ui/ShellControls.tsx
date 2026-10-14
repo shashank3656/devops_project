@@ -21,7 +21,7 @@ export function SearchTrigger({ placeholder = 'Search requests, PRs, services…
 }
 
 export function ThemeToggle() {
-  const [mode, setMode] = useState<ThemeMode>('dark');
+  const [mode, setMode] = useState<ThemeMode | null>(null);
 
   useEffect(() => {
     setMode(getTheme());
@@ -29,6 +29,10 @@ export function ThemeToggle() {
     window.addEventListener(THEME_CHANGE_EVENT, onChange);
     return () => window.removeEventListener(THEME_CHANGE_EVENT, onChange);
   }, []);
+
+  if (!mode) {
+    return <span className="ig-icon-button" aria-hidden="true" />;
+  }
 
   const next = mode === 'dark' ? 'light' : 'dark';
   return (
@@ -72,9 +76,6 @@ export function AuthPipeline() {
             <span className="ig-auth-pipeline__node" />
             <strong>{stage.env}</strong>
             <span className="ig-auth-pipeline__note">{stage.note}</span>
-            <span className="ig-auth-pipeline__status">
-              <span className="ig-dot ig-dot--ok" /> healthy
-            </span>
           </li>
         ))}
       </ol>

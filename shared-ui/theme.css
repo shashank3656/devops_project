@@ -3968,14 +3968,41 @@ html[data-theme] .devops-navbar__actions {
   max-width: 100%;
 }
 
+html[data-theme] .ig-search-trigger {
+  flex: 1 1 140px;
+  min-width: 0;
+  max-width: 240px;
+}
+
+html[data-theme] .devops-navbar__left {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
 html[data-theme] .ig-scope-bar {
-  flex: 1 1 160px;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: flex-end;
   min-width: 0;
 }
 
+html[data-theme] .ig-scope-bar__label {
+  white-space: nowrap;
+}
+
 html[data-theme] .ig-scope-bar__control {
-  max-width: 160px;
-  width: 100%;
+  min-width: 140px;
+  max-width: 200px;
+  width: auto;
+}
+
+html[data-theme] .ig-scope-bar__facts {
+  flex: 1 1 100%;
+  min-width: 100%;
+  margin: 0;
+  color: var(--ig-muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 @media (max-width: 900px) {
@@ -4892,6 +4919,16 @@ html[data-theme] .portal-detail-grid.chg-detail__grid {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  width: 100%;
+  max-width: none;
+}
+
+html[data-theme] .portal-page.desk-landing {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: none;
 }
 
 .v3-overview__kicker {
@@ -4939,7 +4976,7 @@ html[data-theme] .portal-detail-grid.chg-detail__grid {
   border: 1px solid var(--ig-border);
   border-radius: 12px;
   text-decoration: none;
-  color: inherit;
+  color: var(--ig-text);
 }
 
 .v3-metric span,
@@ -4950,17 +4987,19 @@ html[data-theme] .portal-detail-grid.chg-detail__grid {
 }
 
 .v3-metric strong {
-  font-size: 36px;
+  font-size: 32px;
   font-weight: 800;
   letter-spacing: 0;
-  line-height: 1;
+  line-height: 1.1;
+  color: var(--ig-text);
+  overflow-wrap: anywhere;
 }
 
 .v3-metric em {
   font-style: normal;
   font-size: 13px;
   font-weight: 500;
-  color: var(--ig-accent);
+  color: var(--ig-muted);
 }
 
 .v3-split {
@@ -5100,7 +5139,10 @@ html[data-theme] .portal-detail-grid.chg-detail__grid {
 }
 
 @media (max-width: 1024px) {
-  .v3-metrics,
+  .v3-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .v3-split,
   .v3-shortcuts {
     grid-template-columns: 1fr;
@@ -5111,6 +5153,59 @@ html[data-theme] .portal-detail-grid.chg-detail__grid {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+@media (max-width: 640px) {
+  .v3-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
+html[data-theme] .security-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px 16px;
+  margin: 0;
+}
+
+html[data-theme] .security-facts div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+html[data-theme] .security-facts dt {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ig-muted);
+}
+
+html[data-theme] .security-facts dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ig-text);
+}
+
+html[data-theme] .portal-surface .label .input,
+html[data-theme] .portal-surface .label select.input,
+html[data-theme] .portal-surface .label textarea.input {
+  margin-top: 6px;
+}
+
+html[data-theme] .portal-page__actions {
+  margin-top: 16px;
+}
+
+html[data-theme] .btn:focus-visible,
+html[data-theme] .input:focus-visible,
+html[data-theme] a:focus-visible {
+  outline: 2px solid var(--ig-accent, currentColor);
+  outline-offset: 2px;
 }
 
 /* Desk pages carry their own title, so the cramped navbar name can step aside. */

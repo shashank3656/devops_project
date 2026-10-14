@@ -220,11 +220,11 @@ export default function ChangeDetailPanel({
       {hasManualActions ? (
         <section className="chg-detail__actions devops-action-card">
           <h2 className="chg-detail__section-title">Manual actions</h2>
-          <p className="chg-detail__hint">Use these when you are not waiting on CI, or to move a change through approval and close-out.</p>
+          <p className="chg-detail__hint">Approval records the decision. It does not deploy or execute the change. A material edit after approval invalidates that approval.</p>
           <div className="chg-detail__action-row">
             {actions?.canApprove ? (
               <button type="button" className="btn btn-primary" disabled={!!acting} onClick={actions.onApprove}>
-                {acting === 'approve' ? 'Approving…' : 'Approve'}
+                {acting === 'approve' ? 'Approving…' : 'Approve request'}
               </button>
             ) : null}
             {actions?.canSchedule ? (

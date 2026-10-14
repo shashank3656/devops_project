@@ -22,8 +22,17 @@ interface ConnectionHealth {
 
 function healthLabel(connection: ConnectionHealth) {
   const label = connection.health_label || 'Unknown';
+  if (connection.state === 'stale' || connection.coverage === 'stale') return 'Stale';
   if (connection.state !== 'healthy' && label === 'Healthy') return 'Unknown';
   return label;
+}
+
+function publicError(value: string) {
+  const lower = value.toLowerCase();
+  if (lower.includes('password') || lower.includes('secret') || lower.includes('token') || lower.includes('key')) {
+    return 'The connection reported an error. The message was hidden.';
+  }
+  return value;
 }
 
 export default function ConnectionsPage() {
@@ -41,7 +50,7 @@ export default function ConnectionsPage() {
       .then(async (response) => {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-          setError(data?.error || 'Failed to load connections');
+          setError(publicError(typeof data?.error === 'string' ? data.error : 'Failed to load connections'));
           setConnections([]);
           return;
         }
@@ -67,7 +76,7 @@ export default function ConnectionsPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || `Failed to ${action} connection`);
+      if (!response.ok) throw new Error(publicError(typeof data?.error === 'string' ? data.error : `Failed to ${action} connection`));
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to ${action} connection`);
@@ -90,11 +99,19 @@ export default function ConnectionsPage() {
               Coverage, last success, and errors for connections you can read. A missing, stale, or unknown result stays distinct from Healthy.
             </p>
           </div>
+          <div className="portal-page__actions">
+            <a className="btn btn-secondary" href="/webhooks">Webhook recovery</a>
+          </div>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
         <section className="portal-surface">
           {loading ? <div className="empty-state">Loading connections...</div> : null}
-          {!loading && !connections.length ? <div className="empty-state">No connections in your scope yet.</div> : null}
+          {!loading && !connections.length ? (
+            <div className="empty-state">
+              <p>No connections in your scope yet.</p>
+              <a className="btn btn-primary" href="/cloud-accounts">Review cloud accounts</a>
+            </div>
+          ) : null}
           {connections.length ? (
             <table className="templates-table">
               <thead>
@@ -121,7 +138,7 @@ export default function ConnectionsPage() {
                     <td>
                       {healthLabel(connection)}
                       {connection.last_error ? (
-                        <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{connection.last_error}</div>
+                        <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{publicError(connection.last_error)}</div>
                       ) : null}
                     </td>
                     <td>{connection.coverage || 'unknown'}</td>

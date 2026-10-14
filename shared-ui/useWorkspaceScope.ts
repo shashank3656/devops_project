@@ -95,6 +95,8 @@ export type ScopeProject = {
   name: string;
   code?: string;
   environments?: string[];
+  team?: string;
+  cloud?: string;
 };
 
 export function scopeToQuery(scope: WorkspaceScope): Record<string, string> {
@@ -122,6 +124,9 @@ export function normalizeScopeProjects(value: unknown): ScopeProject[] {
     const row = asRecord(item);
     const rawId = row.id ?? row.project_id;
     if (typeof rawId !== 'number' && typeof rawId !== 'string') continue;
+    const clouds = Array.isArray(row.clouds)
+      ? row.clouds.filter((entry): entry is string => typeof entry === 'string' && Boolean(entry))
+      : [];
     projects.push({
       id: rawId,
       name: typeof row.name === 'string' ? row.name : typeof row.project_name === 'string' ? row.project_name : `Project ${rawId}`,
@@ -129,6 +134,8 @@ export function normalizeScopeProjects(value: unknown): ScopeProject[] {
       environments: Array.isArray(row.environments)
         ? row.environments.filter((entry): entry is string => typeof entry === 'string' && Boolean(entry))
         : [],
+      team: typeof row.owner_team === 'string' ? row.owner_team : typeof row.team === 'string' ? row.team : '',
+      cloud: clouds.join(', ') || (typeof row.cloud === 'string' ? row.cloud : ''),
     });
   }
   return projects;

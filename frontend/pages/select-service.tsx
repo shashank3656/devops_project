@@ -350,6 +350,7 @@ export default function SelectService() {
   const [bundledServices, setBundledServices] = useState<BundledServiceDraft[]>([]);
   const [loading, setLoading] = useState(false);
   const [prUrl, setPrUrl] = useState('');
+  const [savedReference, setSavedReference] = useState('');
   const [error, setError] = useState('');
   const [estimate, setEstimate] = useState<CostEstimate | null>(null);
   const [estimateLoading, setEstimateLoading] = useState(false);
@@ -801,8 +802,13 @@ export default function SelectService() {
       }
 
       const data = await response.json();
+      const reference = data?.id ? String(data.id) : '';
+      if (!asDraft && !reference) {
+        throw new Error('The server did not return a saved reference.');
+      }
+      setSavedReference(reference);
       setPrUrl(data.pr_url || '');
-      toast(data.message || (asDraft ? 'Draft saved.' : isIamFlow ? 'Access request sent successfully.' : 'Request sent successfully.'), 'success');
+      toast(reference ? `Saved reference ${reference}.` : (data.message || 'Draft saved.'), 'success');
       if (asDraft) {
         router.push('/history');
       } else {
@@ -1074,20 +1080,23 @@ export default function SelectService() {
               </div>
             )}
 
-            {prUrl && (
+            {savedReference ? (
               <div className="success" style={{ marginBottom: 0, flexDirection: 'column', alignItems: 'flex-start', gap: '12px' }}>
-                <strong>{isIamFlow ? 'Access request sent successfully' : 'Request sent successfully'}</strong>
-                <a
-                  href={prUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link"
-                  style={{ fontWeight: '600', fontSize: '15px' }}
-                >
-                  Open Pull Request →
-                </a>
+                <strong>Saved reference {savedReference}</strong>
+                <p>The request is saved. Review does not deploy it.</p>
+                {prUrl ? (
+                  <a
+                    href={prUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="link"
+                    style={{ fontWeight: '600', fontSize: '15px' }}
+                  >
+                    Open pull request
+                  </a>
+                ) : null}
               </div>
-            )}
+            ) : null}
 
             <div className="request-builder__layout">
               <form onSubmit={handleSubmit} className="request-builder__main">
@@ -1219,11 +1228,12 @@ export default function SelectService() {
                     value={cloud}
                     onChange={(e) => {
                       setCloud(e.target.value);
-                      setService(''); // Reset service when cloud changes
+                      setService('');
                     }}
                     required={bundledServices.length === 0}
+                    disabled={!team}
                   >
-                    <option value="">Choose cloud</option>
+                    <option value="">{!team ? 'Choose team first' : 'Choose cloud'}</option>
                     {availableCloudOptions.map(cloudOption => (
                       <option key={cloudOption.value} value={cloudOption.value}>
                         {cloudOption.label}
