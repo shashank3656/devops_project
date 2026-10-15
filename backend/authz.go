@@ -1,6 +1,11 @@
 package main
 
-import "strings"
+import (
+	"errors"
+	"net/http"
+	"strconv"
+	"strings"
+)
 
 const pilotOrganizationID = 1
 
@@ -169,4 +174,47 @@ func actionAllowed(role string, action authzAction) bool {
 	default:
 		return false
 	}
+}
+
+var errCatalogUnauthorized = errors.New("missing or invalid authorization")
+
+var catalogSubjectFromRequest = defaultCatalogSubject
+
+func defaultCatalogSubject(r *http.Request) (authzSubject, error) {
+	header := r.Header.Get("Authorization")
+	if !strings.HasPrefix(header, "Bearer ") {
+		return authzSubject{}, errCatalogUnauthorized
+	}
+	userID, err := validateToken(strings.TrimPrefix(header, "Bearer "))
+	if err != nil || userID <= 0 {
+		return authzSubject{}, errCatalogUnauthorized
+	}
+	return authzSubjectForUser(userID), nil
+}
+
+func catalogEnvironmentsAllowed(subject authzSubject, projectID int, environments []string, action authzAction) bool {
+	if projectID <= 0 {
+		return false
+	}
+	envs := environments
+	if len(envs) == 0 {
+		envs = []string{"*"}
+	}
+	for _, environment := range envs {
+		decision := authorizeResource(authzRequest{
+			Subject: subject,
+			Resource: authzResource{
+				OrganizationID: pilotOrganizationID,
+				ProjectID:      projectID,
+				Environment:    environment,
+				Kind:           "service",
+				ResourceID:     strconv.Itoa(projectID),
+			},
+			Action: action,
+		})
+		if !decision.Allowed {
+			return false
+		}
+	}
+	return true
 }

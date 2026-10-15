@@ -123,6 +123,34 @@ func searchCatalog(query string, user *User) []searchHit {
 		}
 	}
 
+	if user.UserType == "devops_user" {
+		if rows, err := DB.Query(`
+			SELECT id, COALESCE(service,''), COALESCE(repo,''), COALESCE(environment,''), COALESCE(team,'')
+			FROM service_map
+			WHERE LOWER(COALESCE(service,'')) LIKE $1
+			   OR LOWER(COALESCE(repo,'')) LIKE $1
+			   OR LOWER(COALESCE(team,'')) LIKE $1
+			ORDER BY service
+			LIMIT 8
+		`, like); err == nil {
+			defer func() { _ = rows.Close() }()
+			for rows.Next() {
+				var id int
+				var service, repo, environment, team string
+				if err := rows.Scan(&id, &service, &repo, &environment, &team); err != nil {
+					continue
+				}
+				hits = append(hits, searchHit{
+					ID:       fmt.Sprintf("service-%d", id),
+					Kind:     "service",
+					Title:    service,
+					Subtitle: strings.TrimSpace(strings.Join([]string{environment, team, repo}, " · ")),
+					Href:     "/services/" + strconv.Itoa(id),
+				})
+			}
+		}
+	}
+
 	if user.Role == "admin" || user.UserType == "devops_user" {
 		if rows, err := DB.Query(`
 			SELECT id, name FROM request_templates

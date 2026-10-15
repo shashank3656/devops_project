@@ -22,35 +22,7 @@ export default function DevOpsDashboard() {
   const [workspace, setWorkspace] = useState<WorkspacePayload>(emptyWorkspace);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [freshness, setFreshness] = useState('Unknown');
-  const [connections, setConnections] = useState<'unknown' | 'empty' | 'ready' | 'error'>('unknown');
   const { scope } = useWorkspaceScope();
-
-  const tokenHeaders = (): Record<string, string> => {
-    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
-
-  const loadOpsControls = () => {
-    fetch(`${apiUrl}/api/devops/health`, { headers: tokenHeaders() })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        const observed = data?.health?.observed_at || data?.health?.summary?.observed_at;
-        setFreshness(typeof observed === 'string' && observed.trim() ? observed : 'Unknown');
-      })
-      .catch(() => setFreshness('Unknown'));
-    fetch(`${apiUrl}/api/connections`, { headers: tokenHeaders() })
-      .then(async (res) => {
-        if (!res.ok) {
-          setConnections('error');
-          return;
-        }
-        const data = await res.json();
-        const list = Array.isArray(data?.connections) ? data.connections : [];
-        setConnections(list.length > 0 ? 'ready' : 'empty');
-      })
-      .catch(() => setConnections('error'));
-  };
 
   const loadWorkspace = useCallback(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -92,7 +64,6 @@ export default function DevOpsDashboard() {
 
   useEffect(() => {
     loadWorkspace();
-    loadOpsControls();
   }, [apiUrl, loadWorkspace]);
 
   useEffect(() => {
@@ -107,6 +78,7 @@ export default function DevOpsDashboard() {
   const queue = needsProject ? [] : [...(workspace.needs_you || []), ...(workspace.failed || [])].slice(0, 3);
   const incidentCount = (workspace.needs_you || []).filter((item) => String(item.kind || '').toLowerCase().includes('incident')).length;
   const blockedCount = workspace.failed?.length || 0;
+  const waitingCount = (workspace.needs_you || []).length + blockedCount;
   const scoped = (href: string) => {
     if (!scope.projectId) return href;
     const params = new URLSearchParams({ project_id: scope.projectId });
@@ -143,22 +115,22 @@ export default function DevOpsDashboard() {
                 <Link href={scoped('/incidents')} className="v3-metric">
                   <span>Active incidents</span>
                   <strong>{loading || error ? 'Unknown' : incidentCount}</strong>
-                  <em>Open incidents →</em>
+                  <em>Open incidents</em>
                 </Link>
                 <Link href={scoped('/promotions')} className="v3-metric">
                   <span>Blocked releases</span>
                   <strong>{loading || error ? 'Unknown' : blockedCount}</strong>
-                  <em>Review deployment gates →</em>
+                  <em>Review releases</em>
                 </Link>
                 <Link href={scoped('/security/findings')} className="v3-metric">
                   <span>Findings</span>
                   <strong>Unknown</strong>
-                  <em>Scanner not connected →</em>
+                  <em>Scanner not connected</em>
                 </Link>
-                <Link href="/health" className="v3-metric">
-                  <span>Freshness</span>
-                  <strong>{freshness === 'Unknown' ? 'Unknown' : 'Observed'}</strong>
-                  <em>{freshness === 'Unknown' ? 'No observation time' : freshness}</em>
+                <Link href={scoped('/my-work')} className="v3-metric">
+                  <span>Waiting</span>
+                  <strong>{loading || error ? 'Unknown' : waitingCount}</strong>
+                  <em>Open my work</em>
                 </Link>
               </section>
 
@@ -167,9 +139,9 @@ export default function DevOpsDashboard() {
                   <h2>Needs attention</h2>
                   <Link href={scoped('/my-work')} className="btn btn-secondary">My work</Link>
                 </div>
-                {loading ? <p className="v3-muted">Loading workspace…</p> : null}
+                {loading ? <p className="v3-muted">Loading this project…</p> : null}
                 {!loading && queue.length === 0 ? (
-                  <p className="v3-muted">Nothing is waiting in this project.</p>
+                  <p className="v3-muted">Nothing is waiting. New incidents and blocked releases will show up here.</p>
                 ) : null}
                 <ul className="v3-queue">
                   {queue.map((item) => (
@@ -188,15 +160,6 @@ export default function DevOpsDashboard() {
             </>
           )}
 
-          {connections === 'empty' || connections === 'error' ? (
-            <section className="v3-connect">
-              <div>
-                <strong>{connections === 'error' ? 'Connections could not be loaded' : 'No connections in this workspace'}</strong>
-                <p>Open Connections to review health. A missing connection stays unknown.</p>
-              </div>
-              <Link href="/connections" className="btn btn-secondary">Open connections</Link>
-            </section>
-          ) : null}
         </div>
       </DevOpsLayout>
     </>

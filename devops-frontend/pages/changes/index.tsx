@@ -234,10 +234,9 @@ export default function ChangesCatalogPage() {
       <div className="portal-page changes-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Deployments</span>
             <h1 className="portal-page__title">Changes</h1>
             <p className="portal-page__subtitle">
-              Select changes to Approve, Schedule, Implement, Cancel, or Close manually. CI can also record deploys via webhook.
+              Approve, schedule, or close a change. A webhook can record a deploy.
             </p>
           </div>
           <div className="portal-page__actions">
@@ -249,27 +248,12 @@ export default function ChangesCatalogPage() {
 
         {error ? <div className="alert alert-error">{error}</div> : null}
 
-        <section className="k8s-summary-strip">
-          <div className="k8s-summary-card">
-            <span className="k8s-summary-card__label">Changes</span>
-            <strong className="k8s-summary-card__value">{items.length}</strong>
-          </div>
-          <div className="k8s-summary-card">
-            <span className="k8s-summary-card__label">Awaiting approve</span>
-            <strong className="k8s-summary-card__value">{pendingApprove}</strong>
-          </div>
-          <div className="k8s-summary-card">
-            <span className="k8s-summary-card__label">Watching</span>
-            <strong className="k8s-summary-card__value">{watchingCount}</strong>
-          </div>
-          <div className="k8s-summary-card">
-            <span className="k8s-summary-card__label">Shipped</span>
-            <strong className="k8s-summary-card__value">{implementedCount}</strong>
-          </div>
-          <div className="k8s-summary-card">
-            <span className="k8s-summary-card__label">Failed</span>
-            <strong className="k8s-summary-card__value">{failedCount}</strong>
-          </div>
+        <section className="changes-facts" aria-label="Change summary">
+          <div><span>Changes</span><strong>{loading ? 'Unknown' : items.length}</strong></div>
+          <div><span>Awaiting approve</span><strong>{loading ? 'Unknown' : pendingApprove}</strong></div>
+          <div><span>Watching</span><strong>{loading ? 'Unknown' : watchingCount}</strong></div>
+          <div><span>Shipped</span><strong>{loading ? 'Unknown' : implementedCount}</strong></div>
+          <div><span>Failed</span><strong>{loading ? 'Unknown' : failedCount}</strong></div>
         </section>
 
         <BulkBar count={selectedKeys.size} noun="change" onClear={() => setSelectedKeys(new Set())}>

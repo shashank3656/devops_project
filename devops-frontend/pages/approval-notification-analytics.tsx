@@ -212,8 +212,7 @@ export default function ApprovalNotificationAnalyticsPage() {
           </div>
           <div className="portal-page__actions">
             <Link href="/notification-settings" className="btn btn-secondary">Notification Settings</Link>
-            <Link href="/gate-approvals" className="btn btn-secondary">Gate Audit</Link>
-            <Link href="/ops-command-center" className="btn btn-primary">Ops Command Center</Link>
+            <Link href="/gate-approvals" className="btn btn-primary">Gate Audit</Link>
           </div>
         </div>
 

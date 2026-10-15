@@ -305,22 +305,14 @@ func loadWorkspaceSecurityFromDB(projectID int, environment string) ([]workspace
 }
 
 func loadWorkspaceResourcesFromDB(projectID int, environment string) ([]workspaceRef, error) {
-	return loadWorkspaceRows(`
-		SELECT r.id::text, env.environment, 'recorded', to_char(s.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '', lower(s.name)
-		FROM catalog_service_resources r
-		JOIN catalog_services s ON s.id = r.service_id
-		JOIN catalog_service_environments env ON env.service_id = s.id
-		WHERE s.project_id = $1 AND lower(env.environment) = $2
-	`, projectID, environment)
+	return []workspaceRef{}, nil
 }
 
 func loadWorkspaceOwnersFromDB(projectID int, environment string) ([]workspaceRef, error) {
 	return loadWorkspaceRows(`
-		SELECT t.id::text, env.environment, 'recorded', to_char(s.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), t.team, lower(s.name)
-		FROM catalog_service_teams t
-		JOIN catalog_services s ON s.id = t.service_id
-		JOIN catalog_service_environments env ON env.service_id = s.id
-		WHERE s.project_id = $1 AND lower(env.environment) = $2 AND btrim(t.team) <> ''
+		SELECT id::text, environment, 'recorded', '', COALESCE(team, ''), lower(COALESCE(service, ''))
+		FROM service_map
+		WHERE project_id = $1 AND lower(environment) = $2 AND btrim(COALESCE(team, '')) <> ''
 	`, projectID, environment)
 }
 

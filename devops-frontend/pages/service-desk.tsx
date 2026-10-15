@@ -21,10 +21,67 @@ interface DeskTicket {
   priority: string;
   owner: string;
   service: string;
+  environment: string;
   source: string;
   href: string;
   createdAt: string;
   updatedAt?: string;
+  dueAt?: string;
+  nextAction?: string;
+}
+
+function IconDoc() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <path d="M7 3.5h7l4 4V20a1.5 1.5 0 0 1-1.5 1.5h-9.5A1.5 1.5 0 0 1 5.5 20V5A1.5 1.5 0 0 1 7 3.5z" />
+      <path d="M14 3.5V8h4.5M8 12h8M8 16h6" />
+    </svg>
+  );
+}
+
+function IconAlert() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <path d="M12 4.5 20 19H4L12 4.5z" />
+      <path d="M12 10v4.5M12 17.2h.01" />
+    </svg>
+  );
+}
+
+function IconClock() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v4.5l3 2" />
+    </svg>
+  );
+}
+
+function IconCalendar() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <rect x="4" y="5.5" width="16" height="14" rx="2" />
+      <path d="M8 3.5v4M16 3.5v4M4 10h16" />
+    </svg>
+  );
+}
+
+function IconLink() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1" />
+      <path d="M14 11a5 5 0 0 0-7.1-.1l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1" />
+    </svg>
+  );
+}
+
+function IconSearch() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <circle cx="11" cy="11" r="6" />
+      <path d="M16 16.5 20 20.5" />
+    </svg>
+  );
 }
 
 function initials(name: string): string {
@@ -36,18 +93,25 @@ function initials(name: string): string {
 function statusTone(status: string): string {
   const s = status.toLowerCase();
   if (s.includes('fail') || s.includes('critical') || s === 'cancelled') return 'danger';
-  if (s.includes('approv') || s.includes('pending') || s === 'new') return 'warning';
-  if (s.includes('progress') || s.includes('implement') || s.includes('monitor') || s === 'scheduled') return 'info';
-  if (s.includes('resolv') || s.includes('closed') || s.includes('complete')) return 'ok';
+  if (s.includes('approv') || s.includes('pending')) return 'warning';
+  if (s === 'new' || s.includes('schedul')) return 'info';
+  if (s.includes('progress') || s.includes('implement') || s.includes('monitor') || s.includes('resolv') || s.includes('closed') || s.includes('complete')) return 'ok';
   if (s.includes('investigat')) return 'purple';
   return 'neutral';
 }
 
 function priorityTone(priority: string): string {
   const p = priority.toLowerCase();
-  if (p.includes('critical') || p === 'p1' || p === 'high') return 'critical';
-  if (p.includes('medium') || p === 'p2' || p === 'p3') return 'medium';
+  if (p.includes('critical') || p === 'p1') return 'critical';
+  if (p.includes('high') || p === 'p2') return 'high';
+  if (p.includes('medium') || p === 'p3') return 'medium';
   return 'low';
+}
+
+function sentence(value: string): string {
+  const text = value.replace(/[_-]+/g, ' ').trim().toLowerCase();
+  if (!text) return 'Unknown';
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function kindLabel(kind: DeskKind): string {
@@ -92,6 +156,8 @@ export default function ServiceDeskPage() {
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
+  const [ownerFilter, setOwnerFilter] = useState('');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [username, setUsername] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -138,8 +204,11 @@ export default function ServiceDeskPage() {
             status: str(row.status, 'new'),
             priority: str(row.priority, 'medium'),
             owner: str(row.assignee_username) || str(row.author) || 'Unassigned',
-            service: str(row.service) || '—',
+            service: str(row.service) || 'Unknown',
+            environment: str(row.environment) || str(row.env) || 'Unknown',
             source: str(row.pipeline_url) ? 'Webhook' : 'Manual',
+            dueAt: str(row.due_at) || str(row.due_date) || undefined,
+            nextAction: str(row.next_action) || str(row.next_step) || undefined,
             href: `/changes/${id}`,
             createdAt: str(row.created_at),
             updatedAt: str(row.updated_at),
@@ -158,8 +227,11 @@ export default function ServiceDeskPage() {
             status: str(row.status, 'new'),
             priority: str(row.severity, str(row.priority, 'medium')),
             owner: str(row.owner_username) || str(row.assignee_username) || 'Unassigned',
-            service: str(row.service) || '—',
+            service: str(row.service) || 'Unknown',
+            environment: str(row.environment) || str(row.env) || 'Unknown',
             source: str(row.source) || 'Webhook',
+            dueAt: str(row.due_at) || str(row.due_date) || undefined,
+            nextAction: str(row.next_action) || str(row.next_step) || undefined,
             href: `/incidents/${id}/edit`,
             createdAt: str(row.created_at),
             updatedAt: str(row.updated_at),
@@ -178,8 +250,11 @@ export default function ServiceDeskPage() {
             status: str(row.status, 'new'),
             priority: str(row.priority, 'medium'),
             owner: str(row.assignee_username) || 'Unassigned',
-            service: str(row.service) || '—',
+            service: str(row.service) || 'Unknown',
+            environment: str(row.environment) || str(row.env) || 'Unknown',
             source: 'Manual',
+            dueAt: str(row.due_at) || str(row.due_date) || undefined,
+            nextAction: str(row.next_action) || str(row.next_step) || undefined,
             href: `/problems/${id}`,
             createdAt: str(row.created_at),
             updatedAt: str(row.updated_at),
@@ -198,8 +273,11 @@ export default function ServiceDeskPage() {
             status: str(row.status, 'new'),
             priority: str(row.priority, 'medium'),
             owner: str(row.assignee_username) || str(row.created_by_username) || 'Unassigned',
-            service: str(row.service) || '—',
+            service: str(row.service) || 'Unknown',
+            environment: str(row.environment) || str(row.env) || 'Unknown',
             source: 'Manual',
+            dueAt: str(row.due_at) || str(row.due_date) || undefined,
+            nextAction: str(row.next_action) || str(row.next_step) || undefined,
             href: `/tickets?id=${id}`,
             createdAt: str(row.created_at),
             updatedAt: str(row.updated_at),
@@ -216,9 +294,11 @@ export default function ServiceDeskPage() {
 
   const selected = useMemo(() => items.find((item) => item.key === selectedKey) || null, [items, selectedKey]);
 
+  const owners = useMemo(() => Array.from(new Set(items.map((item) => item.owner))).sort(), [items]);
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return items.filter((item) => {
+    const next = items.filter((item) => {
       if (tab === 'mine' && username && !item.owner.toLowerCase().includes(username.toLowerCase())) return false;
       if (tab === 'approval') {
         const s = item.status.toLowerCase();
@@ -226,28 +306,34 @@ export default function ServiceDeskPage() {
       }
       if (typeFilter && item.kind !== typeFilter) return false;
       if (priorityFilter && !item.priority.toLowerCase().includes(priorityFilter.toLowerCase())) return false;
+      if (ownerFilter && item.owner !== ownerFilter) return false;
       if (!needle) return true;
       return `${item.title} ${item.summary} ${item.owner} ${item.service} ${item.status} ${item.key}`
         .toLowerCase()
         .includes(needle);
     });
-  }, [items, tab, query, typeFilter, priorityFilter, username]);
+    next.sort((a, b) => {
+      const delta = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return sortOrder === 'newest' ? -delta : delta;
+    });
+    return next;
+  }, [items, tab, query, typeFilter, priorityFilter, ownerFilter, sortOrder, username]);
 
   const stats = useMemo(() => {
     const open = items.filter((item) => !['closed', 'resolved', 'cancelled', 'failed', 'completed', 'rejected'].includes(item.status.toLowerCase())).length;
     const critical = items.filter((item) => {
       const p = item.priority.toLowerCase();
-      return p.includes('critical') || p === 'p1' || p === 'high';
+      return item.kind === 'incident' && (p.includes('critical') || p === 'p1');
     }).length;
     const awaiting = items.filter((item) => {
       const s = item.status.toLowerCase();
       return s.includes('approv') || s === 'new' || s.includes('pending');
     }).length;
     const dueToday = items.filter((item) => {
-      if (!item.createdAt) return false;
-      const created = new Date(item.createdAt);
-      const now = new Date();
-      return created.toDateString() === now.toDateString();
+      if (!item.dueAt) return false;
+      const due = new Date(item.dueAt);
+      if (Number.isNaN(due.getTime())) return false;
+      return due.toDateString() === new Date().toDateString();
     }).length;
     return { open, critical, awaiting, dueToday };
   }, [items]);
@@ -271,9 +357,6 @@ export default function ServiceDeskPage() {
             <p className="sd-hero__subtitle">Track incidents, plan changes and solve recurring issues.</p>
           </div>
           <div className="sd-hero__actions">
-            <Link href="/webhooks" className="btn btn-secondary sd-btn-ghost">
-              Connect webhook
-            </Link>
             <button type="button" className="btn btn-primary" onClick={() => setCreateOpen((open) => !open)}>
               + Create ticket
             </button>
@@ -292,23 +375,32 @@ export default function ServiceDeskPage() {
 
         <section className="sd-stats" aria-label="Service desk summary">
           <article className="sd-stat">
-            <span className="sd-stat__label">Open tickets</span>
-            <strong className="sd-stat__value">{stats.open}</strong>
+            <span className="sd-stat__icon"><IconDoc /></span>
+            <div>
+              <span className="sd-stat__label">Open tickets</span>
+              <strong className="sd-stat__value">{loading || error ? 'Unknown' : stats.open}</strong>
+            </div>
           </article>
           <article className="sd-stat">
-            <span className="sd-stat__label">Critical incidents</span>
-            <strong className="sd-stat__value sd-stat__value--danger">{stats.critical}</strong>
-            <span className="sd-stat__hint">Needs immediate attention</span>
+            <span className="sd-stat__icon sd-stat__icon--danger"><IconAlert /></span>
+            <div>
+              <span className="sd-stat__label">Critical incidents</span>
+              <strong className="sd-stat__value sd-stat__value--danger">{loading || error ? 'Unknown' : stats.critical}</strong>
+            </div>
           </article>
           <article className="sd-stat">
-            <span className="sd-stat__label">Awaiting approval</span>
-            <strong className="sd-stat__value">{stats.awaiting}</strong>
-            <span className="sd-stat__hint">CAB / change queue</span>
+            <span className="sd-stat__icon"><IconClock /></span>
+            <div>
+              <span className="sd-stat__label">Awaiting approval</span>
+              <strong className="sd-stat__value">{loading || error ? 'Unknown' : stats.awaiting}</strong>
+            </div>
           </article>
           <article className="sd-stat">
-            <span className="sd-stat__label">Created today</span>
-            <strong className="sd-stat__value">{stats.dueToday}</strong>
-            <span className="sd-stat__hint">New intake</span>
+            <span className="sd-stat__icon"><IconCalendar /></span>
+            <div>
+              <span className="sd-stat__label">Due today</span>
+              <strong className="sd-stat__value">{loading || error ? 'Unknown' : stats.dueToday}</strong>
+            </div>
           </article>
         </section>
 
@@ -340,39 +432,34 @@ export default function ServiceDeskPage() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
-              <select className="input" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+              <select className="input" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} aria-label="Type">
                 <option value="">Type</option>
                 <option value="incident">Incident</option>
                 <option value="change">Change</option>
                 <option value="problem">Problem</option>
                 <option value="request">Request</option>
               </select>
-              <select className="input" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
+              <select className="input" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} aria-label="Priority">
                 <option value="">Priority</option>
                 <option value="critical">Critical</option>
                 <option value="high">High</option>
                 <option value="medium">Medium</option>
                 <option value="low">Low</option>
               </select>
+              <select className="input" value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} aria-label="Owner">
+                <option value="">Owner</option>
+                {owners.map((owner) => (
+                  <option key={owner} value={owner}>{owner}</option>
+                ))}
+              </select>
+              <select className="input sd-sort" value={sortOrder} onChange={(event) => setSortOrder(event.target.value === 'oldest' ? 'oldest' : 'newest')} aria-label="Sort">
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+              </select>
             </div>
 
             <div className="sd-table-wrap">
               {loading ? <div className="empty-state">Loading service desk…</div> : null}
-              {!loading && filtered.length === 0 ? (
-                <div className="empty-state sd-empty">
-                  <strong>No tickets yet</strong>
-                  <p>Connect a webhook or create a change, incident, or problem to populate this desk.</p>
-                  <div className="sd-empty__actions">
-                    <Link href="/incidents/new" className="btn btn-primary">Incident</Link>
-                    <Link href="/changes/new" className="btn btn-secondary">Change</Link>
-                    <Link href="/problems/new" className="btn btn-secondary">Problem</Link>
-                    <Link href="/tickets" className="btn btn-secondary">Request</Link>
-                    <Link href="/webhooks" className="btn btn-secondary sd-btn-ghost">
-                      Connect webhook
-                    </Link>
-                  </div>
-                </div>
-              ) : null}
               {!loading && filtered.length > 0 ? (
                 <table className="sd-table">
                   <thead>
@@ -396,17 +483,20 @@ export default function ServiceDeskPage() {
                           <div className="sd-ticket-cell">
                             <span className="sd-ticket-id">{ticketIdLabel(item)}</span>
                             <strong>{item.title}</strong>
-                            <span className="sd-ticket-summary">{item.summary || 'No summary'}</span>
+                            <span className="sd-ticket-summary">{item.summary || 'Unknown'}</span>
                           </div>
                         </td>
                         <td>
-                          <span className={`sd-type sd-type--${item.kind}`}>{kindLabel(item.kind)}</span>
+                          <span className={`sd-type sd-type--${item.kind}`}>
+                            {item.kind === 'problem' ? <IconSearch /> : item.kind === 'change' ? <IconLink /> : <IconAlert />}
+                            {kindLabel(item.kind)}
+                          </span>
                         </td>
                         <td>
-                          <span className={`sd-badge sd-badge--prio-${priorityTone(item.priority)}`}>{item.priority}</span>
+                          <span className={`sd-badge sd-badge--prio-${priorityTone(item.priority)}`}>{sentence(item.priority)}</span>
                         </td>
                         <td>
-                          <span className={`sd-badge sd-badge--${statusTone(item.status)}`}>{item.status}</span>
+                          <span className={`sd-badge sd-badge--${statusTone(item.status)}`}>{sentence(item.status)}</span>
                         </td>
                         <td>
                           <span className="sd-owner">
@@ -416,7 +506,12 @@ export default function ServiceDeskPage() {
                             {item.owner}
                           </span>
                         </td>
-                        <td>{item.source}</td>
+                        <td>
+                          <span className="sd-source">
+                            {item.source.toLowerCase().includes('webhook') ? <IconLink /> : <IconDoc />}
+                            {sentence(item.source)}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -436,11 +531,15 @@ export default function ServiceDeskPage() {
                   ✕
                 </button>
               </div>
-              <span className={`sd-badge sd-badge--prio-${priorityTone(selected.priority)}`}>{selected.priority}</span>
-              <Link href={selected.href} className="btn btn-primary sd-inspector__cta">
-                Open {kindLabel(selected.kind).toLowerCase()}
-              </Link>
+              <span className={`sd-badge sd-badge--prio-${priorityTone(selected.priority)}`}>{sentence(selected.priority)}</span>
+              <div className="sd-inspector__actions">
+                <Link href={selected.href} className="btn btn-primary sd-inspector__cta">
+                  Open {kindLabel(selected.kind).toLowerCase()}
+                </Link>
+                <Link href={selected.href} className="sd-inspector__more" aria-label="More actions">...</Link>
+              </div>
 
+              <h3 className="sd-section__title">Key details</h3>
               <dl className="sd-meta">
                 <div>
                   <dt>Type</dt>
@@ -449,13 +548,13 @@ export default function ServiceDeskPage() {
                 <div>
                   <dt>Status</dt>
                   <dd>
-                    <span className={`sd-badge sd-badge--${statusTone(selected.status)}`}>{selected.status}</span>
+                    <span className={`sd-badge sd-badge--${statusTone(selected.status)}`}>{sentence(selected.status)}</span>
                   </dd>
                 </div>
                 <div>
                   <dt>Priority</dt>
                   <dd>
-                    <span className={`sd-badge sd-badge--prio-${priorityTone(selected.priority)}`}>{selected.priority}</span>
+                    <span className={`sd-badge sd-badge--prio-${priorityTone(selected.priority)}`}>{sentence(selected.priority)}</span>
                   </dd>
                 </div>
                 <div>
@@ -487,13 +586,25 @@ export default function ServiceDeskPage() {
 
               <section className="sd-section">
                 <h3>Description</h3>
-                <p>{selected.summary || 'No description provided for this ticket yet.'}</p>
+                <p>{selected.summary || 'Unknown'}</p>
               </section>
 
               <section className="sd-section">
-                <h3>Related</h3>
-                <Link href={selected.href} className="sd-related">
-                  {selected.service !== '—' ? selected.service : ticketIdLabel(selected)}
+                <h3>Next action</h3>
+                <label className="sd-next">
+                  <input type="checkbox" disabled checked={false} />
+                  <span>
+                    {selected.nextAction || 'Unknown'}
+                    <small>{selected.owner} · {selected.dueAt ? `Due ${formatWhen(selected.dueAt)}` : 'Due Unknown'}</small>
+                  </span>
+                </label>
+              </section>
+
+              <section className="sd-section">
+                <h3>Related items</h3>
+                <Link href={selected.href} className="sd-related-card">
+                  <span>{selected.service}</span>
+                  <small>Service · {selected.environment}</small>
                 </Link>
               </section>
             </aside>

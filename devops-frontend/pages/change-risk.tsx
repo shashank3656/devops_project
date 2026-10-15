@@ -9,7 +9,7 @@ export default function ChangeRiskPage() {
 
   useEffect(() => {
     if (!router.isReady) return;
-    void router.replace('/ops-command-center');
+    void router.replace('/changes');
   }, [router]);
 
   return (
@@ -25,13 +25,13 @@ export default function ChangeRiskPage() {
               <h1 className="portal-surface__title">This view has been retired</h1>
               <p className="portal-surface__subtitle">
                 Change Risk has been removed from the DevOps portal to keep the experience simpler.
-                Redirecting you to Ops Command Center.
+                Redirecting you to Changes.
               </p>
             </div>
           </div>
           <div className="portal-page__actions">
-            <Link href="/ops-command-center" className="btn btn-primary">
-              Open operations
+            <Link href="/changes" className="btn btn-primary">
+              Open changes
             </Link>
             <Link href="/promotions" className="btn btn-secondary">
               Open promotions

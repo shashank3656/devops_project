@@ -64,7 +64,7 @@ export default function ServiceDetailPage() {
             <div className="portal-form-grid">
               <label className="label">Repo<input className="input" readOnly value={item.repo || '—'} /></label>
               <label className="label">Environment<input className="input" readOnly value={item.environment || 'all'} /></label>
-              <label className="label">Team<input className="input" readOnly value={item.team || '—'} /></label>
+              <label className="label">Owner team<input className="input" readOnly value={item.team || 'Unknown'} /></label>
               <label className="label">Grafana UID<input className="input" readOnly value={item.grafana_uid || '—'} /></label>
               <label className="label">Project<input className="input" readOnly value={item.project_name || '—'} /></label>
             </div>
