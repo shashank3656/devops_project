@@ -140,6 +140,7 @@ export function MyWorkDesk({
   const [message, setMessage] = useState('');
   const [serviceMessage, setServiceMessage] = useState('');
   const [draftService, setDraftService] = useState(service);
+  const [loading, setLoading] = useState(true);
   const block = workspaceScopeBlock(chosen.projectId, chosen.environment);
   const selectedKind = workKind(kind);
 
@@ -155,9 +156,11 @@ export function MyWorkDesk({
       setServiceView(hiddenWorkView());
       setMessage(block);
       setServiceMessage('');
+      setLoading(false);
       return;
     }
     let cancel = false;
+    setLoading(true);
     const extra: Record<string, string> = { page: String(page), page_size: String(pageSize) };
     if (selectedKind) extra.kind = selectedKind;
     if (!workspaceServiceBlock(service)) extra.service = service.trim().toLowerCase();
@@ -172,12 +175,14 @@ export function MyWorkDesk({
         setPageView(failed ? errorWorkView() : pageResult.view);
         setWorkView(failed ? errorWorkView() : workResult.view);
         setMessage(failed ? pageResult.message || workResult.message || 'workspace request failed' : '');
+        setLoading(false);
       })
       .catch(() => {
         if (cancel) return;
         setPageView(errorWorkView());
         setWorkView(errorWorkView());
         setMessage('workspace request failed');
+        setLoading(false);
       });
     return () => {
       cancel = true;
@@ -228,101 +233,98 @@ export function MyWorkDesk({
   const shownWork = block ? unknownWorkView() : workView;
   const shownMessage = block ? block : shownPage.state === 'error' ? message : '';
 
+  const meta = (item: { owner: string; service: string }) => [item.service, item.owner].map((value) => value.trim()).filter(Boolean).join(' · ');
+
   return (
-    <div className="desk-language">
-      <header className="desk-landing">
-        <div className="desk-landing__title">
-          <h2>My work</h2>
-          <DeskStateChip value={shownPage.state} />
+    <div className="work-page">
+      <header className="work-page__head">
+        <div>
+          <h1>My work</h1>
+          <p>Deployments, incidents, security, resources, and owners for the project and environment selected above.</p>
         </div>
-        <p>Deployment, incident, security, resource, and owner records for one project and one environment.</p>
+        <DeskStateChip value={loading ? 'unknown' : shownPage.state} />
       </header>
       <DeskError message={shownMessage} />
-      <section className="desk-language__panel" aria-label="Page state">
-        <h2>Sections</h2>
-        <ul className="my-work__sections">
-          {shownPage.sections.map((section) => (
-            <li key={section.kind}>
-              <button type="button" onClick={() => onKind(section.kind)}>
-                <span>{workKindLabel(section.kind)}</span>
-                <DeskStateChip value={section.state} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section className="desk-language__panel" aria-label="Work list">
-        <h2>Work</h2>
-        <div className="desk-language__choices" role="group" aria-label="Kind">
-          <button type="button" className={selectedKind === '' ? 'is-selected' : ''} onClick={() => onKind('')}>All</button>
-          {WORK_KINDS.map((item) => (
-            <button type="button" key={item} className={selectedKind === item ? 'is-selected' : ''} onClick={() => onKind(item)}>
-              {workKindLabel(item)}
-            </button>
-          ))}
-        </div>
-        <div className="desk-language__choices" role="group" aria-label="Page size">
-          {WORK_PAGE_SIZES.map((size) => (
-            <button type="button" key={size} className={pageSize === size ? 'is-selected' : ''} onClick={() => onPageSize(size)}>
-              {size}
-            </button>
-          ))}
-        </div>
-        {block || shownWork.state !== 'empty' ? null : shownWork.items.length === 0 ? (
-          <div className="desk-language__empty">
-            <DeskStateChip value="empty" />
-            <p>No work in this environment.</p>
+      <section className="work-board" aria-label="Work list">
+        <div className="work-toolbar">
+          <div className="work-kinds" role="group" aria-label="Kind">
+            <button type="button" className={selectedKind === '' ? 'is-selected' : ''} onClick={() => onKind('')}>All</button>
+            {WORK_KINDS.map((item) => {
+              const section = shownPage.sections.find((entry) => entry.kind === item);
+              return (
+                <button type="button" key={item} className={selectedKind === item ? 'is-selected' : ''} onClick={() => onKind(item)}>
+                  {workKindLabel(item)}
+                  {section && section.count > 0 ? <small>{section.count}</small> : null}
+                </button>
+              );
+            })}
           </div>
-        ) : (
-          <ul className="desk-language__records">
+          <label className="work-size">
+            Rows
+            <select className="input" value={pageSize} onChange={(event) => onPageSize(workPageSize(event.target.value))} aria-label="Rows per page">
+              {WORK_PAGE_SIZES.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {loading ? <p className="work-empty">Loading work…</p> : null}
+        {!loading && !block && shownWork.items.length === 0 ? (
+          <p className="work-empty">No work in this environment.</p>
+        ) : null}
+        {!loading && shownWork.items.length > 0 ? (
+          <ul className="work-list">
             {shownWork.items.map((item) => (
-              <li key={item.key} aria-current={focused && item.key.endsWith(`:${sourceId}`) ? 'true' : undefined}>
-                <Link href={item.href}>{item.label}</Link>
-                <DeskStateChip value={item.state} />
+              <li key={item.key}>
+                <Link href={item.href} aria-current={focused && item.key.endsWith(`:${sourceId}`) ? 'true' : undefined}>
+                  <span className="work-kind">{workKindLabel(item.kind)}</span>
+                  <span>
+                    <strong>{item.label}</strong>
+                    {meta(item) ? <small>{meta(item)}</small> : null}
+                  </span>
+                  <DeskStateChip value={item.state} />
+                </Link>
               </li>
             ))}
           </ul>
-        )}
-        {block || shownWork.state !== 'empty' ? null : (
-          <div className="desk-language__choices">
-            <button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)}>Previous</button>
-            <button type="button" disabled={page >= lastPage} onClick={() => onPage(page + 1)}>Next</button>
+        ) : null}
+        {!loading && !block && shownWork.items.length > 0 && lastPage > 1 ? (
+          <div className="work-pager">
+            <button type="button" className="btn btn-secondary" disabled={page <= 1} onClick={() => onPage(page - 1)}>Previous</button>
+            <span>Page {page} of {lastPage}</span>
+            <button type="button" className="btn btn-secondary" disabled={page >= lastPage} onClick={() => onPage(page + 1)}>Next</button>
           </div>
-        )}
+        ) : null}
       </section>
-      <section className="desk-language__panel" aria-label="Service list">
-        <h2>Service</h2>
+      <section className="work-lookup" aria-label="Service list">
+        <h2>Look up a service</h2>
+        <p>Enter one service name to see only its records.</p>
         <form
-          className="desk-language__form"
+          className="work-lookup__row"
           onSubmit={(event) => {
             event.preventDefault();
             applyService();
           }}
         >
-          <div className="desk-language__field">
-            <label htmlFor="work-service">Service</label>
-            <input id="work-service" name="service" value={draftService} autoComplete="off" onChange={(event) => setDraftService(event.target.value)} />
-          </div>
-          <div className="desk-language__actions">
-            <button type="submit" className="btn btn-primary">Show service</button>
-          </div>
+          <input id="work-service" className="input" name="service" aria-label="Service name" value={draftService} autoComplete="off" placeholder="Service name" onChange={(event) => setDraftService(event.target.value)} />
+          <button type="submit" className="btn btn-primary">Show</button>
         </form>
         <DeskError message={serviceMessage} />
-        {serviceView.state === 'error' ? (
-          <div className="desk-language__empty">
-            <DeskStateChip value="error" />
-          </div>
-        ) : block || serviceMessage ? null : serviceView.items.length === 0 ? (
-          <div className="desk-language__empty">
-            <DeskStateChip value="empty" />
-            <p>{service ? 'No records for this service.' : 'One service is required.'}</p>
-          </div>
+        {serviceView.state === 'error' ? <p className="work-empty">This service could not be loaded.</p> : null}
+        {!service || block || serviceMessage || serviceView.state === 'error' ? null : serviceView.items.length === 0 ? (
+          <p className="work-empty">No records for this service.</p>
         ) : (
-          <ul className="desk-language__records">
+          <ul className="work-list">
             {serviceView.items.map((item) => (
               <li key={item.key}>
-                <Link href={item.href}>{item.label}</Link>
-                <DeskStateChip value={item.state} />
+                <Link href={item.href}>
+                  <span className="work-kind">{workKindLabel(item.kind)}</span>
+                  <span>
+                    <strong>{item.label}</strong>
+                    {meta(item) ? <small>{meta(item)}</small> : null}
+                  </span>
+                  <DeskStateChip value={item.state} />
+                </Link>
               </li>
             ))}
           </ul>

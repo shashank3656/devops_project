@@ -397,7 +397,6 @@ export default function IncidentWorkspacePage() {
           <div className="portal-page__actions">
             <Link href="/incidents" className="btn btn-secondary">Incidents</Link>
             <Link href="/promotions" className="btn btn-secondary">Promotion Center</Link>
-            <Link href="/rollback-console" className="btn btn-primary">Rollback Console</Link>
           </div>
         </div>
 

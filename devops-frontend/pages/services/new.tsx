@@ -11,6 +11,27 @@ interface ProjectOption {
   id: number;
   name: string;
   code: string;
+  environments: string[];
+}
+
+interface OwnerTeam {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+function readTeams(data: { teams?: unknown; owner_teams?: unknown }): OwnerTeam[] {
+  const raw = Array.isArray(data?.owner_teams) ? data.owner_teams : Array.isArray(data?.teams) ? data.teams : [];
+  return raw
+    .map((item) => {
+      const row = item as { id?: number; name?: string; slug?: string };
+      return {
+        id: typeof row.id === 'number' ? row.id : 0,
+        name: String(row.name || '').trim(),
+        slug: String(row.slug || '').trim(),
+      };
+    })
+    .filter((item) => item.id > 0 && item.name);
 }
 
 export default function NewServiceMapPage() {
@@ -20,34 +41,85 @@ export default function NewServiceMapPage() {
   const [projectId, setProjectId] = useState('');
   const [service, setService] = useState('');
   const [repo, setRepo] = useState('');
-  const [environment, setEnvironment] = useState('prod');
+  const [environment, setEnvironment] = useState('');
+  const [projectEnvs, setProjectEnvs] = useState<string[]>([]);
   const [grafanaUID, setGrafanaUID] = useState('');
   const [promql, setPromql] = useState('');
   const [dashboardURL, setDashboardURL] = useState('');
   const [metricsURL, setMetricsURL] = useState('');
   const [team, setTeam] = useState('');
+  const [teams, setTeams] = useState<OwnerTeam[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
-    fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } })
+    const headers = { Authorization: `Bearer ${token}` };
+    Promise.all([
+      fetch(`${apiUrl}/api/devops/my-teams`, { headers }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})),
+      fetch(`${apiUrl}/api/devops/project-options`, { headers }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})),
+    ])
+      .then(([mine, options]) => {
+        const byId = new Map<number, OwnerTeam>();
+        [...readTeams(mine), ...readTeams(options)].forEach((item) => byId.set(item.id, item));
+        setTeams([...byId.values()].sort((left, right) => left.name.localeCompare(right.name)));
+      })
+      .catch(() => setTeams([]));
+    fetch(`${apiUrl}/api/devops/projects`, { headers })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         const list = Array.isArray(data?.projects) ? data.projects : [];
         setProjects(
           list
-            .map((item: { id?: number; name?: string; code?: string }) => ({
+            .map((item: { id?: number; name?: string; code?: string; environments?: string[] }) => ({
               id: typeof item.id === 'number' ? item.id : 0,
               name: item.name || '',
               code: item.code || '',
+              environments: Array.isArray(item.environments) ? item.environments.map((value) => String(value)).filter(Boolean) : [],
             }))
             .filter((item: ProjectOption) => item.id > 0),
         );
       })
       .catch(() => undefined);
   }, [apiUrl]);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    const queryProject = Array.isArray(router.query.project_id) ? router.query.project_id[0] : router.query.project_id;
+    const queryEnv = Array.isArray(router.query.environment) ? router.query.environment[0] : router.query.environment;
+    if (queryProject) setProjectId(queryProject);
+    if (queryEnv) setEnvironment(queryEnv);
+  }, [router.isReady, router.query.environment, router.query.project_id]);
+
+  useEffect(() => {
+    const selected = projects.find((project) => String(project.id) === projectId);
+    const fromProject = selected?.environments || [];
+    if (!projectId) {
+      setProjectEnvs([]);
+      return;
+    }
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      setProjectEnvs(fromProject);
+      return;
+    }
+    const params = new URLSearchParams({ project_id: projectId });
+    fetch(`${apiUrl}/api/devops/environment-catalog?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const names = Array.isArray(data?.environments)
+          ? data.environments.map((row: { name?: string }) => String(row?.name || '').trim()).filter(Boolean)
+          : [];
+        const next = names.length ? names : fromProject;
+        setProjectEnvs(next);
+        setEnvironment((current) => (next.includes(current) ? current : next[0] || ''));
+      })
+      .catch(() => {
+        setProjectEnvs(fromProject);
+        setEnvironment((current) => (fromProject.includes(current) ? current : fromProject[0] || ''));
+      });
+  }, [apiUrl, projectId, projects]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -99,7 +171,7 @@ export default function NewServiceMapPage() {
               Services created here appear in the Change request dropdown. Map a repo and project so a change can resolve ownership without asking for environment.
             </p>
           </div>
-          <Link href="/services" className="btn btn-secondary">Back to catalog</Link>
+          <Link href="/services" className="btn btn-secondary">Back to services</Link>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
         <section className="portal-surface">
@@ -114,7 +186,7 @@ export default function NewServiceMapPage() {
             </label>
             <label className="label">
               Project
-              <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <select className="input" value={projectId} onChange={(e) => { setProjectId(e.target.value); setEnvironment(''); }}>
                 <option value="">No project</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>
@@ -125,11 +197,21 @@ export default function NewServiceMapPage() {
             </label>
             <label className="label">
               Environment
-              <input className="input" value={environment} onChange={(e) => setEnvironment(e.target.value)} />
+              <select className="input" value={environment} onChange={(e) => setEnvironment(e.target.value)} disabled={!projectId || projectEnvs.length === 0} required={Boolean(projectId)}>
+                <option value="">{projectId ? (projectEnvs.length ? 'Select an environment' : 'No environments on this project') : 'Select a project first'}</option>
+                {projectEnvs.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
             </label>
             <label className="label">
-              Team
-              <input className="input" value={team} onChange={(e) => setTeam(e.target.value)} />
+              Owner team
+              <select className="input" value={team} onChange={(e) => setTeam(e.target.value)} disabled={teams.length === 0}>
+                <option value="">{teams.length ? 'Select an owner team' : 'No teams'}</option>
+                {teams.map((item) => (
+                  <option key={item.id} value={item.name}>{item.name}</option>
+                ))}
+              </select>
             </label>
             <label className="label">
               Grafana UID

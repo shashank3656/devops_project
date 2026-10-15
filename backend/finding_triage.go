@@ -498,12 +498,8 @@ func loadServiceOwnerFromDB(serviceID int) (serviceOwner, error) {
 	}
 	var item serviceOwner
 	err := DB.QueryRow(`
-		SELECT s.project_id, COALESCE((
-			SELECT team FROM catalog_service_teams
-			WHERE service_id = s.id AND btrim(team) <> ''
-			ORDER BY id LIMIT 1
-		), '')
-		FROM catalog_services s WHERE s.id = $1
+		SELECT project_id, COALESCE(team, '')
+		FROM service_map WHERE id = $1
 	`, serviceID).Scan(&item.ProjectID, &item.Team)
 	if err != nil {
 		return serviceOwner{}, nil
