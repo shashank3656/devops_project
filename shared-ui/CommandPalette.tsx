@@ -70,9 +70,9 @@ export default function CommandPalette({ apiUrl, token, commands }: CommandPalet
       .filter((command) => !needle || command.label.toLowerCase().includes(needle) || (command.hint || '').toLowerCase().includes(needle))
       .map((command) => ({
         id: `cmd-${command.id}`,
-        kind: 'command',
+        kind: 'page',
         title: command.label,
-        subtitle: command.hint || 'Command',
+        subtitle: command.hint || '',
         href: command.href,
       }));
     return [...commandHits, ...hits].slice(0, 20);
@@ -127,7 +127,7 @@ export default function CommandPalette({ apiUrl, token, commands }: CommandPalet
                   <strong>{item.title}</strong>
                   {item.subtitle ? <div className="ig-muted">{item.subtitle}</div> : null}
                 </span>
-                <span className="ig-muted">{item.kind}</span>
+                <span className="ig-muted">{item.kind === 'page' ? item.href : item.kind}</span>
               </button>
             ))
           )}

@@ -1,7 +1,8 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
+import CloudServiceSelect from '../../components/CloudServiceSelect';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { asRecord, getString } from '../../lib/payload';
@@ -14,12 +15,6 @@ const CLOUD_OPTIONS = [
   { value: 'azure', label: 'Azure' },
   { value: 'gcp', label: 'GCP' },
 ];
-
-const SERVICE_OPTIONS: Record<string, string[]> = {
-  aws: ['ec2', 'eks', 'rds', 'vpc', 's3', 'iam', 'lambda'],
-  azure: ['aks', 'postgresql', 'virtual-network', 'storage-account'],
-  gcp: ['gke', 'cloudsql', 'vpc', 'storage', 'iam'],
-};
 
 type ProjectStatus = 'active' | 'inactive' | 'archived';
 
@@ -191,14 +186,6 @@ export default function NewProjectPage() {
       .finally(() => setLoading(false));
   }, [apiUrl]);
 
-  const servicesByCloud = useMemo(() => {
-    const grouped: Record<string, string[]> = {};
-    for (const cloud of form.clouds) {
-      grouped[cloud] = SERVICE_OPTIONS[cloud] || [];
-    }
-    return grouped;
-  }, [form.clouds]);
-
   const updateForm = (patch: Partial<ProjectFormState>) => {
     setForm((current) => ({ ...current, ...patch }));
   };
@@ -298,9 +285,9 @@ export default function NewProjectPage() {
 
   const selectedOwnerTeamName = ownerTeams.find((team) => String(team.id) === form.owner_team_id)?.name || 'Not set';
 
-  const providerReason = (value: string) => {
-    if (!providersLoaded) return 'Cloud connections could not be confirmed.';
-    if (!connectedProviders.includes(value)) return 'No connected account.';
+  const providerNote = (value: string) => {
+    if (!providersLoaded) return '';
+    if (connectedProviders.includes(value)) return 'Account connected';
     return '';
   };
 
@@ -323,15 +310,11 @@ export default function NewProjectPage() {
       return;
     }
     if (!form.owner_team_id) {
-      setError('Choose the working team before the cloud connection.');
+      setError('Choose the working team before the cloud.');
       return;
     }
     if (form.clouds.length === 0) {
       setError('Choose a configured cloud connection.');
-      return;
-    }
-    if (form.clouds.some((cloud) => providerReason(cloud))) {
-      setError('Only a connected cloud account can be selected.');
       return;
     }
     if (form.environments.length === 0) {
@@ -412,7 +395,7 @@ export default function NewProjectPage() {
             <span className="portal-page__eyebrow">Project Onboarding</span>
             <h1 className="portal-page__title">Onboard project</h1>
             <p className="portal-page__subtitle">
-              Name and key, then the working team, then a connected cloud, then the allowed environments. This setup does not provision infrastructure or grant IAM.
+              Name and key, then the working team, then the clouds this project uses, then the allowed environments. This setup does not provision infrastructure or grant IAM.
             </p>
           </div>
           <div className="portal-page__actions">
@@ -461,7 +444,7 @@ export default function NewProjectPage() {
                     ))}
                   </select>
                   <small className="catalog-editor__field-help">
-                    Choose the working team before a cloud connection.
+                    Choose the working team before a cloud.
                     {teamOptionsError ? ` ${teamOptionsError}` : ''}
                   </small>
                 </div>
@@ -490,24 +473,32 @@ export default function NewProjectPage() {
               </div>
 
               <div className="catalog-editor__section">
-                <strong>Cloud connection</strong>
-                <p className="catalog-editor__section-copy">Only a connected account can be selected. Choosing one does not provision that cloud or grant IAM.</p>
+                <strong>Cloud</strong>
+                <p className="catalog-editor__section-copy">Choose the clouds this project can request against. Choosing one records the catalog. It does not provision that cloud or grant IAM.</p>
                 <div className="catalog-editor__choice-row">
                   {CLOUD_OPTIONS.map((cloud) => {
-                    const reason = providerReason(cloud.value);
+                    const note = providerNote(cloud.value);
                     return (
                       <label key={cloud.value} className="catalog-editor__toggle-label">
                         <input
                           type="checkbox"
                           checked={form.clouds.includes(cloud.value)}
-                          disabled={Boolean(reason)}
                           onChange={() => toggleCloud(cloud.value)}
                         />
-                        <span>{cloud.label}{reason ? ` — ${reason}` : ''}</span>
+                        <span>{cloud.label}{note ? ` — ${note}` : ''}</span>
                       </label>
                     );
                   })}
                 </div>
+                {form.clouds.length === 0 ? <p className="catalog-editor__section-copy">Select a cloud, then choose its services from the dropdown.</p> : null}
+                {form.clouds.map((cloud) => (
+                  <CloudServiceSelect
+                    key={cloud}
+                    cloud={cloud}
+                    selected={form.services.filter((entry) => entry.cloud === cloud).map((entry) => entry.service)}
+                    onToggle={toggleService}
+                  />
+                ))}
               </div>
 
               <div className="catalog-editor__section">
@@ -571,29 +562,6 @@ export default function NewProjectPage() {
                       })}
                     </tbody>
                   </table>
-                </div>
-              </div>
-
-              <div className="catalog-editor__section">
-                <strong>Allowed services</strong>
-                <div className="catalog-editor__choice-grid">
-                  {Object.entries(servicesByCloud).map(([cloud, services]) => (
-                    <div key={cloud} className="request-choice-card catalog-editor__choice-card">
-                      <strong>{cloud.toUpperCase()}</strong>
-                      <div className="catalog-editor__choice-list">
-                        {services.map((service) => (
-                          <label key={`${cloud}-${service}`} className="catalog-editor__toggle-label">
-                            <input
-                              type="checkbox"
-                              checked={form.services.some((entry) => entry.cloud === cloud && entry.service === service)}
-                              onChange={() => toggleService(cloud, service)}
-                            />
-                            <span>{service}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </div>
 

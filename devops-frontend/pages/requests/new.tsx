@@ -4,20 +4,21 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { serviceLabel } from '../../lib/cloudServices';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
 
-type PathChoice = { id: string; title: string; summary: string; cloud?: string; service?: string; advanced?: boolean };
 type TeamChoice = { id: number; name: string; slug: string; default_env?: string };
-type ProjectChoice = { id: number; name: string; code?: string };
+type ProjectService = { cloud: string; service: string };
+type ProjectChoice = { id: number; name: string; code?: string; environments?: string[]; clouds?: string[]; services?: ProjectService[] };
 
 export default function NewRequestPage() {
   const apiUrl = useApiUrl();
-  const [paths, setPaths] = useState<PathChoice[]>([]);
   const [teams, setTeams] = useState<TeamChoice[]>([]);
   const [projects, setProjects] = useState<ProjectChoice[]>([]);
-  const [pathId, setPathId] = useState('');
+  const [serviceId, setServiceId] = useState('');
   const [team, setTeam] = useState('');
   const [projectId, setProjectId] = useState('');
+  const [cloud, setCloud] = useState('');
   const [env, setEnv] = useState('dev');
   const [priority, setPriority] = useState('medium');
   const [dueDate, setDueDate] = useState('');
@@ -28,10 +29,6 @@ export default function NewRequestPage() {
 
   useEffect(() => {
     const headers = sessionAuthHeaders();
-    fetch(`${apiUrl}/api/golden-paths`, { headers })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body) => setPaths(Array.isArray(body?.paths) ? body.paths.filter((item: PathChoice) => !item.advanced && item.service) : []))
-      .catch(() => setPaths([]));
     fetch(`${apiUrl}/api/me/teams`, { headers })
       .then((res) => (res.ok ? res.json() : null))
       .then((body) => {
@@ -50,12 +47,16 @@ export default function NewRequestPage() {
   }, [apiUrl]);
 
   const router = useRouter();
-  const selected = paths.find((item) => item.id === pathId);
+  const selectedProject = projects.find((item) => String(item.id) === projectId);
+  const cloudOptions = selectedProject?.clouds || [];
+  const environmentOptions = selectedProject?.environments?.length ? selectedProject.environments : ['dev', 'uat', 'prod'];
+  const serviceOptions = (selectedProject?.services || []).filter((item) => item.cloud.toLowerCase() === cloud.toLowerCase());
+  const chosenService = serviceOptions.find((item) => item.service === serviceId);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!selected?.cloud || !selected.service) {
-      setError('Choose what you need first.');
+    if (!chosenService || !cloud) {
+      setError('Choose a cloud and a service from this project.');
       return;
     }
     setSaving(true);
@@ -68,8 +69,8 @@ export default function NewRequestPage() {
         body: JSON.stringify({
           team,
           env,
-          cloud: selected.cloud,
-          service: selected.service,
+          cloud,
+          service: chosenService.service,
           project_id: projectId ? Number(projectId) : undefined,
           priority,
           due_date: dueDate || undefined,
@@ -86,7 +87,8 @@ export default function NewRequestPage() {
         return;
       }
       setNotice('Request raised. It is waiting for review and has not been applied.');
-      setPathId('');
+      setServiceId('');
+      setCloud('');
     } catch {
       setError('The request could not be sent.');
     } finally {
@@ -105,21 +107,13 @@ export default function NewRequestPage() {
             <div>
               <p className="ops-kicker">Requests</p>
               <h1>New request</h1>
-              <p>Choose what you need. Priority sends it to L1, L2, L3, or L4. Raising it does not create the cloud resource.</p>
+              <p>Choose the project, then the cloud, then a service saved on that project. Priority sends it to L1, L2, L3, or L4. Raising it does not create the cloud resource.</p>
             </div>
             <Link href="/my-requests" className="btn btn-secondary">Back to my requests</Link>
           </header>
           {notice ? <div className="alert alert-success" role="status">{notice}</div> : null}
           {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
           <form className="portal-surface access-form" onSubmit={submit}>
-            <label className="label" htmlFor="request-path">What do you need?</label>
-            <select id="request-path" className="input" value={pathId} onChange={(event) => setPathId(event.target.value)} required>
-              <option value="">Choose one</option>
-              {paths.map((item) => (
-                <option key={item.id} value={item.id}>{item.title}</option>
-              ))}
-            </select>
-            {selected ? <p className="access-hint">{selected.summary}</p> : null}
             <label className="label" htmlFor="request-team">Team</label>
             <select
               id="request-team"
@@ -139,18 +133,44 @@ export default function NewRequestPage() {
               ))}
             </select>
             <label className="label" htmlFor="request-project">Project</label>
-            <select id="request-project" className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-              <option value="">No project</option>
+            <select
+              id="request-project"
+              className="input"
+              value={projectId}
+              onChange={(event) => {
+                setProjectId(event.target.value);
+                setCloud('');
+                setServiceId('');
+              }}
+              required
+            >
+              <option value="">Choose a project</option>
               {projects.map((item) => (
                 <option key={item.id} value={item.id}>{item.code ? `${item.name} (${item.code})` : item.name}</option>
               ))}
             </select>
             <label className="label" htmlFor="request-env">Environment</label>
             <select id="request-env" className="input" value={env} onChange={(event) => setEnv(event.target.value)}>
-              <option value="dev">dev</option>
-              <option value="stage">stage</option>
-              <option value="uat">uat</option>
-              <option value="prod">prod</option>
+              {environmentOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+            </select>
+            <label className="label" htmlFor="request-cloud">Cloud</label>
+            <select
+              id="request-cloud"
+              className="input"
+              value={cloud}
+              onChange={(event) => { setCloud(event.target.value); setServiceId(''); }}
+              required
+              disabled={!projectId}
+            >
+              <option value="">{projectId ? 'Select a cloud' : 'Choose a project first'}</option>
+              {cloudOptions.map((name) => <option key={name} value={name}>{name.toUpperCase()}</option>)}
+            </select>
+            <label className="label" htmlFor="request-service">Service</label>
+            <select id="request-service" className="input" value={serviceId} onChange={(event) => setServiceId(event.target.value)} required disabled={!cloud || serviceOptions.length === 0}>
+              <option value="">{!cloud ? 'Select a cloud first' : serviceOptions.length ? 'Select a service' : 'No services were saved for this cloud on the project'}</option>
+              {serviceOptions.map((item) => (
+                <option key={`${item.cloud}-${item.service}`} value={item.service}>{serviceLabel(item.cloud, item.service)}</option>
+              ))}
             </select>
             <label className="label" htmlFor="request-due">Needed by</label>
             <input id="request-due" className="input" type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />

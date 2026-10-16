@@ -63,6 +63,8 @@ type iamEvaluateInput struct {
 	ResourceID      string `json:"resourceId"`
 	Environment     string `json:"environment"`
 	ScopeKind       string `json:"scopeKind"`
+	Service         string `json:"service"`
+	ProjectID       string `json:"projectId"`
 	Action          string `json:"action"`
 	DurationMinutes int    `json:"durationMinutes"`
 	TicketRef       string `json:"ticketRef"`
@@ -176,6 +178,7 @@ func evaluateIAMAccess(in iamEvaluateInput, now time.Time, alreadyActive bool) i
 	in.Environment = strings.ToUpper(strings.TrimSpace(in.Environment))
 	in.ScopeKind = strings.ToUpper(strings.TrimSpace(in.ScopeKind))
 	in.Action = strings.ToUpper(strings.TrimSpace(in.Action))
+	in.Service = strings.TrimSpace(in.Service)
 	in.TeamID = strings.TrimSpace(in.TeamID)
 	in.PrincipalID = strings.TrimSpace(in.PrincipalID)
 	in.ResourceID = strings.TrimSpace(in.ResourceID)
@@ -207,12 +210,49 @@ func evaluateIAMAccess(in iamEvaluateInput, now time.Time, alreadyActive bool) i
 	if in.Provider != "AZURE" && in.Provider != "AWS" && in.Provider != "GCP" {
 		return deny("provider is not supported")
 	}
+	if in.Service == "" {
+		return deny("service is required")
+	}
 	principal, ok := iamFindPrincipal(in.PrincipalID)
 	if !ok || !principal.Verified {
 		return deny("principal is missing or not verified")
 	}
 	if principal.TeamID != in.TeamID {
 		return deny("principal is outside the selected team")
+	}
+	if in.Action == "READ" || in.Action == "DEVELOPER" || in.Action == "ADMIN" {
+		if in.Environment == "" {
+			return deny("environment is required")
+		}
+		label, risk := "Read", "LOW"
+		if in.Environment == "PROD" || in.Environment == "PRODUCTION" {
+			risk = "MEDIUM"
+		}
+		switch in.Action {
+		case "DEVELOPER":
+			label, risk = "Developer", "MEDIUM"
+		case "ADMIN":
+			label, risk = "Admin", "HIGH"
+		}
+		roleName := in.Service + " " + label
+		if strings.EqualFold(roleName, "Owner") || strings.EqualFold(roleName, "Contributor") {
+			return deny("owner and contributor are outside self-service")
+		}
+		cap := iamDurationCap(risk)
+		if in.DurationMinutes <= 0 || in.DurationMinutes > cap {
+			return deny("duration exceeds the policy cap for this risk")
+		}
+		if risk == "HIGH" && (in.TicketRef == "" || len(in.Justification) < 12) {
+			return deny("high-risk access needs a ticket reference and a business justification")
+		}
+		out.Risk = risk
+		out.RoleName = roleName
+		out.NormalizedScope = strings.ToLower(in.Provider) + ":" + in.Service
+		out.Decision = "ALLOW_WITH_APPROVAL"
+		out.ProvisioningMode = "AFTER_DEVOPS_APPROVAL"
+		out.ApprovalStages = []string{"DEVOPS"}
+		out.Warnings = append(out.Warnings, "Submitting opens an incident. After the DevOps team approves, the backend records the grant and closes the incident.")
+		return out
 	}
 	resource, ok := iamFindResource(in.ResourceID)
 	if !ok {
