@@ -506,6 +506,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     Icon: ComponentType<{ className?: string }>;
     children?: NavChild[];
   };
+  type SidebarSection = { title: string; items: NavItem[] };
 
   /** Service desk hub: unified INC / CHG / PRB / requests landing. */
   const serviceDeskHref = '/service-desk';
@@ -608,42 +609,41 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       ]
     : [];
   const grants = portalGrants(user);
-  const visibleNav = (items: NavItem[]) => items.flatMap((item) => {
+  const visibleNav = (items: NavItem[]): NavItem[] => items.flatMap((item) => {
     if (!pathAllowed(item.href, grants) && !pageAllowed(item.href, grants)) return [];
     if (!pathAllowed(item.href, grants)) return [];
     const children = item.children?.filter((child) => pathAllowed(child.href, grants));
     return [{ ...item, children }];
   });
-  const sidebarSections = [
-    ...(grants.requests
-      ? [{
-          title: 'Requests',
-          items: visibleNav([
-            { href: '/my-requests', label: 'My requests', Icon: IconTickets },
-            { href: '/requests/new', label: 'New request', Icon: IconFileText },
-            { href: '/my-projects', label: 'My projects', Icon: IconProjects },
-            { href: '/my-teams', label: 'My teams', Icon: IconBookOpen },
-          ]),
-        }]
-      : []),
-    ...(grants.daily ? [{ title: 'Daily', items: visibleNav(dailyNavItems) }] : []),
-    ...(grants.operations ? [{ title: 'Operations', items: visibleNav(operationsNavItems) }] : []),
-    ...(grants.infrastructure ? [{ title: 'Infrastructure', items: visibleNav(infrastructureNavItems) }] : []),
-    ...(grants.security ? [{ title: 'Security', items: visibleNav(securityNavItems) }] : []),
-    ...(grants.records && recordsNavItems.length ? [{ title: 'Records', items: visibleNav(recordsNavItems) }] : []),
-    ...(grants.portalAccess
-      ? [{
-          title: 'Portal Access',
-          items: [
-            { href: '/portal-access', label: 'Access', Icon: IconShield },
-            { href: '/portal-access/users', label: 'People', Icon: IconUser },
-            { href: '/portal-access/teams', label: 'Groups', Icon: IconProjects },
-            { href: '/portal-access/sso', label: 'Sign-in', Icon: IconShield },
-          ],
-        }]
-      : []),
-  ];
-  const allNavItems = sidebarSections.flatMap((section) => section.items);
+  const sidebarSections: SidebarSection[] = [];
+  if (grants.requests) {
+    sidebarSections.push({
+      title: 'Requests',
+      items: visibleNav([
+        { href: '/my-requests', label: 'My requests', Icon: IconTickets },
+        { href: '/requests/new', label: 'New request', Icon: IconFileText },
+        { href: '/my-projects', label: 'My projects', Icon: IconProjects },
+        { href: '/my-teams', label: 'My teams', Icon: IconBookOpen },
+      ]),
+    });
+  }
+  if (grants.daily) sidebarSections.push({ title: 'Daily', items: visibleNav(dailyNavItems) });
+  if (grants.operations) sidebarSections.push({ title: 'Operations', items: visibleNav(operationsNavItems) });
+  if (grants.infrastructure) sidebarSections.push({ title: 'Infrastructure', items: visibleNav(infrastructureNavItems) });
+  if (grants.security) sidebarSections.push({ title: 'Security', items: visibleNav(securityNavItems) });
+  if (grants.records && recordsNavItems.length) sidebarSections.push({ title: 'Records', items: visibleNav(recordsNavItems) });
+  if (grants.portalAccess) {
+    sidebarSections.push({
+      title: 'Portal Access',
+      items: [
+        { href: '/portal-access', label: 'Access', Icon: IconShield },
+        { href: '/portal-access/users', label: 'People', Icon: IconUser },
+        { href: '/portal-access/teams', label: 'Groups', Icon: IconProjects },
+        { href: '/portal-access/sso', label: 'Sign-in', Icon: IconShield },
+      ],
+    });
+  }
+  const allNavItems: NavItem[] = sidebarSections.flatMap((section) => section.items);
   const k8sNavActive = pathname === '/k8s' || pathname.startsWith('/k8s/');
 
   useEffect(() => {
