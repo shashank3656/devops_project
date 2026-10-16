@@ -3,8 +3,8 @@ package main
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/hex"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -660,6 +660,33 @@ func parseFlexibleTime(value string) time.Time {
 func readWebhookBody(r *http.Request) ([]byte, error) {
 	defer r.Body.Close()
 	return io.ReadAll(io.LimitReader(r.Body, 1<<20))
+}
+
+func canonicalWebhookPath(path string) string {
+	path = strings.Split(path, "?")[0]
+	for _, route := range []string{"/api/webhooks/change", "/api/webhooks/alert", "/api/webhooks/github"} {
+		rest := strings.TrimPrefix(path, route)
+		if rest == route || strings.HasPrefix(rest, route+"/") {
+			return route + strings.TrimPrefix(rest, route)
+		}
+	}
+	return path
+}
+
+func withCanonicalWebhookPath(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := canonicalWebhookPath(r.URL.Path)
+		if path == r.URL.Path {
+			next.ServeHTTP(w, r)
+			return
+		}
+		clone := r.Clone(r.Context())
+		urlCopy := *r.URL
+		urlCopy.Path = path
+		urlCopy.RawPath = ""
+		clone.URL = &urlCopy
+		next.ServeHTTP(w, clone)
+	})
 }
 
 func changeWebhookHandler(w http.ResponseWriter, r *http.Request) {

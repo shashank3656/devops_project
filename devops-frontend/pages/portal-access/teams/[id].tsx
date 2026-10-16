@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import AccessNav from '../../../components/AccessNav';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
-import { ACCESS_SECTIONS, grantSummary, grantsForTeam, pagesFor, sameGrants, type SectionGrants, type SectionKey } from '../../../lib/accessSections';
+import { ACCESS_SECTIONS, grantsForTeam, pagesFor, sameGrants, type SectionGrants, type SectionKey } from '../../../lib/accessSections';
 import { sessionAuthHeaders } from '../../../lib/portalAccess';
 
 type Team = {
@@ -31,7 +31,6 @@ export default function GroupAccessPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
   const [personId, setPersonId] = useState('');
@@ -255,7 +254,6 @@ export default function GroupAccessPage() {
       setSaved(draft);
       setCustom(true);
       setNotice('Sections saved. Members see them the next time they open the portal.');
-      setMenuOpen(false);
     } catch {
       setError('Sections could not be saved.');
     } finally {
@@ -272,7 +270,6 @@ export default function GroupAccessPage() {
       { value: 'manager', label: 'Manager' },
     ];
   const available = people.filter((person) => !members.some((member) => member.user_id === person.id));
-  const chosen = grantSummary(draft) === 'No sections' ? [] : [grantSummary(draft)];
   const dirty = !sameGrants(draft, saved) || !custom;
 
   return (
@@ -299,76 +296,77 @@ export default function GroupAccessPage() {
           {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
           {loading ? <p className="work-empty">Loading group…</p> : null}
           {!loading && team ? (
-            <section className="portal-surface access-form">
-              <h2 className="access-form__title">People</h2>
-              {members.length === 0 ? <p className="work-empty">No one is in this group yet.</p> : (
-                <ul className="access-members">
-                  {members.map((member) => (
-                    <li key={member.user_id}>
-                      <span>{member.username}</span>
-                      <select className="input" aria-label={`Role for ${member.username}`} value={member.role} onChange={(event) => changeRole(member.user_id, event.target.value)}>
-                        {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                      </select>
-                      <button type="button" className="btn btn-secondary" onClick={() => removePerson(member.user_id)}>Remove</button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <label className="label" htmlFor="add-role">Role</label>
-              <select id="add-role" className="input" value={memberRole} onChange={(event) => setMemberRole(event.target.value)}>
-                {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-              <label className="label" htmlFor="add-person">Add someone</label>
-              <select id="add-person" className="input" value={personId} onChange={(event) => setPersonId(event.target.value)}>
-                <option value="">{available.length ? 'Choose a person' : 'Everyone is already in this group'}</option>
-                {available.map((person) => (
-                  <option key={person.id} value={person.id}>{person.username}</option>
-                ))}
-              </select>
-              <button type="button" className="btn btn-primary" disabled={!personId || adding} onClick={addPerson}>
-                {adding ? 'Adding…' : 'Add to group'}
-              </button>
-            </section>
-          ) : null}
-          {!loading && team ? (
-            <section className="portal-surface access-form">
-              <h2 className="access-form__title">Request defaults</h2>
-              <p className="access-hint">These prefill the next request someone in this group opens.</p>
-              <label className="label" htmlFor="group-env">Environment</label>
-              <select id="group-env" className="input" value={defaultEnv} onChange={(event) => setDefaultEnv(event.target.value)}>
-                <option value="">None</option>
-                <option value="dev">dev</option>
-                <option value="stage">stage</option>
-                <option value="prod">prod</option>
-              </select>
-              <label className="label" htmlFor="group-cloud">Cloud</label>
-              <select id="group-cloud" className="input" value={defaultCloud} onChange={(event) => setDefaultCloud(event.target.value)}>
-                <option value="">None</option>
-                <option value="aws">AWS</option>
-                <option value="gcp">GCP</option>
-                <option value="azure">Azure</option>
-              </select>
-              <button type="button" className="btn btn-primary" disabled={savingDefaults} onClick={saveDefaults}>
-                {savingDefaults ? 'Saving…' : 'Save defaults'}
-              </button>
-            </section>
-          ) : null}
-          {!loading && team ? (
-            <section className="portal-surface access-form">
-              <label className="label" htmlFor="group-sections">Sections</label>
-              <button
-                id="group-sections"
-                type="button"
-                className="input access-select"
-                aria-expanded={menuOpen}
-                aria-haspopup="listbox"
-                onClick={() => setMenuOpen((open) => !open)}
-              >
-                <span>{chosen.length ? chosen.join(', ') : 'Choose sections'}</span>
-                <span aria-hidden="true">{menuOpen ? '▾' : '▸'}</span>
-              </button>
-              {menuOpen ? (
-                <ul className="access-menu" role="listbox" aria-label="Sections" aria-multiselectable="true">
+            <div className="group-board">
+              <section className="portal-surface group-card">
+                <h2 className="access-form__title">People</h2>
+                {members.length === 0 ? <p className="work-empty">No one is in this group yet.</p> : (
+                  <ul className="access-members">
+                    {members.map((member) => (
+                      <li key={member.user_id}>
+                        <span>{member.username}</span>
+                        <select className="input" aria-label={`Role for ${member.username}`} value={member.role} onChange={(event) => changeRole(member.user_id, event.target.value)}>
+                          {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                        <button type="button" className="btn btn-secondary" onClick={() => removePerson(member.user_id)}>Remove</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="group-add">
+                  <label className="label" htmlFor="add-role">Role
+                    <select id="add-role" className="input" value={memberRole} onChange={(event) => setMemberRole(event.target.value)}>
+                      {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="label" htmlFor="add-person">Add someone
+                    <select id="add-person" className="input" value={personId} onChange={(event) => setPersonId(event.target.value)}>
+                      <option value="">{available.length ? 'Choose a person' : 'Everyone is already in this group'}</option>
+                      {available.map((person) => (
+                        <option key={person.id} value={person.id}>{person.username}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="button" className="btn btn-primary" disabled={!personId || adding} onClick={addPerson}>
+                    {adding ? 'Adding…' : 'Add to group'}
+                  </button>
+                </div>
+              </section>
+              <section className="portal-surface group-card">
+                <h2 className="access-form__title">Request defaults</h2>
+                <p className="access-hint">These prefill the next request someone in this group opens.</p>
+                <div className="group-defaults">
+                  <label className="label" htmlFor="group-env">Environment
+                    <select id="group-env" className="input" value={defaultEnv} onChange={(event) => setDefaultEnv(event.target.value)}>
+                      <option value="">None</option>
+                      <option value="dev">dev</option>
+                      <option value="stage">stage</option>
+                      <option value="prod">prod</option>
+                    </select>
+                  </label>
+                  <label className="label" htmlFor="group-cloud">Cloud
+                    <select id="group-cloud" className="input" value={defaultCloud} onChange={(event) => setDefaultCloud(event.target.value)}>
+                      <option value="">None</option>
+                      <option value="aws">AWS</option>
+                      <option value="gcp">GCP</option>
+                      <option value="azure">Azure</option>
+                    </select>
+                  </label>
+                </div>
+                <button type="button" className="btn btn-primary" disabled={savingDefaults} onClick={saveDefaults}>
+                  {savingDefaults ? 'Saving…' : 'Save defaults'}
+                </button>
+              </section>
+              <section className="portal-surface group-card group-card--wide">
+                <div className="group-card__head">
+                  <div>
+                    <h2 className="access-form__title">Sections</h2>
+                    <p className="access-hint">Turn a section on, then keep only the pages this group should open. Infrastructure can be IAM on its own.</p>
+                  </div>
+                  <button type="button" className="btn btn-primary" disabled={!dirty || saving} onClick={save}>
+                    {saving ? 'Saving…' : 'Save sections'}
+                  </button>
+                </div>
+                <ul className="access-menu" aria-label="Sections">
                   {ACCESS_SECTIONS.map((section) => (
                     <li key={section.key}>
                       <label className={draft[section.key] ? 'access-chip is-on' : 'access-chip'}>
@@ -398,13 +396,8 @@ export default function GroupAccessPage() {
                     </li>
                   ))}
                 </ul>
-              ) : null}
-              <div className="access-team__save">
-                <button type="button" className="btn btn-primary" disabled={!dirty || saving} onClick={save}>
-                  {saving ? 'Saving…' : 'Save'}
-                </button>
-              </div>
-            </section>
+              </section>
+            </div>
           ) : null}
         </div>
       </DevOpsLayout>

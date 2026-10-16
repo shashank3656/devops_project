@@ -21,6 +21,7 @@ function storedIsAdmin(): boolean {
 interface ChangeRow {
   id: number;
   change_number: string;
+  project_id?: number;
   project_name?: string;
   project_code?: string;
   service: string;
@@ -125,12 +126,6 @@ const CHANGE_WEBHOOK_LIFECYCLE_SAMPLE = `# Two-phase: same repo + sha — implem
         --arg status "implemented" \\
         '{ repo: $repo, sha: $sha, service: $service, status: $status, change_type: "standard", watch_minutes: 120 }')"`;
 
-function parseProjectID(value: string | string[] | undefined): number {
-  const raw = Array.isArray(value) ? value[0] : value;
-  const parsed = Number(raw);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
-}
-
 export default function ChangesCatalogPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
@@ -144,8 +139,6 @@ export default function ChangesCatalogPage() {
   const [selectedKeys, setSelectedKeys] = useState<Set<RowKey>>(new Set());
   const [copied, setCopied] = useState(false);
   const webhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/change`;
-  const projectID = parseProjectID(router.query.project_id);
-  const environment = Array.isArray(router.query.environment) ? router.query.environment[0] : router.query.environment || '';
 
   const load = useCallback(async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -154,8 +147,6 @@ export default function ChangesCatalogPage() {
     setError('');
     try {
       const params = new URLSearchParams();
-      if (projectID) params.set('project_id', String(projectID));
-      if (environment) params.set('environment', environment);
       if (statusFilter) params.set('status', statusFilter);
       if (typeFilter) params.set('change_type', typeFilter);
       if (query.trim()) params.set('q', query.trim());
@@ -181,7 +172,7 @@ export default function ChangesCatalogPage() {
     } finally {
       setLoading(false);
     }
-  }, [apiUrl, projectID, environment, statusFilter, typeFilter, query]);
+  }, [apiUrl, statusFilter, typeFilter, query]);
 
   useEffect(() => {
     void load();

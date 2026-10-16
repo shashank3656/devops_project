@@ -1,6 +1,6 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import IamFrame from '../../components/IamFrame';
 import { useApiUrl } from '../../context/ApiUrlContext';
@@ -15,6 +15,8 @@ type AccessRequest = {
   evaluation?: { roleName?: string; normalizedScope?: string; input?: { service?: string; environment?: string } };
 };
 
+const STATUS_OPTIONS = ['New', 'In progress', 'Active', 'Rejected', 'Cancelled'];
+
 function statusLabel(status: string): string {
   const value = status.toUpperCase();
   if (!value) return 'New';
@@ -25,10 +27,22 @@ function statusLabel(status: string): string {
   return 'New';
 }
 
+function serviceOf(item: AccessRequest): string {
+  return item.evaluation?.input?.service || item.evaluation?.normalizedScope || '';
+}
+
+function environmentOf(item: AccessRequest): string {
+  return item.evaluation?.input?.environment || '';
+}
+
 export default function IamHomePage() {
   const apiUrl = useApiUrl();
   const [requests, setRequests] = useState<AccessRequest[] | null>(null);
   const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('');
+  const [environment, setEnvironment] = useState('');
+  const [person, setPerson] = useState('');
 
   useEffect(() => {
     let cancel = false;
@@ -51,14 +65,76 @@ export default function IamHomePage() {
     };
   }, [apiUrl]);
 
+  const environments = useMemo(() => {
+    const names = new Set((requests || []).map(environmentOf).filter(Boolean));
+    return Array.from(names).sort((left, right) => left.localeCompare(right));
+  }, [requests]);
+  const people = useMemo(() => {
+    const names = new Set((requests || []).map((item) => item.requesterName || '').filter(Boolean));
+    return Array.from(names).sort((left, right) => left.localeCompare(right));
+  }, [requests]);
+  const filtering = Boolean(query.trim() || status || environment || person);
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return (requests || []).filter((item) => {
+      if (status && statusLabel(item.status || '') !== status) return false;
+      if (environment && environmentOf(item) !== environment) return false;
+      if (person && (item.requesterName || '') !== person) return false;
+      if (!needle) return true;
+      const haystack = [serviceOf(item), item.evaluation?.roleName, item.requesterName, environmentOf(item)].join(' ').toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [requests, query, status, environment, person]);
+
+  function clearFilters() {
+    setQuery('');
+    setStatus('');
+    setEnvironment('');
+    setPerson('');
+  }
+
   return (
     <DevOpsLayout>
       <Head><title>IAM</title></Head>
       <IamFrame title="IAM" lede="Requests waiting here are New until a reviewer picks them up, then In progress, Active, or Rejected.">
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
-        <div className="iam-actions">
-          <Link href="/iam/request" className="btn btn-primary">New access request</Link>
-        </div>
+        <form className="iam-filters" onSubmit={(event) => event.preventDefault()}>
+          <label>
+            Search
+            <input
+              className="input"
+              type="search"
+              value={query}
+              placeholder="Service, permission, or person"
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+          <label>
+            Status
+            <select className="input" value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option value="">All statuses</option>
+              {STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+          </label>
+          <label>
+            Environment
+            <select className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)}>
+              <option value="">All environments</option>
+              {environments.map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+          </label>
+          <label>
+            Raised by
+            <select className="input" value={person} onChange={(event) => setPerson(event.target.value)}>
+              <option value="">Anyone</option>
+              {people.map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+          </label>
+          <div className="iam-filters__actions">
+            {filtering ? <button type="button" className="btn btn-secondary" onClick={clearFilters}>Clear</button> : null}
+            <Link href="/iam/request" className="btn btn-primary">New access request</Link>
+          </div>
+        </form>
         <div className="portal-surface table-wrap">
           <table className="table">
             <thead>
@@ -74,9 +150,9 @@ export default function IamHomePage() {
             <tbody>
               {requests === null ? (
                 <tr><td colSpan={6}>Loading requests…</td></tr>
-              ) : requests.length === 0 ? (
-                <tr><td colSpan={6}>No access requests yet.</td></tr>
-              ) : requests.map((item) => (
+              ) : visible.length === 0 ? (
+                <tr><td colSpan={6}>{filtering ? 'No requests match these filters.' : 'No access requests yet.'}</td></tr>
+              ) : visible.map((item) => (
                 <tr key={item.id}>
                   <td>{statusLabel(item.status || '')}</td>
                   <td>{item.evaluation?.input?.service || item.evaluation?.normalizedScope || '—'}</td>
