@@ -84,7 +84,7 @@ export default function IamRequestPage() {
     : (selectedProject?.services || [])
       .filter((item) => item.cloud.toLowerCase() === cloudKey)
       .map((item) => ({ id: item.service, label: serviceLabel(cloudKey, item.service) }));
-  const permissionOptions = permissionsForService(service);
+  const permissionOptions = permissionsForService(cloudKey, service);
   const serviceName = serviceOptions.find((item) => item.id === service)?.label || serviceLabel(cloudKey, service);
 
   const payload = useMemo(() => ({
@@ -240,7 +240,7 @@ export default function IamRequestPage() {
                 <option value="">{service ? 'Choose a permission' : 'Choose a service first'}</option>
                 {permissionOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
               </select>
-              <p className="access-hint">{serviceName ? `${serviceName} permissions are Read, Developer, or Admin.` : 'Select a service to see its permissions.'} Owner and Contributor are not available.</p>
+              <p className="access-hint">{serviceName ? `Permissions for ${serviceName} on ${provider}.` : 'Select a service to see its permissions.'} The request records the role. It does not assign it in the cloud.</p>
             </>
           ) : null}
           {step === 3 ? (

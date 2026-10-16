@@ -29,6 +29,19 @@ func TestServicePermissionProposesApproval(t *testing.T) {
 	}
 }
 
+func TestNamedPermissionKeepsTheSelectedRole(t *testing.T) {
+	in := referenceIAMInput()
+	in.Provider = "GCP"
+	in.Service = "Cloud Storage"
+	in.Action = "roles/storage.objectViewer"
+	in.Environment = "DEV"
+	in.ResourceID = ""
+	got := evaluateIAMAccess(in, time.Now().UTC(), false)
+	if got.Decision != "ALLOW_WITH_APPROVAL" || got.RoleName != "roles/storage.objectViewer" || got.Risk != "LOW" {
+		t.Fatalf("named permission = %+v", got)
+	}
+}
+
 func TestAzureVaultReadProposesSecretsUser(t *testing.T) {
 	got := evaluateIAMAccess(referenceIAMInput(), time.Now().UTC(), false)
 	if got.Decision != "ALLOW_WITH_APPROVAL" || got.Risk != "HIGH" || got.RoleID != iamAzureSecretsUser || got.RoleName != "Key Vault Secrets User" {

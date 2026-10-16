@@ -149,6 +149,34 @@ func iamFindResource(id string) (iamResource, bool) {
 	return iamResource{}, false
 }
 
+func iamPermissionRisk(role, environment string) string {
+	value := strings.ToLower(strings.TrimSpace(role))
+	broad := strings.Contains(value, "owner") ||
+		strings.Contains(value, "contributor") ||
+		strings.Contains(value, "administrator") ||
+		strings.Contains(value, "fullaccess") ||
+		strings.Contains(value, ".admin") ||
+		strings.Contains(value, "clusteradmin") ||
+		strings.HasSuffix(value, " admin") ||
+		value == "roles/editor" ||
+		value == "poweruseraccess"
+	if broad {
+		return "HIGH"
+	}
+	read := strings.Contains(value, "viewer") ||
+		strings.Contains(value, "reader") ||
+		strings.Contains(value, "readonly") ||
+		strings.Contains(value, "securityaudit") ||
+		strings.Contains(value, "securityreviewer")
+	if read {
+		if environment == "PROD" || environment == "PRODUCTION" {
+			return "MEDIUM"
+		}
+		return "LOW"
+	}
+	return "MEDIUM"
+}
+
 func iamDurationCap(risk string) int {
 	switch risk {
 	case "LOW":
@@ -177,7 +205,9 @@ func evaluateIAMAccess(in iamEvaluateInput, now time.Time, alreadyActive bool) i
 	in.Provider = strings.ToUpper(strings.TrimSpace(in.Provider))
 	in.Environment = strings.ToUpper(strings.TrimSpace(in.Environment))
 	in.ScopeKind = strings.ToUpper(strings.TrimSpace(in.ScopeKind))
-	in.Action = strings.ToUpper(strings.TrimSpace(in.Action))
+	rawAction := strings.TrimSpace(in.Action)
+	actionKey := strings.ToUpper(rawAction)
+	in.Action = rawAction
 	in.Service = strings.TrimSpace(in.Service)
 	in.TeamID = strings.TrimSpace(in.TeamID)
 	in.PrincipalID = strings.TrimSpace(in.PrincipalID)
@@ -220,7 +250,7 @@ func evaluateIAMAccess(in iamEvaluateInput, now time.Time, alreadyActive bool) i
 	if principal.TeamID != in.TeamID {
 		return deny("principal is outside the selected team")
 	}
-	if in.Action == "READ" || in.Action == "DEVELOPER" || in.Action == "ADMIN" {
+	if actionKey == "READ" || actionKey == "DEVELOPER" || actionKey == "ADMIN" || (rawAction != "" && actionKey != "READ_SECRET_VALUE" && actionKey != "READ_SECRET_METADATA" && actionKey != "VIEW_MONITORING") {
 		if in.Environment == "" {
 			return deny("environment is required")
 		}
@@ -228,15 +258,18 @@ func evaluateIAMAccess(in iamEvaluateInput, now time.Time, alreadyActive bool) i
 		if in.Environment == "PROD" || in.Environment == "PRODUCTION" {
 			risk = "MEDIUM"
 		}
-		switch in.Action {
+		roleName := in.Service + " " + label
+		switch actionKey {
 		case "DEVELOPER":
 			label, risk = "Developer", "MEDIUM"
+			roleName = in.Service + " " + label
 		case "ADMIN":
 			label, risk = "Admin", "HIGH"
-		}
-		roleName := in.Service + " " + label
-		if strings.EqualFold(roleName, "Owner") || strings.EqualFold(roleName, "Contributor") {
-			return deny("owner and contributor are outside self-service")
+			roleName = in.Service + " " + label
+		case "READ":
+		default:
+			roleName = rawAction
+			risk = iamPermissionRisk(rawAction, in.Environment)
 		}
 		cap := iamDurationCap(risk)
 		if in.DurationMinutes <= 0 || in.DurationMinutes > cap {
@@ -254,6 +287,7 @@ func evaluateIAMAccess(in iamEvaluateInput, now time.Time, alreadyActive bool) i
 		out.Warnings = append(out.Warnings, "Submitting opens an incident. After the DevOps team approves, the backend records the grant and closes the incident.")
 		return out
 	}
+	in.Action = actionKey
 	resource, ok := iamFindResource(in.ResourceID)
 	if !ok {
 		return deny("resource is not in the authorized inventory")
