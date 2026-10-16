@@ -4,12 +4,14 @@ import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import IamFrame from '../../components/IamFrame';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { permissionsForService, serviceLabel } from '../../lib/cloudServices';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
 
 type Team = { id: string; name: string };
 type Principal = { id: string; name: string; teamId: string; verified: boolean };
 type Account = { id: string; name: string; provider: string };
 type Resource = { id: string; name: string; type: string; environment: string; teamId: string; cloudAccountId: string };
+type CatalogProject = { id: number; name: string; code?: string; environments?: string[]; clouds?: string[]; services?: { cloud: string; service: string }[] };
 type Evaluation = {
   evaluationId?: string;
   decision?: string;
@@ -34,12 +36,16 @@ export default function IamRequestPage() {
   const [principals, setPrincipals] = useState<Principal[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
-  const [provider, setProvider] = useState('AZURE');
+  const [projects, setProjects] = useState<CatalogProject[]>([]);
+  const [projectId, setProjectId] = useState('');
+  const [environment, setEnvironment] = useState('');
+  const [provider, setProvider] = useState('AWS');
   const [teamId, setTeamId] = useState('team-platform');
   const [principalId, setPrincipalId] = useState('');
   const [accountId, setAccountId] = useState('');
+  const [service, setService] = useState('');
   const [resourceId, setResourceId] = useState('');
-  const [action, setAction] = useState('READ_SECRET_VALUE');
+  const [action, setAction] = useState('');
   const [minutes, setMinutes] = useState(240);
   const [ticket, setTicket] = useState('');
   const [justification, setJustification] = useState('');
@@ -55,17 +61,31 @@ export default function IamRequestPage() {
       fetch(`${apiUrl}/api/devops/iam/principals`, { headers }).then((res) => res.json()),
       fetch(`${apiUrl}/api/devops/iam/cloud-accounts`, { headers }).then((res) => res.json()),
       fetch(`${apiUrl}/api/devops/iam/resources`, { headers }).then((res) => res.json()),
-    ]).then(([teamBody, principalBody, accountBody, resourceBody]) => {
+      fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => (res.ok ? res.json() : { projects: [] })),
+    ]).then(([teamBody, principalBody, accountBody, resourceBody, projectBody]) => {
       setTeams(Array.isArray(teamBody?.teams) ? teamBody.teams : []);
       setPrincipals(Array.isArray(principalBody?.principals) ? principalBody.principals : []);
       setAccounts(Array.isArray(accountBody?.accounts) ? accountBody.accounts : []);
       setResources(Array.isArray(resourceBody?.resources) ? resourceBody.resources : []);
+      setProjects(Array.isArray(projectBody?.projects) ? projectBody.projects : []);
     }).catch(() => setError('The access catalog could not be loaded.'));
   }, [apiUrl]);
 
   const visiblePrincipals = principals.filter((item) => item.teamId === teamId);
   const selected = resources.find((item) => item.id === resourceId);
+  const selectedProject = projects.find((item) => String(item.id) === projectId);
   const scopeKind = selected?.type === 'subscription' ? 'SUBSCRIPTION' : selected?.type === 'resource_group' ? 'RESOURCE_GROUP' : 'RESOURCE';
+  const cloudKey = provider.toLowerCase();
+  const environmentOptions = selectedProject?.environments?.length ? selectedProject.environments : ['dev', 'uat', 'prod'];
+  const cloudOptions = selectedProject?.clouds?.length ? selectedProject.clouds : ['aws', 'azure', 'gcp'];
+  const scopeReady = Boolean(environment && projectId && provider);
+  const serviceOptions = !scopeReady
+    ? []
+    : (selectedProject?.services || [])
+      .filter((item) => item.cloud.toLowerCase() === cloudKey)
+      .map((item) => ({ id: item.service, label: serviceLabel(cloudKey, item.service) }));
+  const permissionOptions = permissionsForService(service);
+  const serviceName = serviceOptions.find((item) => item.id === service)?.label || serviceLabel(cloudKey, service);
 
   const payload = useMemo(() => ({
     provider,
@@ -73,13 +93,15 @@ export default function IamRequestPage() {
     principalId,
     cloudAccountId: accountId || selected?.cloudAccountId || '',
     resourceId,
-    environment: selected?.environment || '',
+    environment: environment || selected?.environment || '',
     scopeKind,
+    service: serviceName,
+    projectId,
     action,
     durationMinutes: minutes,
     ticketRef: ticket.trim(),
     justification: justification.trim(),
-  }), [accountId, action, justification, minutes, principalId, provider, resourceId, scopeKind, selected, teamId, ticket]);
+  }), [accountId, action, environment, justification, minutes, principalId, projectId, provider, resourceId, scopeKind, selected, serviceName, teamId, ticket]);
 
   async function review() {
     setSaving(true);
@@ -138,15 +160,22 @@ export default function IamRequestPage() {
             <li key={label} className={index === step ? 'is-current' : undefined}>{index + 1}. {label}</li>
           ))}
         </ol>
-        <form className="portal-surface access-form" onSubmit={(event) => { event.preventDefault(); if (step < 3) setStep(step + 1); else if (step === 3) void review(); }}>
+        <form className="portal-surface access-form" onSubmit={(event) => {
+          event.preventDefault();
+          if (step === 1 && !service) {
+            setError('Choose a service.');
+            return;
+          }
+          if (step === 2 && !action) {
+            setError('Choose a permission.');
+            return;
+          }
+          setError('');
+          if (step < 3) setStep(step + 1);
+          else if (step === 3) void review();
+        }}>
           {step === 0 ? (
             <>
-              <label className="label" htmlFor="iam-provider">Cloud</label>
-              <select id="iam-provider" className="input" value={provider} onChange={(event) => setProvider(event.target.value)}>
-                <option value="AZURE">Azure</option>
-                <option value="AWS">AWS</option>
-                <option value="GCP">GCP</option>
-              </select>
               <label className="label" htmlFor="iam-team">Team</label>
               <select id="iam-team" className="input" value={teamId} onChange={(event) => { setTeamId(event.target.value); setPrincipalId(''); }}>
                 {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
@@ -162,30 +191,56 @@ export default function IamRequestPage() {
           ) : null}
           {step === 1 ? (
             <>
-              <label className="label" htmlFor="iam-account">Subscription</label>
+              <label className="label" htmlFor="iam-env">Environment</label>
+              <select id="iam-env" className="input" value={environment} onChange={(event) => { setEnvironment(event.target.value); setService(''); setAction(''); }} required>
+                <option value="">Choose an environment</option>
+                {environmentOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+              <label className="label" htmlFor="iam-project">Project</label>
+              <select
+                id="iam-project"
+                className="input"
+                value={projectId}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  setProjectId(nextId);
+                  setService('');
+                  setAction('');
+                  const next = projects.find((item) => String(item.id) === nextId);
+                  const nextCloud = next?.clouds?.[0];
+                  if (nextCloud && !next?.clouds?.some((cloud) => cloud.toLowerCase() === provider.toLowerCase())) {
+                    setProvider(nextCloud.toUpperCase());
+                  }
+                }}
+                required
+              >
+                <option value="">Choose a project</option>
+                {projects.map((item) => <option key={item.id} value={item.id}>{item.code ? `${item.name} (${item.code})` : item.name}</option>)}
+              </select>
+              <label className="label" htmlFor="iam-provider">Cloud</label>
+              <select id="iam-provider" className="input" value={provider} onChange={(event) => { setProvider(event.target.value); setService(''); setAction(''); }} required>
+                {cloudOptions.map((cloud) => <option key={cloud} value={cloud.toUpperCase()}>{cloud.toUpperCase()}</option>)}
+              </select>
+              <label className="label" htmlFor="iam-service">Service</label>
+              <select id="iam-service" className="input" value={service} onChange={(event) => { setService(event.target.value); setAction(''); }} required disabled={!scopeReady || serviceOptions.length === 0}>
+                <option value="">{!scopeReady ? 'Choose environment, project, and cloud first' : serviceOptions.length ? 'Select a service' : 'No services were saved for this cloud on the project'}</option>
+                {serviceOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+              </select>
+              <label className="label" htmlFor="iam-account">Account</label>
               <select id="iam-account" className="input" value={accountId} onChange={(event) => setAccountId(event.target.value)}>
-                <option value="">Choose a subscription</option>
+                <option value="">No connected account</option>
                 {accounts.filter((item) => item.provider === provider).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
-              <label className="label" htmlFor="iam-resource">Resource</label>
-              <select id="iam-resource" className="input" value={resourceId} onChange={(event) => setResourceId(event.target.value)} required>
-                <option value="">Choose the smallest resource</option>
-                {resources.filter((item) => item.teamId === teamId).map((item) => (
-                  <option key={item.id} value={item.id}>{item.name} · {item.environment} · {item.type.replaceAll('_', ' ')}</option>
-                ))}
-              </select>
-              <p className="access-hint">Production secret read is limited to one vault. A subscription or resource group is not an allowed scope.</p>
             </>
           ) : null}
           {step === 2 ? (
             <>
-              <label className="label" htmlFor="iam-action">What do you need to do?</label>
-              <select id="iam-action" className="input" value={action} onChange={(event) => setAction(event.target.value)}>
-                <option value="READ_SECRET_VALUE">Read secret values</option>
-                <option value="READ_SECRET_METADATA">View secret names only</option>
-                <option value="VIEW_MONITORING">View monitoring</option>
+              <label className="label" htmlFor="iam-action">Permission</label>
+              <select id="iam-action" className="input" value={action} onChange={(event) => setAction(event.target.value)} required disabled={!service}>
+                <option value="">{service ? 'Choose a permission' : 'Choose a service first'}</option>
+                {permissionOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
               </select>
-              <p className="access-hint">The role is calculated on the server. You cannot pick Owner or Contributor.</p>
+              <p className="access-hint">{serviceName ? `${serviceName} permissions are Read, Developer, or Admin.` : 'Select a service to see its permissions.'} Owner and Contributor are not available.</p>
             </>
           ) : null}
           {step === 3 ? (
@@ -207,7 +262,7 @@ export default function IamRequestPage() {
           {step === 4 && evaluation ? (
             <>
               <h2 className="access-form__title">{evaluation.decision?.replaceAll('_', ' ')}</h2>
-              <p className="access-hint">Risk {evaluation.risk || 'Unknown'} · {evaluation.roleName || 'No role'} {evaluation.roleId ? `· ${evaluation.roleId}` : ''}</p>
+              <p className="access-hint">Service {service || 'Unknown'} · Risk {evaluation.risk || 'Unknown'} · {evaluation.roleName || 'No role'} {evaluation.roleId ? `· ${evaluation.roleId}` : ''}</p>
               <p className="access-hint">{evaluation.normalizedScope}</p>
               <p className="access-hint">Approval: {(evaluation.approvalStages || []).join(' → ') || 'None'} · {evaluation.provisioningMode}</p>
               {evaluation.reason ? <p className="access-hint">{evaluation.reason}</p> : null}

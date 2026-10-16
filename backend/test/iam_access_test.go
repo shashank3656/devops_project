@@ -10,9 +10,22 @@ func referenceIAMInput() iamEvaluateInput {
 	return iamEvaluateInput{
 		Provider: "AZURE", TeamID: "team-platform", PrincipalID: iamReferencePrincipal,
 		CloudAccountID: iamReferenceAccountID, ResourceID: iamReferenceVaultID,
-		Environment: "PROD", ScopeKind: "RESOURCE", Action: "READ_SECRET_VALUE",
+		Environment: "PROD", ScopeKind: "RESOURCE", Service: "Key Vault", Action: "READ_SECRET_VALUE",
 		DurationMinutes: 240, TicketRef: "INC-2026-1042",
 		Justification: "Investigating checkout failures requiring temporary read access to production secret values.",
+	}
+}
+
+func TestServicePermissionProposesApproval(t *testing.T) {
+	in := referenceIAMInput()
+	in.Provider = "AWS"
+	in.Service = "S3"
+	in.Action = "READ"
+	in.Environment = "DEV"
+	in.ResourceID = ""
+	got := evaluateIAMAccess(in, time.Now().UTC(), false)
+	if got.Decision != "ALLOW_WITH_APPROVAL" || got.RoleName != "S3 Read" {
+		t.Fatalf("service permission = %+v", got)
 	}
 }
 
