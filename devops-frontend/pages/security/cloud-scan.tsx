@@ -158,8 +158,9 @@ export default function CloudScanPage() {
       <div className="portal-page desk-landing">
         <header className="portal-page__header">
           <div>
-            <h1 className="portal-page__title">Cloud scan</h1>
-            <p className="portal-page__subtitle">A shared-account scan covers only this scope. It does not grant account access.</p>
+            <span className="portal-page__eyebrow">Security / cloud posture</span>
+            <h1 className="portal-page__title">Scan with a clear scope.</h1>
+            <p className="portal-page__subtitle">Choose a connected account and review exactly what will be scanned. Coverage stays unknown until a scan finishes.</p>
           </div>
         </header>
         {sources === 'error' ? <div className="alert alert-error">Project scope could not be loaded. Coverage stays unknown.</div> : null}

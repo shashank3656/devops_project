@@ -149,6 +149,7 @@ type ProjectCatalogInput struct {
 	Services      []ProjectServiceOption `json:"services"`
 	TeamAccess    []ProjectTeamAccess    `json:"team_access"`
 	ApprovalRules []ProjectApprovalRule  `json:"approval_rules"`
+	OnCall        *bool                  `json:"on_call,omitempty"`
 }
 
 type ProjectRequestValidation struct {
@@ -680,6 +681,9 @@ func createProjectCatalog(input ProjectCatalogInput, createdBy *int) (*ProjectCa
 	}
 	AppendAuditLog(createdBy, "project_create", "project", strconv.Itoa(projectID), fmt.Sprintf("%s (%s)", input.Name, input.Code))
 	notifyProjectAudienceChanges(nil, project)
+	if input.OnCall != nil {
+		setProjectOncall(projectID, *input.OnCall)
+	}
 	return project, nil
 }
 
@@ -726,6 +730,9 @@ func updateProjectCatalog(projectID int, input ProjectCatalogInput, updatedBy *i
 	project, err := getProjectCatalogByID(projectID)
 	if err != nil {
 		return nil, err
+	}
+	if input.OnCall != nil {
+		setProjectOncall(projectID, *input.OnCall)
 	}
 	AppendAuditLog(updatedBy, "project_update", "project", strconv.Itoa(projectID), fmt.Sprintf("%s (%s)", input.Name, input.Code))
 	notifyProjectAudienceChanges(previousProject, project)
@@ -2082,7 +2089,8 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		profile, _ := GetDevopsProfile(userID)
-		if profile == nil || !profile.IsManager {
+		account, _ := GetUserByID(userID)
+		if (profile == nil || !profile.IsManager) && (account == nil || account.Role != "admin") {
 			writeAPIError(w, r, http.StatusForbidden, "DevOps manager access required", nil)
 			return
 		}

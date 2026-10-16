@@ -788,6 +788,14 @@ func main() {
 	http.HandleFunc("/api/devops/prs/", devopsPRNumberImpactHandler)
 	http.HandleFunc("/api/devops/oncall", devopsOncallHandler)
 	http.HandleFunc("/api/oncall/coverage", oncallCoverageHandler)
+	http.HandleFunc("/api/oncall/schedules", oncallScheduleHandler)
+	http.HandleFunc("/api/oncall/schedules/", oncallScheduleDetailHandler)
+	http.HandleFunc("/api/oncall/team-members", oncallTeamMembersHandler)
+	http.HandleFunc("/api/oncall/flags", oncallFlagHandler)
+	http.HandleFunc("/api/oncall/roster", oncallRosterHandler)
+	http.HandleFunc("/api/oncall/days", oncallDaysHandler)
+	http.HandleFunc("/api/oncall/covers", oncallCoverHandler)
+	http.HandleFunc("/api/oncall/covers/", oncallCoverHandler)
 	http.HandleFunc("/api/maintenance/notices", maintenanceNoticeHandler)
 	http.HandleFunc("/api/devops/freezes", devopsFreezesHandler)
 	http.HandleFunc("/api/devops/me", devopsMeHandler)
@@ -1048,7 +1056,7 @@ func main() {
 	log.Println("  GET  /health         - Health check")
 	log.Println("  GET  /api-docs       - Swagger UI")
 
-	if err := http.ListenAndServe(addr, withCORS(withBrowserCSRF(withObservability(withRecovery(http.DefaultServeMux))))); err != nil {
+	if err := http.ListenAndServe(addr, withCORS(withBrowserCSRF(withObservability(withRecovery(withSectionGate(http.DefaultServeMux)))))); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }

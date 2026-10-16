@@ -60,6 +60,7 @@ interface ProjectFormState {
   services: ProjectServiceOption[];
   team_access: ProjectTeamAccess[];
   approval_rules: ProjectApprovalRule[];
+  on_call: boolean;
 }
 
 const DEFAULT_ENVIRONMENTS = ['dev', 'uat', 'prod'];
@@ -75,6 +76,7 @@ function createEmptyForm(): ProjectFormState {
     clouds: [],
     services: [],
     team_access: [],
+    on_call: false,
     approval_rules: [
       { environment: 'dev', require_manager_approval: false, require_devops_approval: true },
       { environment: 'uat', require_manager_approval: true, require_devops_approval: true },
@@ -476,6 +478,15 @@ export default function NewProjectPage() {
               <div className="form-group catalog-editor__field-block">
                 <label className="label">Description</label>
                 <textarea className="textarea" rows={3} value={form.description} onChange={(e) => updateForm({ description: e.target.value })} />
+              </div>
+
+              <div className="catalog-editor__section">
+                <strong>On-call</strong>
+                <p className="catalog-editor__section-copy">Turn this on when the project needs a person every day. The owner team chooses who rotates. If that person is unavailable, they ask someone else, and that person approves before the day changes.</p>
+                <label className="catalog-editor__toggle-label">
+                  <input type="checkbox" checked={form.on_call} onChange={(event) => updateForm({ on_call: event.target.checked })} />
+                  <span>This project uses on-call</span>
+                </label>
               </div>
 
               <div className="catalog-editor__section">

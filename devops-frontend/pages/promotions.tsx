@@ -549,14 +549,19 @@ export default function DevOpsPromotionsPage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Project Lifecycle</span>
-            <h1 className="portal-page__title">Environment Promotion Flow</h1>
+            <span className="portal-page__eyebrow">Delivery</span>
+            <h1 className="portal-page__title">Releases</h1>
             <p className="portal-page__subtitle">
-              Promote delivered requests from lower environments into the next stage while preserving request lineage and audit history.
+              Move verified work forward with the right approvals. Approval does not execute a release.
             </p>
           </div>
         </div>
 
+        <section className="ops-minis" aria-label="Release stages">
+          <article className="ops-service"><span className="ops-kicker">Dev</span><h2>Build and validate</h2><p>No candidate is shown until a request is eligible.</p></article>
+          <article className="ops-service"><span className="ops-kicker">UAT</span><h2>Review and approve</h2><p>Approval does not deploy the change.</p></article>
+          <article className="ops-service"><span className="ops-kicker">Prod</span><h2>Guarded release</h2><p>Production stays a separate, explicit step.</p></article>
+        </section>
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
 

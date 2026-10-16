@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
-import { AuthPipeline, pending2FAFromLoginResponse, resendLogin2FACode, ThemeToggle, type Pending2FA } from '@infragate/ui';
+import { AuthPipeline, pending2FAFromLoginResponse, resendLogin2FACode, type Pending2FA } from '@infragate/ui';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord } from '../lib/payload';
+import { homeFor, pathAllowed, portalGrants } from '../lib/portalAccess';
 import { consumeReturn, readChangeDraft } from '../lib/returnPath';
 import { isSignedSessionToken } from '../lib/session';
 
@@ -95,18 +96,20 @@ export default function DevOpsLogin() {
       setError('Sign-in was not accepted.');
       return;
     }
-    const userType = meData.user?.user_type;
-    const isAdmin = meData.user?.role === 'admin';
-    if (userType !== 'devops_user' && !isAdmin) {
-      setError('This portal is for DevOps users or admins only.');
+    const account = meData.user;
+    const grants = portalGrants(account);
+    const canEnter = grants.requests || grants.daily || grants.operations || grants.infrastructure || grants.security || grants.records || grants.portalAccess;
+    if (!canEnter) {
+      setError('Sign-in was not accepted.');
       return;
     }
     localStorage.setItem(DEVOPS_TOKEN_KEY, sessionToken);
     if (typeof meData.token === 'string' && isSignedSessionToken(meData.token)) {
       localStorage.setItem(DEVOPS_TOKEN_KEY, meData.token.trim());
     }
-    localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(meData.user || {}));
-    router.push(consumeReturn());
+    localStorage.setItem(DEVOPS_USER_KEY, JSON.stringify(account || {}));
+    const next = consumeReturn();
+    router.push(pathAllowed(next, grants) ? next : homeFor(grants));
   };
 
   const handleResendOtp = async () => {
@@ -199,20 +202,24 @@ export default function DevOpsLogin() {
       <div className="login-page">
         <div className="login-page__left">
           <div className="login-page__brand">
-            <img src="/logo.svg" alt="SetuOps" width={44} height={44} className="login-page__logo" />
-            <h1 className="login-page__title">Approve, deploy and recover with confidence.</h1>
+            <p className="login-page__mark" aria-label="SetuOps">
+              <span>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="currentColor" d="M4.5 10.2 12 4l7.5 6.2V20a1.2 1.2 0 0 1-1.2 1.2h-4.1V14H9.8v7.2H5.7A1.2 1.2 0 0 1 4.5 20V10.2Z" />
+                </svg>
+              </span>
+            </p>
+            <h1 className="login-page__title">Check the work<br />before it moves.</h1>
             <p className="login-page__tagline">
-              Every request, promotion and rollback in one calm control room.
+              Requests, releases, and recovery stay in one place. Nothing moves until you confirm it.
             </p>
             <AuthPipeline />
           </div>
         </div>
         <div className="login-page__right">
           <div className="login-page__card">
-            <ThemeToggle />
-            <span className="ig-portal-pill">DevOps console</span>
             <h2 className="login-page__card-title">Welcome back</h2>
-            <p className="login-page__card-subtitle">Sign in with your DevOps account</p>
+            <p className="login-page__card-subtitle">Sign in to your DevOps workspace.</p>
             {draftSaved ? (
               <p className="alert" role="status">A change draft is saved in this browser. Sign in to continue it.</p>
             ) : null}
@@ -292,7 +299,7 @@ export default function DevOpsLogin() {
                       onChange={(e) => setUsername(e.target.value)}
                       required
                       autoFocus
-                      placeholder="devops"
+                      placeholder="Enter your username"
                     />
                   </div>
                   <div className="form-group">
@@ -304,7 +311,7 @@ export default function DevOpsLogin() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
-                      placeholder="••••••••"
+                      placeholder="Enter your password"
                     />
                   </div>
                   <button type="submit" className="btn btn-primary login-page__submit" disabled={loading}>
@@ -323,7 +330,7 @@ export default function DevOpsLogin() {
             ) : null}
             {!pending2fa ? (
             <p className="login-page__hint">
-              Users are created from the Admin portal.
+              Need access? Contact your workspace administrator.
             </p>
             ) : null}
           </div>

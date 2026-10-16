@@ -687,10 +687,10 @@ export default function DevOpsProjectsPage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Project Onboarding</span>
+            <span className="portal-page__eyebrow">Infrastructure</span>
             <h1 className="portal-page__title">Projects</h1>
             <p className="portal-page__subtitle">
-              Define the project catalog that drives user requests: environments, clouds, services, and team access.
+              Teams, clouds and environments with clear ownership.
             </p>
           </div>
           <div className="portal-page__actions">

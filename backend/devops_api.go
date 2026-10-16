@@ -16,6 +16,45 @@ func encodeDevopsJSON(w http.ResponseWriter, payload interface{}) {
 	}
 }
 
+// requireSessionUser validates a Bearer token for any signed-in account.
+// The shared portal shell uses this for identity. DevOps APIs stay on requireDevopsUser.
+func requireSessionUser(w http.ResponseWriter, r *http.Request) (userID int, ok bool) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return 0, false
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		encodeDevopsJSON(w, map[string]interface{}{"error": "missing or invalid authorization", "status": "error"})
+		return 0, false
+	}
+	token := authHeader[7:]
+	uid, err := validateToken(token)
+	if err != nil || uid <= 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		encodeDevopsJSON(w, map[string]interface{}{"error": "invalid or expired token", "status": "error"})
+		return 0, false
+	}
+	if DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		encodeDevopsJSON(w, map[string]interface{}{"error": "database not available", "status": "error"})
+		return 0, false
+	}
+	user, err := GetUserByID(uid)
+	if err != nil || user == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		encodeDevopsJSON(w, map[string]interface{}{"error": "user not found", "status": "error"})
+		return 0, false
+	}
+	return uid, true
+}
+
 // requireDevopsUser validates Bearer token and ensures user is devops_user or admin. Returns userID and ok.
 // Admin users (role=admin) can access DevOps endpoints for template management.
 func requireDevopsUser(w http.ResponseWriter, r *http.Request) (userID int, ok bool) {
@@ -52,11 +91,10 @@ func requireDevopsUser(w http.ResponseWriter, r *http.Request) (userID int, ok b
 		encodeDevopsJSON(w, map[string]interface{}{"error": "user not found", "status": "error"})
 		return 0, false
 	}
-	// Allow devops_user OR admin (for template management from either portal)
-	if user.UserType != "devops_user" && user.Role != "admin" {
+	if !sectionGrantsForUser(user).opensDevopsAPI() {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		encodeDevopsJSON(w, map[string]interface{}{"error": "DevOps portal access is for DevOps users or admins only", "status": "error"})
+		encodeDevopsJSON(w, map[string]interface{}{"error": "This section is not included for your group.", "status": "error"})
 		return 0, false
 	}
 	return uid, true
@@ -67,6 +105,9 @@ func requireDevopsManager(w http.ResponseWriter, r *http.Request) (userID int, o
 	uid, ok := requireDevopsUser(w, r)
 	if !ok {
 		return 0, false
+	}
+	if user, err := GetUserByID(uid); err == nil && user != nil && user.Role == "admin" {
+		return uid, true
 	}
 	prof, err := GetDevopsProfile(uid)
 	if err != nil || prof == nil || !prof.IsManager {
@@ -89,7 +130,7 @@ func devopsMeHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	userID, ok := requireDevopsUser(w, r)
+	userID, ok := requireSessionUser(w, r)
 	if !ok {
 		return
 	}
@@ -111,6 +152,7 @@ func devopsMeHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		resp["teams"] = []interface{}{}
 	}
+	resp["grants"] = sectionGrantsForUser(user)
 	token := generateToken(userID)
 	if token == "" {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to issue session", nil)
