@@ -75,9 +75,18 @@ func scopedEnvironment(environment, fallback string) string {
 	return "*"
 }
 
+func subjectCanReadUnscoped(subject authzSubject) bool {
+	for _, grant := range subject.Grants {
+		if !grant.Revoked && grant.ProjectID == 0 && strings.EqualFold(grant.Role, "admin") {
+			return true
+		}
+	}
+	return false
+}
+
 func changeInScope(subject authzSubject, item changeRequestRecord, action authzAction) bool {
 	if item.ProjectID == nil || *item.ProjectID <= 0 {
-		return false
+		return action == authzRead && subjectCanReadUnscoped(subject)
 	}
 	resourceID := strings.TrimSpace(item.ChangeNumber)
 	if resourceID == "" {

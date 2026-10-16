@@ -1059,7 +1059,7 @@ func main() {
 	log.Println("  GET  /health         - Health check")
 	log.Println("  GET  /api-docs       - Swagger UI")
 
-	if err := http.ListenAndServe(addr, withCORS(withBrowserCSRF(withObservability(withRecovery(withSectionGate(http.DefaultServeMux)))))); err != nil {
+	if err := http.ListenAndServe(addr, withCORS(withBrowserCSRF(withCanonicalWebhookPath(withObservability(withRecovery(withSectionGate(http.DefaultServeMux))))))); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }

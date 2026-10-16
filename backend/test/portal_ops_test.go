@@ -74,6 +74,15 @@ func TestListAndDetailStayInsideTheGrant(t *testing.T) {
 	}
 }
 
+func TestDoubledChangeWebhookPathCollapses(t *testing.T) {
+	if got := canonicalWebhookPath("/api/webhooks/change/api/webhooks/change"); got != "/api/webhooks/change" {
+		t.Fatalf("doubled change path = %s", got)
+	}
+	if got := canonicalWebhookPath("/api/webhooks/change"); got != "/api/webhooks/change" {
+		t.Fatalf("plain change path = %s", got)
+	}
+}
+
 func TestAdminAndOperatorListsUseTheSameMatrix(t *testing.T) {
 	projectID := 7
 	otherID := 9
@@ -96,7 +105,7 @@ func TestAdminAndOperatorListsUseTheSameMatrix(t *testing.T) {
 		t.Fatalf("operator list = %#v", operatorList)
 	}
 	adminList := filterChangesInScope([]changeRequestRecord{own, other, unscoped}, admin)
-	if len(adminList) != 2 {
+	if len(adminList) != 3 {
 		t.Fatalf("admin list = %#v", adminList)
 	}
 	if changeInScope(admin, unscoped, authzWrite) {

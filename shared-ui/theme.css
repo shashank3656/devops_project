@@ -7222,6 +7222,43 @@ html[data-theme] .devops-layout .devops-sidebar-new--collapsed .devops-sidebar-n
   white-space: nowrap;
 }
 
+.iam-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.6fr) repeat(3, minmax(140px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  margin: 0 0 14px;
+  padding: 14px;
+  border: 1px solid var(--ig-border, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  background: var(--ig-surface, rgba(255, 255, 255, 0.03));
+}
+
+.iam-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ig-muted, #8a94a2);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.iam-filters .input {
+  width: 100%;
+}
+
+.iam-filters__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.iam-filters__actions .btn {
+  width: auto;
+  white-space: nowrap;
+}
+
 .iam-choices {
   display: flex;
   flex-direction: column;
@@ -7266,7 +7303,8 @@ html[data-theme] .devops-layout .devops-sidebar-new--collapsed .devops-sidebar-n
 
 @media (max-width: 800px) {
   .iam-grid,
-  .iam-split {
+  .iam-split,
+  .iam-filters {
     grid-template-columns: 1fr;
   }
 }
@@ -7323,6 +7361,163 @@ html[data-theme] .devops-layout .access-form .btn {
   color: var(--ig-muted, #6b7588);
   font-size: 13px;
   line-height: 1.45;
+}
+
+.group-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+  width: 100%;
+}
+
+.group-card--wide {
+  grid-column: 1 / -1;
+}
+
+.group-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.group-card__head .btn,
+.group-card > .btn,
+.group-add .btn,
+.request-actions .btn,
+.request-note .btn {
+  width: auto;
+  margin-top: 0;
+}
+
+.group-card > .btn {
+  margin-top: 16px;
+}
+
+.group-add,
+.group-defaults {
+  display: grid;
+  gap: 12px;
+  align-items: end;
+  margin-top: 16px;
+}
+
+.group-add {
+  grid-template-columns: minmax(140px, 180px) minmax(0, 1fr) auto;
+}
+
+.group-defaults {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.group-add .label,
+.group-defaults .label,
+.request-note .label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+}
+
+html[data-theme] .devops-layout .group-add select.input,
+html[data-theme] .devops-layout .group-defaults select.input,
+html[data-theme] .devops-layout .request-note .input {
+  width: 100%;
+  flex: 1 1 auto;
+}
+
+.group-card .access-members {
+  max-height: none;
+}
+
+.group-card .access-members li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ig-border, rgba(255, 255, 255, 0.08));
+}
+
+.request-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.request-facts div {
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(127, 127, 127, 0.1);
+}
+
+.request-facts span {
+  display: block;
+  color: var(--ig-muted, #6b7588);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.request-facts strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.request-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 16px;
+  width: 100%;
+}
+
+.request-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.request-timeline li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(127, 127, 127, 0.1);
+}
+
+.request-timeline small {
+  color: var(--ig-muted, #6b7588);
+  font-size: 12px;
+}
+
+.request-note {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .group-board,
+  .group-add,
+  .group-defaults,
+  .request-facts,
+  .request-split,
+  .request-note {
+    grid-template-columns: 1fr;
+  }
 }
 
 html[data-theme] .devops-layout .access-members select.input {

@@ -187,15 +187,19 @@ export default function RequestDetailPage() {
           {loading ? <p className="work-empty">Loading request…</p> : null}
           {!loading && request ? (
             <>
-              <section className="portal-surface access-form">
-                <p className="access-hint">{request.project_name || request.team || 'No project'} · {request.env || 'Unknown environment'}{request.cloud ? ` · ${request.cloud}` : ''}</p>
-                <p className="access-hint">Priority {request.priority || 'medium'} goes to {levelFor(request.priority)}.</p>
+              <section className="portal-surface request-summary">
+                <div className="request-facts">
+                  <div><span>Project</span><strong>{request.project_name || request.team || 'No project'}</strong></div>
+                  <div><span>Environment</span><strong>{request.env || 'Unknown'}</strong></div>
+                  <div><span>Cloud</span><strong>{request.cloud || '—'}</strong></div>
+                  <div><span>Priority</span><strong>{request.priority || 'medium'} · {levelFor(request.priority)}</strong></div>
+                  <div><span>Needed by</span><strong>{request.due_date ? String(request.due_date).slice(0, 10) : '—'}</strong></div>
+                  <div><span>Raised</span><strong>{request.created_at ? new Date(request.created_at).toLocaleString() : '—'}</strong></div>
+                </div>
                 {stage?.summary ? <p className="access-hint">{stage.summary}</p> : null}
                 {stage?.next_stage ? <p className="access-hint">Next: {stage.next_stage}</p> : null}
                 {request.reject_reason ? <p className="access-hint">Rejected: {request.reject_reason}</p> : null}
-                {request.due_date ? <p className="access-hint">Needed by {String(request.due_date).slice(0, 10)}</p> : null}
-                {request.created_at ? <p className="access-hint">Raised {new Date(request.created_at).toLocaleString()}</p> : null}
-                <div className="access-create__end">
+                <div className="request-actions">
                   {canApprove ? <button type="button" className="btn btn-primary" disabled={working} onClick={() => act('approve-by-manager')}>Approve as manager</button> : null}
                   {request.status === 'draft' ? <button type="button" className="btn btn-primary" disabled={working} onClick={() => act('submit')}>Submit for approval</button> : null}
                   {request.status === 'rejected' ? <button type="button" className="btn btn-secondary" disabled={working} onClick={() => act('resubmit')}>Raise again</button> : null}
@@ -206,35 +210,42 @@ export default function RequestDetailPage() {
                   ) : null}
                 </div>
               </section>
-              <section className="portal-surface access-form">
-                <h2 className="access-form__title">Notes</h2>
-                {comments.length === 0 ? <p className="work-empty">No notes yet.</p> : (
-                  <ul className="access-members">
-                    {comments.map((comment) => (
-                      <li key={comment.id}>
-                        <span><strong>{comment.username}</strong> {comment.body}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <form onSubmit={addComment}>
-                  <label className="label" htmlFor="request-note">Add a note</label>
-                  <input id="request-note" className="input" value={note} onChange={(event) => setNote(event.target.value)} />
-                  <button type="submit" className="btn btn-primary" disabled={working || !note.trim()}>Add note</button>
-                </form>
-              </section>
-              <section className="portal-surface access-form">
-                <h2 className="access-form__title">What happened</h2>
-                {timeline.length === 0 ? <p className="work-empty">No activity yet.</p> : (
-                  <ul className="access-members">
-                    {timeline.map((item) => (
-                      <li key={`${item.id}-${item.action}`}>
-                        <span>{item.username} · {item.action.replaceAll('_', ' ')}{item.created_at ? ` · ${new Date(item.created_at).toLocaleString()}` : ''}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
+              <div className="request-split">
+                <section className="portal-surface request-panel">
+                  <h2 className="access-form__title">Notes</h2>
+                  {comments.length === 0 ? <p className="work-empty">No notes yet.</p> : (
+                    <ul className="request-timeline">
+                      {comments.map((comment) => (
+                        <li key={comment.id}>
+                          <strong>{comment.username}</strong>
+                          <span>{comment.body}</span>
+                          {comment.created_at ? <small>{new Date(comment.created_at).toLocaleString()}</small> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <form className="request-note" onSubmit={addComment}>
+                    <label className="label" htmlFor="request-note">Add a note
+                      <input id="request-note" className="input" value={note} onChange={(event) => setNote(event.target.value)} />
+                    </label>
+                    <button type="submit" className="btn btn-primary" disabled={working || !note.trim()}>Add note</button>
+                  </form>
+                </section>
+                <section className="portal-surface request-panel">
+                  <h2 className="access-form__title">What happened</h2>
+                  {timeline.length === 0 ? <p className="work-empty">No activity yet.</p> : (
+                    <ul className="request-timeline">
+                      {timeline.map((item) => (
+                        <li key={`${item.id}-${item.action}`}>
+                          <strong>{item.username}</strong>
+                          <span>{item.action.replaceAll('_', ' ')}</span>
+                          {item.created_at ? <small>{new Date(item.created_at).toLocaleString()}</small> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              </div>
             </>
           ) : null}
         </div>
