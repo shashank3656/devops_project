@@ -8,7 +8,7 @@ import { useApiUrl } from '../context/ApiUrlContext';
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
 
-type DeskKind = 'change' | 'incident' | 'problem' | 'request';
+type DeskKind = 'change' | 'incident' | 'problem' | 'request' | 'access';
 type DeskTab = 'all' | 'mine' | 'approval';
 
 interface DeskTicket {
@@ -122,6 +122,8 @@ function kindLabel(kind: DeskKind): string {
       return 'Incident';
     case 'problem':
       return 'Problem';
+    case 'access':
+      return 'Access request';
     default:
       return 'Request';
   }
@@ -207,8 +209,9 @@ export default function ServiceDeskPage() {
       loadCatalog('/api/devops/incidents', '/api/admin/incidents'),
       fetch(`${apiUrl}/api/devops/problems`, { headers }).then((res) => res.json().catch(() => ({}))),
       fetch(`${apiUrl}/api/devops/tickets?limit=50`, { headers }).then((res) => res.json().catch(() => ({}))),
+      fetch(`${apiUrl}/api/devops/iam/access-requests?scope=desk`, { headers }).then((res) => (res.ok ? res.json().catch(() => ({})) : { requests: [] })),
     ])
-      .then(([changesData, incidentsData, problemsData, ticketsData]) => {
+      .then(([changesData, incidentsData, problemsData, ticketsData, accessData]) => {
         const next: DeskTicket[] = [];
 
         asList(changesData.changes).forEach((row) => {
@@ -303,6 +306,31 @@ export default function ServiceDeskPage() {
           });
         });
 
+        asList(accessData.requests).forEach((row, index) => {
+          const rawId = str(row.id);
+          if (!rawId) return;
+          const id = index + 1;
+          const evaluation = row.evaluation && typeof row.evaluation === 'object' ? row.evaluation as Record<string, unknown> : {};
+          const role = str(evaluation.roleName);
+          const scope = str(evaluation.normalizedScope);
+          next.push({
+            id,
+            key: `access-${rawId}`,
+            kind: 'access',
+            title: role || 'Access request',
+            summary: scope || 'Waiting for DevOps approval',
+            status: str(row.status, 'pending'),
+            priority: 'high',
+            owner: 'DevOps',
+            service: role || 'Access',
+            environment: '—',
+            source: 'IAM',
+            href: '/iam/approvals',
+            createdAt: str(row.createdAt) || str(row.created_at),
+            updatedAt: str(row.updatedAt) || str(row.updated_at),
+          });
+        });
+
         next.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setItems(next);
         if (!selectedKey && next[0]) setSelectedKey(next[0].key);
@@ -361,6 +389,7 @@ export default function ServiceDeskPage() {
     if (item.kind === 'change') return `CHG-${String(item.id).padStart(3, '0')}`;
     if (item.kind === 'incident') return `INC-${String(item.id).padStart(3, '0')}`;
     if (item.kind === 'problem') return `PRB-${String(item.id).padStart(3, '0')}`;
+    if (item.kind === 'access') return `ACC-${String(item.id).padStart(3, '0')}`;
     return `REQ-${String(item.id).padStart(3, '0')}`;
   };
 
@@ -446,6 +475,7 @@ export default function ServiceDeskPage() {
                 <option value="change">Change</option>
                 <option value="problem">Problem</option>
                 <option value="request">Request</option>
+                <option value="access">Access request</option>
               </select>
               <select className="input" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} aria-label="Priority">
                 <option value="">Priority</option>

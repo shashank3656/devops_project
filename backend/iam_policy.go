@@ -56,19 +56,23 @@ type iamResource struct {
 }
 
 type iamEvaluateInput struct {
-	Provider        string `json:"provider"`
-	TeamID          string `json:"teamId"`
-	PrincipalID     string `json:"principalId"`
-	CloudAccountID  string `json:"cloudAccountId"`
-	ResourceID      string `json:"resourceId"`
-	Environment     string `json:"environment"`
-	ScopeKind       string `json:"scopeKind"`
-	Service         string `json:"service"`
-	ProjectID       string `json:"projectId"`
-	Action          string `json:"action"`
-	DurationMinutes int    `json:"durationMinutes"`
-	TicketRef       string `json:"ticketRef"`
-	Justification   string `json:"justification"`
+	Provider        string   `json:"provider"`
+	TeamID          string   `json:"teamId"`
+	PrincipalID     string   `json:"principalId"`
+	CloudAccountID  string   `json:"cloudAccountId"`
+	ResourceID      string   `json:"resourceId"`
+	Environment     string   `json:"environment"`
+	ScopeKind       string   `json:"scopeKind"`
+	Service         string   `json:"service"`
+	Services        []string `json:"services"`
+	ProjectID       string   `json:"projectId"`
+	Action          string   `json:"action"`
+	Permissions     []string `json:"permissions"`
+	StartsAt        string   `json:"startsAt"`
+	EndsAt          string   `json:"endsAt"`
+	DurationMinutes int      `json:"durationMinutes"`
+	TicketRef       string   `json:"ticketRef"`
+	Justification   string   `json:"justification"`
 }
 
 type iamEvaluation struct {
@@ -177,6 +181,34 @@ func iamPermissionRisk(role, environment string) string {
 	return "MEDIUM"
 }
 
+func iamWindowMinutes(start, end string) (int, string) {
+	parse := func(value string) (time.Time, bool) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return time.Time{}, false
+		}
+		for _, layout := range []string{time.RFC3339, "2006-01-02T15:04", "2006-01-02T15:04:05"} {
+			if parsed, err := time.Parse(layout, value); err == nil {
+				return parsed, true
+			}
+		}
+		return time.Time{}, false
+	}
+	starts, okStart := parse(start)
+	ends, okEnd := parse(end)
+	if !okStart || !okEnd {
+		return 0, "start time and end time are required"
+	}
+	if !ends.After(starts) {
+		return 0, "end time must be after the start time"
+	}
+	minutes := int(ends.Sub(starts).Minutes())
+	if minutes > 90*24*60 {
+		return 0, "access cannot be longer than 90 days"
+	}
+	return minutes, ""
+}
+
 func iamDurationCap(risk string) int {
 	switch risk {
 	case "LOW":
@@ -205,6 +237,12 @@ func evaluateIAMAccess(in iamEvaluateInput, now time.Time, alreadyActive bool) i
 	in.Provider = strings.ToUpper(strings.TrimSpace(in.Provider))
 	in.Environment = strings.ToUpper(strings.TrimSpace(in.Environment))
 	in.ScopeKind = strings.ToUpper(strings.TrimSpace(in.ScopeKind))
+	if len(in.Services) > 0 {
+		in.Service = strings.Join(in.Services, ", ")
+	}
+	if len(in.Permissions) > 0 {
+		in.Action = strings.Join(in.Permissions, ", ")
+	}
 	rawAction := strings.TrimSpace(in.Action)
 	actionKey := strings.ToUpper(rawAction)
 	in.Action = rawAction
@@ -254,25 +292,48 @@ func evaluateIAMAccess(in iamEvaluateInput, now time.Time, alreadyActive bool) i
 		if in.Environment == "" {
 			return deny("environment is required")
 		}
+		if in.StartsAt != "" || in.EndsAt != "" || len(in.Permissions) > 0 {
+			minutes, msg := iamWindowMinutes(in.StartsAt, in.EndsAt)
+			if msg != "" {
+				return deny(msg)
+			}
+			in.DurationMinutes = minutes
+		}
 		label, risk := "Read", "LOW"
 		if in.Environment == "PROD" || in.Environment == "PRODUCTION" {
 			risk = "MEDIUM"
 		}
 		roleName := in.Service + " " + label
+		cap := iamDurationCap(risk)
 		switch actionKey {
 		case "DEVELOPER":
 			label, risk = "Developer", "MEDIUM"
 			roleName = in.Service + " " + label
+			cap = iamDurationCap(risk)
 		case "ADMIN":
 			label, risk = "Admin", "HIGH"
 			roleName = in.Service + " " + label
+			cap = iamDurationCap(risk)
 		case "READ":
 		default:
 			roleName = rawAction
-			risk = iamPermissionRisk(rawAction, in.Environment)
+			if len(in.Permissions) > 0 {
+				risk = "LOW"
+				for _, permission := range in.Permissions {
+					next := iamPermissionRisk(permission, in.Environment)
+					if next == "HIGH" || (next == "MEDIUM" && risk == "LOW") {
+						risk = next
+					}
+				}
+			} else {
+				risk = iamPermissionRisk(rawAction, in.Environment)
+			}
+			cap = 90 * 24 * 60
 		}
-		cap := iamDurationCap(risk)
 		if in.DurationMinutes <= 0 || in.DurationMinutes > cap {
+			if cap == 90*24*60 {
+				return deny("access cannot be longer than 90 days")
+			}
 			return deny("duration exceeds the policy cap for this risk")
 		}
 		if risk == "HIGH" && (in.TicketRef == "" || len(in.Justification) < 12) {

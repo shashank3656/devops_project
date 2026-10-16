@@ -3,7 +3,8 @@ import { useRouter } from 'next/router';
 import type { ReactNode } from 'react';
 
 const LINKS = [
-  { href: '/iam', label: 'Request', also: ['/iam/request'] },
+  { href: '/iam', label: 'Overview' },
+  { href: '/iam/request', label: 'Request' },
   { href: '/iam/requests', label: 'My requests' },
   { href: '/iam/approvals', label: 'Approvals' },
   { href: '/iam/permissions', label: 'Permissions' },
@@ -24,7 +25,7 @@ export default function IamFrame({ title, lede, children }: { title: string; led
       </header>
       <nav className="iam-tabs" aria-label="IAM">
         {LINKS.map((link) => {
-          const current = pathname === link.href || (link.also || []).includes(pathname);
+          const current = pathname === link.href;
           return (
             <Link key={link.href} href={link.href} className={current ? 'is-current' : undefined} aria-current={current ? 'page' : undefined}>
               {link.label}

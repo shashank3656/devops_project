@@ -570,7 +570,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     label: 'IAM',
     Icon: IconShield,
     children: [
-      { href: '/iam', label: 'Request' },
+      { href: '/iam', label: 'Overview' },
+      { href: '/iam/request', label: 'Request' },
       { href: '/iam/requests', label: 'My requests' },
       { href: '/iam/approvals', label: 'Approvals' },
       { href: '/iam/permissions', label: 'Permissions' },
