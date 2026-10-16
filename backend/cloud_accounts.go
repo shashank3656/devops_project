@@ -174,7 +174,7 @@ func devopsCloudAccountCreateHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "project not found", nil)
 		return
 	}
-	if !devopsManagerCanOnboardTeamSlug(managerID, teamSlug) {
+	if !devopsManagerCanOnboardTeamSlug(managerID, teamSlug) && !projectGrantsTeamSlug(body.ProjectID, teamSlug) {
 		writeAPIError(w, r, http.StatusForbidden, "you cannot onboard accounts for this team", nil)
 		return
 	}
@@ -494,6 +494,20 @@ func devopsUserCanAccessTeamSlug(userID int, teamSlug string) bool {
 		}
 	}
 	return false
+}
+
+func projectGrantsTeamSlug(projectID int, teamSlug string) bool {
+	teamSlug = strings.TrimSpace(teamSlug)
+	if DB == nil || projectID <= 0 || teamSlug == "" {
+		return false
+	}
+	team, err := GetTeamByNameOrSlug(teamSlug)
+	if err != nil || team == nil {
+		return false
+	}
+	var id int
+	err = DB.QueryRow(`SELECT team_id FROM project_team_access WHERE project_id = $1 AND team_id = $2`, projectID, team.ID).Scan(&id)
+	return err == nil && id == team.ID
 }
 
 func devopsManagerCanOnboardTeamSlug(userID int, teamSlug string) bool {
