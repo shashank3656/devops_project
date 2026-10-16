@@ -60,3 +60,17 @@ func TestSectionForPath(t *testing.T) {
 		t.Fatal("admin section was rejected")
 	}
 }
+
+func TestInfrastructurePageCanBeIAMOnly(t *testing.T) {
+	grants := defaultSectionGrants("devops")
+	grants.Pages = map[string]bool{"iam": true, "kubernetes": false}
+	if !grants.allows("infrastructure") || !grants.allowsPage("iam") || grants.allowsPage("kubernetes") {
+		t.Fatalf("page grants = %+v", grants)
+	}
+	if pageForPath("/api/devops/iam/access-requests") != "iam" || pageForPath("/api/devops/k8s-pods") != "kubernetes" {
+		t.Fatal("page path mapping changed")
+	}
+	if !defaultSectionGrants("devops").allowsPage("kubernetes") {
+		t.Fatal("a group without page grants should keep every page in the section")
+	}
+}

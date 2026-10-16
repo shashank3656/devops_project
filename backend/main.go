@@ -717,6 +717,7 @@ func main() {
 	http.HandleFunc("/api/me/changes/", meChangeDetailHandler)
 	http.HandleFunc("/api/me/scorecards", meScorecardsHandler)
 	http.HandleFunc("/api/me/teams", meTeamsHandler)
+	http.HandleFunc("/api/me/ticket-audience", meTicketAudienceHandler)
 	http.HandleFunc("/api/me/teams/", meTeamMembersRouter)
 	http.HandleFunc("/api/me/managed-teams", meManagedTeamsHandler)
 	http.HandleFunc("/api/me/notifications", meNotificationsHandler)

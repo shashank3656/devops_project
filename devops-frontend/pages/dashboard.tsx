@@ -5,6 +5,7 @@ import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { useWorkspaceScope, WORKSPACE_SCOPE_EVENT, readWorkspaceScope, type WorkspacePayload } from '@infragate/ui';
+import { loadTicketAudience } from '../lib/ticketAudience';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const emptyWorkspace: WorkspacePayload = {
@@ -65,7 +66,6 @@ export default function DevOpsDashboard() {
     ])
       .then(([data, servicesBody]) => {
         if (!data?.workspace) throw new Error('Home response was empty.');
-        setWorkspace(data.workspace);
         const list = Array.isArray(servicesBody?.services) ? servicesBody.services : [];
         const scoped = current.projectId.trim()
           ? list.filter((item: { project_id?: number }) => String(item.project_id || '') === current.projectId)
@@ -82,6 +82,13 @@ export default function DevOpsDashboard() {
           missingOwner: !String(incomplete.team || incomplete.owner || '').trim() || String(incomplete.team || incomplete.owner || '') === 'Unknown',
           missingRepo: !String(incomplete.repo || '').trim(),
         } : null);
+        return loadTicketAudience(apiUrl).then((audience) => {
+          if (audience.scope === 'all') {
+            setWorkspace(data.workspace);
+            return;
+          }
+          setWorkspace({ ...data.workspace, needs_you: [], failed: [], activity: [] });
+        });
       })
       .catch((err: Error) => {
         setWorkspace(emptyWorkspace);

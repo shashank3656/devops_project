@@ -22,7 +22,7 @@ import {
 } from './Icons';
 import { SupportHub } from '@infragate/ui';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
-import { homeFor, pathAllowed, portalGrants } from '../lib/portalAccess';
+import { homeFor, pageAllowed, pathAllowed, portalGrants } from '../lib/portalAccess';
 import { rememberReturn } from '../lib/returnPath';
 import {
   CommandPalette,
@@ -579,20 +579,15 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       { href: '/iam/policy', label: 'Policy' },
     ],
   };
-  const infrastructureNavItems: NavItem[] = isManager
-    ? [
-        { href: '/projects', label: 'Projects', Icon: IconProjects },
-        { href: '/environments', label: 'Environments', Icon: IconK8s },
-        { href: '/cloud-accounts', label: 'Cloud accounts', Icon: IconFileText },
-        { href: '/cloud-resources', label: 'Cloud inventory', Icon: IconFileText },
-        iamNavItem,
-        { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
-        { href: '/promotions', label: 'Releases', Icon: IconFileText },
-      ]
-    : [
-        iamNavItem,
-        { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
-      ];
+  const infrastructureNavItems: NavItem[] = [
+    { href: '/projects', label: 'Projects', Icon: IconProjects },
+    { href: '/environments', label: 'Environments', Icon: IconK8s },
+    { href: '/cloud-accounts', label: 'Cloud accounts', Icon: IconFileText },
+    { href: '/cloud-resources', label: 'Cloud inventory', Icon: IconFileText },
+    iamNavItem,
+    { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
+    { href: '/promotions', label: 'Releases', Icon: IconFileText },
+  ];
   const securityNavItems: NavItem[] = isManager
     ? [
         { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
@@ -614,22 +609,28 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       ]
     : [];
   const grants = portalGrants(user);
+  const visibleNav = (items: NavItem[]) => items.flatMap((item) => {
+    if (!pathAllowed(item.href, grants) && !pageAllowed(item.href, grants)) return [];
+    if (!pathAllowed(item.href, grants)) return [];
+    const children = item.children?.filter((child) => pathAllowed(child.href, grants));
+    return [{ ...item, children }];
+  });
   const sidebarSections = [
     ...(grants.requests
       ? [{
           title: 'Requests',
-          items: [
+          items: visibleNav([
             { href: '/my-requests', label: 'My requests', Icon: IconTickets },
             { href: '/requests/new', label: 'New request', Icon: IconFileText },
             { href: '/my-projects', label: 'My projects', Icon: IconProjects },
             { href: '/my-teams', label: 'My teams', Icon: IconBookOpen },
-          ],
+          ]),
         }]
       : []),
-    ...(grants.daily ? [{ title: 'Daily', items: dailyNavItems }] : []),
-    ...(grants.operations ? [{ title: 'Operations', items: operationsNavItems }] : []),
-    ...(grants.infrastructure ? [{ title: 'Infrastructure', items: infrastructureNavItems }] : []),
-    ...(grants.security ? [{ title: 'Security', items: securityNavItems }] : []),
+    ...(grants.daily ? [{ title: 'Daily', items: visibleNav(dailyNavItems) }] : []),
+    ...(grants.operations ? [{ title: 'Operations', items: visibleNav(operationsNavItems) }] : []),
+    ...(grants.infrastructure ? [{ title: 'Infrastructure', items: visibleNav(infrastructureNavItems) }] : []),
+    ...(grants.security ? [{ title: 'Security', items: visibleNav(securityNavItems) }] : []),
     ...(grants.records && recordsNavItems.length ? [{ title: 'Records', items: recordsNavItems }] : []),
     ...(grants.portalAccess
       ? [{
@@ -783,7 +784,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         <div className="devops-sidebar-new__body">
           <nav className="devops-sidebar-new__nav" aria-label="Primary">
             {sessionReady
-              ? sidebarSections.map((section) => (
+              ? sidebarSections.filter((section) => section.items.length > 0).map((section) => (
                   <div key={section.title}>
                     {!sidebarCollapsed ? <span className="devops-sidebar-new__nav-title">{section.title}</span> : null}
                     {section.items.map((item) => renderNavItem(item))}

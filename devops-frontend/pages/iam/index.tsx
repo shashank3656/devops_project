@@ -5,21 +5,43 @@ import DevOpsLayout from '../../components/DevOpsLayout';
 import IamFrame from '../../components/IamFrame';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
+import { loadTicketAudience } from '../../lib/ticketAudience';
 
-type Summary = { active?: number; pending?: number; expiring?: number; approvals?: number };
+type AccessRequest = {
+  id: string;
+  status?: string;
+  requesterName?: string;
+  createdAt?: string;
+  evaluation?: { roleName?: string; normalizedScope?: string; input?: { service?: string; environment?: string } };
+};
+
+function statusLabel(status: string): string {
+  const value = status.toUpperCase();
+  if (!value) return 'New';
+  if (value.includes('PENDING')) return 'In progress';
+  if (value === 'ACTIVE') return 'Active';
+  if (value.includes('REJECT')) return 'Rejected';
+  if (value.includes('CANCEL')) return 'Cancelled';
+  return 'New';
+}
 
 export default function IamHomePage() {
   const apiUrl = useApiUrl();
-  const [summary, setSummary] = useState<Summary | null>(null);
+  const [requests, setRequests] = useState<AccessRequest[] | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let cancel = false;
-    fetch(`${apiUrl}/api/devops/iam/summary`, { headers: sessionAuthHeaders() })
+    loadTicketAudience(apiUrl)
+      .then((audience) => {
+        const scope = audience.scope === 'all' ? 'desk' : audience.scope === 'team' ? 'team' : '';
+        const query = scope ? `?scope=${scope}` : '';
+        return fetch(`${apiUrl}/api/devops/iam/access-requests${query}`, { headers: sessionAuthHeaders() });
+      })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body?.error || 'Access could not be loaded.');
-        if (!cancel) setSummary(body);
+        if (!res.ok) throw new Error(body?.error || 'Access requests could not be loaded.');
+        if (!cancel) setRequests(Array.isArray(body?.requests) ? body.requests : []);
       })
       .catch((err: Error) => {
         if (!cancel) setError(err.message);
@@ -32,19 +54,41 @@ export default function IamHomePage() {
   return (
     <DevOpsLayout>
       <Head><title>IAM</title></Head>
-      <IamFrame title="IAM" lede="See what is active, what is waiting, and open a request when someone needs a cloud role.">
+      <IamFrame title="IAM" lede="Requests waiting here are New until a reviewer picks them up, then In progress, Active, or Rejected.">
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
-        <section className="changes-facts" aria-label="Access summary">
-          <div><span>Active</span><strong>{summary ? summary.active ?? 0 : '…'}</strong></div>
-          <div><span>Pending</span><strong>{summary ? summary.pending ?? 0 : '…'}</strong></div>
-          <div><span>Expiring</span><strong>{summary ? summary.expiring ?? 0 : '…'}</strong></div>
-          <div><span>Approvals</span><strong>{summary ? summary.approvals ?? 0 : '…'}</strong></div>
-        </section>
-        <section className="portal-surface iam-sheet">
-          <h2>Request access</h2>
-          <p className="access-hint">Choose the services and permissions, then a start time and an end time. Access cannot run longer than 90 days. Submitting raises an access request on the Service Desk.</p>
-          <Link href="/iam/request" className="btn btn-primary">Open the request form</Link>
-        </section>
+        <div className="iam-actions">
+          <Link href="/iam/request" className="btn btn-primary">New access request</Link>
+        </div>
+        <div className="portal-surface table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Service</th>
+                <th>Permission</th>
+                <th>Environment</th>
+                <th>Raised by</th>
+                <th>Opened</th>
+              </tr>
+            </thead>
+            <tbody>
+              {requests === null ? (
+                <tr><td colSpan={6}>Loading requests…</td></tr>
+              ) : requests.length === 0 ? (
+                <tr><td colSpan={6}>No access requests yet.</td></tr>
+              ) : requests.map((item) => (
+                <tr key={item.id}>
+                  <td>{statusLabel(item.status || '')}</td>
+                  <td>{item.evaluation?.input?.service || item.evaluation?.normalizedScope || '—'}</td>
+                  <td>{item.evaluation?.roleName || '—'}</td>
+                  <td>{item.evaluation?.input?.environment || '—'}</td>
+                  <td>{item.requesterName || '—'}</td>
+                  <td>{item.createdAt ? new Date(item.createdAt).toLocaleString() : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </IamFrame>
     </DevOpsLayout>
   );

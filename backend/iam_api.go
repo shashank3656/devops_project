@@ -13,6 +13,7 @@ import (
 type iamRequest struct {
 	ID             string          `json:"id"`
 	RequesterID    int             `json:"requesterId"`
+	RequesterName  string          `json:"requesterName,omitempty"`
 	Status         string          `json:"status"`
 	Evaluation     iamEvaluation   `json:"evaluation"`
 	VersionHash    string          `json:"versionHash"`
@@ -236,8 +237,12 @@ func saveIAMRequest(userID int, evalID, key string) (*iamRequest, int, string) {
 	}
 	statusName := "PENDING_DEVOPS_APPROVAL"
 	now := time.Now().UTC()
+	requesterName := ""
+	if user, userErr := GetUserByID(userID); userErr == nil && user != nil {
+		requesterName = user.Username
+	}
 	item := &iamRequest{
-		ID: newIAMID(), RequesterID: userID, Status: statusName, Evaluation: eval,
+		ID: newIAMID(), RequesterID: userID, RequesterName: requesterName, Status: statusName, Evaluation: eval,
 		VersionHash:    iamVersionHash(eval.Input.PrincipalID, eval.NormalizedScope, eval.RoleID, eval.Input.DurationMinutes, eval.Input.Justification),
 		IdempotencyKey: key, CreatedAt: now, UpdatedAt: now,
 	}
@@ -260,12 +265,24 @@ func saveIAMRequest(userID int, evalID, key string) (*iamRequest, int, string) {
 }
 
 func iamList(w http.ResponseWriter, r *http.Request, userID int) {
-	desk := r != nil && r.URL.Query().Get("scope") == "desk" && iamDevopsApprover(userID)
+	scope := ""
+	if r != nil {
+		scope = r.URL.Query().Get("scope")
+	}
+	all := scope == "desk" && iamDevopsApprover(userID)
+	visible := map[int]bool{userID: true}
+	if !all && scope == "team" && DB != nil {
+		if memberIDs, err := GetTeamMemberUserIDsForManager(userID); err == nil {
+			for _, id := range memberIDs {
+				visible[id] = true
+			}
+		}
+	}
 	cloudAccess.mu.Lock()
 	defer cloudAccess.mu.Unlock()
 	items := []*iamRequest{}
 	for _, item := range cloudAccess.byID {
-		if desk || item.RequesterID == userID {
+		if all || visible[item.RequesterID] {
 			items = append(items, item)
 		}
 	}
