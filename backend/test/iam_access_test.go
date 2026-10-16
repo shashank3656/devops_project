@@ -135,7 +135,56 @@ func TestApprovalDoesNotActivateAndRejectsSelfApproval(t *testing.T) {
 	if errMsg, _ := applyIAMDecision(item, 8, "approved", "stale"); errMsg == "" {
 		t.Fatal("stale hash should be denied")
 	}
-	if errMsg, _ := applyIAMDecision(item, 8, "approved", item.VersionHash); errMsg != "" || item.Status != "ACTIVE" {
+	if errMsg, _ := applyIAMDecision(item, 8, "approved", item.VersionHash); errMsg != "" || item.Status != "PROVISIONING" {
 		t.Fatalf("devops approval = %q %s", errMsg, item.Status)
+	}
+}
+
+func TestIAMAccessFileUsesOnePathAndManagedPolicyARN(t *testing.T) {
+	item := &iamRequest{
+		AccessNumber: "AR-2026-1042",
+		RequesterID:  7,
+		Evaluation: iamEvaluation{Input: iamEvaluateInput{
+			Provider: "AWS", ProjectID: "setuops", Environment: "dev", PrincipalID: "user-42",
+			CloudAccountID: "111122223333", CloudMember: "SetuOpsGrant",
+			Permissions: []string{"ReadOnlyAccess", "SecurityAudit"},
+			StartsAt:    "2026-10-17T09:00:00Z", EndsAt: "2026-10-20T09:00:00Z",
+		}},
+	}
+	got, err := buildIAMAccessDispatches(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].File != "iam/setuops/dev/aws/user-42.json" || got[1].File != got[0].File {
+		t.Fatalf("files = %+v", got)
+	}
+	if got[0].Inputs["role"] != "arn:aws:iam::aws:policy/ReadOnlyAccess" || got[1].Inputs["access_number"] != "AR-2026-104201" {
+		t.Fatalf("inputs = %+v", got)
+	}
+	if _, err := buildIAMAccessDispatches(&iamRequest{Evaluation: iamEvaluation{Input: iamEvaluateInput{
+		Provider: "GCP", ProjectID: "setuops", Environment: "dev", PrincipalID: "user-42",
+		CloudAccountID: "setuops-dev", Permissions: []string{"roles/owner"},
+		StartsAt: "2026-10-17T09:00:00Z", EndsAt: "2026-10-20T09:00:00Z",
+	}}}); err == nil {
+		t.Fatal("owner role should be rejected")
+	}
+}
+
+func TestCompleteIAMProvisionRecordsTheGrant(t *testing.T) {
+	item := &iamRequest{
+		ID: "req-provision", RequesterID: 7, Status: "PROVISIONING", AccessNumber: "AR-2026-1888",
+		Evaluation: iamEvaluation{RoleName: "Viewer", Input: iamEvaluateInput{PrincipalID: "user-42", Provider: "gcp", CloudAccountID: "setuops-dev"}},
+	}
+	cloudAccess.mu.Lock()
+	cloudAccess.byID[item.ID] = item
+	cloudAccess.mu.Unlock()
+	if err := completeIAMProvision("AR-2026-1888"); err != nil {
+		t.Fatal(err)
+	}
+	if item.Status != "ACTIVE" {
+		t.Fatalf("status = %s", item.Status)
+	}
+	if err := completeIAMProvision("AR-2026-1888"); err != nil {
+		t.Fatal(err)
 	}
 }

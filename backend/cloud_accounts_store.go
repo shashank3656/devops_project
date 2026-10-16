@@ -12,6 +12,7 @@ type cloudAccountInsert struct {
 	AccountID    string
 	DisplayName  string
 	TeamSlug     string
+	ProjectID    int
 	Environments []string
 	AuthMode     string
 	RoleARN      string
@@ -27,16 +28,41 @@ type cloudAccountCredentials struct {
 	SecretRef  string
 }
 
+func cloudAccountProjectExists(projectID int) bool {
+	if DB == nil || projectID <= 0 {
+		return false
+	}
+	var id int
+	err := DB.QueryRow(`SELECT id FROM projects WHERE id = $1`, projectID).Scan(&id)
+	return err == nil && id == projectID
+}
+
 func insertCloudAccount(in cloudAccountInsert) (*cloudAccountRecord, error) {
 	var id int
-	err := DB.QueryRow(`
+	var projectID any
+	if in.ProjectID > 0 {
+		projectID = in.ProjectID
+	}
+	roleARN, err := sealCloudSecret(in.RoleARN)
+	if err != nil {
+		return nil, err
+	}
+	externalID, err := sealCloudSecret(in.ExternalID)
+	if err != nil {
+		return nil, err
+	}
+	secretRef, err := sealCloudSecret(in.SecretRef)
+	if err != nil {
+		return nil, err
+	}
+	err = DB.QueryRow(`
 		INSERT INTO cloud_accounts (
-			provider, account_id, display_name, team_slug, environments_json,
+			provider, account_id, display_name, team_slug, project_id, environments_json,
 			auth_mode, role_arn, external_id, secret_ref, status, onboarded_by
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',$10)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11)
 		RETURNING id
-	`, in.Provider, in.AccountID, in.DisplayName, in.TeamSlug, encodeEnvironmentsJSON(in.Environments),
-		in.AuthMode, in.RoleARN, in.ExternalID, in.SecretRef, in.OnboardedBy).Scan(&id)
+	`, in.Provider, in.AccountID, in.DisplayName, in.TeamSlug, projectID, encodeEnvironmentsJSON(in.Environments),
+		in.AuthMode, roleARN, externalID, secretRef, in.OnboardedBy).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
@@ -47,20 +73,22 @@ func scanCloudAccount(row *sql.Row) (*cloudAccountRecord, error) {
 	var item cloudAccountRecord
 	var envJSON, roleARN, externalID, secretRef, lastError string
 	var lastTest, disabledAt sql.NullTime
-	var onboardedBy, disabledBy sql.NullInt64
-	var onboardedName sql.NullString
+	var onboardedBy, disabledBy, projectID sql.NullInt64
+	var onboardedName, projectName, projectCode sql.NullString
 	err := row.Scan(
 		&item.ID, &item.Provider, &item.AccountID, &item.DisplayName, &item.TeamSlug, &envJSON,
 		&item.AuthMode, &roleARN, &externalID, &secretRef, &item.Status, &lastError, &lastTest,
 		&onboardedBy, &disabledBy, &disabledAt, &item.CreatedAt, &item.UpdatedAt, &onboardedName,
+		&projectID, &projectName, &projectCode,
 	)
 	if err != nil {
 		return nil, err
 	}
 	item.Environments = parseEnvironmentsJSON(envJSON)
-	item.RoleARN = strings.TrimSpace(roleARN)
+	item.RoleARNSet = strings.TrimSpace(roleARN) != ""
 	item.ExternalIDSet = strings.TrimSpace(externalID) != ""
 	item.SecretRefSet = strings.TrimSpace(secretRef) != ""
+	item.CredentialsEncrypted = cloudSecretIsSealed(roleARN) || cloudSecretIsSealed(externalID) || cloudSecretIsSealed(secretRef)
 	item.LastError = strings.TrimSpace(lastError)
 	if lastTest.Valid {
 		t := lastTest.Time.UTC()
@@ -77,6 +105,7 @@ func scanCloudAccount(row *sql.Row) (*cloudAccountRecord, error) {
 	if onboardedName.Valid {
 		item.OnboardedByName = onboardedName.String
 	}
+	fillCloudAccountProject(&item, projectID, projectName, projectCode)
 	return &item, nil
 }
 
@@ -84,10 +113,27 @@ const cloudAccountSelect = `
 	SELECT ca.id, ca.provider, ca.account_id, ca.display_name, ca.team_slug, ca.environments_json,
 	       ca.auth_mode, ca.role_arn, ca.external_id, ca.secret_ref, ca.status, ca.last_error, ca.last_test_at,
 	       ca.onboarded_by, ca.disabled_by, ca.disabled_at, ca.created_at, ca.updated_at,
-	       COALESCE(u.username, '')
+	       COALESCE(u.username, ''),
+	       ca.project_id, COALESCE(p.name, ''), COALESCE(p.code, '')
 	  FROM cloud_accounts ca
 	  LEFT JOIN users u ON u.id = ca.onboarded_by
+	  LEFT JOIN projects p ON p.id = ca.project_id
 `
+
+func fillCloudAccountProject(item *cloudAccountRecord, projectID sql.NullInt64, projectName, projectCode sql.NullString) {
+	if item == nil {
+		return
+	}
+	if projectID.Valid && projectID.Int64 > 0 {
+		item.ProjectID = int(projectID.Int64)
+	}
+	if projectName.Valid {
+		item.ProjectName = projectName.String
+	}
+	if projectCode.Valid {
+		item.ProjectCode = projectCode.String
+	}
+}
 
 func getCloudAccountByID(id int) (*cloudAccountRecord, error) {
 	return scanCloudAccount(DB.QueryRow(cloudAccountSelect+` WHERE ca.id = $1`, id))
@@ -128,12 +174,36 @@ func getCloudAccountCredentials(id int) (*cloudAccountRecord, *cloudAccountCrede
 	if err != nil {
 		return item, nil, err
 	}
+	roleARN, err = openCloudSecret(roleARN)
+	if err != nil {
+		return item, nil, err
+	}
+	externalID, err = openCloudSecret(externalID)
+	if err != nil {
+		return item, nil, err
+	}
+	secretRef, err = openCloudSecret(secretRef)
+	if err != nil {
+		return item, nil, err
+	}
 	return item, &cloudAccountCredentials{
 		AuthMode:   authMode,
 		RoleARN:    roleARN,
 		ExternalID: externalID,
 		SecretRef:  secretRef,
 	}, nil
+}
+
+func sealCloudSecret(value string) (string, error) {
+	return encryptK8sCredential(value)
+}
+
+func openCloudSecret(value string) (string, error) {
+	return decryptK8sCredential(value)
+}
+
+func cloudSecretIsSealed(value string) bool {
+	return strings.HasPrefix(strings.TrimSpace(value), k8sCredentialEncPrefix)
 }
 
 func listCloudAccountsForTeams(teamSlugs []string) ([]cloudAccountRecord, error) {
@@ -184,19 +254,21 @@ func scanCloudAccountRow(rows *sql.Rows) (*cloudAccountRecord, error) {
 	var item cloudAccountRecord
 	var envJSON, roleARN, externalID, secretRef, lastError string
 	var lastTest, disabledAt sql.NullTime
-	var onboardedBy, disabledBy sql.NullInt64
-	var onboardedName sql.NullString
+	var onboardedBy, disabledBy, projectID sql.NullInt64
+	var onboardedName, projectName, projectCode sql.NullString
 	if err := rows.Scan(
 		&item.ID, &item.Provider, &item.AccountID, &item.DisplayName, &item.TeamSlug, &envJSON,
 		&item.AuthMode, &roleARN, &externalID, &secretRef, &item.Status, &lastError, &lastTest,
 		&onboardedBy, &disabledBy, &disabledAt, &item.CreatedAt, &item.UpdatedAt, &onboardedName,
+		&projectID, &projectName, &projectCode,
 	); err != nil {
 		return nil, err
 	}
 	item.Environments = parseEnvironmentsJSON(envJSON)
-	item.RoleARN = strings.TrimSpace(roleARN)
+	item.RoleARNSet = strings.TrimSpace(roleARN) != ""
 	item.ExternalIDSet = strings.TrimSpace(externalID) != ""
 	item.SecretRefSet = strings.TrimSpace(secretRef) != ""
+	item.CredentialsEncrypted = cloudSecretIsSealed(roleARN) || cloudSecretIsSealed(externalID) || cloudSecretIsSealed(secretRef)
 	item.LastError = strings.TrimSpace(lastError)
 	if lastTest.Valid {
 		t := lastTest.Time.UTC()
@@ -213,6 +285,7 @@ func scanCloudAccountRow(rows *sql.Rows) (*cloudAccountRecord, error) {
 	if onboardedName.Valid {
 		item.OnboardedByName = onboardedName.String
 	}
+	fillCloudAccountProject(&item, projectID, projectName, projectCode)
 	return &item, nil
 }
 
@@ -305,7 +378,20 @@ func listConnectedCloudAccountIDsForTeams(provider string, teamSlugs []string) (
 }
 
 func updateCloudAccountTrust(id int, authMode, roleARN, externalID, secretRef string) error {
-	_, err := DB.Exec(`
+	var err error
+	roleARN, err = sealCloudSecret(roleARN)
+	if err != nil {
+		return err
+	}
+	externalID, err = sealCloudSecret(externalID)
+	if err != nil {
+		return err
+	}
+	secretRef, err = sealCloudSecret(secretRef)
+	if err != nil {
+		return err
+	}
+	_, err = DB.Exec(`
 		UPDATE cloud_accounts
 		SET auth_mode = $2, role_arn = $3, external_id = $4, secret_ref = $5,
 		    status = 'pending', last_error = '', updated_at = CURRENT_TIMESTAMP

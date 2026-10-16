@@ -318,7 +318,7 @@ export default function CloudAccountInventoryLandingPage() {
                   <CloudStatePanel
                     kind="empty"
                     title="No resources in this account"
-                    message="Nothing is seeded or synced for this account yet. Confirm the account is connected under Cloud accounts."
+                    message="This account has nothing listed yet."
                   />
                 }
               />

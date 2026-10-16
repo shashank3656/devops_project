@@ -107,10 +107,11 @@ func devopsCloudResourcesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	payload := map[string]interface{}{
-		"resources": items,
-		"page":      page,
-		"limit":     limit,
-		"total":     total,
+		"resources":        items,
+		"page":             page,
+		"limit":            limit,
+		"total":            total,
+		"secrets_included": false,
 	}
 	if acct := strings.TrimSpace(filters.Account); acct != "" {
 		if ctx := resolveInventoryAccountContext(filters.Cloud, acct, visibleTeams); ctx != nil {
@@ -171,7 +172,7 @@ func devopsCloudResourceDetailHandler(w http.ResponseWriter, r *http.Request) {
 			catalogLinks = links
 		}
 	}
-	detail := map[string]interface{}{"resource": item}
+	detail := map[string]interface{}{"resource": item, "secrets_included": false}
 	if len(catalogLinks) > 0 {
 		detail["catalog_links"] = catalogLinks
 	}

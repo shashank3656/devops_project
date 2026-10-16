@@ -9,6 +9,9 @@ type Approval = {
   id: string;
   status: string;
   versionHash: string;
+  accessNumber?: string;
+  provisionFile?: string;
+  provisionUrl?: string;
   evaluation?: { roleName?: string; risk?: string; normalizedScope?: string; request?: { justification?: string; ticketRef?: string } };
 };
 
@@ -43,16 +46,20 @@ export default function IamApprovalsPage() {
       setError(body?.error || 'The decision was not recorded.');
       return;
     }
-    setNotice(body?.status === 'ACTIVE'
-      ? 'Approved. The grant is recorded and the incident is closed.'
-      : 'Rejected. No grant was recorded and the incident is closed.');
+    if (body?.status === 'PROVISIONING') {
+      setNotice(body.provisionFile ? `Approved. The access file ${body.provisionFile} is being opened.` : 'Approved. The access file workflow has started.');
+    } else if (body?.status === 'ACTIVE') {
+      setNotice('Approved. The grant is recorded.');
+    } else {
+      setNotice('Rejected. No grant was recorded.');
+    }
     await load();
   }
 
   return (
     <DevOpsLayout>
       <Head><title>Access approvals - IAM</title></Head>
-      <IamFrame title="Approvals" lede="These requests are waiting for the DevOps team. Approving records the grant and closes the incident. You cannot approve a request you opened.">
+      <IamFrame title="Approvals" lede="These access requests are waiting for the DevOps team. Approving starts the access file workflow. You cannot approve a request you opened.">
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {notice ? <div className="alert alert-success" role="status">{notice}</div> : null}
         {items.length === 0 ? <p className="work-empty">No requests are waiting for you.</p> : (

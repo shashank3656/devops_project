@@ -5,7 +5,7 @@ import { DataTable, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { downloadCSV } from '../lib/csv';
-import { INCIDENT_STATES, ITSM_PRIORITIES, IncidentSLA, incidentStateLabel, incidentStateValue, normalizeSLA, priorityLabel, severityToPriority, slaClockLabel } from '../lib/itsm';
+import { INCIDENT_STATES, ITSM_PRIORITIES, IncidentSLA, incidentCanFinish, incidentStateLabel, incidentStateValue, normalizeSLA, priorityLabel, severityToPriority, slaClockLabel } from '../lib/itsm';
 import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -191,6 +191,7 @@ export default function DevOpsIncidentsPage() {
   const [summary, setSummary] = useState('');
   const [notes, setNotes] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [finishingId, setFinishingId] = useState<number | null>(null);
   const [currentIncidentNumber, setCurrentIncidentNumber] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -299,6 +300,39 @@ export default function DevOpsIncidentsPage() {
     };
   }, [filteredIncidents]);
 
+  const finishIncident = async (incident: Incident, action: 'close' | 'cancel') => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      clearSessionAndRedirect();
+      return;
+    }
+    setFinishingId(incident.id);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/incidents/${incident.id}/${action}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      if (response.status === 401 || response.status === 403) {
+        clearSessionAndRedirect();
+        return;
+      }
+      const data = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok) {
+        throw new Error(getString(data.error, 'Could not update the incident'));
+      }
+      const nextStatus = action === 'close' ? 'closed' : 'cancelled';
+      setIncidents((current) => current.map((item) => (item.id === incident.id ? { ...item, status: nextStatus } : item)));
+      setNotice(action === 'close' ? 'Incident closed.' : 'Incident cancelled.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update the incident');
+    } finally {
+      setFinishingId(null);
+    }
+  };
+
   const incidentQueueColumns: DataTableColumn<Incident>[] = useMemo(
     () => [
       {
@@ -361,20 +395,48 @@ export default function DevOpsIncidentsPage() {
         id: 'action',
         header: 'Action',
         cell: (incident) => (
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={(event) => {
-              event.stopPropagation();
-              void router.push(`/incidents/${incident.id}/edit`);
-            }}
-          >
-            Edit
-          </button>
+          <div className="portal-page__actions">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={(event) => {
+                event.stopPropagation();
+                void router.push(`/incidents/${incident.id}/edit`);
+              }}
+            >
+              Edit
+            </button>
+            {incidentCanFinish(incident.status) ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={finishingId === incident.id}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void finishIncident(incident, 'close');
+                  }}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={finishingId === incident.id}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void finishIncident(incident, 'cancel');
+                  }}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : null}
+          </div>
         ),
       },
     ],
-    [router],
+    [router, finishingId, apiUrl],
   );
 
   const loadData = async () => {

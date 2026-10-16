@@ -8,8 +8,9 @@ import { sessionAuthHeaders } from '../../lib/portalAccess';
 type AccessRequest = {
   id: string;
   status: string;
-  incidentId?: number;
-  incidentNumber?: string;
+  accessNumber?: string;
+  provisionFile?: string;
+  provisionUrl?: string;
   createdAt?: string;
   evaluation?: { roleName?: string; risk?: string; normalizedScope?: string };
 };
@@ -44,19 +45,20 @@ export default function IamRequestsPage() {
   return (
     <DevOpsLayout>
       <Head><title>My access requests - IAM</title></Head>
-      <IamFrame title="My requests" lede="Each request opens an incident for the DevOps team. After they approve, the grant is recorded and the incident is closed.">
+      <IamFrame title="My requests" lede="Each submit creates an access request. After approval, the access file workflow runs and the grant is recorded when that file is applied.">
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {items.length === 0 ? <p className="work-empty">No access requests yet.</p> : (
           <div className="portal-surface table-wrap">
             <table>
               <thead>
-                <tr><th>Status</th><th>Incident</th><th>Role</th><th>Risk</th><th>Scope</th><th>Raised</th><th></th></tr>
+                <tr><th>Status</th><th>Access request</th><th>File</th><th>Role</th><th>Risk</th><th>Scope</th><th>Raised</th><th></th></tr>
               </thead>
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id}>
                     <td>{item.status.replaceAll('_', ' ')}</td>
-                    <td>{item.incidentId ? <a href={`/incidents/${item.incidentId}/edit`}>{item.incidentNumber || `Incident ${item.incidentId}`}</a> : '—'}</td>
+                    <td>{item.accessNumber || '—'}</td>
+                    <td>{item.provisionUrl ? <a href={item.provisionUrl}>{item.provisionFile || 'Workflow'}</a> : (item.provisionFile || '—')}</td>
                     <td>{item.evaluation?.roleName || '—'}</td>
                     <td>{item.evaluation?.risk || '—'}</td>
                     <td>{item.evaluation?.normalizedScope || '—'}</td>

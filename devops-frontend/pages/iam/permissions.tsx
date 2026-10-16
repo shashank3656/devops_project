@@ -5,7 +5,7 @@ import IamFrame from '../../components/IamFrame';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
 
-type Grant = { id: string; roleName?: string; scope?: string; status?: string; incidentNumber?: string; grantedAt?: string };
+type Grant = { id: string; roleName?: string; scope?: string; status?: string; accessNumber?: string; grantedAt?: string };
 
 export default function IamPermissionsPage() {
   const apiUrl = useApiUrl();
@@ -30,14 +30,14 @@ export default function IamPermissionsPage() {
         {grants.length === 0 ? <p className="work-empty">No grants yet. They show up after DevOps approval.</p> : (
           <div className="portal-surface table-wrap">
             <table>
-              <thead><tr><th>Role</th><th>Scope</th><th>Status</th><th>Incident</th><th>Recorded</th></tr></thead>
+              <thead><tr><th>Role</th><th>Scope</th><th>Status</th><th>Access request</th><th>Recorded</th></tr></thead>
               <tbody>
                 {grants.map((grant) => (
                   <tr key={grant.id}>
                     <td>{grant.roleName || '—'}</td>
                     <td>{grant.scope || '—'}</td>
                     <td>{grant.status || '—'}</td>
-                    <td>{grant.incidentNumber || '—'}</td>
+                    <td>{grant.accessNumber || '—'}</td>
                     <td>{grant.grantedAt ? new Date(grant.grantedAt).toLocaleString() : '—'}</td>
                   </tr>
                 ))}

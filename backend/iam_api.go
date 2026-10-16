@@ -17,6 +17,9 @@ type iamRequest struct {
 	Status         string          `json:"status"`
 	Evaluation     iamEvaluation   `json:"evaluation"`
 	VersionHash    string          `json:"versionHash"`
+	AccessNumber   string          `json:"accessNumber,omitempty"`
+	ProvisionFile  string          `json:"provisionFile,omitempty"`
+	ProvisionURL   string          `json:"provisionUrl,omitempty"`
 	IncidentID     int             `json:"incidentId,omitempty"`
 	IncidentNumber string          `json:"incidentNumber,omitempty"`
 	IdempotencyKey string          `json:"-"`
@@ -43,6 +46,7 @@ type iamGrant struct {
 	RoleID         string    `json:"roleId"`
 	Scope          string    `json:"scope"`
 	Status         string    `json:"status"`
+	AccessNumber   string    `json:"accessNumber,omitempty"`
 	IncidentNumber string    `json:"incidentNumber,omitempty"`
 	GrantedAt      time.Time `json:"grantedAt"`
 }
@@ -168,7 +172,7 @@ func iamSummary(w http.ResponseWriter, userID int) {
 	defer cloudAccess.mu.Unlock()
 	pending, approvals := 0, 0
 	for _, item := range cloudAccess.byID {
-		if strings.HasPrefix(item.Status, "PENDING") || item.Status == "AWAITING_PIM_ACTIVATION" {
+		if strings.HasPrefix(item.Status, "PENDING") || item.Status == "PROVISIONING" || item.Status == "AWAITING_PIM_ACTIVATION" {
 			pending++
 		}
 		if item.RequesterID != userID && item.Status == "PENDING_DEVOPS_APPROVAL" {
@@ -183,7 +187,7 @@ func iamSummary(w http.ResponseWriter, userID int) {
 	}
 	writeIAM(w, http.StatusOK, map[string]any{
 		"active": active, "pending": pending, "expiring": 0, "approvals": approvals,
-		"note": "A request opens an incident. The DevOps team approves it. The backend then records the grant and closes the incident.",
+		"note": "A request opens an access request. After the DevOps team approves, the access file workflow runs. The grant is recorded when that file is applied.",
 	})
 }
 
@@ -238,26 +242,21 @@ func saveIAMRequest(userID int, evalID, key string) (*iamRequest, int, string) {
 	statusName := "PENDING_DEVOPS_APPROVAL"
 	now := time.Now().UTC()
 	requesterName := ""
-	if user, userErr := GetUserByID(userID); userErr == nil && user != nil {
-		requesterName = user.Username
+	if DB != nil {
+		if user, userErr := GetUserByID(userID); userErr == nil && user != nil {
+			requesterName = user.Username
+		}
 	}
 	item := &iamRequest{
 		ID: newIAMID(), RequesterID: userID, RequesterName: requesterName, Status: statusName, Evaluation: eval,
 		VersionHash:    iamVersionHash(eval.Input.PrincipalID, eval.NormalizedScope, eval.RoleID, eval.Input.DurationMinutes, eval.Input.Justification),
 		IdempotencyKey: key, CreatedAt: now, UpdatedAt: now,
 	}
-	if DB != nil {
-		createdBy := userID
-		summary := "IAM access: " + eval.RoleName
-		notes := "Scope " + eval.NormalizedScope + "\nTicket " + eval.Input.TicketRef + "\nWaiting for the DevOps team."
-		incident, err := createStandaloneIncident(nil, "high", "open", "monitoring", nil, summary, notes, &createdBy, 0, eval.RoleName, eval.Input.Environment)
-		if err != nil {
-			return nil, http.StatusInternalServerError, "the incident could not be opened"
-		}
-		item.IncidentID = incident.ID
-		item.IncidentNumber = incident.IncidentNumber
+	item.AccessNumber = strings.TrimSpace(eval.Input.TicketRef)
+	if !strings.HasPrefix(item.AccessNumber, "AR-") {
+		item.AccessNumber = "AR-" + item.ID
 	}
-	event := cloudAccess.addAudit(userID, "incident_opened", item.ID, item.IncidentNumber)
+	event := cloudAccess.addAudit(userID, "access_request_opened", item.ID, item.AccessNumber)
 	item.Timeline = []iamAuditEvent{event}
 	cloudAccess.byID[item.ID] = item
 	cloudAccess.byKey[key] = item.ID
@@ -348,31 +347,55 @@ func iamDecide(w http.ResponseWriter, r *http.Request, id string, userID int) {
 		return
 	}
 	cloudAccess.mu.Lock()
-	defer cloudAccess.mu.Unlock()
 	item := cloudAccess.byID[id]
 	if item == nil {
+		cloudAccess.mu.Unlock()
 		writeAPIError(w, r, http.StatusNotFound, "request not found", nil)
 		return
 	}
 	if msg, code := applyIAMDecision(item, userID, body.Decision, body.VersionHash); msg != "" {
+		cloudAccess.mu.Unlock()
 		writeAPIError(w, r, code, msg, nil)
 		return
 	}
 	item.UpdatedAt = time.Now().UTC()
+	if item.Status == "PROVISIONING" {
+		dispatches, prepErr := buildIAMAccessDispatches(item)
+		if prepErr != nil {
+			item.Status = "PENDING_DEVOPS_APPROVAL"
+			cloudAccess.mu.Unlock()
+			writeAPIError(w, r, http.StatusBadRequest, prepErr.Error(), nil)
+			return
+		}
+		cloudAccess.mu.Unlock()
+		if err := dispatchIAMAccessWorkflows(dispatches); err != nil {
+			cloudAccess.mu.Lock()
+			item.Status = "PENDING_DEVOPS_APPROVAL"
+			cloudAccess.mu.Unlock()
+			writeAPIError(w, r, http.StatusBadGateway, "the access file workflow could not be started", nil)
+			return
+		}
+		cloudAccess.mu.Lock()
+		item.ProvisionFile = dispatches[0].File
+		item.ProvisionURL = dispatches[0].URL
+		item.Timeline = append(item.Timeline, cloudAccess.addAudit(userID, "access_file_requested", item.ID, item.ProvisionFile))
+		cloudAccess.mu.Unlock()
+		writeIAM(w, http.StatusOK, item)
+		return
+	}
 	if item.Status == "ACTIVE" {
 		grant := iamGrant{
 			ID: newIAMID(), RequestID: item.ID, RequesterID: item.RequesterID,
 			PrincipalID: item.Evaluation.Input.PrincipalID, RoleName: item.Evaluation.RoleName, RoleID: item.Evaluation.RoleID,
-			Scope: item.Evaluation.NormalizedScope, Status: "active", IncidentNumber: item.IncidentNumber, GrantedAt: item.UpdatedAt,
+			Scope: item.Evaluation.NormalizedScope, Status: "active", AccessNumber: item.AccessNumber, GrantedAt: item.UpdatedAt,
 		}
 		cloudAccess.grants = append(cloudAccess.grants, grant)
 		item.Timeline = append(item.Timeline, cloudAccess.addAudit(userID, "provisioned", item.ID, item.Evaluation.RoleName))
-		closeIAMIncident(item.IncidentID, "closed", "DevOps approved. The grant is recorded and this incident is closed.")
-		item.Timeline = append(item.Timeline, cloudAccess.addAudit(userID, "incident_closed", item.ID, item.IncidentNumber))
+		item.Timeline = append(item.Timeline, cloudAccess.addAudit(userID, "access_request_closed", item.ID, item.AccessNumber))
 	} else if item.Status == "REJECTED" {
-		closeIAMIncident(item.IncidentID, "cancelled", "DevOps rejected the access request. No grant was recorded.")
-		item.Timeline = append(item.Timeline, cloudAccess.addAudit(userID, "rejected", item.ID, "incident cancelled"))
+		item.Timeline = append(item.Timeline, cloudAccess.addAudit(userID, "rejected", item.ID, item.AccessNumber))
 	}
+	cloudAccess.mu.Unlock()
 	writeIAM(w, http.StatusOK, item)
 }
 
@@ -414,7 +437,7 @@ func applyIAMDecision(item *iamRequest, actor int, decision, version string) (st
 	case "rejected":
 		item.Status = "REJECTED"
 	case "approved":
-		item.Status = "ACTIVE"
+		item.Status = "PROVISIONING"
 	default:
 		return "decision must be approved or rejected", http.StatusBadRequest
 	}

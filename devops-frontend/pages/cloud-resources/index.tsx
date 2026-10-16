@@ -435,8 +435,8 @@ export default function CloudResourcesPage() {
                   empty={
                     <CloudStatePanel
                       kind="empty"
-                      title="No resources match"
-                      message={`No ${providerLabel(cloud)} rows for your teams with the current filters. Onboard and connect an account, or try another cloud.`}
+                      title="No resources yet"
+                      message={`Nothing is listed for ${providerLabel(cloud)}. Connect an account, or clear the filters.`}
                       action={
                         <>
                           <CloudEmptyCatalogAction />
