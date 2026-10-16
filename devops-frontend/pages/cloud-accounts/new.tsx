@@ -53,15 +53,6 @@ export default function CloudAccountOnboardPage() {
       router.replace('/login');
       return;
     }
-    portalFetch(`${apiUrl}/api/devops/my-teams`, { token })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && Array.isArray(data.teams)) {
-          setTeams(data.teams);
-          if (data.teams[0]?.slug) setTeamSlug(data.teams[0].slug);
-        }
-      })
-      .catch(() => {});
     portalFetch(`${apiUrl}/api/devops/projects`, { token })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -74,12 +65,16 @@ export default function CloudAccountOnboardPage() {
     if (!projectId) {
       setEnvOptions([]);
       setEnvironments([]);
+      setTeams([]);
+      setTeamSlug('');
       return;
     }
     const token = localStorage.getItem('devops_token');
     if (!token) return;
     setEnvsLoading(true);
     setEnvironments([]);
+    setTeams([]);
+    setTeamSlug('');
     portalFetch(`${apiUrl}/api/devops/projects/${projectId}`, { token })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -87,8 +82,21 @@ export default function CloudAccountOnboardPage() {
         const next = Array.isArray(raw) ? raw.filter((item: unknown) => typeof item === 'string' && item.trim()) : [];
         setEnvOptions(next);
         if (next.length === 1) setEnvironments(next);
+        const access = Array.isArray(data?.project?.team_access) ? data.project.team_access : [];
+        const nextTeams = access
+          .map((item: { team_id?: number; team_name?: string; team_slug?: string }) => ({
+            id: Number(item.team_id) || 0,
+            name: item.team_name || item.team_slug || '',
+            slug: item.team_slug || '',
+          }))
+          .filter((item: DevopsTeam) => item.slug);
+        setTeams(nextTeams);
+        if (nextTeams.length === 1) setTeamSlug(nextTeams[0].slug);
       })
-      .catch(() => setEnvOptions([]))
+      .catch(() => {
+        setEnvOptions([]);
+        setTeams([]);
+      })
       .finally(() => setEnvsLoading(false));
   }, [apiUrl, projectId]);
 
@@ -206,32 +214,58 @@ export default function CloudAccountOnboardPage() {
             </select>
           </label>
           <label className="label">
-            DevOps team
-            <select className="input" value={teamSlug} onChange={(e) => setTeamSlug(e.target.value)} required>
-              <option value="">Select team</option>
+            Team
+            <select className="input" value={teamSlug} onChange={(e) => setTeamSlug(e.target.value)} required disabled={!projectId || envsLoading}>
+              <option value="">{!projectId ? 'Select a project first' : envsLoading ? 'Loading teams...' : teams.length === 0 ? 'No teams' : 'Select team'}</option>
               {teams.map((t) => (
-                <option key={t.id} value={t.slug}>
-                  {t.name} ({t.slug})
+                <option key={t.id || t.slug} value={t.slug}>
+                  {t.name && t.name !== t.slug ? `${t.name} (${t.slug})` : t.slug}
                 </option>
               ))}
             </select>
+            <span className="ig-muted" style={{ fontSize: 12 }}>
+              {!projectId ? 'Select a project to load its teams.' : envsLoading ? 'Loading teams...' : teams.length === 0 ? 'This project has no teams.' : 'These are the teams on the selected project.'}
+            </span>
           </label>
           <label className="label">
             Environments
             <select
               className="input"
-              multiple
-              required
-              value={environments}
+              value=""
               disabled={!projectId || envsLoading || envOptions.length === 0}
               onChange={(event) => {
-                setEnvironments(Array.from(event.target.selectedOptions).map((option) => option.value).filter(Boolean));
+                const next = event.target.value;
+                if (!next) return;
+                setEnvironments((current) => (current.includes(next) ? current : [...current, next]));
               }}
             >
-              {envOptions.map((env) => (
+              <option value="">
+                {!projectId
+                  ? 'Select a project first'
+                  : envsLoading
+                    ? 'Loading environments...'
+                    : envOptions.length === 0
+                      ? 'No environments'
+                      : 'Select environment'}
+              </option>
+              {envOptions.filter((env) => !environments.includes(env)).map((env) => (
                 <option key={env} value={env}>{env}</option>
               ))}
             </select>
+            {environments.length > 0 ? (
+              <span style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {environments.map((env) => (
+                  <button
+                    key={env}
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setEnvironments((current) => current.filter((item) => item !== env))}
+                  >
+                    {env} · Remove
+                  </button>
+                ))}
+              </span>
+            ) : null}
             <span className="ig-muted" style={{ fontSize: 12 }}>
               {!projectId
                 ? 'Select a project to load its environments.'
@@ -239,7 +273,7 @@ export default function CloudAccountOnboardPage() {
                   ? 'Loading environments...'
                   : envOptions.length === 0
                     ? 'This project has no environments.'
-                    : 'These are the environments on the selected project.'}
+                    : 'Open the list and choose an environment. Add another the same way.'}
             </span>
           </label>
           <label className="label">
