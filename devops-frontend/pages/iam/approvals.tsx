@@ -55,18 +55,29 @@ export default function IamApprovalsPage() {
       <IamFrame title="Approvals" lede="These requests are waiting for the DevOps team. Approving records the grant and closes the incident. You cannot approve a request you opened.">
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {notice ? <div className="alert alert-success" role="status">{notice}</div> : null}
-        {items.length === 0 ? <p className="work-empty">No requests are waiting for you.</p> : items.map((item) => (
-          <section key={item.id} className="portal-surface access-form">
-            <h2 className="access-form__title">{item.evaluation?.roleName || 'Access request'}</h2>
-            <p className="access-hint">{item.status.replaceAll('_', ' ')} · {item.evaluation?.risk}</p>
-            <p className="access-hint">{item.evaluation?.normalizedScope}</p>
-            <p className="access-hint">Ticket {item.evaluation?.request?.ticketRef || '—'} · {item.evaluation?.request?.justification || 'No justification'}</p>
-            <div className="access-create__end">
-              <button type="button" className="btn btn-primary" onClick={() => void decide(item, 'approved')}>Approve</button>
-              <button type="button" className="btn btn-secondary" onClick={() => void decide(item, 'rejected')}>Reject</button>
-            </div>
-          </section>
-        ))}
+        {items.length === 0 ? <p className="work-empty">No requests are waiting for you.</p> : (
+          <div className="portal-surface table-wrap">
+            <table>
+              <thead>
+                <tr><th>Role</th><th>Risk</th><th>Scope</th><th>Why</th><th></th></tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.evaluation?.roleName || 'Access request'}</td>
+                    <td>{item.evaluation?.risk || '—'}</td>
+                    <td>{item.evaluation?.normalizedScope || '—'}</td>
+                    <td>{item.evaluation?.request?.justification || 'No justification'}</td>
+                    <td className="iam-actions">
+                      <button type="button" className="btn btn-primary" onClick={() => void decide(item, 'approved')}>Approve</button>
+                      <button type="button" className="btn btn-secondary" onClick={() => void decide(item, 'rejected')}>Reject</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </IamFrame>
     </DevOpsLayout>
   );

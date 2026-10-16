@@ -28,7 +28,7 @@ export default function IamPermissionsPage() {
       <IamFrame title="My permissions" lede="Grants appear here after the DevOps team approves and the backend records them.">
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {grants.length === 0 ? <p className="work-empty">No grants yet. They show up after DevOps approval.</p> : (
-          <div className="table-wrap">
+          <div className="portal-surface table-wrap">
             <table>
               <thead><tr><th>Role</th><th>Scope</th><th>Status</th><th>Incident</th><th>Recorded</th></tr></thead>
               <tbody>

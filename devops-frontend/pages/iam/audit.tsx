@@ -28,7 +28,7 @@ export default function IamAuditPage() {
       <IamFrame title="Audit" lede="Evaluation, submission, and approval events stay on the request. Secret values are not stored.">
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {events.length === 0 ? <p className="work-empty">No access events yet.</p> : (
-          <ul className="access-members">
+          <ul className="iam-audit">
             {events.map((event) => (
               <li key={event.id}>
                 <span>{event.at ? new Date(event.at).toLocaleString() : '—'} · {event.action} · {event.detail}{event.requestId ? ` · ${event.requestId.slice(0, 8)}` : ''}</span>

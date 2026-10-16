@@ -573,7 +573,6 @@ export function serviceLabel(cloud: string, id: string): string {
 }
 
 export function permissionsForService(cloud: string, serviceId: string): ServicePermission[] {
-  if (!serviceId) return [];
   const key = cloud.toLowerCase();
   const specific = SERVICE_PERMISSIONS[key]?.[serviceId] || [];
   const common = COMMON_PERMISSIONS[key] || [];
