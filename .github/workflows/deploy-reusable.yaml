@@ -119,16 +119,6 @@ jobs:
             dockerfile: ./backend/Dockerfile
             image_suffix: backend
             needs_api_url: false
-          - service: frontend
-            context: .
-            dockerfile: ./frontend/Dockerfile
-            image_suffix: frontend
-            needs_api_url: true
-          - service: admin-frontend
-            context: .
-            dockerfile: ./admin-frontend/Dockerfile
-            image_suffix: admin-frontend
-            needs_api_url: true
           - service: devops-frontend
             context: .
             dockerfile: ./devops-frontend/Dockerfile
@@ -458,7 +448,7 @@ jobs:
           prefix="ghcr.io/${owner}/${repo_name}"
           {
             echo "prefix=${prefix}"
-            echo "prefixes_json=[\"${prefix}-backend\",\"${prefix}-frontend\",\"${prefix}-admin-frontend\",\"${prefix}-devops-frontend\"]"
+            echo "prefixes_json=[\"${prefix}-backend\",\"${prefix}-devops-frontend\"]"
           } >> "$GITHUB_OUTPUT"
 
       - name: Sync Railway service images
@@ -482,8 +472,6 @@ jobs:
               "environment_id": os.environ["ENVIRONMENT_ID"],
               "image_prefixes": [
                   f"{prefix}-backend",
-                  f"{prefix}-frontend",
-                  f"{prefix}-admin-frontend",
                   f"{prefix}-devops-frontend",
               ],
               "new_version": os.environ["IMAGE_TAG"],

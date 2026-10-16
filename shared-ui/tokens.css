@@ -5,11 +5,11 @@
  */
 html:root,
 html[data-theme='light'] {
-  --ig-bg: #f4f7f9;
-  --ig-bg-subtle: #f4f7f9;
+  --ig-bg: #f4f5f8;
+  --ig-bg-subtle: #f4f5f8;
   --ig-surface: #ffffff;
-  --ig-surface-2: #f4f7f9;
-  --ig-surface-3: #e7eef2;
+  --ig-surface-2: #f6f7fb;
+  --ig-surface-3: #eef0f6;
   --ig-overlay: rgba(9, 14, 26, 0.36);
   --ig-border: #dfe7eb;
   --ig-border-strong: #dfe7eb;
@@ -19,12 +19,12 @@ html[data-theme='light'] {
   --ig-muted: #4f5c73;
   --ig-faint: #7b8798;
 
-  --ig-accent: #006b57;
-  --ig-accent-hover: #005646;
+  --ig-accent: #5c4db5;
+  --ig-accent-hover: #4a3d96;
   --ig-accent-on: #ffffff;
-  --ig-accent-text: #006b57;
-  --ig-accent-soft: #ddf2eb;
-  --ig-accent-border: #147d54;
+  --ig-accent-text: #4d3f9e;
+  --ig-accent-soft: #ece8fb;
+  --ig-accent-border: #cfc6f2;
 
   --ig-success: #1b7a4a;
   --ig-success-soft: rgba(27, 122, 74, 0.1);

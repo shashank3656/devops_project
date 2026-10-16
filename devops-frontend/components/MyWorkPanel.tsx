@@ -27,6 +27,14 @@ import { useApiUrl } from '../context/ApiUrlContext';
 
 const TOKEN_KEY = 'devops_token';
 
+const PLAIN_KIND: Record<WorkKind, string> = {
+  deployment: 'Releases',
+  incident: 'Incidents',
+  security: 'Security',
+  resource: 'Resources',
+  owner: 'Ownership',
+};
+
 type LoadResult = {
   view: WorkView;
   message: string;
@@ -132,8 +140,9 @@ export function MyWorkDesk({
   onPageSize: (size: WorkPageSize) => void;
 }) {
   const apiUrl = useApiUrl();
-  const { scope } = useWorkspaceScope();
+  const { scope, updateScope } = useWorkspaceScope();
   const chosen = workspaceScopeChoice(projectId, environment, scope.projectId, scope.environment);
+  const [environments, setEnvironments] = useState<string[]>([]);
   const [pageView, setPageView] = useState<WorkView>(hiddenWorkView());
   const [workView, setWorkView] = useState<WorkView>(hiddenWorkView());
   const [serviceView, setServiceView] = useState<WorkView>(hiddenWorkView());
@@ -227,6 +236,33 @@ export function MyWorkDesk({
     onService(next);
   }
 
+  useEffect(() => {
+    if (!/^[1-9]\d*$/.test(chosen.projectId)) {
+      setEnvironments([]);
+      return;
+    }
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    let cancel = false;
+    fetch(`${apiUrl}/api/devops/environment-catalog?project_id=${chosen.projectId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => {
+        if (cancel) return;
+        const names = Array.isArray(body?.environments)
+          ? body.environments.map((row: { name?: string }) => String(row?.name || '').trim()).filter(Boolean)
+          : [];
+        setEnvironments(names.length ? names : ['dev', 'uat', 'prod']);
+      })
+      .catch(() => {
+        if (!cancel) setEnvironments(['dev', 'uat', 'prod']);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [apiUrl, chosen.projectId]);
+
   const focused = sourceId && workView.items.some((item) => item.key.endsWith(`:${sourceId}`));
   const lastPage = Math.max(1, Math.ceil((block ? 0 : workView.total) / pageSize));
   const shownPage = block ? unknownWorkView() : pageView;
@@ -235,32 +271,96 @@ export function MyWorkDesk({
 
   const meta = (item: { owner: string; service: string }) => [item.service, item.owner].map((value) => value.trim()).filter(Boolean).join(' · ');
 
+  const missingProject = !/^[1-9]\d*$/.test(chosen.projectId);
+  const missingEnvironment = !missingProject && !chosen.environment;
+
   return (
     <div className="work-page">
       <header className="work-page__head">
         <div>
-          <h1>My work</h1>
-          <p>Deployments, incidents, security, resources, and owners for the project and environment selected above.</p>
+          <p className="ops-kicker">My work</p>
+          <h1>Your personal work list</h1>
+          <p>
+            This page shows only the work assigned to you. Open an item to review it.
+            The service desk is the full ticket list, including work that is not yours.
+          </p>
         </div>
-        <DeskStateChip value={loading ? 'unknown' : shownPage.state} />
+        <Link href="/service-desk" className="btn btn-secondary">Open service desk</Link>
       </header>
-      <DeskError message={shownMessage} />
-      <section className="work-board" aria-label="Work list">
+      <section className="ops-actions-3" aria-label="What this page is for">
+        <article className="ops-jump ops-jump--mint">
+          <strong>See what is waiting</strong>
+          <small>Releases, incidents, security items, cloud resources, and ownership changes assigned to you.</small>
+        </article>
+        <article className="ops-jump ops-jump--lilac">
+          <strong>Review one item</strong>
+          <small>Open it, then approve or leave it. The list itself does not release anything.</small>
+        </article>
+        <article className="ops-jump ops-jump--blue">
+          <strong>Look up one service</strong>
+          <small>After you choose an environment, search a service name to see only that service.</small>
+        </article>
+      </section>
+      {block ? (
+        <section className="ops-caught work-guide">
+          <h2>{missingProject ? 'Choose a project to start' : 'Choose one environment to see your work'}</h2>
+          <p>
+            {missingProject
+              ? 'Use the Project menu in the top bar. My work can list items only after a project is selected.'
+              : 'All environments is too broad for a personal list. Pick the environment you are working in, then your assigned items appear here.'}
+          </p>
+          {missingEnvironment && environments.length > 0 ? (
+            <div className="work-kinds" role="group" aria-label="Choose an environment">
+              {environments.map((name) => (
+                <button key={name} type="button" className="btn btn-secondary" onClick={() => updateScope({ environment: name })}>
+                  Show {name}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+      {!block ? <section className="ops-minis" aria-label="Work summary">
+        <article className="ops-mini ops-mini--mint">
+          <span>Waiting on you</span>
+          <strong>{loading || (shownPage.state !== 'ready' && shownPage.state !== 'empty' && shownPage.state !== 'stale') ? 'Unknown' : shownWork.total}</strong>
+          <small>{shownWork.total ? 'Assigned items in this environment' : 'Nothing is assigned to you here'}</small>
+        </article>
+        <article className="ops-mini ops-mini--lilac">
+          <span>Needs a decision</span>
+          <strong>{loading || (shownPage.state !== 'ready' && shownPage.state !== 'empty' && shownPage.state !== 'stale') ? 'Unknown' : shownWork.items.filter((item) => /review|approv/i.test(item.state)).length}</strong>
+          <small>Reviews and approvals on this page</small>
+        </article>
+        <Link href="/service-desk" className="ops-mini ops-mini--blue">
+          <span>All tickets</span>
+          <strong>Service desk</strong>
+          <small>See tickets beyond your own queue</small>
+        </Link>
+      </section> : null}
+      {!loading && !block && shownWork.items.length === 0 ? (
+        <section className="ops-caught">
+          <h2>Nothing is waiting on you.</h2>
+          <p>No items are assigned to you in this environment. Change the environment in the top bar, or open the service desk to see every ticket.</p>
+          <Link href="/service-desk" className="btn btn-primary">Open service desk</Link>
+        </section>
+      ) : null}
+      {!block ? <DeskError message={shownMessage} /> : null}
+      {!block && (loading || shownWork.items.length > 0) ? <section className="work-board" aria-label="Work list">
         <div className="work-toolbar">
-          <div className="work-kinds" role="group" aria-label="Kind">
-            <button type="button" className={selectedKind === '' ? 'is-selected' : ''} onClick={() => onKind('')}>All</button>
+          <div className="work-kinds" role="group" aria-label="Filter by type">
+            <button type="button" className={selectedKind === '' ? 'is-selected' : ''} onClick={() => onKind('')}>All types</button>
             {WORK_KINDS.map((item) => {
               const section = shownPage.sections.find((entry) => entry.kind === item);
               return (
                 <button type="button" key={item} className={selectedKind === item ? 'is-selected' : ''} onClick={() => onKind(item)}>
-                  {workKindLabel(item)}
+                  {PLAIN_KIND[item]}
                   {section && section.count > 0 ? <small>{section.count}</small> : null}
                 </button>
               );
             })}
           </div>
           <label className="work-size">
-            Rows
+            Items per page
             <select className="input" value={pageSize} onChange={(event) => onPageSize(workPageSize(event.target.value))} aria-label="Rows per page">
               {WORK_PAGE_SIZES.map((size) => (
                 <option key={size} value={size}>{size}</option>
@@ -269,15 +369,12 @@ export function MyWorkDesk({
           </label>
         </div>
         {loading ? <p className="work-empty">Loading work…</p> : null}
-        {!loading && !block && shownWork.items.length === 0 ? (
-          <p className="work-empty">No work in this environment.</p>
-        ) : null}
         {!loading && shownWork.items.length > 0 ? (
           <ul className="work-list">
             {shownWork.items.map((item) => (
               <li key={item.key}>
                 <Link href={item.href} aria-current={focused && item.key.endsWith(`:${sourceId}`) ? 'true' : undefined}>
-                  <span className="work-kind">{workKindLabel(item.kind)}</span>
+                  <span className="work-kind">{PLAIN_KIND[item.kind]}</span>
                   <span>
                     <strong>{item.label}</strong>
                     {meta(item) ? <small>{meta(item)}</small> : null}
@@ -295,10 +392,10 @@ export function MyWorkDesk({
             <button type="button" className="btn btn-secondary" disabled={page >= lastPage} onClick={() => onPage(page + 1)}>Next</button>
           </div>
         ) : null}
-      </section>
-      <section className="work-lookup" aria-label="Service list">
-        <h2>Look up a service</h2>
-        <p>Enter one service name to see only its records.</p>
+      </section> : null}
+      {!block ? <section className="work-lookup" aria-label="Find one service">
+        <h2>Find one service</h2>
+        <p>Type a service name to see only the work for that service. Leave it blank and choose Show to return to your full list.</p>
         <form
           className="work-lookup__row"
           onSubmit={(event) => {
@@ -306,19 +403,19 @@ export function MyWorkDesk({
             applyService();
           }}
         >
-          <input id="work-service" className="input" name="service" aria-label="Service name" value={draftService} autoComplete="off" placeholder="Service name" onChange={(event) => setDraftService(event.target.value)} />
-          <button type="submit" className="btn btn-primary">Show</button>
+          <input id="work-service" className="input" name="service" aria-label="Service name" value={draftService} autoComplete="off" placeholder="Example: payments-api" onChange={(event) => setDraftService(event.target.value)} />
+          <button type="submit" className="btn btn-primary">Show this service</button>
         </form>
         <DeskError message={serviceMessage} />
         {serviceView.state === 'error' ? <p className="work-empty">This service could not be loaded.</p> : null}
         {!service || block || serviceMessage || serviceView.state === 'error' ? null : serviceView.items.length === 0 ? (
-          <p className="work-empty">No records for this service.</p>
+          <p className="work-empty">No work was found for this service.</p>
         ) : (
           <ul className="work-list">
             {serviceView.items.map((item) => (
               <li key={item.key}>
                 <Link href={item.href}>
-                  <span className="work-kind">{workKindLabel(item.kind)}</span>
+                  <span className="work-kind">{PLAIN_KIND[item.kind]}</span>
                   <span>
                     <strong>{item.label}</strong>
                     {meta(item) ? <small>{meta(item)}</small> : null}
@@ -329,7 +426,7 @@ export function MyWorkDesk({
             ))}
           </ul>
         )}
-      </section>
+      </section> : null}
     </div>
   );
 }

@@ -38,6 +38,10 @@ export default function DevOpsTeamPage() {
   const [addEmail, setAddEmail] = useState('');
   const [addRole, setAddRole] = useState('member');
   const [submitting, setSubmitting] = useState(false);
+  const [onCallTeamId, setOnCallTeamId] = useState<number | null>(null);
+  const [rosterIds, setRosterIds] = useState<number[]>([]);
+  const [rosterNote, setRosterNote] = useState('');
+  const [rosterSaving, setRosterSaving] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -91,6 +95,54 @@ export default function DevOpsTeamPage() {
         }
       })
       .catch(() => {});
+  };
+
+  const openOnCall = (teamId: number) => {
+    setAddingTeamId(null);
+    setOnCallTeamId(teamId);
+    setRosterNote('');
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    fetch(`${apiUrl}/api/oncall/roster?team_id=${teamId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (response) => {
+        const data = asRecord(await response.json().catch(() => ({})));
+        if (!response.ok) {
+          setRosterIds([]);
+          setRosterNote('The on-call set could not be loaded.');
+          return;
+        }
+        const users = Array.isArray(data.users) ? data.users : [];
+        setRosterIds(users.map((item) => Number(asRecord(item).user_id) || 0).filter((id) => id > 0));
+      })
+      .catch(() => setRosterNote('The on-call set could not be loaded.'));
+  };
+
+  const saveOnCall = async (teamId: number) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    if (!rosterIds.length) {
+      setRosterNote('Choose at least one person.');
+      return;
+    }
+    setRosterSaving(true);
+    setRosterNote('');
+    try {
+      const response = await fetch(`${apiUrl}/api/oncall/roster?team_id=${teamId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ team_id: teamId, user_ids: rosterIds }),
+      });
+      const data = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok) {
+        setRosterNote(typeof data.error === 'string' && data.error !== '404 page not found' ? data.error : 'The on-call set could not be saved.');
+        return;
+      }
+      setRosterNote('Saved. These people rotate one day at a time.');
+    } catch {
+      setRosterNote('The on-call set could not be saved.');
+    } finally {
+      setRosterSaving(false);
+    }
   };
 
   const handleAddMember = async (event: FormEvent, teamId: number) => {
@@ -171,6 +223,13 @@ export default function DevOpsTeamPage() {
                       </p>
                     </div>
                     <div className="portal-page__actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => (onCallTeamId === team.id ? setOnCallTeamId(null) : openOnCall(team.id))}
+                      >
+                        On-call
+                      </button>
                       {addingTeamId === team.id ? (
                         <button
                           type="button"
@@ -216,6 +275,36 @@ export default function DevOpsTeamPage() {
                         </ul>
                       )}
                     </div>
+
+                    {onCallTeamId === team.id ? (
+                      <div className="portal-stack">
+                        <p className="portal-surface__subtitle">Choose who rotates. Each selected person covers one day, then the next person, through the end of the month.</p>
+                        {members.length === 0 ? <p>No members yet.</p> : (
+                          <div className="catalog-editor__choice-row">
+                            {members.map((member) => (
+                              <label key={member.user_id} className="catalog-editor__toggle-label">
+                                <input
+                                  type="checkbox"
+                                  checked={rosterIds.includes(member.user_id)}
+                                  onChange={() => setRosterIds((current) => (
+                                    current.includes(member.user_id)
+                                      ? current.filter((id) => id !== member.user_id)
+                                      : [...current, member.user_id]
+                                  ))}
+                                />
+                                <span>{member.username || 'Unknown'}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        {rosterNote ? <p className="portal-surface__subtitle">{rosterNote}</p> : null}
+                        <div className="portal-form-actions">
+                          <button type="button" className="btn btn-primary" disabled={rosterSaving || members.length === 0} onClick={() => saveOnCall(team.id)}>
+                            {rosterSaving ? 'Saving...' : 'Save on-call set'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
 
                     {addingTeamId === team.id && (
                       <form onSubmit={(event) => handleAddMember(event, team.id)} className="portal-stack">

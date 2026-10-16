@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -15,76 +15,106 @@ const emptyWorkspace: WorkspacePayload = {
   pipeline: { stages: [] },
   activity: [],
 };
+const DEMO_BARS = [42, 58, 48, 72, 64, 88, 70];
+
+interface SetupService {
+  id: number;
+  name: string;
+  missingOwner: boolean;
+  missingRepo: boolean;
+}
 
 export default function DevOpsDashboard() {
   const router = useRouter();
+  const routerRef = useRef(router);
+  routerRef.current = router;
   const apiUrl = useApiUrl();
   const [workspace, setWorkspace] = useState<WorkspacePayload>(emptyWorkspace);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [serviceCount, setServiceCount] = useState<number | null>(null);
+  const [setupService, setSetupService] = useState<SetupService | null>(null);
   const { scope } = useWorkspaceScope();
 
   const loadWorkspace = useCallback(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
-      router.replace('/login');
+      routerRef.current.replace('/login');
       return;
     }
     setLoading(true);
     setError(null);
-    const scope = readWorkspaceScope();
-    const workspaceUrl =
-      scope.projectId.trim() !== ''
-        ? `${apiUrl}/api/devops/workspace?project_id=${encodeURIComponent(scope.projectId)}`
-        : `${apiUrl}/api/devops/workspace`;
-    fetch(workspaceUrl, { headers: { Authorization: `Bearer ${token}` } })
-      .then(async (res) => {
+    const current = readWorkspaceScope();
+    const headers = { Authorization: `Bearer ${token}` };
+    const workspaceUrl = current.projectId.trim()
+      ? `${apiUrl}/api/devops/workspace?project_id=${encodeURIComponent(current.projectId)}`
+      : `${apiUrl}/api/devops/workspace`;
+    const serviceUrl = current.projectId.trim()
+      ? `${apiUrl}/api/devops/services?project_id=${encodeURIComponent(current.projectId)}`
+      : `${apiUrl}/api/devops/services`;
+    Promise.all([
+      fetch(workspaceUrl, { headers }).then(async (res) => {
         if (res.status === 401) {
-          router.replace('/login');
+          routerRef.current.replace('/login');
           return null;
         }
-        if (!res.ok) {
-          throw new Error(`Home could not load (${res.status}).`);
-        }
+        if (!res.ok) throw new Error(`Home could not load (${res.status}).`);
         return res.json();
-      })
-      .then((data) => {
-        if (!data) return;
-        if (!data.workspace) {
-          throw new Error('Home response was empty.');
-        }
+      }),
+      fetch(serviceUrl, { headers }).then(async (res) => (res.ok ? res.json() : null)),
+    ])
+      .then(([data, servicesBody]) => {
+        if (!data?.workspace) throw new Error('Home response was empty.');
         setWorkspace(data.workspace);
+        const list = Array.isArray(servicesBody?.services) ? servicesBody.services : [];
+        const scoped = current.projectId.trim()
+          ? list.filter((item: { project_id?: number }) => String(item.project_id || '') === current.projectId)
+          : list;
+        setServiceCount(scoped.length);
+        const incomplete = scoped.find((item: { team?: string; repo?: string; owner?: string }) => {
+          const owner = String(item.team || item.owner || '').trim();
+          const repo = String(item.repo || '').trim();
+          return !owner || owner === 'Unknown' || !repo;
+        });
+        setSetupService(incomplete ? {
+          id: Number(incomplete.id) || 0,
+          name: String(incomplete.service || incomplete.name || 'Service'),
+          missingOwner: !String(incomplete.team || incomplete.owner || '').trim() || String(incomplete.team || incomplete.owner || '') === 'Unknown',
+          missingRepo: !String(incomplete.repo || '').trim(),
+        } : null);
       })
       .catch((err: Error) => {
         setWorkspace(emptyWorkspace);
+        setServiceCount(null);
+        setSetupService(null);
         setError(err?.message || 'Home could not load.');
       })
       .finally(() => setLoading(false));
-  }, [apiUrl, router]);
+  }, [apiUrl]);
 
   useEffect(() => {
     loadWorkspace();
   }, [apiUrl, loadWorkspace]);
 
   useEffect(() => {
-    const onScope = () => {
-      loadWorkspace();
-    };
+    const onScope = () => loadWorkspace();
     window.addEventListener(WORKSPACE_SCOPE_EVENT, onScope);
     return () => window.removeEventListener(WORKSPACE_SCOPE_EVENT, onScope);
   }, [loadWorkspace]);
 
   const needsProject = scope.projectId.trim() === '';
-  const queue = needsProject ? [] : [...(workspace.needs_you || []), ...(workspace.failed || [])].slice(0, 3);
   const incidentCount = (workspace.needs_you || []).filter((item) => String(item.kind || '').toLowerCase().includes('incident')).length;
-  const blockedCount = workspace.failed?.length || 0;
-  const waitingCount = (workspace.needs_you || []).length + blockedCount;
+  const waitingCount = (workspace.needs_you || []).length + (workspace.failed?.length || 0);
+  const envLabel = scope.environment || 'this environment';
+  const countText = (value: number) => (loading || error || needsProject ? 'Unknown' : String(value));
   const scoped = (href: string) => {
     if (!scope.projectId) return href;
     const params = new URLSearchParams({ project_id: scope.projectId });
     if (scope.environment) params.set('environment', scope.environment);
     return `${href}?${params.toString()}`;
   };
+  const setupHref = setupService?.id ? `/services/${setupService.id}` : scoped('/services');
+  const setupDone = setupService ? Number(!setupService.missingOwner) + Number(!setupService.missingRepo) : 0;
 
   return (
     <>
@@ -92,74 +122,105 @@ export default function DevOpsDashboard() {
         <title>Overview - SetuOps</title>
       </Head>
       <DevOpsLayout>
-        <div className="v3-overview desk-landing">
-          <header className="v3-overview__hero">
-            <div className="v3-overview__hero-row">
-              <div>
-                <h1>What needs attention</h1>
-                <p>One queue for this project. Missing data stays unknown.</p>
-              </div>
-              <Link href={scoped('/service-desk')} className="btn btn-primary">Open service desk</Link>
+        <div className="ops-home desk-landing">
+          <header className="ops-home__head">
+            <div>
+              <p className="ops-home__eyebrow">Your control room</p>
+              <h1>Your operations, at a glance.</h1>
+              <p>A clear view of the work that needs you.</p>
             </div>
+            <Link href={scoped('/my-work')} className="ops-home__primary">Open my work</Link>
           </header>
 
           {needsProject ? (
-            <section className="v3-panel">
+            <section className="ops-card">
               <h2>Select a project</h2>
-              <p className="v3-muted">Incidents, releases, and findings stay with the project you choose. All projects can browse. It cannot create work.</p>
+              <p>Incidents, services, and reviews stay with the project you choose.</p>
             </section>
           ) : (
             <>
               {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
-              <section className="v3-metrics" aria-label="At a glance">
-                <Link href={scoped('/incidents')} className="v3-metric">
-                  <span>Active incidents</span>
-                  <strong>{loading || error ? 'Unknown' : incidentCount}</strong>
-                  <em>Open incidents</em>
+              <section className="ops-spotlight">
+                <div className="ops-spotlight__copy">
+                  <p className="ops-home__eyebrow">SetuOps / operations hub</p>
+                  <h2>Less noise. More control.</h2>
+                  <p>{setupService ? 'Start with the service that needs you. Ownership or repository is still missing.' : 'Nothing in this project is waiting for setup.'}</p>
+                </div>
+                <div className="ops-spotlight__action">
+                  <small>01 SERVICE NEEDS ATTENTION</small>
+                  <Link href={setupHref}>Complete service setup →</Link>
+                </div>
+              </section>
+
+              <section className="ops-scores" aria-label="Operational scorecards">
+                <Link href={scoped('/incidents')} className="ops-score ops-score--mint">
+                  <span>Open incidents</span>
+                  <strong>{loading ? '…' : countText(incidentCount)}</strong>
+                  <small>{loading ? 'Checking this environment' : error ? 'Could not load incidents' : incidentCount ? `${incidentCount} open in ${envLabel}` : `No open incidents in ${envLabel}`}</small>
                 </Link>
-                <Link href={scoped('/promotions')} className="v3-metric">
-                  <span>Blocked releases</span>
-                  <strong>{loading || error ? 'Unknown' : blockedCount}</strong>
-                  <em>Review releases</em>
+                <Link href={scoped('/my-work')} className="ops-score ops-score--lilac">
+                  <span>Awaiting review</span>
+                  <strong>{loading ? '…' : countText(waitingCount)}</strong>
+                  <small>{loading ? 'Checking your queue' : error ? 'Could not load reviews' : waitingCount ? `${waitingCount} waiting for you` : 'Your approval queue is clear'}</small>
                 </Link>
-                <Link href={scoped('/security/findings')} className="v3-metric">
-                  <span>Findings</span>
-                  <strong>Unknown</strong>
-                  <em>Scanner not connected</em>
+                <Link href={scoped('/services')} className="ops-score ops-score--blue">
+                  <span>Registered services</span>
+                  <strong>{loading ? '…' : serviceCount === null ? 'Unknown' : serviceCount}</strong>
+                  <small>{setupService ? '1 service needs ownership' : 'Ownership is filled in'}</small>
                 </Link>
-                <Link href={scoped('/my-work')} className="v3-metric">
-                  <span>Waiting</span>
-                  <strong>{loading || error ? 'Unknown' : waitingCount}</strong>
-                  <em>Open my work</em>
+                <Link href={scoped('/security/findings')} className="ops-score ops-score--peach">
+                  <span>Scan coverage</span>
+                  <strong>—</strong>
+                  <small>Connect a scanner to begin</small>
                 </Link>
               </section>
 
-              <section className="v3-panel">
-                <div className="v3-panel__head">
-                  <h2>Needs attention</h2>
-                  <Link href={scoped('/my-work')} className="btn btn-secondary">My work</Link>
-                </div>
-                {loading ? <p className="v3-muted">Loading this project…</p> : null}
-                {!loading && queue.length === 0 ? (
-                  <p className="v3-muted">Nothing is waiting. New incidents and blocked releases will show up here.</p>
-                ) : null}
-                <ul className="v3-queue">
-                  {queue.map((item) => (
-                    <li key={item.id}>
-                      <Link href={item.href || scoped('/service-desk')}>
-                        <span>
-                          <strong>{item.title}</strong>
-                          <small>{item.meta}</small>
-                        </span>
-                        <em className={item.tone === 'danger' ? 'is-critical' : 'is-blocked'}>{item.tone === 'danger' ? 'Critical' : item.action || 'Open'}</em>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+              <section className="ops-split">
+                <article className="ops-card ops-card--chart">
+                  <h2>Delivery activity</h2>
+                  <p>Illustrative data · preview of the connected state</p>
+                  <div className="ops-bars" aria-hidden="true">
+                    {DEMO_BARS.map((height, index) => (
+                      <i key={index}>
+                        <b style={{ height: `${height}%` }} />
+                        <b style={{ height: `${Math.max(24, height - 22)}%` }} />
+                      </i>
+                    ))}
+                  </div>
+                  <div className="ops-days"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
+                  <div className="ops-legend"><em>● Changes</em><em>● Deployments</em><span>Demo values · not live telemetry</span></div>
+                </article>
+                <article className="ops-card ops-card--ready ops-ready">
+                  <h2>Make your service production-ready</h2>
+                  <p>{setupService ? setupService.name : 'No service is waiting'}</p>
+                  <div className="ops-ready__meter">
+                    <strong>{setupService ? `${setupDone} / 2` : '—'}</strong>
+                    <span>Required setup checks completed</span>
+                  </div>
+                  <ul>
+                    <li><span>{setupService?.missingOwner ? '○' : '●'}</span><span><strong>Assign an owner</strong><small>Route incidents to the right team</small></span></li>
+                    <li><span>{setupService?.missingRepo ? '○' : '●'}</span><span><strong>Connect repository</strong><small>Trace changes back to source</small></span></li>
+                  </ul>
+                  <Link href={setupHref}>Open service →</Link>
+                </article>
+              </section>
+
+              <section className="ops-actions">
+                <Link href="/projects/new" className="ops-action ops-action--lilac">
+                  <span>Onboard a project ↗</span>
+                  <small>Team → cloud → environments</small>
+                </Link>
+                <Link href={scoped('/changes/new')} className="ops-action ops-action--blue">
+                  <span>Create a change ↗</span>
+                  <small>Plan, assess and request approval</small>
+                </Link>
+                <Link href={scoped('/cloud-accounts')} className="ops-action ops-action--mint">
+                  <span>Connect your cloud ↗</span>
+                  <small>Unlock inventory and security scans</small>
+                </Link>
               </section>
             </>
           )}
-
         </div>
       </DevOpsLayout>
     </>

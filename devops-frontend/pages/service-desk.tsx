@@ -160,7 +160,6 @@ export default function ServiceDeskPage() {
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [username, setUsername] = useState('');
-  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -353,55 +352,44 @@ export default function ServiceDeskPage() {
       <div className={`sd-page${selected ? ' sd-page--with-inspector' : ''}`}>
         <header className="sd-hero">
           <div>
-            <h1 className="sd-hero__title">Service desk</h1>
-            <p className="sd-hero__subtitle">Track incidents, plan changes and solve recurring issues.</p>
+            <p className="ops-kicker">Service management</p>
+            <h1 className="sd-hero__title">Great service starts here.</h1>
+            <p className="sd-hero__subtitle">Resolve incidents, plan changes and keep every request moving.</p>
           </div>
-          <div className="sd-hero__actions">
-            <button type="button" className="btn btn-primary" onClick={() => setCreateOpen((open) => !open)}>
-              + Create ticket
-            </button>
-            {createOpen ? (
-              <div className="sd-hero__actions">
-                <Link href="/incidents/new" className="btn btn-secondary">Incident</Link>
-                <Link href="/changes/new" className="btn btn-secondary">Change</Link>
-                <Link href="/problems/new" className="btn btn-secondary">Problem</Link>
-                <Link href="/tickets" className="btn btn-secondary">Request</Link>
-              </div>
-            ) : null}
-          </div>
+          <Link href="/changes/new" className="btn btn-primary">Create change</Link>
         </header>
+
+        <section className="ops-spotlight">
+          <div>
+            <p className="ops-home__eyebrow">Your team&apos;s service hub</p>
+            <h2>One queue. Clear ownership. Faster action.</h2>
+            <p>Choose a request below, or pick up work from your shared queue.</p>
+          </div>
+          <div>
+            <small>{loading || error ? 'QUEUE' : `${items.length} LIVE TICKETS`}</small>
+            <span>{loading || error ? 'Counts stay unknown until the queue loads.' : 'Live records for this workspace. Missing fields stay blank.'}</span>
+          </div>
+        </section>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
 
-        <section className="sd-stats" aria-label="Service desk summary">
-          <article className="sd-stat">
-            <span className="sd-stat__icon"><IconDoc /></span>
-            <div>
-              <span className="sd-stat__label">Open tickets</span>
-              <strong className="sd-stat__value">{loading || error ? 'Unknown' : stats.open}</strong>
-            </div>
-          </article>
-          <article className="sd-stat">
-            <span className="sd-stat__icon sd-stat__icon--danger"><IconAlert /></span>
-            <div>
-              <span className="sd-stat__label">Critical incidents</span>
-              <strong className="sd-stat__value sd-stat__value--danger">{loading || error ? 'Unknown' : stats.critical}</strong>
-            </div>
-          </article>
-          <article className="sd-stat">
-            <span className="sd-stat__icon"><IconClock /></span>
-            <div>
-              <span className="sd-stat__label">Awaiting approval</span>
-              <strong className="sd-stat__value">{loading || error ? 'Unknown' : stats.awaiting}</strong>
-            </div>
-          </article>
-          <article className="sd-stat">
-            <span className="sd-stat__icon"><IconCalendar /></span>
-            <div>
-              <span className="sd-stat__label">Due today</span>
-              <strong className="sd-stat__value">{loading || error ? 'Unknown' : stats.dueToday}</strong>
-            </div>
-          </article>
+        <section className="ops-actions-4" aria-label="Start a request">
+          <Link href="/incidents/new" className="ops-jump ops-jump--peach">
+            <span>Restore a service</span>
+            <small>Something broken? Start here. {loading || error ? 'Critical count unknown.' : `${stats.critical} critical.`}</small>
+          </Link>
+          <Link href="/changes/new" className="ops-jump ops-jump--lilac">
+            <span>Plan a change</span>
+            <small>Assess risk before you deploy.</small>
+          </Link>
+          <Link href="/problems/new" className="ops-jump ops-jump--blue">
+            <span>Find the root cause</span>
+            <small>Investigate recurring issues.</small>
+          </Link>
+          <Link href="/projects/new" className="ops-jump ops-jump--mint">
+            <span>Request infrastructure</span>
+            <small>Open project onboarding.</small>
+          </Link>
         </section>
 
         <section className="sd-workspace">

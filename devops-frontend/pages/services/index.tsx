@@ -48,6 +48,11 @@ function label(value: string): string {
   return text || 'Unknown';
 }
 
+function firstQuery(value: string | string[] | undefined): string {
+  const text = Array.isArray(value) ? value[0] : value;
+  return (text || '').trim();
+}
+
 function readTeams(data: { teams?: unknown; owner_teams?: unknown }): OwnerTeam[] {
   const raw = Array.isArray(data?.owner_teams) ? data.owner_teams : Array.isArray(data?.teams) ? data.teams : [];
   return raw
@@ -122,12 +127,10 @@ export default function ServiceMapPage() {
   const [teams, setTeams] = useState<OwnerTeam[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [openProjects, setOpenProjects] = useState<Record<string, boolean>>({});
-  const [openEnvs, setOpenEnvs] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState('');
-  const [projectFilter, setProjectFilter] = useState('');
-  const [environmentFilter, setEnvironmentFilter] = useState('');
   const [ownerTeamId, setOwnerTeamId] = useState('');
+  const projectFilter = router.isReady ? firstQuery(router.query.project_id) : '';
+  const environmentFilter = router.isReady ? firstQuery(router.query.environment) : '';
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -191,22 +194,7 @@ export default function ServiceMapPage() {
     return [...names].sort((left, right) => left.localeCompare(right));
   }, [items, projectFilter, projects]);
 
-  const folders = useMemo(() => {
-    const sourceProjects = projectFilter ? projects.filter((project) => String(project.id) === projectFilter) : projects;
-    const sourceServices = filtering ? matches : items;
-    return buildFolders(sourceProjects, sourceServices)
-      .map((project) => ({
-        ...project,
-        environments: filtering
-          ? project.environments.filter((env) => env.services.length > 0 && (!environmentFilter || env.name.toLowerCase() === environmentFilter.toLowerCase()))
-          : project.environments.filter((env) => !environmentFilter || env.name.toLowerCase() === environmentFilter.toLowerCase()),
-      }))
-      .filter((project) => !filtering || project.environments.length > 0);
-  }, [environmentFilter, filtering, items, matches, projectFilter, projects]);
-
-  const toggle = (store: Record<string, boolean>, key: string, setStore: (next: Record<string, boolean>) => void) => {
-    setStore({ ...store, [key]: !store[key] });
-  };
+  const catalog = useMemo(() => buildFolders(projects, items), [items, projects]);
 
   const search = (event: FormEvent) => {
     event.preventDefault();
@@ -216,157 +204,158 @@ export default function ServiceMapPage() {
 
   const clearFilters = () => {
     setQuery('');
-    setProjectFilter('');
-    setEnvironmentFilter('');
     setOwnerTeamId('');
+    void router.push('/services');
   };
+
+  const currentProject = catalog.find((project) => projectFilter && String(project.id) === projectFilter) || null;
+  const currentEnv = currentProject?.environments.find((env) => environmentFilter && env.name.toLowerCase() === environmentFilter.toLowerCase()) || null;
+  const visibleProjects = (ownerTeamId
+    ? catalog.filter((project) => project.environments.some((env) => env.services.some((service) => teamMatches(service.team || '', selectedTeam))))
+    : catalog
+  ).filter((project) => project.id > 0);
+  const visibleServices = (currentEnv?.services || []).filter((service) => !ownerTeamId || teamMatches(service.team || '', selectedTeam));
+  const needsSetup = matches.filter((item) => !item.repo.trim() || !label(item.team || '').trim() || label(item.team || '') === 'Unknown');
+  const addHref = projectFilter
+    ? `/services/new?project_id=${projectFilter}${environmentFilter ? `&environment=${encodeURIComponent(environmentFilter)}` : ''}`
+    : '/services/new';
 
   return (
     <DevOpsLayout>
       <Head>
         <title>Services - DevOps</title>
       </Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="ops-frame">
+        <header className="ops-frame__head">
           <div>
-            <span className="portal-page__eyebrow">Services</span>
-            <h1 className="portal-page__title">Services</h1>
-            <p className="portal-page__subtitle">
-              Open a project, then an environment, then the services that live there.
-            </p>
+            <p className="ops-kicker">Service catalogue</p>
+            <h1>{currentEnv ? currentEnv.name : currentProject ? currentProject.name : 'Services'}</h1>
+            <p>Open a project, then an environment, then the services inside it.</p>
           </div>
-          <Link href="/services/new" className="btn btn-primary">Add service</Link>
-        </div>
+          <Link href={addHref} className="btn btn-primary">Add service</Link>
+        </header>
         {error ? <div className="alert alert-error">{error}</div> : null}
-        <section className="portal-surface">
-          <form onSubmit={search}>
+        <section className="ops-minis" aria-label="Service summary">
+          <article className="ops-mini ops-mini--mint">
+            <span>Registered services</span>
+            <strong>{loading || error ? 'Unknown' : matches.length}</strong>
+            <small>{currentProject ? currentProject.name : 'All visible projects'}</small>
+          </article>
+          <article className="ops-mini ops-mini--lilac">
+            <span>Needs setup</span>
+            <strong>{loading || error ? 'Unknown' : needsSetup.length}</strong>
+            <small>Owner and repository missing</small>
+          </article>
+          <article className="ops-mini ops-mini--blue">
+            <span>Environments</span>
+            <strong>{loading || error ? 'Unknown' : environmentOptions.length}</strong>
+            <small>{environmentOptions.join(' · ') || 'None listed'}</small>
+          </article>
+        </section>
+        <form className="portal-surface" onSubmit={search}>
           <div className="svc-filters">
             <label>
-              Search
-              <input className="input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Service, repo, or owner team" />
-            </label>
-            <label>
-              Project
-              <select className="input" value={projectFilter} onChange={(event) => { setProjectFilter(event.target.value); setEnvironmentFilter(''); }}>
-                <option value="">All projects</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>{project.name || project.code || 'Unknown'}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Environment
-              <select className="input" value={environmentFilter} onChange={(event) => setEnvironmentFilter(event.target.value)}>
-                <option value="">All environments</option>
-                {environmentOptions.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
+              Search services
+              <input className="input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or repository" />
             </label>
             <label>
               Owner team
               <select className="input" value={ownerTeamId} onChange={(event) => setOwnerTeamId(event.target.value)}>
-                <option value="">{teams.length ? 'All owner teams' : 'No teams'}</option>
+                <option value="">{teams.length ? 'All teams' : 'No teams'}</option>
                 {teams.map((team) => (
                   <option key={team.id} value={team.id}>{team.name}</option>
                 ))}
               </select>
             </label>
-            <div className="svc-filters__actions">
-              <button type="submit" className="btn btn-primary">Search</button>
-              {filtering ? (
-                <button type="button" className="btn btn-secondary" onClick={clearFilters}>Clear</button>
-              ) : null}
-            </div>
           </div>
-          </form>
-          {query.trim() ? (
-            <ul className="svc-search">
-              {matches.length ? matches.map((item) => (
-                <li key={item.id}>
-                  <Link href={`/services/${item.id}`}>
-                    <strong>{item.service || 'Unknown'}</strong>
-                    <span>{label(item.project_name || '')} · {label(item.environment)} · {label(item.team || '')}</span>
-                  </Link>
-                </li>
-              )) : <li>No services match this search.</li>}
-            </ul>
-          ) : null}
-          {loading ? <div className="empty-state">Loading services...</div> : null}
-          {!loading && !folders.length ? <div className="empty-state">{filtering ? 'No services match these filters.' : 'No projects or services are visible for this scope.'}</div> : null}
-          {folders.length ? (
+          {filtering ? <button type="button" className="btn btn-secondary" onClick={clearFilters}>Clear</button> : null}
+        </form>
+        {projectFilter || environmentFilter ? (
+          <nav className="svc-crumb" aria-label="Location">
+            <Link href="/services">Projects</Link>
+            {currentProject ? (
+              <>
+                <span aria-hidden="true">/</span>
+                {environmentFilter ? (
+                  <Link href={`/services?project_id=${currentProject.id}`}>{currentProject.name}</Link>
+                ) : (
+                  <span>{currentProject.name}</span>
+                )}
+              </>
+            ) : null}
+            {currentEnv ? (
+              <>
+                <span aria-hidden="true">/</span>
+                <span>{currentEnv.name}</span>
+              </>
+            ) : null}
+          </nav>
+        ) : null}
+        {loading ? <div className="empty-state">Loading services...</div> : null}
+        {!loading && query.trim() ? (
+          <ul className="svc-tree">
+            {matches.length ? matches.map((item) => (
+              <li key={item.id}>
+                <Link className="svc-tree__service" href={`/services/${item.id}`}>
+                  <strong>{item.service || 'Unknown'}</strong>
+                  <span>{label(item.project_name || '')} · {label(item.environment)}</span>
+                  <span>{label(item.team || '')}</span>
+                </Link>
+              </li>
+            )) : <li className="svc-tree__empty">No services match this search.</li>}
+          </ul>
+        ) : null}
+        {!loading && !query.trim() && !projectFilter ? (
+          visibleProjects.length ? (
             <ul className="svc-tree">
-              {folders.map((project) => {
-                const projectOpen = filtering || Boolean(openProjects[project.key]);
+              {visibleProjects.map((project) => {
                 const serviceCount = project.environments.reduce((sum, env) => sum + env.services.length, 0);
                 return (
                   <li key={project.key}>
-                    <button
-                      type="button"
-                      className="svc-tree__folder"
-                      aria-expanded={projectOpen}
-                      onClick={() => toggle(openProjects, project.key, setOpenProjects)}
-                    >
-                      <span>{projectOpen ? '▾' : '▸'} {project.name}</span>
+                    <Link className="svc-tree__folder" href={`/services?project_id=${project.id}`}>
+                      <span>{project.name}</span>
                       <small>{project.environments.length} {project.environments.length === 1 ? 'environment' : 'environments'} · {serviceCount} {serviceCount === 1 ? 'service' : 'services'}</small>
-                    </button>
-                    {projectOpen ? (
-                      <ul className="svc-tree svc-tree--nested">
-                        {project.environments.length ? project.environments.map((env) => {
-                          const envKey = `${project.key}:${env.name}`;
-                          const envOpen = filtering || Boolean(openEnvs[envKey]);
-                          const addHref = project.id
-                            ? `/services/new?project_id=${project.id}&environment=${encodeURIComponent(env.name)}`
-                            : '/services/new';
-                          return (
-                            <li key={envKey}>
-                              <button
-                                type="button"
-                                className="svc-tree__folder svc-tree__folder--env"
-                                aria-expanded={envOpen}
-                                onClick={() => toggle(openEnvs, envKey, setOpenEnvs)}
-                              >
-                                <span>{envOpen ? '▾' : '▸'} {env.name}</span>
-                                <small>{env.services.length} {env.services.length === 1 ? 'service' : 'services'}</small>
-                              </button>
-                              {envOpen ? (
-                                env.services.length ? (
-                                  <>
-                                    <div className="svc-tree__head">
-                                      <span>Service</span>
-                                      <span>Repo</span>
-                                      <span>Owner team</span>
-                                    </div>
-                                    <ul className="svc-tree__services">
-                                      {env.services.map((item) => (
-                                        <li key={item.id}>
-                                          <Link href={`/services/${item.id}`} className="svc-tree__service">
-                                            <strong>{item.service || 'Unknown'}</strong>
-                                            <span>{item.repo || 'Unknown'}</span>
-                                            <span>{label(item.team || '')}</span>
-                                          </Link>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </>
-                                ) : (
-                                  <div className="svc-tree__empty">
-                                    <span>No services in this environment.</span>
-                                    {project.id ? <Link href={addHref}>Add service</Link> : null}
-                                  </div>
-                                )
-                              ) : null}
-                            </li>
-                          );
-                        }) : <li className="svc-tree__empty">No environments on this project.</li>}
-                      </ul>
-                    ) : null}
+                    </Link>
                   </li>
                 );
               })}
             </ul>
-          ) : null}
-        </section>
+          ) : <div className="empty-state">No projects are visible for this scope.</div>
+        ) : null}
+        {!loading && !query.trim() && currentProject && !environmentFilter ? (
+          currentProject.environments.length ? (
+            <ul className="svc-tree">
+              {currentProject.environments.map((env) => (
+                <li key={env.name}>
+                  <Link className="svc-tree__folder" href={`/services?project_id=${currentProject.id}&environment=${encodeURIComponent(env.name)}`}>
+                    <span>{env.name}</span>
+                    <small>{env.services.length} {env.services.length === 1 ? 'service' : 'services'}</small>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : <div className="empty-state">No environments on this project.</div>
+        ) : null}
+        {!loading && !query.trim() && currentProject && currentEnv ? (
+          visibleServices.length ? (
+            <ul className="svc-tree svc-tree__services">
+              {visibleServices.map((item) => (
+                <li key={item.id}>
+                  <Link className="svc-tree__service" href={`/services/${item.id}`}>
+                    <strong>{item.service || 'Unknown'}</strong>
+                    <span>{item.repo.trim() || 'Repository not connected'}</span>
+                    <span>{label(item.team || '') === 'Unknown' ? 'Owner not assigned' : label(item.team || '')}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="svc-tree__empty">
+              <span>No services in this environment.</span>
+              {currentProject.id ? <Link href={addHref}>Add service</Link> : null}
+            </div>
+          )
+        ) : null}
       </div>
     </DevOpsLayout>
   );

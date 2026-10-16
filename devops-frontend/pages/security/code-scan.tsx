@@ -120,8 +120,9 @@ export default function CodeScanPage() {
       <div className="portal-page desk-landing">
         <header className="portal-page__header">
           <div>
-            <h1 className="portal-page__title">Code scan</h1>
-            <p className="portal-page__subtitle">Project, repository, and exact revision are required. Cloud and environment stay optional.</p>
+            <span className="portal-page__eyebrow">Security / code posture</span>
+            <h1 className="portal-page__title">Scan a known revision.</h1>
+            <p className="portal-page__subtitle">Project, repository, and exact revision are required. Missing coverage stays unknown.</p>
           </div>
         </header>
         {error ? <div className="alert alert-error">{error}</div> : null}
