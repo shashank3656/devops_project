@@ -137,7 +137,7 @@ func iamHandler(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 1 && parts[0] == "access-requests" && r.Method == http.MethodPost:
 		iamCreate(w, r, userID)
 	case len(parts) == 1 && parts[0] == "access-requests" && r.Method == http.MethodGet:
-		iamList(w, userID)
+		iamList(w, r, userID)
 	case len(parts) == 2 && parts[0] == "access-requests" && r.Method == http.MethodGet:
 		iamGet(w, parts[1], userID)
 	case len(parts) == 3 && parts[0] == "access-requests" && parts[2] == "cancel" && r.Method == http.MethodPost:
@@ -259,12 +259,13 @@ func saveIAMRequest(userID int, evalID, key string) (*iamRequest, int, string) {
 	return item, http.StatusCreated, ""
 }
 
-func iamList(w http.ResponseWriter, userID int) {
+func iamList(w http.ResponseWriter, r *http.Request, userID int) {
+	desk := r != nil && r.URL.Query().Get("scope") == "desk" && iamDevopsApprover(userID)
 	cloudAccess.mu.Lock()
 	defer cloudAccess.mu.Unlock()
 	items := []*iamRequest{}
 	for _, item := range cloudAccess.byID {
-		if item.RequesterID == userID {
+		if desk || item.RequesterID == userID {
 			items = append(items, item)
 		}
 	}

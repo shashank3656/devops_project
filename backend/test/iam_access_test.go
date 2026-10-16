@@ -42,6 +42,21 @@ func TestNamedPermissionKeepsTheSelectedRole(t *testing.T) {
 	}
 }
 
+func TestAccessLongerThan90DaysIsDenied(t *testing.T) {
+	in := referenceIAMInput()
+	in.Provider = "GCP"
+	in.Service = "Cloud Storage"
+	in.Action = "roles/storage.objectViewer"
+	in.Environment = "DEV"
+	in.ResourceID = ""
+	in.StartsAt = "2026-01-01T00:00"
+	in.EndsAt = "2026-04-02T00:00"
+	got := evaluateIAMAccess(in, time.Now().UTC(), false)
+	if got.Decision != "DENY" || !strings.Contains(got.Reason, "90 days") {
+		t.Fatalf("long window = %+v", got)
+	}
+}
+
 func TestAzureVaultReadProposesSecretsUser(t *testing.T) {
 	got := evaluateIAMAccess(referenceIAMInput(), time.Now().UTC(), false)
 	if got.Decision != "ALLOW_WITH_APPROVAL" || got.Risk != "HIGH" || got.RoleID != iamAzureSecretsUser || got.RoleName != "Key Vault Secrets User" {
