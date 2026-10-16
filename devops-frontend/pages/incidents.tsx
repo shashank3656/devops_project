@@ -65,7 +65,9 @@ function normalizeIncident(incident: unknown): Incident {
     project_name: typeof item.project_name === 'string' ? item.project_name : '',
     project_code: typeof item.project_code === 'string' ? item.project_code : '',
     request_team: typeof item.request_team === 'string' ? item.request_team : '',
-    request_env: typeof item.request_env === 'string' ? item.request_env : '',
+    request_env: typeof item.request_env === 'string' && item.request_env
+      ? item.request_env
+      : typeof item.environment === 'string' ? item.environment : '',
     request_service: typeof item.request_service === 'string' ? item.request_service : '',
     request_cloud: typeof item.request_cloud === 'string' ? item.request_cloud : '',
     request_status: typeof item.request_status === 'string' ? item.request_status : '',
@@ -254,7 +256,6 @@ export default function DevOpsIncidentsPage() {
   const activeStatusFilter = useMemo(() => normalizeQueryValue(router.query.status), [router.query.status]);
   const activeEnvironmentFilter = useMemo(() => normalizeQueryValue(router.query.environment), [router.query.environment]);
   const activeFilterCount = [
-    activeProjectID ? String(activeProjectID) : '',
     activeRequestID ? String(activeRequestID) : '',
     activeSeverityFilter,
     activeStatusFilter,
@@ -273,17 +274,16 @@ export default function DevOpsIncidentsPage() {
 
   const filteredIncidents = useMemo(() => {
     return incidents.filter((incident) => {
-      if (activeProjectID && incident.project_id !== activeProjectID) return false;
       if (activeRequestID && incident.request_id !== activeRequestID) return false;
       if (activeSeverityFilter && severityToPriority(incident.severity) !== activeSeverityFilter) return false;
       if (activeStatusFilter && incidentStateValue(incident.status) !== incidentStateValue(activeStatusFilter)) return false;
       if (activeEnvironmentFilter && incident.request_env?.trim().toLowerCase() !== activeEnvironmentFilter) return false;
       return true;
     });
-  }, [activeEnvironmentFilter, activeProjectID, activeRequestID, activeSeverityFilter, activeStatusFilter, incidents]);
+  }, [activeEnvironmentFilter, activeRequestID, activeSeverityFilter, activeStatusFilter, incidents]);
 
   const hasActiveFilters = Boolean(
-    activeProjectID || activeRequestID || activeSeverityFilter || activeStatusFilter || activeEnvironmentFilter,
+    activeRequestID || activeSeverityFilter || activeStatusFilter || activeEnvironmentFilter,
   );
   const resolvedIncidentRequestId = useMemo(() => resolveIncidentReferenceInput(requestId, incidents), [incidents, requestId]);
 
@@ -387,8 +387,6 @@ export default function DevOpsIncidentsPage() {
     setError('');
     try {
       const params = new URLSearchParams();
-      if (activeProjectID) params.set('project_id', String(activeProjectID));
-      if (activeEnvironmentFilter) params.set('environment', activeEnvironmentFilter);
       if (activeStatusFilter) params.set('status', activeStatusFilter);
       const query = params.toString() ? `?${params}` : '';
       const response = await fetch(`${apiUrl}/api/devops/incidents${query}`, {
@@ -427,7 +425,7 @@ export default function DevOpsIncidentsPage() {
 
   useEffect(() => {
     void loadData();
-  }, [apiUrl, activeProjectID, activeEnvironmentFilter, activeStatusFilter]);
+  }, [apiUrl, activeStatusFilter]);
 
   const resetForm = () => {
     setEditingId(null);

@@ -130,8 +130,9 @@ func TestAdminRoleSubjectSeesIncidentsAndChanges(t *testing.T) {
 	incidents := filterIncidentsInScope([]requestIncident{
 		{ID: 1, IncidentNumber: "INC-1", ProjectID: &projectID, Environment: "dev"},
 		{ID: 2, IncidentNumber: "INC-2", ProjectID: &otherID, Environment: "prod"},
+		{ID: 3, IncidentNumber: "INC-3"},
 	}, subject)
-	if len(incidents) != 2 {
+	if len(incidents) != 3 {
 		t.Fatalf("admin incident list = %#v", incidents)
 	}
 }

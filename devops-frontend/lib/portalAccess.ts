@@ -84,6 +84,7 @@ const PAGE_PATHS: { prefix: string; key: string }[] = [
   { prefix: '/knowledge', key: 'knowledge' },
   { prefix: '/services', key: 'services' },
   { prefix: '/on-call', key: 'on-call' },
+  { prefix: '/operations/webhooks', key: 'webhooks' },
   { prefix: '/maintenance', key: 'maintenance' },
   { prefix: '/reports-automation', key: 'reports' },
   { prefix: '/security/cloud-scan', key: 'cloud-scan' },
@@ -159,6 +160,7 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
     if (pageOn(grants, 'on-call', true)) prefixes.push('/on-call');
     if (pageOn(grants, 'maintenance', true)) prefixes.push('/maintenance');
     if (pageOn(grants, 'reports', true)) prefixes.push('/reports-automation');
+    if (pageOn(grants, 'webhooks', true)) prefixes.push('/operations/webhooks');
     if (grants.manager) prefixes.push('/runbooks', '/notification-settings', '/retry-center', '/approval-notification-analytics');
   }
   if (grants.infrastructure) {

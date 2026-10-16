@@ -597,6 +597,9 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	applyProjectDefaultLifetimeIfEligible(prRequest.ID, prRequest.ProjectID, prRequest.Env)
 	AppendUserActivity(userIDPtr, "request_create", "pr_request", strconv.Itoa(prRequest.ID), status)
+	if !draft {
+		NotifyRequestRaised(prRequest)
+	}
 
 	// Optional initial comment when raising the PR (saved as first request comment)
 	if userID > 0 {

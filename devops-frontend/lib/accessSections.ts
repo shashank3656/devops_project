@@ -27,6 +27,7 @@ export const SECTION_PAGES: { section: SectionKey; key: string; label: string }[
   { section: 'operations', key: 'on-call', label: 'On-call' },
   { section: 'operations', key: 'maintenance', label: 'Maintenance' },
   { section: 'operations', key: 'reports', label: 'Reports' },
+  { section: 'operations', key: 'webhooks', label: 'Webhooks' },
   { section: 'infrastructure', key: 'projects', label: 'Projects' },
   { section: 'infrastructure', key: 'environments', label: 'Environments' },
   { section: 'infrastructure', key: 'cloud-accounts', label: 'Cloud accounts' },
@@ -65,7 +66,8 @@ function withPages(grants: SectionGrants, saved?: Record<string, boolean> | null
   const pages: Record<string, boolean> = {};
   for (const page of SECTION_PAGES) {
     if (!grants[page.section]) pages[page.key] = false;
-    else pages[page.key] = explicit ? Boolean(saved?.[page.key]) : true;
+    else if (!explicit || !saved || !(page.key in saved)) pages[page.key] = true;
+    else pages[page.key] = Boolean(saved[page.key]);
   }
   return { ...grants, pages };
 }

@@ -254,6 +254,8 @@ func handleRequestSubmit(w http.ResponseWriter, r *http.Request, id int, req *PR
 	}
 	applyProjectDefaultLifetimeIfEligible(id, req.ProjectID, req.Env)
 	AppendUserActivity(req.CreatedBy, "request_submit", "pr_request", strconv.Itoa(id), "draft submitted")
+	req.Status = initialStatus
+	NotifyRequestRaised(req)
 	w.Header().Set("Content-Type", "application/json")
 	encodeJSON(w, map[string]interface{}{"status": "ok", "message": "Draft submitted for approval"})
 }
@@ -337,6 +339,7 @@ func handleRequestApproveByManager(w http.ResponseWriter, r *http.Request, id in
 		return
 	}
 	AppendUserActivity(req.CreatedBy, "request_approved_by_manager", "pr_request", strconv.Itoa(id), strings.ReplaceAll(nextStatus, "_", " "))
+	NotifyRequestApproved(req, fmt.Sprintf("Request #%d was approved and is now %s.", id, strings.ReplaceAll(nextStatus, "_", " ")))
 	w.Header().Set("Content-Type", "application/json")
 	encodeJSON(w, map[string]interface{}{"status": "ok", "message": fmt.Sprintf("Approved; request is now %s", strings.ReplaceAll(nextStatus, "_", " "))})
 }
