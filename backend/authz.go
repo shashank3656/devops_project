@@ -147,7 +147,21 @@ func portalAdminSubject(userID int) authzSubject {
 	}
 }
 
+func subjectFromRole(userID int, role string) (authzSubject, bool) {
+	if strings.EqualFold(strings.TrimSpace(role), "admin") {
+		return portalAdminSubject(userID), true
+	}
+	return authzSubject{}, false
+}
+
 func authzSubjectForUser(userID int) authzSubject {
+	if DB != nil {
+		if user, err := GetUserByID(userID); err == nil && user != nil {
+			if subject, ok := subjectFromRole(userID, user.Role); ok {
+				return subject
+			}
+		}
+	}
 	role := "viewer"
 	if userCanAuthorizeChange(userID) {
 		role = "operator"

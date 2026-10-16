@@ -151,7 +151,8 @@ func sectionForPath(path string) string {
 		return "projects"
 	case path == "/api/devops/environment-catalog":
 		return "catalog"
-	case strings.HasPrefix(path, "/api/devops/cloud/"),
+	case strings.HasPrefix(path, "/api/devops/iam"),
+		strings.HasPrefix(path, "/api/devops/cloud/"),
 		strings.HasPrefix(path, "/api/devops/k8s"),
 		strings.HasPrefix(path, "/api/devops/project-"),
 		strings.HasPrefix(path, "/api/devops/promotions"),

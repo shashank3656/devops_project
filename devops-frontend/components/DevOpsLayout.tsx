@@ -103,6 +103,13 @@ const PAGE_TITLES: Record<string, string> = {
   '/k8s/certificates': 'TLS & Certificates',
   '/k8s/clusters': 'K8s Cluster',
   '/k8s': 'K8s Cluster',
+  '/iam': 'IAM',
+  '/iam/request': 'Request access',
+  '/iam/requests': 'My access requests',
+  '/iam/approvals': 'Access approvals',
+  '/iam/permissions': 'My permissions',
+  '/iam/audit': 'Access audit',
+  '/iam/policy': 'Access policy',
   '/k8s/workspace': 'Kubernetes workspace',
   '/runbooks': 'Guides',
   '/incidents': 'Incidents',
@@ -558,16 +565,34 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/reports-automation', label: 'Reports and automation', Icon: IconFileText },
       ];
+  const iamNavItem: NavItem = {
+    href: '/iam',
+    label: 'IAM',
+    Icon: IconShield,
+    children: [
+      { href: '/iam', label: 'Cloud access' },
+      { href: '/iam/request', label: 'Request access' },
+      { href: '/iam/requests', label: 'My requests' },
+      { href: '/iam/approvals', label: 'Approvals' },
+      { href: '/iam/permissions', label: 'My permissions' },
+      { href: '/iam/audit', label: 'Audit' },
+      { href: '/iam/policy', label: 'Policy' },
+    ],
+  };
   const infrastructureNavItems: NavItem[] = isManager
     ? [
         { href: '/projects', label: 'Projects', Icon: IconProjects },
         { href: '/environments', label: 'Environments', Icon: IconK8s },
         { href: '/cloud-accounts', label: 'Cloud accounts', Icon: IconFileText },
         { href: '/cloud-resources', label: 'Cloud inventory', Icon: IconFileText },
+        iamNavItem,
         { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
         { href: '/promotions', label: 'Releases', Icon: IconFileText },
       ]
-    : [{ href: '/k8s', label: 'Kubernetes', Icon: IconK8s }];
+    : [
+        iamNavItem,
+        { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
+      ];
   const securityNavItems: NavItem[] = isManager
     ? [
         { href: '/credential-audit', label: 'Secrets', Icon: IconShield },

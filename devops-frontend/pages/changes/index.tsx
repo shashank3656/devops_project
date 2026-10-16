@@ -6,6 +6,17 @@ import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
+const DEVOPS_USER_KEY = 'devops_user';
+
+function storedIsAdmin(): boolean {
+  try {
+    const raw = localStorage.getItem(DEVOPS_USER_KEY);
+    const user = raw ? JSON.parse(raw) as { role?: string } : null;
+    return user?.role === 'admin';
+  } catch {
+    return false;
+  }
+}
 
 interface ChangeRow {
   id: number;
@@ -148,15 +159,23 @@ export default function ChangesCatalogPage() {
       if (statusFilter) params.set('status', statusFilter);
       if (typeFilter) params.set('change_type', typeFilter);
       if (query.trim()) params.set('q', query.trim());
-      const res = await fetch(`${apiUrl}/api/devops/changes?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const query = params.toString();
+      const headers = { Authorization: `Bearer ${token}` };
+      const res = await fetch(`${apiUrl}/api/devops/changes?${query}`, { headers });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      let changes = Array.isArray(data?.changes) ? data.changes : [];
+      if (storedIsAdmin()) {
+        const adminRes = await fetch(`${apiUrl}/api/admin/changes?${query}`, { headers });
+        if (adminRes.ok) {
+          const adminData = await adminRes.json().catch(() => ({}));
+          if (Array.isArray(adminData?.changes)) changes = adminData.changes;
+        }
+      }
+      if (!res.ok && changes.length === 0) {
         setError(data?.error || 'Failed to load changes');
         return;
       }
-      setItems(Array.isArray(data?.changes) ? data.changes : []);
+      setItems(changes);
     } catch {
       setError('Failed to load changes');
     } finally {

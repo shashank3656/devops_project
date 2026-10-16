@@ -89,11 +89,12 @@ export default function NewPersonPage() {
         });
         const memberBody = await memberResponse.json().catch(() => ({}));
         if (!memberResponse.ok) {
-          setError(typeof memberBody?.error === 'string' ? memberBody.error : 'The account was created, but they were not added to the group.');
+          const mailed = body?.email_sent === true ? ' A sign-in email was sent.' : '';
+          setError((typeof memberBody?.error === 'string' ? memberBody.error : 'The account was created, but they were not added to the group.') + mailed);
           return;
         }
       }
-      await router.push('/portal-access/users?added=1');
+      await router.push(`/portal-access/users?added=1&mailed=${body?.email_sent === true ? '1' : '0'}`);
     } catch {
       setError('The account could not be created.');
     } finally {
@@ -122,7 +123,7 @@ export default function NewPersonPage() {
             <div>
               <p className="ops-kicker">Portal Access</p>
               <h1>Add person</h1>
-              <p>Create the account and put them in a group. The password is stored and is not shown again.</p>
+              <p>Create the account and put them in a group. They receive a sign-in email with their username. The password is not in that email.</p>
             </div>
             <Link href="/portal-access/users" className="btn btn-secondary">Back to people</Link>
           </header>
