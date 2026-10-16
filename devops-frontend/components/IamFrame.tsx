@@ -3,11 +3,10 @@ import { useRouter } from 'next/router';
 import type { ReactNode } from 'react';
 
 const LINKS = [
-  { href: '/iam', label: 'Cloud access' },
-  { href: '/iam/request', label: 'Request access' },
+  { href: '/iam', label: 'Request', also: ['/iam/request'] },
   { href: '/iam/requests', label: 'My requests' },
   { href: '/iam/approvals', label: 'Approvals' },
-  { href: '/iam/permissions', label: 'My permissions' },
+  { href: '/iam/permissions', label: 'Permissions' },
   { href: '/iam/audit', label: 'Audit' },
   { href: '/iam/policy', label: 'Policy' },
 ];
@@ -15,7 +14,7 @@ const LINKS = [
 export default function IamFrame({ title, lede, children }: { title: string; lede: string; children: ReactNode }) {
   const { pathname } = useRouter();
   return (
-    <div className="work-page">
+    <div className="work-page iam-page">
       <header className="work-page__head">
         <div>
           <p className="ops-kicker">Infrastructure · IAM</p>
@@ -23,9 +22,9 @@ export default function IamFrame({ title, lede, children }: { title: string; led
           <p>{lede}</p>
         </div>
       </header>
-      <nav className="access-nav" aria-label="Cloud access">
+      <nav className="iam-tabs" aria-label="IAM">
         {LINKS.map((link) => {
-          const current = link.href === '/iam' ? pathname === '/iam' : pathname === link.href || pathname.startsWith(`${link.href}/`);
+          const current = pathname === link.href || (link.also || []).includes(pathname);
           return (
             <Link key={link.href} href={link.href} className={current ? 'is-current' : undefined} aria-current={current ? 'page' : undefined}>
               {link.label}

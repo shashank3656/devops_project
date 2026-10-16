@@ -7150,6 +7150,129 @@ html[data-theme] .devops-layout .devops-sidebar-new--collapsed .devops-sidebar-n
   margin: 0;
 }
 
+.iam-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 20px;
+}
+
+.iam-tabs a {
+  padding: 8px 14px;
+  border: 1px solid var(--ig-border, rgba(255, 255, 255, 0.08));
+  border-radius: 999px;
+  color: var(--ig-muted, #8a94a2);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.iam-tabs a.is-current,
+.iam-tabs a:hover {
+  color: var(--ig-text, #f1f5f9);
+  background: rgba(13, 148, 136, 0.16);
+  border-color: transparent;
+}
+
+.iam-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: min(100%, 980px);
+  max-width: 980px;
+  padding: 20px;
+}
+
+.iam-grid,
+.iam-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.iam-sheet h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.iam-sheet .label {
+  margin: 12px 0 6px;
+}
+
+.iam-sheet .input,
+.iam-sheet select.input,
+.iam-sheet textarea.input {
+  width: 100%;
+}
+
+.iam-review {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(13, 148, 136, 0.08);
+}
+
+.iam-review h2,
+.iam-review p {
+  margin: 0 0 6px;
+}
+
+.iam-actions {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.iam-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  margin-top: 8px;
+  padding: 4px;
+  overflow: auto;
+  border: 1px solid var(--ig-border, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  background: var(--ig-surface, rgba(255, 255, 255, 0.02));
+}
+
+.iam-choices button {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.iam-choices button.is-current,
+.iam-choices button:hover {
+  background: rgba(13, 148, 136, 0.16);
+}
+
+.iam-audit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.iam-audit li {
+  padding: 12px 14px;
+  border: 1px solid var(--ig-border, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+}
+
+@media (max-width: 800px) {
+  .iam-grid,
+  .iam-split {
+    grid-template-columns: 1fr;
+  }
+}
+
 .access-create {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;

@@ -30,7 +30,7 @@ export default function IamPolicyPage() {
       <IamFrame title="Policy" lede="These are the current approval rules. Changing them needs a versioned approval. This screen does not edit the catalog.">
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         <p className="access-hint">Version {version || 'Unknown'}</p>
-        <div className="table-wrap">
+        <div className="portal-surface table-wrap">
           <table>
             <thead>
               <tr><th>Risk</th><th>When</th><th>Approval</th><th>Maximum</th></tr>

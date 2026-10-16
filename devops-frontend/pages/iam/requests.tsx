@@ -47,7 +47,7 @@ export default function IamRequestsPage() {
       <IamFrame title="My requests" lede="Each request opens an incident for the DevOps team. After they approve, the grant is recorded and the incident is closed.">
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {items.length === 0 ? <p className="work-empty">No access requests yet.</p> : (
-          <div className="table-wrap">
+          <div className="portal-surface table-wrap">
             <table>
               <thead>
                 <tr><th>Status</th><th>Incident</th><th>Role</th><th>Risk</th><th>Scope</th><th>Raised</th><th></th></tr>
