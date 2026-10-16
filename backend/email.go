@@ -355,6 +355,45 @@ func EmailTemplatePasswordReset(resetURL string) (subject, plainText, htmlBody s
 	return subject, plainText, htmlBody
 }
 
+// EmailTemplateAccountCreated tells a new person their account exists and where to sign in.
+// The password is never included.
+func EmailTemplateAccountCreated(username, signInURL string) (subject, body string) {
+	subject = "Your SetuOps account is ready"
+	name := sanitizeEmailTextContent(strings.TrimSpace(username))
+	if name == "" {
+		name = "there"
+	}
+	safeURL := sanitizeEmailURL(signInURL)
+	body = "An administrator created a SetuOps account for you.\n\nUsername: " + name + "\n\n"
+	if safeURL != "" {
+		body += "Sign in: " + safeURL + "\n\n"
+	}
+	body += "Use the password they set for you. This email does not include the password."
+	return subject, body
+}
+
+func portalSignInURL() string {
+	base := strings.TrimRight(strings.TrimSpace(DevOpsFrontendURL), "/")
+	if base == "" {
+		return ""
+	}
+	return base + "/login"
+}
+
+// sendAccountCreatedEmail returns true only when SMTP accepted the message.
+func sendAccountCreatedEmail(to, username string) bool {
+	if strings.TrimSpace(os.Getenv("SMTP_HOST")) == "" {
+		log.Printf("[Email] SMTP_HOST not set - account created email skipped")
+		return false
+	}
+	subject, body := EmailTemplateAccountCreated(username, portalSignInURL())
+	if err := SendEmail(to, subject, body); err != nil {
+		log.Printf("[Email] account created email failed: %v", err)
+		return false
+	}
+	return true
+}
+
 // EmailTemplate2FA returns subject and body for 2FA code email
 func EmailTemplate2FA(otp string) (subject, body string) {
 	subject = "Your verification code - SetuOps"

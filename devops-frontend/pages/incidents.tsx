@@ -126,6 +126,16 @@ function normalizeIncidents(value: unknown): Incident[] {
   return value.map((incident) => normalizeIncident(incident));
 }
 
+function storedIsAdmin(): boolean {
+  try {
+    const raw = localStorage.getItem(DEVOPS_USER_KEY);
+    const user = raw ? JSON.parse(raw) as { role?: string } : null;
+    return user?.role === 'admin';
+  } catch {
+    return false;
+  }
+}
+
 function clearSessionAndRedirect() {
   localStorage.removeItem(DEVOPS_TOKEN_KEY);
   localStorage.removeItem(DEVOPS_USER_KEY);
@@ -380,15 +390,29 @@ export default function DevOpsIncidentsPage() {
       if (activeProjectID) params.set('project_id', String(activeProjectID));
       if (activeEnvironmentFilter) params.set('environment', activeEnvironmentFilter);
       if (activeStatusFilter) params.set('status', activeStatusFilter);
-      const response = await fetch(`${apiUrl}/api/devops/incidents${params.toString() ? `?${params}` : ''}`, {
+      const query = params.toString() ? `?${params}` : '';
+      const response = await fetch(`${apiUrl}/api/devops/incidents${query}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (response.status === 401 || response.status === 403) {
+      if (response.status === 401) {
         clearSessionAndRedirect();
         return;
       }
       const data = asRecord(await response.json().catch(() => ({})));
-      if (!response.ok) {
+      if (storedIsAdmin()) {
+        const adminResponse = await fetch(`${apiUrl}/api/admin/incidents${query}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (adminResponse.ok) {
+          const adminData = asRecord(await adminResponse.json().catch(() => ({})));
+          data.incidents = adminData.incidents;
+        }
+      }
+      if (!response.ok && !Array.isArray(data.incidents)) {
+        if (response.status === 403) {
+          clearSessionAndRedirect();
+          return;
+        }
         throw new Error(getString(data.error, 'Failed to load incidents'));
       }
       setTeams(normalizeTeams(data.teams));

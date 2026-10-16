@@ -143,7 +143,19 @@ function str(value: unknown, fallback = ''): string {
 }
 
 function num(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value);
+  return 0;
+}
+
+function storedIsAdmin(): boolean {
+  try {
+    const raw = localStorage.getItem(DEVOPS_USER_KEY);
+    const user = raw ? JSON.parse(raw) as { role?: string } : null;
+    return user?.role === 'admin';
+  } catch {
+    return false;
+  }
 }
 
 export default function ServiceDeskPage() {
@@ -182,9 +194,17 @@ export default function ServiceDeskPage() {
     setLoading(true);
     setError('');
     const headers = { Authorization: `Bearer ${token}` };
+    const admin = storedIsAdmin();
+    const loadCatalog = (devopsPath: string, adminPath: string) => {
+      const devopsCall = fetch(`${apiUrl}${devopsPath}`, { headers }).then((res) => res.json().catch(() => ({})));
+      if (!admin) return devopsCall;
+      return fetch(`${apiUrl}${adminPath}`, { headers })
+        .then(async (res) => (res.ok ? res.json().catch(() => ({})) : devopsCall))
+        .catch(() => devopsCall);
+    };
     Promise.all([
-      fetch(`${apiUrl}/api/devops/changes`, { headers }).then((res) => res.json().catch(() => ({}))),
-      fetch(`${apiUrl}/api/devops/incidents`, { headers }).then((res) => res.json().catch(() => ({}))),
+      loadCatalog('/api/devops/changes', '/api/admin/changes'),
+      loadCatalog('/api/devops/incidents', '/api/admin/incidents'),
       fetch(`${apiUrl}/api/devops/problems`, { headers }).then((res) => res.json().catch(() => ({}))),
       fetch(`${apiUrl}/api/devops/tickets?limit=50`, { headers }).then((res) => res.json().catch(() => ({}))),
     ])

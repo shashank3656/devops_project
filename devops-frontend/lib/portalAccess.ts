@@ -91,7 +91,7 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
     if (grants.manager) prefixes.push('/runbooks', '/notification-settings', '/retry-center', '/approval-notification-analytics');
   }
   if (grants.infrastructure) {
-    prefixes.push('/k8s');
+    prefixes.push('/k8s', '/iam');
     if (grants.manager) prefixes.push('/projects', '/environments', '/cloud-accounts', '/cloud-resources', '/promotions');
   }
   if (grants.security) {

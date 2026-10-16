@@ -104,6 +104,29 @@ func TestAdminAndOperatorListsUseTheSameMatrix(t *testing.T) {
 	}
 }
 
+func TestAdminRoleSubjectSeesIncidentsAndChanges(t *testing.T) {
+	subject, ok := subjectFromRole(8, "admin")
+	if !ok {
+		t.Fatal("admin role should use the organization grant")
+	}
+	projectID := 7
+	otherID := 9
+	changes := filterChangesInScope([]changeRequestRecord{
+		{ID: 2, ChangeNumber: "CHG-15", ProjectID: &projectID, Environment: "dev"},
+		{ID: 3, ChangeNumber: "CHG-16", ProjectID: &otherID, Environment: "prod"},
+	}, subject)
+	if len(changes) != 2 {
+		t.Fatalf("admin change list = %#v", changes)
+	}
+	incidents := filterIncidentsInScope([]requestIncident{
+		{ID: 1, IncidentNumber: "INC-1", ProjectID: &projectID, Environment: "dev"},
+		{ID: 2, IncidentNumber: "INC-2", ProjectID: &otherID, Environment: "prod"},
+	}, subject)
+	if len(incidents) != 2 {
+		t.Fatalf("admin incident list = %#v", incidents)
+	}
+}
+
 func TestFilterIncidentsForPortal(t *testing.T) {
 	projectID := 4
 	items := []requestIncident{

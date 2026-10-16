@@ -105,7 +105,13 @@ export default function PortalUsersPage() {
               { value: 'change', label: 'Can raise and update' },
             ]}
           />
-          {router.query.added === '1' ? <div className="alert alert-success" role="status">Account created. Put them in a group so they see the right sections.</div> : null}
+          {router.query.added === '1' ? (
+            <div className="alert alert-success" role="status">
+              {router.query.mailed === '1'
+                ? 'Account created. A sign-in email was sent with their username and the sign-in link.'
+                : 'Account created. The sign-in email was not sent. Mail is not configured, or the mail server refused it.'}
+            </div>
+          ) : null}
           {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
           {loading ? <p className="work-empty">Loading people…</p> : null}
           {!loading && !error && users.length === 0 ? <p className="work-empty">No accounts yet. Add a person to get started.</p> : null}

@@ -284,6 +284,7 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	AppendAuditLog(adminIDPtr, "user_create", "user", strconv.Itoa(userID), req.Username)
+	emailSent := sendAccountCreatedEmail(req.Email, req.Username)
 	userResp := map[string]interface{}{"id": userID, "username": req.Username, "email": req.Email, "role": req.Role, "verified": true, "user_type": userType}
 	if userType == "portal_user" {
 		if u, _ := GetUserByID(userID); u != nil {
@@ -300,7 +301,7 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	encodeAdminTeamJSON(w, map[string]interface{}{"user": userResp, "status": "ok"})
+	encodeAdminTeamJSON(w, map[string]interface{}{"user": userResp, "status": "ok", "email_sent": emailSent})
 }
 
 // adminUserDetailHandler handles GET and PATCH /api/admin/users/:id (admin only)

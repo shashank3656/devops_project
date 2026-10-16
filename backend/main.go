@@ -857,6 +857,8 @@ func main() {
 	http.HandleFunc("/api/devops/k8s-terminal-command", devopsK8sTerminalCommandHandler)
 	http.HandleFunc("/api/devops/runbooks", devopsRunbooksHandler)
 	http.HandleFunc("/api/devops/runbooks/", devopsRunbookDetailHandler)
+	http.HandleFunc("/api/devops/iam", iamHandler)
+	http.HandleFunc("/api/devops/iam/", iamHandler)
 	http.HandleFunc("/api/devops/incidents", devopsIncidentsHandler)
 	http.HandleFunc("/api/devops/incidents/", devopsIncidentDetailHandler)
 	http.HandleFunc("/api/devops/changes", devopsChangesHandler)
