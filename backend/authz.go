@@ -42,6 +42,7 @@ type authzSubject struct {
 	TeamIDs        []int
 	Portal         string
 	Grants         []projectGrant
+	ReadAll        bool
 }
 
 type authzRequest struct {
@@ -155,11 +156,13 @@ func subjectFromRole(userID int, role string) (authzSubject, bool) {
 }
 
 func authzSubjectForUser(userID int) authzSubject {
+	readAll := false
 	if DB != nil {
 		if user, err := GetUserByID(userID); err == nil && user != nil {
 			if subject, ok := subjectFromRole(userID, user.Role); ok {
 				return subject
 			}
+			readAll = user.UserType == "devops_user"
 		}
 	}
 	role := "viewer"
@@ -174,6 +177,7 @@ func authzSubjectForUser(userID int) authzSubject {
 		UserID:         userID,
 		OrganizationID: pilotOrganizationID,
 		Grants:         grantsFromCatalog(projects, role),
+		ReadAll:        readAll,
 	}
 }
 

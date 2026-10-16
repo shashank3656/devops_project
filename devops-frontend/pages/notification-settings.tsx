@@ -66,8 +66,6 @@ export default function NotificationSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [showChannels, setShowChannels] = useState(true);
-  const [showCategories, setShowCategories] = useState(false);
 
   const clearSessionAndRedirect = () => {
     localStorage.removeItem(DEVOPS_TOKEN_KEY);
@@ -163,135 +161,88 @@ export default function NotificationSettingsPage() {
       <Head>
         <title>Notification Settings - DevOps Portal</title>
       </Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="alert-page">
+        <header className="work-page__head">
           <div>
-            <span className="portal-page__eyebrow">Operations Controls</span>
-            <h1 className="portal-page__title">Notification Settings</h1>
-            <p className="portal-page__subtitle">
-              Manage how blocked promotions, approval-expiry reminders, and expiry tracker alerts are delivered without relying only on deployment environment variables.
-            </p>
+            <h1>Alert settings</h1>
+            <p>Choose where alerts go, and which events create one.</p>
           </div>
           <div className="portal-page__actions">
-            <Link href="/approval-notification-analytics" className="btn btn-secondary">Ops Analytics</Link>
+            <Link href="/approval-notification-analytics" className="btn btn-secondary">Analytics</Link>
             <button type="button" className="btn btn-primary" onClick={() => void saveSettings()} disabled={saving || loading}>
               {saving ? 'Saving...' : 'Save settings'}
             </button>
           </div>
-        </div>
+        </header>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
-        {loading ? <div className="portal-surface"><div className="empty-state">Loading notification settings...</div></div> : null}
 
-        {!loading ? (
-          <>
-            <section className="portal-surface" style={{ marginBottom: 24 }}>
-              <div className="portal-page__actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                <div className="portal-pill-row">
-                  <span className="portal-pill">Slack {settings.slack_enabled ? 'On' : 'Off'}</span>
-                  <span className="portal-pill">Teams {settings.teams_enabled ? 'On' : 'Off'}</span>
-                  <span className="portal-pill">Webhook {settings.webhook_enabled ? 'On' : 'Off'}</span>
-                  <span className="portal-pill">Updated by {settings.updated_by_username || 'Default'}</span>
-                </div>
-                <div className="portal-page__actions">
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowChannels((current) => !current)}>
-                    {showChannels ? 'Hide channels' : 'Show channels'}
-                  </button>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowCategories((current) => !current)}>
-                    {showCategories ? 'Hide alert categories' : 'Show alert categories'}
-                  </button>
-                </div>
-              </div>
-            </section>
+        <div className="changes-facts">
+          <div><span>In app</span><strong>{settings.in_app_enabled ? 'On' : 'Off'}</strong></div>
+          <div><span>Email</span><strong>{settings.email_enabled ? 'On' : 'Off'}</strong></div>
+          <div><span>Slack</span><strong>{settings.slack_configured ? 'Connected' : 'Not set'}</strong></div>
+          <div><span>Teams</span><strong>{settings.teams_configured ? 'Connected' : 'Not set'}</strong></div>
+          <div><span>Webhook</span><strong>{settings.webhook_configured ? 'Connected' : 'Not set'}</strong></div>
+          <div><span>Updated</span><strong>{formatDateTime(settings.updated_at)}</strong></div>
+        </div>
 
-            {showChannels ? (
-            <section className="portal-surface" style={{ marginBottom: 24 }}>
-              <div className="portal-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Delivery channels</span>
-                  <h2 className="portal-surface__title">Choose how ops alerts are delivered</h2>
-                </div>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowChannels(false)}>
-                  Close
-                </button>
-              </div>
-              <div className="portal-form-grid">
-                <label className="label">
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={settings.in_app_enabled} onChange={(event) => updateField('in_app_enabled', event.target.checked)} />
-                    In-app notifications
-                  </span>
-                </label>
-                <label className="label">
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={settings.email_enabled} onChange={(event) => updateField('email_enabled', event.target.checked)} />
-                    Email notifications
-                  </span>
-                </label>
-                <label className="label">
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={settings.slack_enabled} onChange={(event) => updateField('slack_enabled', event.target.checked)} />
-                    Slack webhook
-                  </span>
-                  <input className="input" value={settings.slack_webhook_url || ''} onChange={(event) => updateField('slack_webhook_url', event.target.value)} placeholder={settings.slack_using_environment ? 'Using environment fallback' : 'https://hooks.slack.com/services/...'} />
-                </label>
-                <label className="label">
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={settings.teams_enabled} onChange={(event) => updateField('teams_enabled', event.target.checked)} />
-                    Teams webhook
-                  </span>
-                  <input className="input" value={settings.teams_webhook_url || ''} onChange={(event) => updateField('teams_webhook_url', event.target.value)} placeholder={settings.teams_using_environment ? 'Using environment fallback' : 'https://outlook.office.com/webhook/...'} />
-                </label>
-                <label className="label">
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={settings.webhook_enabled} onChange={(event) => updateField('webhook_enabled', event.target.checked)} />
-                    Generic webhook
-                  </span>
-                  <input className="input" value={settings.webhook_url || ''} onChange={(event) => updateField('webhook_url', event.target.value)} placeholder={settings.webhook_using_environment ? 'Using environment fallback' : 'https://example.com/hooks/ops'} />
-                </label>
-              </div>
-            </section>
-            ) : null}
-
-            {showCategories ? (
+        {loading ? <div className="portal-surface"><div className="empty-state">Loading alert settings...</div></div> : (
+          <div className="alert-board">
             <section className="portal-surface">
               <div className="portal-surface__header">
                 <div>
-                  <span className="portal-surface__eyebrow">Alert categories</span>
-                  <h2 className="portal-surface__title">Control which ops events generate alerts</h2>
+                  <h2 className="portal-surface__title">Delivery</h2>
+                  <p className="portal-surface__subtitle">Turn a channel on, then paste its address. Saved addresses stay on the server.</p>
                 </div>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowCategories(false)}>
-                  Close
-                </button>
               </div>
-              <div className="portal-form-grid">
-                <label className="label">
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={settings.notify_blocked_promotions} onChange={(event) => updateField('notify_blocked_promotions', event.target.checked)} />
-                    Blocked promotions
-                  </span>
-                  <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Notify when a promotion candidate is blocked by gate policy.</div>
+              <div className="alert-channels">
+                <label className="alert-channel">
+                  <span className="alert-switch">In app<input type="checkbox" checked={settings.in_app_enabled} onChange={(event) => updateField('in_app_enabled', event.target.checked)} /></span>
+                  <p className="alert-hint">Show the alert inside the portal.</p>
                 </label>
-                <label className="label">
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={settings.notify_gate_approval_expiring} onChange={(event) => updateField('notify_gate_approval_expiring', event.target.checked)} />
-                    Gate approvals nearing expiry
-                  </span>
-                  <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Alert before a persisted gate approval lapses.</div>
+                <label className="alert-channel">
+                  <span className="alert-switch">Email<input type="checkbox" checked={settings.email_enabled} onChange={(event) => updateField('email_enabled', event.target.checked)} /></span>
+                  <p className="alert-hint">Send to the people already on the ticket.</p>
                 </label>
-                <label className="label">
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={settings.notify_expiring_assets} onChange={(event) => updateField('notify_expiring_assets', event.target.checked)} />
-                    Expiring secrets and certificates
-                  </span>
-                  <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Alert owners and managers when credentials move into an actionable window.</div>
+                <label className="alert-channel">
+                  <span className="alert-switch">Slack<input type="checkbox" checked={settings.slack_enabled} onChange={(event) => updateField('slack_enabled', event.target.checked)} /></span>
+                  <input className="input" type="password" autoComplete="off" value={settings.slack_webhook_url || ''} onChange={(event) => updateField('slack_webhook_url', event.target.value)} placeholder={settings.slack_using_environment ? 'Using the server setting' : 'Slack webhook address'} />
+                </label>
+                <label className="alert-channel">
+                  <span className="alert-switch">Teams<input type="checkbox" checked={settings.teams_enabled} onChange={(event) => updateField('teams_enabled', event.target.checked)} /></span>
+                  <input className="input" type="password" autoComplete="off" value={settings.teams_webhook_url || ''} onChange={(event) => updateField('teams_webhook_url', event.target.value)} placeholder={settings.teams_using_environment ? 'Using the server setting' : 'Teams webhook address'} />
+                </label>
+                <label className="alert-channel alert-channel--wide">
+                  <span className="alert-switch">Generic webhook<input type="checkbox" checked={settings.webhook_enabled} onChange={(event) => updateField('webhook_enabled', event.target.checked)} /></span>
+                  <input className="input" type="password" autoComplete="off" value={settings.webhook_url || ''} onChange={(event) => updateField('webhook_url', event.target.value)} placeholder={settings.webhook_using_environment ? 'Using the server setting' : 'Webhook address'} />
                 </label>
               </div>
             </section>
-            ) : null}
-          </>
-        ) : null}
+
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <h2 className="portal-surface__title">What raises an alert</h2>
+                </div>
+              </div>
+              <div className="alert-channels alert-channels--stack">
+                <label className="alert-switch-row">
+                  <span className="alert-switch">Blocked promotions<input type="checkbox" checked={settings.notify_blocked_promotions} onChange={(event) => updateField('notify_blocked_promotions', event.target.checked)} /></span>
+                  <p className="alert-hint">When a promotion is stopped by a gate.</p>
+                </label>
+                <label className="alert-switch-row">
+                  <span className="alert-switch">Approvals about to expire<input type="checkbox" checked={settings.notify_gate_approval_expiring} onChange={(event) => updateField('notify_gate_approval_expiring', event.target.checked)} /></span>
+                  <p className="alert-hint">Before a saved approval runs out.</p>
+                </label>
+                <label className="alert-switch-row">
+                  <span className="alert-switch">Expiring certificates<input type="checkbox" checked={settings.notify_expiring_assets} onChange={(event) => updateField('notify_expiring_assets', event.target.checked)} /></span>
+                  <p className="alert-hint">When a certificate moves into the warning window. Secret values are never included.</p>
+                </label>
+              </div>
+            </section>
+          </div>
+        )}
       </div>
     </DevOpsLayout>
   );

@@ -73,8 +73,8 @@ export default function ReportDesk() {
     setError('');
   }
 
-  async function onView(event: FormEvent) {
-    event.preventDefault();
+  async function onView(event?: FormEvent) {
+    event?.preventDefault();
     const block = reportDefinitionBlock('operator', scope.projectId, scope.environment, metric);
     if (block && block !== 'A viewer can read this desk.') {
       setView(null);
@@ -100,8 +100,8 @@ export default function ReportDesk() {
     setError(block || REPORT_DRAFT_MESSAGE);
   }
 
-  function onPublish(event: FormEvent) {
-    event.preventDefault();
+  function onPublish(event?: FormEvent) {
+    event?.preventDefault();
     const block = reportPublishBlock(role, scope.environment, reviewerId, actorId(), actorId());
     setNotice('');
     setError(block || REPORT_DRAFT_MESSAGE);
@@ -161,70 +161,83 @@ export default function ReportDesk() {
   }
 
   return (
-    <div className="desk-language">
-      <header className="desk-landing">
-        <h2>Reports and automation</h2>
-        <p>A report names a numerator and a denominator in UTC. Drafts stay off. Automation can notify and cannot execute.</p>
+    <div className="alert-page">
+      <header className="work-page__head">
+        <div>
+          <h1>Reports and automation</h1>
+          <p>A report is a count over a count, in UTC. A rule can notify. It cannot run a change.</p>
+        </div>
       </header>
-      <section className="desk-language__panel desk-language__rail" aria-label="Report"><h2>Report</h2><form className="desk-language__form" onSubmit={onDefine}>
-        <label>Metric
-          <select value={metric} onChange={(event) => setMetric(event.target.value as (typeof REPORT_METRICS)[number])}>
-            {REPORT_METRICS.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
-          </select>
-        </label>
-        <label>Timezone<input value={REPORT_TIMEZONE} readOnly /></label>
-        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Save report' : 'Read only'}</button>
-      </form>
-      <form className="desk-language__form" onSubmit={onView}>
-        <button type="submit" className="btn btn-primary">Read view</button>
-      </form>
-      <form className="desk-language__form" onSubmit={onDraft}>
-        <label>Draft text<input value={draftText} onChange={(event) => setDraftText(event.target.value)} /></label>
-        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Save draft' : 'Read only'}</button>
-      </form>
-      <form className="desk-language__form" onSubmit={onPublish}>
-        <label>Reviewer<input value={reviewerId} onChange={(event) => setReviewerId(event.target.value)} /></label>
-        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Publish draft' : 'Read only'}</button>
-      </form>
-      </section>
-      <section className="desk-language__panel" aria-label="Automation">
-      <h2>Automation</h2>
-      <form className="desk-language__form" onSubmit={onRule}>
-        <label>Trigger
-          <select value={trigger} onChange={(event) => setTrigger(event.target.value as (typeof AUTOMATION_TRIGGERS)[number])}>
-            {AUTOMATION_TRIGGERS.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
-          </select>
-        </label>
-        <label>Action<input value={AUTOMATION_ACTION} readOnly /></label>
-        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Save rule' : 'Read only'}</button>
-      </form>
-      <form className="desk-language__form" onSubmit={onRun}>
-        <label>Source
-          <select value={sourceKind} onChange={(event) => setSourceKind(event.target.value as (typeof AUTOMATION_SOURCES)[number])}>
-            {AUTOMATION_SOURCES.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
-          </select>
-        </label>
-        <label>Source id<input value={sourceId} onChange={(event) => setSourceId(event.target.value)} /></label>
-        <label>Result
-          <select value={resultName} onChange={(event) => setResultName(event.target.value as (typeof AUTOMATION_RESULTS)[number])}>
-            {AUTOMATION_RESULTS.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
-          </select>
-        </label>
-        <label>Depth<input value={depth} onChange={(event) => setDepth(event.target.value)} /></label>
-        <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Record notification' : 'Read only'}</button>
-      </form>
-      </section>
       {error ? <DeskError message={error} /> : null}
-      {notice ? <p className="desk-language__copy">{notice}</p> : null}
-      {view ? (
-        <p className="desk-language__copy">
-          {view.numeratorName} {view.numerator} / {view.denominatorName} {view.denominator}. {view.timezone}.
-          <DeskStateChip value={reportCoverageState(view.coverage)} />
-          {view.coverage === 'partial' ? <span>Partial</span> : null}
-        </p>
-      ) : null}
-      {rule ? <p className="desk-language__copy">{rule.trigger} version {rule.version}. Action notify. Can execute off.</p> : null}
-      {runId ? <p className="desk-language__copy">Notification {runId}. Can execute off.</p> : null}
+      {notice ? <div className="alert alert-success">{notice}</div> : null}
+      <div className="alert-board">
+        <section className="portal-surface" aria-label="Report">
+          <div className="portal-surface__header">
+            <h2 className="portal-surface__title">Report</h2>
+          </div>
+          <form className="alert-channels" onSubmit={onDefine}>
+            <label className="label">Metric
+              <select className="input" value={metric} onChange={(event) => setMetric(event.target.value as (typeof REPORT_METRICS)[number])}>
+                {REPORT_METRICS.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
+              </select>
+            </label>
+            <label className="label">Timezone<input className="input" value={REPORT_TIMEZONE} readOnly /></label>
+            <div className="alert-channel--wide portal-page__actions">
+              <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Save report' : 'Read only'}</button>
+              <button type="button" className="btn btn-secondary" onClick={() => void onView()}>Read view</button>
+            </div>
+          </form>
+          <form className="alert-channels" onSubmit={onDraft}>
+            <label className="label alert-channel--wide">Draft
+              <input className="input" value={draftText} onChange={(event) => setDraftText(event.target.value)} />
+            </label>
+            <label className="label">Reviewer
+              <input className="input" value={reviewerId} onChange={(event) => setReviewerId(event.target.value)} />
+            </label>
+            <div className="portal-page__actions" style={{ alignSelf: 'end' }}>
+              <button type="submit" className="btn btn-secondary" disabled={!canWrite}>{canWrite ? 'Save draft' : 'Read only'}</button>
+              <button type="button" className="btn btn-primary" disabled={!canWrite} onClick={() => onPublish()}>{canWrite ? 'Publish' : 'Read only'}</button>
+            </div>
+          </form>
+          {view ? (
+            <p className="alert-hint">
+              {view.numeratorName} {view.numerator} / {view.denominatorName} {view.denominator}. {view.timezone}.{' '}
+              <DeskStateChip value={reportCoverageState(view.coverage)} />
+            </p>
+          ) : null}
+        </section>
+        <section className="portal-surface" aria-label="Automation">
+          <div className="portal-surface__header">
+            <h2 className="portal-surface__title">Automation</h2>
+          </div>
+          <form className="alert-channels alert-channels--stack" onSubmit={onRule}>
+            <label className="label">Trigger
+              <select className="input" value={trigger} onChange={(event) => setTrigger(event.target.value as (typeof AUTOMATION_TRIGGERS)[number])}>
+                {AUTOMATION_TRIGGERS.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
+              </select>
+            </label>
+            <label className="label">Action<input className="input" value={AUTOMATION_ACTION} readOnly /></label>
+            <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Save rule' : 'Read only'}</button>
+          </form>
+          <form className="alert-channels alert-channels--stack" onSubmit={onRun}>
+            <label className="label">Source
+              <select className="input" value={sourceKind} onChange={(event) => setSourceKind(event.target.value as (typeof AUTOMATION_SOURCES)[number])}>
+                {AUTOMATION_SOURCES.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
+              </select>
+            </label>
+            <label className="label">Source id<input className="input" value={sourceId} onChange={(event) => setSourceId(event.target.value)} /></label>
+            <label className="label">Result
+              <select className="input" value={resultName} onChange={(event) => setResultName(event.target.value as (typeof AUTOMATION_RESULTS)[number])}>
+                {AUTOMATION_RESULTS.map((item) => <option key={item} value={item}>{deskWord(item)}</option>)}
+              </select>
+            </label>
+            <label className="label">Depth<input className="input" value={depth} onChange={(event) => setDepth(event.target.value)} /></label>
+            <button type="submit" className="btn btn-primary" disabled={!canWrite}>{canWrite ? 'Record notification' : 'Read only'}</button>
+          </form>
+          {rule ? <p className="alert-hint">{rule.trigger}, version {rule.version}. Notify only.</p> : null}
+          {runId ? <p className="alert-hint">Notification {runId} recorded. Nothing was executed.</p> : null}
+        </section>
+      </div>
     </div>
   );
 }

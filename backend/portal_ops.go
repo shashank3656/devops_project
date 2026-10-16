@@ -84,9 +84,16 @@ func subjectCanReadUnscoped(subject authzSubject) bool {
 	return false
 }
 
+func (subject authzSubject) readsEveryRecord() bool {
+	return subject.ReadAll || subjectCanReadUnscoped(subject)
+}
+
 func changeInScope(subject authzSubject, item changeRequestRecord, action authzAction) bool {
+	if action == authzRead && subject.readsEveryRecord() {
+		return true
+	}
 	if item.ProjectID == nil || *item.ProjectID <= 0 {
-		return action == authzRead && subjectCanReadUnscoped(subject)
+		return false
 	}
 	resourceID := strings.TrimSpace(item.ChangeNumber)
 	if resourceID == "" {
@@ -106,6 +113,9 @@ func changeInScope(subject authzSubject, item changeRequestRecord, action authzA
 }
 
 func incidentInScope(subject authzSubject, item requestIncident, action authzAction) bool {
+	if action == authzRead && subject.readsEveryRecord() {
+		return true
+	}
 	if item.ProjectID == nil || *item.ProjectID <= 0 {
 		return false
 	}

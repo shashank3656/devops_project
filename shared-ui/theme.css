@@ -4986,6 +4986,17 @@ html[data-theme] .changes-page__sample {
   margin-left: auto;
 }
 
+html[data-theme] .devops-layout .sd-filters select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 36px;
+  background-color: var(--ig-surface, #fff);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath d='M3.5 5.25 7 8.75l3.5-3.5' fill='none' stroke='%235c677a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 14px 14px;
+}
+
 .sd-btn-ghost {
   display: inline-flex;
   align-items: center;
@@ -7955,9 +7966,17 @@ html[data-theme='dark'] .devops-layout .ops-note strong {
 
 html[data-theme='dark'] .devops-layout .input,
 html[data-theme='dark'] .devops-layout select.input {
-  background: #222633;
+  background-color: #222633;
   color: #f2f4f8;
   border-color: rgba(255, 255, 255, 0.12);
+}
+
+html[data-theme='dark'] .devops-layout .sd-filters select.input {
+  background-color: #222633;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath d='M3.5 5.25 7 8.75l3.5-3.5' fill='none' stroke='%23d5dbe6' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 14px 14px;
 }
 
 html[data-theme='dark'] .devops-layout .btn-primary {
@@ -7980,4 +7999,124 @@ html[data-theme='dark'] .devops-layout code {
 html[data-theme] .devops-layout .devops-navbar__profile-btn {
   text-decoration: none;
   color: inherit;
+}
+
+html[data-theme] .alert-page {
+  display: grid;
+  gap: 16px;
+}
+
+html[data-theme] .alert-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.75fr);
+  gap: 16px;
+  align-items: start;
+}
+
+html[data-theme] .alert-channels,
+html[data-theme] .alert-trends {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+html[data-theme] .alert-channel,
+html[data-theme] .alert-switch-row {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--ig-border);
+  border-radius: 12px;
+  background: var(--ig-surface);
+}
+
+html[data-theme] .alert-channel--wide {
+  grid-column: 1 / -1;
+}
+
+html[data-theme] .alert-channels--stack {
+  grid-template-columns: 1fr;
+}
+
+html[data-theme] .alert-page form + form,
+html[data-theme] .alert-page .alert-hint {
+  margin-top: 12px;
+}
+
+html[data-theme] .alert-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ig-text);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+html[data-theme] .alert-switch input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+html[data-theme] .alert-hint {
+  margin: 0;
+  color: var(--ig-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+html[data-theme] .alert-meter {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+html[data-theme='dark'] .alert-meter {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme] .alert-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #16a34a);
+}
+
+html[data-theme] .alert-meter--warm > span {
+  background: linear-gradient(90deg, #d97706, #dc2626);
+}
+
+html[data-theme] .alert-trend,
+html[data-theme] .alert-bars {
+  display: grid;
+  gap: 10px;
+}
+
+html[data-theme] .alert-trend article,
+html[data-theme] .alert-bars article {
+  display: grid;
+  gap: 6px;
+}
+
+html[data-theme] .alert-trend__meta,
+html[data-theme] .alert-bars article > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+html[data-theme] .alert-trends--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  html[data-theme] .alert-board,
+  html[data-theme] .alert-channels,
+  html[data-theme] .alert-trends,
+  html[data-theme] .alert-trends--three {
+    grid-template-columns: 1fr;
+  }
 }

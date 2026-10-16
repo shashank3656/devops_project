@@ -25,3 +25,13 @@ func TestAccountCreatedEmailHasSignInLink(t *testing.T) {
 		t.Fatal("unsafe sign-in url leaked")
 	}
 }
+
+func TestRaisedRequestEmailNamesTheRequestOnly(t *testing.T) {
+	body := requestRaisedMessage(&PRRequest{ID: 22, Service: "gke", Env: "dev"})
+	if !strings.Contains(body, "Request #22") || !strings.Contains(body, "gke") || !strings.Contains(body, "dev") {
+		t.Fatalf("raised message = %q", body)
+	}
+	if strings.Contains(strings.ToLower(body), "password") || strings.Contains(strings.ToLower(body), "secret") {
+		t.Fatal("raised message included a secret")
+	}
+}

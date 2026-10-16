@@ -78,6 +78,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/environments': 'Environments',
   '/reports-automation': 'Reports and automation',
   '/on-call': 'On-call',
+  '/operations/webhooks': 'Webhooks',
   '/maintenance': 'Maintenance',
   '/service-desk': 'Service desk',
   '/approval-center': 'Approval queue',
@@ -217,6 +218,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
   const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({});
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
   const [catalogEnvironments, setCatalogEnvironments] = useState<string[]>([]);
   const { scope, updateScope } = useWorkspaceScope();
@@ -518,14 +520,9 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   ];
 
   const leafIsActive = (href: string) => {
-    if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/');
     if (href === '/dashboard') return pathname === '/dashboard' || pathname === '/';
-    if (href === serviceDeskHref) {
-      return (
-        pathname === '/service-desk' ||
-        serviceDeskChildren.some((child) => child.href !== '/service-desk' && (pathname === child.href || pathname.startsWith(`${child.href}/`)))
-      );
-    }
+    if (href === '/iam' || href === '/service-desk') return pathname === href;
+    if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/');
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
@@ -547,6 +544,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     ? [
         { href: '/on-call', label: 'On-call', Icon: IconBell },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
+        { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
         { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
         {
           href: '/notification-settings',
@@ -563,6 +561,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     : [
         { href: '/on-call', label: 'On-call', Icon: IconBell },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
+        { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
         { href: '/reports-automation', label: 'Reports and automation', Icon: IconFileText },
       ];
   const iamNavItem: NavItem = {
@@ -631,7 +630,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     ...(grants.operations ? [{ title: 'Operations', items: visibleNav(operationsNavItems) }] : []),
     ...(grants.infrastructure ? [{ title: 'Infrastructure', items: visibleNav(infrastructureNavItems) }] : []),
     ...(grants.security ? [{ title: 'Security', items: visibleNav(securityNavItems) }] : []),
-    ...(grants.records && recordsNavItems.length ? [{ title: 'Records', items: recordsNavItems }] : []),
+    ...(grants.records && recordsNavItems.length ? [{ title: 'Records', items: visibleNav(recordsNavItems) }] : []),
     ...(grants.portalAccess
       ? [{
           title: 'Portal Access',
@@ -652,8 +651,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     for (const item of allNavItems) {
       if (item.children && itemIsActive(item)) next[item.href] = true;
     }
-    if (Object.keys(next).length === 0) return;
-    setOpenNavGroups((current) => ({ ...current, ...next }));
+    const activeSection = sidebarSections.find((section) => section.items.some((item) => itemIsActive(item)));
+    if (Object.keys(next).length === 0 && !activeSection) return;
+    if (Object.keys(next).length) setOpenNavGroups((current) => ({ ...current, ...next }));
+    if (activeSection) setOpenSections((current) => ({ ...current, [activeSection.title]: true }));
   }, [pathname]);
 
   useEffect(() => {
@@ -784,12 +785,26 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         <div className="devops-sidebar-new__body">
           <nav className="devops-sidebar-new__nav" aria-label="Primary">
             {sessionReady
-              ? sidebarSections.filter((section) => section.items.length > 0).map((section) => (
-                  <div key={section.title}>
-                    {!sidebarCollapsed ? <span className="devops-sidebar-new__nav-title">{section.title}</span> : null}
-                    {section.items.map((item) => renderNavItem(item))}
-                  </div>
-                ))
+              ? sidebarSections.filter((section) => section.items.length > 0).map((section) => {
+                  const active = section.items.some((item) => itemIsActive(item));
+                  const open = sidebarCollapsed || (openSections[section.title] === undefined ? active : openSections[section.title]);
+                  return (
+                    <div key={section.title}>
+                      {!sidebarCollapsed ? (
+                        <button
+                          type="button"
+                          className={`devops-sidebar-new__section${open ? ' is-open' : ''}`}
+                          aria-expanded={open}
+                          onClick={() => setOpenSections((current) => ({ ...current, [section.title]: !open }))}
+                        >
+                          <span>{section.title}</span>
+                          <IconChevronDown />
+                        </button>
+                      ) : null}
+                      {open ? section.items.map((item) => renderNavItem(item)) : null}
+                    </div>
+                  );
+                })
               : null}
           </nav>
           <div className="devops-sidebar-new__footer">
