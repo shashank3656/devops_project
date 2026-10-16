@@ -73,6 +73,7 @@ type iamEvaluateInput struct {
 	DurationMinutes int      `json:"durationMinutes"`
 	TicketRef       string   `json:"ticketRef"`
 	Justification   string   `json:"justification"`
+	CloudMember     string   `json:"cloudMember,omitempty"`
 }
 
 type iamEvaluation struct {
@@ -345,7 +346,7 @@ func evaluateIAMAccess(in iamEvaluateInput, now time.Time, alreadyActive bool) i
 		out.Decision = "ALLOW_WITH_APPROVAL"
 		out.ProvisioningMode = "AFTER_DEVOPS_APPROVAL"
 		out.ApprovalStages = []string{"DEVOPS"}
-		out.Warnings = append(out.Warnings, "Submitting opens an incident. After the DevOps team approves, the backend records the grant and closes the incident.")
+		out.Warnings = append(out.Warnings, "Submitting opens an access request. After the DevOps team approves, the backend records the grant.")
 		return out
 	}
 	in.Action = actionKey
@@ -419,7 +420,7 @@ func evaluateIAMAccess(in iamEvaluateInput, now time.Time, alreadyActive bool) i
 		out.Decision = "REQUIRE_ELIGIBILITY"
 		out.ProvisioningMode = "AFTER_DEVOPS_APPROVAL"
 		out.ApprovalStages = []string{"DEVOPS"}
-		out.Warnings = append(out.Warnings, "The DevOps team approves this. The backend records the grant and closes the incident. Secret values are not read.")
+		out.Warnings = append(out.Warnings, "The DevOps team approves this. The backend records the grant. Secret values are not read.")
 		return out
 	}
 	out.Decision = "ALLOW_WITH_APPROVAL"
@@ -428,6 +429,6 @@ func evaluateIAMAccess(in iamEvaluateInput, now time.Time, alreadyActive bool) i
 	if risk == "HIGH" {
 		out.Warnings = append(out.Warnings, "Production secrets are sensitive. This portal does not read secret values.")
 	}
-	out.Warnings = append(out.Warnings, "Submitting opens an incident. After the DevOps team approves, the backend records the grant and closes the incident.")
+	out.Warnings = append(out.Warnings, "Submitting opens an access request. After the DevOps team approves, the backend records the grant.")
 	return out
 }

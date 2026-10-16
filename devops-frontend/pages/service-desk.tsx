@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { incidentCanFinish } from '../lib/itsm';
 import { loadTicketAudience, ticketVisible } from '../lib/ticketAudience';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -30,6 +31,7 @@ interface DeskTicket {
   updatedAt?: string;
   dueAt?: string;
   nextAction?: string;
+  reference?: string;
 }
 
 function IconDoc() {
@@ -175,6 +177,8 @@ export default function ServiceDeskPage() {
   const [ownerFilter, setOwnerFilter] = useState('');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
+  const [finishing, setFinishing] = useState('');
   const [username, setUsername] = useState('');
 
   useEffect(() => {
@@ -324,7 +328,7 @@ export default function ServiceDeskPage() {
             key: `access-${rawId}`,
             kind: 'access',
             title: role || 'Access request',
-            summary: scope || 'Waiting for DevOps approval',
+            summary: [scope, str(row.provisionFile)].filter(Boolean).join(' · ') || 'Waiting for DevOps approval',
             status: str(row.status, 'pending'),
             priority: 'high',
             owner: str(row.requesterName) || 'DevOps',
@@ -332,7 +336,8 @@ export default function ServiceDeskPage() {
             service: role || 'Access',
             environment: '—',
             source: 'IAM',
-            href: '/iam/approvals',
+            reference: str(row.accessNumber),
+            href: str(row.provisionUrl) || '/iam/approvals',
             createdAt: str(row.createdAt) || str(row.created_at),
             updatedAt: str(row.updatedAt) || str(row.updated_at),
           });
@@ -347,9 +352,41 @@ export default function ServiceDeskPage() {
       })
       .catch(() => setError('Failed to load service desk'))
       .finally(() => setLoading(false));
-  }, [apiUrl, router]);
+  }, [apiUrl, router, reloadTick]);
 
   const selected = useMemo(() => items.find((item) => item.key === selectedKey) || null, [items, selectedKey]);
+
+  const finishIncident = async (ticket: DeskTicket, action: 'close' | 'cancel') => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      void router.replace('/login');
+      return;
+    }
+    setFinishing(ticket.key);
+    setError('');
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/incidents/${ticket.id}/${action}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      if (response.status === 401) {
+        void router.replace('/login');
+        return;
+      }
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(typeof body.error === 'string' ? body.error : 'Could not update the incident');
+      }
+      const nextStatus = action === 'close' ? 'closed' : 'cancelled';
+      setItems((current) => current.map((item) => (item.key === ticket.key ? { ...item, status: nextStatus } : item)));
+      setReloadTick((current) => current + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update the incident');
+    } finally {
+      setFinishing('');
+    }
+  };
 
   const owners = useMemo(() => Array.from(new Set(items.map((item) => item.owner))).sort(), [items]);
 
@@ -396,6 +433,7 @@ export default function ServiceDeskPage() {
   }, [items]);
 
   const ticketIdLabel = (item: DeskTicket) => {
+    if (item.reference) return item.reference;
     if (item.kind === 'change') return `CHG-${String(item.id).padStart(3, '0')}`;
     if (item.kind === 'incident') return `INC-${String(item.id).padStart(3, '0')}`;
     if (item.kind === 'problem') return `PRB-${String(item.id).padStart(3, '0')}`;
@@ -584,7 +622,26 @@ export default function ServiceDeskPage() {
                 <Link href={selected.href} className="btn btn-primary sd-inspector__cta">
                   Open {kindLabel(selected.kind).toLowerCase()}
                 </Link>
-                <Link href={selected.href} className="sd-inspector__more" aria-label="More actions">...</Link>
+                {selected.kind === 'incident' && incidentCanFinish(selected.status) ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={finishing === selected.key}
+                      onClick={() => void finishIncident(selected, 'close')}
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={finishing === selected.key}
+                      onClick={() => void finishIncident(selected, 'cancel')}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : null}
               </div>
 
               <h3 className="sd-section__title">Key details</h3>

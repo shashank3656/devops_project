@@ -9,24 +9,28 @@ import (
 )
 
 type cloudAccountRecord struct {
-	ID              int        `json:"id"`
-	Provider        string     `json:"provider"`
-	AccountID       string     `json:"account_id"`
-	DisplayName     string     `json:"display_name"`
-	TeamSlug        string     `json:"team_slug"`
-	Environments    []string   `json:"environments"`
-	AuthMode        string     `json:"auth_mode"`
-	RoleARN         string     `json:"role_arn,omitempty"`
-	ExternalIDSet   bool       `json:"external_id_set"`
-	SecretRefSet    bool       `json:"secret_ref_set"`
-	Status          string     `json:"status"`
-	LastError       string     `json:"last_error,omitempty"`
-	LastTestAt      *time.Time `json:"last_test_at,omitempty"`
-	OnboardedBy     *int       `json:"onboarded_by,omitempty"`
-	OnboardedByName string     `json:"onboarded_by_username,omitempty"`
-	DisabledAt      *time.Time `json:"disabled_at,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	ID                   int        `json:"id"`
+	Provider             string     `json:"provider"`
+	AccountID            string     `json:"account_id"`
+	DisplayName          string     `json:"display_name"`
+	TeamSlug             string     `json:"team_slug"`
+	ProjectID            int        `json:"project_id,omitempty"`
+	ProjectName          string     `json:"project_name,omitempty"`
+	ProjectCode          string     `json:"project_code,omitempty"`
+	Environments         []string   `json:"environments"`
+	AuthMode             string     `json:"auth_mode"`
+	RoleARNSet           bool       `json:"role_arn_set"`
+	ExternalIDSet        bool       `json:"external_id_set"`
+	SecretRefSet         bool       `json:"secret_ref_set"`
+	CredentialsEncrypted bool       `json:"credentials_encrypted"`
+	Status               string     `json:"status"`
+	LastError            string     `json:"last_error,omitempty"`
+	LastTestAt           *time.Time `json:"last_test_at,omitempty"`
+	OnboardedBy          *int       `json:"onboarded_by,omitempty"`
+	OnboardedByName      string     `json:"onboarded_by_username,omitempty"`
+	DisabledAt           *time.Time `json:"disabled_at,omitempty"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
 }
 
 func normalizeCloudProvider(value string) string {
@@ -147,6 +151,7 @@ func devopsCloudAccountCreateHandler(w http.ResponseWriter, r *http.Request) {
 		AccountID    string   `json:"account_id"`
 		DisplayName  string   `json:"display_name"`
 		TeamSlug     string   `json:"team_slug"`
+		ProjectID    int      `json:"project_id"`
 		Environments []string `json:"environments"`
 		AuthMode     string   `json:"auth_mode"`
 		RoleARN      string   `json:"role_arn"`
@@ -161,8 +166,12 @@ func devopsCloudAccountCreateHandler(w http.ResponseWriter, r *http.Request) {
 	accountID := strings.TrimSpace(body.AccountID)
 	displayName := strings.TrimSpace(body.DisplayName)
 	teamSlug := strings.TrimSpace(body.TeamSlug)
-	if accountID == "" || displayName == "" || teamSlug == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "account_id, display_name, and team_slug are required", nil)
+	if accountID == "" || displayName == "" || teamSlug == "" || body.ProjectID <= 0 {
+		writeAPIError(w, r, http.StatusBadRequest, "account, name, team, and project are required", nil)
+		return
+	}
+	if !cloudAccountProjectExists(body.ProjectID) {
+		writeAPIError(w, r, http.StatusBadRequest, "project not found", nil)
 		return
 	}
 	if !devopsManagerCanOnboardTeamSlug(managerID, teamSlug) {
@@ -182,6 +191,7 @@ func devopsCloudAccountCreateHandler(w http.ResponseWriter, r *http.Request) {
 		AccountID:    accountID,
 		DisplayName:  displayName,
 		TeamSlug:     teamSlug,
+		ProjectID:    body.ProjectID,
 		Environments: body.Environments,
 		AuthMode:     authMode,
 		RoleARN:      roleARN,
@@ -194,7 +204,7 @@ func devopsCloudAccountCreateHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusConflict, "this cloud account is already onboarded", err)
 			return
 		}
-		writeAPIError(w, r, http.StatusInternalServerError, "failed to create cloud account", err)
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to create cloud account", nil)
 		return
 	}
 	AppendAuditLog(&managerID, "cloud_account_onboard", "cloud_account", strconv.Itoa(item.ID), provider+":"+accountID+":"+teamSlug)
@@ -208,7 +218,27 @@ func devopsCloudAccountCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "account": item})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":                "ok",
+		"credentials_encrypted": item.CredentialsEncrypted,
+		"account":               item,
+		"entered": map[string]interface{}{
+			"provider":              item.Provider,
+			"account_id":            item.AccountID,
+			"display_name":          item.DisplayName,
+			"team_slug":             item.TeamSlug,
+			"project_id":            item.ProjectID,
+			"project_name":          item.ProjectName,
+			"project_code":          item.ProjectCode,
+			"environments":          item.Environments,
+			"auth_mode":             item.AuthMode,
+			"status":                item.Status,
+			"role_arn_set":          item.RoleARNSet,
+			"external_id_set":       item.ExternalIDSet,
+			"secret_ref_set":        item.SecretRefSet,
+			"credentials_encrypted": item.CredentialsEncrypted,
+		},
+	})
 }
 
 func devopsCloudAccountDetailHandler(w http.ResponseWriter, r *http.Request, id int) {
@@ -290,12 +320,21 @@ func devopsCloudAccountPatchHandler(w http.ResponseWriter, r *http.Request, user
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "account": updated})
 		return
 	}
+	if body.RoleARN != nil && strings.TrimSpace(*body.RoleARN) == "" {
+		body.RoleARN = nil
+	}
+	if body.ExternalID != nil && strings.TrimSpace(*body.ExternalID) == "" {
+		body.ExternalID = nil
+	}
+	if body.SecretRef != nil && strings.TrimSpace(*body.SecretRef) == "" {
+		body.SecretRef = nil
+	}
 	trustTouched := strings.TrimSpace(body.AuthMode) != "" || body.RoleARN != nil || body.ExternalID != nil || body.SecretRef != nil
 	var updated *cloudAccountRecord
 	if trustTouched {
 		_, creds, credErr := getCloudAccountCredentials(item.ID)
 		if credErr != nil || creds == nil {
-			writeAPIError(w, r, http.StatusInternalServerError, "failed to load account credentials", credErr)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to load account credentials", nil)
 			return
 		}
 		authMode := creds.AuthMode
@@ -319,7 +358,7 @@ func devopsCloudAccountPatchHandler(w http.ResponseWriter, r *http.Request, user
 			return
 		}
 		if err := updateCloudAccountTrust(item.ID, authMode, roleARN, externalID, secretRef); err != nil {
-			writeAPIError(w, r, http.StatusInternalServerError, "failed to update trust configuration", err)
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to update trust configuration", nil)
 			return
 		}
 		AppendAuditLog(&managerID, "cloud_account_trust_update", "cloud_account", strconv.Itoa(item.ID), item.AccountID)

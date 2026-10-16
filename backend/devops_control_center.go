@@ -872,6 +872,17 @@ func normalizeIncidentStatus(status string) string {
 	}
 }
 
+func incidentFinishStatus(action string) (status string, note string, ok bool) {
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "close":
+		return "closed", "Closed.", true
+	case "cancel":
+		return "cancelled", "Cancelled.", true
+	default:
+		return "", "", false
+	}
+}
+
 func incidentIsActive(status string) bool {
 	switch normalizeIncidentStatus(status) {
 	case "open", "acknowledged", "investigating", "mitigating", "on_hold":
@@ -1790,6 +1801,42 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if len(parts) == 2 && strings.EqualFold(parts[1], "review") {
 		handleIncidentReviewRoute(w, r, managerID, id)
 		return
+	}
+	if len(parts) == 2 {
+		nextStatus, note, finish := incidentFinishStatus(parts[1])
+		if finish {
+			if r.Method != http.MethodPost {
+				writeMethodNotAllowed(w, r)
+				return
+			}
+			var body struct {
+				Note string `json:"note"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if strings.TrimSpace(body.Note) != "" {
+				note = strings.TrimSpace(body.Note)
+			}
+			if _, err := execContext(`
+				UPDATE request_incidents
+				SET status = $2, status_note = $3, updated_at = CURRENT_TIMESTAMP
+				WHERE id = $1
+			`, id, nextStatus, note); err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, "could not update the incident", nil)
+				return
+			}
+			item, err := getRequestIncidentByID(id)
+			if err != nil || item == nil {
+				writeAPIError(w, r, http.StatusNotFound, "incident not found", err)
+				return
+			}
+			applyIncidentSLATransition(item.ID, item.Status)
+			item = hydrateOneIncidentITSM(item)
+			AppendAuditLog(&managerID, "request_incident_"+parts[1], "request_incident", strconv.Itoa(id), item.Status)
+			go pushIncidentToExternalIRM(*item)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "status": "ok"})
+			return
+		}
 	}
 	if len(parts) == 2 && strings.EqualFold(parts[1], "rollback") {
 		if r.Method != "POST" {

@@ -7985,6 +7985,54 @@ html[data-theme='dark'] .devops-layout .btn-primary {
   border-color: transparent;
 }
 
+html[data-theme] .devops-layout .cloud-state-panel {
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 8px;
+  max-width: none;
+  margin: 0;
+  padding: 28px 16px 18px;
+  text-align: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+html[data-theme] .devops-layout .cloud-state-panel__title {
+  font-size: 15px;
+  margin: 0;
+}
+
+html[data-theme] .devops-layout .cloud-state-panel__message {
+  max-width: 42ch;
+  margin: 0;
+}
+
+html[data-theme] .devops-layout .cloud-state-panel__actions {
+  justify-content: center;
+  margin-top: 4px;
+}
+
+html[data-theme] .devops-layout .cloud-state-panel__actions .btn {
+  min-height: 32px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+html[data-theme] .devops-layout .cloud-state-panel__actions .btn-secondary,
+html[data-theme='dark'] .devops-layout .cloud-state-panel__actions .btn-secondary {
+  background: transparent;
+  color: var(--ig-text);
+  border: 1px solid var(--ig-border-strong);
+}
+
+html[data-theme='dark'] .devops-layout .cloud-state-panel__actions .btn-primary {
+  background: #f4f6fa;
+  color: #1c2433;
+  border-color: transparent;
+}
+
 html[data-theme='dark'] .devops-layout .label,
 html[data-theme='dark'] .devops-layout .portal-surface__title,
 html[data-theme='dark'] .devops-layout .empty-state {

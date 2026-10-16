@@ -6,7 +6,7 @@ import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import ITSMClock from '../../../components/ITSMClock';
 import ITSMJournal from '../../../components/ITSMJournal';
-import { FALLBACK_ITSM_CATEGORIES, INCIDENT_STATES, ITSMCategory, ITSMJournalEntry, IncidentSLA, ITSM_PRIORITIES, incidentStateValue, normalizeCategories, normalizeJournal, normalizeSLA, severityToPriority, subcategoriesFor } from '../../../lib/itsm';
+import { FALLBACK_ITSM_CATEGORIES, INCIDENT_STATES, ITSMCategory, ITSMJournalEntry, IncidentSLA, ITSM_PRIORITIES, incidentCanFinish, incidentStateValue, normalizeCategories, normalizeJournal, normalizeSLA, severityToPriority, subcategoriesFor } from '../../../lib/itsm';
 import { asRecord, getString } from '../../../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -197,6 +197,7 @@ export default function EditIncidentPage() {
   const [generatingReview, setGeneratingReview] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [finishing, setFinishing] = useState<'close' | 'cancel' | ''>('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [callers, setCallers] = useState<TeamMemberOption[]>([]);
@@ -395,6 +396,39 @@ export default function EditIncidentPage() {
       setError(err instanceof Error ? err.message : 'Failed to save incident');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const finish = async (action: 'close' | 'cancel') => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token || !incidentId) {
+      clearSessionAndRedirect();
+      return;
+    }
+    setFinishing(action);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/incidents/${incidentId}/${action}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: statusNote.trim() }),
+      });
+      if (response.status === 401 || response.status === 403) {
+        clearSessionAndRedirect();
+        return;
+      }
+      const data = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok) {
+        throw new Error(getString(data.error, 'Could not update the incident'));
+      }
+      setStatus(action === 'close' ? 'closed' : 'cancelled');
+      setNotice(action === 'close' ? 'Incident closed.' : 'Incident cancelled.');
+      void loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update the incident');
+    } finally {
+      setFinishing('');
     }
   };
 
@@ -728,13 +762,23 @@ export default function EditIncidentPage() {
                 >
                   {silencing ? 'Silencing...' : 'Silence 2 hours'}
                 </button>
+                {incidentCanFinish(status) ? (
+                  <>
+                    <button type="button" className="btn btn-primary" disabled={Boolean(finishing) || saving} onClick={() => void finish('close')}>
+                      {finishing === 'close' ? 'Closing...' : 'Close'}
+                    </button>
+                    <button type="button" className="btn btn-secondary" disabled={Boolean(finishing) || saving} onClick={() => void finish('cancel')}>
+                      {finishing === 'cancel' ? 'Cancelling...' : 'Cancel'}
+                    </button>
+                  </>
+                ) : null}
                 <button
                   type="button"
-                  className="btn btn-primary"
-                  disabled={saving || !summary.trim()}
+                  className="btn btn-secondary"
+                  disabled={saving || !summary.trim() || Boolean(finishing)}
                   onClick={() => void submit()}
                 >
-                  {saving ? 'Saving...' : 'Save Changes'}
+                  {saving ? 'Saving...' : 'Save'}
                 </button>
               </div>
               {incidentId ? (

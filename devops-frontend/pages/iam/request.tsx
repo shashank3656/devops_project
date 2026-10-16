@@ -9,7 +9,13 @@ import { sessionAuthHeaders } from '../../lib/portalAccess';
 
 type Team = { id: string; name: string };
 type Principal = { id: string; name: string; teamId: string; verified: boolean };
-type Account = { id: string; name: string; provider: string };
+type Account = {
+  id: string;
+  name: string;
+  provider: string;
+  project_id?: number;
+  environments?: string[];
+};
 type CatalogProject = { id: number; name: string; code?: string; environments?: string[]; clouds?: string[]; services?: { cloud: string; service: string }[] };
 type Evaluation = { evaluationId?: string; decision?: string; risk?: string; roleName?: string; reason?: string; warnings?: string[] };
 
@@ -32,11 +38,12 @@ export default function IamRequestPage() {
   const [teamId, setTeamId] = useState('team-platform');
   const [principalId, setPrincipalId] = useState('');
   const [accountId, setAccountId] = useState('');
+  const [cloudMember, setCloudMember] = useState('');
   const [services, setServices] = useState<string[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
-  const [ticket, setTicket] = useState('');
+  const [accessNumber] = useState(() => `AR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
   const [justification, setJustification] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -47,13 +54,19 @@ export default function IamRequestPage() {
     Promise.all([
       fetch(`${apiUrl}/api/devops/iam/teams`, { headers }).then((res) => res.json()),
       fetch(`${apiUrl}/api/devops/iam/principals`, { headers }).then((res) => res.json()),
-      fetch(`${apiUrl}/api/devops/iam/cloud-accounts`, { headers }).then((res) => res.json()),
+      fetch(`${apiUrl}/api/devops/cloud/accounts`, { headers }).then((res) => (res.ok ? res.json() : { accounts: [] })),
       fetch(`${apiUrl}/api/me/projects`, { headers }).then((res) => (res.ok ? res.json() : { projects: [] })),
       fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => (res.ok ? res.json() : { projects: [] })),
     ]).then(([teamBody, principalBody, accountBody, mineBody, managedBody]) => {
       setTeams(Array.isArray(teamBody?.teams) ? teamBody.teams : []);
       setPrincipals(Array.isArray(principalBody?.principals) ? principalBody.principals : []);
-      setAccounts(Array.isArray(accountBody?.accounts) ? accountBody.accounts : []);
+      setAccounts((Array.isArray(accountBody?.accounts) ? accountBody.accounts : []).map((item: { id?: number; account_id?: string; display_name?: string; provider?: string; project_id?: number; environments?: string[] }) => ({
+        id: String(item.account_id || item.id || ''),
+        name: item.display_name || String(item.account_id || ''),
+        provider: String(item.provider || ''),
+        project_id: item.project_id,
+        environments: Array.isArray(item.environments) ? item.environments : [],
+      })).filter((item: Account) => item.id));
       const managed = Array.isArray(managedBody?.projects) ? managedBody.projects : [];
       const mine = Array.isArray(mineBody?.projects) ? mineBody.projects : [];
       setProjects(managed.length ? managed : mine);
@@ -74,6 +87,24 @@ export default function IamRequestPage() {
     .filter((item) => String(item.cloud || '').toLowerCase() === cloudKey && catalogIds.has(item.service))
     .map((item) => ({ id: item.service, label: serviceLabel(cloudKey, item.service) }));
   const serviceOptions = projectServices.length ? projectServices : catalog;
+  const accountOptions = accounts.filter((item) => {
+    if (item.provider.toUpperCase() !== activeProvider) return false;
+    if (!projectId || String(item.project_id || '') !== projectId) return false;
+    if (!environment) return false;
+    if (!item.environments?.length) return true;
+    return item.environments.some((name) => name.toLowerCase() === environment.toLowerCase());
+  });
+  const accountLabel = cloudKey === 'gcp' ? 'GCP project ID' : cloudKey === 'azure' ? 'Subscription ID' : 'Account ID';
+  const accountEmpty = !projectId
+    ? 'Select a project first'
+    : !environment
+      ? 'Select an environment first'
+      : cloudKey === 'gcp'
+        ? 'No GCP project for this environment'
+        : cloudKey === 'azure'
+          ? 'No subscription for this environment'
+          : 'No account for this environment';
+
   const permissionOptions = useMemo(() => {
     const rows = services.length
       ? services.flatMap((id) => permissionsForService(cloudKey, id))
@@ -88,6 +119,7 @@ export default function IamRequestPage() {
 
   useEffect(() => {
     if (provider !== activeProvider) setProvider(activeProvider);
+    setAccountId((current) => (accountOptions.some((item) => item.id === current) ? current : ''));
     setServices((current) => current.filter((id) => catalogIds.has(id)));
     setPermissions((current) => current.filter((id) => permissionOptions.some((item) => item.id === id)));
   }, [activeProvider, cloudKey]);
@@ -105,8 +137,8 @@ export default function IamRequestPage() {
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     const timing = windowError();
-    if (!principalId || !environment || !projectId || services.length === 0 || permissions.length === 0 || timing) {
-      setError(timing || 'Choose the person, project, at least one service, and at least one permission.');
+    if (!principalId || !environment || !projectId || !accountId || services.length === 0 || permissions.length === 0 || timing || (cloudKey !== 'gcp' && !cloudMember.trim())) {
+      setError(timing || `Choose the person, project, environment, ${accountLabel.toLowerCase()}, a service, and a permission.`);
       return;
     }
     setSaving(true);
@@ -128,8 +160,9 @@ export default function IamRequestPage() {
       startsAt,
       endsAt,
       durationMinutes: minutes,
-      ticketRef: ticket.trim(),
+      ticketRef: accessNumber,
       justification: justification.trim(),
+      cloudMember: cloudKey === 'gcp' ? '' : cloudMember.trim(),
     };
     try {
       const reviewed = await fetch(`${apiUrl}/api/devops/iam/access-requests/evaluate`, {
@@ -187,25 +220,31 @@ export default function IamRequestPage() {
             </section>
             <section>
               <h2>Where</h2>
-              <label className="label" htmlFor="iam-env">Environment</label>
-              <select id="iam-env" className="input" value={environment} onChange={(event) => { setEnvironment(event.target.value); setServices([]); setPermissions([]); }}>
-                <option value="">Choose an environment</option>
-                {environmentOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+              <label className="label" htmlFor="iam-provider">Cloud</label>
+              <select id="iam-provider" className="input" value={activeProvider} onChange={(event) => { setProvider(event.target.value); setAccountId(''); setServices([]); setPermissions([]); }}>
+                {cloudOptions.map((cloud) => <option key={cloud} value={cloud.toUpperCase()}>{cloud.toUpperCase()}</option>)}
               </select>
               <label className="label" htmlFor="iam-project">Project</label>
-              <select id="iam-project" className="input" value={projectId} onChange={(event) => { setProjectId(event.target.value); setServices([]); setPermissions([]); }}>
+              <select id="iam-project" className="input" value={projectId} onChange={(event) => { setProjectId(event.target.value); setEnvironment(''); setAccountId(''); setServices([]); setPermissions([]); }}>
                 <option value="">Choose a project</option>
                 {projects.map((item) => <option key={item.id} value={item.id}>{item.code ? `${item.name} (${item.code})` : item.name}</option>)}
               </select>
-              <label className="label" htmlFor="iam-provider">Cloud</label>
-              <select id="iam-provider" className="input" value={activeProvider} onChange={(event) => { setProvider(event.target.value); setServices([]); setPermissions([]); }}>
-                {cloudOptions.map((cloud) => <option key={cloud} value={cloud.toUpperCase()}>{cloud.toUpperCase()}</option>)}
+              <label className="label" htmlFor="iam-env">Environment</label>
+              <select id="iam-env" className="input" value={environment} onChange={(event) => { setEnvironment(event.target.value); setAccountId(''); setServices([]); setPermissions([]); }} disabled={!projectId}>
+                <option value="">{projectId ? 'Choose an environment' : 'Select a project first'}</option>
+                {projectId ? environmentOptions.map((name) => <option key={name} value={name}>{name}</option>) : null}
               </select>
-              <label className="label" htmlFor="iam-account">Account</label>
-              <select id="iam-account" className="input" value={accountId} onChange={(event) => setAccountId(event.target.value)}>
-                <option value="">No connected account</option>
-                {accounts.filter((item) => item.provider.toUpperCase() === activeProvider).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              <label className="label" htmlFor="iam-account">{accountLabel}</label>
+              <select id="iam-account" className="input" value={accountId} onChange={(event) => setAccountId(event.target.value)} disabled={!projectId || !environment}>
+                <option value="">{accountEmpty}</option>
+                {accountOptions.map((item) => <option key={item.id} value={item.id}>{item.id}{item.name && item.name !== item.id ? ` · ${item.name}` : ''}</option>)}
               </select>
+              {cloudKey === 'gcp' ? null : (
+                <>
+                  <label className="label" htmlFor="iam-member">{cloudKey === 'azure' ? 'Object id' : 'Existing role name'}</label>
+                  <input id="iam-member" className="input" value={cloudMember} onChange={(event) => setCloudMember(event.target.value)} autoComplete="off" required />
+                </>
+              )}
             </section>
           </div>
           <div className="iam-grid">
@@ -249,8 +288,8 @@ export default function IamRequestPage() {
             <p className="access-hint">These are two separate times. The gap cannot be more than 90 days.</p>
           </section>
           <section>
-            <label className="label" htmlFor="iam-ticket">Ticket</label>
-            <input id="iam-ticket" className="input" value={ticket} onChange={(event) => setTicket(event.target.value)} placeholder="INC-2026-1042" />
+            <label className="label" htmlFor="iam-access">Access request</label>
+            <input id="iam-access" className="input" value={accessNumber} readOnly />
             <label className="label" htmlFor="iam-why">Why this is needed</label>
             <textarea id="iam-why" className="input" rows={3} value={justification} onChange={(event) => setJustification(event.target.value)} />
             <p className="access-hint">Do not paste a secret, password, or connection string. Submitting raises an access request on the Service Desk.</p>

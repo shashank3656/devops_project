@@ -191,6 +191,7 @@ func sectionForPath(path string) string {
 		strings.HasPrefix(path, "/api/devops/runbooks"),
 		strings.HasPrefix(path, "/api/devops/notification-settings"),
 		strings.HasPrefix(path, "/api/devops/approval-notification-analytics"),
+		strings.HasPrefix(path, "/api/devops/inbound-sources"),
 		strings.HasPrefix(path, "/api/reports/"):
 		return "operations"
 	case strings.HasPrefix(path, "/api/devops/projects"):

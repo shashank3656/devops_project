@@ -37,6 +37,7 @@ func TestSectionForPath(t *testing.T) {
 		"/api/history":                    "requests",
 		"/api/request":                    "requests-or-daily",
 		"/api/oncall/days":                "operations",
+		"/api/devops/inbound-sources":     "operations",
 		"/api/devops/projects":            "projects",
 		"/api/devops/environment-catalog": "catalog",
 		"/api/devops/k8s-pods":            "infrastructure",

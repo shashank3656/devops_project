@@ -15,6 +15,9 @@ interface CloudAccount {
   account_id: string;
   display_name: string;
   team_slug: string;
+  project_id?: number;
+  project_name?: string;
+  project_code?: string;
   environments: string[];
   auth_mode: string;
   role_arn?: string;
@@ -93,7 +96,7 @@ export default function CloudAccountsPage() {
       if (providerFilter && normalizeCloudProvider(row.provider) !== providerFilter) return false;
       if (statusFilter && row.status !== statusFilter) return false;
       if (!q) return true;
-      const haystack = [row.display_name, row.account_id, row.team_slug, row.provider].join(' ').toLowerCase();
+      const haystack = [row.display_name, row.account_id, row.team_slug, row.project_name, row.project_code, row.provider].join(' ').toLowerCase();
       return haystack.includes(q);
     });
   }, [rows, query, statusFilter, providerFilter]);
@@ -130,6 +133,11 @@ export default function CloudAccountsPage() {
       },
       { id: 'account_id', header: 'Account ID', cell: (row) => <span className="ig-mono">{row.account_id}</span> },
       { id: 'team_slug', header: 'Team', cell: (row) => row.team_slug },
+      {
+        id: 'project',
+        header: 'Project',
+        cell: (row) => row.project_code || row.project_name || '—',
+      },
       {
         id: 'environments',
         header: 'Environments',
@@ -268,7 +276,7 @@ export default function CloudAccountsPage() {
                     <CloudStatePanel
                       kind="empty"
                       title="No cloud accounts yet"
-                      message="Onboard AWS, Azure, or GCP with the trust checklist, then run Test connection on the account page."
+                      message="Connect AWS, Azure, or GCP. Inventory stays empty until an account is connected."
                       action={
                         <>
                           <CloudEmptyCatalogAction />
