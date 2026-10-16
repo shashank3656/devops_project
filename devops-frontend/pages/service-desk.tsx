@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { loadTicketAudience, ticketVisible } from '../lib/ticketAudience';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -20,6 +21,7 @@ interface DeskTicket {
   status: string;
   priority: string;
   owner: string;
+  requester?: string;
   service: string;
   environment: string;
   source: string;
@@ -226,6 +228,7 @@ export default function ServiceDeskPage() {
             status: str(row.status, 'new'),
             priority: str(row.priority, 'medium'),
             owner: str(row.assignee_username) || str(row.author) || 'Unassigned',
+            requester: str(row.created_by_username) || str(row.author),
             service: str(row.service) || 'Unknown',
             environment: str(row.environment) || str(row.env) || 'Unknown',
             source: str(row.pipeline_url) ? 'Webhook' : 'Manual',
@@ -249,6 +252,7 @@ export default function ServiceDeskPage() {
             status: str(row.status, 'new'),
             priority: str(row.severity, str(row.priority, 'medium')),
             owner: str(row.owner_username) || str(row.assignee_username) || 'Unassigned',
+            requester: str(row.created_by_username) || str(row.caller) || str(row.owner_username),
             service: str(row.service) || 'Unknown',
             environment: str(row.environment) || str(row.env) || 'Unknown',
             source: str(row.source) || 'Webhook',
@@ -272,6 +276,7 @@ export default function ServiceDeskPage() {
             status: str(row.status, 'new'),
             priority: str(row.priority, 'medium'),
             owner: str(row.assignee_username) || 'Unassigned',
+            requester: str(row.created_by_username),
             service: str(row.service) || 'Unknown',
             environment: str(row.environment) || str(row.env) || 'Unknown',
             source: 'Manual',
@@ -295,6 +300,7 @@ export default function ServiceDeskPage() {
             status: str(row.status, 'new'),
             priority: str(row.priority, 'medium'),
             owner: str(row.assignee_username) || str(row.created_by_username) || 'Unassigned',
+            requester: str(row.created_by_username),
             service: str(row.service) || 'Unknown',
             environment: str(row.environment) || str(row.env) || 'Unknown',
             source: 'Manual',
@@ -321,7 +327,8 @@ export default function ServiceDeskPage() {
             summary: scope || 'Waiting for DevOps approval',
             status: str(row.status, 'pending'),
             priority: 'high',
-            owner: 'DevOps',
+            owner: str(row.requesterName) || 'DevOps',
+            requester: str(row.requesterName),
             service: role || 'Access',
             environment: '—',
             source: 'IAM',
@@ -331,9 +338,12 @@ export default function ServiceDeskPage() {
           });
         });
 
-        next.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setItems(next);
-        if (!selectedKey && next[0]) setSelectedKey(next[0].key);
+        return loadTicketAudience(apiUrl).then((audience) => {
+          const visible = next.filter((item) => ticketVisible([item.owner, item.requester || ''], audience));
+          visible.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setItems(visible);
+          if (!selectedKey && visible[0]) setSelectedKey(visible[0].key);
+        });
       })
       .catch(() => setError('Failed to load service desk'))
       .finally(() => setLoading(false));

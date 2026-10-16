@@ -62,13 +62,18 @@ export default function IamRequestPage() {
 
   const visiblePrincipals = principals.filter((item) => item.teamId === teamId);
   const selectedProject = projects.find((item) => String(item.id) === projectId);
-  const cloudKey = provider.toLowerCase();
   const environmentOptions = selectedProject?.environments?.length ? selectedProject.environments : ['dev', 'uat', 'prod'];
   const cloudOptions = selectedProject?.clouds?.length ? selectedProject.clouds : ['aws', 'azure', 'gcp'];
+  const activeProvider = cloudOptions.some((cloud) => cloud.toUpperCase() === provider)
+    ? provider
+    : (cloudOptions[0] || 'aws').toUpperCase();
+  const cloudKey = activeProvider.toLowerCase();
+  const catalog = servicesForCloud(cloudKey);
+  const catalogIds = new Set(catalog.map((item) => item.id));
   const projectServices = (selectedProject?.services || [])
-    .filter((item) => String(item.cloud || '').toLowerCase() === cloudKey && item.service)
+    .filter((item) => String(item.cloud || '').toLowerCase() === cloudKey && catalogIds.has(item.service))
     .map((item) => ({ id: item.service, label: serviceLabel(cloudKey, item.service) }));
-  const serviceOptions = projectServices.length ? projectServices : servicesForCloud(cloudKey);
+  const serviceOptions = projectServices.length ? projectServices : catalog;
   const permissionOptions = useMemo(() => {
     const rows = services.length
       ? services.flatMap((id) => permissionsForService(cloudKey, id))
@@ -80,6 +85,12 @@ export default function IamRequestPage() {
       return true;
     });
   }, [cloudKey, services]);
+
+  useEffect(() => {
+    if (provider !== activeProvider) setProvider(activeProvider);
+    setServices((current) => current.filter((id) => catalogIds.has(id)));
+    setPermissions((current) => current.filter((id) => permissionOptions.some((item) => item.id === id)));
+  }, [activeProvider, cloudKey]);
 
   function windowError(): string {
     if (!startsAt || !endsAt) return 'Choose a start time and an end time.';
@@ -103,7 +114,7 @@ export default function IamRequestPage() {
     const serviceNames = services.map((id) => serviceLabel(cloudKey, id));
     const minutes = Math.round((new Date(endsAt).getTime() - new Date(startsAt).getTime()) / 60000);
     const payload = {
-      provider,
+      provider: activeProvider,
       teamId,
       principalId,
       cloudAccountId: accountId,
@@ -187,13 +198,13 @@ export default function IamRequestPage() {
                 {projects.map((item) => <option key={item.id} value={item.id}>{item.code ? `${item.name} (${item.code})` : item.name}</option>)}
               </select>
               <label className="label" htmlFor="iam-provider">Cloud</label>
-              <select id="iam-provider" className="input" value={provider} onChange={(event) => { setProvider(event.target.value); setServices([]); setPermissions([]); }}>
+              <select id="iam-provider" className="input" value={activeProvider} onChange={(event) => { setProvider(event.target.value); setServices([]); setPermissions([]); }}>
                 {cloudOptions.map((cloud) => <option key={cloud} value={cloud.toUpperCase()}>{cloud.toUpperCase()}</option>)}
               </select>
               <label className="label" htmlFor="iam-account">Account</label>
               <select id="iam-account" className="input" value={accountId} onChange={(event) => setAccountId(event.target.value)}>
                 <option value="">No connected account</option>
-                {accounts.filter((item) => item.provider === provider).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                {accounts.filter((item) => item.provider.toUpperCase() === activeProvider).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
             </section>
           </div>
@@ -201,7 +212,7 @@ export default function IamRequestPage() {
             <section>
               <h2>Services</h2>
               <p className="access-hint">Select every service this access covers.</p>
-              <div className="iam-choices" role="group" aria-label="Services">
+              <div className="iam-choices" role="group" aria-label={`${activeProvider} services`} key={cloudKey}>
                 {serviceOptions.map((item) => (
                   <label key={item.id} className={services.includes(item.id) ? 'is-current' : undefined}>
                     <input type="checkbox" checked={services.includes(item.id)} onChange={() => setServices((current) => toggle(current, item.id))} />

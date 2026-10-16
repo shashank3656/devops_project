@@ -744,9 +744,14 @@ func devopsChangesHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	userID, ok := requireDevopsManager(w, r)
+	userID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
+	}
+	if r.Method != "GET" {
+		if _, ok = requireDevopsManager(w, r); !ok {
+			return
+		}
 	}
 	switch r.Method {
 	case "GET":

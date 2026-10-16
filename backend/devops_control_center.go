@@ -1628,9 +1628,14 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	managerID, ok := requireDevopsManager(w, r)
+	managerID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
+	}
+	if r.Method != "GET" {
+		if _, ok = requireDevopsManager(w, r); !ok {
+			return
+		}
 	}
 	switch r.Method {
 	case "GET":
@@ -1682,28 +1687,28 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	case "POST":
 		var body struct {
-			RequestID         int    `json:"request_id"`
-			TeamID            *int   `json:"team_id"`
-			Severity          string `json:"severity"`
-			Priority          string `json:"priority"`
-			Impact            string `json:"impact"`
-			Urgency           string `json:"urgency"`
-			Status            string `json:"status"`
-			EscalationLevel   string `json:"escalation_level"`
-			OwnerUserID       *int   `json:"owner_user_id"`
-			Summary           string `json:"summary"`
-			Notes             string `json:"notes"`
-			Comment           string `json:"comment"`
-			ProjectID         int    `json:"project_id"`
-			Service           string `json:"service"`
-			Environment       string `json:"environment"`
-			CallerUserID      int    `json:"caller_user_id"`
-			Category          string `json:"category"`
-			Subcategory       string `json:"subcategory"`
-			ParentIncidentID  int    `json:"parent_incident_id"`
-			ConferenceURL     string `json:"conference_url"`
-			ConferenceNotes   string `json:"conference_notes"`
-			Major             *bool  `json:"major"`
+			RequestID        int    `json:"request_id"`
+			TeamID           *int   `json:"team_id"`
+			Severity         string `json:"severity"`
+			Priority         string `json:"priority"`
+			Impact           string `json:"impact"`
+			Urgency          string `json:"urgency"`
+			Status           string `json:"status"`
+			EscalationLevel  string `json:"escalation_level"`
+			OwnerUserID      *int   `json:"owner_user_id"`
+			Summary          string `json:"summary"`
+			Notes            string `json:"notes"`
+			Comment          string `json:"comment"`
+			ProjectID        int    `json:"project_id"`
+			Service          string `json:"service"`
+			Environment      string `json:"environment"`
+			CallerUserID     int    `json:"caller_user_id"`
+			Category         string `json:"category"`
+			Subcategory      string `json:"subcategory"`
+			ParentIncidentID int    `json:"parent_incident_id"`
+			ConferenceURL    string `json:"conference_url"`
+			ConferenceNotes  string `json:"conference_notes"`
+			Major            *bool  `json:"major"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)

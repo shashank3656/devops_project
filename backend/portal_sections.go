@@ -9,14 +9,15 @@ import (
 )
 
 type sectionGrants struct {
-	Requests       bool `json:"requests"`
-	Daily          bool `json:"daily"`
-	Operations     bool `json:"operations"`
-	Infrastructure bool `json:"infrastructure"`
-	Security       bool `json:"security"`
-	Records        bool `json:"records"`
-	PortalAccess   bool `json:"portalAccess"`
-	Manager        bool `json:"manager"`
+	Requests       bool            `json:"requests"`
+	Daily          bool            `json:"daily"`
+	Operations     bool            `json:"operations"`
+	Infrastructure bool            `json:"infrastructure"`
+	Security       bool            `json:"security"`
+	Records        bool            `json:"records"`
+	PortalAccess   bool            `json:"portalAccess"`
+	Manager        bool            `json:"manager"`
+	Pages          map[string]bool `json:"pages,omitempty"`
 }
 
 func allSectionGrants() sectionGrants {
@@ -62,7 +63,52 @@ func (g sectionGrants) merge(other sectionGrants) sectionGrants {
 	g.Records = g.Records || other.Records
 	g.PortalAccess = g.PortalAccess || other.PortalAccess
 	g.Manager = g.Manager || other.Manager
+	if g.Pages == nil || other.Pages == nil {
+		g.Pages = nil
+		return g
+	}
+	pages := make(map[string]bool, len(g.Pages)+len(other.Pages))
+	for key, allowed := range g.Pages {
+		if allowed {
+			pages[key] = true
+		}
+	}
+	for key, allowed := range other.Pages {
+		if allowed {
+			pages[key] = true
+		}
+	}
+	g.Pages = pages
 	return g
+}
+
+func (g sectionGrants) allowsPage(page string) bool {
+	if page == "" || g.Pages == nil {
+		return true
+	}
+	return g.Pages[page]
+}
+
+func pageForPath(path string) string {
+	path = strings.Split(path, "?")[0]
+	switch {
+	case strings.HasPrefix(path, "/api/devops/iam"):
+		return "iam"
+	case strings.HasPrefix(path, "/api/devops/k8s"):
+		return "kubernetes"
+	case strings.HasPrefix(path, "/api/devops/projects"), strings.HasPrefix(path, "/api/devops/project-"):
+		return "projects"
+	case strings.HasPrefix(path, "/api/devops/promotions"), strings.HasPrefix(path, "/api/deployments/"):
+		return "releases"
+	case path == "/api/devops/environment-catalog":
+		return "environments"
+	case strings.HasPrefix(path, "/api/devops/cloud/accounts"):
+		return "cloud-accounts"
+	case strings.HasPrefix(path, "/api/devops/cloud/"):
+		return "cloud-inventory"
+	default:
+		return ""
+	}
 }
 
 func (g sectionGrants) allows(section string) bool {
@@ -340,7 +386,8 @@ func withSectionGate(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if !sectionGrantsForUser(user).allows(section) {
+		grants := sectionGrantsForUser(user)
+		if !grants.allows(section) || !grants.allowsPage(pageForPath(r.URL.Path)) {
 			writeAPIError(w, r, http.StatusForbidden, "This section is not included for your group.", nil)
 			return
 		}
@@ -407,4 +454,54 @@ func adminTeamGrantsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	AppendAuditLog(&adminID, "team_grants_update", "team", strconv.Itoa(id), team.Name)
 	encodeAdminTeamJSON(w, map[string]interface{}{"grants": grants, "grants_saved": true, "status": "ok"})
+}
+
+func meTicketAudienceHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if len(authHeader) < 8 || !strings.HasPrefix(authHeader, "Bearer ") {
+		writeAPIError(w, r, http.StatusUnauthorized, "missing or invalid authorization", nil)
+		return
+	}
+	userID, err := validateToken(strings.TrimSpace(authHeader[7:]))
+	if err != nil || userID <= 0 {
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid token", nil)
+		return
+	}
+	user, err := GetUserByID(userID)
+	if err != nil || user == nil {
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid token", nil)
+		return
+	}
+	scope := "own"
+	names := []string{}
+	if user.Username != "" {
+		names = append(names, user.Username)
+	}
+	if user.Role == "admin" || user.UserType == "devops_user" {
+		scope = "all"
+		names = []string{}
+	} else if DB != nil {
+		if ids, memberErr := GetTeamMemberUserIDsForManager(userID); memberErr == nil && len(ids) > 1 {
+			scope = "team"
+			if mapped, nameErr := GetUsernamesByUserIDs(ids); nameErr == nil {
+				names = []string{}
+				for _, name := range mapped {
+					if name != "" {
+						names = append(names, name)
+					}
+				}
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"scope": scope, "usernames": names, "status": "ok"})
 }

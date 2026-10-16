@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import AccessNav from '../../../components/AccessNav';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
-import { ACCESS_SECTIONS, grantsForTeam, sameGrants, type SectionGrants, type SectionKey } from '../../../lib/accessSections';
+import { ACCESS_SECTIONS, grantSummary, grantsForTeam, pagesFor, sameGrants, type SectionGrants, type SectionKey } from '../../../lib/accessSections';
 import { sessionAuthHeaders } from '../../../lib/portalAccess';
 
 type Team = {
@@ -220,7 +220,20 @@ export default function GroupAccessPage() {
   }
 
   function toggle(key: SectionKey) {
-    setDraft((current) => ({ ...current, [key]: !current[key] }));
+    setDraft((current) => {
+      const on = !current[key];
+      const pages = { ...current.pages };
+      for (const page of pagesFor(key)) pages[page.key] = on;
+      return { ...current, [key]: on, pages };
+    });
+  }
+
+  function togglePage(section: SectionKey, pageKey: string) {
+    setDraft((current) => {
+      const pages = { ...current.pages, [pageKey]: !current.pages[pageKey] };
+      const on = pagesFor(section).some((page) => pages[page.key]);
+      return { ...current, [section]: on, pages };
+    });
   }
 
   async function save() {
@@ -259,7 +272,7 @@ export default function GroupAccessPage() {
       { value: 'manager', label: 'Manager' },
     ];
   const available = people.filter((person) => !members.some((member) => member.user_id === person.id));
-  const chosen = ACCESS_SECTIONS.filter((section) => draft[section.key]).map((section) => section.label);
+  const chosen = grantSummary(draft) === 'No sections' ? [] : [grantSummary(draft)];
   const dirty = !sameGrants(draft, saved) || !custom;
 
   return (
@@ -366,6 +379,22 @@ export default function GroupAccessPage() {
                         />
                         {section.label}
                       </label>
+                      {draft[section.key] ? (
+                        <ul className="access-pages" aria-label={`${section.label} pages`}>
+                          {pagesFor(section.key).map((page) => (
+                            <li key={page.key}>
+                              <label className={draft.pages[page.key] ? 'access-chip is-on' : 'access-chip'}>
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(draft.pages[page.key])}
+                                  onChange={() => togglePage(section.key, page.key)}
+                                />
+                                {page.label}
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

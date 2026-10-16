@@ -89,10 +89,12 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// view=team: if user is manager (portal team manager or has reportees via manager_id), show all tickets from team + reportees; else same as normal (own tickets)
+	// Admin and the DevOps team see every request. A team manager sees teammates. Everyone else sees their own.
 	createdByIn := ([]int)(nil)
-	if r.URL.Query().Get("view") == "team" && userIDInt > 0 {
-		if memberIDs, err := GetTeamMemberUserIDsForManager(userIDInt); err == nil && len(memberIDs) > 0 {
+	if userIDInt > 0 {
+		if viewer, viewerErr := GetUserByID(userIDInt); viewerErr == nil && viewer != nil && (viewer.Role == "admin" || viewer.UserType == "devops_user") {
+			userIDInt = 0
+		} else if memberIDs, memberErr := GetTeamMemberUserIDsForManager(userIDInt); memberErr == nil && len(memberIDs) > 1 {
 			createdByIn = memberIDs
 		}
 	}

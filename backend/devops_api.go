@@ -177,12 +177,10 @@ func devopsTicketsHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	userID, ok := requireDevopsUser(w, r)
-	if !ok {
+	if _, ok := requireDevopsUser(w, r); !ok {
 		return
 	}
-	// Get requests where assigned_to = userID; use GetPRRequests with a filter. We don't have assigned_to filter yet - add it or query directly.
-	requests, err := GetPRRequestsByAssignedTo(userID, 100, 0)
+	requests, err := GetPRRequests("", "", "", 0, "", "", "", 0, 0, nil, 100, 0, "created_at", "desc", false, "", "")
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)

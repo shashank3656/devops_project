@@ -7420,10 +7420,26 @@ html[data-theme] .devops-layout .access-members .btn {
 
 .access-menu {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  gap: 10px;
   margin: 10px 0 0;
   padding: 0;
+  list-style: none;
+}
+
+.access-menu > li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.access-pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 0 0 0 12px;
   list-style: none;
 }
 
