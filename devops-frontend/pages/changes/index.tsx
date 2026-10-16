@@ -159,13 +159,13 @@ export default function ChangesCatalogPage() {
       if (statusFilter) params.set('status', statusFilter);
       if (typeFilter) params.set('change_type', typeFilter);
       if (query.trim()) params.set('q', query.trim());
-      const query = params.toString();
+      const search = params.toString();
       const headers = { Authorization: `Bearer ${token}` };
-      const res = await fetch(`${apiUrl}/api/devops/changes?${query}`, { headers });
+      const res = await fetch(`${apiUrl}/api/devops/changes?${search}`, { headers });
       const data = await res.json().catch(() => ({}));
       let changes = Array.isArray(data?.changes) ? data.changes : [];
       if (storedIsAdmin()) {
-        const adminRes = await fetch(`${apiUrl}/api/admin/changes?${query}`, { headers });
+        const adminRes = await fetch(`${apiUrl}/api/admin/changes?${search}`, { headers });
         if (adminRes.ok) {
           const adminData = await adminRes.json().catch(() => ({}));
           if (Array.isArray(adminData?.changes)) changes = adminData.changes;
