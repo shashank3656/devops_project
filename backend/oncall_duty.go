@@ -129,6 +129,23 @@ func teamMemberIDs(teamID int) (map[int]bool, error) {
 	return allowed, nil
 }
 
+func canSaveOncallRoster(userID, teamID int) bool {
+	if userID <= 0 || teamID <= 0 {
+		return false
+	}
+	team, err := GetTeamByID(teamID)
+	if err != nil || team == nil {
+		return false
+	}
+	if user, userErr := GetUserByID(userID); userErr == nil && user != nil && user.Role == "admin" {
+		return true
+	}
+	if prof, profErr := GetDevopsProfile(userID); profErr == nil && prof != nil && prof.IsManager {
+		return true
+	}
+	return CanUserManageDevopsTeam(userID, teamID)
+}
+
 func saveOncallRoster(teamID int, userIDs []int) ([]int, error) {
 	if DB == nil || teamID <= 0 {
 		return nil, errOncallInvalid
@@ -642,7 +659,7 @@ func oncallRosterHandler(w http.ResponseWriter, r *http.Request) {
 		if body.TeamID <= 0 {
 			body.TeamID = teamID
 		}
-		if body.TeamID <= 0 || !CanUserManageDevopsTeam(userID, body.TeamID) {
+		if body.TeamID <= 0 || !canSaveOncallRoster(userID, body.TeamID) {
 			writeAPIError(w, r, http.StatusForbidden, "you cannot manage this team", nil)
 			return
 		}
