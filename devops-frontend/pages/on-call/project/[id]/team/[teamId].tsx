@@ -61,9 +61,9 @@ export default function OnCallTeamUsersPage() {
     setLoading(true);
     setError('');
     Promise.all([
-      fetch(`${apiUrl}/api/devops/projects/${projectId}`, { headers }).then(readJson).catch(() => ({})),
-      fetch(`${apiUrl}/api/devops/my-teams`, { headers }).then(readJson).catch(() => ({})),
-      fetch(`${apiUrl}/api/devops/project-options`, { headers }).then(readJson).catch(() => ({})),
+      fetch(`${apiUrl}/api/devops/projects/${projectId}`, { headers }).then(readJson).catch((): Record<string, unknown> => ({})),
+      fetch(`${apiUrl}/api/devops/my-teams`, { headers }).then(readJson).catch((): Record<string, unknown> => ({})),
+      fetch(`${apiUrl}/api/devops/project-options`, { headers }).then(readJson).catch((): Record<string, unknown> => ({})),
       fetch(`${apiUrl}/api/oncall/team-members?team_id=${teamId}`, { headers }).then(async (res) => ({ ok: res.ok, body: await readJson(res) })),
       fetch(`${apiUrl}/api/oncall/roster?team_id=${teamId}`, { headers }).then(async (res) => ({ ok: res.ok, body: await readJson(res) })),
     ])
