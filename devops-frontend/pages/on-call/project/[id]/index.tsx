@@ -41,6 +41,8 @@ export default function OnCallProjectTeamsPage() {
   const [teams, setTeams] = useState<OnCallTeam[]>([]);
   const [catalog, setCatalog] = useState<TeamOption[]>([]);
   const [teamId, setTeamId] = useState('');
+  const [query, setQuery] = useState('');
+  const [teamFilter, setTeamFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -85,7 +87,13 @@ export default function OnCallProjectTeamsPage() {
       .finally(() => setLoading(false));
   }, [apiUrl, projectId, router.isReady]);
 
-  const available = catalog.filter((team) => !teams.some((item) => item.team_id === team.id));
+  const needle = query.trim().toLowerCase();
+  const available = catalog.filter((team) => !teams.some((item) => item.team_id === team.id) && (!needle || team.name.toLowerCase().includes(needle)));
+  const visibleTeams = teams.filter((team) => {
+    if (teamFilter && String(team.team_id) !== teamFilter) return false;
+    if (!needle) return true;
+    return team.team_name.toLowerCase().includes(needle);
+  });
 
   async function addTeam() {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -153,6 +161,24 @@ export default function OnCallProjectTeamsPage() {
         {error ? <div className="alert alert-error">{error}</div> : null}
         {note ? <div className="alert alert-success">{note}</div> : null}
         <section className="portal-surface">
+          <div className="svc-filters">
+            <label>
+              Search
+              <input className="input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Team" />
+            </label>
+            <label>
+              Team
+              <select className="input" value={teamFilter} onChange={(event) => setTeamFilter(event.target.value)}>
+                <option value="">All teams</option>
+                {teams.map((team) => <option key={team.team_id} value={team.team_id}>{known(team.team_name)}</option>)}
+              </select>
+            </label>
+            {query || teamFilter ? (
+              <div className="svc-filters__actions">
+                <button type="button" className="btn btn-secondary" onClick={() => { setQuery(''); setTeamFilter(''); }}>Clear</button>
+              </div>
+            ) : null}
+          </div>
           <div className="oncall-controls">
             <label>
               Add team
@@ -166,9 +192,10 @@ export default function OnCallProjectTeamsPage() {
           {!catalog.length && !loading ? <p className="portal-surface__subtitle">The team list did not load. The teams API returned no teams for this sign-in.</p> : null}
           {loading ? <div className="empty-state">Loading teams...</div> : null}
           {!loading && !teams.length ? <div className="empty-state">No teams are on this project call yet.</div> : null}
-          {!loading && teams.length ? (
+          {!loading && teams.length && !visibleTeams.length ? <div className="empty-state">No teams match this filter.</div> : null}
+          {!loading && visibleTeams.length ? (
             <ul className="svc-tree">
-              {teams.map((team) => (
+              {visibleTeams.map((team) => (
                 <li key={team.team_id} className="svc-tree__row">
                   <Link className="svc-tree__folder" href={`/on-call/project/${projectId}/team/${team.team_id}`}>
                     <span>{known(team.team_name)}<small className="svc-tree__meta">Choose people</small></span>

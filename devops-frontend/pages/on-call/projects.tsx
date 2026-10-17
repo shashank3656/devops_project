@@ -67,6 +67,11 @@ export default function OnCallProjectsPage() {
               Search
               <input className="input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Project" />
             </label>
+            {query ? (
+              <div className="svc-filters__actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setQuery('')}>Clear</button>
+              </div>
+            ) : null}
           </div>
           {loading ? <div className="empty-state">Loading projects...</div> : null}
           {!loading && !visible.length ? <div className="empty-state">{query ? 'No projects match this search.' : 'No projects are visible for this scope.'}</div> : null}

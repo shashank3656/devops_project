@@ -15,11 +15,13 @@ type AccessRequest = {
   evaluation?: { roleName?: string; normalizedScope?: string; input?: { service?: string; environment?: string } };
 };
 
-const STATUS_OPTIONS = ['New', 'In progress', 'Active', 'Rejected', 'Cancelled'];
+const STATUS_OPTIONS = ['New', 'In progress', 'Provisioning', 'Provision failed', 'Active', 'Rejected', 'Cancelled'];
 
 function statusLabel(status: string): string {
   const value = status.toUpperCase();
   if (!value) return 'New';
+  if (value.includes('PROVISION_FAILED')) return 'Provision failed';
+  if (value.includes('PROVISION')) return 'Provisioning';
   if (value.includes('PENDING')) return 'In progress';
   if (value === 'ACTIVE') return 'Active';
   if (value.includes('REJECT')) return 'Rejected';
@@ -96,7 +98,7 @@ export default function IamHomePage() {
   return (
     <DevOpsLayout>
       <Head><title>IAM</title></Head>
-      <IamFrame title="IAM" lede="Requests waiting here are New until a reviewer picks them up, then In progress, Active, or Rejected.">
+      <IamFrame title="IAM" lede="A request stays New until review, then In progress. Approval moves it to Provisioning until the access file is applied, then Active. Rejected and Cancelled stop the grant.">
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         <form className="iam-filters" onSubmit={(event) => event.preventDefault()}>
           <label>

@@ -52,6 +52,8 @@ export default function OnCallTeamUsersPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
+  const [query, setQuery] = useState('');
+  const [personFilter, setPersonFilter] = useState('');
 
   useEffect(() => {
     if (!router.isReady || !projectId || !teamId) return;
@@ -141,18 +143,48 @@ export default function OnCallTeamUsersPage() {
         {error ? <div className="alert alert-error">{error}</div> : null}
         {note ? <div className="alert alert-success">{note}</div> : null}
         <section className="portal-surface">
+          <div className="svc-filters">
+            <label>
+              Search
+              <input className="input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Person" />
+            </label>
+            <label>
+              People
+              <select className="input" value={personFilter} onChange={(event) => setPersonFilter(event.target.value)}>
+                <option value="">All people</option>
+                <option value="selected">Selected</option>
+                <option value="unselected">Not selected</option>
+              </select>
+            </label>
+            {query || personFilter ? (
+              <div className="svc-filters__actions">
+                <button type="button" className="btn btn-secondary" onClick={() => { setQuery(''); setPersonFilter(''); }}>Clear</button>
+              </div>
+            ) : null}
+          </div>
           {loading ? <div className="empty-state">Loading people...</div> : null}
           {!loading && !people.length ? <div className="empty-state">This team has no members yet.</div> : null}
           {!loading && people.length ? (
             <form onSubmit={(event) => void save(event)}>
               <div className="catalog-editor__choice-row">
-                {people.map((person) => (
+                {people.filter((person) => {
+                  const needle = query.trim().toLowerCase();
+                  if (personFilter === 'selected' && !selected.includes(person.userId)) return false;
+                  if (personFilter === 'unselected' && selected.includes(person.userId)) return false;
+                  return !needle || person.name.toLowerCase().includes(needle);
+                }).map((person) => (
                   <label key={person.userId} className="catalog-editor__toggle-label">
                     <input type="checkbox" checked={selected.includes(person.userId)} onChange={() => toggle(person.userId)} />
                     <span>{known(person.name)}</span>
                   </label>
                 ))}
               </div>
+              {!people.some((person) => {
+                const needle = query.trim().toLowerCase();
+                if (personFilter === 'selected' && !selected.includes(person.userId)) return false;
+                if (personFilter === 'unselected' && selected.includes(person.userId)) return false;
+                return !needle || person.name.toLowerCase().includes(needle);
+              }) ? <p className="portal-surface__subtitle">No people match this filter.</p> : null}
               <button type="submit" className="btn btn-primary" disabled={saving} style={{ marginTop: 16 }}>{saving ? 'Saving...' : 'Save people'}</button>
             </form>
           ) : null}

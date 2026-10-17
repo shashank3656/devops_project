@@ -190,100 +190,89 @@ export default function ChangeDetailPage() {
       <Head>
         <title>{item?.change_number || 'Change'} - DevOps</title>
       </Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="work-page">
+        <header className="work-page__head">
           <div>
-            <span className="portal-page__eyebrow">Change request</span>
-            <h1 className="portal-page__title">{item?.change_number || 'Change'}</h1>
-            <p className="portal-page__subtitle">{item?.title || 'Track approval, schedule, and implementation.'}</p>
+            <p className="ops-kicker">{item?.change_number || 'Change request'}</p>
+            <h1>{item?.title || (loading ? 'Loading change' : 'Change')}</h1>
+            <p>
+              {item
+                ? [item.status, item.service, item.environment === 'unspecified' ? '' : item.environment].filter(Boolean).join(' · ')
+                : 'Approval, schedule, and implementation for this change.'}
+            </p>
           </div>
-          <div className="portal-page__actions">
+          <div className="request-actions" style={{ marginTop: 0 }}>
             {item && !finished && isManager && item.previous_sha ? (
               <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={applyRollback}>
                 {acting === 'rollback' ? 'Recording…' : `Roll back to ${item.previous_sha.slice(0, 7)}`}
               </button>
             ) : null}
-            <Link href="/changes" className="btn btn-secondary">
-              Back to changes
-            </Link>
+            <Link href="/changes" className="btn btn-secondary">Back to changes</Link>
           </div>
-        </div>
+        </header>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
-        {loading ? <div className="empty-state">Loading change...</div> : null}
+        {loading ? <p className="work-empty">Loading change…</p> : null}
         {item ? (
           <>
-            <DeliveryVisibilityCard delivery={delivery} portal="devops" />
+            <ChangeDetailPanel item={item} actions={detailActions} />
             <ResourceContextPanel
               apiUrl={apiUrl}
               token={token}
               kind="change"
               resourceId={resourceId}
               hideDelivery
-              className="devops-change-context-panel"
             />
-            <ChangeDetailPanel item={item} actions={detailActions} />
-
-            {brief?.headline || incidents.length || blastRadius.length || drift?.drifted || item.files?.length ? (
-              <section className="portal-surface" style={{ marginTop: 16 }}>
-                {brief?.headline ? (
-                  <div style={{ marginBottom: 16 }}>
-                    <h2 className="portal-surface__title">Change brief</h2>
-                    <p className="portal-surface__subtitle">{brief.headline}</p>
-                    {brief.changing?.length ? (
-                      <p className="portal-surface__subtitle">
-                        {brief.changing.map((group) => `${group.label} (${group.count})`).join(' · ')}
-                      </p>
-                    ) : null}
-                    {brief.risk_because?.length ? (
-                      <ul>
-                        {brief.risk_because.map((reason) => (
-                          <li key={reason}>{reason}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </div>
-                ) : null}
-                {drift?.drifted ? (
-                  <p className="portal-surface__subtitle">{drift.detail || 'Live image drifted from last CHG'}</p>
-                ) : null}
-                {blastRadius.length ? (
-                  <div style={{ marginBottom: 16 }}>
-                    <h2 className="portal-surface__title">Blast radius</h2>
-                    <ul>
-                      {blastRadius.map((entry) => (
-                        <li key={entry}>{entry}</li>
-                      ))}
+            {(brief?.headline || incidents.length || blastRadius.length || drift?.drifted || item.files?.length || delivery) ? (
+            <aside className="work-board">
+              <DeliveryVisibilityCard delivery={delivery} portal="devops" />
+              {brief?.headline ? (
+                <div>
+                  <h2 className="chg-detail__section-title">Change brief</h2>
+                  <p className="chg-detail__hint">{brief.headline}</p>
+                  {brief.changing?.length ? (
+                    <p className="chg-detail__hint">{brief.changing.map((group) => `${group.label} (${group.count})`).join(' · ')}</p>
+                  ) : null}
+                  {brief.risk_because?.length ? (
+                    <ul className="request-timeline">
+                      {brief.risk_because.map((reason) => <li key={reason}>{reason}</li>)}
                     </ul>
-                  </div>
-                ) : null}
-                {incidents.length ? (
-                  <div>
-                    <h2 className="portal-surface__title">Linked incidents</h2>
-                    <ul>
-                      {incidents.map((incident) => (
-                        <li key={incident.id}>
-                          <Link href={`/incidents/${incident.id}/edit`}>
-                            {incident.incident_number || `INC${incident.id}`} — {incident.summary} ({incident.severity})
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                {item.files?.length ? (
-                  <>
-                    <h2 className="portal-surface__title">Files</h2>
-                    <ul>
-                      {item.files.map((file) => (
-                        <li key={file}>
-                          <code>{file}</code>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                ) : null}
-              </section>
+                  ) : null}
+                </div>
+              ) : null}
+              {drift?.drifted ? <p className="chg-detail__hint">{drift.detail || 'Live image drifted from the last change.'}</p> : null}
+              {blastRadius.length ? (
+                <div>
+                  <h2 className="chg-detail__section-title">Blast radius</h2>
+                  <ul className="request-timeline">
+                    {blastRadius.map((entry) => <li key={entry}>{entry}</li>)}
+                  </ul>
+                </div>
+              ) : null}
+              {incidents.length ? (
+                <div>
+                  <h2 className="chg-detail__section-title">Linked incidents</h2>
+                  <ul className="request-timeline">
+                    {incidents.map((incident) => (
+                      <li key={incident.id}>
+                        <Link href={`/incidents/${incident.id}/edit`}>
+                          {incident.incident_number || `INC${incident.id}`} — {incident.summary}
+                        </Link>
+                        <small>{incident.severity}</small>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {item.files?.length ? (
+                <div>
+                  <h2 className="chg-detail__section-title">Files</h2>
+                  <ul className="request-timeline">
+                    {item.files.map((file) => <li key={file}><code>{file}</code></li>)}
+                  </ul>
+                </div>
+              ) : null}
+            </aside>
             ) : null}
           </>
         ) : null}
