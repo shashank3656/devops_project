@@ -800,6 +800,7 @@ func main() {
 	http.HandleFunc("/api/oncall/flags", oncallFlagHandler)
 	http.HandleFunc("/api/oncall/roster", oncallRosterHandler)
 	http.HandleFunc("/api/oncall/days", oncallDaysHandler)
+	http.HandleFunc("/api/oncall/project-teams", oncallProjectTeamsHandler)
 	http.HandleFunc("/api/oncall/covers", oncallCoverHandler)
 	http.HandleFunc("/api/oncall/covers/", oncallCoverHandler)
 	http.HandleFunc("/api/maintenance/notices", maintenanceNoticeHandler)

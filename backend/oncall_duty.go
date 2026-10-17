@@ -48,6 +48,14 @@ func migrateOncallDutySchema() {
 			PRIMARY KEY (team_id, user_id)
 		)
 	`)
+	_, _ = DB.Exec(`ALTER TABLE project_oncall ADD COLUMN IF NOT EXISTS teams_set BOOLEAN NOT NULL DEFAULT FALSE`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS project_oncall_teams (
+			project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+			team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+			PRIMARY KEY (project_id, team_id)
+		)
+	`)
 	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS oncall_cover_requests (
 			id SERIAL PRIMARY KEY,
@@ -303,7 +311,119 @@ type oncallProjectTeamView struct {
 	Roster   []oncallDutyPerson `json:"roster"`
 }
 
+func projectOncallTeamsConfigured(projectID int) (bool, error) {
+	var set bool
+	err := DB.QueryRow(`SELECT teams_set FROM project_oncall WHERE project_id = $1`, projectID).Scan(&set)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return set, err
+}
+
+func listStoredOncallTeams(projectID int) ([]oncallProjectTeam, error) {
+	rows, err := DB.Query(`
+		SELECT t.id, COALESCE(t.name, '')
+		FROM project_oncall_teams p
+		INNER JOIN teams t ON t.id = p.team_id
+		WHERE p.project_id = $1
+		ORDER BY t.name, t.id
+	`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	teams := []oncallProjectTeam{}
+	for rows.Next() {
+		var id int
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		name = strings.TrimSpace(name)
+		if name == "" {
+			name = "Unknown"
+		}
+		teams = append(teams, oncallProjectTeam{ID: id, Name: name})
+	}
+	return teams, rows.Err()
+}
+
+func materializeProjectOncallTeams(projectID int) error {
+	set, err := projectOncallTeamsConfigured(projectID)
+	if err != nil || set {
+		return err
+	}
+	current, err := listImplicitOncallTeams(projectID)
+	if err != nil {
+		return err
+	}
+	tx, err := DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, team := range current {
+		if _, err := tx.Exec(`
+			INSERT INTO project_oncall_teams (project_id, team_id) VALUES ($1, $2)
+			ON CONFLICT (project_id, team_id) DO NOTHING
+		`, projectID, team.ID); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO project_oncall (project_id, enabled, teams_set)
+		VALUES ($1, FALSE, TRUE)
+		ON CONFLICT (project_id) DO UPDATE SET teams_set = TRUE, updated_at = CURRENT_TIMESTAMP
+	`, projectID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func addProjectOncallTeam(projectID, teamID int) error {
+	if DB == nil || projectID <= 0 || teamID <= 0 {
+		return errOncallInvalid
+	}
+	team, err := GetTeamByID(teamID)
+	if err != nil || team == nil {
+		return errOncallInvalid
+	}
+	if err := materializeProjectOncallTeams(projectID); err != nil {
+		return err
+	}
+	_, err = DB.Exec(`
+		INSERT INTO project_oncall_teams (project_id, team_id) VALUES ($1, $2)
+		ON CONFLICT (project_id, team_id) DO NOTHING
+	`, projectID, teamID)
+	return err
+}
+
+func removeProjectOncallTeam(projectID, teamID int) error {
+	if DB == nil || projectID <= 0 || teamID <= 0 {
+		return errOncallInvalid
+	}
+	if err := materializeProjectOncallTeams(projectID); err != nil {
+		return err
+	}
+	_, err := DB.Exec(`DELETE FROM project_oncall_teams WHERE project_id = $1 AND team_id = $2`, projectID, teamID)
+	return err
+}
+
 func listProjectOncallTeams(projectID int) ([]oncallProjectTeam, error) {
+	if DB == nil || projectID <= 0 {
+		return nil, errOncallInvalid
+	}
+	set, err := projectOncallTeamsConfigured(projectID)
+	if err != nil {
+		return nil, err
+	}
+	if set {
+		return listStoredOncallTeams(projectID)
+	}
+	return listImplicitOncallTeams(projectID)
+}
+
+func listImplicitOncallTeams(projectID int) ([]oncallProjectTeam, error) {
 	if DB == nil || projectID <= 0 {
 		return nil, errOncallInvalid
 	}
@@ -544,6 +664,87 @@ func oncallRosterHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeMethodNotAllowed(w, r)
 	}
+}
+
+func oncallProjectTeamsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if r.Method == "GET" {
+		if _, ok := requireDevopsUser(w, r); !ok {
+			return
+		}
+		projectID, _ := strconv.Atoi(r.URL.Query().Get("project_id"))
+		if projectID <= 0 {
+			writeAPIError(w, r, http.StatusBadRequest, "project is required", nil)
+			return
+		}
+		teams, err := listProjectOncallTeams(projectID)
+		if err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "Teams for this project could not be loaded.", err)
+			return
+		}
+		catalog, err := GetTeams()
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "Teams could not be loaded.", err)
+			return
+		}
+		choices := make([]map[string]any, 0, len(catalog))
+		for _, team := range catalog {
+			name := strings.TrimSpace(team.Name)
+			if name == "" {
+				name = "Unknown"
+			}
+			choices = append(choices, map[string]any{"team_id": team.ID, "team_name": name})
+		}
+		onCall := make([]map[string]any, 0, len(teams))
+		for _, team := range teams {
+			onCall = append(onCall, map[string]any{"team_id": team.ID, "team_name": team.Name})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"teams": onCall, "choices": choices, "status": "ok"})
+		return
+	}
+	if _, ok := requireDevopsManager(w, r); !ok {
+		return
+	}
+	var body struct {
+		ProjectID int `json:"project_id"`
+		TeamID    int `json:"team_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ProjectID <= 0 || body.TeamID <= 0 {
+		writeAPIError(w, r, http.StatusBadRequest, "Choose a project and a team.", err)
+		return
+	}
+	var err error
+	switch r.Method {
+	case "POST":
+		err = addProjectOncallTeam(body.ProjectID, body.TeamID)
+	case "DELETE":
+		err = removeProjectOncallTeam(body.ProjectID, body.TeamID)
+	default:
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	if err != nil {
+		if err == errOncallInvalid {
+			writeAPIError(w, r, http.StatusBadRequest, "Choose a team that exists.", nil)
+			return
+		}
+		writeAPIError(w, r, http.StatusInternalServerError, "The team could not be updated.", err)
+		return
+	}
+	teams, err := listProjectOncallTeams(body.ProjectID)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "The team could not be updated.", err)
+		return
+	}
+	onCall := make([]map[string]any, 0, len(teams))
+	for _, team := range teams {
+		onCall = append(onCall, map[string]any{"team_id": team.ID, "team_name": team.Name})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"teams": onCall, "status": "ok"})
 }
 
 func oncallDaysHandler(w http.ResponseWriter, r *http.Request) {
