@@ -3,8 +3,10 @@ package main
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -57,6 +59,7 @@ type parsedChangeWebhook struct {
 	ImageDigest          string          `json:"image_digest"`
 	ImageRef             string          `json:"image"`
 	ProvenanceJSON       string          `json:"-"`
+	WorkerBoundProject   int             `json:"-"`
 	Provenance           map[string]any  `json:"provenance"`
 	Signed               *bool           `json:"signed"`
 	RolloutStage         string          `json:"rollout_stage"`
@@ -82,12 +85,132 @@ type parsedAlertEvent struct {
 	Environment      string
 	ProjectCode      string
 	ProjectID        int
+	BoundProject     int
 	DashboardURL     string
 	Status           string
 	StartsAt         time.Time
 	Labels           map[string]string
 	ExternalProvider string
 	ExternalID       string
+}
+
+type workerConnection struct {
+	ProjectID int
+	Bound     bool
+}
+
+func workerProject(connection workerConnection, requested int) (int, error) {
+	if !connection.Bound || connection.ProjectID <= 0 {
+		return 0, fmt.Errorf("worker connection has no project")
+	}
+	if requested > 0 && requested != connection.ProjectID {
+		return 0, fmt.Errorf("worker cannot leave its connection project")
+	}
+	return connection.ProjectID, nil
+}
+
+func bindChangeWorker(payload *parsedChangeWebhook, connection workerConnection) error {
+	if payload == nil || !connection.Bound {
+		return nil
+	}
+	projectID, err := workerProject(connection, payload.ProjectID)
+	if err != nil {
+		return err
+	}
+	payload.ProjectID = projectID
+	payload.ProjectCode = ""
+	payload.WorkerBoundProject = projectID
+	return nil
+}
+
+func workerOwnsRecord(connection workerConnection, projectID *int) error {
+	if !connection.Bound {
+		return nil
+	}
+	if projectID == nil || *projectID != connection.ProjectID {
+		return fmt.Errorf("worker cannot leave its connection project")
+	}
+	return nil
+}
+
+func bindAlertWorker(event *parsedAlertEvent, connection workerConnection) error {
+	if event == nil || !connection.Bound {
+		return nil
+	}
+	projectID, err := workerProject(connection, event.ProjectID)
+	if err != nil {
+		return err
+	}
+	event.ProjectID = projectID
+	event.ProjectCode = ""
+	event.BoundProject = projectID
+	return nil
+}
+
+type inboundCredential struct {
+	Secret    string
+	ProjectID int
+}
+
+func listEnabledInboundCredentials(kind string) []inboundCredential {
+	if DB == nil {
+		return nil
+	}
+	normalized := normalizeInboundSourceKind(kind)
+	rows, err := DB.Query(`
+		SELECT COALESCE(secret,''), project_id
+		FROM inbound_webhook_sources
+		WHERE enabled = TRUE
+		  AND COALESCE(secret,'') <> ''
+		  AND (
+		    $1 = ''
+		    OR kind = $1
+		    OR ($1 IN ('alert', 'grafana', 'alertmanager', 'generic_log') AND kind IN ('alert', 'grafana', 'alertmanager', 'generic_log'))
+		    OR ($1 = 'change' AND kind = 'change')
+		  )
+	`, normalized)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := []inboundCredential{}
+	for rows.Next() {
+		var secret string
+		var projectID sql.NullInt64
+		if err := rows.Scan(&secret, &projectID); err != nil {
+			continue
+		}
+		cred := inboundCredential{Secret: strings.TrimSpace(secret)}
+		if projectID.Valid && projectID.Int64 > 0 {
+			cred.ProjectID = int(projectID.Int64)
+		}
+		if cred.Secret != "" {
+			out = append(out, cred)
+		}
+	}
+	return out
+}
+
+func inboundSecretMatches(secret string, headers http.Header, body []byte) bool {
+	provided := firstNonEmptyHeader(headers, "X-CI-Secret", "X-SetuOps-Secret", "X-Webhook-Secret")
+	signature := firstNonEmptyHeader(headers, "X-Hub-Signature-256", "X-SetuOps-Signature")
+	if provided != "" && secretEqual(provided, secret) {
+		return true
+	}
+	return signature != "" && verifyInboundHMAC(secret, body, signature)
+}
+
+func matchedInboundConnection(kind inboundWebhookKind, headers http.Header, body []byte) (workerConnection, bool) {
+	for _, cred := range listEnabledInboundCredentials(string(kind)) {
+		if cred.ProjectID <= 0 || !inboundSecretMatches(cred.Secret, headers, body) {
+			continue
+		}
+		return workerConnection{ProjectID: cred.ProjectID, Bound: true}, true
+	}
+	if inboundWebhookAuthorized(kind, headers, body) {
+		return workerConnection{}, true
+	}
+	return workerConnection{}, false
 }
 
 func inboundWebhookAuthorized(kind inboundWebhookKind, headers http.Header, body []byte) bool {
@@ -539,6 +662,33 @@ func readWebhookBody(r *http.Request) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(r.Body, 1<<20))
 }
 
+func canonicalWebhookPath(path string) string {
+	path = strings.Split(path, "?")[0]
+	for _, route := range []string{"/api/webhooks/change", "/api/webhooks/alert", "/api/webhooks/github"} {
+		rest := strings.TrimPrefix(path, route)
+		if rest == route || strings.HasPrefix(rest, route+"/") {
+			return route + strings.TrimPrefix(rest, route)
+		}
+	}
+	return path
+}
+
+func withCanonicalWebhookPath(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := canonicalWebhookPath(r.URL.Path)
+		if path == r.URL.Path {
+			next.ServeHTTP(w, r)
+			return
+		}
+		clone := r.Clone(r.Context())
+		urlCopy := *r.URL
+		urlCopy.Path = path
+		urlCopy.RawPath = ""
+		clone.URL = &urlCopy
+		next.ServeHTTP(w, clone)
+	})
+}
+
 func changeWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
@@ -554,13 +704,18 @@ func changeWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid body", err)
 		return
 	}
-	if !inboundWebhookAuthorized(inboundKindChange, r.Header, body) {
+	connection, authorized := matchedInboundConnection(inboundKindChange, r.Header, body)
+	if !authorized {
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid secret", nil)
 		return
 	}
 	payload, err := parseChangeWebhookJSON(body)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
+		return
+	}
+	if err := bindChangeWorker(&payload, connection); err != nil {
+		writeAPIError(w, r, http.StatusForbidden, "worker cannot leave its connection project", nil)
 		return
 	}
 	if payload.Repo == "" || payload.SHA == "" {
@@ -613,7 +768,8 @@ func alertWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid body", err)
 		return
 	}
-	if !inboundWebhookAuthorized(inboundKindAlert, r.Header, body) {
+	connection, authorized := matchedInboundConnection(inboundKindAlert, r.Header, body)
+	if !authorized {
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid secret", nil)
 		return
 	}
@@ -625,6 +781,12 @@ func alertWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	if len(events) == 0 {
 		writeAPIError(w, r, http.StatusBadRequest, "no alerts in payload", nil)
 		return
+	}
+	for i := range events {
+		if err := bindAlertWorker(&events[i], connection); err != nil {
+			writeAPIError(w, r, http.StatusForbidden, "worker cannot leave its connection project", nil)
+			return
+		}
 	}
 	created := 0
 	updated := 0

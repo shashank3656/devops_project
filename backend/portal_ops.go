@@ -65,6 +65,104 @@ func applyChangeTypeFilter(items []changeRequestRecord, changeType string) []cha
 	return filtered
 }
 
+func scopedEnvironment(environment, fallback string) string {
+	if value := strings.TrimSpace(environment); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(fallback); value != "" {
+		return value
+	}
+	return "*"
+}
+
+func subjectCanReadUnscoped(subject authzSubject) bool {
+	for _, grant := range subject.Grants {
+		if !grant.Revoked && grant.ProjectID == 0 && strings.EqualFold(grant.Role, "admin") {
+			return true
+		}
+	}
+	return false
+}
+
+func (subject authzSubject) readsEveryRecord() bool {
+	return subject.ReadAll || subjectCanReadUnscoped(subject)
+}
+
+func changeInScope(subject authzSubject, item changeRequestRecord, action authzAction) bool {
+	if action == authzRead && subject.readsEveryRecord() {
+		return true
+	}
+	if item.ProjectID == nil || *item.ProjectID <= 0 {
+		return false
+	}
+	resourceID := strings.TrimSpace(item.ChangeNumber)
+	if resourceID == "" {
+		resourceID = strconv.Itoa(item.ID)
+	}
+	return authorizeResource(authzRequest{
+		Subject: subject,
+		Resource: authzResource{
+			OrganizationID: pilotOrganizationID,
+			ProjectID:      *item.ProjectID,
+			Environment:    scopedEnvironment(item.Environment, ""),
+			Kind:           "change",
+			ResourceID:     resourceID,
+		},
+		Action: action,
+	}).Allowed
+}
+
+func incidentInScope(subject authzSubject, item requestIncident, action authzAction) bool {
+	if action == authzRead && subject.readsEveryRecord() {
+		return true
+	}
+	if item.ProjectID == nil || *item.ProjectID <= 0 {
+		return false
+	}
+	resourceID := strings.TrimSpace(item.IncidentNumber)
+	if resourceID == "" {
+		resourceID = strconv.Itoa(item.ID)
+	}
+	return authorizeResource(authzRequest{
+		Subject: subject,
+		Resource: authzResource{
+			OrganizationID: pilotOrganizationID,
+			ProjectID:      *item.ProjectID,
+			Environment:    scopedEnvironment(item.Environment, item.RequestEnv),
+			Kind:           "incident",
+			ResourceID:     resourceID,
+		},
+		Action: action,
+	}).Allowed
+}
+
+func filterChangesInScope(items []changeRequestRecord, subject authzSubject) []changeRequestRecord {
+	filtered := make([]changeRequestRecord, 0, len(items))
+	for _, item := range items {
+		if changeInScope(subject, item, authzRead) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+func filterIncidentsInScope(items []requestIncident, subject authzSubject) []requestIncident {
+	filtered := make([]requestIncident, 0, len(items))
+	for _, item := range items {
+		if incidentInScope(subject, item, authzRead) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+func runChangeAction(subject authzSubject, item changeRequestRecord, action func() error) error {
+	if !changeInScope(subject, item, authzWrite) {
+		return fmt.Errorf("change scope denied")
+	}
+	return action()
+}
+
 func filterChangesForUser(items []changeRequestRecord, projectIDs map[int]struct{}) []changeRequestRecord {
 	filtered := make([]changeRequestRecord, 0, len(items))
 	for _, item := range items {
@@ -221,7 +319,8 @@ func adminChangesHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireAdmin(w, r); !ok {
+	adminID, ok := requireAdmin(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -233,7 +332,7 @@ func adminChangesHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to list changes", err)
 		return
 	}
-	writeChangeCatalog(w, items, r.URL.Query().Get("change_type"))
+	writeChangeCatalog(w, filterChangesInScope(items, portalAdminSubject(adminID)), r.URL.Query().Get("change_type"))
 }
 
 func applyChangePortalAction(id, userID int, action string) (*changeRequestRecord, error) {
@@ -290,8 +389,14 @@ func adminChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		updated := []changeRequestRecord{}
 		errors := []string{}
+		subject := portalAdminSubject(adminID)
 		for _, changeID := range body.IDs {
 			if changeID <= 0 {
+				continue
+			}
+			current, lookupErr := getChangeRequestByID(changeID)
+			if lookupErr != nil || current == nil || !changeInScope(subject, *current, authzWrite) {
+				errors = append(errors, fmt.Sprintf("%d: change scope denied", changeID))
 				continue
 			}
 			item, err := applyChangePortalAction(changeID, adminID, body.Action)
@@ -316,6 +421,12 @@ func adminChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid change id", nil)
 		return
 	}
+	current, lookupErr := getChangeRequestByID(id)
+	subject := portalAdminSubject(adminID)
+	if lookupErr != nil || current == nil || !changeInScope(subject, *current, authzRead) {
+		writeAPIError(w, r, http.StatusNotFound, "change not found", lookupErr)
+		return
+	}
 	parts := strings.Split(path, "/")
 	if len(parts) == 2 {
 		action := strings.ToLower(strings.TrimSpace(parts[1]))
@@ -325,7 +436,12 @@ func adminChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 				writeMethodNotAllowed(w, r)
 				return
 			}
-			item, err := applyChangePortalAction(id, adminID, action)
+			var item *changeRequestRecord
+			err := runChangeAction(subject, *current, func() error {
+				var actionErr error
+				item, actionErr = applyChangePortalAction(id, adminID, action)
+				return actionErr
+			})
 			writeChangeActionResult(w, r, item, err)
 			return
 		}
@@ -334,12 +450,7 @@ func adminChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	item, err := getChangeRequestByID(id)
-	if err != nil {
-		writeAPIError(w, r, http.StatusNotFound, "change not found", err)
-		return
-	}
-	writeChangeDetailJSON(w, item)
+	writeChangeDetailJSON(w, current)
 }
 
 func adminIncidentsHandler(w http.ResponseWriter, r *http.Request) {
@@ -348,7 +459,8 @@ func adminIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireAdmin(w, r); !ok {
+	adminID, ok := requireAdmin(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -360,7 +472,7 @@ func adminIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to list incidents", err)
 		return
 	}
-	writeIncidentCatalog(w, items)
+	writeIncidentCatalog(w, filterIncidentsInScope(items, portalAdminSubject(adminID)))
 }
 
 func adminIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
@@ -369,7 +481,8 @@ func adminIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireAdmin(w, r); !ok {
+	adminID, ok := requireAdmin(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -382,7 +495,7 @@ func adminIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item, err := getRequestIncidentByID(id)
-	if err != nil {
+	if err != nil || item == nil || !incidentInScope(portalAdminSubject(adminID), *item, authzRead) {
 		writeAPIError(w, r, http.StatusNotFound, "incident not found", err)
 		return
 	}
@@ -408,7 +521,7 @@ func meChangesHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to list changes", err)
 		return
 	}
-	writeChangeCatalog(w, filterChangesForUser(items, projectIDSet(visibleProjectIDsForUser(userID))), r.URL.Query().Get("change_type"))
+	writeChangeCatalog(w, filterChangesInScope(items, authzSubjectForUser(userID)), r.URL.Query().Get("change_type"))
 }
 
 func meChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
@@ -427,7 +540,8 @@ func meChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item, err := getChangeRequestByID(id)
-	if err != nil || !changeVisibleToUser(*item, projectIDSet(visibleProjectIDsForUser(userID))) {
+	subject := authzSubjectForUser(userID)
+	if err != nil || item == nil || !changeInScope(subject, *item, authzRead) {
 		writeAPIError(w, r, http.StatusNotFound, "change not found", err)
 		return
 	}
@@ -445,7 +559,12 @@ func meChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 				writeAPIError(w, r, http.StatusForbidden, "not authorized to update changes", nil)
 				return
 			}
-			updated, actionErr := applyChangePortalAction(id, userID, action)
+			var updated *changeRequestRecord
+			actionErr := runChangeAction(subject, *item, func() error {
+				var err error
+				updated, err = applyChangePortalAction(id, userID, action)
+				return err
+			})
 			writeChangeActionResult(w, r, updated, actionErr)
 			return
 		}
@@ -477,7 +596,7 @@ func meIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item, err := getRequestIncidentByID(id)
-	if err != nil || !incidentVisibleToUser(*item, userID, projectIDSet(visibleProjectIDsForUser(userID))) {
+	if err != nil || item == nil || !incidentInScope(authzSubjectForUser(userID), *item, authzRead) {
 		writeAPIError(w, r, http.StatusNotFound, "incident not found", err)
 		return
 	}

@@ -5,11 +5,13 @@ export const THEME_CHANGE_EVENT = 'setuops:theme-change';
 export const OPEN_PALETTE_EVENT = 'setuops:open-palette';
 
 export function getTheme(): ThemeMode {
-  if (typeof window === 'undefined') return 'dark';
+  if (typeof window === 'undefined') return 'light';
   try {
-    return localStorage.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === 'dark' || stored === 'light') return stored;
+    return 'light';
   } catch {
-    return 'dark';
+    return 'light';
   }
 }
 

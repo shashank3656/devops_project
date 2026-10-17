@@ -372,7 +372,45 @@ Watcher samples also arrive on `POST /api/webhooks/watch-metrics` (below). The s
 | GET | `/api/devops/rollback-console` | devops | — | Rollback candidates. |
 | POST | `/api/devops/rollback-console` | manager | target | Execute rollback. |
 | GET/POST | `/api/devops/freezes` | manager | `{ starts_at, ends_at, reason }` | Change freeze window. |
-| GET/POST | `/api/devops/oncall` | devops | rotation | Who is on call. |
+| GET/POST | `/api/devops/oncall` | devops | rotation | Older rotation read. The calendar uses `/api/oncall/*` below. |
+
+### On-call calendar
+
+| Method | Path | Auth | Body / query | What it does |
+| --- | --- | --- | --- | --- |
+| GET | `/api/oncall/days` | session, operations | month | Days, teams, and who is on each day. Names only. |
+| GET | `/api/oncall/team-members` | session, operations | `team_id` | `{ members: [{ user_id, name }] }`. No email. |
+| GET/POST/DELETE | `/api/oncall/project-teams` | session, operations | `{ project_id, team_id }` | Attach or remove a team from a project’s call. DELETE sends JSON. |
+| POST | `/api/oncall/roster` | admin, DevOps manager, or team manager | `{ team_id, user_ids }` | Replace that team’s rotation order. |
+| POST | `/api/oncall/covers` | session, operations | cover fields | Ask someone to cover a date. Notifies that person. |
+| POST | `/api/oncall/covers/decision` | the person asked | `{ id, decision }` | Approve or decline. Notifies the person who asked. |
+
+### Maintenance windows
+
+`/api/maintenance/notices` is the older preview / approve / publish / cancel notice. The screens use windows.
+
+| Method | Path | Auth | Body | What it does |
+| --- | --- | --- | --- | --- |
+| GET | `/api/maintenance/windows` | session | — | Windows the caller created, manages, or (admin / DevOps manager) all of them. |
+| POST | `/api/maintenance/windows` | session | project, environment, service, team, owner, change number, optional incident, start, end, impact, description | Creates `pending_manager`. Fails when the creator has no `manager_id`. Notifies the creator and that manager. |
+| GET | `/api/maintenance/windows/:id` | session | — | One window plus `can_decide`. |
+| POST | `/api/maintenance/windows/:id/decision` | the current approver | `{ decision: approve \| reject }` | Manager, then DevOps manager (`is_manager` only), then admin. Creator cannot decide. |
+
+### IAM access
+
+Stored in memory on the API process. A restart clears requests and grants. Numbers look like `AR-…`.
+
+| Method | Path | Auth | What it does |
+| --- | --- | --- | --- |
+| GET | `/api/devops/iam` and `/api/devops/iam/summary` | devops | Overview counts and rows. |
+| POST | `/api/devops/iam/access-requests` | devops | Submit. Status `PENDING_DEVOPS_APPROVAL`. |
+| POST | `/api/devops/iam/access-requests/evaluate` | devops | Policy check. |
+| GET | `/api/devops/iam/approvals` | DevOps approver | Queue. |
+| POST | `/api/devops/iam/approvals/:id/decision` | DevOps approver, not the requester | `approved` starts `PROVISIONING` and the access-file workflow. `rejected` stops it. |
+| POST | `/api/webhooks/iam-access` | callback secret | Records the grant and notifies the requester after the file is applied. |
+| GET | `/api/devops/iam/access-grants` | devops | Grants recorded since this process started. |
+| GET | `/api/devops/iam/audit-events` | devops | Timeline. |
+| GET | `/api/devops/iam/policy` | devops | Policy document. |
 
 ---
 
@@ -492,6 +530,10 @@ All require a DevOps user. Writes (onboard, actions, terminal) typically require
 ## Inbound webhooks
 
 All of these reject unsigned bodies with **401**. Prefer `X-CI-Secret` for CI and `X-Hub-Signature-256` for GitHub-style HMAC.
+
+### `POST /api/webhooks/iam-access`
+
+Secret: `IAM_ACCESS_CALLBACK_SECRET`. Called by the access-file workflow after apply. This is the only step that records the IAM grant and emails the requester. A request left in `PROVISIONING` has not been granted yet.
 
 ### `POST /api/webhooks/change`
 

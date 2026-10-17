@@ -155,6 +155,21 @@ export default function ResourceContextPanel({
 
   if (!numericId || !token) return null;
 
+  const hasSignal = Boolean(
+    data?.account_context?.message ||
+    envCatalog ||
+    freeze?.active ||
+    incidents.length ||
+    partial.open_incidents ||
+    partial.environment_catalog ||
+    partial.operator_activity ||
+    hints?.block_summary ||
+    (hints?.warnings?.length ?? 0) > 0 ||
+    activity.length ||
+    (!hideDelivery && data?.delivery),
+  );
+  if (loading || !hasSignal) return null;
+
   return (
     <section
       className={`portal-surface portal-surface--tight resource-context-panel ${className || ''}`.trim()}
@@ -257,45 +272,43 @@ export default function ResourceContextPanel({
             </div>
           ) : null}
 
-          <div className="resource-context-panel__block">
-            <h4 className="resource-context-panel__block-title">Deployment freeze</h4>
-            {data.target_environment?.trim() ? (
-              <p className="resource-context-panel__muted">Promotion target: {data.target_environment}</p>
-            ) : null}
-            {freeze?.active ? (
+          {freeze?.active ? (
+            <div className="resource-context-panel__block">
+              <h4 className="resource-context-panel__block-title">Deployment freeze</h4>
+              {data.target_environment?.trim() ? (
+                <p className="resource-context-panel__muted">Promotion target: {data.target_environment}</p>
+              ) : null}
               <p className="resource-context-panel__freeze">
                 Active{freeze.reason ? `: ${freeze.reason}` : ''}
                 {freeze.ends_at ? ` (until ${new Date(freeze.ends_at).toLocaleString()})` : ''}
               </p>
-            ) : (
-              <p className="resource-context-panel__muted">No active freeze for this scope.</p>
-            )}
-          </div>
-
-          <div className="resource-context-panel__block">
-            <div className="resource-context-panel__block-head">
-              <h4 className="resource-context-panel__block-title">Open incidents</h4>
-              <Link href={incidentsHref(data.project_id, data.target_environment || data.environment)} className="ig-cell-link">
-                View queue
-              </Link>
             </div>
-            {partial.open_incidents ? (
-              <p className="resource-context-panel__inline-error">{partial.open_incidents}</p>
-            ) : incidents.length === 0 ? (
-              <p className="resource-context-panel__muted">No open incidents in scope.</p>
-            ) : (
-              <ul className="ig-simple-list">
-                {incidents.slice(0, 5).map((inc) => (
-                  <li key={`${inc.reference}-${inc.summary}`}>
-                    <strong>{inc.reference}</strong>
-                    {inc.severity ? ` · ${inc.severity}` : ''}
-                    {inc.blocks_promotion ? ' · may block promotion' : ''}
-                    {inc.summary ? ` — ${inc.summary}` : ''}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          ) : null}
+
+          {partial.open_incidents || incidents.length > 0 ? (
+            <div className="resource-context-panel__block">
+              <div className="resource-context-panel__block-head">
+                <h4 className="resource-context-panel__block-title">Open incidents</h4>
+                <Link href={incidentsHref(data.project_id, data.target_environment || data.environment)} className="ig-cell-link">
+                  View queue
+                </Link>
+              </div>
+              {partial.open_incidents ? (
+                <p className="resource-context-panel__inline-error">{partial.open_incidents}</p>
+              ) : (
+                <ul className="ig-simple-list">
+                  {incidents.slice(0, 5).map((inc) => (
+                    <li key={`${inc.reference}-${inc.summary}`}>
+                      <strong>{inc.reference}</strong>
+                      {inc.severity ? ` · ${inc.severity}` : ''}
+                      {inc.blocks_promotion ? ' · may block promotion' : ''}
+                      {inc.summary ? ` — ${inc.summary}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
 
           {hints && (hints.block_summary || (hints.warnings?.length ?? 0) > 0) ? (
             <div className="resource-context-panel__block">
@@ -309,26 +322,26 @@ export default function ResourceContextPanel({
             </div>
           ) : null}
 
-          <div className="resource-context-panel__block">
-            <h4 className="resource-context-panel__block-title">Operator activity</h4>
-            {partial.operator_activity ? (
-              <p className="resource-context-panel__inline-error">{partial.operator_activity}</p>
-            ) : activity.length === 0 ? (
-              <p className="resource-context-panel__muted">No recent operator events.</p>
-            ) : (
-              <ul className="ig-simple-list">
-                {activity.map((row) => (
-                  <li key={row.id}>
-                    <strong>{row.actor_username || 'Operator'}</strong> · {row.action.replace(/_/g, ' ')}
-                    {row.result ? ` (${row.result})` : ''}
-                    {row.summary ? ` — ${row.summary}` : ''}
-                    <br />
-                    <small>{new Date(row.created_at).toLocaleString()}</small>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          {partial.operator_activity || activity.length > 0 ? (
+            <div className="resource-context-panel__block">
+              <h4 className="resource-context-panel__block-title">Operator activity</h4>
+              {partial.operator_activity ? (
+                <p className="resource-context-panel__inline-error">{partial.operator_activity}</p>
+              ) : (
+                <ul className="ig-simple-list">
+                  {activity.map((row) => (
+                    <li key={row.id}>
+                      <strong>{row.actor_username || 'Operator'}</strong> · {row.action.replace(/_/g, ' ')}
+                      {row.result ? ` (${row.result})` : ''}
+                      {row.summary ? ` — ${row.summary}` : ''}
+                      <br />
+                      <small>{new Date(row.created_at).toLocaleString()}</small>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>

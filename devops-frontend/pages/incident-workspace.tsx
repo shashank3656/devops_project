@@ -397,7 +397,6 @@ export default function IncidentWorkspacePage() {
           <div className="portal-page__actions">
             <Link href="/incidents" className="btn btn-secondary">Incidents</Link>
             <Link href="/promotions" className="btn btn-secondary">Promotion Center</Link>
-            <Link href="/rollback-console" className="btn btn-primary">Rollback Console</Link>
           </div>
         </div>
 
@@ -615,7 +614,7 @@ export default function IncidentWorkspacePage() {
                               <option value="">Unassigned</option>
                               {owners.map((owner) => (
                                 <option key={owner.id} value={owner.id}>
-                                  {owner.username}{owner.email ? ` (${owner.email})` : ''}
+                                  {owner.username}
                                 </option>
                               ))}
                             </select>

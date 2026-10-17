@@ -4,7 +4,6 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import { ProjectHealthCard, useConfirm, type ProjectHealth } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
-import DriftFixPanel from '../../components/DriftFixPanel';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { asRecord, getString } from '../../lib/payload';
 
@@ -977,7 +976,6 @@ export default function DevOpsProjectDetailPage() {
           <div className="portal-page__actions">
             <Link href="/projects" className="btn btn-secondary">Back to Projects</Link>
             <Link href={project ? buildPortalHref('/runbooks', { project_id: project.id }) : '/runbooks'} className="btn btn-secondary">Runbooks</Link>
-            <Link href="/access-overrides" className="btn btn-secondary">Access Overrides</Link>
             <Link href={project ? buildPortalHref('/promotions', { project_id: project.id }) : '/promotions'} className="btn btn-secondary">Promotion Center</Link>
           </div>
         </div>
@@ -1239,8 +1237,6 @@ export default function DevOpsProjectDetailPage() {
                 </form>
               </section>
             ) : null}
-
-            <DriftFixPanel projectId={project.id} />
 
             <section className="portal-surface">
               <div className="portal-surface__header">

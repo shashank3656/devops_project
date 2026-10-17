@@ -158,6 +158,48 @@ func upsertServiceMap(item serviceMapEntry) (*serviceMapEntry, error) {
 	return getServiceMapByID(existingID)
 }
 
+func updateServiceMapByID(id int, item serviceMapEntry) (*serviceMapEntry, error) {
+	if DB == nil {
+		return nil, fmt.Errorf("database not available")
+	}
+	if id <= 0 {
+		return nil, fmt.Errorf("invalid service id")
+	}
+	current, err := getServiceMapByID(id)
+	if err != nil {
+		return nil, err
+	}
+	item.Service = strings.TrimSpace(item.Service)
+	item.Repo = strings.TrimSpace(item.Repo)
+	item.Environment = strings.ToLower(strings.TrimSpace(item.Environment))
+	item.Team = strings.TrimSpace(item.Team)
+	item.GrafanaUID = strings.TrimSpace(item.GrafanaUID)
+	item.PromQL = strings.TrimSpace(item.PromQL)
+	item.DashboardURL = strings.TrimSpace(item.DashboardURL)
+	item.MetricsURL = strings.TrimSpace(item.MetricsURL)
+	if item.Service == "" {
+		return nil, fmt.Errorf("service name is required")
+	}
+	if item.Environment == "" {
+		item.Environment = current.Environment
+	}
+	var projectAny any
+	if item.ProjectID != nil && *item.ProjectID > 0 {
+		projectAny = *item.ProjectID
+	}
+	if _, err := execContext(`
+		UPDATE service_map
+		SET project_id = $2, service = $3, repo = $4, environment = $5, grafana_uid = $6, promql = $7, dashboard_url = $8, metrics_url = $9, team = $10, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+	`, id, projectAny, item.Service, item.Repo, item.Environment, item.GrafanaUID, item.PromQL, item.DashboardURL, item.MetricsURL, item.Team); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate") || strings.Contains(strings.ToLower(err.Error()), "unique") {
+			return nil, fmt.Errorf("a service with that name already exists in this environment")
+		}
+		return nil, err
+	}
+	return getServiceMapByID(id)
+}
+
 func getServiceMapByID(id int) (*serviceMapEntry, error) {
 	items, err := listServiceMap(0, "", "")
 	if err != nil {
@@ -225,15 +267,36 @@ func devopsServiceMapDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid service id", err)
 		return
 	}
-	if r.Method != "GET" {
+	switch r.Method {
+	case "GET":
+		item, err := getServiceMapByID(id)
+		if err != nil {
+			writeAPIError(w, r, http.StatusNotFound, "service not found", err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"service": item, "status": "ok"})
+	case "PATCH":
+		if _, ok := requireDevopsManager(w, r); !ok {
+			return
+		}
+		var body serviceMapEntry
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
+			return
+		}
+		item, err := updateServiceMapByID(id, body)
+		if err != nil {
+			status := http.StatusBadRequest
+			if strings.Contains(strings.ToLower(err.Error()), "not found") {
+				status = http.StatusNotFound
+			}
+			writeAPIError(w, r, status, err.Error(), err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"service": item, "status": "ok"})
+	default:
 		writeMethodNotAllowed(w, r)
-		return
 	}
-	item, err := getServiceMapByID(id)
-	if err != nil {
-		writeAPIError(w, r, http.StatusNotFound, "service not found", err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"service": item, "status": "ok"})
 }

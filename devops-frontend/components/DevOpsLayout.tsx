@@ -10,21 +10,20 @@ import {
   IconTemplates,
   IconProjects,
   IconWorkload,
-  IconGitOps,
   IconMenu,
   IconShield,
   IconBookOpen,
   IconAlertTriangle,
-  IconKey,
-  IconArrowUpRight,
-  IconRefreshCw,
   IconK8s,
   IconHelpCircle,
   IconFileText,
   IconChevronDown,
+  IconUser,
 } from './Icons';
 import { SupportHub } from '@infragate/ui';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
+import { homeFor, pageAllowed, pathAllowed, portalGrants } from '../lib/portalAccess';
+import { rememberReturn } from '../lib/returnPath';
 import {
   CommandPalette,
   MobileTabBar,
@@ -44,14 +43,18 @@ import {
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
 const SIDEBAR_COLLAPSED_KEY = 'devops-sidebar-collapsed';
-const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@setuops.example';
+const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || '';
+const supportEmailReady = supportEmail.includes('@') && !supportEmail.includes('example');
 
 interface DevopsUser {
   id: number;
   username: string;
   email?: string;
+  role?: string;
   user_type?: string;
+  grants?: { records?: boolean; manager?: boolean };
   devops_profile?: { is_manager: boolean; level: string; position?: string; onboard_date?: string };
+  maintenance_approver?: boolean;
 }
 
 function getProfileInitials(): string {
@@ -71,7 +74,14 @@ function getProfileInitials(): string {
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'Home',
+  '/dashboard': 'Overview',
+  '/my-work': 'My work',
+  '/environments': 'Environments',
+  '/reports-automation': 'Reports and automation',
+  '/on-call': 'On-call',
+  '/operations/webhooks': 'Webhooks',
+  '/maintenance': 'Maintenance',
+  '/service-desk': 'Service desk',
   '/approval-center': 'Approval queue',
   '/approval-sla': 'Approval timing',
   '/gate-policies': 'Promotion rules',
@@ -79,7 +89,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/gitops-control': 'GitOps control',
   '/project-operations': 'Project Work',
   '/service-heatmap': 'Service Health',
-  '/ops-command-center': 'Operations',
   '/k8s/onboard': 'Cluster connections',
   '/k8s/onboard/new': 'Onboard Cluster',
   '/k8s/pods': 'Pods',
@@ -96,11 +105,17 @@ const PAGE_TITLES: Record<string, string> = {
   '/k8s/certificates': 'TLS & Certificates',
   '/k8s/clusters': 'K8s Cluster',
   '/k8s': 'K8s Cluster',
+  '/iam': 'Request access',
+  '/iam/request': 'Request access',
+  '/iam/requests': 'My requests',
+  '/iam/approvals': 'Approvals',
+  '/iam/permissions': 'Permissions',
+  '/iam/audit': 'Audit',
+  '/iam/policy': 'Policy',
   '/k8s/workspace': 'Kubernetes workspace',
   '/runbooks': 'Guides',
   '/incidents': 'Incidents',
   '/incident-workspace': 'Incident Notes',
-  '/access-overrides': 'Access Exceptions',
   '/promotions': 'Promotions',
   '/changes': 'Changes',
   '/changes/new': 'Create change request',
@@ -109,20 +124,14 @@ const PAGE_TITLES: Record<string, string> = {
   '/previews': 'Preview environments',
   '/scorecards': 'Scorecards',
   '/evidence': 'Evidence',
-  '/policies': 'Policy as code',
-  '/policies/configure': 'Configure policy',
   '/services': 'Services',
   '/services/new': 'Add service',
   '/problems': 'Problems',
   '/problems/new': 'Create problem',
   '/knowledge': 'Knowledge',
   '/activity': 'Operator activity',
-  '/health': 'Health',
-  '/health/slo/new': 'Define SLO',
-  '/identity': 'Identity',
   '/deploy-intelligence': 'Deploy intelligence',
   '/deploy-intelligence/onboard': 'Onboard repository',
-  '/rollback-console': 'Rollback',
   '/gate-approvals': 'Promotion history',
   '/notification-settings': 'Alert Settings',
   '/approval-notification-analytics': 'Analytics',
@@ -133,7 +142,24 @@ const PAGE_TITLES: Record<string, string> = {
   '/projects': 'Projects',
   '/team': 'Team',
   '/credential-audit': 'Secrets',
+  '/security/cloud-scan': 'Cloud scan',
+  '/security/code-scan': 'Code scan',
+  '/security/findings': 'Findings',
   '/profile': 'Profile',
+  '/my-requests': 'My requests',
+  '/requests': 'Request',
+  '/requests/new': 'New request',
+  '/my-projects': 'My projects',
+  '/my-teams': 'My teams',
+  '/portal-access': 'Portal Access',
+  '/portal-access/users': 'People',
+  '/portal-access/users/new': 'Add person',
+  '/portal-access/teams': 'Groups',
+  '/portal-access/teams/new': 'Create group',
+  '/portal-access/sso': 'Sign-in',
+  '/profile/password': 'Change password',
+  '/profile/notifications': 'Signal routing',
+  '/profile/api-keys': 'API access',
   '/cloud-accounts': 'Cloud accounts',
   '/cloud-resources': 'Cloud inventory',
   '/cloud-resources/account': 'Cloud account inventory',
@@ -141,10 +167,16 @@ const PAGE_TITLES: Record<string, string> = {
 
 function getPageTitle(pathname: string): string {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
-  for (const [path, title] of Object.entries(PAGE_TITLES)) {
-    if (path !== '/dashboard' && pathname.startsWith(path)) return title;
+  let best = '';
+  let title = 'Home';
+  for (const [path, label] of Object.entries(PAGE_TITLES)) {
+    if (path === '/dashboard') continue;
+    if ((pathname === path || pathname.startsWith(`${path}/`) || pathname.startsWith(path)) && path.length > best.length) {
+      best = path;
+      title = label;
+    }
   }
-  return 'Home';
+  return title;
 }
 
 interface PendingApprovalItem {
@@ -175,6 +207,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const apiUrl = useApiUrl();
   const pathname = router.pathname;
   const [user, setUser] = useState<DevopsUser | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -185,8 +218,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [pendingApprovalsLoading, setPendingApprovalsLoading] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
-  const [advancedNavOpen, setAdvancedNavOpen] = useState(false);
   const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({});
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
   const [catalogEnvironments, setCatalogEnvironments] = useState<string[]>([]);
   const { scope, updateScope } = useWorkspaceScope();
@@ -197,6 +230,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const keyboardHelpTimer = useRef<number | null>(null);
 
   const clearSessionAndRedirect = useCallback(() => {
+    rememberReturn(router.asPath || '');
     localStorage.removeItem(DEVOPS_TOKEN_KEY);
     localStorage.removeItem(DEVOPS_USER_KEY);
     if (typeof window !== 'undefined') {
@@ -212,8 +246,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      const u = localStorage.getItem(DEVOPS_USER_KEY);
-      if (u) setUser(JSON.parse(u));
       const c = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
       setSidebarCollapsed(c === 'true');
     } catch (_) {}
@@ -234,7 +266,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           return null;
         }
         if (!response.ok) {
-          return null;
+          return {};
         }
         return response.json().catch(() => null);
       })
@@ -245,9 +277,12 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           if (typeof data.token === 'string' && data.token.trim()) {
             localStorage.setItem(DEVOPS_TOKEN_KEY, data.token.trim());
           }
+          setSessionReady(true);
+          return;
         }
+        if (data !== null) setSessionReady(true);
       })
-      .catch(() => {});
+      .catch(() => setSessionReady(true));
   }, [apiUrl, clearSessionAndRedirect]);
 
   useEffect(() => {
@@ -286,7 +321,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       return;
     }
     const stored = readWorkspaceScope();
-    if (stored.projectId || stored.environment) {
+    const folderPage = router.pathname === '/environments' || router.pathname === '/services' || router.pathname === '/on-call' || router.pathname.startsWith('/on-call/');
+    if (!folderPage && (stored.projectId || stored.environment)) {
       void router.replace({ pathname: router.pathname, query: { ...router.query, ...scopeToQuery(stored) } }, undefined, { shallow: true });
     }
   }, [router.isReady]);
@@ -334,7 +370,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     return () => window.clearInterval(interval);
   }, [apiUrl, clearSessionAndRedirect]);
 
-  const isManager = user?.devops_profile?.is_manager ?? false;
+  const isManager = Boolean(user?.devops_profile?.is_manager) || user?.role === 'admin';
 
   const refreshPendingCount = useCallback(() => {
     if (!isManager) return;
@@ -342,7 +378,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     if (!token) return;
     fetch(`${apiUrl}/api/devops/notifications`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => {
-        if (r.status === 401 || r.status === 403) {
+        if (r.status === 401) {
           clearSessionAndRedirect();
           return null;
         }
@@ -373,7 +409,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     setPendingApprovalsLoading(true);
     fetch(`${apiUrl}/api/devops/pending-approvals`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => {
-        if (r.status === 401 || r.status === 403) {
+        if (r.status === 401) {
           clearSessionAndRedirect();
           return null;
         }
@@ -471,167 +507,198 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     Icon: ComponentType<{ className?: string }>;
     children?: NavChild[];
   };
+  type SidebarSection = { title: string; items: NavItem[] };
 
-  /** ITSM hub: CHG / INC / PRB (+ knowledge) share one sidebar tree; default landing is the change catalog. */
-  const itsmNavHref = '/changes';
+  /** Service desk hub: unified INC / CHG / PRB / requests landing. */
+  const serviceDeskHref = '/service-desk';
 
-  const itsmNavChildren: NavChild[] = [
-    { href: '/changes', label: 'Changes' },
-    { href: '/change-calendar', label: 'Change calendar' },
-    { href: '/services', label: 'Services' },
-    { href: '/release-notes', label: 'Release notes' },
+  const serviceDeskChildren: NavChild[] = [
+    { href: '/service-desk', label: 'All tickets' },
     { href: '/incidents', label: 'Incidents' },
-    { href: '/incident-workspace', label: 'Incident notes' },
+    { href: '/changes', label: 'Change requests' },
     { href: '/problems', label: 'Problems' },
+    { href: '/tickets', label: 'Requests' },
     { href: '/knowledge', label: 'Knowledge' },
-    { href: '/activity', label: 'Activity' },
   ];
 
   const leafIsActive = (href: string) => {
-    if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/');
     if (href === '/dashboard') return pathname === '/dashboard' || pathname === '/';
-    if (href === itsmNavHref) {
-      return itsmNavChildren.some((child) => pathname === child.href || pathname.startsWith(`${child.href}/`));
-    }
+    if (href === '/iam' || href === '/service-desk') return pathname === href;
+    if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/');
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
   const itemIsActive = (item: NavItem) =>
     Boolean(item.children?.some((child) => leafIsActive(child.href))) || leafIsActive(item.href);
 
-  const primaryNavItems: NavItem[] = [
-    { href: '/dashboard', label: 'Home', Icon: IconWorkload },
+  const dailyNavItems: NavItem[] = [
+    { href: '/dashboard', label: 'Overview', Icon: IconWorkload },
+    { href: '/my-work', label: 'My work', Icon: IconBookOpen },
     {
-      href: '/tickets',
-      label: 'Requests',
+      href: serviceDeskHref,
+      label: 'Service desk',
       Icon: IconTickets,
-      children: isManager
-        ? [
-            { href: '/approval-center', label: 'Approval queue' },
-            { href: '/gate-approvals', label: 'Promotion history' },
-            { href: '/gate-policies', label: 'Promotion rules' },
-            { href: '/approval-sla', label: 'Approval timing' },
-          ]
-        : undefined,
+      children: serviceDeskChildren,
     },
-    {
-      href: itsmNavHref,
-      label: 'ITSM',
-      Icon: IconFileText,
-      children: itsmNavChildren,
-    },
+    { href: '/services', label: 'Services', Icon: IconProjects },
   ];
-  if (isManager) {
-    primaryNavItems.push({
-      href: '/promotions',
-      label: 'Deployments',
-      Icon: IconArrowUpRight,
-      children: [
-        { href: '/promotions', label: 'Promotions' },
-        { href: '/deploy-intelligence', label: 'Deploy intel' },
-      ],
-    });
-  }
-  primaryNavItems.push({ href: '/k8s', label: 'Kubernetes', Icon: IconK8s });
-  if (isManager) {
-    primaryNavItems.push({
-      href: '/gitops-projects',
-      label: 'GitOps',
-      Icon: IconGitOps,
-      children: [
-        { href: '/gitops-projects', label: 'Projects' },
-        { href: '/gitops-control', label: 'Control' },
-      ],
-    });
-    primaryNavItems.push({
-      href: '/projects',
-      label: 'Projects',
-      Icon: IconProjects,
-      children: [
-        { href: '/projects', label: 'Catalog' },
-        { href: '/environments', label: 'Environments' },
-        { href: '/cloud-accounts', label: 'Cloud accounts' },
-        { href: '/cloud-resources', label: 'Cloud inventory' },
-        { href: '/team', label: 'Teams' },
-      ],
-    });
-  }
-
-  const advancedNavItems: NavItem[] = isManager
+  const operationsNavItems: NavItem[] = isManager
     ? [
-        {
-          href: '/health',
-          label: 'Health',
-          Icon: IconArrowUpRight,
-          children: [
-            { href: '/health', label: 'Catalog' },
-            { href: '/identity', label: 'Identity' },
-          ],
-        },
-        { href: '/previews', label: 'Previews', Icon: IconFileText },
-        { href: '/scorecards', label: 'Scorecards', Icon: IconFileText },
-        { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
-        { href: '/evidence', label: 'Evidence', Icon: IconFileText },
-        { href: '/policies', label: 'Policy as code', Icon: IconShield },
-        { href: '/ops-command-center', label: 'Operations', Icon: IconAlertTriangle },
+        { href: '/on-call', label: 'On-call', Icon: IconBell },
+        { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
+        { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
         { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
-        { href: '/templates', label: 'Request templates', Icon: IconTemplates },
-        { href: '/access-overrides', label: 'Access exceptions', Icon: IconKey },
-        { href: '/rollback-console', label: 'Rollback', Icon: IconRefreshCw },
         {
           href: '/notification-settings',
           label: 'Alerts',
           Icon: IconBell,
           children: [
             { href: '/notification-settings', label: 'Settings' },
+            { href: '/reports-automation', label: 'Reports and automation' },
             { href: '/retry-center', label: 'Retries' },
             { href: '/approval-notification-analytics', label: 'Analytics' },
           ],
         },
       ]
     : [
-        {
-          href: '/health',
-          label: 'Health',
-          Icon: IconArrowUpRight,
-          children: [
-            { href: '/health', label: 'Catalog' },
-            { href: '/identity', label: 'Identity' },
-          ],
-        },
+        { href: '/on-call', label: 'On-call', Icon: IconBell },
+        { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
+        { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
+        { href: '/reports-automation', label: 'Reports and automation', Icon: IconFileText },
       ];
-  const advancedNavActive = advancedNavItems.some((item) => itemIsActive(item));
+  const iamNavItem: NavItem = {
+    href: '/iam',
+    label: 'IAM',
+    Icon: IconShield,
+    children: [
+      { href: '/iam', label: 'Overview' },
+      { href: '/iam/request', label: 'Request' },
+      { href: '/iam/requests', label: 'My requests' },
+      { href: '/iam/approvals', label: 'Approvals' },
+      { href: '/iam/permissions', label: 'Permissions' },
+      { href: '/iam/audit', label: 'Audit' },
+      { href: '/iam/policy', label: 'Policy' },
+    ],
+  };
+  const infrastructureNavItems: NavItem[] = [
+    { href: '/projects', label: 'Projects', Icon: IconProjects },
+    { href: '/environments', label: 'Environments', Icon: IconK8s },
+    { href: '/cloud-accounts', label: 'Cloud accounts', Icon: IconFileText },
+    { href: '/cloud-resources', label: 'Cloud inventory', Icon: IconFileText },
+    iamNavItem,
+    { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
+    { href: '/promotions', label: 'Releases', Icon: IconFileText },
+  ];
+  const securityNavItems: NavItem[] = isManager
+    ? [
+        { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
+        { href: '/security/cloud-scan', label: 'Cloud scan', Icon: IconShield },
+        { href: '/security/code-scan', label: 'Code scan', Icon: IconShield },
+        { href: '/security/findings', label: 'Findings', Icon: IconShield },
+      ]
+    : [
+        { href: '/security/cloud-scan', label: 'Cloud scan', Icon: IconShield },
+        { href: '/security/code-scan', label: 'Code scan', Icon: IconShield },
+        { href: '/security/findings', label: 'Findings', Icon: IconShield },
+      ];
+  const recordsNavItems: NavItem[] = isManager || Boolean(user?.grants?.records)
+    ? [
+        { href: '/previews', label: 'Previews', Icon: IconFileText },
+        { href: '/scorecards', label: 'Scorecards', Icon: IconFileText },
+        { href: '/evidence', label: 'Evidence', Icon: IconFileText },
+        { href: '/templates', label: 'Request templates', Icon: IconTemplates },
+      ]
+    : [];
+  const grants = portalGrants(user);
+  const visibleNav = (items: NavItem[]): NavItem[] => items.flatMap((item) => {
+    if (!pathAllowed(item.href, grants) && !pageAllowed(item.href, grants)) return [];
+    if (!pathAllowed(item.href, grants)) return [];
+    const children = item.children?.filter((child) => pathAllowed(child.href, grants));
+    return [{ ...item, children }];
+  });
+  const sidebarSections: SidebarSection[] = [];
+  if (grants.requests) {
+    sidebarSections.push({
+      title: 'Requests',
+      items: visibleNav([
+        { href: '/my-requests', label: 'My requests', Icon: IconTickets },
+        { href: '/requests/new', label: 'New request', Icon: IconFileText },
+        { href: '/my-projects', label: 'My projects', Icon: IconProjects },
+        { href: '/my-teams', label: 'My teams', Icon: IconBookOpen },
+      ]),
+    });
+  }
+  if (grants.daily) sidebarSections.push({ title: 'Daily', items: visibleNav(dailyNavItems) });
+  if (grants.operations) sidebarSections.push({ title: 'Operations', items: visibleNav(operationsNavItems) });
+  else if (user?.maintenance_approver) {
+    sidebarSections.push({
+      title: 'Operations',
+      items: [{ href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle }],
+    });
+  }
+  if (grants.infrastructure) sidebarSections.push({ title: 'Infrastructure', items: visibleNav(infrastructureNavItems) });
+  if (grants.security) sidebarSections.push({ title: 'Security', items: visibleNav(securityNavItems) });
+  if (grants.records && recordsNavItems.length) sidebarSections.push({ title: 'Records', items: visibleNav(recordsNavItems) });
+  if (grants.portalAccess) {
+    sidebarSections.push({
+      title: 'Portal Access',
+      items: [
+        { href: '/portal-access', label: 'Access', Icon: IconShield },
+        { href: '/portal-access/users', label: 'People', Icon: IconUser },
+        { href: '/portal-access/teams', label: 'Groups', Icon: IconProjects },
+        { href: '/portal-access/sso', label: 'Sign-in', Icon: IconShield },
+      ],
+    });
+  }
+  const allNavItems: NavItem[] = sidebarSections.flatMap((section) => section.items);
   const k8sNavActive = pathname === '/k8s' || pathname.startsWith('/k8s/');
 
   useEffect(() => {
-    if (advancedNavActive) setAdvancedNavOpen(true);
-  }, [advancedNavActive]);
-
-  useEffect(() => {
     const next: Record<string, boolean> = {};
-    for (const item of [...primaryNavItems, ...advancedNavItems]) {
+    for (const item of allNavItems) {
       if (item.children && itemIsActive(item)) next[item.href] = true;
     }
-    if (Object.keys(next).length === 0) return;
-    setOpenNavGroups((current) => ({ ...current, ...next }));
+    const activeSection = sidebarSections.find((section) => section.items.some((item) => itemIsActive(item)));
+    if (Object.keys(next).length === 0 && !activeSection) return;
+    if (Object.keys(next).length) setOpenNavGroups((current) => ({ ...current, ...next }));
+    if (activeSection) setOpenSections((current) => ({ ...current, [activeSection.title]: true }));
   }, [pathname]);
 
+  useEffect(() => {
+    if (!sessionReady || !user) return;
+    const next = portalGrants(user);
+    if (pathAllowed(pathname, next) || (user.maintenance_approver && (pathname === '/maintenance' || pathname.startsWith('/maintenance/')))) return;
+    const dest = homeFor(next);
+    if (pathname !== dest) void router.replace(dest);
+  }, [sessionReady, user, pathname, router]);
+
   const pageTitle = getPageTitle(pathname);
-  const roleLabel = isManager ? 'Manager' : 'Contributor';
-  const statusLabel = isManager
+  const crumbProject = scopeProjects.find((item) => String(item.id) === scope.projectId);
+  const roleLabel = !sessionReady
+    ? ''
+    : grants.portalAccess
+    ? 'Admin'
+    : grants.manager
+    ? 'DevOps manager'
+    : grants.daily
+    ? 'Operator'
+    : 'Requester';
+  const statusLabel = !sessionReady
+    ? 'Checking session'
+    : isManager
     ? pendingCount > 0
       ? `${pendingCount} pending approvals`
       : 'No pending approvals'
     : 'Active session';
   const getSidebarBadge = (href: string): string | null => {
-    if (href === '/tickets' && isManager && pendingCount > 0) {
+    if ((href === '/service-desk' || href === '/tickets') && isManager && pendingCount > 0) {
       return pendingCount > 99 ? '99+' : String(pendingCount);
     }
     return null;
   };
 
   const isNavActive = (href: string) => {
-    const item = [...primaryNavItems, ...advancedNavItems].find((entry) => entry.href === href);
+    const item = allNavItems.find((entry) => entry.href === href);
     if (item) return itemIsActive(item);
     return href === '/k8s' ? k8sNavActive : leafIsActive(href);
   };
@@ -692,10 +759,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     );
   };
   const mobileTabs: MobileTab[] = [
-    { href: '/dashboard', label: 'Home', Icon: IconWorkload },
-    { href: '/tickets', label: 'Requests', Icon: IconTickets },
-    { href: itsmNavHref, label: 'ITSM', Icon: IconFileText },
-    { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
+    { href: '/dashboard', label: 'Overview', Icon: IconWorkload },
+    { href: '/service-desk', label: 'Service desk', Icon: IconFileText },
+    { href: '/services', label: 'Services', Icon: IconProjects },
+    { href: '/k8s', label: 'Infra', Icon: IconK8s },
   ].map((tab) => ({ ...tab, active: isNavActive(tab.href), badge: getSidebarBadge(tab.href) }));
 
   return (
@@ -717,53 +784,41 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </button>
           {!sidebarCollapsed && (
             <Link href="/dashboard" className="devops-sidebar-new__brand">
+              <span className="devops-sidebar-new__brand-mark" aria-hidden>S</span>
               <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">SetuOps</span>
-              <span className="devops-sidebar-new__brand-word">DevOps</span>
             </Link>
           )}
         </div>
         <div className="devops-sidebar-new__body">
           <nav className="devops-sidebar-new__nav" aria-label="Primary">
-            {!sidebarCollapsed && <span className="devops-sidebar-new__nav-title">Modules</span>}
-            {primaryNavItems.map((item) => renderNavItem(item))}
-            {!sidebarCollapsed && advancedNavItems.length > 0 && (
-              <div className="devops-sidebar-new__section">
-                <button
-                  type="button"
-                  className={`devops-sidebar-new__section-toggle ${advancedNavOpen ? 'devops-sidebar-new__section-toggle--open' : ''}`}
-                  onClick={() => setAdvancedNavOpen((open) => !open)}
-                  aria-expanded={advancedNavOpen}
-                >
-                  <span>More tools</span>
-                  <span className="devops-sidebar-new__section-meta">{advancedNavOpen ? 'Hide' : 'Show'}</span>
-                </button>
-                {advancedNavOpen && (
-                  <div className="devops-sidebar-new__section-body">
-                    <p className="devops-sidebar-new__section-copy">
-                      Extra tools stay here so the main menu stays simple.
-                    </p>
-                    {advancedNavItems.map((item) => renderNavItem(item))}
-                  </div>
-                )}
-              </div>
-            )}
+            {sessionReady
+              ? sidebarSections.filter((section) => section.items.length > 0).map((section) => {
+                  const active = section.items.some((item) => itemIsActive(item));
+                  const open = sidebarCollapsed || (openSections[section.title] === undefined ? active : openSections[section.title]);
+                  return (
+                    <div key={section.title}>
+                      {!sidebarCollapsed ? (
+                        <button
+                          type="button"
+                          className={`devops-sidebar-new__section${open ? ' is-open' : ''}`}
+                          aria-expanded={open}
+                          onClick={() => setOpenSections((current) => ({ ...current, [section.title]: !open }))}
+                        >
+                          <span>{section.title}</span>
+                          <IconChevronDown />
+                        </button>
+                      ) : null}
+                      {open ? section.items.map((item) => renderNavItem(item)) : null}
+                    </div>
+                  );
+                })
+              : null}
           </nav>
           <div className="devops-sidebar-new__footer">
-            <button
-              type="button"
-              className="devops-sidebar-new__link"
-              onClick={() => {
-                setNotifyOpen(false);
-                setProfileOpen(false);
-                setSupportTab('chat');
-                setSupportOpen(true);
-                setMobileMenuOpen(false);
-              }}
-              title="Support"
-            >
-              <IconHelpCircle className="devops-sidebar-new__icon" />
-              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Support</span>}
-            </button>
+            <Link href="/profile" className="devops-sidebar-new__link" onClick={() => setMobileMenuOpen(false)}>
+              <IconUser className="devops-sidebar-new__icon" />
+              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Settings</span>}
+            </Link>
             <button
               type="button"
               className="devops-sidebar-new__link"
@@ -774,10 +829,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 setSupportOpen(true);
                 setMobileMenuOpen(false);
               }}
-              title="Documentation"
+              title="Help"
             >
-              <IconFileText className="devops-sidebar-new__icon" />
-              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Documentation</span>}
+              <IconHelpCircle className="devops-sidebar-new__icon" />
+              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Help & guides</span>}
             </button>
             <button type="button" className="devops-sidebar-new__link" onClick={handleLogout}>
               <IconLogout className="devops-sidebar-new__icon" />
@@ -818,23 +873,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             </span>
           </div>
           <div className="devops-navbar__right">
-            <SearchTrigger placeholder="Search tickets, services, pods…" />
+            <SearchTrigger placeholder="Search tickets, services, infrastructure, people…" />
             <div className="devops-navbar__actions">
-              <button
-                type="button"
-                className="devops-navbar__assist-btn"
-                onClick={() => {
-                  setSupportTab('chat');
-                  setSupportOpen(true);
-                  setNotifyOpen(false);
-                  setProfileOpen(false);
-                }}
-              >
-                <IconHelpCircle />
-                <span>Help</span>
-              </button>
-              {user && <span className="devops-navbar__username">{user.username}</span>}
-              <span className="devops-navbar__role">{roleLabel}</span>
               <ThemeToggle />
               {isManager && (
                 <div className="devops-navbar__notify-wrap" ref={notifyRef}>
@@ -906,42 +946,22 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 </div>
               )}
             </div>
-            <div className="devops-navbar__profile-wrap" ref={profileRef}>
-              <button
-                type="button"
-                className="devops-navbar__profile-btn"
-                onClick={() => {
-                  setProfileOpen((o) => !o);
-                  setNotifyOpen(false);
-                  setSupportOpen(false);
-                }}
-                aria-expanded={profileOpen}
-                aria-haspopup="true"
-                title="Profile"
-              >
-                <span className="devops-navbar__avatar">{profileInitials}</span>
-                <span className="devops-navbar__profile-label">{user?.username || 'DevOps'}</span>
-              </button>
-              {profileOpen && (
-                <div className="devops-navbar__dropdown">
-                  <div className="devops-navbar__dropdown-header">
-                    <span className="devops-navbar__dropdown-avatar">{profileInitials}</span>
-                    <span className="devops-navbar__dropdown-label">{user?.username || 'DevOps'}</span>
-                  </div>
-                  <Link href="/profile" className="devops-navbar__dropdown-item" onClick={() => setProfileOpen(false)}>
-                    Profile
-                  </Link>
-                  <button type="button" className="devops-navbar__dropdown-item" onClick={handleLogout}>
-                    <IconLogout />
-                    Logout
-                  </button>
-                </div>
-              )}
-            </div>
+            <Link href="/profile" className="devops-navbar__profile-btn" title="Profile settings">
+              <span className="devops-navbar__avatar">{profileInitials}</span>
+              <span className="devops-navbar__profile-copy">
+                <span className="devops-navbar__profile-label">{sessionReady ? user?.username || 'DevOps' : '…'}</span>
+                {roleLabel ? <span className="devops-navbar__role">{roleLabel}</span> : null}
+              </span>
+            </Link>
           </div>
         </header>
+        <div className="ops-crumb">
+          <span>{crumbProject?.name || 'SetuOps'} / {pageTitle}</span>
+          <span>{crumbProject?.team || 'Team'} / {(crumbProject?.cloud || 'cloud').toUpperCase()}</span>
+        </div>
         <main id="main-content" tabIndex={-1} className="devops-main-new ig-page">
-          {keyboardHelp ? (
+          {sessionReady ? null : <p className="v3-muted">Checking session…</p>}
+          {sessionReady && keyboardHelp ? (
             <div className="devops-keyboard-hint" role="status">
               <span>{keyboardHelp}</span>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setKeyboardHelp('')}>
@@ -949,7 +969,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               </button>
             </div>
           ) : null}
-          {children}
+          {sessionReady ? children : null}
         </main>
       </div>
       <MobileTabBar
@@ -962,35 +982,30 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         apiUrl={apiUrl}
         token={typeof window === 'undefined' ? null : localStorage.getItem(DEVOPS_TOKEN_KEY)}
         commands={[
-          { id: 'home', label: 'Home', href: '/dashboard' },
-          { id: 'requests', label: 'Requests', href: '/tickets' },
-          { id: 'approval-queue', label: 'Approval queue', href: '/approval-center' },
-          { id: 'promotion-history', label: 'Promotion history', href: '/gate-approvals' },
-          { id: 'promotion-rules', label: 'Promotion rules', href: '/gate-policies' },
-          { id: 'approval-timing', label: 'Approval timing', href: '/approval-sla' },
-          { id: 'itsm', label: 'ITSM (changes catalog)', href: '/changes' },
-          { id: 'changes', label: 'Changes', href: '/changes' },
-          { id: 'deployments', label: 'Deployments', href: '/promotions' },
-          { id: 'k8s', label: 'Kubernetes', href: '/k8s' },
-          { id: 'gitops', label: 'GitOps', href: '/gitops-projects' },
-          { id: 'gitops-control', label: 'GitOps control', href: '/gitops-control' },
-          { id: 'projects', label: 'Projects', href: '/projects' },
-          { id: 'rollback', label: 'Rollback', href: '/rollback-console' },
-          { id: 'promotions', label: 'Promotions', href: '/promotions' },
-          { id: 'create-change', label: 'Create change request', href: '/changes/new' },
-          { id: 'change-calendar', label: 'Change calendar', href: '/change-calendar' },
-          { id: 'release-notes', label: 'Release notes', href: '/release-notes' },
-          { id: 'services', label: 'Services', href: '/services' },
-          { id: 'add-service', label: 'Add service', href: '/services/new' },
-          { id: 'operator-activity', label: 'Operator activity', href: '/activity' },
-          { id: 'incidents', label: 'Incidents', href: '/incidents' },
-          { id: 'incident-notes', label: 'Incident notes', href: '/incident-workspace' },
-          { id: 'problems', label: 'Problems', href: '/problems' },
-          { id: 'create-problem', label: 'Create problem', href: '/problems/new' },
-          { id: 'knowledge', label: 'Knowledge', href: '/knowledge' },
-          { id: 'health', label: 'Health', href: '/health' },
-          { id: 'policy-as-code', label: 'Policy as code', href: '/policies' },
-          { id: 'deploy-intel', label: 'Deploy intelligence', href: '/deploy-intelligence' },
+          { id: 'home', label: 'Home', href: '/dashboard', hint: 'Daily overview' },
+          { id: 'requests', label: 'Requests', href: '/tickets', hint: 'Service desk tickets' },
+          { id: 'approval-queue', label: 'Approval queue', href: '/approval-center', hint: 'Waiting for a decision' },
+          { id: 'promotion-history', label: 'Promotion history', href: '/gate-approvals', hint: 'Past promotion decisions' },
+          { id: 'promotion-rules', label: 'Promotion rules', href: '/gate-policies', hint: 'What a promotion must pass' },
+          { id: 'approval-timing', label: 'Approval timing', href: '/approval-sla', hint: 'How long approvals take' },
+          { id: 'changes', label: 'Changes', href: '/changes', hint: 'Change requests' },
+          { id: 'deployments', label: 'Deployments', href: '/promotions', hint: 'Promotion runs' },
+          { id: 'k8s', label: 'Kubernetes', href: '/k8s', hint: 'Clusters and workloads' },
+          { id: 'gitops', label: 'GitOps', href: '/gitops-projects', hint: 'Git-backed projects' },
+          { id: 'gitops-control', label: 'GitOps control', href: '/gitops-control', hint: 'Sync and drift' },
+          { id: 'projects', label: 'Projects', href: '/projects', hint: 'Project catalog' },
+          { id: 'create-change', label: 'Create change request', href: '/changes/new', hint: 'Open a change' },
+          { id: 'change-calendar', label: 'Change calendar', href: '/change-calendar', hint: 'Scheduled changes' },
+          { id: 'release-notes', label: 'Release notes', href: '/release-notes', hint: 'What shipped' },
+          { id: 'services', label: 'Services', href: '/services', hint: 'Service catalog' },
+          { id: 'add-service', label: 'Add service', href: '/services/new', hint: 'Register a service' },
+          { id: 'operator-activity', label: 'Operator activity', href: '/activity', hint: 'Recent operator actions' },
+          { id: 'incidents', label: 'Incidents', href: '/incidents', hint: 'Open incidents' },
+          { id: 'incident-notes', label: 'Incident notes', href: '/incident-workspace', hint: 'Incident workspace' },
+          { id: 'problems', label: 'Problems', href: '/problems', hint: 'Problem records' },
+          { id: 'create-problem', label: 'Create problem', href: '/problems/new', hint: 'Open a problem' },
+          { id: 'knowledge', label: 'Knowledge', href: '/knowledge', hint: 'Articles' },
+          { id: 'deploy-intel', label: 'Deploy intelligence', href: '/deploy-intelligence', hint: 'Deploy signals' },
         ]}
       />
       <SupportHub
@@ -1007,12 +1022,13 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         remapIncidentCitationLinks
         externalDocsHref={process.env.NEXT_PUBLIC_DOCS_URL || ''}
         escalationActions={[
-          {
-            label: 'Email platform support',
-            externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`SetuOps support: ${pageTitle}`)}`,
-          },
+          ...(supportEmailReady
+            ? [{
+                label: 'Email platform support',
+                externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`SetuOps support: ${pageTitle}`)}`,
+              }]
+            : []),
           { label: 'Open incidents', href: '/incidents' },
-          { label: 'Open command center', href: '/ops-command-center' },
         ]}
       />
     </div>

@@ -97,6 +97,70 @@ export { default as SavedViews, type SavedView } from './SavedViews';
 export { useSavedFilterViews } from './useSavedFilterViews';
 export { default as SegmentedControl, type SegmentedOption } from './SegmentedControl';
 export { default as StatusChip } from './StatusChip';
+export { DeskEnvironmentForm, DeskError, DeskRecordList, DeskStateChip } from './DeskLanguage';
+export {
+  WORK_KINDS,
+  WORK_PAGE_SIZES,
+  errorWorkView,
+  hiddenWorkView,
+  parseWorkView,
+  unknownWorkView,
+  workKind,
+  workKindLabel,
+  workPageSize,
+  workRecordHref,
+  workspaceFailure,
+  workspacePageState,
+  workspaceQuery,
+  workspaceScopeBlock,
+  workspaceScopeChoice,
+  workspaceServiceBlock,
+  workspaceServiceKey,
+  type WorkKind,
+  type WorkPageSize,
+  type WorkRecord,
+  type WorkSection,
+  type WorkView,
+} from './myWork';
+export {
+  DESK_ENVIRONMENT_MESSAGE,
+  DESK_FALLBACK_ERROR,
+  DESK_REJECTED_MESSAGE,
+  DESK_STATES,
+  DESK_VIEWER_MESSAGE,
+  deskCanWrite,
+  deskValueRejected,
+  deskErrorText,
+  deskWord,
+  deskStateLabel,
+  deskSubmitBlock,
+  normalizeDeskState,
+  singleDeskEnvironment,
+  visibleDeskRecords,
+  type DeskState,
+} from './deskRules';
+export {
+  AUTOMATION_ACTION,
+  AUTOMATION_DEPTH_MESSAGE,
+  AUTOMATION_NOTIFY_MESSAGE,
+  AUTOMATION_RESULTS,
+  AUTOMATION_SOURCES,
+  AUTOMATION_TRIGGERS,
+  REPORT_DRAFT_MESSAGE,
+  REPORT_METRICS,
+  REPORT_REVIEWER_MESSAGE,
+  REPORT_TIMEZONE,
+  automationRuleBlock,
+  automationRunBlock,
+  parseAutomationRule,
+  parseReportView,
+  reportCoverageState,
+  reportDefinitionBlock,
+  reportDraftBlock,
+  reportPublishBlock,
+  type AutomationRuleView,
+  type ReportViewModel,
+} from './reportDesk';
 export { default as Stepper, type StepperStep } from './Stepper';
 export { default as WorkQueue } from './WorkQueue';
 export { default as WorkspaceHome } from './WorkspaceHome';

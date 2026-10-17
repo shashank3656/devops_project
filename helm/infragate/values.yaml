@@ -119,7 +119,7 @@ backend:
 
 frontends:
   user:
-    enabled: true
+    enabled: false
     replicaCount: 1
     image:
       repository: your-registry/infragate-frontend
@@ -156,7 +156,7 @@ frontends:
       initialDelaySeconds: 20
       periodSeconds: 15
   admin:
-    enabled: true
+    enabled: false
     replicaCount: 1
     image:
       repository: your-registry/infragate-admin-frontend

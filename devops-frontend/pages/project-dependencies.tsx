@@ -33,9 +33,6 @@ export default function ProjectDependenciesPage() {
             <Link href="/projects" className="btn btn-primary">
               Open projects
             </Link>
-            <Link href="/ops-command-center" className="btn btn-secondary">
-              Open operations
-            </Link>
           </div>
         </section>
       </div>

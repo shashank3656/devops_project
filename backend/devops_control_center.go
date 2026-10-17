@@ -729,8 +729,14 @@ func upsertAlertIncident(event parsedAlertEvent) (*requestIncident, string, erro
 		}
 		return item, "updated", getErr
 	}
-	projectID := lookupProjectID(event.ProjectID, event.ProjectCode)
-	if projectID == nil {
+	var projectID *int
+	if event.BoundProject > 0 {
+		value := event.BoundProject
+		projectID = &value
+	} else {
+		projectID = lookupProjectID(event.ProjectID, event.ProjectCode)
+	}
+	if projectID == nil && event.BoundProject <= 0 {
 		if mapped := lookupServiceMap(event.Service, "", event.Environment); mapped != nil {
 			projectID = mapped.ProjectID
 			if event.Service == "" {
@@ -863,6 +869,17 @@ func normalizeIncidentStatus(status string) string {
 			return "open"
 		}
 		return strings.ToLower(strings.TrimSpace(status))
+	}
+}
+
+func incidentFinishStatus(action string) (status string, note string, ok bool) {
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "close":
+		return "closed", "Closed.", true
+	case "cancel":
+		return "cancelled", "Cancelled.", true
+	default:
+		return "", "", false
 	}
 }
 
@@ -1622,9 +1639,14 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	managerID, ok := requireDevopsManager(w, r)
+	managerID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
+	}
+	if r.Method != "GET" {
+		if _, ok = requireDevopsManager(w, r); !ok {
+			return
+		}
 	}
 	switch r.Method {
 	case "GET":
@@ -1646,13 +1668,13 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incidents", err)
 			return
 		}
-		items = filterIncidentsForPortal(
+		items = filterIncidentsInScope(filterIncidentsForPortal(
 			items,
 			parsePositiveQueryID(r, "project_id"),
 			requestQueryEnv(r),
 			r.URL.Query().Get("source"),
 			r.URL.Query().Get("q"),
-		)
+		), authzSubjectForUser(managerID))
 		teams, err := listPortalIncidentTeams()
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list incident teams", err)
@@ -1676,28 +1698,28 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	case "POST":
 		var body struct {
-			RequestID         int    `json:"request_id"`
-			TeamID            *int   `json:"team_id"`
-			Severity          string `json:"severity"`
-			Priority          string `json:"priority"`
-			Impact            string `json:"impact"`
-			Urgency           string `json:"urgency"`
-			Status            string `json:"status"`
-			EscalationLevel   string `json:"escalation_level"`
-			OwnerUserID       *int   `json:"owner_user_id"`
-			Summary           string `json:"summary"`
-			Notes             string `json:"notes"`
-			Comment           string `json:"comment"`
-			ProjectID         int    `json:"project_id"`
-			Service           string `json:"service"`
-			Environment       string `json:"environment"`
-			CallerUserID      int    `json:"caller_user_id"`
-			Category          string `json:"category"`
-			Subcategory       string `json:"subcategory"`
-			ParentIncidentID  int    `json:"parent_incident_id"`
-			ConferenceURL     string `json:"conference_url"`
-			ConferenceNotes   string `json:"conference_notes"`
-			Major             *bool  `json:"major"`
+			RequestID        int    `json:"request_id"`
+			TeamID           *int   `json:"team_id"`
+			Severity         string `json:"severity"`
+			Priority         string `json:"priority"`
+			Impact           string `json:"impact"`
+			Urgency          string `json:"urgency"`
+			Status           string `json:"status"`
+			EscalationLevel  string `json:"escalation_level"`
+			OwnerUserID      *int   `json:"owner_user_id"`
+			Summary          string `json:"summary"`
+			Notes            string `json:"notes"`
+			Comment          string `json:"comment"`
+			ProjectID        int    `json:"project_id"`
+			Service          string `json:"service"`
+			Environment      string `json:"environment"`
+			CallerUserID     int    `json:"caller_user_id"`
+			Category         string `json:"category"`
+			Subcategory      string `json:"subcategory"`
+			ParentIncidentID int    `json:"parent_incident_id"`
+			ConferenceURL    string `json:"conference_url"`
+			ConferenceNotes  string `json:"conference_notes"`
+			Major            *bool  `json:"major"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
@@ -1729,7 +1751,7 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 		if item != nil {
 			item = applyCreatedIncidentITSM(item, body.CallerUserID, body.ParentIncidentID, body.Category, body.Subcategory, body.ConferenceURL, body.ConferenceNotes, body.Notes, body.Comment, managerID)
 			if body.Major != nil && *body.Major {
-				if updated, err := applyMajorIncidentMode(item, true, firstNonEmpty(body.ConferenceNotes, item.StatusNote)); err == nil && updated != nil {
+				if updated, err := applyMajorIncidentMode(item, true, firstNonEmpty(body.ConferenceNotes, item.StatusNote), body.ConferenceURL); err == nil && updated != nil {
 					item = updated
 				}
 			}
@@ -1762,6 +1784,16 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid incident id", err)
 		return
 	}
+	current, lookupErr := getRequestIncidentByID(id)
+	subject := authzSubjectForUser(managerID)
+	if lookupErr != nil || current == nil || !incidentInScope(subject, *current, authzRead) {
+		writeAPIError(w, r, http.StatusNotFound, "incident not found", lookupErr)
+		return
+	}
+	if r.Method != http.MethodGet && !incidentInScope(subject, *current, authzWrite) {
+		writeAPIError(w, r, http.StatusForbidden, "not authorized for this project", nil)
+		return
+	}
 	if len(parts) == 2 && strings.EqualFold(parts[1], "journal") {
 		handleITSMJournal(w, r, "incident", id, managerID)
 		return
@@ -1769,6 +1801,42 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if len(parts) == 2 && strings.EqualFold(parts[1], "review") {
 		handleIncidentReviewRoute(w, r, managerID, id)
 		return
+	}
+	if len(parts) == 2 {
+		nextStatus, note, finish := incidentFinishStatus(parts[1])
+		if finish {
+			if r.Method != http.MethodPost {
+				writeMethodNotAllowed(w, r)
+				return
+			}
+			var body struct {
+				Note string `json:"note"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if strings.TrimSpace(body.Note) != "" {
+				note = strings.TrimSpace(body.Note)
+			}
+			if _, err := execContext(`
+				UPDATE request_incidents
+				SET status = $2, status_note = $3, updated_at = CURRENT_TIMESTAMP
+				WHERE id = $1
+			`, id, nextStatus, note); err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, "could not update the incident", nil)
+				return
+			}
+			item, err := getRequestIncidentByID(id)
+			if err != nil || item == nil {
+				writeAPIError(w, r, http.StatusNotFound, "incident not found", err)
+				return
+			}
+			applyIncidentSLATransition(item.ID, item.Status)
+			item = hydrateOneIncidentITSM(item)
+			AppendAuditLog(&managerID, "request_incident_"+parts[1], "request_incident", strconv.Itoa(id), item.Status)
+			go pushIncidentToExternalIRM(*item)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "status": "ok"})
+			return
+		}
 	}
 	if len(parts) == 2 && strings.EqualFold(parts[1], "rollback") {
 		if r.Method != "POST" {
@@ -1861,7 +1929,7 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		if body.Major != nil {
 			major = *body.Major
 		}
-		if updated, err := applyMajorIncidentMode(item, major, firstNonEmpty(body.StatusNote, item.StatusNote)); err == nil && updated != nil {
+		if updated, err := applyMajorIncidentMode(item, major, firstNonEmpty(body.StatusNote, item.StatusNote), body.ConferenceURL); err == nil && updated != nil {
 			item = updated
 		}
 	}

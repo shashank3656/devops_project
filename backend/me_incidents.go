@@ -26,7 +26,7 @@ func meIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to load incidents", err)
 		return
 	}
-	visible := filterIncidentsForUser(items, userID, projectIDSet(visibleProjectIDsForUser(userID)))
+	visible := filterIncidentsInScope(items, authzSubjectForUser(userID))
 	w.Header().Set("Content-Type", "application/json")
 	encodeAuthJSON(w, sanitizeJSONValue(map[string]any{
 		"incidents": visible,

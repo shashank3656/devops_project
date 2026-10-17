@@ -5,13 +5,14 @@ Phase 1 uses existing roles only (no new role product).
 
 ## Role mapping
 
-| Product label | Stored role / flag | Portal |
+| Product label | Stored role / flag | Where they work |
 | --- | --- | --- |
-| Viewer | `users.role = viewer` | User |
-| Developer / Contributor | `users.role = contributor`, portal team membership | User |
-| Operator | `users.user_type = devops_user`, team `member` | DevOps |
-| DevOps lead / manager | `devops_profile.is_manager = true` | DevOps |
-| Admin | `users.role = admin` (Admin portal JWT) | Admin |
+| Viewer | `users.role = viewer` | Same portal, read-heavy grants |
+| Developer / Contributor | `users.role = contributor`, portal team membership | Requests section |
+| Operator | `users.user_type = devops_user`, team `member` | Daily, operations, infrastructure |
+| DevOps lead / manager | `devops_profile.is_manager = true` | Manager-only writes. This is the maintenance DevOps step. It is not the admin step. |
+| Admin | `users.role = admin` | Portal Access, and the last maintenance step |
+| Person’s manager | `users.manager_id` | First maintenance approval. Not the IAM approver. |
 
 ## Write actions
 
@@ -32,6 +33,12 @@ Phase 1 uses existing roles only (no new role product).
 | Cloud account | List / detail | DevOps user on **member** devops teams | `cloud_accounts.go` |
 | Cloud inventory | List / detail | DevOps user on **member** devops teams; **read-only** | `cloud_inventory.go` |
 | Cloud account (all teams) | List | Admin JWT | `cloud_accounts.go` admin handler |
+| Maintenance window | Create | Signed-in user with a `manager_id` | `maintenance_window.go` |
+| Maintenance window | Approve / reject step 1 | `users.manager_id` of the creator, and not the creator | `maintenance_window.go` |
+| Maintenance window | Approve / reject step 2 | `devops_profiles.is_manager`, and not the creator. Admin does not skip this step. | `maintenance_window.go` |
+| Maintenance window | Approve / reject step 3 | `users.role = admin`, and not the creator | `maintenance_window.go` |
+| IAM access | Approve / reject | DevOps approver (admin or `devops_user`), not the requester | `iam_api.go` |
+| On-call roster | Save | Admin, DevOps manager, or a person who can manage that team | `oncall_duty.go` |
 
 ## Audit (sample actions logged)
 

@@ -380,13 +380,14 @@ export default function DevOpsTickets() {
   const [ackHighRiskMerge, setAckHighRiskMerge] = useState(false);
   const [ackReasons, setAckReasons] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [pageSize, setPageSize] = useState(10);
   const [pendingDecisions, setPendingDecisions] = useState<Record<number, string>>({});
   const [actionError, setActionError] = useState('');
   const undoQueue = useUndoQueue(6000);
   const detailRequestIsAccess = isAccessRequest(detailRequest);
   const detailServiceBundle = getRequestServiceBundle(detailRequest);
   const detailServiceBundleGroups = groupServiceBundleByEnvironment(detailServiceBundle, detailRequest);
-  const limit = 20;
+  const limit = pageSize;
 
   const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
   const { remoteViews, ready: savedViewsReady, saveRemote, deleteRemote } = useSavedFilterViews<TicketFilters>({
@@ -736,11 +737,27 @@ export default function DevOpsTickets() {
       reason = input.trim();
     }
     setSelectedIds(new Set());
+    setDetailNotice(`Sending ${ids.length} on this page. Each item is recorded separately.`);
     scheduleDecision(
       ids,
       action === 'approve' ? 'Approving' : 'Rejecting',
       `${action === 'approve' ? 'Approved' : 'Rejected'} ${ids.length} request${ids.length === 1 ? '' : 's'}`,
-      () => sendDevopsAction(`/api/devops/requests/bulk-${action}`, { ids, reason }),
+      async () => {
+        const outcomes: string[] = [];
+        for (const id of ids) {
+          try {
+            await sendDevopsAction(`/api/devops/requests/${id}/${action}`, action === 'reject' ? { reason } : undefined);
+            outcomes.push(`#${id} recorded`);
+          } catch {
+            outcomes.push(`#${id} not recorded`);
+          }
+        }
+        const failed = outcomes.filter((line) => line.endsWith('not recorded'));
+        const summary = outcomes.join('; ');
+        if (failed.length === ids.length) throw new Error(summary);
+        if (failed.length) setActionError(summary);
+        else setDetailNotice(summary);
+      },
       true,
     );
   };
@@ -853,7 +870,7 @@ export default function DevOpsTickets() {
     }
     fetchTickets();
     setSelectedIds(new Set());
-  }, [token, router, apiUrl, idFilter, team, projectId, environment, cloud, status, search, requester, sortBy, sortOrder, atRisk, offset]);
+  }, [token, router, apiUrl, idFilter, team, projectId, environment, cloud, status, search, requester, sortBy, sortOrder, atRisk, offset, limit]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -1145,11 +1162,26 @@ export default function DevOpsTickets() {
                 <span className="ig-kbd">J</span>/<span className="ig-kbd">K</span> move · <span className="ig-kbd">Enter</span> open ·{' '}
                 <span className="ig-kbd">X</span> select · <span className="ig-kbd">Esc</span> close
               </p>
-              {requests.length > 0 ? (
-                <div className="devops-tickets-pagination">
+              <div className="devops-tickets-pagination">
                   <span className="devops-tickets-pagination-info">
-                    Page {Math.floor(offset / limit) + 1} of {Math.max(1, Math.ceil(total / limit))} ({total} total)
+                    Page {Math.floor(offset / limit) + 1} of {Math.max(1, Math.ceil(total / limit))} ({total} total). Selection is this page only.
                   </span>
+                  <label className="label">
+                    Page size
+                    <select
+                      className="input"
+                      value={pageSize}
+                      onChange={(event) => {
+                        setPageSize(Number(event.target.value));
+                        setOffset(0);
+                        setSelectedIds(new Set());
+                      }}
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                    </select>
+                  </label>
                   <div className="devops-tickets-pagination__actions">
                     <button type="button" className="btn btn-secondary btn-sm" disabled={offset === 0} onClick={() => setOffset((value) => Math.max(0, value - limit))}>
                       Previous
@@ -1159,11 +1191,11 @@ export default function DevOpsTickets() {
                     </button>
                   </div>
                 </div>
-              ) : null}
             </>
           )}
 
           <BulkBar count={selectedIds.size} noun="request" onClear={() => setSelectedIds(new Set())}>
+            <span>{selectedActionableIds.length} on this page can be sent. Each result is recorded separately.</span>
             <button type="button" className="btn btn-primary btn-sm" disabled={selectedActionableIds.length === 0} onClick={() => handleBulk('approve')}>
               Approve
             </button>

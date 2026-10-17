@@ -7,8 +7,6 @@
 # Defaults (dev): project 5332b847-9bab-40fc-83b5-7fbf3a1d2ab0 · environment 916b3e46-9336-4c69-ac06-e44d406ce737
 # Service → GHCR image prefix (same commit tag on all):
 #   backend-api              → ghcr.io/<owner>/devops_project-backend
-#   devops_project-frontend  → ghcr.io/<owner>/devops_project-frontend
-#   devops_project-admin-frontend → ghcr.io/<owner>/devops_project-admin-frontend
 #   devops_project-devops-frontend → ghcr.io/<owner>/devops_project-devops-frontend
 name: Deploy Dev
 

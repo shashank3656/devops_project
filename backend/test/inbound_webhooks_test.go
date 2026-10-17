@@ -36,6 +36,69 @@ func TestInboundWebhookAuthRequiresSecret(t *testing.T) {
 	}
 }
 
+func TestWorkerCannotLeaveConnection(t *testing.T) {
+	connection := workerConnection{ProjectID: 7, Bound: true}
+	if id, err := workerProject(connection, 0); err != nil || id != 7 {
+		t.Fatalf("empty target id=%d err=%v", id, err)
+	}
+	if id, err := workerProject(connection, 7); err != nil || id != 7 {
+		t.Fatalf("same project id=%d err=%v", id, err)
+	}
+	if _, err := workerProject(connection, 9); err == nil {
+		t.Fatal("a bound worker must not write another project")
+	}
+	if _, err := workerProject(workerConnection{}, 9); err == nil {
+		t.Fatal("an unbound worker must not choose a project")
+	}
+
+	payload := parsedChangeWebhook{ProjectID: 9, ProjectCode: "other", Service: "api"}
+	if err := bindChangeWorker(&payload, connection); err == nil {
+		t.Fatal("cross-project change payload must be rejected before upsert")
+	}
+	payload.ProjectID = 0
+	if err := bindChangeWorker(&payload, connection); err != nil {
+		t.Fatalf("bind own project: %v", err)
+	}
+	resolved := resolveChangeProjectID(&payload)
+	if resolved == nil || *resolved != 7 || payload.ProjectCode != "" {
+		t.Fatalf("bound project = %v code=%q", resolved, payload.ProjectCode)
+	}
+
+	event := parsedAlertEvent{ProjectID: 9, ProjectCode: "other"}
+	if err := bindAlertWorker(&event, connection); err == nil {
+		t.Fatal("cross-project alert must be rejected before upsert")
+	}
+
+	other := 9
+	if err := workerOwnsRecord(connection, &other); err == nil {
+		t.Fatal("watch and IRM updates must stay on the connection project")
+	}
+	if err := workerOwnsRecord(connection, nil); err == nil {
+		t.Fatal("a bound worker must not update a record with no project")
+	}
+}
+
+func TestUnboundWorkerLeavesPayloadProject(t *testing.T) {
+	payload := parsedChangeWebhook{ProjectID: 9, ProjectCode: "other", Service: "api"}
+	if err := bindChangeWorker(&payload, workerConnection{}); err != nil {
+		t.Fatalf("unbound change: %v", err)
+	}
+	if payload.ProjectID != 9 || payload.ProjectCode != "other" || payload.WorkerBoundProject != 0 {
+		t.Fatalf("global secret pinned a project: %+v", payload)
+	}
+	event := parsedAlertEvent{ProjectID: 9, ProjectCode: "other"}
+	if err := bindAlertWorker(&event, workerConnection{}); err != nil {
+		t.Fatalf("unbound alert: %v", err)
+	}
+	if event.ProjectID != 9 || event.BoundProject != 0 {
+		t.Fatalf("global secret pinned an alert: %+v", event)
+	}
+	other := 9
+	if err := workerOwnsRecord(workerConnection{}, &other); err != nil {
+		t.Fatalf("unbound record check: %v", err)
+	}
+}
+
 func TestInboundWebhookHMAC(t *testing.T) {
 	prev := ChangeWebhookSecret
 	ChangeWebhookSecret = "hmac-secret"

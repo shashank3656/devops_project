@@ -11,6 +11,7 @@ export const INCIDENT_STATES = [
   { value: 'on_hold', label: 'On Hold' },
   { value: 'resolved', label: 'Resolved' },
   { value: 'closed', label: 'Closed' },
+  { value: 'cancelled', label: 'Cancelled' },
 ] as const;
 
 export const PROBLEM_STATES = [
@@ -170,12 +171,18 @@ export function incidentStateValue(value: string): string {
     case 'resolved':
       return 'resolved';
     case 'closed':
+      return 'closed';
     case 'cancelled':
     case 'canceled':
-      return 'closed';
+      return 'cancelled';
     default:
       return value || 'new';
   }
+}
+
+export function incidentCanFinish(value: string): boolean {
+  const key = incidentStateValue(value);
+  return key !== 'closed' && key !== 'cancelled';
 }
 
 export function incidentStateLabel(value: string): string {

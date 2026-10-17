@@ -42,12 +42,14 @@ export default function PortalProfileSettings({
   user,
   onUserPatch,
   onNotify = defaultNotify,
+  focus,
 }: {
   apiUrl: string;
   token: string;
   user: PortalProfileAccount;
   onUserPatch?: (patch: Partial<PortalProfileAccount>) => void;
   onNotify?: PortalProfileNotify;
+  focus?: 'password' | 'notifications' | 'api' | 'account';
 }) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -64,6 +66,7 @@ export default function PortalProfileSettings({
   const [totpEnabled, setTotpEnabled] = useState(Boolean(user.totp_enabled));
   const [totpToggling, setTotpToggling] = useState(false);
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs | null>(null);
+  const [notifLoaded, setNotifLoaded] = useState(false);
   const [notifPrefsSaving, setNotifPrefsSaving] = useState(false);
 
   useEffect(() => {
@@ -89,7 +92,8 @@ export default function PortalProfileSettings({
         const data = await res.json().catch(() => ({}));
         if (res.ok && data.preferences) setNotifPrefs(data.preferences as NotifPrefs);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setNotifLoaded(true));
   }, [apiUrl, token]);
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -276,9 +280,15 @@ export default function PortalProfileSettings({
     }
   };
 
+  const show = (part: 'password' | 'notifications' | 'api' | 'twofa') => {
+    if (focus === 'account') return part === 'twofa';
+    if (!focus) return true;
+    return focus === part;
+  };
+
   return (
     <>
-      {!user.verified ? (
+      {(!focus || focus === 'account') && !user.verified ? (
         <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
@@ -296,7 +306,7 @@ export default function PortalProfileSettings({
         </section>
       ) : null}
 
-      <section className="portal-surface">
+      {show('password') ? <section className="portal-surface" id="profile-password">
         <div className="portal-surface__header">
           <div>
             <span className="portal-surface__eyebrow">Credentials</span>
@@ -347,10 +357,18 @@ export default function PortalProfileSettings({
             </button>
           </div>
         </form>
-      </section>
+      </section> : null}
 
-      {notifPrefs ? (
-        <section className="portal-surface">
+      {show('notifications') && !notifPrefs ? (
+        <section className="portal-surface" id="profile-notifications">
+          <div className="empty-state profile-page__api-state">
+            {notifLoaded ? 'Notification preferences are not available yet.' : 'Loading notification preferences...'}
+          </div>
+        </section>
+      ) : null}
+
+      {show('notifications') && notifPrefs ? (
+        <section className="portal-surface" id="profile-notifications">
           <div className="portal-surface__header">
             <div>
               <span className="portal-surface__eyebrow">Signal routing</span>
@@ -386,7 +404,7 @@ export default function PortalProfileSettings({
         </section>
       ) : null}
 
-      <section className="portal-surface">
+      {show('twofa') ? <section className="portal-surface" id="profile-2fa">
         <div className="portal-surface__header">
           <div>
             <span className="portal-surface__eyebrow">Access control</span>
@@ -407,9 +425,9 @@ export default function PortalProfileSettings({
             {totpToggling ? 'Updating...' : totpEnabled ? 'Disable 2FA' : 'Enable 2FA'}
           </button>
         </div>
-      </section>
+      </section> : null}
 
-      <section className="portal-surface">
+      {show('api') ? <section className="portal-surface" id="profile-api-keys">
         <div className="portal-surface__header">
           <div>
             <span className="portal-surface__eyebrow">API keys</span>
@@ -505,7 +523,7 @@ export default function PortalProfileSettings({
             </table>
           </div>
         )}
-      </section>
+      </section> : null}
     </>
   );
 }

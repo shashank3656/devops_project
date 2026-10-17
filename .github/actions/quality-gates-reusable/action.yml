@@ -26,26 +26,6 @@ runs:
     # -------------------------
     # ✅ Install dependencies
     # -------------------------
-    - name: Install user portal dependencies
-      shell: bash
-      working-directory: ./frontend
-      run: |
-        if [ -f package-lock.json ]; then
-          npm ci
-        else
-          npm install --no-audit --no-fund
-        fi
-
-    - name: Install admin portal dependencies
-      shell: bash
-      working-directory: ./admin-frontend
-      run: |
-        if [ -f package-lock.json ]; then
-          npm ci
-        else
-          npm install --no-audit --no-fund
-        fi
-
     - name: Install DevOps portal dependencies
       shell: bash
       working-directory: ./devops-frontend

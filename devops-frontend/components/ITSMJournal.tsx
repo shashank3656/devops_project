@@ -55,32 +55,27 @@ export default function ITSMJournal({
   };
 
   return (
-    <section className="portal-surface" style={{ marginTop: 16 }}>
-      <div className="portal-surface__header">
-        <div>
-          <span className="portal-surface__eyebrow">Activity</span>
-          <h2 className="portal-surface__title">Work notes and customer comments</h2>
-          <p className="portal-surface__subtitle">Work notes stay internal. Customer comments are the visible update stream.</p>
-        </div>
-      </div>
+    <div style={{ marginTop: 20 }}>
+      <h2 className="chg-detail__section-title">Notes</h2>
+      <p className="chg-detail__hint">Work notes stay internal. Customer comments are the visible update.</p>
       {error ? <div className="alert alert-error">{error}</div> : null}
       {entries.length ? (
-        <div style={{ display: 'grid', gap: 10, marginBottom: 16 }}>
+        <ul className="request-timeline">
           {entries.map((entry) => (
-            <div key={entry.id} style={{ border: '1px solid var(--color-border, #d0d5dd)', borderRadius: 8, padding: 12 }}>
-              <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+            <li key={entry.id}>
+              <small>
                 {entry.kind === 'comment' ? 'Customer comment' : 'Work note'}
                 {entry.author_username ? ` · ${entry.author_username}` : ''}
                 {entry.created_at ? ` · ${new Date(entry.created_at).toLocaleString()}` : ''}
-              </div>
-              <div>{entry.body}</div>
-            </div>
+              </small>
+              <span>{entry.body}</span>
+            </li>
           ))}
-        </div>
+        </ul>
       ) : (
-        <p className="portal-surface__subtitle">No notes yet.</p>
+        <p className="chg-detail__hint">No notes yet.</p>
       )}
-      <div className="portal-form-grid">
+      <div className="portal-form-grid" style={{ marginTop: 12 }}>
         <label className="label">
           Note type
           <select className="input" value={kind} onChange={(event) => setKind(event.target.value as 'work_note' | 'comment')}>
@@ -88,16 +83,16 @@ export default function ITSMJournal({
             <option value="comment">Customer comment</option>
           </select>
         </label>
+        <label className="label" style={{ gridColumn: '1 / -1' }}>
+          {kind === 'comment' ? 'Customer comment' : 'Work note'}
+          <textarea className="input" rows={4} value={body} onChange={(event) => setBody(event.target.value)} placeholder={kind === 'comment' ? 'Visible update for the caller' : 'Internal investigation note'} />
+        </label>
       </div>
-      <label className="label">
-        {kind === 'comment' ? 'Customer comment' : 'Work note'}
-        <textarea className="input" rows={4} value={body} onChange={(event) => setBody(event.target.value)} placeholder={kind === 'comment' ? 'Visible update for the caller' : 'Internal investigation note'} />
-      </label>
-      <div className="portal-form-actions">
+      <div className="request-actions">
         <button type="button" className="btn btn-secondary" disabled={saving || !body.trim()} onClick={() => void submit()}>
           {saving ? 'Posting...' : 'Post note'}
         </button>
       </div>
-    </section>
+    </div>
   );
 }

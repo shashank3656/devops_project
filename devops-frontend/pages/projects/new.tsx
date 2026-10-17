@@ -1,7 +1,8 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
+import CloudServiceSelect from '../../components/CloudServiceSelect';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { asRecord, getString } from '../../lib/payload';
@@ -14,12 +15,6 @@ const CLOUD_OPTIONS = [
   { value: 'azure', label: 'Azure' },
   { value: 'gcp', label: 'GCP' },
 ];
-
-const SERVICE_OPTIONS: Record<string, string[]> = {
-  aws: ['ec2', 'eks', 'rds', 'vpc', 's3', 'iam', 'lambda'],
-  azure: ['aks', 'postgresql', 'virtual-network', 'storage-account'],
-  gcp: ['gke', 'cloudsql', 'vpc', 'storage', 'iam'],
-};
 
 type ProjectStatus = 'active' | 'inactive' | 'archived';
 
@@ -44,6 +39,9 @@ interface ProjectApprovalRule {
 interface ProjectTeamAccess {
   team_id: number;
   environments: string[];
+  email: string;
+  role: string;
+  production: boolean;
 }
 
 interface ProjectFormState {
@@ -57,6 +55,7 @@ interface ProjectFormState {
   services: ProjectServiceOption[];
   team_access: ProjectTeamAccess[];
   approval_rules: ProjectApprovalRule[];
+  on_call: boolean;
 }
 
 const DEFAULT_ENVIRONMENTS = ['dev', 'uat', 'prod'];
@@ -68,10 +67,11 @@ function createEmptyForm(): ProjectFormState {
     description: '',
     status: 'active',
     owner_team_id: '',
-    environments: [...DEFAULT_ENVIRONMENTS],
-    clouds: ['aws'],
-    services: [{ cloud: 'aws', service: 'eks' }],
+    environments: [],
+    clouds: [],
+    services: [],
     team_access: [],
+    on_call: false,
     approval_rules: [
       { environment: 'dev', require_manager_approval: false, require_devops_approval: true },
       { environment: 'uat', require_manager_approval: true, require_devops_approval: true },
@@ -105,6 +105,9 @@ export default function NewProjectPage() {
   const [error, setError] = useState('');
   const [teamOptionsError, setTeamOptionsError] = useState('');
   const [notice, setNotice] = useState('');
+  const [productionReviewed, setProductionReviewed] = useState(false);
+  const [connectedProviders, setConnectedProviders] = useState<string[]>([]);
+  const [providersLoaded, setProvidersLoaded] = useState(false);
 
   const validateDevOpsSession = async (): Promise<string | null> => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -145,13 +148,36 @@ export default function NewProjectPage() {
     setTeamOptionsError('');
   };
 
+  const fetchConnectedProviders = async (token: string) => {
+    try {
+      const res = await fetch(`${apiUrl}/api/devops/cloud/accounts`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = asRecord(await res.json().catch(() => ({})));
+      if (!res.ok) {
+        setConnectedProviders([]);
+        setProvidersLoaded(false);
+        return;
+      }
+      const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+      const providers = accounts
+        .map((item) => asRecord(item))
+        .filter((row) => row.status === 'connected' && typeof row.provider === 'string')
+        .map((row) => String(row.provider).toLowerCase());
+      setConnectedProviders(Array.from(new Set(providers)));
+      setProvidersLoaded(true);
+    } catch {
+      setConnectedProviders([]);
+      setProvidersLoaded(false);
+    }
+  };
+
   useEffect(() => {
     setLoading(true);
     setError('');
     void validateDevOpsSession()
-      .then((token) => {
+      .then(async (token) => {
         if (!token) return;
-        return fetchProjectOptions(token);
+        await fetchProjectOptions(token);
+        await fetchConnectedProviders(token);
       })
       .catch((err: Error) => {
         setTeamOptionsError(err.message || 'Failed to load team options');
@@ -159,14 +185,6 @@ export default function NewProjectPage() {
       })
       .finally(() => setLoading(false));
   }, [apiUrl]);
-
-  const servicesByCloud = useMemo(() => {
-    const grouped: Record<string, string[]> = {};
-    for (const cloud of form.clouds) {
-      grouped[cloud] = SERVICE_OPTIONS[cloud] || [];
-    }
-    return grouped;
-  }, [form.clouds]);
 
   const updateForm = (patch: Partial<ProjectFormState>) => {
     setForm((current) => ({ ...current, ...patch }));
@@ -178,7 +196,8 @@ export default function NewProjectPage() {
       const nextEnvironments = exists
         ? current.environments.filter((value) => value !== environment)
         : [...current.environments, environment];
-      const normalizedEnvironments = nextEnvironments.length > 0 ? nextEnvironments : [environment];
+      const normalizedEnvironments = nextEnvironments;
+      if (environment === 'prod' && exists) setProductionReviewed(false);
       return {
         ...current,
         environments: normalizedEnvironments,
@@ -202,7 +221,7 @@ export default function NewProjectPage() {
     setForm((current) => {
       const exists = current.clouds.includes(cloud);
       const nextClouds = exists ? current.clouds.filter((value) => value !== cloud) : [...current.clouds, cloud];
-      const normalizedClouds = nextClouds.length > 0 ? nextClouds : [cloud];
+      const normalizedClouds = nextClouds;
       return {
         ...current,
         clouds: normalizedClouds,
@@ -230,7 +249,13 @@ export default function NewProjectPage() {
         ...current,
         team_access: exists
           ? current.team_access.filter((access) => access.team_id !== teamID)
-          : [...current.team_access, { team_id: teamID, environments: [...current.environments] }],
+          : [...current.team_access, {
+              team_id: teamID,
+              environments: current.environments.filter((environment) => environment !== 'prod'),
+              email: '',
+              role: '',
+              production: false,
+            }],
       };
     });
   };
@@ -244,7 +269,7 @@ export default function NewProjectPage() {
         const nextEnvironments = exists
           ? access.environments.filter((value) => value !== environment)
           : [...access.environments, environment];
-        return { ...access, environments: nextEnvironments.length > 0 ? nextEnvironments : [environment] };
+        return { ...access, environments: nextEnvironments, production: nextEnvironments.includes('prod') };
       }),
     }));
   };
@@ -260,12 +285,63 @@ export default function NewProjectPage() {
 
   const selectedOwnerTeamName = ownerTeams.find((team) => String(team.id) === form.owner_team_id)?.name || 'Not set';
 
+  const providerNote = (value: string) => {
+    if (!providersLoaded) return '';
+    if (connectedProviders.includes(value)) return 'Account connected';
+    return '';
+  };
+
+  const updateTeamAccess = (teamID: number, patch: Partial<ProjectTeamAccess>) => {
+    setForm((current) => ({
+      ...current,
+      team_access: current.team_access.map((access) => (access.team_id === teamID ? { ...access, ...patch } : access)),
+    }));
+  };
+
   const submitForm = async (event: React.FormEvent) => {
     event.preventDefault();
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
       clearSessionAndRedirect();
       return;
+    }
+    if (!form.name.trim() || !form.code.trim()) {
+      setError('Project name and key are required.');
+      return;
+    }
+    if (!form.owner_team_id) {
+      setError('Choose the working team before the cloud.');
+      return;
+    }
+    if (form.clouds.length === 0) {
+      setError('Choose a configured cloud connection.');
+      return;
+    }
+    if (form.environments.length === 0) {
+      setError('Choose at least one allowed environment.');
+      return;
+    }
+    if (form.environments.includes('prod') && !productionReviewed) {
+      setError('Production needs an explicit review before it can be saved.');
+      return;
+    }
+    if (form.services.length === 0) {
+      setError('Choose at least one allowed service.');
+      return;
+    }
+    if (form.team_access.length === 0) {
+      setError('Add a team, email, role, and environment access.');
+      return;
+    }
+    for (const access of form.team_access) {
+      if (!access.email.includes('@') || !access.role || access.environments.filter((environment) => environment !== 'prod').length === 0) {
+        setError('Each member needs a team, email, role, and environment. Production is confirmed separately.');
+        return;
+      }
+      if (access.environments.includes('prod') && !access.production) {
+        setError('Production access needs its own confirmation.');
+        return;
+      }
     }
     setSaving(true);
     setError('');
@@ -275,7 +351,11 @@ export default function NewProjectPage() {
       code: normalizeCode(form.code || form.name),
       owner_team_id: form.owner_team_id ? Number(form.owner_team_id) : null,
       services: form.services,
-      team_access: form.team_access,
+      approval_rules: form.approval_rules.filter((rule) => form.environments.includes(rule.environment)),
+      team_access: form.team_access.map((access) => ({
+        team_id: access.team_id,
+        environments: access.production ? access.environments : access.environments.filter((environment) => environment !== 'prod'),
+      })),
     };
     try {
       const response = await fetch(`${apiUrl}/api/devops/projects`, {
@@ -294,8 +374,9 @@ export default function NewProjectPage() {
       if (!response.ok) {
         throw new Error(getString(data.cause) || getString(data.error, 'Failed to save project'));
       }
-      setNotice('Project created.');
+      setNotice(typeof asRecord(data.project).id === 'number' ? `Saved project ${asRecord(data.project).id}.` : 'The server accepted the project, but did not return a reference.');
       setForm(createEmptyForm());
+      setProductionReviewed(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save project');
     } finally {
@@ -314,7 +395,7 @@ export default function NewProjectPage() {
             <span className="portal-page__eyebrow">Project Onboarding</span>
             <h1 className="portal-page__title">Onboard project</h1>
             <p className="portal-page__subtitle">
-              Use a dedicated page for project onboarding so the project catalog stays easier to browse.
+              Name and key, then the working team, then the clouds this project uses, then the allowed environments. This setup does not provision infrastructure or grant IAM.
             </p>
           </div>
           <div className="portal-page__actions">
@@ -333,7 +414,7 @@ export default function NewProjectPage() {
               <span className="portal-surface__eyebrow">New project</span>
               <h2 className="portal-surface__title">Project details</h2>
               <p className="portal-surface__subtitle">
-                Configure the project catalog, environments, services, and team access in one place.
+                Review the catalog, then save. Saving records the project. It does not create a cloud resource.
               </p>
             </div>
           </div>
@@ -363,9 +444,8 @@ export default function NewProjectPage() {
                     ))}
                   </select>
                   <small className="catalog-editor__field-help">
-                    {ownerTeams.length > 0
-                      ? `Showing ${ownerTeams.length} team${ownerTeams.length === 1 ? '' : 's'} from the admin team catalog for project ownership.`
-                      : teamOptionsError || 'No teams were returned from the backend team catalog yet.'}
+                    Choose the working team before a cloud.
+                    {teamOptionsError ? ` ${teamOptionsError}` : ''}
                   </small>
                 </div>
                 <div className="form-group">
@@ -384,6 +464,44 @@ export default function NewProjectPage() {
               </div>
 
               <div className="catalog-editor__section">
+                <strong>On-call</strong>
+                <p className="catalog-editor__section-copy">Turn this on when the project needs a person every day. The owner team chooses who rotates. If that person is unavailable, they ask someone else, and that person approves before the day changes.</p>
+                <label className="catalog-editor__toggle-label">
+                  <input type="checkbox" checked={form.on_call} onChange={(event) => updateForm({ on_call: event.target.checked })} />
+                  <span>This project uses on-call</span>
+                </label>
+              </div>
+
+              <div className="catalog-editor__section">
+                <strong>Cloud</strong>
+                <p className="catalog-editor__section-copy">Choose the clouds this project can request against. Choosing one records the catalog. It does not provision that cloud or grant IAM.</p>
+                <div className="catalog-editor__choice-row">
+                  {CLOUD_OPTIONS.map((cloud) => {
+                    const note = providerNote(cloud.value);
+                    return (
+                      <label key={cloud.value} className="catalog-editor__toggle-label">
+                        <input
+                          type="checkbox"
+                          checked={form.clouds.includes(cloud.value)}
+                          onChange={() => toggleCloud(cloud.value)}
+                        />
+                        <span>{cloud.label}{note ? ` — ${note}` : ''}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {form.clouds.length === 0 ? <p className="catalog-editor__section-copy">Select a cloud, then choose its services from the dropdown.</p> : null}
+                {form.clouds.map((cloud) => (
+                  <CloudServiceSelect
+                    key={cloud}
+                    cloud={cloud}
+                    selected={form.services.filter((entry) => entry.cloud === cloud).map((entry) => entry.service)}
+                    onToggle={toggleService}
+                  />
+                ))}
+              </div>
+
+              <div className="catalog-editor__section">
                 <strong>Environments</strong>
                 <div className="catalog-editor__choice-row">
                   {DEFAULT_ENVIRONMENTS.map((environment) => (
@@ -393,18 +511,12 @@ export default function NewProjectPage() {
                     </label>
                   ))}
                 </div>
-              </div>
-
-              <div className="catalog-editor__section">
-                <strong>Clouds</strong>
-                <div className="catalog-editor__choice-row">
-                  {CLOUD_OPTIONS.map((cloud) => (
-                    <label key={cloud.value} className="catalog-editor__toggle-label">
-                      <input type="checkbox" checked={form.clouds.includes(cloud.value)} onChange={() => toggleCloud(cloud.value)} />
-                      <span>{cloud.label}</span>
-                    </label>
-                  ))}
-                </div>
+                {form.environments.includes('prod') ? (
+                  <label className="catalog-editor__toggle-label">
+                    <input type="checkbox" checked={productionReviewed} onChange={(event) => setProductionReviewed(event.target.checked)} />
+                    <span>Production reviewed. This confirms the catalog entry. It does not deploy to production.</span>
+                  </label>
+                ) : null}
               </div>
 
               <div className="catalog-editor__section catalog-editor__section--lg">
@@ -453,44 +565,28 @@ export default function NewProjectPage() {
                 </div>
               </div>
 
-              <div className="catalog-editor__section">
-                <strong>Allowed services</strong>
-                <div className="catalog-editor__choice-grid">
-                  {Object.entries(servicesByCloud).map(([cloud, services]) => (
-                    <div key={cloud} className="request-choice-card catalog-editor__choice-card">
-                      <strong>{cloud.toUpperCase()}</strong>
-                      <div className="catalog-editor__choice-list">
-                        {services.map((service) => (
-                          <label key={`${cloud}-${service}`} className="catalog-editor__toggle-label">
-                            <input
-                              type="checkbox"
-                              checked={form.services.some((entry) => entry.cloud === cloud && entry.service === service)}
-                              onChange={() => toggleService(cloud, service)}
-                            />
-                            <span>{service}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
               <div className="catalog-editor__section catalog-editor__section--lg">
                 <strong>Team access</strong>
-                <p className="catalog-editor__section-copy">Choose which portal teams can see the project, then scope the environments they can request.</p>
+                <p className="catalog-editor__section-copy">
+                  Each row needs a team, email, role, and environment. Production is a separate confirmation. A checked row is pending until this project is saved. Effective access is the saved project. This does not grant IAM.
+                </p>
                 <div className="catalog-editor__table-wrap">
                   <table className="templates-table">
                     <thead>
                       <tr>
                         <th>Enabled</th>
                         <th>Team</th>
+                        <th>Email</th>
+                        <th>Role</th>
                         <th>Allowed environments</th>
+                        <th>Production</th>
+                        <th>Access</th>
                       </tr>
                     </thead>
                     <tbody>
                       {portalTeams.map((team) => {
                         const access = form.team_access.find((entry) => entry.team_id === team.id);
+                        const inherited = String(team.id) === form.owner_team_id;
                         return (
                           <tr key={team.id}>
                             <td>
@@ -499,8 +595,25 @@ export default function NewProjectPage() {
                             <td>{team.name}</td>
                             <td>
                               {access ? (
+                                <input className="input" type="email" value={access.email} onChange={(event) => updateTeamAccess(team.id, { email: event.target.value })} placeholder="name@company.com" />
+                              ) : (
+                                <span className="catalog-editor__field-help">No access</span>
+                              )}
+                            </td>
+                            <td>
+                              {access ? (
+                                <select className="select" value={access.role} onChange={(event) => updateTeamAccess(team.id, { role: event.target.value })}>
+                                  <option value="">Select role</option>
+                                  <option value="viewer">Viewer</option>
+                                  <option value="operator">Operator</option>
+                                  <option value="admin">Admin</option>
+                                </select>
+                              ) : null}
+                            </td>
+                            <td>
+                              {access ? (
                                 <div className="catalog-editor__choice-row catalog-editor__choice-row--tight">
-                                  {form.environments.map((environment) => (
+                                  {form.environments.filter((environment) => environment !== 'prod').map((environment) => (
                                     <label key={`${team.id}-${environment}`} className="catalog-editor__toggle-label catalog-editor__toggle-label--tight">
                                       <input
                                         type="checkbox"
@@ -514,6 +627,33 @@ export default function NewProjectPage() {
                               ) : (
                                 <span className="catalog-editor__field-help">No access</span>
                               )}
+                            </td>
+                            <td>
+                              {access && form.environments.includes('prod') ? (
+                                <label className="catalog-editor__toggle-label catalog-editor__toggle-label--tight">
+                                  <input
+                                    type="checkbox"
+                                    checked={access.production}
+                                    onChange={(event) => {
+                                      const production = event.target.checked;
+                                      const environments = production
+                                        ? Array.from(new Set([...access.environments, 'prod']))
+                                        : access.environments.filter((environment) => environment !== 'prod');
+                                      updateTeamAccess(team.id, { production, environments });
+                                    }}
+                                  />
+                                  <span>Confirm</span>
+                                </label>
+                              ) : (
+                                <span className="catalog-editor__field-help">Not included</span>
+                              )}
+                            </td>
+                            <td>
+                              {access
+                                ? inherited
+                                  ? `Inherited from owner team ${team.name}. Pending until save.`
+                                  : 'Pending until save. Effective access is the saved project.'
+                                : 'No access'}
                             </td>
                           </tr>
                         );

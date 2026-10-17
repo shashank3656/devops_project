@@ -206,7 +206,7 @@ func startChangeImplementation(id, userID int) (*changeRequestRecord, error) {
 	return transitionChangeStatus(id, "implementing")
 }
 
-func applyMajorIncidentMode(item *requestIncident, major bool, statusNote string) (*requestIncident, error) {
+func applyMajorIncidentMode(item *requestIncident, major bool, statusNote, conferenceURL string) (*requestIncident, error) {
 	if item == nil {
 		return nil, fmt.Errorf("incident not found")
 	}
@@ -215,6 +215,7 @@ func applyMajorIncidentMode(item *requestIncident, major bool, statusNote string
 	if major && !item.Major {
 		text := "Major incident " + item.IncidentNumber + ": " + firstNonEmpty(note, item.Summary)
 		SendSlackNotification(text, nil)
+		pageMajorIncidentOncall(item, note, conferenceURL)
 		thread = "posted"
 		if item.OwnerUserID == nil {
 			if owner := activeOncallUserID(); owner != nil {

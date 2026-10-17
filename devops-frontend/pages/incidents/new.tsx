@@ -148,6 +148,21 @@ export default function NewIncidentPage() {
   const requestedRequestId = useMemo(() => parsePositiveIntQuery(router.query.request_id), [router.query.request_id]);
 
   useEffect(() => {
+    const saved = sessionStorage.getItem('setuops-incident-note');
+    if (saved) setNotes(saved);
+  }, []);
+
+  useEffect(() => {
+    const lower = notes.toLowerCase();
+    if (/(password|secret|token)/.test(lower)) {
+      sessionStorage.removeItem('setuops-incident-note');
+      return;
+    }
+    if (notes.trim()) sessionStorage.setItem('setuops-incident-note', notes);
+    else sessionStorage.removeItem('setuops-incident-note');
+  }, [notes]);
+
+  useEffect(() => {
     if (requestedRequestId && !requestId) {
       setRequestId(String(requestedRequestId));
     }
@@ -256,9 +271,12 @@ export default function NewIncidentPage() {
     try {
       const linkedRequestID = requestedRequestId || resolveIncidentReferenceInput(requestId, incidents);
       const normalizedStatus = mode === 'draft' ? 'draft' : status === 'draft' ? 'new' : status;
-      if (mode !== 'draft' && !summary.trim()) {
-        throw new Error('Short description is required');
-      }
+    if (mode !== 'draft' && !summary.trim()) {
+      throw new Error('Short description is required');
+    }
+    if (mode !== 'draft' && (normalizedStatus === 'resolved' || normalizedStatus === 'closed') && !notes.trim()) {
+      throw new Error('Resolve needs a recovery note before this incident can close.');
+    }
       const response = await fetch(`${apiUrl}/api/devops/incidents`, {
         method: 'POST',
         headers: {
@@ -382,6 +400,7 @@ export default function NewIncidentPage() {
                       <option key={item.value} value={item.value}>{item.label}</option>
                     ))}
                   </select>
+                  <small>Who is affected.</small>
                 </label>
                 <label className="label">
                   Urgency
@@ -390,6 +409,7 @@ export default function NewIncidentPage() {
                       <option key={item.value} value={item.value}>{item.label}</option>
                     ))}
                   </select>
+                  <small>How fast a response is needed.</small>
                 </label>
                 <label className="label">
                   Priority
@@ -398,6 +418,7 @@ export default function NewIncidentPage() {
                       <option key={item.value} value={item.value}>{item.label}</option>
                     ))}
                   </select>
+                  <small>Derived from impact and urgency. You can adjust it.</small>
                 </label>
                 <label className="label">
                   State
@@ -437,6 +458,7 @@ export default function NewIncidentPage() {
                       </option>
                     ))}
                   </select>
+                  <small>Assignment names an owner. It is not acknowledgement.</small>
                 </label>
                 <label className="label">
                   Caller
@@ -445,7 +467,6 @@ export default function NewIncidentPage() {
                     {callers.map((caller) => (
                       <option key={caller.user_id} value={caller.user_id}>
                         {caller.username}
-                        {caller.email ? ` · ${caller.email}` : ''}
                       </option>
                     ))}
                   </select>
@@ -501,6 +522,7 @@ export default function NewIncidentPage() {
               <label className="label">
                 Work note (internal)
                 <textarea className="input" rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Internal investigation note" />
+                <small>A draft stays in this browser. The timeline records provenance after save. Resolve or close needs a recovery note.</small>
               </label>
               <label className="label">
                 Customer comment

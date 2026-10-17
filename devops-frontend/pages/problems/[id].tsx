@@ -100,14 +100,14 @@ export default function ProblemDetailPage() {
       <Head>
         <title>{item?.problem_number || 'Problem'} - DevOps</title>
       </Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="work-page">
+        <header className="work-page__head">
           <div>
-            <span className="portal-page__eyebrow">Problem</span>
-            <h1 className="portal-page__title">{item?.problem_number || 'Problem'}</h1>
-            <p className="portal-page__subtitle">{item?.summary || 'Recurring alert fingerprint.'}</p>
+            <p className="ops-kicker">{item?.problem_number || 'Problem'}</p>
+            <h1>{item?.summary || 'Problem'}</h1>
+            <p>{item ? problemStateLabel(item.status) : 'Recurring alert fingerprint.'}</p>
           </div>
-          <div className="portal-page__actions">
+          <div className="request-actions" style={{ marginTop: 0 }}>
             <Link
               href={`/changes/new?problem=${encodeURIComponent(item?.problem_number || '')}&title=${encodeURIComponent(item?.summary ? `Fix ${item.summary}` : 'Problem fix')}&incident=${item?.related_incident_id ? encodeURIComponent(String(item.related_incident_id)) : ''}`}
               className="btn btn-primary"
@@ -151,39 +151,68 @@ export default function ProblemDetailPage() {
             )}
             <Link href="/problems" className="btn btn-secondary">Back to problems</Link>
           </div>
-        </div>
+        </header>
         {error ? <div className="alert alert-error">{error}</div> : null}
         {item ? (
-          <section className="portal-surface">
-            <div className="portal-form-grid">
-              <label className="label">Fingerprint<input className="input" readOnly value={item.fingerprint} /></label>
-              <label className="label">Service<input className="input" readOnly value={item.service || '—'} /></label>
-              <label className="label">Occurrences<input className="input" readOnly value={String(item.occurrence_count)} /></label>
-              <label className="label">Priority<input className="input" readOnly value={priorityLabel(item.priority || 'p3')} /></label>
-              <label className="label">State<input className="input" readOnly value={problemStateLabel(item.status)} /></label>
-              <label className="label">Known error<input className="input" readOnly value={item.known_error ? 'Yes' : 'No'} /></label>
-              <label className="label">Category<input className="input" readOnly value={[item.category, item.subcategory].filter(Boolean).join(' / ') || '—'} /></label>
-              <label className="label">Assignment group<input className="input" readOnly value={item.assignment_group_name || '—'} /></label>
-              <label className="label">Assignee<input className="input" readOnly value={item.assignee_username || '—'} /></label>
-              <label className="label">Caller<input className="input" readOnly value={item.caller_username || '—'} /></label>
-              <label className="label">
-                Related incident
-                {item.related_incident_id ? (
-                  <Link href={`/incidents/${item.related_incident_id}/edit`} className="input" style={{ display: 'block' }}>
-                    Open INC record
-                  </Link>
-                ) : (
-                  <input className="input" readOnly value="None" />
-                )}
-              </label>
+          <section className="work-board">
+            <div className="request-facts">
+              <div><span>Fingerprint</span><strong>{item.fingerprint || '—'}</strong></div>
+              <div><span>Service</span><strong>{item.service || '—'}</strong></div>
+              <div><span>Environment</span><strong>{item.environment || '—'}</strong></div>
+              <div><span>Occurrences</span><strong>{String(item.occurrence_count)}</strong></div>
+              <div><span>Priority</span><strong>{priorityLabel(item.priority || 'p3')}</strong></div>
+              <div><span>State</span><strong>{problemStateLabel(item.status)}</strong></div>
+              <div><span>Known error</span><strong>{item.known_error ? 'Yes' : 'No'}</strong></div>
+              <div><span>Category</span><strong>{[item.category, item.subcategory].filter(Boolean).join(' / ') || '—'}</strong></div>
+              <div><span>Assignment group</span><strong>{item.assignment_group_name || '—'}</strong></div>
+              <div><span>Assignee</span><strong>{item.assignee_username || '—'}</strong></div>
+              <div><span>Caller</span><strong>{item.caller_username || '—'}</strong></div>
+              <div>
+                <span>Related incident</span>
+                <strong>
+                  {item.related_incident_id ? (
+                    <Link href={`/incidents/${item.related_incident_id}/edit`}>Open incident</Link>
+                  ) : 'None'}
+                </strong>
+              </div>
+              <ITSMClock sla={item.sla} />
             </div>
-            <ITSMClock sla={item.sla} />
-            {item.description ? <p className="portal-page__subtitle">{item.description}</p> : null}
-            {item.workaround ? <p className="portal-page__subtitle">Workaround: {item.workaround}</p> : null}
-            <p className="portal-surface__subtitle">
-              Publish a knowledge article after this is a known error. The article copies the workaround and root cause.
-            </p>
-            <div className="portal-form-actions">
+            {item.description ? <p className="chg-detail__prose">{item.description}</p> : null}
+            {item.workaround ? <p className="chg-detail__prose"><strong>Workaround. </strong>{item.workaround}</p> : null}
+            {item.root_cause ? <p className="chg-detail__prose"><strong>Root cause. </strong>{item.root_cause}</p> : null}
+            <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16 }}>
+              <input
+                type="checkbox"
+                checked={Boolean(item.known_error)}
+                disabled={saving}
+                onChange={(event) => {
+                  const next = event.target.checked;
+                  const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                  if (!token || !resourceId) return;
+                  setSaving(true);
+                  setError('');
+                  portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/problems/${resourceId}`), {
+                    method: 'PATCH',
+                    token,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ known_error: next }),
+                  })
+                    .then(async (res) => {
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok) {
+                        setError(data?.error || 'Failed to update problem');
+                        return;
+                      }
+                      if (data.problem) setItem(data.problem);
+                    })
+                    .finally(() => setSaving(false));
+                }}
+              />
+              Known error. Publishing a knowledge article copies the workaround and root cause.
+            </label>
+            <div className="portal-form-grid" style={{ marginTop: 16 }}>
+              <label className="label">
+                State
               <select
                 className="input"
                 value={item.status === 'open' ? 'new' : item.status}
@@ -194,6 +223,9 @@ export default function ProblemDetailPage() {
                   <option key={state.value} value={state.value}>{state.label}</option>
                 ))}
               </select>
+              </label>
+              <label className="label">
+                Priority
               <select
                 className="input"
                 value={item.priority || 'p3'}
@@ -223,6 +255,7 @@ export default function ProblemDetailPage() {
                   <option key={entry.value} value={entry.value}>{entry.label}</option>
                 ))}
               </select>
+              </label>
             </div>
             <ITSMJournal
               apiUrl={apiUrl}

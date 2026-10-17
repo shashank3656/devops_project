@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import CloudServiceSelect from '../../../components/CloudServiceSelect';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import { asRecord, getString } from '../../../lib/payload';
@@ -14,12 +15,6 @@ const CLOUD_OPTIONS = [
   { value: 'azure', label: 'Azure' },
   { value: 'gcp', label: 'GCP' },
 ];
-
-const SERVICE_OPTIONS: Record<string, string[]> = {
-  aws: ['ec2', 'eks', 'rds', 'vpc', 's3', 'iam', 'lambda'],
-  azure: ['aks', 'postgresql', 'virtual-network', 'storage-account'],
-  gcp: ['gke', 'cloudsql', 'vpc', 'storage', 'iam'],
-};
 
 type ProjectStatus = 'active' | 'inactive' | 'archived';
 
@@ -234,14 +229,6 @@ export default function EditProjectPage() {
     }
     void loadData();
   }, [apiUrl, projectId, router.isReady]);
-
-  const servicesByCloud = useMemo(() => {
-    const grouped: Record<string, string[]> = {};
-    for (const cloud of form.clouds) {
-      grouped[cloud] = SERVICE_OPTIONS[cloud] || [];
-    }
-    return grouped;
-  }, [form.clouds]);
 
   const updateForm = (patch: Partial<ProjectFormState>) => {
     setForm((current) => ({ ...current, ...patch }));
@@ -481,6 +468,15 @@ export default function EditProjectPage() {
                     </label>
                   ))}
                 </div>
+                {form.clouds.length === 0 ? <p className="catalog-editor__section-copy">Select a cloud, then choose its services from the dropdown.</p> : null}
+                {form.clouds.map((cloud) => (
+                  <CloudServiceSelect
+                    key={cloud}
+                    cloud={cloud}
+                    selected={form.services.filter((entry) => entry.cloud === cloud).map((entry) => entry.service)}
+                    onToggle={toggleService}
+                  />
+                ))}
               </div>
 
               <div className="catalog-editor__section catalog-editor__section--lg">
@@ -526,29 +522,6 @@ export default function EditProjectPage() {
                       })}
                     </tbody>
                   </table>
-                </div>
-              </div>
-
-              <div className="catalog-editor__section">
-                <strong>Allowed services</strong>
-                <div className="catalog-editor__choice-grid">
-                  {Object.entries(servicesByCloud).map(([cloud, services]) => (
-                    <div key={cloud} className="request-choice-card catalog-editor__choice-card">
-                      <strong>{cloud.toUpperCase()}</strong>
-                      <div className="catalog-editor__choice-list">
-                        {services.map((service) => (
-                          <label key={`${cloud}-${service}`} className="catalog-editor__toggle-label">
-                            <input
-                              type="checkbox"
-                              checked={form.services.some((entry) => entry.cloud === cloud && entry.service === service)}
-                              onChange={() => toggleService(cloud, service)}
-                            />
-                            <span>{service}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </div>
 

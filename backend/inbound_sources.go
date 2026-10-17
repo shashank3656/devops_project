@@ -115,6 +115,9 @@ func createInboundWebhookSource(kind, name, secret string, projectID *int) (*inb
 	if name == "" {
 		return nil, errInboundSource("name is required")
 	}
+	if strings.TrimSpace(secret) == "" {
+		return nil, errInboundSource("X-CI-Secret is required")
+	}
 	var item inboundWebhookSource
 	var storedSecret string
 	err := DB.QueryRow(`
@@ -168,6 +171,20 @@ func encodeInboundSourceJSON(w http.ResponseWriter, payload interface{}) {
 	}
 }
 
+func devopsInboundSourcesHandler(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireDevopsManager(w, r); !ok {
+		return
+	}
+	serveInboundSources(w, r)
+}
+
+func devopsInboundSourceDetailHandler(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireDevopsManager(w, r); !ok {
+		return
+	}
+	serveInboundSourceDetail(w, r, "/api/devops/inbound-sources/")
+}
+
 func adminInboundSourcesHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
@@ -175,6 +192,15 @@ func adminInboundSourcesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	serveInboundSources(w, r)
+}
+
+func serveInboundSources(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
 		return
 	}
 	if DB == nil {
@@ -203,7 +229,11 @@ func adminInboundSourcesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		item, err := createInboundWebhookSource(body.Kind, body.Name, body.Secret, body.ProjectID)
 		if err != nil {
-			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+			if _, ok := err.(inboundSourceError); ok {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
+				return
+			}
+			writeAPIError(w, r, http.StatusBadRequest, "could not save the CI secret", nil)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -222,7 +252,20 @@ func adminInboundSourceDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
-	path := strings.TrimPrefix(r.URL.Path, "/api/admin/inbound-sources/")
+	serveInboundSourceDetail(w, r, "/api/admin/inbound-sources/")
+}
+
+func serveInboundSourceDetail(w http.ResponseWriter, r *http.Request, prefix string) {
+	enableCORS(w)
+	if r.Method == "OPTIONS" {
+		handleOptions(w, r)
+		return
+	}
+	if DB == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "database not available", nil)
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, prefix)
 	id, _ := strconv.Atoi(strings.Split(path, "/")[0])
 	if id <= 0 {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid source id", nil)
@@ -257,7 +300,11 @@ func adminInboundSourceDetailHandler(w http.ResponseWriter, r *http.Request) {
 		enabled = *body.Enabled
 	}
 	if err := updateInboundWebhookSource(id, body.Kind, body.Name, body.Secret, enabled, body.ProjectID); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+		if _, ok := err.(inboundSourceError); ok {
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
+			return
+		}
+		writeAPIError(w, r, http.StatusBadRequest, "could not update the CI secret", nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

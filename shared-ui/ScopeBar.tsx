@@ -76,6 +76,11 @@ export default function ScopeBar({
           Clear
         </button>
       ) : null}
+      {selected ? (
+        <p className="ig-scope-bar__facts">
+          Team {selected.team || 'Unknown'} · Cloud {selected.cloud || 'Unknown'} · Environments {selected.environments?.length ? selected.environments.join(', ') : 'Unknown'}
+        </p>
+      ) : null}
     </div>
   );
 }
