@@ -1,6 +1,6 @@
 # Architecture
 
-InfraGate is built as a shared control plane with three separate web portals backed by one Go API.
+SetuOps is one web portal (`devops-frontend`) and one Go API. Requesters, operators, managers, and admins share that shell. Section grants decide what they see. The diagrams below that still say “three portals” describe the earlier split; the current screen flows are in [FLOWS.md](./FLOWS.md).
 
 ## Diagram Index
 
@@ -26,9 +26,7 @@ flowchart LR
     end
 
     subgraph Portals
-        UserPortal["User Portal"]
-        AdminPortal["Admin Portal"]
-        DevOpsPortal["DevOps Portal"]
+        DevOpsPortal["SetuOps portal"]
     end
 
     subgraph ControlPlane
@@ -44,12 +42,10 @@ flowchart LR
         K8s["Kubernetes clusters"]
     end
 
-    Dev --> UserPortal
-    AdminUser --> AdminPortal
+    Dev --> DevOpsPortal
+    AdminUser --> DevOpsPortal
     SRE --> DevOpsPortal
 
-    UserPortal --> API
-    AdminPortal --> API
     DevOpsPortal --> API
 
     API --> DB
@@ -59,9 +55,7 @@ flowchart LR
     API --> OTel
     API --> K8s
 
-    UserPortal -. "requests, templates, incidents" .-> API
-    AdminPortal -. "approvals, governance, users, teams" .-> API
-    DevOpsPortal -. "promotions, gates, health, rollback, ops" .-> API
+    DevOpsPortal -. "requests, changes, incidents, on-call, IAM, maintenance" .-> API
 ```
 
 ## Workflow Lifecycle
@@ -86,21 +80,17 @@ flowchart TD
 
 ## Deployment Topology
 
-This diagram shows the runtime exposure model used by Docker/Helm deployments: one ingress for all frontends and one separate ingress for the backend API.
+This diagram shows the runtime the repo ships: one portal and one API. Helm values still name extra frontend hosts from the earlier split. Those folders are not in this tree.
 
 ```mermaid
 flowchart LR
     Internet["Users / Browsers"] --> FrontIngress["Frontend Ingress"]
     Internet --> ApiIngress["Backend Ingress"]
 
-    FrontIngress --> UserSvc["frontend service"]
-    FrontIngress --> AdminSvc["admin-frontend service"]
     FrontIngress --> DevOpsSvc["devops-frontend service"]
 
     ApiIngress --> ApiSvc["backend service"]
 
-    UserSvc --> ApiSvc
-    AdminSvc --> ApiSvc
     DevOpsSvc --> ApiSvc
 
     ApiSvc --> DB["PostgreSQL"]
@@ -114,9 +104,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    User["User Portal<br/>frontend/"]
-    Admin["Admin Portal<br/>admin-frontend/"]
-    DevOps["DevOps Portal<br/>devops-frontend/"]
+    DevOps["SetuOps portal<br/>devops-frontend/"]
     API["Backend API<br/>backend/"]
     DB["PostgreSQL"]
     Redis["Redis"]
@@ -124,8 +112,6 @@ flowchart LR
     Notify["Slack / Teams / Email / Webhooks"]
     OTel["OpenTelemetry"]
 
-    User --> API
-    Admin --> API
     DevOps --> API
     API --> DB
     API --> Redis
@@ -136,42 +122,23 @@ flowchart LR
 
 ## Components
 
-### User Portal
+### Portal
 
-The user portal is the self-service entry point for:
+`devops-frontend` is the only UI. Grants split it into:
 
-- infrastructure requests
-- reusable templates
-- request history
-- assigned incidents and read-only reviews
-- scorecards and live-vs-CHG drift on visible projects
-- notifications
+- Requests: infrastructure requests, templates, history, projects, teams
+- Daily: overview, my work, service desk (changes, incidents, problems, knowledge), services
+- Operations: on-call, maintenance windows, inbound webhooks, guides, alerts
+- Infrastructure: projects, environments, cloud accounts, inventory, IAM access, Kubernetes, releases
+- Security: scans, findings, secrets
+- Records: previews, scorecards, evidence, request templates
+- Portal Access: people, groups, sign-in (admins)
 
-### Admin Portal
-
-The admin portal is used for:
-
-- user and team management
-- governance and approval views
-- template management
-- outbound webhook subscriptions (`watch.ended`, `incident.owner_paged`)
-- read catalogs for changes, incidents, scorecards, and reviews
-- administrative workflows
-
-### DevOps Portal
-
-The DevOps portal is used for:
-
-- promotions (each hop writes a CHG) and release gates
-- Health, SLO deploy freeze, and live-vs-CHG drift
-- Identity (OIDC verify + last cloud-role exchange)
-- Kubernetes, expiry, dependency, and risk analysis
-- incidents, generated reviews, rollback CHG, and command-center operations
-- MCP catalog reads plus comment / request-rollback (no apply)
+Screen-level behavior for on-call, IAM, changes, incidents, problems, maintenance, and webhooks is in [FLOWS.md](./FLOWS.md).
 
 ### Backend API
 
-The backend is the shared workflow engine for all three portals. It manages:
+The backend is the workflow engine for that portal. It manages:
 
 - authentication and session handling
 - PostgreSQL persistence
@@ -188,29 +155,31 @@ Across the app, these objects are the most important:
 - approvals and gate approvals
 - change requests (including preview graduate and promote hops)
 - incidents, generated reviews, and postmortems
+- problems and knowledge articles
+- on-call rotations, project teams, and cover requests
+- maintenance windows (`pending_manager` → `pending_devops` → `pending_admin`)
+- IAM access requests (in memory until restart; grant only after the access-file callback)
 - promotions, SLO freezes, and rollback CHGs
 - teams and assignments
 - K8s health findings and live-vs-CHG drift
 - identity findings (OIDC / cloud-role exchange, no secrets)
 - expiry and notification events (`watch.ended`, `incident.owner_paged`)
 
-That shared object model is the main reason all three portals can work as one system instead of separate apps.
+Those objects are what the one portal reads and writes.
 
 ## Ports
 
 | Component | Default Port |
 | --- | --- |
 | Backend API | `8080` |
-| User Portal | `3000` |
-| Admin Portal | `3001` |
-| DevOps Portal | `3002` |
+| SetuOps portal | `3002` |
 
 ## Helm Ingress Model
 
 The Helm chart creates two ingress resources:
 
 1. **Frontend ingress**
-   - routes `portal`, `admin`, and `devops` hosts to the correct frontend services
+   - the chart values still list `portal`, `admin`, and `devops` hosts. The app in this repo is `devops-frontend`.
 2. **Backend ingress**
    - exposes the API on a separate host such as `api.example.com`
 

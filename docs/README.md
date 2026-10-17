@@ -4,6 +4,7 @@
 
 | Document | What it is |
 | --- | --- |
+| [Current flows](./FLOWS.md) | On-call, IAM, change, incident, problem, maintenance, and webhooks, step by step |
 | [All features and how they work](./FEATURES.md) | Every shipped feature, who uses it, and the flow |
 | [Full API reference](./API.md) | Every HTTP route: method, auth, body, what it does |
 | [README](../README.md) | Product picture plus the same two lists |
@@ -71,11 +72,12 @@ Repo docs for NF-02 and secure cluster onboarding:
 ## Recommended Reading Order
 
 1. `README.md` in the repo root for the product picture, feature list, and API index
-2. [FEATURES.md](./FEATURES.md) for how every feature works
-3. [API.md](./API.md) for every HTTP route
-4. [Architecture](./ARCHITECTURE.md) for the system layout and whole-app flow
-5. [Tech Stack](./TECH_STACK.md) for the implementation and tooling choices
-6. [Configuration](./CONFIGURATION.md) for runtime values and secrets
-7. [Deployment](./DEPLOYMENT.md) for Docker Compose or Helm rollout
-8. [CI/CD](./CICD.md) for GitHub Actions deployment pipelines
-9. [Troubleshooting](./TROUBLESHOOTING.md) when validating or debugging
+2. [FLOWS.md](./FLOWS.md) for how the current screens work
+3. [FEATURES.md](./FEATURES.md) for how every feature works
+4. [API.md](./API.md) for every HTTP route
+5. [Architecture](./ARCHITECTURE.md) for the system layout and whole-app flow
+6. [Tech Stack](./TECH_STACK.md) for the implementation and tooling choices
+7. [Configuration](./CONFIGURATION.md) for runtime values and secrets
+8. [Deployment](./DEPLOYMENT.md) for Docker Compose or Helm rollout
+9. [CI/CD](./CICD.md) for GitHub Actions deployment pipelines
+10. [Troubleshooting](./TROUBLESHOOTING.md) when validating or debugging

@@ -2,7 +2,7 @@
 
 This is the product feature catalog. Every shipped surface is listed here with **what it is**, **who uses it**, **how it works**, and **where it lives**.
 
-The matching HTTP contract is in [API.md](./API.md). Notion narrative lives at:
+How the live screens behave is in [FLOWS.md](./FLOWS.md). The matching HTTP contract is in [API.md](./API.md). Notion narrative lives at:
 
 - Portal hub: https://app.notion.com/p/3e50f430ed10816699fec83b1b270288
 - Change / Incident / Health BRD: https://app.notion.com/p/3e50f430ed1081adb731c7f64bdfa1b2
@@ -13,13 +13,9 @@ The display name is **SetuOps**. GitHub check IDs still use `infragate/*`.
 
 ## How to read this
 
-SetuOps is one Go API and three Next.js portals:
+SetuOps is one Go API and one Next.js portal, `devops-frontend` (port 3002, browser token `devops_token`). The separate `frontend/` and `admin-frontend/` apps are not in this tree. Requesters, operators, managers, and admins use the same shell. Section grants decide which sidebar groups they see. There is no Sign up page. People, groups, and sign-in settings are **Portal Access**.
 
-| Portal | Folder | Port | Token in the browser | Who |
-| --- | --- | --- | --- | --- |
-| User | `frontend/` | 3000 | `token` | Developers and team leads |
-| Admin | `admin-frontend/` | 3001 | `admin_token` | Platform and IAM admins |
-| DevOps | `devops-frontend/` | 3002 | `devops_token` | Platform engineers and SRE |
+The tables later in this file that name a User portal or an Admin portal describe the earlier split. For on-call, IAM, change requests, incidents, problems, maintenance, and webhooks, follow [FLOWS.md](./FLOWS.md).
 
 Landing pages are **catalogs**. Forms open only after Onboard / Create / Edit.
 
@@ -164,7 +160,7 @@ Primary nav: Home, Approvals, Requests, People, Projects, Catalog, More. Mobile 
 | Project catalog | `/projects`, `/projects/[id]` | Create/edit projects, attach teams. |
 | Project setup | `/project-governance` | Bundle normalization and project defaults. |
 | Templates | `/templates`, `/templates/new`, `/templates/[id]/edit` | Admin authors the catalog users pick from. |
-| Maintenance | `/maintenance` | Legacy bundle normalization preview/apply (`/api/admin/request-bundle-normalization`). |
+| Maintenance | `/maintenance` in the one portal | Planned window with a three-step approval. See [FLOWS.md](./FLOWS.md#maintenance). This is not bundle normalization. |
 
 ### Integrations and read catalogs
 
@@ -354,16 +350,16 @@ Notion: [NF-02 Kubernetes Workspace](https://app.notion.com/p/3e60f430ed1081d2a0
 
 ### Incidents and problems
 
-DevOps sidebar: all pages below are linked under primary **ITSM** (with Changes and Knowledge in the same tree).
+Service desk links incidents, changes, and problems. The record pages are facts plus the fields that can still be edited. Person menus show usernames. Detail is in [FLOWS.md](./FLOWS.md).
 
 | Feature | Page | How it works |
 | --- | --- | --- |
 | Open incidents | `/incidents` | `GET /api/devops/incidents`. Priority P1–P4, ServiceNow states, assignment group vs assignee, and response/resolve SLA clocks. |
 | New incident | `/incidents/new` | `POST /api/devops/incidents`. Caller, category/subcategory, optional parent INC, impact × urgency, work note vs customer comment. |
-| Edit / assign | `/incidents/[id]/edit` | `PATCH /api/devops/incidents/:id`. SLA clocks, journal, child incidents, major-incident conference. |
+| Edit / assign | `/incidents/[id]/edit` | `PATCH /api/devops/incidents/:id`. SLA clocks, journal, child incidents, major-incident conference. The first time it becomes major, Slack is posted and today’s on-call roster is paged. |
 | Incident workspace | `/incident-workspace` | Shared notes while an INC is major. |
-| Problems | `/problems`, `/problems/new`, `/problems/[id]` | Create a PRB like a change with P1–P4, catalogs, assignment group, and SLA. Recurring alerts still open a problem after three hits. |
-| Knowledge | `/knowledge`, `/knowledge/[id]` | Publish a KB article from a known-error problem (`POST /api/devops/problems/:id/knowledge`). |
+| Problems | `/problems`, `/problems/new`, `/problems/[id]` | Search and state filter on the list. Known error is a checkbox on the record. Recurring alerts still open a problem after three hits. |
+| Knowledge | `/knowledge`, `/knowledge/[id]` | Publish a KB article once the problem is a known error or has a workaround (`POST /api/devops/problems/:id/knowledge`). |
 
 Alert-created incidents skip the form: Grafana POSTs `/api/webhooks/alerts`. Same fingerprint updates the existing INC.
 
@@ -417,7 +413,11 @@ See **Kubernetes workspace (NF-02)** above for navigation and secure onboarding.
 | Alerts settings | `/notification-settings` | Slack/email routing. |
 | Retries | `/retry-center` | Failed outbound webhook / notify retries. |
 | Approval notify analytics | `/approval-notification-analytics` | Who was paged, who responded. |
-| Freezes / on-call | Operations | `GET/POST /api/devops/freezes`, `/api/devops/oncall`. |
+| Freezes | Operations | `GET/POST /api/devops/freezes`. |
+| On-call | `/on-call`, `/on-call/onboard`, `/on-call/projects` | Calendar, onboard a project’s teams, day click shows that day’s team and users, cover requests email both people. See [FLOWS.md](./FLOWS.md#on-call). |
+| IAM access | `/iam`, `/iam/request`, `/iam/approvals` | Access request `AR-…`. DevOps approves. The grant is recorded only after `POST /api/webhooks/iam-access`. See [FLOWS.md](./FLOWS.md#iam-access). |
+| Maintenance windows | `/maintenance`, `/maintenance/new`, `/maintenance/[id]` | Manager, then DevOps manager, then admin. Approve and Reject on the current step only. See [FLOWS.md](./FLOWS.md#maintenance). |
+| Inbound webhook sources | `/operations/webhooks` | Filter the list. Sample shows one example and never the secret. |
 | Saved views | lists | `GET/POST /api/devops/saved-views`. Persist filters. |
 
 ---
@@ -587,7 +587,15 @@ The incident workspace form is no longer a blank second ITSM. `w5_incident_revie
 
 **Change Request:** `new` → **Approve** (CAB when required) → `scheduled` → **Start implementation** → `implementing` → `implemented` → `monitoring` → `resolved` → `closed`. Also `failed`, `cancelled`. CI webhooks can still advance status directly. Approve is allowed for **admin**, **DevOps users**, **DevOps managers**, and **portal team managers**. Schedule/implement actions require a DevOps manager. Resolve/close is blocked while linked incidents are still open.
 
-**Incident:** `draft` → `open` → `acknowledged` → `investigating` → `mitigating` → `resolved` → `closed`. Also `cancelled` (false alarm). Sources: `ticket`, `alert`, `manual`, `change_regression`. Acknowledged still counts as active.
+**Incident:** `draft` → `open` → `acknowledged` → `investigating` → `mitigating` → `resolved` → `closed`. Also `cancelled` (false alarm). Sources: `ticket`, `alert`, `manual`, `change_regression`. Acknowledged still counts as active. The first transition to major pages today’s on-call roster.
+
+**Problem:** states from the problem catalog. Known error is a flag on the existing record. Publish knowledge waits for that flag or a workaround.
+
+**IAM access:** `PENDING_DEVOPS_APPROVAL` → `PROVISIONING` → grant on the access-file callback (`ACTIVE`), or `REJECTED` / provision failed. The requester cannot approve it. A team manager is not the IAM approver.
+
+**Maintenance window:** `pending_manager` → `pending_devops` → `pending_admin` → `approved`, or `rejected` from any step. The creator cannot decide. Number `MNT0000001`.
+
+**On-call cover:** `pending` → `approved` or `declined`. An approved cover is who is on that day.
 
 **Priority / risk on CHG:** `low` / `medium` / `high` / `critical` (normalized from several aliases).
 

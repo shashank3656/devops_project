@@ -48,6 +48,19 @@ Any authenticated DevOps user (or admin acting in DevOps) may call read-heavy De
 
 **User portal** has no cloud account or inventory routes. **Admin** does not onboard accounts in the UI (DevOps managers only).
 
+## Current operational flows
+
+These checks are the ones the live screens use. Detail is in [FLOWS.md](./FLOWS.md).
+
+| Method | Path | Guard |
+| --- | --- | --- |
+| POST | `/api/maintenance/windows` | Signed-in user. Create fails when `manager_id` is missing. |
+| POST | `/api/maintenance/windows/:id/decision` | Current step only: creator’s manager, then `devops_profiles.is_manager`, then `role=admin`. The creator is always denied. |
+| POST | `/api/devops/iam/approvals/:id/decision` | DevOps approver (admin or `devops_user`). The requester is denied. |
+| POST | `/api/webhooks/iam-access` | `IAM_ACCESS_CALLBACK_SECRET`. This is what records the grant. |
+| POST | `/api/oncall/roster` | Admin, DevOps manager, or a person who can manage that team. |
+| POST | `/api/oncall/covers/decision` | The person who was asked to cover. |
+
 ## User portal
 
 | Method | Path | Guard |
