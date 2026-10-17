@@ -73,6 +73,74 @@ function calendarCells(monthValue: string): Array<{ day: number; date: string } 
   return cells;
 }
 
+function CoverRow({
+  row,
+  where,
+  ask,
+  setAsk,
+  coverUserId,
+  setCoverUserId,
+  setError,
+  others,
+  canAsk,
+  saving,
+  onSubmit,
+}: {
+  row: RosterRow;
+  where: 'today' | 'day';
+  ask: { date: string; projectId: number; teamId: number; where: 'today' | 'day' } | null;
+  setAsk: (value: { date: string; projectId: number; teamId: number; where: 'today' | 'day' } | null) => void;
+  coverUserId: string;
+  setCoverUserId: (value: string) => void;
+  setError: (value: string) => void;
+  others: { userId: number; name: string }[];
+  canAsk: boolean;
+  saving: boolean;
+  onSubmit: (event: FormEvent, row: RosterRow) => void;
+}) {
+  const open = ask?.where === where && ask.date === row.day.date && ask.projectId === row.project.id && ask.teamId === row.shift.team_id;
+  return (
+    <tr>
+      <td>{known(row.project.name)}</td>
+      <td>{known(row.shift.team_name)}</td>
+      <td>
+        {shiftText(row.shift)}
+        {open ? (
+          <form className="oncall-ask" onSubmit={(event) => onSubmit(event, row)}>
+            {others.length ? (
+              <>
+                <label>
+                  Who on {known(row.shift.team_name)} should take this day?
+                  <select className="input" value={coverUserId} onChange={(event) => setCoverUserId(event.target.value)}>
+                    <option value="">Select a person</option>
+                    {others.map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}
+                  </select>
+                </label>
+                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Sending...' : 'Send request'}</button>
+              </>
+            ) : <p>Add another person on this team before someone else can take the day.</p>}
+          </form>
+        ) : null}
+      </td>
+      <td>
+        {canAsk ? (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              setAsk(open ? null : { date: row.day.date, projectId: row.project.id, teamId: row.shift.team_id, where });
+              setCoverUserId('');
+              setError('');
+            }}
+          >
+            Ask someone
+          </button>
+        ) : null}
+      </td>
+    </tr>
+  );
+}
+
 function todayKey(timeZone: string): string {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
     timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
@@ -93,7 +161,7 @@ export default function OnCallPage() {
   const [team, setTeam] = useState('');
   const [me, setMe] = useState(0);
   const [isManager, setIsManager] = useState(false);
-  const [ask, setAsk] = useState<{ date: string; projectId: number; teamId: number } | null>(null);
+  const [ask, setAsk] = useState<{ date: string; projectId: number; teamId: number; where: 'today' | 'day' } | null>(null);
   const [coverUserId, setCoverUserId] = useState('');
   const [saving, setSaving] = useState(false);
   const [refresh, setRefresh] = useState(0);
@@ -308,16 +376,40 @@ export default function OnCallPage() {
           {loading ? <div className="empty-state">Loading on-call...</div> : null}
 
           {!loading ? (
-            <section className="oncall-today" aria-label="Today">
-              <span>
-                <strong>Today</strong>
-                {!todayRows.length ? <small>No one matches this filter today.</small> : null}
-                <span className="oncall-today__teams">
-                  {todayRows.map((row) => (
-                    <small key={`${row.project.id}-${row.shift.team_id}`}>{known(row.project.name)} · {known(row.shift.team_name)} · {shiftText(row.shift)}</small>
-                  ))}
-                </span>
-              </span>
+            <section aria-label="Today">
+              <h2 className="portal-surface__title">Today</h2>
+              {!todayRows.length ? <div className="empty-state">No one matches this filter today.</div> : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="templates-table">
+                    <thead>
+                      <tr>
+                        <th>Project</th>
+                        <th>Team</th>
+                        <th>Person</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {todayRows.map((row) => (
+                        <CoverRow
+                          key={`${row.project.id}-${row.shift.team_id}`}
+                          row={row}
+                          where="today"
+                          ask={ask}
+                          setAsk={setAsk}
+                          coverUserId={coverUserId}
+                          setCoverUserId={setCoverUserId}
+                          setError={setError}
+                          others={rosterFor(row.project, row.shift.team_id).filter((person) => person.userId !== row.shift.user_id)}
+                          canAsk={canRequest(row)}
+                          saving={saving}
+                          onSubmit={sendRequest}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </section>
           ) : null}
 
@@ -375,42 +467,22 @@ export default function OnCallPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedRows.map((row) => {
-                        const open = ask?.date === row.day.date && ask.projectId === row.project.id && ask.teamId === row.shift.team_id;
-                        const others = rosterFor(row.project, row.shift.team_id).filter((person) => person.userId !== row.shift.user_id);
-                        return (
-                          <tr key={`${row.project.id}-${row.shift.team_id}`}>
-                            <td>{known(row.project.name)}</td>
-                            <td>{known(row.shift.team_name)}</td>
-                            <td>
-                              {shiftText(row.shift)}
-                              {open ? (
-                                <form className="oncall-ask" onSubmit={(event) => void sendRequest(event, row)}>
-                                  {others.length ? (
-                                    <>
-                                      <label>
-                                        Who on {known(row.shift.team_name)} should approve this day?
-                                        <select className="input" value={coverUserId} onChange={(event) => setCoverUserId(event.target.value)}>
-                                          <option value="">Select a person</option>
-                                          {others.map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}
-                                        </select>
-                                      </label>
-                                      <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Sending...' : 'Send request'}</button>
-                                    </>
-                                  ) : <p>Add another person on this team before a cover can be requested.</p>}
-                                </form>
-                              ) : null}
-                            </td>
-                            <td>
-                              {canRequest(row) ? (
-                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setAsk(open ? null : { date: row.day.date, projectId: row.project.id, teamId: row.shift.team_id }); setCoverUserId(''); setError(''); }}>
-                                  Request change
-                                </button>
-                              ) : null}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {selectedRows.map((row) => (
+                        <CoverRow
+                          key={`${row.project.id}-${row.shift.team_id}`}
+                          row={row}
+                          where="day"
+                          ask={ask}
+                          setAsk={setAsk}
+                          coverUserId={coverUserId}
+                          setCoverUserId={setCoverUserId}
+                          setError={setError}
+                          others={rosterFor(row.project, row.shift.team_id).filter((person) => person.userId !== row.shift.user_id)}
+                          canAsk={canRequest(row)}
+                          saving={saving}
+                          onSubmit={sendRequest}
+                        />
+                      ))}
                     </tbody>
                   </table>
                 </div>
