@@ -20,3 +20,21 @@ func TestOncallRosterUserRotatesByDay(t *testing.T) {
 		t.Fatalf("empty = %d", got)
 	}
 }
+
+func TestOncallProjectDayKeepsEachTeam(t *testing.T) {
+	teams := []oncallProjectTeam{{ID: 1, Name: "Platform"}, {ID: 2, Name: "App"}}
+	series := [][]oncallDutyDay{
+		{{Date: "2026-10-01", Label: "1 Oct", Weekday: "Thursday", UserID: 4, Name: "Alex", Status: "scheduled"}},
+		{{Date: "2026-10-01", Label: "1 Oct", Weekday: "Thursday", UserID: 9, Name: "Priya", Status: "pending", CoverUser: 3, CoverName: "Sam"}},
+	}
+	days := assembleOncallProjectDays(teams, series)
+	if len(days) != 1 || len(days[0].Teams) != 2 {
+		t.Fatalf("days = %#v", days)
+	}
+	if days[0].Teams[0].TeamName != "Platform" || days[0].Teams[0].UserID != 4 {
+		t.Fatalf("platform = %#v", days[0].Teams[0])
+	}
+	if days[0].Teams[1].TeamID != 2 || days[0].Teams[1].Status != "pending" || days[0].Teams[1].CoverUser != 3 {
+		t.Fatalf("app = %#v", days[0].Teams[1])
+	}
+}

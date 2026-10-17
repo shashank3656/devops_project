@@ -10,8 +10,7 @@ interface ProjectRow {
   id: number;
   name: string;
   code: string;
-  team: string;
-  teamId: number;
+  teams: string[];
 }
 
 function known(value: string | undefined): string {
@@ -37,16 +36,20 @@ export default function OnCallPage() {
         const list = Array.isArray(data?.projects) ? data.projects : [];
         setProjects(
             list
-            .map((item: { id?: number; name?: string; code?: string; owner_team?: string; owner_team_id?: number; team_access?: { team_name?: string; team_id?: number }[] }) => {
+            .map((item: { id?: number; name?: string; code?: string; owner_team?: string; team_access?: { team_name?: string }[] }) => {
+              const names: string[] = [];
+              const add = (value: string) => {
+                const name = value.trim();
+                if (name && !names.includes(name)) names.push(name);
+              };
+              add(String(item.owner_team || ''));
               const access = Array.isArray(item.team_access) ? item.team_access : [];
-              const accessName = access.map((team) => String(team.team_name || '').trim()).filter(Boolean).join(', ');
-              const accessId = typeof access[0]?.team_id === 'number' ? access[0].team_id : 0;
+              access.forEach((team) => add(String(team.team_name || '')));
               return {
                 id: typeof item.id === 'number' ? item.id : 0,
                 name: String(item.name || '').trim(),
                 code: String(item.code || '').trim(),
-                team: String(item.owner_team || '').trim() || accessName,
-                teamId: typeof item.owner_team_id === 'number' && item.owner_team_id > 0 ? item.owner_team_id : accessId,
+                teams: names,
               };
             })
             .filter((item: ProjectRow) => item.id > 0),
@@ -62,15 +65,15 @@ export default function OnCallPage() {
   const teams = useMemo(() => {
     const names = new Set<string>();
     projects.forEach((project) => {
-      if (project.team) names.add(project.team);
+      project.teams.forEach((name) => names.add(name));
     });
     return [...names].sort((left, right) => left.localeCompare(right));
   }, [projects]);
   const needle = query.trim().toLowerCase();
   const visible = projects.filter((project) => {
-    if (team && project.team !== team) return false;
+    if (team && !project.teams.includes(team)) return false;
     if (!needle) return true;
-    return `${project.name} ${project.code} ${project.team}`.toLowerCase().includes(needle);
+    return `${project.name} ${project.code} ${project.teams.join(' ')}`.toLowerCase().includes(needle);
   });
 
   return (
@@ -81,13 +84,13 @@ export default function OnCallPage() {
           <div>
             <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">On-call</h1>
-            <p className="portal-page__subtitle">One person each day. Check a project to see the month, or hand a day to someone else.</p>
+            <p className="portal-page__subtitle">Each team rotates one person. A project call is everyone on that day.</p>
           </div>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
         <ol className="oncall-steps">
           <li><strong>1. Project</strong><span>Turn on on-call when the project is created.</span></li>
-          <li><strong>2. Team</strong><span>On the team, choose the people who rotate.</span></li>
+          <li><strong>2. Teams</strong><span>Each team on the project keeps its own rotation.</span></li>
           <li><strong>3. Day</strong><span>If that person is unavailable, they name someone else. That person approves, and the day updates.</span></li>
         </ol>
         <section className="portal-surface">
@@ -118,7 +121,7 @@ export default function OnCallPage() {
                   <Link className="svc-tree__folder" href={`/on-call/project/${project.id}`}>
                     <span>
                       {project.code ? `${known(project.name)} (${project.code})` : known(project.name)}
-                      <small className="svc-tree__meta">{known(project.team)}</small>
+                      <small className="svc-tree__meta">{project.teams.length ? project.teams.join(', ') : 'No team'}</small>
                     </span>
                   </Link>
                   <Link href={`/on-call/project/${project.id}`} className="btn btn-secondary btn-sm">Check</Link>

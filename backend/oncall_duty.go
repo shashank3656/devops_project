@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -270,6 +271,170 @@ func buildOncallDays(projectID, teamID int, monthValue, timezone string) ([]onca
 	return days, people, today, nil
 }
 
+type oncallProjectTeam struct {
+	ID   int
+	Name string
+}
+
+type oncallDutyShift struct {
+	TeamID     int    `json:"team_id"`
+	TeamName   string `json:"team_name"`
+	UserID     int    `json:"user_id"`
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	RequestID  int    `json:"request_id,omitempty"`
+	CoverUser  int    `json:"cover_user_id,omitempty"`
+	CoverName  string `json:"cover_name,omitempty"`
+	FromUserID int    `json:"from_user_id,omitempty"`
+	FromName   string `json:"from_name,omitempty"`
+}
+
+type oncallProjectDay struct {
+	Date    string            `json:"date"`
+	Label   string            `json:"label"`
+	Weekday string            `json:"weekday"`
+	Today   bool              `json:"today"`
+	Teams   []oncallDutyShift `json:"teams"`
+}
+
+type oncallProjectTeamView struct {
+	TeamID   int                `json:"team_id"`
+	TeamName string             `json:"team_name"`
+	Roster   []oncallDutyPerson `json:"roster"`
+}
+
+func listProjectOncallTeams(projectID int) ([]oncallProjectTeam, error) {
+	if DB == nil || projectID <= 0 {
+		return nil, errOncallInvalid
+	}
+	var ownerID int
+	var ownerName string
+	err := DB.QueryRow(`
+		SELECT COALESCE(p.owner_team_id, 0), COALESCE(t.name, '')
+		FROM projects p
+		LEFT JOIN teams t ON t.id = p.owner_team_id
+		WHERE p.id = $1
+	`, projectID).Scan(&ownerID, &ownerName)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return []oncallProjectTeam{}, nil
+		}
+		return nil, err
+	}
+	teams := []oncallProjectTeam{}
+	seen := map[int]bool{}
+	add := func(id int, name string) {
+		if id <= 0 || seen[id] {
+			return
+		}
+		seen[id] = true
+		name = strings.TrimSpace(name)
+		if name == "" {
+			name = "Unknown"
+		}
+		teams = append(teams, oncallProjectTeam{ID: id, Name: name})
+	}
+	add(ownerID, ownerName)
+	rows, err := DB.Query(`
+		SELECT a.team_id, COALESCE(t.name, '')
+		FROM project_team_access a
+		INNER JOIN teams t ON t.id = a.team_id
+		WHERE a.project_id = $1
+		ORDER BY t.name, a.team_id
+	`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		add(id, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return teams, nil
+}
+
+func shiftFromDutyDay(team oncallProjectTeam, day oncallDutyDay) oncallDutyShift {
+	return oncallDutyShift{
+		TeamID:     team.ID,
+		TeamName:   team.Name,
+		UserID:     day.UserID,
+		Name:       day.Name,
+		Status:     day.Status,
+		RequestID:  day.RequestID,
+		CoverUser:  day.CoverUser,
+		CoverName:  day.CoverName,
+		FromUserID: day.FromUserID,
+		FromName:   day.FromName,
+	}
+}
+
+func assembleOncallProjectDays(teams []oncallProjectTeam, series [][]oncallDutyDay) []oncallProjectDay {
+	byDate := map[string]*oncallProjectDay{}
+	order := []string{}
+	for index, team := range teams {
+		if index >= len(series) {
+			break
+		}
+		for _, day := range series[index] {
+			slot := byDate[day.Date]
+			if slot == nil {
+				slot = &oncallProjectDay{
+					Date:    day.Date,
+					Label:   day.Label,
+					Weekday: day.Weekday,
+					Today:   day.Today,
+					Teams:   []oncallDutyShift{},
+				}
+				byDate[day.Date] = slot
+				order = append(order, day.Date)
+			}
+			slot.Teams = append(slot.Teams, shiftFromDutyDay(team, day))
+		}
+	}
+	out := make([]oncallProjectDay, 0, len(order))
+	for _, key := range order {
+		out = append(out, *byDate[key])
+	}
+	return out
+}
+
+func buildOncallProjectDays(projectID int, monthValue, timezone string) ([]oncallProjectDay, []oncallProjectTeamView, string, error) {
+	teams, err := listProjectOncallTeams(projectID)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	series := make([][]oncallDutyDay, 0, len(teams))
+	views := make([]oncallProjectTeamView, 0, len(teams))
+	today := ""
+	for _, team := range teams {
+		days, roster, dayToday, err := buildOncallDays(projectID, team.ID, monthValue, timezone)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		if roster == nil {
+			roster = []oncallDutyPerson{}
+		}
+		if days == nil {
+			days = []oncallDutyDay{}
+		}
+		today = dayToday
+		views = append(views, oncallProjectTeamView{TeamID: team.ID, TeamName: team.Name, Roster: roster})
+		series = append(series, days)
+	}
+	days := assembleOncallProjectDays(teams, series)
+	if days == nil {
+		days = []oncallProjectDay{}
+	}
+	return days, views, today, nil
+}
+
 func oncallFlagHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
@@ -401,8 +566,23 @@ func oncallDaysHandler(w http.ResponseWriter, r *http.Request) {
 	if timezone == "" {
 		timezone = "Asia/Kolkata"
 	}
-	if projectID <= 0 || teamID <= 0 || monthValue == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "project, team, and month are required", nil)
+	if projectID <= 0 || monthValue == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "project and month are required", nil)
+		return
+	}
+	if teamID <= 0 {
+		days, teams, today, err := buildOncallProjectDays(projectID, monthValue, timezone)
+		if err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "That month could not be built.", err)
+			return
+		}
+		if days == nil {
+			days = []oncallProjectDay{}
+		}
+		if teams == nil {
+			teams = []oncallProjectTeamView{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"days": days, "teams": teams, "today": today, "status": "ok"})
 		return
 	}
 	days, roster, today, err := buildOncallDays(projectID, teamID, monthValue, timezone)
