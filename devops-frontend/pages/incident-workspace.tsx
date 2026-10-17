@@ -614,7 +614,7 @@ export default function IncidentWorkspacePage() {
                               <option value="">Unassigned</option>
                               {owners.map((owner) => (
                                 <option key={owner.id} value={owner.id}>
-                                  {owner.username}{owner.email ? ` (${owner.email})` : ''}
+                                  {owner.username}
                                 </option>
                               ))}
                             </select>

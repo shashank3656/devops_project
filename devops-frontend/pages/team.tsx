@@ -266,8 +266,7 @@ export default function DevOpsTeamPage() {
                           {members.map((member) => (
                             <li key={member.id} className="portal-member-list__item">
                               <div>
-                                <span className="portal-member-list__name">{member.username || member.email}</span>
-                                <span className="portal-member-list__meta">{member.email}</span>
+                                <span className="portal-member-list__name">{member.username || 'Unknown'}</span>
                               </div>
                               <span className="portal-badge portal-badge--neutral">{member.role}</span>
                             </li>

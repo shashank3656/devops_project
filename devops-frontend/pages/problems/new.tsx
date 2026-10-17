@@ -362,7 +362,6 @@ export default function NewProblemPage() {
                     {users.map((user) => (
                       <option key={user.id} value={user.id}>
                         {user.username}
-                        {user.email ? ` · ${user.email}` : ''}
                       </option>
                     ))}
                   </select>
@@ -374,7 +373,6 @@ export default function NewProblemPage() {
                     {users.map((user) => (
                       <option key={`caller-${user.id}`} value={user.id}>
                         {user.username}
-                        {user.email ? ` · ${user.email}` : ''}
                       </option>
                     ))}
                   </select>

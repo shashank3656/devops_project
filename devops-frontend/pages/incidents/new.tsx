@@ -467,7 +467,6 @@ export default function NewIncidentPage() {
                     {callers.map((caller) => (
                       <option key={caller.user_id} value={caller.user_id}>
                         {caller.username}
-                        {caller.email ? ` · ${caller.email}` : ''}
                       </option>
                     ))}
                   </select>

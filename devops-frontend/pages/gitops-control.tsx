@@ -1120,7 +1120,7 @@ export default function GitOpsControlPage() {
                                   <select id="sidebar-access-user" className="input" value={accessUserId} onChange={(event) => setAccessUserId(event.target.value)}>
                                     {data.users.map((user) => (
                                       <option key={user.id} value={user.id}>
-                                        {user.username}{user.email ? ` (${user.email})` : ''}
+                                        {user.username}
                                       </option>
                                     ))}
                                   </select>

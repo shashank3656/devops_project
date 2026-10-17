@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -913,6 +914,7 @@ func oncallCoverHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "The cover request could not be saved.", err)
 		return
 	}
+	notifyOncallCoverRequest(body.CoverUserID, assigned, body.ProjectID, body.Date)
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "status": "pending"})
 }
 
@@ -930,13 +932,13 @@ func decideOncallCover(w http.ResponseWriter, r *http.Request, userID int) {
 		writeAPIError(w, r, http.StatusBadRequest, "Approve or decline the request.", nil)
 		return
 	}
-	var projectID, teamID, toUserID int
+	var projectID, teamID, fromUserID, toUserID int
 	var coverDate time.Time
 	var status string
 	err := DB.QueryRow(`
-		SELECT project_id, team_id, cover_date, to_user_id, status
+		SELECT project_id, team_id, cover_date, from_user_id, to_user_id, status
 		FROM oncall_cover_requests WHERE id = $1
-	`, body.ID).Scan(&projectID, &teamID, &coverDate, &toUserID, &status)
+	`, body.ID).Scan(&projectID, &teamID, &coverDate, &fromUserID, &toUserID, &status)
 	if err != nil || status != "pending" {
 		writeAPIError(w, r, http.StatusNotFound, "That request is no longer waiting.", err)
 		return
@@ -960,5 +962,118 @@ func decideOncallCover(w http.ResponseWriter, r *http.Request, userID int) {
 			WHERE project_id = $1 AND team_id = $2 AND cover_date = $3 AND id <> $4 AND status = 'pending'
 		`, projectID, teamID, coverDate, body.ID)
 	}
+	notifyOncallCoverDecision(fromUserID, toUserID, projectID, coverDate.Format("2006-01-02"), next)
 	writeJSON(w, http.StatusOK, map[string]any{"id": body.ID, "status": next})
+}
+
+func notifyOncallUser(userID, projectID int, kind, subject, message string) {
+	if userID <= 0 || strings.TrimSpace(message) == "" {
+		return
+	}
+	var project *int
+	if projectID > 0 {
+		project = &projectID
+	}
+	_ = InsertUserNotification(userID, nil, project, kind, message)
+	sendNotificationEmailIfConfigured(userID, kind, subject, message)
+}
+
+func notifyOncallCoverRequest(toUserID, fromUserID, projectID int, date string) {
+	fromName := "Someone"
+	if user, err := GetUserByID(fromUserID); err == nil && user != nil && strings.TrimSpace(user.Username) != "" {
+		fromName = user.Username
+	}
+	message := fmt.Sprintf("%s asked you to cover on-call on %s. Open On-call to approve or decline.", fromName, date)
+	notifyOncallUser(toUserID, projectID, "oncall_cover", "On-call cover request", message)
+}
+
+func notifyOncallCoverDecision(fromUserID, toUserID, projectID int, date, status string) {
+	toName := "The person you asked"
+	if user, err := GetUserByID(toUserID); err == nil && user != nil && strings.TrimSpace(user.Username) != "" {
+		toName = user.Username
+	}
+	verb := "declined"
+	if status == "approved" {
+		verb = "approved"
+	}
+	message := fmt.Sprintf("%s %s the on-call cover for %s.", toName, verb, date)
+	notifyOncallUser(fromUserID, projectID, "oncall_cover", "On-call cover "+verb, message)
+}
+
+func oncallUsersToPage(item *requestIncident) []int {
+	if item == nil {
+		return nil
+	}
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		loc = time.UTC
+	}
+	now := time.Now().In(loc)
+	seen := map[int]struct{}{}
+	ids := []int{}
+	add := func(id int) {
+		if id <= 0 {
+			return
+		}
+		if _, ok := seen[id]; ok {
+			return
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	projectID := 0
+	if item.ProjectID != nil {
+		projectID = *item.ProjectID
+	}
+	teams := []oncallProjectTeam{}
+	if projectID > 0 {
+		if listed, listErr := listProjectOncallTeams(projectID); listErr == nil {
+			teams = listed
+		}
+	}
+	if len(teams) == 0 && item.TeamID != nil && *item.TeamID > 0 {
+		teams = []oncallProjectTeam{{ID: *item.TeamID, Name: item.TeamName}}
+	}
+	for _, team := range teams {
+		if projectID > 0 {
+			days, _, today, dayErr := buildOncallDays(projectID, team.ID, now.Format("2006-01"), "Asia/Kolkata")
+			if dayErr == nil {
+				for _, day := range days {
+					if day.Date == today {
+						add(day.UserID)
+					}
+				}
+				continue
+			}
+		}
+		roster, rosterErr := listOncallRoster(team.ID)
+		if rosterErr == nil {
+			add(oncallRosterUser(roster, now.Day()))
+		}
+	}
+	if len(ids) == 0 {
+		if owner := activeOncallUserID(); owner != nil {
+			add(*owner)
+		}
+	}
+	return ids
+}
+
+func pageMajorIncidentOncall(item *requestIncident, note, conferenceURL string) {
+	if item == nil {
+		return
+	}
+	number := firstNonEmpty(item.IncidentNumber, formatIncidentNumber(item.ID))
+	message := "Major incident " + number + ": " + firstNonEmpty(note, item.Summary)
+	if strings.TrimSpace(conferenceURL) != "" {
+		message += " Conference: " + strings.TrimSpace(conferenceURL)
+	}
+	message += " Open the incident to take it."
+	projectID := 0
+	if item.ProjectID != nil {
+		projectID = *item.ProjectID
+	}
+	for _, userID := range oncallUsersToPage(item) {
+		notifyOncallUser(userID, projectID, "major_incident", "Major incident "+number, message)
+	}
 }
