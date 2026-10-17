@@ -4437,6 +4437,13 @@ a.svc-tree__folder:hover,
   margin-bottom: 14px;
 }
 
+.oncall-month {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+
 .oncall-controls > label {
   display: flex;
   flex-direction: column;
