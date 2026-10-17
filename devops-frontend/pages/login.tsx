@@ -320,7 +320,7 @@ export default function DevOpsLogin() {
             )}
             {!pending2fa ? (
             <p className="login-page__hint" style={{ marginTop: 16 }}>
-              <Link href="/forgot-password" style={{ color: 'var(--color-primary)', textDecoration: 'none' }}>
+              <Link href="/forgot-password" className="login-page__link">
                 Forgot password?
               </Link>
             </p>

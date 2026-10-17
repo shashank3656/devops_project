@@ -6092,11 +6092,15 @@ html[data-theme] .portal-page__actions {
   margin-top: 16px;
 }
 
-html[data-theme] .btn:focus-visible,
 html[data-theme] .input:focus-visible,
-html[data-theme] a:focus-visible {
+html[data-theme] a:not(.btn):focus-visible {
   outline: 2px solid var(--ig-accent, currentColor);
   outline-offset: 2px;
+}
+
+html[data-theme] .btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ig-focus-ring);
 }
 
 /* Desk pages carry their own title, so the cramped navbar name can step aside. */
@@ -6127,26 +6131,27 @@ html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .ig-scope-bar__cont
 
 /* Engineering Operations UI — light canvas. Dark mode keeps its own tokens. */
 html[data-theme='light'] .devops-layout {
-  --ig-bg: #f4f5f8;
-  --ig-bg-subtle: #f4f5f8;
+  --ig-bg: #f5f7fc;
+  --ig-bg-subtle: #f5f7fc;
   --ig-surface: #ffffff;
-  --ig-surface-2: #f6f7fb;
-  --ig-surface-3: #eef0f6;
-  --ig-border: #e4e7ee;
-  --ig-text: #1c2433;
-  --ig-text-2: #1c2433;
-  --ig-muted: #6b7588;
-  --ig-faint: #8b93a3;
-  --ig-accent: #5c4db5;
-  --ig-accent-soft: #ece8fb;
-  --ig-accent-text: #4d3f9e;
-  --ig-accent-border: #cfc6f2;
-  background: #f4f5f8;
-  color: #1c2433;
+  --ig-surface-2: #f8f9fd;
+  --ig-surface-3: #eef1f8;
+  --ig-border: #e2e7f0;
+  --ig-text: #17233b;
+  --ig-text-2: #17233b;
+  --ig-muted: #58677f;
+  --ig-faint: #7d8aa0;
+  --ig-accent: #6d4aff;
+  --ig-accent-hover: #5835db;
+  --ig-accent-soft: #f0ebff;
+  --ig-accent-text: #5835db;
+  --ig-accent-border: #cfc2ff;
+  background: #f5f7fc;
+  color: #17233b;
 }
 
 html[data-theme] .devops-sidebar-new {
-  background: #16181e;
+  background: var(--ot-midnight);
   color: #e7e9ef;
   border-right: 0;
 }
@@ -6167,13 +6172,18 @@ html[data-theme] .devops-sidebar-new__section-meta {
 }
 
 html[data-theme] .devops-sidebar-new__link:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.05);
   color: #fff;
+}
+
+html[data-theme] .devops-sidebar-new__link:focus-visible {
+  outline: 2px solid var(--ot-lavender);
+  outline-offset: -2px;
 }
 
 html[data-theme] .devops-sidebar-new__link--active,
 html[data-theme] .devops-sidebar-new__link--active:hover {
-  background: #3c335f;
+  background: var(--ot-panel-dark);
   color: #fff;
   box-shadow: none;
   border-radius: 12px;
@@ -6278,7 +6288,7 @@ html[data-theme] .devops-layout .work-page__head h1 {
   justify-content: space-between;
   padding: 22px 24px;
   border-radius: 18px;
-  background: #241b4a;
+  background: var(--ot-panel-dark);
   color: #fff;
 }
 
@@ -6341,13 +6351,13 @@ html[data-theme] .devops-layout .work-page__head h1 {
   line-height: 1;
 }
 
-.ops-score--mint { background: #e7f6ee; }
-.ops-score--lilac { background: #eee8fb; }
-.ops-score--blue { background: #e7f0fb; }
-.ops-score--peach { background: #fbeee4; }
-.ops-action--lilac { background: #eee8fb; }
-.ops-action--blue { background: #e7f0fb; }
-.ops-action--mint { background: #e7f6ee; }
+.ops-score--mint { background: var(--ot-tint-mint); }
+.ops-score--lilac { background: var(--ot-tint-violet); }
+.ops-score--blue { background: var(--ot-tint-blue); }
+.ops-score--peach { background: var(--ot-tint-peach); }
+.ops-action--lilac { background: var(--ot-tint-violet); }
+.ops-action--blue { background: var(--ot-tint-blue); }
+.ops-action--mint { background: var(--ot-tint-mint); }
 
 .ops-score span,
 .ops-action span {
@@ -6467,10 +6477,15 @@ html[data-theme] .devops-sidebar-new {
 }
 
 html[data-theme] .devops-layout .btn-primary {
-  background: #1c2433;
-  border-color: #1c2433;
+  background: var(--ig-accent);
+  border-color: var(--ig-accent);
   border-radius: 999px;
   color: #fff;
+}
+
+html[data-theme] .devops-layout .btn-primary:hover:not(:disabled) {
+  background: var(--ig-accent-hover);
+  border-color: var(--ig-accent-hover);
 }
 
 html[data-theme] .devops-layout .btn-secondary {
@@ -6618,8 +6633,8 @@ html[data-theme] .devops-layout .work-board {
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  background: #ece8fb;
-  color: #5c4db5;
+  background: var(--ot-tint-violet);
+  color: var(--ot-violet-deep);
   font-weight: 800;
 }
 
@@ -6929,7 +6944,7 @@ html[data-theme] .devops-layout .devops-navbar__role {
 }
 
 html[data-theme] .login-page {
-  background: #070b10;
+  background: var(--ot-midnight);
 }
 
 html[data-theme] .login-page__left {
@@ -6937,7 +6952,7 @@ html[data-theme] .login-page__left {
     radial-gradient(560px 340px at 0% 0%, rgba(45, 212, 191, 0.48), transparent 58%),
     radial-gradient(520px 380px at 100% 100%, rgba(124, 92, 255, 0.42), transparent 62%),
     radial-gradient(280px 220px at 72% 18%, rgba(56, 189, 248, 0.2), transparent 70%),
-    #07111a;
+    var(--ot-midnight);
   color: #f4f7f4;
 }
 
@@ -7040,10 +7055,7 @@ html[data-theme] .login-page__envs span {
 html[data-theme] .login-page__right {
   align-items: stretch;
   padding: 0;
-  background:
-    radial-gradient(460px 280px at 100% 0%, rgba(124, 92, 255, 0.38), transparent 68%),
-    radial-gradient(420px 280px at 0% 100%, rgba(20, 184, 166, 0.22), transparent 70%),
-    #10131c;
+  background: var(--ot-panel-dark);
 }
 
 html[data-theme] .login-page__card {
@@ -7075,19 +7087,21 @@ html[data-theme] .login-page__card-title {
 
 html[data-theme] .login-page__card-subtitle,
 html[data-theme] .login-page__hint {
-  color: rgba(244, 246, 250, 0.62);
+  color: rgba(244, 246, 250, 0.72);
 }
 
 html[data-theme] .login-page .input {
-  background: rgba(16, 20, 34, 0.92);
+  background: var(--ot-midnight);
   color: #f4f6fa;
-  border: 1px solid rgba(167, 139, 250, 0.4);
+  border: 1px solid rgba(196, 181, 253, 0.24);
   border-radius: 12px;
 }
 
-html[data-theme] .login-page .input:focus {
-  border-color: #2dd4bf;
-  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.22);
+html[data-theme] .login-page .input:focus,
+html[data-theme] .login-page .input:focus-visible {
+  outline: none;
+  border: 1px solid var(--ot-lavender);
+  box-shadow: 0 0 0 3px rgba(196, 181, 253, 0.28);
 }
 
 html[data-theme] .login-page .input::placeholder {
@@ -7100,13 +7114,24 @@ html[data-theme] .login-page__submit {
   min-width: 108px;
   margin-top: 8px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #14b8a6, #5c4db5);
-  border-color: transparent;
+  background: var(--ot-violet);
+  border-color: var(--ot-violet);
   color: #fff;
 }
 
+html[data-theme] .login-page .btn-primary.login-page__submit:hover:not(:disabled),
+html[data-theme] .login-page__submit:hover:not(:disabled) {
+  background: var(--ot-violet-deep);
+  border-color: var(--ot-violet-deep);
+}
+
+html[data-theme] .login-page .btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(196, 181, 253, 0.45);
+}
+
 html[data-theme] .login-page .btn-secondary {
-  background: #161b24;
+  background: var(--ot-midnight);
   border-color: rgba(255, 255, 255, 0.14);
   color: #f4f6fa;
 }
@@ -7117,9 +7142,24 @@ html[data-theme] .login-page__hint {
   text-align: left;
 }
 
-html[data-theme] .login-page__hint a {
-  color: #5eead4;
-  font-weight: 700;
+html[data-theme] .login-page__hint a,
+html[data-theme] .login-page__link {
+  color: var(--ot-lavender);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+html[data-theme] .login-page__hint a:hover,
+html[data-theme] .login-page__link:hover {
+  color: #ddd4ff;
+  text-decoration: underline;
+}
+
+html[data-theme] .login-page__hint a:focus-visible,
+html[data-theme] .login-page__link:focus-visible {
+  outline: 2px solid var(--ot-lavender);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 @media (max-width: 768px) {
@@ -7192,10 +7232,11 @@ html[data-theme='dark'] .devops-layout {
   --ig-text-2: #d5dae3;
   --ig-muted: #9aa3b2;
   --ig-faint: #7d8796;
-  --ig-accent: #8b78e6;
-  --ig-accent-soft: rgba(139, 120, 230, 0.18);
-  --ig-accent-text: #c4b6ff;
-  --ig-accent-border: rgba(139, 120, 230, 0.4);
+  --ig-accent: #6d4aff;
+  --ig-accent-hover: #7c5cff;
+  --ig-accent-soft: rgba(124, 92, 255, 0.18);
+  --ig-accent-text: #c4b5fd;
+  --ig-accent-border: rgba(196, 181, 253, 0.45);
   background: #101218;
   color: #f2f4f8;
 }
@@ -7902,7 +7943,7 @@ html[data-theme='dark'] .devops-layout .access-team__panel {
 
 .access-chip input {
   margin: 0;
-  accent-color: #5c4db5;
+  accent-color: var(--ig-accent);
 }
 
 .access-chip.is-on {
@@ -8127,8 +8168,8 @@ html[data-theme='dark'] .devops-layout .sd-filters select.input {
 }
 
 html[data-theme='dark'] .devops-layout .btn-primary {
-  background: #f4f6fa;
-  color: #1c2433;
+  background: var(--ig-accent);
+  color: #fff;
   border-color: transparent;
 }
 
