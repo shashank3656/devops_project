@@ -20,6 +20,7 @@ export default function DevOpsK8sWorkspacePage() {
   const router = useRouter();
   const scope = readK8sScopeFromQuery(router.query);
   const [detail, setDetail] = useState<K8sClusterDetailData | null>(null);
+  const [k8sAccess, setK8sAccess] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -44,7 +45,10 @@ export default function DevOpsK8sWorkspacePage() {
       environment: scope.environment,
     })
       .then((data) => {
-        if (active) setDetail(data);
+        if (active) {
+          setDetail(data);
+          setK8sAccess(data.k8s_access || '');
+        }
       })
       .catch((err) => {
         if (active) {
@@ -101,7 +105,7 @@ export default function DevOpsK8sWorkspacePage() {
                 <Link href={buildK8sHref('/k8s', { project_id: scope.project_id, environment: scope.environment })} className="btn btn-secondary">
                   Cluster catalog
                 </Link>
-                {detail?.k8s_access === 'write' ? (
+                {k8sAccess === 'write' ? (
                   <Link href={buildK8sHref('/k8s/onboard/new', { project_id: scope.project_id, environment: scope.environment })} className="btn btn-primary">
                     Onboard cluster
                   </Link>
