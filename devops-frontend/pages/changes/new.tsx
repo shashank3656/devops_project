@@ -445,7 +445,6 @@ export default function NewChangeRequestPage() {
                     {users.map((user) => (
                       <option key={user.id} value={user.id}>
                         {user.username}
-                        {user.email ? ` · ${user.email}` : ''}
                       </option>
                     ))}
                   </select>

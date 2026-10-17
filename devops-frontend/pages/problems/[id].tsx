@@ -180,7 +180,36 @@ export default function ProblemDetailPage() {
             {item.description ? <p className="chg-detail__prose">{item.description}</p> : null}
             {item.workaround ? <p className="chg-detail__prose"><strong>Workaround. </strong>{item.workaround}</p> : null}
             {item.root_cause ? <p className="chg-detail__prose"><strong>Root cause. </strong>{item.root_cause}</p> : null}
-            <p className="chg-detail__hint">Publish a knowledge article after this is a known error. The article copies the workaround and root cause.</p>
+            <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16 }}>
+              <input
+                type="checkbox"
+                checked={Boolean(item.known_error)}
+                disabled={saving}
+                onChange={(event) => {
+                  const next = event.target.checked;
+                  const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                  if (!token || !resourceId) return;
+                  setSaving(true);
+                  setError('');
+                  portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/problems/${resourceId}`), {
+                    method: 'PATCH',
+                    token,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ known_error: next }),
+                  })
+                    .then(async (res) => {
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok) {
+                        setError(data?.error || 'Failed to update problem');
+                        return;
+                      }
+                      if (data.problem) setItem(data.problem);
+                    })
+                    .finally(() => setSaving(false));
+                }}
+              />
+              Known error. Publishing a knowledge article copies the workaround and root cause.
+            </label>
             <div className="portal-form-grid" style={{ marginTop: 16 }}>
               <label className="label">
                 State

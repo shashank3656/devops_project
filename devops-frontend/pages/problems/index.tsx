@@ -1,9 +1,9 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { priorityLabel, problemStateLabel } from '../../lib/itsm';
+import { PROBLEM_STATES, priorityLabel, problemStateLabel } from '../../lib/itsm';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -19,12 +19,19 @@ interface ProblemRow {
   occurrence_count: number;
 }
 
+function stateKey(status: string): string {
+  const key = (status || '').toLowerCase();
+  return key === 'open' ? 'new' : key;
+}
+
 export default function ProblemsPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
   const [items, setItems] = useState<ProblemRow[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('');
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -42,6 +49,22 @@ export default function ProblemsPage() {
       .finally(() => setLoading(false));
   }, [apiUrl]);
 
+  const filtering = Boolean(query.trim() || status);
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return items.filter((item) => {
+      if (status && stateKey(item.status) !== status) return false;
+      if (!needle) return true;
+      const haystack = [item.problem_number, item.summary, item.service, item.environment, item.fingerprint].join(' ').toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [items, query, status]);
+
+  function clearFilters() {
+    setQuery('');
+    setStatus('');
+  }
+
   return (
     <DevOpsLayout>
       <Head>
@@ -50,9 +73,9 @@ export default function ProblemsPage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Incidents</span>
+            <span className="portal-page__eyebrow">Problems</span>
             <h1 className="portal-page__title">Problems</h1>
-            <p className="portal-page__subtitle">Create a problem request like a change, or let three matching alerts in 14 days open one for RCA.</p>
+            <p className="portal-page__subtitle">Open a problem for root cause, or let three matching alerts in 14 days open one.</p>
           </div>
           <button type="button" className="btn btn-primary" onClick={() => void router.push('/problems/new')}>
             Create problem
@@ -60,9 +83,35 @@ export default function ProblemsPage() {
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
         <section className="portal-surface">
+          <form className="iam-filters" onSubmit={(event) => event.preventDefault()}>
+            <label>
+              Search
+              <input
+                className="input"
+                type="search"
+                value={query}
+                placeholder="Number, summary, service, or fingerprint"
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+            <label>
+              State
+              <select className="input" value={status} onChange={(event) => setStatus(event.target.value)}>
+                <option value="">All states</option>
+                {PROBLEM_STATES.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
+              </select>
+            </label>
+            <div className="iam-filters__actions">
+              {filtering ? <button type="button" className="btn btn-secondary" onClick={clearFilters}>Clear</button> : null}
+            </div>
+          </form>
           {loading ? <div className="empty-state">Loading problems...</div> : null}
-          {!loading && !items.length ? <div className="empty-state">No recurring problems yet.</div> : null}
-          {items.length ? (
+          {!loading && !visible.length ? (
+            <div className="empty-state">{filtering ? 'No problems match this filter.' : 'No recurring problems yet.'}</div>
+          ) : null}
+          {visible.length ? (
             <table className="templates-table">
               <thead>
                 <tr>
@@ -74,11 +123,11 @@ export default function ProblemsPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
+                {visible.map((item) => (
                   <tr key={item.id} style={{ cursor: 'pointer' }} onClick={() => void router.push(`/problems/${item.id}`)}>
                     <td>
                       <strong>{item.problem_number}</strong>
-                      <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.fingerprint}</div>
+                      <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.summary || item.fingerprint}</div>
                     </td>
                     <td>{priorityLabel(item.priority || 'p3')}</td>
                     <td>{item.service || item.environment || '—'}</td>

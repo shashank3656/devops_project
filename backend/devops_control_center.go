@@ -1751,7 +1751,7 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 		if item != nil {
 			item = applyCreatedIncidentITSM(item, body.CallerUserID, body.ParentIncidentID, body.Category, body.Subcategory, body.ConferenceURL, body.ConferenceNotes, body.Notes, body.Comment, managerID)
 			if body.Major != nil && *body.Major {
-				if updated, err := applyMajorIncidentMode(item, true, firstNonEmpty(body.ConferenceNotes, item.StatusNote)); err == nil && updated != nil {
+				if updated, err := applyMajorIncidentMode(item, true, firstNonEmpty(body.ConferenceNotes, item.StatusNote), body.ConferenceURL); err == nil && updated != nil {
 					item = updated
 				}
 			}
@@ -1929,7 +1929,7 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		if body.Major != nil {
 			major = *body.Major
 		}
-		if updated, err := applyMajorIncidentMode(item, major, firstNonEmpty(body.StatusNote, item.StatusNote)); err == nil && updated != nil {
+		if updated, err := applyMajorIncidentMode(item, major, firstNonEmpty(body.StatusNote, item.StatusNote), body.ConferenceURL); err == nil && updated != nil {
 			item = updated
 		}
 	}
