@@ -1,10 +1,12 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { sessionRole } from '../../components/deskClient';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { focusField } from '../../lib/focusField';
+import { saveSubmissionResult } from '../../lib/submissionResult';
 
 const TOKEN_KEY = 'devops_token';
 
@@ -47,6 +49,7 @@ export default function NewMaintenancePage() {
   const [description, setDescription] = useState('');
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const submitLock = useRef(false);
   const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
@@ -149,7 +152,9 @@ export default function NewMaintenancePage() {
     const startIso = toIso(start);
     const endIso = toIso(end);
     if (!canWrite || !projectId || !environment || !service || !teamId || !owner.trim() || !impact.trim() || !description.trim() || !changeId || !startIso || !endIso) {
-      setMessage('Choose the project, service, team, owner, change, start, end, impact, and description.');
+      const message = 'Choose the project, service, team, owner, change, start, end, impact, and description.';
+      focusField(projectId ? 'maint-service' : 'maint-project', message);
+      setMessage(message);
       return;
     }
     if (new Date(endIso) <= new Date(startIso)) {
@@ -162,6 +167,8 @@ export default function NewMaintenancePage() {
     }
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
+    if (submitLock.current) return;
+    submitLock.current = true;
     setSaving(true);
     try {
       const res = await fetch(`${apiUrl}/api/maintenance/windows`, {
@@ -187,10 +194,18 @@ export default function NewMaintenancePage() {
         return;
       }
       const id = data.window && typeof data.window.id === 'number' ? data.window.id : 0;
+      saveSubmissionResult({
+        kind: 'Maintenance',
+        id: id > 0 ? `#${id}` : 'created',
+        status: 'saved',
+        next: 'The window is saved. Open it to confirm the service and the time.',
+        href: id > 0 ? `/maintenance/${id}` : '/maintenance',
+      });
       if (id > 0) void router.push(`/maintenance/${id}`);
     } catch {
       setMessage('Maintenance could not be created.');
     } finally {
+      submitLock.current = false;
       setSaving(false);
     }
   }
@@ -212,7 +227,7 @@ export default function NewMaintenancePage() {
         <form className="portal-surface" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
           <div className="portal-field-grid portal-field-grid--two">
             <label className="label">Project
-              <select className="input" value={projectId} onChange={(event) => { setProjectId(event.target.value); setServiceId(''); setChangeId(''); }} required>
+              <select id="maint-project" className="input" value={projectId} onChange={(event) => { setProjectId(event.target.value); setEnvironment(''); setServiceId(''); setChangeId(''); }} required>
                 <option value="">Select a project</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>{project.code ? `${project.name} (${project.code})` : project.name}</option>
@@ -220,22 +235,22 @@ export default function NewMaintenancePage() {
               </select>
             </label>
             <label className="label">Environment
-              <select className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)} required>
-                <option value="">Select an environment</option>
-                {environments.map((name) => <option key={name} value={name}>{name}</option>)}
+              <select className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)} required disabled={!projectId}>
+                <option value="">{projectId ? 'Select an environment' : 'Select a project first'}</option>
+                {projectId ? environments.map((name) => <option key={name} value={name}>{name}</option>) : null}
               </select>
             </label>
             <label className="label">Service
-              <select className="input" value={serviceId} onChange={(event) => {
+              <select id="maint-service" className="input" value={serviceId} disabled={!projectId} onChange={(event) => {
                 const next = event.target.value;
                 setServiceId(next);
                 const service = projectServices.find((item) => String(item.id) === next);
                 if (service?.environment) setEnvironment(service.environment);
               }} required>
                 <option value="">{projectId ? 'Select a service' : 'Select a project first'}</option>
-                {projectServices.map((item) => (
+                {projectId ? projectServices.map((item) => (
                   <option key={item.id} value={item.id}>{item.environment ? `${item.service} · ${item.environment}` : item.service}</option>
-                ))}
+                )) : null}
               </select>
             </label>
             <label className="label">Team
@@ -251,11 +266,11 @@ export default function NewMaintenancePage() {
               </select>
             </label>
             <label className="label">Change request
-              <select className="input" value={changeId} onChange={(event) => setChangeId(event.target.value)} required>
-                <option value="">Select a change</option>
-                {projectChanges.map((change) => (
+              <select className="input" value={changeId} onChange={(event) => setChangeId(event.target.value)} required disabled={!projectId}>
+                <option value="">{projectId ? 'Select a change' : 'Select a project first'}</option>
+                {projectId ? projectChanges.map((change) => (
                   <option key={change.id} value={change.change_number}>{change.title ? `${change.change_number} · ${change.title}` : change.change_number}</option>
-                ))}
+                )) : null}
               </select>
             </label>
             <label className="label">Linked incident
@@ -274,6 +289,7 @@ export default function NewMaintenancePage() {
             <label className="label">End
               <input className="input" type="datetime-local" value={end} onChange={(event) => setEnd(event.target.value)} required />
             </label>
+            <p className="access-hint">Start and end use this browser’s timezone.</p>
             <label className="label">Impact
               <input className="input" value={impact} onChange={(event) => setImpact(event.target.value)} required />
             </label>

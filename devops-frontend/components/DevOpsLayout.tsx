@@ -245,6 +245,22 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   }, [router]);
 
   useEffect(() => {
+    const onInvalid = (event: Event) => {
+      const field = event.target;
+      if (!(field instanceof HTMLElement)) return;
+      const form = field.closest('form');
+      if (!form || form.dataset.invalidFocused === '1') return;
+      form.dataset.invalidFocused = '1';
+      field.focus();
+      window.setTimeout(() => {
+        delete form.dataset.invalidFocused;
+      }, 0);
+    };
+    document.addEventListener('invalid', onInvalid, true);
+    return () => document.removeEventListener('invalid', onInvalid, true);
+  }, []);
+
+  useEffect(() => {
     setProfileInitials(getProfileInitials());
     setAccessNotice(readAccessDenied());
     setSubmission(readSubmissionResult());
@@ -587,7 +603,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
 
   const leafIsActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard' || pathname === '/';
-    if (href === '/iam' || href === '/service-desk') return pathname === href;
+    if (href === '/iam' || href === '/service-desk' || href === '/portal-access') return pathname === href;
     if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/');
     return pathname === href || pathname.startsWith(`${href}/`);
   };
@@ -1140,6 +1156,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             {submission ? (
               <div className="alert alert-success sd-alert" role="status">
                 <span>{submission.kind} {submission.id} is {submission.status}. {submission.next}</span>
+                {submission.href ? <Link href={submission.href}>Open {submission.kind} {submission.id}</Link> : null}
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSubmission(null)}>Dismiss</button>
               </div>
             ) : null}

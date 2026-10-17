@@ -26,6 +26,10 @@ function asK8sLevel(value: unknown): K8sLevel {
   return value === 'none' || value === 'write' || value === 'read' ? value : 'read';
 }
 
+function linkKey(links: K8sLink[]): string {
+  return links.map((link) => `${link.project_id}:${link.k8s_access}`).sort().join('|');
+}
+
 export default function GroupAccessPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
@@ -44,11 +48,15 @@ export default function GroupAccessPage() {
   const [memberRole, setMemberRole] = useState('developer');
   const [defaultEnv, setDefaultEnv] = useState('');
   const [defaultCloud, setDefaultCloud] = useState('');
+  const [savedEnv, setSavedEnv] = useState('');
+  const [savedCloud, setSavedCloud] = useState('');
   const [savingDefaults, setSavingDefaults] = useState(false);
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [teamK8s, setTeamK8s] = useState<K8sLevel>('none');
+  const [savedK8s, setSavedK8s] = useState<K8sLevel>('none');
   const [k8sLinks, setK8sLinks] = useState<K8sLink[]>([]);
+  const [savedLinkKey, setSavedLinkKey] = useState('');
   const [k8sProjects, setK8sProjects] = useState<K8sProject[]>([]);
   const [addProjectId, setAddProjectId] = useState('');
   const [addProjectLevel, setAddProjectLevel] = useState<K8sLevel>('read');
@@ -72,8 +80,12 @@ export default function GroupAccessPage() {
         if (!response.ok || cancel) return;
         const detail = body?.team && typeof body.team === 'object' ? body.team as { default_env?: string; default_cloud?: string; team_type?: string } : null;
         if (detail) {
-          setDefaultEnv(detail.default_env || '');
-          setDefaultCloud(detail.default_cloud || '');
+          const env = detail.default_env || '';
+          const cloud = detail.default_cloud || '';
+          setDefaultEnv(env);
+          setDefaultCloud(cloud);
+          setSavedEnv(env);
+          setSavedCloud(cloud);
           setMemberRole(detail.team_type === 'devops' ? 'member' : 'developer');
         }
         const rows = Array.isArray(body?.members) ? body.members : [];
@@ -88,13 +100,17 @@ export default function GroupAccessPage() {
       .then(async (response) => {
         const body = await response.json().catch(() => ({}));
         if (!response.ok || cancel) return;
-        setTeamK8s(body?.k8s_access === 'write' || body?.k8s_access === 'none' ? body.k8s_access : 'read');
+        const level = body?.k8s_access === 'write' || body?.k8s_access === 'none' ? body.k8s_access : 'read';
+        setTeamK8s(level);
+        setSavedK8s(level);
         const links = Array.isArray(body?.links) ? body.links : [];
-        setK8sLinks(links.map((link: { project_id: number; name: string; k8s_access: string }) => ({
+        const mapped = links.map((link: { project_id: number; name: string; k8s_access: string }) => ({
           project_id: Number(link.project_id) || 0,
           name: link.name || 'Project',
           k8s_access: asK8sLevel(link.k8s_access),
-        })));
+        }));
+        setK8sLinks(mapped);
+        setSavedLinkKey(linkKey(mapped));
         const projects = Array.isArray(body?.projects) ? body.projects : [];
         setK8sProjects(projects.map((project: { id: number; name: string }) => ({
           id: Number(project.id) || 0,
@@ -220,6 +236,8 @@ export default function GroupAccessPage() {
         return;
       }
       setNotice('Request defaults saved.');
+      setSavedEnv(defaultEnv);
+      setSavedCloud(defaultCloud);
     } catch {
       setError('Defaults could not be saved.');
     } finally {
@@ -256,12 +274,15 @@ export default function GroupAccessPage() {
         return;
       }
       setTeamK8s(body?.k8s_access === 'write' || body?.k8s_access === 'none' ? body.k8s_access : 'read');
+      setSavedK8s(body?.k8s_access === 'write' || body?.k8s_access === 'none' ? body.k8s_access : 'read');
       const links = Array.isArray(body?.links) ? body.links : [];
-      setK8sLinks(links.map((link: { project_id: number; name: string; k8s_access: string }) => ({
+      const mapped = links.map((link: { project_id: number; name: string; k8s_access: string }) => ({
         project_id: Number(link.project_id) || 0,
         name: link.name || 'Project',
         k8s_access: asK8sLevel(link.k8s_access),
-      })));
+      }));
+      setK8sLinks(mapped);
+      setSavedLinkKey(linkKey(mapped));
       setNotice('Kubernetes access saved.');
     } catch {
       setError('Kubernetes access could not be saved.');
@@ -345,6 +366,8 @@ export default function GroupAccessPage() {
     ];
   const available = people.filter((person) => !members.some((member) => member.user_id === person.id));
   const dirty = !sameGrants(draft, saved) || !custom;
+  const defaultsDirty = defaultEnv !== savedEnv || defaultCloud !== savedCloud;
+  const k8sDirty = teamK8s !== savedK8s || linkKey(k8sLinks) !== savedLinkKey;
 
   return (
     <>
@@ -371,8 +394,20 @@ export default function GroupAccessPage() {
           {loading ? <p className="work-empty">Loading group…</p> : null}
           {!loading && team ? (
             <div className="group-board">
+              <section className="portal-surface group-card group-card--wide" aria-label="Effective access">
+                <h2 className="access-form__title">What members can open</h2>
+                <p className="access-hint">
+                  {ACCESS_SECTIONS.filter((section) => draft[section.key]).map((section) => section.label).join(' · ') || 'No sections are on.'}
+                  {dirty ? ' Section changes are not saved yet.' : ' Saved sections are what members see.'}
+                </p>
+                <p className="access-hint">
+                  Membership, request defaults, and Kubernetes each save on their own. A group role such as Developer or Manager is the job in this group. It is not the Manager account flag used for approvals.
+                </p>
+                <p className="access-hint">Kubernetes group level is {teamK8s}. {k8sLinks.length ? `${k8sLinks.length} project links.` : 'No project links yet.'}</p>
+              </section>
               <section className="portal-surface group-card">
                 <h2 className="access-form__title">People</h2>
+                <p className="access-hint">Adding, removing, and role changes save immediately.</p>
                 {members.length === 0 ? <p className="work-empty">No one is in this group yet.</p> : (
                   <ul className="access-members">
                     {members.map((member) => (
@@ -406,15 +441,16 @@ export default function GroupAccessPage() {
                 </div>
               </section>
               <section className="portal-surface group-card">
-                <h2 className="access-form__title">Request defaults</h2>
+                <h2 className="access-form__title">Request defaults{defaultsDirty ? ' · Unsaved' : ''}</h2>
                 <p className="access-hint">These prefill the next request someone in this group opens.</p>
                 <div className="group-defaults">
                   <label className="label" htmlFor="group-env">Environment
                     <select id="group-env" className="input" value={defaultEnv} onChange={(event) => setDefaultEnv(event.target.value)}>
                       <option value="">None</option>
                       <option value="dev">dev</option>
-                      <option value="stage">stage</option>
+                      <option value="uat">uat</option>
                       <option value="prod">prod</option>
+                      {defaultEnv && !['dev', 'uat', 'prod'].includes(defaultEnv) ? <option value={defaultEnv}>{defaultEnv}</option> : null}
                     </select>
                   </label>
                   <label className="label" htmlFor="group-cloud">Cloud
@@ -426,19 +462,19 @@ export default function GroupAccessPage() {
                     </select>
                   </label>
                 </div>
-                <button type="button" className="btn btn-primary" disabled={savingDefaults} onClick={saveDefaults}>
+                <button type="button" className="btn btn-primary" disabled={!defaultsDirty || savingDefaults} onClick={saveDefaults}>
                   {savingDefaults ? 'Saving…' : 'Save defaults'}
                 </button>
               </section>
               <section className="portal-surface group-card group-card--wide">
                 <div className="group-card__head">
                   <div>
-                    <h2 className="access-form__title">Kubernetes</h2>
+                    <h2 className="access-form__title">Kubernetes{k8sDirty ? ' · Unsaved' : ''}</h2>
                     <p className="access-hint">
                       The group level and each project level both apply. A person gets the lower of the two, and the higher result across groups they belong to. Read opens clusters, workloads, pods, and logs. Write adds restart, scale, resume, terminal, and cluster onboard. None keeps the project link and hides its clusters. The Kubernetes page under Sections still has to be on. Adding a project also links this group for on-call and other project access.
                     </p>
                   </div>
-                  <button type="button" className="btn btn-primary" disabled={savingK8s} onClick={saveKubernetes}>
+                  <button type="button" className="btn btn-primary" disabled={!k8sDirty || savingK8s} onClick={saveKubernetes}>
                     {savingK8s ? 'Saving…' : 'Save Kubernetes'}
                   </button>
                 </div>
@@ -499,7 +535,7 @@ export default function GroupAccessPage() {
               <section className="portal-surface group-card group-card--wide">
                 <div className="group-card__head">
                   <div>
-                    <h2 className="access-form__title">Sections</h2>
+                    <h2 className="access-form__title">Sections{dirty ? ' · Unsaved' : ''}</h2>
                     <p className="access-hint">Turn a section on, then keep only the pages this group should open. Infrastructure can be IAM on its own.</p>
                   </div>
                   <button type="button" className="btn btn-primary" disabled={!dirty || saving} onClick={save}>

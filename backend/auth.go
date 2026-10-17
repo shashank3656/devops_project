@@ -1413,6 +1413,53 @@ func setVerifiedHandler(w http.ResponseWriter, r *http.Request) {
 	encodeAuthJSON(w, map[string]interface{}{"message": "user verified", "status": "ok"})
 }
 
+func randomInvitePassword() (string, error) {
+	buf := make([]byte, 24)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
+// sendSetPasswordInvite emails a 72-hour set-password link. It returns false when mail is not accepted.
+func sendSetPasswordInvite(userID int, email string) bool {
+	if strings.TrimSpace(os.Getenv("SMTP_HOST")) == "" {
+		log.Printf("[Email] SMTP_HOST not set - set-password email skipped user_id=%d", userID)
+		return false
+	}
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		log.Printf("[Email] set-password token generate failed user_id=%d: %v", userID, err)
+		return false
+	}
+	token := hex.EncodeToString(tokenBytes)
+	if err := SavePasswordResetTokenFor(userID, token, 72*time.Hour); err != nil {
+		log.Printf("[Email] set-password token save failed user_id=%d: %v", userID, err)
+		return false
+	}
+	base := strings.TrimRight(strings.TrimSpace(DevOpsFrontendURL), "/")
+	if base == "" {
+		base = strings.TrimRight(strings.TrimSpace(FrontendURL), "/")
+	}
+	if base == "" {
+		log.Printf("[Email] set-password skipped: frontend URL is not set user_id=%d", userID)
+		return false
+	}
+	subject, body := EmailTemplateSetPassword(base + "/reset-password?token=" + token)
+	if err := SendEmail(strings.TrimSpace(email), subject, body); err != nil {
+		log.Printf("[Email] set-password email failed user_id=%d: %v", userID, err)
+		return false
+	}
+	log.Printf("[Email] set-password email sent user_id=%d", userID)
+	return true
+}
+
+func removeUnsentInvite(userID int) {
+	_, _ = DB.Exec(`DELETE FROM password_reset_tokens WHERE user_id = $1`, userID)
+	_, _ = DB.Exec(`DELETE FROM devops_profiles WHERE user_id = $1`, userID)
+	_, _ = DB.Exec(`DELETE FROM users WHERE id = $1`, userID)
+}
+
 // forgotPasswordHandler POST /api/auth/forgot-password - sends reset link to user's email
 func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
@@ -1551,6 +1598,7 @@ func resetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = ConsumePasswordResetToken(token)
+	_, _ = DB.Exec(`UPDATE users SET must_set_password = FALSE WHERE id = $1`, userID)
 	log.Printf("[Auth] Reset-password: password updated successfully for userID=%d", userID)
 	w.Header().Set("Content-Type", "application/json")
 	encodeAuthJSON(w, map[string]interface{}{"status": "ok", "message": "Password updated. You can now sign in."})

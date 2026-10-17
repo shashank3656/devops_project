@@ -49,7 +49,7 @@ function known(value: string | undefined): string {
 }
 
 function shiftText(shift: TeamShift): string {
-  if (!shift.user_id) return 'No one is on this rotation';
+  if (!shift.user_id) return 'Coverage gap';
   if (shift.status === 'covered') return `${known(shift.name)} is covering for ${known(shift.from_name)}`;
   if (shift.status === 'pending') return `Waiting for ${known(shift.cover_name)}`;
   return known(shift.name);
@@ -104,7 +104,9 @@ function CoverRow({
       <td>{known(row.project.name)}</td>
       <td>{known(row.shift.team_name)}</td>
       <td>
-        {shiftText(row.shift)}
+        {!row.shift.user_id ? (
+          <span className="oncall-gap" role="status">Coverage gap. <Link href={`/on-call/project/${row.project.id}/team/${row.shift.team_id}`}>Assign people</Link></span>
+        ) : shiftText(row.shift)}
         {open ? (
           <form className="oncall-ask" onSubmit={(event) => onSubmit(event, row)}>
             {others.length ? (
@@ -326,14 +328,19 @@ export default function OnCallPage() {
           <div>
             <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">On-call</h1>
-            <p className="portal-page__subtitle">Today is the list. The calendar is the monthly roster. Projects is where teams and people are added or removed.</p>
+            <p className="portal-page__subtitle">The project and environment at the top limit this page. Project and Team below only filter the roster you are looking at. Setup follows Project, then Teams, then People, then Review coverage.</p>
           </div>
           <div className="portal-page__actions">
             <Link href="/on-call/onboard" className="btn btn-primary">Onboard project</Link>
             <Link href="/on-call/projects" className="btn btn-secondary">Projects</Link>
           </div>
         </div>
-        {error ? <div className="alert alert-error">{error}</div> : null}
+        {error ? (
+          <div className="alert alert-error" role="alert">
+            Failed to load. {error}{' '}
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRefresh((value) => value + 1)}>Retry</button>
+          </div>
+        ) : null}
         {note ? <div className="alert alert-success">{note}</div> : null}
         <section className="portal-surface">
           <div className="svc-filters">
@@ -365,13 +372,15 @@ export default function OnCallPage() {
                 <button type="button" className="oncall-month__step" aria-label="Next month" onClick={() => setMonth(shiftMonth(month, 1))}>
                   <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 </button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setMonth(currentMonth(timezone)); setSelectedDate(todayDate); }}>Today</button>
               </span>
             </label>
             <label>
               Timezone
-              <select className="input" value={timezone} onChange={(event) => { setTimezone(event.target.value); setMonth(currentMonth(event.target.value)); }}>
+              <select className="input" aria-label="Roster timezone" value={timezone} onChange={(event) => { setTimezone(event.target.value); setMonth(currentMonth(event.target.value)); }}>
                 {TIMEZONES.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
               </select>
+              <p className="access-hint">A day starts at 00:00 in {timezone}. Today, month changes, and handover use that boundary. Changing the timezone reloads coverage for the current month.</p>
             </label>
             {query || projectId || team ? (
               <div className="svc-filters__actions">
@@ -440,6 +449,10 @@ export default function OnCallPage() {
           {!loading ? (
             <section aria-label="Monthly roster">
               <h2 className="portal-surface__title">Monthly roster</h2>
+              <p className="portal-page__subtitle">
+                A name means that day is covered. An orange outline means uncovered. The selected day is listed below.
+                {' '}{new Set(rows.filter((row) => !row.shift.user_id).map((row) => row.day.date)).size} uncovered days in this filter.
+              </p>
               <div className="oncall-board" role="grid" aria-label={monthTitle(month)}>
                 {WEEK_LETTERS.map((letter) => <span key={letter} className="oncall-board__dow">{letter}</span>)}
                 {calendarCells(month).map((cell, index) => {
@@ -447,13 +460,14 @@ export default function OnCallPage() {
                   const dayRows = rows.filter((row) => row.day.date === cell.date);
                   const names = dayRows.map((row) => known(row.shift.name)).filter((name) => name !== 'Unknown');
                   const weekend = index % 7 >= 5;
+                  const gap = dayRows.some((row) => !row.shift.user_id);
                   const tone = names.length ? ` is-tone-${(cell.day % 4) + 1}` : '';
                   return (
                     <button
                       key={cell.date}
                       type="button"
                       role="gridcell"
-                      className={`oncall-board__cell${weekend ? ' is-weekend' : ''}${tone}${cell.date === todayDate ? ' is-today' : ''}${cell.date === selectedDate ? ' is-selected' : ''}`}
+                      className={`oncall-board__cell${weekend ? ' is-weekend' : ''}${tone}${gap ? ' is-gap' : ''}${cell.date === todayDate ? ' is-today' : ''}${cell.date === selectedDate ? ' is-selected' : ''}`}
                       onClick={() => { setSelectedDate(cell.date); setAsk(null); }}
                     >
                       <span className="oncall-board__num">{cell.day}</span>
@@ -483,7 +497,11 @@ export default function OnCallPage() {
                           <tr key={`${row.project.id}-${row.shift.team_id}`}>
                             <td>{known(row.project.name)}</td>
                             <td>{known(row.shift.team_name)}</td>
-                            <td>{shiftText(row.shift)}</td>
+                            <td>
+                              {!row.shift.user_id ? (
+                                <span className="oncall-gap" role="status">Coverage gap. <Link href={`/on-call/project/${row.project.id}/team/${row.shift.team_id}`}>Assign people</Link></span>
+                              ) : shiftText(row.shift)}
+                            </td>
                             <td>
                               {people.length ? people.map((person) => person.name).join(', ') : (
                                 <Link href={`/on-call/project/${row.project.id}/team/${row.shift.team_id}`}>Add users</Link>

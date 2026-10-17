@@ -106,7 +106,8 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 			COALESCE(auth_source,'local'),
 			COALESCE(sso_provider,''),
 			COALESCE(sso_active, TRUE),
-			last_sso_sync_at
+			last_sso_sync_at,
+			COALESCE(must_set_password, FALSE)
 		FROM users
 		WHERE role != 'admin' OR role IS NULL
 		ORDER BY username
@@ -122,8 +123,9 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 		var username, email, role, userType, authSource, ssoProvider string
 		var verified bool
 		var ssoActive bool
+		var mustSetPassword bool
 		var lastSyncAt sql.NullTime
-		if err := rows.Scan(&id, &username, &email, &role, &verified, &userType, &authSource, &ssoProvider, &ssoActive, &lastSyncAt); err != nil {
+		if err := rows.Scan(&id, &username, &email, &role, &verified, &userType, &authSource, &ssoProvider, &ssoActive, &lastSyncAt, &mustSetPassword); err != nil {
 			continue
 		}
 		if userType != "devops_user" && userType != "portal_user" {
@@ -140,7 +142,14 @@ func adminUsersListHandler(w http.ResponseWriter, r *http.Request) {
 			"sso_provider": func() string {
 				return strings.TrimSpace(strings.ToLower(ssoProvider))
 			}(),
-			"sso_active": ssoActive,
+			"sso_active":        ssoActive,
+			"must_set_password": mustSetPassword,
+			"activation": func() string {
+				if mustSetPassword {
+					return "pending"
+				}
+				return "active"
+			}(),
 		}
 		if lastSyncAt.Valid {
 			u["last_sso_sync_at"] = lastSyncAt.Time
@@ -222,6 +231,7 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 		Username    string `json:"username"`
 		Email       string `json:"email"`
 		Password    string `json:"password"`
+		Invite      bool   `json:"invite"`
 		Role        string `json:"role"`         // viewer | contributor; default viewer
 		UserType    string `json:"user_type"`    // portal_user | devops_user
 		IsManager   bool   `json:"is_manager"`   // for devops_user
@@ -235,9 +245,17 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Username = strings.TrimSpace(req.Username)
 	req.Email = strings.TrimSpace(req.Email)
-	if req.Username == "" || req.Email == "" || req.Password == "" {
+	if req.Username == "" || req.Email == "" || (!req.Invite && strings.TrimSpace(req.Password) == "") {
 		writeAPIError(w, r, http.StatusBadRequest, "username, email and password are required", nil)
 		return
+	}
+	if req.Invite {
+		generated, err := randomInvitePassword()
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to create user", err)
+			return
+		}
+		req.Password = generated
 	}
 	if req.Role != "contributor" && req.Role != "viewer" {
 		req.Role = "viewer"
@@ -264,9 +282,9 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 	var userID int
 	var createdAt interface{}
 	err = DB.QueryRow(
-		`INSERT INTO users (username, email, password, verified, role, user_type) VALUES ($1, $2, $3, TRUE, $4, $5)
+		`INSERT INTO users (username, email, password, verified, role, user_type, must_set_password) VALUES ($1, $2, $3, TRUE, $4, $5, $6)
 		 RETURNING id, created_at`,
-		req.Username, req.Email, string(hashed), req.Role, userType,
+		req.Username, req.Email, string(hashed), req.Role, userType, req.Invite,
 	).Scan(&userID, &createdAt)
 	if err != nil {
 		log.Printf("Admin create user: %v", err)
@@ -283,8 +301,20 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Admin create user: is_portal_manager: %v", err)
 		}
 	}
+	activation := "active"
+	emailSent := false
+	if req.Invite {
+		emailSent = sendSetPasswordInvite(userID, req.Email)
+		if !emailSent {
+			removeUnsentInvite(userID)
+			writeAPIError(w, r, http.StatusBadRequest, "The set-password email was not sent, so the account was not created. Set a temporary password, or configure mail and try again.", nil)
+			return
+		}
+		activation = "pending"
+	} else {
+		emailSent = sendAccountCreatedEmail(req.Email, req.Username)
+	}
 	AppendAuditLog(adminIDPtr, "user_create", "user", strconv.Itoa(userID), req.Username)
-	emailSent := sendAccountCreatedEmail(req.Email, req.Username)
 	userResp := map[string]interface{}{"id": userID, "username": req.Username, "email": req.Email, "role": req.Role, "verified": true, "user_type": userType}
 	if userType == "portal_user" {
 		if u, _ := GetUserByID(userID); u != nil {
@@ -301,7 +331,7 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	encodeAdminTeamJSON(w, map[string]interface{}{"user": userResp, "status": "ok", "email_sent": emailSent})
+	encodeAdminTeamJSON(w, map[string]interface{}{"user": userResp, "status": "ok", "email_sent": emailSent, "activation": activation})
 }
 
 // adminUserDetailHandler handles GET and PATCH /api/admin/users/:id (admin only)
@@ -356,6 +386,15 @@ func adminUserDetailHandler(w http.ResponseWriter, r *http.Request) {
 			"id": user.ID, "username": user.Username, "email": user.Email,
 			"role": user.Role, "verified": user.Verified, "created_at": user.CreatedAt,
 			"user_type": user.UserType, "manager_id": user.ManagerID, "is_portal_manager": user.IsPortalManager,
+		}
+		var mustSetPassword bool
+		if err := DB.QueryRow(`SELECT COALESCE(must_set_password, FALSE) FROM users WHERE id = $1`, user.ID).Scan(&mustSetPassword); err == nil {
+			userResp["must_set_password"] = mustSetPassword
+			if mustSetPassword {
+				userResp["activation"] = "pending"
+			} else {
+				userResp["activation"] = "active"
+			}
 		}
 		var authSource, ssoProvider string
 		var ssoActive bool

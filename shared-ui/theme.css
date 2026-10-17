@@ -6397,7 +6397,7 @@ html[data-theme] .devops-layout .portal-page__title,
 html[data-theme] .devops-layout .sd-hero__title,
 html[data-theme] .devops-layout .work-page__head h1 {
   margin: 0;
-  color: #1c2433;
+  color: var(--ig-text);
   font-size: 28px;
   font-weight: 700;
   letter-spacing: -0.035em;
@@ -6800,7 +6800,7 @@ html[data-theme] .devops-layout .portal-page__subtitle,
 html[data-theme] .devops-layout .sd-hero__subtitle,
 html[data-theme] .devops-layout .work-page__head p {
   margin: 4px 0 0;
-  color: #6b7588;
+  color: var(--ig-text-2);
   font-size: 14px;
 }
 
@@ -7806,16 +7806,84 @@ html[data-theme='dark'] .devops-layout {
   --ig-surface-3: #2a3040;
   --ig-border: rgba(255, 255, 255, 0.08);
   --ig-text: #f2f4f8;
-  --ig-text-2: #d5dae3;
-  --ig-muted: #9aa3b2;
-  --ig-faint: #7d8796;
+  --ig-text-2: #b8c2d3;
+  --ig-muted: #b8c2d3;
+  --ig-faint: #8a94a2;
   --ig-accent: #6d4aff;
   --ig-accent-hover: #7c5cff;
-  --ig-accent-soft: rgba(124, 92, 255, 0.18);
-  --ig-accent-text: #c4b5fd;
-  --ig-accent-border: rgba(196, 181, 253, 0.45);
+  --ig-accent-soft: rgba(185, 167, 255, 0.18);
+  --ig-accent-text: #b9a7ff;
+  --ig-accent-border: rgba(185, 167, 255, 0.55);
+  --color-primary: #b9a7ff;
   background: #101218;
   color: #f2f4f8;
+  color-scheme: dark;
+}
+
+html[data-theme='dark'] .devops-layout select option,
+html[data-theme='dark'] .devops-layout select optgroup {
+  background: #1a1d26;
+  color: #f2f4f8;
+}
+
+html[data-theme='dark'] .devops-layout .input::placeholder,
+html[data-theme='dark'] .devops-layout textarea::placeholder,
+html[data-theme='dark'] .devops-layout .textarea::placeholder {
+  color: #b8c2d3;
+  opacity: 1;
+}
+
+html[data-theme='dark'] .devops-layout .input:disabled,
+html[data-theme='dark'] .devops-layout select.input:disabled,
+html[data-theme='dark'] .devops-layout textarea:disabled,
+html[data-theme='dark'] .devops-layout .btn:disabled {
+  color: #b8c2d3;
+  background: #222633;
+  opacity: 1;
+}
+
+html[data-theme='dark'] .devops-layout .alert-error,
+html[data-theme='dark'] .devops-layout .field-error {
+  color: #fecaca;
+  background: #3f1d24;
+}
+
+html[data-theme='dark'] .devops-layout .alert-success {
+  color: #bbf7d0;
+  background: #16352c;
+}
+
+html[data-theme='dark'] .devops-layout .alert-warning {
+  color: #fde68a;
+  background: #3a2a20;
+}
+
+html[data-theme='dark'] .devops-layout .ot-nav-tooltip,
+html[data-theme='dark'] .devops-layout .modal,
+html[data-theme='dark'] .devops-layout .modal-title,
+html[data-theme='dark'] .devops-layout .ig-drawer,
+html[data-theme='dark'] .devops-layout .ig-drawer__title {
+  color: #f2f4f8;
+}
+
+@media (max-width: 768px) {
+  html[data-theme] .devops-layout .portal-page,
+  html[data-theme] .devops-layout .work-page,
+  html[data-theme] .devops-layout .portal-surface:has(table),
+  html[data-theme] .devops-layout .table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  html[data-theme] .devops-layout .portal-form-actions,
+  html[data-theme] .devops-layout .access-create__end {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    background: var(--ig-surface, #1a1d26);
+  }
 }
 
 html[data-theme='dark'] .devops-layout .devops-navbar,
@@ -7867,12 +7935,30 @@ html[data-theme='dark'] .devops-layout .ig-search-trigger {
   color: #d5dae3;
 }
 
-html[data-theme='dark'] .devops-layout .ops-crumb,
-html[data-theme='dark'] .devops-layout .ops-kicker {
-  color: #7dcca8;
+html[data-theme='dark'] .devops-layout .ops-crumb {
+  color: #b8c2d3;
 }
 
-html[data-theme='dark'] .devops-layout .ops-home h1,
+html[data-theme='dark'] .devops-layout .ops-kicker,
+html[data-theme='dark'] .devops-layout .ops-home__eyebrow,
+html[data-theme='dark'] .devops-layout .portal-page__eyebrow {
+  color: #2dd4bf;
+}
+
+html[data-theme='dark'] .devops-layout .ops-home__head {
+  background: #1a1d26;
+}
+
+html[data-theme='dark'] .devops-layout .ig-stepper__step--current .ig-stepper__marker,
+html[data-theme='dark'] .devops-layout .ig-stepper__step--done .ig-stepper__marker,
+html[data-theme='dark'] .devops-layout .work-kinds button.is-selected,
+html[data-theme='dark'] .devops-layout .cloud-hub-nav__pill.is-active {
+  color: #101218;
+  background: #b9a7ff;
+  border-color: #b9a7ff;
+}
+html[data-theme='dark'] .devops-layout .ops-frame h1,
+html[data-theme='dark'] .devops-layout .work-page__head h1,
 html[data-theme='dark'] .devops-layout .sd-hero__title,
 html[data-theme='dark'] .devops-layout .portal-page__title {
   color: #f2f4f8;
@@ -8703,9 +8789,33 @@ html[data-theme='dark'] .devops-layout .ops-ready__meter strong {
 html[data-theme='dark'] .devops-layout .ops-ready__meter span,
 html[data-theme='dark'] .devops-layout .ops-ready li small,
 html[data-theme='dark'] .devops-layout .ops-card p,
+html[data-theme='dark'] .devops-layout .ops-home__head p,
+html[data-theme='dark'] .devops-layout .ops-spotlight p,
+html[data-theme='dark'] .devops-layout .ops-score small,
+html[data-theme='dark'] .devops-layout .ops-action small,
+html[data-theme='dark'] .devops-layout .ops-jump small,
 html[data-theme='dark'] .devops-layout .portal-page__subtitle,
+html[data-theme='dark'] .devops-layout .work-page__head p,
 html[data-theme='dark'] .devops-layout .sd-hero__subtitle {
-  color: #d5dbe6;
+  color: #b8c2d3;
+}
+
+html[data-theme] .devops-layout .oncall-gap {
+  color: #9a3412;
+  font-weight: 700;
+}
+
+html[data-theme] .devops-layout .oncall-board__cell.is-gap {
+  box-shadow: inset 0 0 0 1px #c2410c;
+}
+
+html[data-theme='dark'] .devops-layout .oncall-gap {
+  color: #fdba74;
+  font-weight: 700;
+}
+
+html[data-theme='dark'] .devops-layout .oncall-board__cell.is-gap {
+  box-shadow: inset 0 0 0 1px #fdba74;
 }
 
 html[data-theme='dark'] .devops-layout .ops-card h2,
@@ -9030,9 +9140,9 @@ html[data-theme] .alert-trends--three {
 }
 
 /* Required fields are marked by text, not colour alone. Assistive tech reads the `required` attribute. */
-html[data-theme] .devops-layout .form-group:has(> :is(input, select, textarea)[required]) > .label::after,
-html[data-theme] .devops-layout .form-group:has(> :is(input, select, textarea)[required]) > label::after,
-html[data-theme] .devops-layout label:has(+ :is(input, select, textarea)[required])::after {
+html[data-theme] .devops-layout .form-group:has(> :is(input, select, textarea)[required]) > .label:not(:has(.form-req))::after,
+html[data-theme] .devops-layout .form-group:has(> :is(input, select, textarea)[required]) > label:not(:has(.form-req))::after,
+html[data-theme] .devops-layout label:not(:has(.form-req)):has(+ :is(input, select, textarea)[required])::after {
   content: ' *';
   color: var(--ig-danger);
   font-weight: 700;

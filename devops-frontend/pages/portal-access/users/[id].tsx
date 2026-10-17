@@ -29,6 +29,7 @@ export default function EditPersonPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [activation, setActivation] = useState('');
 
   useEffect(() => {
     if (!router.isReady || !Number.isFinite(personId) || personId <= 0) return;
@@ -45,6 +46,7 @@ export default function EditPersonPage() {
         return;
       }
       const profile = account.devops_profile && typeof account.devops_profile === 'object' ? account.devops_profile : {};
+      setActivation(account.activation === 'pending' ? 'pending' : 'active');
       setUsername(account.username);
       setEmail(typeof account.email === 'string' ? account.email : '');
       setUserType(account.user_type === 'devops_user' ? 'devops_user' : 'portal_user');
@@ -125,6 +127,8 @@ export default function EditPersonPage() {
           {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
           {loading ? <p className="work-empty">Loading person…</p> : null}
           {!loading && username ? (
+            <>
+            {activation === 'pending' ? <p className="access-hint">Waiting to set a password. They can sign in after they open the set-password email.</p> : <p className="access-hint">Can sign in.</p>}
             <form className="portal-surface access-form" onSubmit={save}>
               <label className="label" htmlFor="edit-username">Username</label>
               <input id="edit-username" className="input" value={username} onChange={(event) => setUsername(event.target.value)} required />
@@ -165,9 +169,10 @@ export default function EditPersonPage() {
                   <p className="access-hint">Low requests go to L1, medium to L2, high to L3, and critical to L4.</p>
                 </>
               )}
+              <p className="access-hint">A group role such as Developer or Manager is the job in a group. This checkbox is separate: it marks the account as a manager for approvals.</p>
               <label className="access-chip">
                 <input type="checkbox" checked={isManager} onChange={(event) => setIsManager(event.target.checked)} />
-                Manager
+                Manager for approvals
               </label>
               {groups.length > 0 ? (
                 <p className="access-hint">
@@ -182,6 +187,7 @@ export default function EditPersonPage() {
               ) : <p className="access-hint">This person is not in a group yet.</p>}
               <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
             </form>
+            </>
           ) : null}
         </div>
       </DevOpsLayout>

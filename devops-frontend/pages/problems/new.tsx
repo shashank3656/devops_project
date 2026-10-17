@@ -1,13 +1,14 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { FALLBACK_ITSM_CATEGORIES, ITSMCategory, ITSM_PRIORITIES, PROBLEM_STATES, normalizeCategories, subcategoriesFor } from '../../lib/itsm';
 import { asRecord, getString } from '../../lib/payload';
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 import { expireSession } from '../../lib/sessionExpiry';
+import { focusField } from '../../lib/focusField';
 import { saveSubmissionResult } from '../../lib/submissionResult';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -17,6 +18,7 @@ interface ProjectOption {
   id: number;
   name: string;
   code: string;
+  environments?: string[];
 }
 
 interface ServiceOption {
@@ -81,6 +83,7 @@ export default function NewProblemPage() {
   const [loading, setLoading] = useState(true);
   const { allowLeave } = useUnsavedChanges(Boolean(title.trim() || description.trim() || workaround.trim() || projectId || service.trim()));
   const [saving, setSaving] = useState(false);
+  const submitLock = useRef(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -124,7 +127,12 @@ export default function NewProblemPage() {
           code: item.slug || '',
         })));
         const projectList = Array.isArray(projectRes.data.projects) ? projectRes.data.projects : [];
-        setProjects(projectList.filter((item: { id?: number }) => typeof item.id === 'number') as ProjectOption[]);
+        setProjects(projectList.filter((item: { id?: number }) => typeof item.id === 'number').map((item: { id: number; name?: string; code?: string; environments?: unknown }) => ({
+          id: item.id,
+          name: item.name || 'Project',
+          code: item.code || '',
+          environments: Array.isArray(item.environments) ? item.environments.map((value) => String(value)) : [],
+        })));
         const serviceList = Array.isArray(serviceRes.data.services) ? serviceRes.data.services : [];
         setServices(serviceList.filter((item: { service?: string }) => item.service) as ServiceOption[]);
         const userList = Array.isArray(userRes.data.users) ? userRes.data.users : [];
@@ -173,14 +181,17 @@ export default function NewProblemPage() {
       return;
     }
     if (!title.trim()) {
+      focusField('problem-title', 'Short description is required');
       setError('Short description is required');
       return;
     }
     if (!projectId) {
+      focusField('problem-project', 'Select one project before creating a problem.');
       setError('Select one project before creating a problem.');
       return;
     }
     if (knownError && (!description.trim() || !workaround.trim())) {
+      focusField('problem-title', 'A known error needs cause evidence and a workaround.');
       setError('A known error needs cause evidence and a workaround.');
       return;
     }
@@ -188,6 +199,8 @@ export default function NewProblemPage() {
       setError('Closure needs fix verification.');
       return;
     }
+    if (submitLock.current) return;
+    submitLock.current = true;
     setSaving(true);
     setError('');
     try {
@@ -232,11 +245,13 @@ export default function NewProblemPage() {
         id: previewNumber || (id > 0 ? `#${id}` : 'created'),
         status: status || 'new',
         next: 'Assign an owner if it is still unassigned, then record the cause before it can become a known error.',
+        href: id > 0 ? `/problems/${id}` : '/problems',
       });
       await router.push(id > 0 ? `/problems/${id}` : '/problems');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create problem');
     } finally {
+      submitLock.current = false;
       setSaving(false);
     }
   };
@@ -290,12 +305,53 @@ export default function NewProblemPage() {
             <form onSubmit={(event) => void submit(event)}>
               <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
               <fieldset className="form-section">
+                <legend className="form-section__title">Scope</legend>
+                <p className="form-section__copy">Pick the project first. Service and environment come from that project.</p>
+                <div className="portal-form-grid">
+<label className="label">
+                  Project<span className="form-req" aria-hidden="true"> *</span>
+                  <select id="problem-project" className="input" required value={projectId} onChange={(event) => { setProjectId(event.target.value); setRelatedIncidentId(''); setService(''); setEnvironment(''); }}>
+                    <option value="">Select one project</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name} ({project.code})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+<label className="label">
+                  Service
+                  <select className="input" value={service} onChange={(event) => applyService(event.target.value)} disabled={!projectId}>
+                    <option value="">{projectId ? 'Select a service' : 'Select a project first'}</option>
+                    {projectId ? scopedServices.map((item) => (
+                      <option key={item.id} value={item.service}>
+                        {item.service}
+                        {item.environment ? ` · ${item.environment}` : ''}
+                      </option>
+                    )) : null}
+                  </select>
+                </label>
+<label className="label">
+                  Environment
+                  <select className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)} disabled={!projectId}>
+                    <option value="">{projectId ? 'Select an environment' : 'Select a project first'}</option>
+                    {projectId ? (projects.find((project) => String(project.id) === projectId)?.environments?.length
+                      ? projects.find((project) => String(project.id) === projectId)?.environments
+                      : Array.from(new Set(scopedServices.map((item) => item.environment).filter(Boolean)))
+                    )?.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    )) : null}
+                  </select>
+                </label>
+                </div>
+              </fieldset>
+              <fieldset className="form-section">
                 <legend className="form-section__title">Check existing problems</legend>
                 <label className="label">
                   Search this project <span className="onboard-optional">Optional</span>
-                  <input className="input" value={problemQuery} onChange={(event) => setProblemQuery(event.target.value)} placeholder="Search before creating a new problem" />
+                  <input className="input" value={problemQuery} onChange={(event) => setProblemQuery(event.target.value)} placeholder="Search before creating a new problem" disabled={!projectId} />
                 </label>
-                {!projectId ? <p className="onboard-unavailable">Select a project below before this search can match existing problems.</p> : null}
+                {!projectId ? <p className="onboard-unavailable">Select a project above before this search can match existing problems.</p> : null}
                 {projectId && matchingProblems.length > 0 ? (
                   <ul>
                     {matchingProblems.slice(0, 8).map((item) => (
@@ -310,7 +366,7 @@ export default function NewProblemPage() {
                 <div className="portal-form-grid">
 <label className="label">
                   Short description<span className="form-req" aria-hidden="true"> *</span>
-                  <input className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Recurring 5xx on checkout after deploy" required />
+                  <input id="problem-title" className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Recurring 5xx on checkout after deploy" required />
                 </label>
 <label className="label">
                   Priority
@@ -344,39 +400,6 @@ export default function NewProblemPage() {
                       <option key={item} value={item}>{item}</option>
                     ))}
                   </select>
-                </label>
-                </div>
-              </fieldset>
-              <fieldset className="form-section">
-                <legend className="form-section__title">Scope</legend>
-                <p className="form-section__copy">Pick the project first. Service and environment come from that project.</p>
-                <div className="portal-form-grid">
-<label className="label">
-                  Project<span className="form-req" aria-hidden="true"> *</span>
-                  <select className="input" required value={projectId} onChange={(event) => { setProjectId(event.target.value); setRelatedIncidentId(''); }}>
-                    <option value="">Select one project</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name} ({project.code})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-<label className="label">
-                  Service
-                  <select className="input" value={service} onChange={(event) => applyService(event.target.value)}>
-                    <option value="">Select a service</option>
-                    {scopedServices.map((item) => (
-                      <option key={item.id} value={item.service}>
-                        {item.service}
-                        {item.environment ? ` · ${item.environment}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-<label className="label">
-                  Environment
-                  <input className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)} placeholder="prod" />
                 </label>
                 </div>
               </fieldset>

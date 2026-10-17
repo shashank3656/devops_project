@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Link from 'next/link';
 import {
   BulkBar,
   CostCheckCard,
@@ -442,15 +443,21 @@ export default function DevOpsTickets() {
         if (res.status === 403) {
           setRequests([]);
           setTotal(0);
-          setListError('You do not have access to this request queue.');
+          setListError('You do not have access to this request queue. Your own requests are on My requests.');
           return null;
         }
-        return asRecord(await res.json().catch(() => ({})));
+        const data = asRecord(await res.json().catch(() => ({})));
+        if (!res.ok || !Array.isArray(data.requests)) {
+          setRequests([]);
+          setTotal(0);
+          setListError('The request queue could not be loaded.');
+          return null;
+        }
+        return data;
       })
       .then((data) => {
         if (!data) return;
-        if (Array.isArray(data.requests)) setRequests(data.requests as TicketRow[]);
-        else setRequests([]);
+        setRequests(data.requests as TicketRow[]);
         if (typeof data.total_count === 'number') setTotal(data.total_count);
       })
       .catch(() => {
@@ -1134,6 +1141,7 @@ export default function DevOpsTickets() {
                 <button type="button" className="btn btn-secondary" onClick={fetchTickets}>
                   Try again
                 </button>
+                <Link href="/my-requests" className="btn btn-secondary">My requests</Link>
               </div>
             </div>
           ) : (

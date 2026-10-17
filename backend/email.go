@@ -357,6 +357,13 @@ func EmailTemplatePasswordReset(resetURL string) (subject, plainText, htmlBody s
 
 // EmailTemplateAccountCreated tells a new person their account exists and where to sign in.
 // The password is never included.
+func EmailTemplateSetPassword(resetURL string) (subject, body string) {
+	subject = "Set your OpsTrellis password"
+	safeURL := sanitizeEmailURL(resetURL)
+	body = "An administrator created your OpsTrellis account. Choose your password with this link. It is valid for 72 hours.\n\n" + safeURL + "\n\nThis email does not include a password. The account can sign in after you set one."
+	return subject, body
+}
+
 func EmailTemplateAccountCreated(username, signInURL string) (subject, body string) {
 	subject = "Your OpsTrellis account is ready"
 	name := sanitizeEmailTextContent(strings.TrimSpace(username))

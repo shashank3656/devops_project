@@ -5,6 +5,7 @@ export interface SubmissionResult {
   id: string;
   status: string;
   next: string;
+  href?: string;
 }
 
 export function saveSubmissionResult(result: SubmissionResult) {

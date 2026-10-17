@@ -52,6 +52,7 @@ export default function NewServiceMapPage() {
   const [metricsURL, setMetricsURL] = useState('');
   const [team, setTeam] = useState('');
   const [teams, setTeams] = useState<OwnerTeam[]>([]);
+  const [incompleteDraft, setIncompleteDraft] = useState(false);
   const [saving, setSaving] = useState(false);
   const submitLock = useRef(false);
   const [error, setError] = useState('');
@@ -135,6 +136,10 @@ export default function NewServiceMapPage() {
       setError('Service name is required');
       return;
     }
+    if (!projectId && !incompleteDraft) {
+      setError('Choose a project for an active service, or save it as an incomplete draft.');
+      return;
+    }
     if (submitLock.current) return;
     submitLock.current = true;
     setSaving(true);
@@ -164,6 +169,7 @@ export default function NewServiceMapPage() {
         id: saved.service || service.trim(),
         status: 'saved',
         next: saved.id ? `Open service #${saved.id} to confirm the owner and monitoring links. Health stays Unknown until those links exist.` : 'Confirm the owner and monitoring links. Health stays Unknown until those links exist.',
+        href: saved.id ? `/services/${saved.id}` : scopeListHref('/services', router.query),
       });
       await router.push(scopeListHref('/services', router.query));
     } catch (err) {
@@ -182,10 +188,10 @@ export default function NewServiceMapPage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Changes</span>
+            <span className="portal-page__eyebrow">Service</span>
             <h1 className="portal-page__title">Add service</h1>
             <p className="portal-page__subtitle">
-              Services created here appear in the Change request dropdown. Map a repo and project so a change can resolve ownership without asking for environment.
+              Name the service and the project it belongs to. Health stays Unknown until monitoring links exist.
             </p>
           </div>
           <Link href={scopeListHref('/services', router.query)} className="btn btn-secondary">Back to services</Link>
@@ -196,7 +202,7 @@ export default function NewServiceMapPage() {
             <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
             <fieldset className="form-section">
               <legend className="form-section__title">Basics</legend>
-              <p className="form-section__copy">Pick a project to choose its environment. Services without a project stay unscoped.</p>
+              <p className="form-section__copy">An active service needs a project. Without one, save it as an incomplete draft. Owner team stays optional.</p>
               <div className="portal-form-grid">
                 <label className="label">
                   Service<span className="form-req" aria-hidden="true"> *</span>
@@ -204,7 +210,7 @@ export default function NewServiceMapPage() {
                 </label>
                 <label className="label">
                   Project
-                  <select className="input" value={projectId} onChange={(e) => { setProjectId(e.target.value); setEnvironment(''); }}>
+                  <select className="input" value={projectId} onChange={(e) => { setProjectId(e.target.value); setEnvironment(''); if (e.target.value) setIncompleteDraft(false); }}>
                     <option value="">No project</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>
@@ -213,6 +219,12 @@ export default function NewServiceMapPage() {
                     ))}
                   </select>
                 </label>
+                {!projectId ? (
+                  <label className="access-chip">
+                    <input type="checkbox" checked={incompleteDraft} onChange={(event) => setIncompleteDraft(event.target.checked)} />
+                    Save as an incomplete draft
+                  </label>
+                ) : null}
                 <label className="label">
                   Environment
                   <select className="input" value={environment} onChange={(e) => setEnvironment(e.target.value)} disabled={!projectId || projectEnvs.length === 0} required={Boolean(projectId)}>

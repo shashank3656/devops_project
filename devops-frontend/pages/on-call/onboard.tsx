@@ -131,7 +131,7 @@ export default function OnboardOnCallProjectPage() {
           <div>
             <span className="portal-page__eyebrow">On-call</span>
             <h1 className="portal-page__title">Onboard project</h1>
-            <p className="portal-page__subtitle">Choose the project, then select the teams that share this call. People are chosen on the next page.</p>
+            <p className="portal-page__subtitle">Project, then teams, then people, then review coverage on On-call. This step chooses the teams.</p>
           </div>
           <Link href="/on-call" className="btn btn-secondary">Back to on-call</Link>
         </div>

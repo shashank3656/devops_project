@@ -139,6 +139,7 @@ export default function CodeScanPage() {
             </label>
             <label className="label">Exact revision
               <input ref={revisionRef} className="input" value={revision} onChange={(event) => setRevision(event.target.value)} placeholder="40-character commit SHA" required />
+              <p className="access-hint">Example: a1b2c3d4e5f6789012345678901234567890abcd. Copy it from the commit page of the repository you are allowed to scan.</p>
             </label>
             <label className="label">Report id
               <input className="input" value={reportId} onChange={(event) => setReportId(event.target.value.replace(/\D/g, ''))} inputMode="numeric" />

@@ -5,6 +5,7 @@ import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { focusField } from '../../lib/focusField';
 import { scopeListHref } from '../../lib/scopeHref';
 import { FALLBACK_ITSM_CATEGORIES, IMPACT_URGENCY, INCIDENT_STATES, ITSM_PRIORITIES, ITSMCategory, normalizeCategories, priorityFromImpactUrgency, subcategoriesFor } from '../../lib/itsm';
 import { asRecord, getString } from '../../lib/payload';
@@ -33,6 +34,20 @@ interface Incident {
   id: number;
   incident_number?: string;
   request_id: number;
+}
+
+interface ScopeProject {
+  id: number;
+  name: string;
+  code: string;
+  environments: string[];
+}
+
+interface ScopeService {
+  id: number;
+  project_id: number;
+  service: string;
+  environment: string;
 }
 
 function normalizeIncident(incident: unknown): Incident {
@@ -154,6 +169,12 @@ export default function NewIncidentPage() {
     const value = Array.isArray(router.query.environment) ? router.query.environment[0] : router.query.environment;
     return (value || '').trim();
   }, [router.query.environment]);
+  const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
+  const [scopeServices, setScopeServices] = useState<ScopeService[]>([]);
+  const [projectChoice, setProjectChoice] = useState('');
+  const [incidentEnvironment, setIncidentEnvironment] = useState('');
+  const [incidentService, setIncidentService] = useState('');
+  const scopeReady = useRef(false);
 
   useEffect(() => {
     const raw = sessionStorage.getItem('opstrellis-incident-draft');
@@ -267,8 +288,40 @@ export default function NewIncidentPage() {
   };
 
   useEffect(() => {
+    if (!router.isReady || scopeReady.current) return;
+    scopeReady.current = true;
+    if (scopedProjectId) setProjectChoice(String(scopedProjectId));
+    if (scopedEnvironment) setIncidentEnvironment(scopedEnvironment);
+  }, [router.isReady, scopedEnvironment, scopedProjectId]);
+
+  useEffect(() => {
     void loadData();
     void loadPreviewIncidentNumber();
+  }, [apiUrl]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}` };
+    Promise.all([
+      fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => res.json().catch(() => ({}))),
+      fetch(`${apiUrl}/api/devops/services`, { headers }).then((res) => res.json().catch(() => ({}))),
+    ]).then(([projectBody, serviceBody]) => {
+      const projectRows = Array.isArray(projectBody?.projects) ? projectBody.projects : [];
+      setScopeProjects(projectRows.map((item: { id?: number; name?: string; code?: string; environments?: unknown }) => ({
+        id: typeof item.id === 'number' ? item.id : 0,
+        name: item.name || 'Project',
+        code: item.code || '',
+        environments: Array.isArray(item.environments) ? item.environments.map((value) => String(value)) : [],
+      })).filter((item: ScopeProject) => item.id > 0));
+      const serviceRows = Array.isArray(serviceBody?.services) ? serviceBody.services : [];
+      setScopeServices(serviceRows.map((item: { id?: number; project_id?: number; service?: string; environment?: string }) => ({
+        id: typeof item.id === 'number' ? item.id : 0,
+        project_id: typeof item.project_id === 'number' ? item.project_id : 0,
+        service: item.service || '',
+        environment: item.environment || '',
+      })).filter((item: ScopeService) => item.service));
+    }).catch(() => undefined);
   }, [apiUrl]);
 
   useEffect(() => {
@@ -298,10 +351,12 @@ export default function NewIncidentPage() {
       const linkedRequestID = requestedRequestId || resolveIncidentReferenceInput(requestId, incidents);
       const normalizedStatus = mode === 'draft' ? 'draft' : status === 'draft' ? 'new' : status;
     if (mode !== 'draft' && !summary.trim()) {
+      focusField('incident-summary', 'Short description is required');
       throw new Error('Short description is required');
     }
-    if (mode !== 'draft' && !scopedProjectId) {
-      throw new Error('Select a project before raising an incident.');
+    if (mode !== 'draft' && !projectChoice) {
+      focusField('incident-project', 'Select the affected project, or Unknown / cross-project.');
+      throw new Error('Select the affected project, or Unknown / cross-project.');
     }
     if (mode !== 'draft' && (normalizedStatus === 'resolved' || normalizedStatus === 'closed') && !notes.trim()) {
       throw new Error('Resolve needs a recovery note before this incident can close.');
@@ -324,8 +379,9 @@ export default function NewIncidentPage() {
           summary,
           notes,
           comment,
-          project_id: scopedProjectId,
-          environment: scopedEnvironment,
+          project_id: projectChoice === 'cross' ? 0 : Number(projectChoice),
+          service: incidentService,
+          environment: incidentEnvironment,
           caller_user_id: callerUserId ? Number(callerUserId) : 0,
           category,
           subcategory,
@@ -375,9 +431,11 @@ export default function NewIncidentPage() {
           <div>
             <span className="portal-page__eyebrow">Incident Editor</span>
             <h1 className="portal-page__title">Create incident</h1>
-            <p className="portal-page__subtitle">
-              ServiceNow-style intake: short description, impact, urgency, P1–P4, then New → In Progress → On Hold → Resolved → Closed.
-            </p>
+            <p className="portal-page__subtitle">Record what broke, who is affected, and how urgent it is.</p>
+            <details className="onboard-advanced">
+              <summary>How an incident moves</summary>
+              <p className="form-section__copy">Impact and urgency suggest a priority. States run from New to In Progress, On Hold, Resolved, and Closed. A number is assigned when you save.</p>
+            </details>
           </div>
           <div className="portal-page__actions">
             <Link href={scopeListHref('/incidents', router.query)} className="btn btn-secondary">
@@ -409,10 +467,63 @@ export default function NewIncidentPage() {
             <>
               <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
               <fieldset className="form-section">
+                <legend className="form-section__title">Affected scope</legend>
+                <p className="form-section__copy">Choose the project this incident belongs to. Use Unknown / cross-project when it is not one project.</p>
+                <div className="portal-form-grid">
+                  <label className="label">
+                    Project<span className="form-req" aria-hidden="true"> *</span>
+                    <select
+                      id="incident-project"
+                      className="input"
+                      required
+                      value={projectChoice}
+                      onChange={(event) => {
+                        setProjectChoice(event.target.value);
+                        setIncidentEnvironment('');
+                        setIncidentService('');
+                      }}
+                    >
+                      <option value="">Select a project</option>
+                      <option value="cross">Unknown / cross-project</option>
+                      {scopeProjects.map((project) => (
+                        <option key={project.id} value={project.id}>{project.code ? `${project.name} (${project.code})` : project.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="label">
+                    Environment
+                    <select className="input" value={incidentEnvironment} onChange={(event) => { setIncidentEnvironment(event.target.value); setIncidentService(''); }} disabled={!projectChoice}>
+                      <option value="">{projectChoice ? 'Select an environment' : 'Select a project first'}</option>
+                      {(projectChoice === 'cross'
+                        ? ['dev', 'uat', 'prod']
+                        : (scopeProjects.find((project) => String(project.id) === projectChoice)?.environments?.length
+                          ? scopeProjects.find((project) => String(project.id) === projectChoice)?.environments || []
+                          : ['dev', 'uat', 'prod'])
+                      ).map((name) => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="label">
+                    Service
+                    <select className="input" value={incidentService} onChange={(event) => setIncidentService(event.target.value)} disabled={!projectChoice || projectChoice === 'cross'}>
+                      <option value="">{projectChoice === 'cross' ? 'Not tied to one service' : projectChoice ? 'Select a service' : 'Select a project first'}</option>
+                      {projectChoice && projectChoice !== 'cross'
+                        ? scopeServices
+                          .filter((item) => String(item.project_id) === projectChoice && (!incidentEnvironment || !item.environment || item.environment === incidentEnvironment))
+                          .map((item) => (
+                            <option key={item.id} value={item.service}>{item.service}{item.environment ? ` · ${item.environment}` : ''}</option>
+                          ))
+                        : null}
+                    </select>
+                  </label>
+                </div>
+              </fieldset>
+              <fieldset className="form-section">
                 <legend className="form-section__title">What happened</legend>
                 <label className="label">
                   Short description<span className="form-req" aria-hidden="true"> *</span>
-                  <input className="input" required value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Production checkout is returning 5xx" />
+                  <input id="incident-summary" className="input" required value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Production checkout is returning 5xx" />
                 </label>
                 <div className="portal-form-grid">
                   <label className="label">

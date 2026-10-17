@@ -126,8 +126,9 @@ export default function NewGroupPage() {
             <select id="team-env" className="input" value={defaultEnv} onChange={(event) => setDefaultEnv(event.target.value)}>
               <option value="">None</option>
               <option value="dev">dev</option>
-              <option value="stage">stage</option>
+              <option value="uat">uat</option>
               <option value="prod">prod</option>
+              {defaultEnv && !['dev', 'uat', 'prod'].includes(defaultEnv) ? <option value={defaultEnv}>{defaultEnv}</option> : null}
             </select>
             <label className="label" htmlFor="team-cloud">Default cloud</label>
             <select id="team-cloud" className="input" value={defaultCloud} onChange={(event) => setDefaultCloud(event.target.value)}>

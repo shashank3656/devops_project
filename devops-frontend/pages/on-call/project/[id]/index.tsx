@@ -154,7 +154,7 @@ export default function OnCallProjectTeamsPage() {
           <div>
             <span className="portal-page__eyebrow">On-call</span>
             <h1 className="portal-page__title">{known(projectName)}</h1>
-            <p className="portal-page__subtitle">Add a team, then choose the people who rotate. Open a team to check more than one person.</p>
+            <p className="portal-page__subtitle">Project, then teams, then people, then review coverage on On-call. Next: add a team, then open it to choose people.</p>
           </div>
           <Link href="/on-call/projects" className="btn btn-secondary">Back to projects</Link>
         </div>

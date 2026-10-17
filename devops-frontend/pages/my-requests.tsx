@@ -40,9 +40,12 @@ export default function MyRequestsPage() {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('all');
   const [priority, setPriority] = useState('all');
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     let cancel = false;
+    setLoading(true);
+    setFailed(false);
     fetch(`${apiUrl}/api/history?limit=100`, { headers: sessionAuthHeaders() })
       .then(async (response) => {
         if (!response.ok) throw new Error('unavailable');
@@ -61,7 +64,7 @@ export default function MyRequestsPage() {
     return () => {
       cancel = true;
     };
-  }, [apiUrl]);
+  }, [apiUrl, reloadTick]);
 
   const needle = query.trim().toLowerCase();
   const visible = items.filter((item) => {
@@ -115,7 +118,12 @@ export default function MyRequestsPage() {
             ]}
           />
           {loading ? <p className="work-empty">Loading your requests…</p> : null}
-          {!loading && failed ? <p className="work-empty">Your requests could not be loaded.</p> : null}
+          {!loading && failed ? (
+            <div className="alert alert-error" role="alert">
+              <span>Failed to load your requests.</span>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReloadTick((current) => current + 1)}>Retry</button>
+            </div>
+          ) : null}
           {!loading && !failed && items.length === 0 ? (
             <section className="ops-caught">
               <h2>No requests yet.</h2>

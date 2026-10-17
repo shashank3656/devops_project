@@ -103,6 +103,14 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
   }, [apiUrl]);
 
   useEffect(() => {
+    if (!router.isReady || scheduleId > 0) return;
+    const project = Array.isArray(router.query.project_id) ? router.query.project_id[0] : router.query.project_id;
+    const team = Array.isArray(router.query.team_id) ? router.query.team_id[0] : router.query.team_id;
+    if (project) setProjectId(String(project));
+    if (team) setTeamId(String(team));
+  }, [router.isReady, router.query.project_id, router.query.team_id, scheduleId]);
+
+  useEffect(() => {
     if (!scheduleId) return;
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
@@ -204,7 +212,7 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
           <div>
             <span className="portal-page__eyebrow">On-call</span>
             <h1 className="portal-page__title">{title}</h1>
-            <p className="portal-page__subtitle">Assign one person from the team to each day. The week repeats in the selected timezone.</p>
+            <p className="portal-page__subtitle">Monday through Sunday is the rotation order. The timezone is when each day starts. Leave a day empty for a coverage gap. Handover for a single day is requested on the On-call roster.</p>
           </div>
           <Link href="/on-call" className="btn btn-secondary">Back to on-call</Link>
         </div>

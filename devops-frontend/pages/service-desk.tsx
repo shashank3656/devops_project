@@ -268,14 +268,16 @@ export default function ServiceDeskPage() {
         .then(async (res) => (res.ok ? res.json().catch(() => ({})) : devopsCall))
         .catch(() => devopsCall);
     };
+    const readJson = (res: Response) => res.json().catch(() => ({}));
     Promise.all([
       loadCatalog('/api/devops/changes', '/api/admin/changes'),
       loadCatalog('/api/devops/incidents', '/api/admin/incidents'),
       fetch(`${apiUrl}/api/devops/problems`, { headers }).then((res) => res.json().catch(() => ({}))),
-      fetch(`${apiUrl}/api/devops/tickets?limit=50`, { headers }).then((res) => res.json().catch(() => ({}))),
+      fetch(`${apiUrl}/api/history?limit=100`, { headers }).then(async (res) => ({ ok: res.ok, body: await readJson(res) })),
+      fetch(`${apiUrl}/api/devops/requests?limit=50`, { headers }).then(async (res) => ({ ok: res.ok, body: await readJson(res) })),
       fetch(`${apiUrl}/api/devops/iam/access-requests?scope=desk`, { headers }).then((res) => (res.ok ? res.json().catch(() => ({})) : { requests: [] })),
     ])
-      .then(([changesData, incidentsData, problemsData, ticketsData, accessData]) => {
+      .then(([changesData, incidentsData, problemsData, historyData, queueData, accessData]) => {
         const next: DeskTicket[] = [];
 
         asList(changesData.changes).forEach((row) => {
@@ -350,15 +352,16 @@ export default function ServiceDeskPage() {
           });
         });
 
-        asList(ticketsData.tickets || ticketsData.requests).forEach((row) => {
+        const requestRows = new Map<number, DeskTicket>();
+        const pushRequest = (row: Record<string, unknown>, href: string) => {
           const id = num(row.id);
-          if (!id) return;
-          next.push({
+          if (!id || requestRows.has(id)) return;
+          requestRows.set(id, {
             id,
             key: `request-${id}`,
             kind: 'request',
             title: str(row.service, `Request #${id}`),
-            summary: `${str(row.cloud)} · ${str(row.env) || str(row.environment)}`.trim(),
+            summary: `${str(row.cloud)} · ${str(row.env) || str(row.environment)}`.replace(/^ · | · $/g, '').trim() || 'Infrastructure request',
             status: str(row.status, 'new'),
             priority: str(row.priority, 'medium'),
             owner: str(row.assignee_username) || str(row.created_by_username) || 'Unassigned',
@@ -368,11 +371,17 @@ export default function ServiceDeskPage() {
             source: 'Manual',
             dueAt: str(row.due_at) || str(row.due_date) || undefined,
             nextAction: str(row.next_action) || str(row.next_step) || undefined,
-            href: `/tickets?id=${id}`,
+            href,
             createdAt: str(row.created_at),
             updatedAt: str(row.updated_at),
           });
-        });
+        };
+        if (historyData.ok) asList(historyData.body?.requests).forEach((row) => pushRequest(row, `/requests/${num(row.id)}`));
+        if (queueData.ok) asList(queueData.body?.requests || queueData.body?.tickets).forEach((row) => pushRequest(row, `/tickets?id=${num(row.id)}`));
+        requestRows.forEach((item) => next.push(item));
+        if (!historyData.ok && !queueData.ok) {
+          setError('Requests could not be loaded. Incidents, changes, and problems are still listed below.');
+        }
 
         asList(accessData.requests).forEach((row, index) => {
           const rawId = str(row.id);
@@ -402,7 +411,7 @@ export default function ServiceDeskPage() {
         });
 
         return loadTicketAudience(apiUrl).then((audience) => {
-          const visible = next.filter((item) => ticketVisible([item.owner, item.requester || ''], audience));
+          const visible = next.filter((item) => item.href.startsWith('/requests/') || ticketVisible([item.owner, item.requester || ''], audience));
           visible.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           setItems(visible);
           if (!selectedKey && visible[0]) setSelectedKey(visible[0].key);
@@ -662,9 +671,9 @@ export default function ServiceDeskPage() {
             <span>Find the root cause</span>
             <small>Investigate recurring issues.</small>
           </Link>
-          <Link href="/projects/new" className="ops-jump ops-jump--mint">
-            <span>Request infrastructure</span>
-            <small>Open project onboarding.</small>
+          <Link href="/requests/new" className="ops-jump ops-jump--mint">
+            <span>Raise a request</span>
+            <small>Ask for a cloud service on a project.</small>
           </Link>
         </section>
 

@@ -13,6 +13,7 @@ export default function NewPersonPage() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [setup, setSetup] = useState<'invite' | 'password'>('invite');
   const [userType, setUserType] = useState('portal_user');
   const [role, setRole] = useState('viewer');
   const [isManager, setIsManager] = useState(false);
@@ -65,7 +66,8 @@ export default function NewPersonPage() {
         body: JSON.stringify({
           username: username.trim(),
           email: email.trim(),
-          password,
+          password: setup === 'invite' ? '' : password,
+          invite: setup === 'invite',
           role,
           user_type: userType,
           is_manager: isManager,
@@ -94,7 +96,8 @@ export default function NewPersonPage() {
           return;
         }
       }
-      await router.push(`/portal-access/users?added=1&mailed=${body?.email_sent === true ? '1' : '0'}`);
+      const activation = body?.activation === 'pending' ? 'pending' : 'active';
+      await router.push(`/portal-access/users?added=1&activation=${activation}&mailed=${body?.email_sent === true ? '1' : '0'}`);
     } catch {
       setError('The account could not be created.');
     } finally {
@@ -123,7 +126,7 @@ export default function NewPersonPage() {
             <div>
               <p className="ops-kicker">Portal Access</p>
               <h1>Add person</h1>
-              <p>Create the account and put them in a group. They receive a sign-in email with their username. The password is not in that email.</p>
+              <p>Create the account and put them in a group. The usual path emails a set-password link. They can sign in after they choose a password.</p>
             </div>
             <Link href="/portal-access/users" className="btn btn-secondary">Back to people</Link>
           </header>
@@ -134,8 +137,26 @@ export default function NewPersonPage() {
             <input id="new-username" className="input" value={username} onChange={(event) => setUsername(event.target.value)} required />
             <label className="label" htmlFor="new-email">Sign-in email</label>
             <input id="new-email" className="input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="off" />
-            <label className="label" htmlFor="new-password">First password</label>
-            <input id="new-password" className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={6} autoComplete="new-password" />
+            <fieldset className="form-section">
+              <legend className="form-section__title">Account activation</legend>
+              <label className="access-chip">
+                <input type="radio" name="account-setup" checked={setup === 'invite'} onChange={() => { setSetup('invite'); setPassword(''); }} />
+                Email a set-password link
+              </label>
+              <label className="access-chip">
+                <input type="radio" name="account-setup" checked={setup === 'password'} onChange={() => setSetup('password')} />
+                Set a temporary password
+              </label>
+              {setup === 'invite' ? (
+                <p className="access-hint">Activation stays “Waiting to set a password” until they open the link. The link lasts 72 hours. If mail is not sent, the account is not created.</p>
+              ) : (
+                <>
+                  <label className="label" htmlFor="new-password">Temporary password</label>
+                  <input id="new-password" className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={6} autoComplete="new-password" />
+                  <p className="access-hint">Activation is “Can sign in” as soon as you add them. You share this password. It is not included in the email.</p>
+                </>
+              )}
+            </fieldset>
             <label className="label" htmlFor="new-type">Kind</label>
             <select
               id="new-type"
@@ -183,9 +204,10 @@ export default function NewPersonPage() {
             <select id="new-member-role" className="input" value={memberRole} onChange={(event) => setMemberRole(event.target.value)}>
               {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
+            <p className="access-hint">Role in the group is their job there, such as Developer or Lead. The Manager checkbox is separate: it marks the account as a manager for approvals. It does not change the group role.</p>
             <label className="access-chip">
               <input type="checkbox" checked={isManager} onChange={(event) => setIsManager(event.target.checked)} />
-              Manager
+              Manager for approvals
             </label>
             <button type="submit" className="btn btn-primary" disabled={saving || !teamsReady}>{saving ? 'Adding…' : 'Add person'}</button>
           </form>

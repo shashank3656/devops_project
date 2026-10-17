@@ -1,6 +1,5 @@
 import Head from 'next/head';
 import { useEffect, useState } from 'react';
-import AccessFilters from '../../components/AccessFilters';
 import AccessNav from '../../components/AccessNav';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
@@ -22,9 +21,6 @@ export default function PortalSsoPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
-  const [query, setQuery] = useState('');
-  const [audience, setAudience] = useState('all');
-  const [modeFilter, setModeFilter] = useState('all');
 
   useEffect(() => {
     let cancel = false;
@@ -58,10 +54,15 @@ export default function PortalSsoPage() {
     setError('');
     setNotice('');
     try {
+      const payload = { ...settings };
+      if (!ready) {
+        if (payload.user_portal_sso_mode === 'required') payload.user_portal_sso_mode = 'disabled';
+        if (payload.devops_portal_sso_mode === 'required') payload.devops_portal_sso_mode = 'disabled';
+      }
       const response = await fetch(`${apiUrl}/api/admin/sso/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...sessionAuthHeaders() },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(payload),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -78,13 +79,6 @@ export default function PortalSsoPage() {
 
   const userMode = typeof settings?.user_portal_sso_mode === 'string' ? settings.user_portal_sso_mode : 'disabled';
   const devopsMode = typeof settings?.devops_portal_sso_mode === 'string' ? settings.devops_portal_sso_mode : 'disabled';
-  const needle = query.trim().toLowerCase();
-  const showRequester = (audience === 'all' || audience === 'requester')
-    && (modeFilter === 'all' || modeFilter === userMode)
-    && (!needle || 'requesters password directory'.includes(needle));
-  const showDevops = (audience === 'all' || audience === 'devops')
-    && (modeFilter === 'all' || modeFilter === devopsMode)
-    && (!needle || 'devops password directory'.includes(needle));
 
   return (
     <>
@@ -101,67 +95,49 @@ export default function PortalSsoPage() {
             </div>
           </header>
           <AccessNav />
-          <AccessFilters
-            query={query}
-            onQuery={setQuery}
-            placeholder="Search requesters or DevOps"
-            kind={audience}
-            onKind={setAudience}
-            kindLabel="Who"
-            kindOptions={[
-              { value: 'all', label: 'Everyone' },
-              { value: 'requester', label: 'Requesters' },
-              { value: 'devops', label: 'DevOps' },
-            ]}
-            extra={modeFilter}
-            onExtra={setModeFilter}
-            extraLabel="Current choice"
-            extraOptions={[
-              { value: 'all', label: 'Any choice' },
-              { value: 'disabled', label: 'Password only' },
-              { value: 'optional', label: 'Password or directory' },
-              { value: 'required', label: 'Directory only' },
-            ]}
-          />
           {notice ? <div className="alert alert-success" role="status">{notice}</div> : null}
           {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
           {loading ? <p className="work-empty">Loading sign-in settings…</p> : null}
           {!loading && settings ? (
             <form className="portal-surface" onSubmit={save}>
               <p className={ready ? 'access-status is-ready' : 'access-status'}>
-                {ready ? 'Directory is set up on the API host.' : 'Directory is not set up yet. Password sign-in still works.'}
+                {ready
+                  ? 'Directory is set up on the API host.'
+                  : 'Directory is not set up yet. Password sign-in still works. Directory only stays unavailable until the directory issuer, client id, and client secret are set on the API host.'}
               </p>
-              {!showRequester && !showDevops ? <p className="work-empty">Nothing matches this search.</p> : (
-                <div className="access-create">
-                  {showRequester ? (
-                    <div>
-                      <label className="label" htmlFor="sso-requester">Requesters</label>
-                      <select
-                        id="sso-requester"
-                        className="input"
-                        value={userMode}
-                        onChange={(event) => setSettings({ ...settings, user_portal_sso_mode: event.target.value })}
-                      >
-                        {MODES.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
-                      </select>
-                    </div>
-                  ) : null}
-                  {showDevops ? (
-                    <div>
-                      <label className="label" htmlFor="sso-devops">DevOps</label>
-                      <select
-                        id="sso-devops"
-                        className="input"
-                        value={devopsMode}
-                        onChange={(event) => setSettings({ ...settings, devops_portal_sso_mode: event.target.value })}
-                      >
-                        {MODES.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
-                      </select>
-                    </div>
-                  ) : null}
-                  <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+              <div className="access-create">
+                <div>
+                  <label className="label" htmlFor="sso-requester">Requesters</label>
+                  <select
+                    id="sso-requester"
+                    className="input"
+                    value={ready ? userMode : (userMode === 'required' ? 'disabled' : userMode)}
+                    onChange={(event) => setSettings({ ...settings, user_portal_sso_mode: event.target.value })}
+                  >
+                    {MODES.map((mode) => (
+                      <option key={mode.value} value={mode.value} disabled={mode.value === 'required' && !ready}>
+                        {mode.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              )}
+                <div>
+                  <label className="label" htmlFor="sso-devops">DevOps</label>
+                  <select
+                    id="sso-devops"
+                    className="input"
+                    value={ready ? devopsMode : (devopsMode === 'required' ? 'disabled' : devopsMode)}
+                    onChange={(event) => setSettings({ ...settings, devops_portal_sso_mode: event.target.value })}
+                  >
+                    {MODES.map((mode) => (
+                      <option key={mode.value} value={mode.value} disabled={mode.value === 'required' && !ready}>
+                        {mode.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+              </div>
             </form>
           ) : null}
         </div>

@@ -11,6 +11,7 @@ import { asRecord, getString } from '../../lib/payload';
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 import { readWorkspaceScope, WORKSPACE_SCOPE_EVENT, type WorkspaceScope } from '@infragate/ui';
 import { expireSession } from '../../lib/sessionExpiry';
+import { focusField } from '../../lib/focusField';
 import { saveSubmissionResult } from '../../lib/submissionResult';
 import BlockedAction from '../../components/BlockedAction';
 
@@ -258,22 +259,27 @@ export default function NewChangeRequestPage() {
       return;
     }
     if (!title.trim()) {
+      focusField('change-title', 'Title is required');
       setError('Title is required');
       return;
     }
     if (!projectId) {
+      focusField('change-project', 'Select one project. All projects cannot create a change.');
       setError('Select one project. All projects cannot create a change.');
       return;
     }
     if (!selectedService) {
+      focusField('change-service', 'Select a service from the Services catalog');
       setError('Select a service from the Services catalog');
       return;
     }
     if (!assigneeUserId) {
+      focusField('change-assignee', 'Assigned to is required');
       setError('Assigned to is required');
       return;
     }
     if (plannedStart && plannedEnd && plannedEnd < plannedStart) {
+      focusField('change-end', 'Planned end must be after planned start');
       setError('Planned end must be after planned start');
       return;
     }
@@ -341,6 +347,7 @@ export default function NewChangeRequestPage() {
         id: previewNumber || (id > 0 ? `#${id}` : 'created'),
         status: 'new',
         next: 'Submitting saved the request. It does not deploy. An approver still has to accept it.',
+        href: id > 0 ? `/changes/${id}` : '/changes',
       });
       await router.push(id > 0 ? `/changes/${id}` : '/changes');
     } catch (err) {
@@ -362,8 +369,12 @@ export default function NewChangeRequestPage() {
             <span className="portal-page__eyebrow">Change request</span>
             <h1 className="portal-page__title">Create change request</h1>
             <p className="portal-page__subtitle">
-              Scope, change details, plans, then review. Saving a request is not a deployment. Approval is not execution.
+              Name the project, the service, and the window.
             </p>
+            <details className="onboard-advanced">
+              <summary>How a change moves</summary>
+              <p className="form-section__copy">Saving a request is not a deployment. Approval is not execution.</p>
+            </details>
           </div>
           <Link href={scopeListHref('/changes', router.query)} className="btn btn-secondary">
             Back to changes
@@ -424,7 +435,7 @@ export default function NewChangeRequestPage() {
                 <div className="portal-form-grid">
                   <label className="label">
                     Project<span className="form-req" aria-hidden="true"> *</span>
-                    <select className="input" required value={projectId} onChange={(event) => {
+                    <select id="change-project" className="input" required value={projectId} onChange={(event) => {
                       setProjectId(event.target.value);
                       setServiceId('');
                     }}>
@@ -438,7 +449,7 @@ export default function NewChangeRequestPage() {
                   </label>
                   <label className="label">
                     Service<span className="form-req" aria-hidden="true"> *</span>
-                    <select className="input" value={serviceId} onChange={(event) => applyService(event.target.value)} required>
+                    <select id="change-service" className="input" value={serviceId} onChange={(event) => applyService(event.target.value)} required>
                       <option value="">Select a service</option>
                       {servicesForProject.map((item) => (
                         <option key={item.id} value={item.id}>
@@ -451,7 +462,7 @@ export default function NewChangeRequestPage() {
                   </label>
                   <label className="label">
                     Assigned to<span className="form-req" aria-hidden="true"> *</span>
-                    <select className="input" value={assigneeUserId} onChange={(event) => setAssigneeUserId(event.target.value)} required>
+                    <select id="change-assignee" className="input" value={assigneeUserId} onChange={(event) => setAssigneeUserId(event.target.value)} required>
                       <option value="">Select a portal user</option>
                       {users.map((user) => (
                         <option key={user.id} value={user.id}>
@@ -470,7 +481,7 @@ export default function NewChangeRequestPage() {
                 <div className="portal-form-grid">
                   <label className="label">
                     Title<span className="form-req" aria-hidden="true"> *</span>
-                    <input className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Deploy payments-api timeout change" required />
+                    <input id="change-title" className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Deploy payments-api timeout change" required />
                   </label>
                   <label className="label">
                     Type
@@ -526,6 +537,7 @@ export default function NewChangeRequestPage() {
               </fieldset>
               <fieldset className="form-section">
                 <legend className="form-section__title">Window <span className="onboard-optional">Optional</span></legend>
+                <p className="access-hint">Planned start and end use this browser’s timezone.</p>
                 <div className="portal-form-grid">
                   <label className="label">
                     Planned start
@@ -533,7 +545,7 @@ export default function NewChangeRequestPage() {
                   </label>
                   <label className="label">
                     Planned end
-                    <input className="input" type="datetime-local" value={plannedEnd} onChange={(event) => setPlannedEnd(event.target.value)} />
+                    <input id="change-end" className="input" type="datetime-local" value={plannedEnd} onChange={(event) => setPlannedEnd(event.target.value)} />
                   </label>
                   <label className="label">
                     Watch minutes

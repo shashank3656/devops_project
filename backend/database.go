@@ -2500,9 +2500,16 @@ func UpdateUserPassword(userID int, hashedPassword string) error {
 
 // SavePasswordResetToken creates a password reset token for user (1 hour expiry)
 func SavePasswordResetToken(userID int, token string) error {
+	return SavePasswordResetTokenFor(userID, token, time.Hour)
+}
+
+func SavePasswordResetTokenFor(userID int, token string, lifetime time.Duration) error {
+	if lifetime <= 0 {
+		lifetime = time.Hour
+	}
 	_, err := DB.Exec(
-		"INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL '1 hour')",
-		token, userID,
+		`INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES ($1, $2, NOW() + ($3 * INTERVAL '1 second'))`,
+		token, userID, int(lifetime.Seconds()),
 	)
 	return err
 }

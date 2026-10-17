@@ -7,6 +7,7 @@ import { useApiUrl } from '../../context/ApiUrlContext';
 import { serviceLabel } from '../../lib/cloudServices';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
+import { focusField } from '../../lib/focusField';
 import { saveSubmissionResult } from '../../lib/submissionResult';
 import BlockedAction from '../../components/BlockedAction';
 import { readWorkspaceScope, WORKSPACE_SCOPE_EVENT, type WorkspaceScope } from '@infragate/ui';
@@ -106,8 +107,19 @@ export default function NewRequestPage() {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!chosenService || !cloud) {
-      setError('Choose a cloud and a service from this project.');
+    if (!projectId) {
+      focusField('request-project', 'Choose a project.');
+      setError('Choose a project.');
+      return;
+    }
+    if (!cloud) {
+      focusField('request-cloud', 'Choose a cloud from this project.');
+      setError('Choose a cloud from this project.');
+      return;
+    }
+    if (!chosenService) {
+      focusField('request-service', 'Choose a service from this project.');
+      setError('Choose a service from this project.');
       return;
     }
     if (submitLock.current) return;
@@ -143,6 +155,7 @@ export default function NewRequestPage() {
           id: `#${body.id}`,
           status: 'waiting for review',
           next: 'It has not been applied. A reviewer approves it before any cloud change runs.',
+          href: `/requests/${body.id}`,
         });
         await router.push(`/requests/${body.id}`);
         return;
@@ -177,7 +190,13 @@ export default function NewRequestPage() {
           {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
           <form className="portal-surface access-form" onSubmit={submit}>
             <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
-            {teams.length === 0 ? <p className="onboard-unavailable">You need a team before you can raise a request. Ask an administrator to add you to one.</p> : null}
+            {teams.length === 0 ? (
+              <p className="onboard-unavailable">
+                You need a team before you can raise a request.{' '}
+                <Link href="/portal-access/teams">Manage team membership</Link>
+                {' '}or <Link href="/portal-access/users">contact an administrator</Link>.
+              </p>
+            ) : null}
             <fieldset className="form-section">
               <legend className="form-section__title">Scope</legend>
               <p className="form-section__copy">Choose the project, then the cloud, then a service saved on that project.</p>

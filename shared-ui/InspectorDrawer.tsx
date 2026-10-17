@@ -32,6 +32,19 @@ export default function InspectorDrawer({
   resetKey?: string | number | null;
 }) {
   const bodyRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      openerRef.current?.focus();
+      openerRef.current = null;
+      return;
+    }
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    window.setTimeout(() => {
+      document.querySelector<HTMLElement>('.ig-drawer__close')?.focus();
+    }, 0);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

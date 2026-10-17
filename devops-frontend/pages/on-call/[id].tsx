@@ -1,11 +1,10 @@
-import { useEffect } from 'react';
 import { useRouter } from 'next/router';
+import OnCallScheduleForm from '../../components/OnCallScheduleForm';
 
 export default function OnCallSchedulePage() {
   const router = useRouter();
-  useEffect(() => {
-    if (!router.isReady) return;
-    void router.replace('/on-call');
-  }, [router, router.isReady]);
-  return null;
+  const raw = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
+  const scheduleId = Number.parseInt(raw || '', 10);
+  if (!router.isReady) return null;
+  return <OnCallScheduleForm scheduleId={Number.isFinite(scheduleId) ? scheduleId : 0} />;
 }
