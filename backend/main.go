@@ -804,6 +804,8 @@ func main() {
 	http.HandleFunc("/api/oncall/covers", oncallCoverHandler)
 	http.HandleFunc("/api/oncall/covers/", oncallCoverHandler)
 	http.HandleFunc("/api/maintenance/notices", maintenanceNoticeHandler)
+	http.HandleFunc("/api/maintenance/windows", maintenanceWindowsHandler)
+	http.HandleFunc("/api/maintenance/windows/", maintenanceWindowDetailHandler)
 	http.HandleFunc("/api/devops/freezes", devopsFreezesHandler)
 	http.HandleFunc("/api/devops/me", devopsMeHandler)
 	http.HandleFunc("/api/devops/my-teams", devopsMyTeamsHandler)

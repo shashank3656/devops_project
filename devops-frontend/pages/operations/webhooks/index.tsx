@@ -1,13 +1,13 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import {
-  WEBHOOK_CHANGE_SAMPLE,
-  WEBHOOK_INCIDENT_SAMPLE,
+  WEBHOOK_USES,
   webhookOrigin,
+  webhookSample,
   webhookUseLabel,
   webhookUsePath,
 } from '../../../lib/inboundWebhooks';
@@ -35,14 +35,17 @@ export default function WebhooksPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
   const origin = webhookOrigin(apiUrl);
-  const changeUrl = `${origin}/api/webhooks/change`;
-  const incidentUrl = `${origin}/api/webhooks/alerts`;
   const [copied, setCopied] = useState('');
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [query, setQuery] = useState('');
+  const [useFilter, setUseFilter] = useState('');
+  const [projectFilter, setProjectFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [sampleId, setSampleId] = useState(0);
 
   function authHeaders() {
     return { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) || ''}`, 'Content-Type': 'application/json' };
@@ -152,6 +155,34 @@ export default function WebhooksPage() {
     return project ? (project.code || project.name) : `Project ${id}`;
   }
 
+  function ready(source: SourceRow) {
+    return source.enabled && source.has_secret;
+  }
+
+  const filtering = Boolean(query.trim() || useFilter || projectFilter || statusFilter);
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return sources.filter((source) => {
+      if (useFilter && source.kind !== useFilter) return false;
+      if (projectFilter === 'any' && source.project_id) return false;
+      if (projectFilter && projectFilter !== 'any' && String(source.project_id || '') !== projectFilter) return false;
+      if (statusFilter === 'ready' && !ready(source)) return false;
+      if (statusFilter === 'off' && ready(source)) return false;
+      if (!needle) return true;
+      const haystack = [source.name, webhookUseLabel(source.kind), projectName(source.project_id)].join(' ').toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [sources, query, useFilter, projectFilter, statusFilter, projects]);
+
+  const sample = sources.find((source) => source.id === sampleId) || null;
+
+  function clearFilters() {
+    setQuery('');
+    setUseFilter('');
+    setProjectFilter('');
+    setStatusFilter('');
+  }
+
   return (
     <DevOpsLayout>
       <Head><title>Webhooks - SetuOps</title></Head>
@@ -173,11 +204,45 @@ export default function WebhooksPage() {
               <p className="portal-surface__subtitle">A change secret opens a change. An incident, Grafana, Alertmanager, or log secret opens an incident.</p>
             </div>
           </div>
+          <form className="iam-filters" onSubmit={(event) => event.preventDefault()}>
+            <label>
+              Search
+              <input className="input" type="search" value={query} placeholder="Name, use, or project" onChange={(event) => setQuery(event.target.value)} />
+            </label>
+            <label>
+              Use
+              <select className="input" value={useFilter} onChange={(event) => setUseFilter(event.target.value)}>
+                <option value="">All uses</option>
+                {WEBHOOK_USES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+              </select>
+            </label>
+            <label>
+              Project
+              <select className="input" value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}>
+                <option value="">All projects</option>
+                <option value="any">Any project</option>
+                {projects.map((project) => <option key={project.id} value={String(project.id)}>{project.code || project.name}</option>)}
+              </select>
+            </label>
+            <label>
+              Status
+              <select className="input" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="">All statuses</option>
+                <option value="ready">Ready</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+            <div className="iam-filters__actions">
+              {filtering ? <button type="button" className="btn btn-secondary" onClick={clearFilters}>Clear</button> : null}
+            </div>
+          </form>
           {loading ? <div className="empty-state">Loading webhooks...</div> : sources.length === 0 ? (
             <div className="empty-state">
               <p>No webhooks yet.</p>
               <Link href="/operations/webhooks/new" className="btn btn-primary">Create webhook</Link>
             </div>
+          ) : visible.length === 0 ? (
+            <div className="empty-state">No webhooks match this filter.</div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table className="templates-table">
@@ -193,16 +258,19 @@ export default function WebhooksPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sources.map((source) => (
+                  {visible.map((source) => (
                     <tr key={source.id}>
                       <td>{source.name}</td>
                       <td>{webhookUseLabel(source.kind)}</td>
                       <td><code style={{ whiteSpace: 'nowrap' }}>{origin}{webhookUsePath(source.kind)}</code></td>
-                      <td><code>X-CI-Secret</code></td>
+                      <td><code style={{ whiteSpace: 'nowrap' }}>X-CI-Secret</code></td>
                       <td>{projectName(source.project_id)}</td>
-                      <td>{source.enabled && source.has_secret ? 'Ready' : 'Off'}</td>
+                      <td>{ready(source) ? 'Ready' : 'Off'}</td>
                       <td>
                         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSampleId(sampleId === source.id ? 0 : source.id)}>
+                            {sampleId === source.id ? 'Hide sample' : 'Sample'}
+                          </button>
                           <button type="button" className="btn btn-secondary btn-sm" onClick={() => void setEnabled(source, !source.enabled)}>
                             {source.enabled ? 'Turn off' : 'Turn on'}
                           </button>
@@ -217,22 +285,22 @@ export default function WebhooksPage() {
           )}
         </section>
 
-        <div className="request-split">
+        {sample ? (
           <section className="portal-surface request-panel">
-            <h2 className="portal-surface__title">Change request</h2>
-            <p className="portal-surface__subtitle">POST after a merge. <code>repo</code> and <code>sha</code> are required.</p>
-            <p className="changes-page__webhook-url"><code>{changeUrl}</code></p>
-            <button type="button" className="btn btn-secondary" onClick={() => void copy('change', changeUrl)}>{copied === 'change' ? 'Copied' : 'Copy change URL'}</button>
-            <pre className="code-block">{WEBHOOK_CHANGE_SAMPLE}</pre>
+            <h2 className="portal-surface__title">{sample.name} sample</h2>
+            <p className="portal-surface__subtitle">
+              {sample.kind === 'change'
+                ? 'POST after a merge. repo and sha are required.'
+                : 'POST when a monitor fires. A title opens the incident. Send status resolved when it clears.'}
+            </p>
+            <p className="changes-page__webhook-url"><code>{origin}{webhookUsePath(sample.kind)}</code></p>
+            <div className="request-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => void copy('url', `${origin}${webhookUsePath(sample.kind)}`)}>{copied === 'url' ? 'Copied' : 'Copy URL'}</button>
+              <button type="button" className="btn btn-secondary" onClick={() => void copy('body', webhookSample(sample.kind))}>{copied === 'body' ? 'Copied' : 'Copy sample'}</button>
+            </div>
+            <pre className="code-block">{webhookSample(sample.kind)}</pre>
           </section>
-          <section className="portal-surface request-panel">
-            <h2 className="portal-surface__title">Incident</h2>
-            <p className="portal-surface__subtitle">POST when a monitor fires. A title opens the incident. Send <code>status: resolved</code> when it clears.</p>
-            <p className="changes-page__webhook-url"><code>{incidentUrl}</code></p>
-            <button type="button" className="btn btn-secondary" onClick={() => void copy('incident', incidentUrl)}>{copied === 'incident' ? 'Copied' : 'Copy incident URL'}</button>
-            <pre className="code-block">{WEBHOOK_INCIDENT_SAMPLE}</pre>
-          </section>
-        </div>
+        ) : null}
       </div>
     </DevOpsLayout>
   );

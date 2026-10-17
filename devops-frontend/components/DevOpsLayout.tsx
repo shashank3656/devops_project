@@ -54,6 +54,7 @@ interface DevopsUser {
   user_type?: string;
   grants?: { records?: boolean; manager?: boolean };
   devops_profile?: { is_manager: boolean; level: string; position?: string; onboard_date?: string };
+  maintenance_approver?: boolean;
 }
 
 function getProfileInitials(): string {
@@ -629,6 +630,12 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   }
   if (grants.daily) sidebarSections.push({ title: 'Daily', items: visibleNav(dailyNavItems) });
   if (grants.operations) sidebarSections.push({ title: 'Operations', items: visibleNav(operationsNavItems) });
+  else if (user?.maintenance_approver) {
+    sidebarSections.push({
+      title: 'Operations',
+      items: [{ href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle }],
+    });
+  }
   if (grants.infrastructure) sidebarSections.push({ title: 'Infrastructure', items: visibleNav(infrastructureNavItems) });
   if (grants.security) sidebarSections.push({ title: 'Security', items: visibleNav(securityNavItems) });
   if (grants.records && recordsNavItems.length) sidebarSections.push({ title: 'Records', items: visibleNav(recordsNavItems) });
@@ -660,7 +667,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!sessionReady || !user) return;
     const next = portalGrants(user);
-    if (pathAllowed(pathname, next)) return;
+    if (pathAllowed(pathname, next) || (user.maintenance_approver && (pathname === '/maintenance' || pathname.startsWith('/maintenance/')))) return;
     const dest = homeFor(next);
     if (pathname !== dest) void router.replace(dest);
   }, [sessionReady, user, pathname, router]);

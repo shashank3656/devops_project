@@ -153,6 +153,7 @@ func devopsMeHandler(w http.ResponseWriter, r *http.Request) {
 		resp["teams"] = []interface{}{}
 	}
 	resp["grants"] = sectionGrantsForUser(user)
+	resp["maintenance_approver"] = userCanReachMaintenanceWindows(userID)
 	token := generateToken(userID)
 	if token == "" {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to issue session", nil)

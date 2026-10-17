@@ -328,7 +328,10 @@ export default function OnCallPage() {
             <h1 className="portal-page__title">On-call</h1>
             <p className="portal-page__subtitle">Today is the list. The calendar is the monthly roster. Projects is where teams and people are added or removed.</p>
           </div>
-          <Link href="/on-call/projects" className="btn btn-primary">Projects</Link>
+          <div className="portal-page__actions">
+            <Link href="/on-call/onboard" className="btn btn-primary">Onboard project</Link>
+            <Link href="/on-call/projects" className="btn btn-secondary">Projects</Link>
+          </div>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
         {note ? <div className="alert alert-success">{note}</div> : null}
@@ -355,9 +358,13 @@ export default function OnCallPage() {
             <label>
               Month
               <span className="oncall-month">
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setMonth(shiftMonth(month, -1))}>Previous</button>
+                <button type="button" className="oncall-month__step" aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}>
+                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </button>
                 <strong>{monthTitle(month)}</strong>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setMonth(shiftMonth(month, 1))}>Next</button>
+                <button type="button" className="oncall-month__step" aria-label="Next month" onClick={() => setMonth(shiftMonth(month, 1))}>
+                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </button>
               </span>
             </label>
             <label>
@@ -439,12 +446,14 @@ export default function OnCallPage() {
                   if (!cell) return <span key={`empty-${index}`} className="oncall-board__cell oncall-board__cell--empty" />;
                   const dayRows = rows.filter((row) => row.day.date === cell.date);
                   const names = dayRows.map((row) => known(row.shift.name)).filter((name) => name !== 'Unknown');
+                  const weekend = index % 7 >= 5;
+                  const tone = names.length ? ` is-tone-${(cell.day % 4) + 1}` : '';
                   return (
                     <button
                       key={cell.date}
                       type="button"
                       role="gridcell"
-                      className={`oncall-board__cell${cell.date === todayDate ? ' is-today' : ''}${cell.date === selectedDate ? ' is-selected' : ''}`}
+                      className={`oncall-board__cell${weekend ? ' is-weekend' : ''}${tone}${cell.date === todayDate ? ' is-today' : ''}${cell.date === selectedDate ? ' is-selected' : ''}`}
                       onClick={() => { setSelectedDate(cell.date); setAsk(null); }}
                     >
                       <span className="oncall-board__num">{cell.day}</span>
@@ -455,36 +464,72 @@ export default function OnCallPage() {
                 })}
               </div>
               <h2 className="portal-surface__title">{selectedDay ? selectedDay.label : 'Selected day'}</h2>
-              {!selectedRows.length ? <div className="empty-state">No one matches this filter on the selected day.</div> : (
+              {!selectedRows.length ? <div className="empty-state">No teams match this filter on the selected day.</div> : (
                 <div style={{ overflowX: 'auto' }}>
                   <table className="templates-table">
                     <thead>
                       <tr>
                         <th>Project</th>
                         <th>Team</th>
-                        <th>Person</th>
+                        <th>On this day</th>
+                        <th>Users</th>
                         <th></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedRows.map((row) => (
-                        <CoverRow
-                          key={`${row.project.id}-${row.shift.team_id}`}
-                          row={row}
-                          where="day"
-                          ask={ask}
-                          setAsk={setAsk}
-                          coverUserId={coverUserId}
-                          setCoverUserId={setCoverUserId}
-                          setError={setError}
-                          others={rosterFor(row.project, row.shift.team_id).filter((person) => person.userId !== row.shift.user_id)}
-                          canAsk={canRequest(row)}
-                          saving={saving}
-                          onSubmit={sendRequest}
-                        />
-                      ))}
+                      {selectedRows.map((row) => {
+                        const people = rosterFor(row.project, row.shift.team_id);
+                        return (
+                          <tr key={`${row.project.id}-${row.shift.team_id}`}>
+                            <td>{known(row.project.name)}</td>
+                            <td>{known(row.shift.team_name)}</td>
+                            <td>{shiftText(row.shift)}</td>
+                            <td>
+                              {people.length ? people.map((person) => person.name).join(', ') : (
+                                <Link href={`/on-call/project/${row.project.id}/team/${row.shift.team_id}`}>Add users</Link>
+                              )}
+                            </td>
+                            <td>
+                              {canRequest(row) ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => {
+                                    const open = ask?.where === 'day' && ask.date === row.day.date && ask.projectId === row.project.id && ask.teamId === row.shift.team_id;
+                                    setAsk(open ? null : { date: row.day.date, projectId: row.project.id, teamId: row.shift.team_id, where: 'day' });
+                                    setCoverUserId('');
+                                    setError('');
+                                  }}
+                                >
+                                  Ask someone
+                                </button>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
+                  {ask?.where === 'day' && selectedRows.some((row) => ask.date === row.day.date && ask.projectId === row.project.id && ask.teamId === row.shift.team_id) ? (
+                    selectedRows.filter((row) => ask.date === row.day.date && ask.projectId === row.project.id && ask.teamId === row.shift.team_id).map((row) => (
+                      <form key="ask-day" className="oncall-ask" onSubmit={(event) => sendRequest(event, row)}>
+                        {rosterFor(row.project, row.shift.team_id).filter((person) => person.userId !== row.shift.user_id).length ? (
+                          <>
+                            <label>
+                              Who on {known(row.shift.team_name)} should take this day?
+                              <select className="input" value={coverUserId} onChange={(event) => setCoverUserId(event.target.value)}>
+                                <option value="">Select a person</option>
+                                {rosterFor(row.project, row.shift.team_id).filter((person) => person.userId !== row.shift.user_id).map((person) => (
+                                  <option key={person.userId} value={person.userId}>{person.name}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Sending...' : 'Send request'}</button>
+                          </>
+                        ) : <p>Add another person on this team before someone else can take the day.</p>}
+                      </form>
+                    ))
+                  ) : null}
                 </div>
               )}
             </section>
