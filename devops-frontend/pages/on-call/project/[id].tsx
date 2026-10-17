@@ -4,29 +4,36 @@ import { useRouter } from 'next/router';
 import { useEffect, useRef, useState } from 'react';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
-import { currentMonth, monthDays, monthTitle, shiftMonth, type OnCallPerson } from '../../../lib/onCallMonth';
+import { currentMonth, monthTitle, shiftMonth, type OnCallPerson } from '../../../lib/onCallMonth';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
 const TIMEZONES = ['UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Kolkata', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
 
-interface TeamOption {
-  id: number;
+interface TeamShift {
+  team_id: number;
+  team_name: string;
+  user_id: number;
   name: string;
+  status: string;
+  request_id?: number;
+  cover_user_id?: number;
+  cover_name?: string;
+  from_name?: string;
 }
 
 interface DutyDay {
   date: string;
   label: string;
   weekday: string;
-  user_id: number;
-  name: string;
   today: boolean;
-  status: string;
-  request_id?: number;
-  cover_user_id?: number;
-  cover_name?: string;
-  from_name?: string;
+  teams: TeamShift[];
+}
+
+interface TeamRoster {
+  team_id: number;
+  team_name: string;
+  roster: OnCallPerson[];
 }
 
 const WEEK_LETTERS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
@@ -57,22 +64,11 @@ function known(value: string | undefined): string {
   return text || 'Unknown';
 }
 
-function readMembers(data: { members?: unknown }): OnCallPerson[] {
-  const raw = Array.isArray(data?.members) ? data.members : [];
-  return raw
-    .map((item) => {
-      const row = item as { user_id?: number; name?: string; username?: string };
-      return { userId: typeof row.user_id === 'number' ? row.user_id : 0, name: String(row.name || row.username || '').trim() };
-    })
-    .filter((item) => item.userId > 0 && item.name);
-}
-
-async function loadMembers(apiUrl: string, teamId: number, headers: HeadersInit): Promise<OnCallPerson[] | null> {
-  const primary = await fetch(`${apiUrl}/api/oncall/team-members?team_id=${teamId}`, { headers });
-  if (primary.ok) return readMembers(await primary.json().catch(() => ({})));
-  const fallback = await fetch(`${apiUrl}/api/devops/teams/${teamId}/members`, { headers });
-  if (!fallback.ok) return null;
-  return readMembers(await fallback.json().catch(() => ({})));
+function shiftText(shift: TeamShift): string {
+  if (!shift.user_id) return 'No one is on this rotation';
+  if (shift.status === 'covered') return `${known(shift.name)} is covering for ${known(shift.from_name)}`;
+  if (shift.status === 'pending') return `Waiting for ${known(shift.cover_name)}`;
+  return known(shift.name);
 }
 
 export default function OnCallProjectPage() {
@@ -82,23 +78,18 @@ export default function OnCallProjectPage() {
   const projectId = Number.parseInt(raw || '', 10);
   const monthQuery = Array.isArray(router.query.month) ? router.query.month[0] : router.query.month;
   const zoneQuery = Array.isArray(router.query.timezone) ? router.query.timezone[0] : router.query.timezone;
-  const teamQuery = Array.isArray(router.query.team_id) ? router.query.team_id[0] : router.query.team_id;
   const timezone = TIMEZONES.includes(zoneQuery || '') ? zoneQuery || 'Asia/Kolkata' : 'Asia/Kolkata';
   const month = monthQuery && /^\d{4}-\d{2}$/.test(monthQuery) ? monthQuery : currentMonth(timezone);
   const [projectName, setProjectName] = useState('');
-  const [teams, setTeams] = useState<TeamOption[]>([]);
-  const [teamId, setTeamId] = useState(0);
-  const [people, setPeople] = useState<OnCallPerson[]>([]);
-  const [coverPeople, setCoverPeople] = useState<OnCallPerson[]>([]);
+  const [rosters, setRosters] = useState<TeamRoster[]>([]);
   const [days, setDays] = useState<DutyDay[]>([]);
-  const [usingRoster, setUsingRoster] = useState(false);
   const [onCallOn, setOnCallOn] = useState(false);
   const [me, setMe] = useState(0);
   const [isManager, setIsManager] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [focusDate, setFocusDate] = useState('');
   const calendarRef = useRef<HTMLDivElement>(null);
-  const [askDate, setAskDate] = useState('');
+  const [ask, setAsk] = useState<{ date: string; teamId: number } | null>(null);
   const [coverUserId, setCoverUserId] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -151,11 +142,15 @@ export default function OnCallProjectPage() {
         if (!res.ok) throw new Error(data?.error || 'Failed to load project');
         return data.project || data;
       }),
-      fetch(`${apiUrl}/api/devops/my-teams`, { headers }).then(async (res) => (res.ok ? res.json() : { teams: [] })),
       fetch(`${apiUrl}/api/devops/me`, { headers }).then(async (res) => (res.ok ? res.json() : null)),
       fetch(`${apiUrl}/api/oncall/flags`, { headers }).then(async (res) => (res.ok ? res.json() : null)),
+      fetch(`${apiUrl}/api/oncall/days?project_id=${projectId}&month=${month}&timezone=${encodeURIComponent(timezone)}`, { headers }).then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to load on-call');
+        return data;
+      }),
     ])
-      .then(async ([project, mine, meBody, flagsBody]) => {
+      .then(([project, meBody, flagsBody, duty]) => {
         setProjectName(String(project.name || '').trim());
         const meId = typeof meBody?.id === 'number' ? meBody.id : typeof meBody?.user?.id === 'number' ? meBody.user.id : 0;
         if (meId) setMe(meId);
@@ -163,107 +158,48 @@ export default function OnCallProjectPage() {
         const flags = Array.isArray(flagsBody?.flags) ? flagsBody.flags : [];
         const flag = flags.find((item: { project_id?: number }) => item.project_id === projectId);
         setOnCallOn(Boolean(flag?.enabled));
-        const collected: TeamOption[] = [];
-        const add = (id: number, name: string) => {
-          if (id > 0 && !collected.some((team) => team.id === id)) collected.push({ id, name: name.trim() || 'Unknown' });
-        };
-        add(typeof project.owner_team_id === 'number' ? project.owner_team_id : 0, String(project.owner_team || ''));
-        const access = Array.isArray(project.team_access) ? project.team_access : [];
-        access.forEach((team: { team_id?: number; team_name?: string }) => add(typeof team.team_id === 'number' ? team.team_id : 0, String(team.team_name || '')));
-        const myTeams = Array.isArray(mine?.teams) ? mine.teams : [];
-        myTeams.forEach((team: { id?: number; name?: string }) => add(typeof team.id === 'number' ? team.id : 0, String(team.name || '')));
-        setTeams(collected);
-        const requested = Number.parseInt(teamQuery || '', 10);
-        const explicit = collected.find((team) => team.id === requested);
-        const ordered = explicit ? [explicit] : collected;
-        let chosen = explicit?.id || 0;
-        let roster: OnCallPerson[] = [];
-        let members: OnCallPerson[] = [];
-        let savedRoster = false;
-        const pool = new Map<number, OnCallPerson>();
-        for (const team of collected) {
-          const rosterRes = await fetch(`${apiUrl}/api/oncall/roster?team_id=${team.id}`, { headers });
-          let teamRoster: OnCallPerson[] = [];
-          if (rosterRes.ok) {
-            const body = await rosterRes.json().catch(() => ({}));
-            const users = Array.isArray(body.users) ? body.users : [];
-            teamRoster = users
-              .map((item: { user_id?: number; name?: string }) => ({ userId: item.user_id || 0, name: String(item.name || '').trim() }))
-              .filter((item: OnCallPerson) => item.userId > 0);
-          }
-          const loaded = await loadMembers(apiUrl, team.id, headers);
-          (loaded || teamRoster).forEach((person) => pool.set(person.userId, person));
-          const useThis = explicit ? team.id === explicit.id : !chosen && (teamRoster.length > 0 || (loaded && loaded.length > 0));
-          if (useThis) {
-            chosen = team.id;
-            roster = teamRoster;
-            members = loaded || [];
-            savedRoster = teamRoster.length > 0;
-          }
-        }
-        const selected = chosen || explicit?.id || collected[0]?.id || 0;
-        setTeamId(selected);
-        setUsingRoster(savedRoster);
-        const source = savedRoster ? roster : members;
-        setPeople(source);
-        setCoverPeople(pool.size ? [...pool.values()] : source);
-        if (!selected) {
-          setDays([]);
-          setError('This project has no team.');
-          return;
-        }
-        if (!source.length) {
-          setDays([]);
-          setError(members.length === 0 && !savedRoster ? 'Team members could not be loaded.' : 'No one is on this team.');
-          return;
-        }
-        const dayRes = await fetch(`${apiUrl}/api/oncall/days?project_id=${projectId}&team_id=${selected}&month=${month}&timezone=${encodeURIComponent(timezone)}`, { headers });
-        if (dayRes.ok) {
-          const body = await dayRes.json().catch(() => ({}));
-          setDays(Array.isArray(body.days) ? body.days : []);
-          if (Array.isArray(body.roster) && body.roster.length) {
-            setPeople(body.roster.map((item: { user_id?: number; name?: string }) => ({ userId: item.user_id || 0, name: String(item.name || '').trim() || 'Unknown' })).filter((item: OnCallPerson) => item.userId > 0));
-            setUsingRoster(true);
-          }
-          return;
-        }
-        setDays(monthDays(month, timezone, source).map((day) => ({
-          date: day.date,
-          label: day.label,
-          weekday: day.weekday,
-          user_id: day.userId,
-          name: day.name,
-          today: day.today,
-          status: 'scheduled',
+        const teamRows = Array.isArray(duty?.teams) ? duty.teams : [];
+        setRosters(teamRows.map((team: { team_id?: number; team_name?: string; roster?: { user_id?: number; name?: string }[] }) => ({
+          team_id: typeof team.team_id === 'number' ? team.team_id : 0,
+          team_name: String(team.team_name || '').trim() || 'Unknown',
+          roster: (Array.isArray(team.roster) ? team.roster : [])
+            .map((person) => ({ userId: person.user_id || 0, name: String(person.name || '').trim() || 'Unknown' }))
+            .filter((person: OnCallPerson) => person.userId > 0),
+        })).filter((team: TeamRoster) => team.team_id > 0));
+        const loadedDays = Array.isArray(duty?.days) ? duty.days : [];
+        setDays(loadedDays.map((day: DutyDay) => ({
+          date: String(day.date || ''),
+          label: String(day.label || ''),
+          weekday: String(day.weekday || ''),
+          today: Boolean(day.today),
+          teams: Array.isArray(day.teams) ? day.teams : [],
         })));
+        if (!teamRows.length) setError('This project has no team.');
       })
       .catch((err) => {
         setDays([]);
+        setRosters([]);
         setError(err instanceof Error ? err.message : 'Failed to load on-call');
       })
       .finally(() => setLoading(false));
-  }, [apiUrl, month, projectId, refresh, router.isReady, teamQuery, timezone]);
+  }, [apiUrl, month, projectId, refresh, router.isReady, timezone]);
 
-  const teamName = teams.find((team) => team.id === teamId)?.name || '';
   const today = days.find((day) => day.today);
-  const openView = (next: { month?: string; timezone?: string; teamId?: number }) => {
-    setAskDate('');
+  const openView = (next: { month?: string; timezone?: string }) => {
+    setAsk(null);
     void router.push({
       pathname: `/on-call/project/${projectId}`,
-      query: {
-        month: next.month || month,
-        timezone: next.timezone || timezone,
-        ...(next.teamId || teamId ? { team_id: String(next.teamId || teamId) } : {}),
-      },
+      query: { month: next.month || month, timezone: next.timezone || timezone },
     });
   };
-  const others = (day: DutyDay) => coverPeople.filter((person) => person.userId !== day.user_id);
-  const pending = days.filter((day) => day.status === 'pending');
-  const canRequest = (day: DutyDay) => day.date >= todayDate && day.status !== 'pending' && (isManager || (me > 0 && me === day.user_id));
+  const rosterFor = (teamId: number) => rosters.find((team) => team.team_id === teamId)?.roster || [];
+  const others = (shift: TeamShift) => rosterFor(shift.team_id).filter((person) => person.userId !== shift.user_id);
+  const pending = days.flatMap((day) => day.teams.filter((shift) => shift.status === 'pending').map((shift) => ({ day, shift })));
+  const canRequest = (day: DutyDay, shift: TeamShift) => shift.user_id > 0 && day.date >= todayDate && shift.status !== 'pending' && (isManager || (me > 0 && me === shift.user_id));
   const todayDate = todayKey(timezone);
   const reload = () => setRefresh((value) => value + 1);
 
-  const sendRequest = async (day: DutyDay) => {
+  const sendRequest = async (day: DutyDay, shift: TeamShift) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     const cover = Number(coverUserId);
     if (!token || !cover) {
@@ -276,14 +212,14 @@ export default function OnCallProjectPage() {
       const response = await fetch(`${apiUrl}/api/oncall/covers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ project_id: projectId, team_id: teamId, date: day.date, cover_user_id: cover, timezone }),
+        body: JSON.stringify({ project_id: projectId, team_id: shift.team_id, date: day.date, cover_user_id: cover, timezone }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         setError(typeof data?.error === 'string' && data.error !== '404 page not found' ? data.error : 'The cover request could not be saved.');
         return;
       }
-      setAskDate('');
+      setAsk(null);
       setCoverUserId('');
       setNote('Request sent. The day changes after that person approves.');
       reload();
@@ -342,7 +278,7 @@ export default function OnCallProjectPage() {
           <div>
             <span className="portal-page__eyebrow">On-call</span>
             <h1 className="portal-page__title">{known(projectName)}</h1>
-            <p className="portal-page__subtitle">{known(teamName)} rotates one person per day in {timezone}. A day changes only after the covering person approves.</p>
+            <p className="portal-page__subtitle">Each team rotates one person per day in {timezone}. A cover stays on that team and changes the day only after approval.</p>
           </div>
           <Link href="/on-call" className="btn btn-secondary">Back to on-call</Link>
         </div>
@@ -397,12 +333,6 @@ export default function OnCallProjectPage() {
               ) : null}
             </div>
             <label>
-              Team
-              <select className="input" value={teamId || ''} onChange={(event) => openView({ teamId: Number(event.target.value) })}>
-                {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
-              </select>
-            </label>
-            <label>
               Timezone
               <select className="input" value={timezone} onChange={(event) => openView({ timezone: event.target.value })}>
                 {TIMEZONES.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
@@ -420,94 +350,96 @@ export default function OnCallProjectPage() {
             <div className="oncall-today">
               <span>
                 <strong>Today · {today.label}</strong>
-                <small className="svc-tree__meta">{today.status === 'covered' ? `${today.name} is covering for ${known(today.from_name)}` : today.name}</small>
-              </span>
-              {today.status === 'pending' && me > 0 && me === today.cover_user_id ? (
-                <span>
-                  <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => decide(today.request_id || 0, 'approve')}>Approve</button>
-                  <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: 8 }} disabled={saving} onClick={() => decide(today.request_id || 0, 'decline')}>Decline</button>
+                <span className="oncall-today__teams">
+                  {today.teams.map((shift) => (
+                    <small key={shift.team_id}>{known(shift.team_name)} · {shiftText(shift)}</small>
+                  ))}
                 </span>
-              ) : canRequest(today) ? (
-                <button type="button" className="btn btn-primary btn-sm" onClick={() => { setAskDate(today.date); setCoverUserId(''); setError(''); }}>Request change</button>
-              ) : (
-                <span>{today.status === 'pending' ? `Waiting for ${known(today.cover_name)} to approve` : 'Checked for today'}</span>
-              )}
+              </span>
             </div>
           ) : null}
           {!loading ? (
             <section className="oncall-requests" aria-label="Cover requests">
               <strong>Requests</strong>
-              <p>The person on the day asks someone else to take it. That person approves or declines. The day changes only after approval.</p>
+              <p>The person on a team asks someone on that same team to take the day. The day changes only after that person approves.</p>
               {!pending.length ? <p>No requests are waiting for approval.</p> : null}
-              {pending.map((day) => (
-                <div key={day.date} className="oncall-requests__row">
-                  <span>{day.label} · {known(day.from_name)} asked {known(day.cover_name)}</span>
-                  {me > 0 && me === day.cover_user_id ? (
+              {pending.map(({ day, shift }) => (
+                <div key={`${day.date}-${shift.team_id}`} className="oncall-requests__row">
+                  <span>{day.label} · {known(shift.team_name)} · {known(shift.from_name)} asked {known(shift.cover_name)}</span>
+                  {me > 0 && me === shift.cover_user_id ? (
                     <span>
-                      <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => decide(day.request_id || 0, 'approve')}>Approve</button>
-                      <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: 8 }} disabled={saving} onClick={() => decide(day.request_id || 0, 'decline')}>Decline</button>
+                      <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => decide(shift.request_id || 0, 'approve')}>Approve</button>
+                      <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: 8 }} disabled={saving} onClick={() => decide(shift.request_id || 0, 'decline')}>Decline</button>
                     </span>
                   ) : (
-                    <span>Waiting for {known(day.cover_name)}</span>
+                    <span>Waiting for {known(shift.cover_name)}</span>
                   )}
                 </div>
               ))}
             </section>
           ) : null}
-          {!loading && coverPeople.length < 2 ? (
-            <p className="portal-surface__subtitle">Only one person can be loaded, so a request has no one to approve it yet. Add another person on the <Link href="/team">team page</Link>.</p>
-          ) : null}
-          {!loading && people.length > 1 && !usingRoster ? (
-            <p className="portal-surface__subtitle">This list uses everyone who could be loaded. Save the on-call set on the <Link href="/team">team page</Link> to choose who rotates.</p>
+          {!loading && rosters.some((team) => team.roster.length < 2) ? (
+            <p className="portal-surface__subtitle">A team with fewer than two people on its rotation cannot hand a day to someone else. Add people on the <Link href="/team">team page</Link>.</p>
           ) : null}
           {!loading && !error && !days.length ? <div className="empty-state">No on-call days for this month.</div> : null}
           {!loading && days.length ? (
             <ul className="svc-tree">
-              {days.map((day) => {
-                const showAsk = canRequest(day);
-                return (
-                  <li key={day.date} id={`oncall-day-${day.date}`}>
-                    <div className={`svc-tree__folder${day.today ? ' is-current' : ''}`}>
-                      <span>
-                        {day.label}
-                        <small className="svc-tree__meta">{day.weekday}{day.status === 'covered' ? ` · covering for ${known(day.from_name)}` : ''}</small>
-                      </span>
-                      <span>
-                        {day.status === 'pending' ? `Waiting for ${known(day.cover_name)}` : day.name}
-                        {showAsk ? (
-                          <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: 8 }} onClick={() => { setAskDate(askDate === day.date ? '' : day.date); setCoverUserId(''); setError(''); }}>
-                            Request change
-                          </button>
-                        ) : null}
-                        {day.status === 'pending' && me > 0 && me === day.cover_user_id ? (
-                          <>
-                            <button type="button" className="btn btn-primary btn-sm" style={{ marginLeft: 8 }} disabled={saving} onClick={() => decide(day.request_id || 0, 'approve')}>Approve</button>
-                            <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: 8 }} disabled={saving} onClick={() => decide(day.request_id || 0, 'decline')}>Decline</button>
-                          </>
-                        ) : null}
-                      </span>
-                    </div>
-                    {askDate === day.date ? (
-                      <form className="oncall-ask" onSubmit={(event) => { event.preventDefault(); void sendRequest(day); }}>
-                        {others(day).length ? (
-                          <>
-                            <label>
-                              Who should approve this day?
-                              <select className="input" value={coverUserId} onChange={(event) => setCoverUserId(event.target.value)}>
-                                <option value="">Select a person</option>
-                                {others(day).map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}
-                              </select>
-                            </label>
-                            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Sending...' : 'Send request'}</button>
-                          </>
-                        ) : (
-                          <p>Add another person on the <Link href="/team">team page</Link> before this request can be sent.</p>
-                        )}
-                      </form>
-                    ) : null}
-                  </li>
-                );
-              })}
+              {days.map((day) => (
+                <li key={day.date} id={`oncall-day-${day.date}`}>
+                  <div className={`svc-tree__folder${day.today ? ' is-current' : ''}`}>
+                    <span>
+                      {day.label}
+                      <small className="svc-tree__meta">{day.weekday}</small>
+                    </span>
+                  </div>
+                  <div className="oncall-shifts">
+                    {day.teams.map((shift) => {
+                      const open = ask?.date === day.date && ask.teamId === shift.team_id;
+                      return (
+                        <div key={shift.team_id}>
+                          <div className="oncall-shift">
+                            <span>
+                              <strong>{known(shift.team_name)}</strong>
+                              <small>{shiftText(shift)}</small>
+                            </span>
+                            <span>
+                              {canRequest(day, shift) ? (
+                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setAsk(open ? null : { date: day.date, teamId: shift.team_id }); setCoverUserId(''); setError(''); }}>
+                                  Request change
+                                </button>
+                              ) : null}
+                              {shift.status === 'pending' && me > 0 && me === shift.cover_user_id ? (
+                                <>
+                                  <button type="button" className="btn btn-primary btn-sm" style={{ marginLeft: 8 }} disabled={saving} onClick={() => decide(shift.request_id || 0, 'approve')}>Approve</button>
+                                  <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: 8 }} disabled={saving} onClick={() => decide(shift.request_id || 0, 'decline')}>Decline</button>
+                                </>
+                              ) : null}
+                            </span>
+                          </div>
+                          {open ? (
+                            <form className="oncall-ask" onSubmit={(event) => { event.preventDefault(); void sendRequest(day, shift); }}>
+                              {others(shift).length ? (
+                                <>
+                                  <label>
+                                    Who on {known(shift.team_name)} should approve this day?
+                                    <select className="input" value={coverUserId} onChange={(event) => setCoverUserId(event.target.value)}>
+                                      <option value="">Select a person</option>
+                                      {others(shift).map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}
+                                    </select>
+                                  </label>
+                                  <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Sending...' : 'Send request'}</button>
+                                </>
+                              ) : (
+                                <p>Add another person to {known(shift.team_name)} on the <Link href="/team">team page</Link> before this request can be sent.</p>
+                              )}
+                            </form>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </li>
+              ))}
             </ul>
           ) : null}
         </section>

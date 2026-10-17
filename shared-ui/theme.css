@@ -4384,13 +4384,37 @@ a.svc-tree__folder:hover,
 
 .oncall-today {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
   padding: 14px 16px;
   border-radius: 12px;
   background: var(--ig-accent-soft);
+}
+
+.oncall-today__teams,
+.oncall-shifts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.oncall-shifts {
+  margin: 0 14px 12px;
+}
+
+.oncall-shift {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.oncall-shift small,
+.oncall-today__teams small {
+  display: block;
+  color: var(--ig-muted);
 }
 
 .oncall-ask {
