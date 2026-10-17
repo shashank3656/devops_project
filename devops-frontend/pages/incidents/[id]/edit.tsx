@@ -437,16 +437,14 @@ export default function EditIncidentPage() {
       <Head>
         <title>Edit Incident - DevOps Portal</title>
       </Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="work-page">
+        <header className="work-page__head">
           <div>
-            <span className="portal-page__eyebrow">Incident Editor</span>
-            <h1 className="portal-page__title">Edit incident</h1>
-            <p className="portal-page__subtitle">
-              Update the incident on its own page so the queue remains focused on monitoring.
-            </p>
+            <p className="ops-kicker">{currentIncidentNumber || 'Incident'}</p>
+            <h1>{summary.trim() || 'Incident'}</h1>
+            <p>{loading ? 'Loading this incident.' : 'Update state, assignment, and notes. The queue stays on the list.'}</p>
           </div>
-          <div className="portal-page__actions">
+          <div className="request-actions" style={{ marginTop: 0 }}>
             {problemId > 0 ? (
               <Link href={`/problems/${problemId}`} className="btn btn-secondary">
                 Open problem
@@ -459,63 +457,39 @@ export default function EditIncidentPage() {
                 Create problem
               </Link>
             )}
-            <Link href="/incidents" className="btn btn-secondary">
-              Back to incidents
-            </Link>
+            <Link href="/incidents" className="btn btn-secondary">Back to incidents</Link>
           </div>
-        </div>
+        </header>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
 
-        <section className="portal-surface">
-          <div className="portal-surface__header">
-            <div>
-              <span className="portal-surface__eyebrow">Incident details</span>
-              <h2 className="portal-surface__title">Update incident</h2>
-              {currentIncidentNumber ? (
-                <p className="portal-surface__subtitle">
-                  Incident reference: <strong>{currentIncidentNumber}</strong>
-                </p>
-              ) : null}
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="empty-state">Loading incident...</div>
-          ) : (
-            <>
-              <div className="portal-form-grid">
-                <label className="label">
-                  Incident reference
-                  <input className="input" value={currentIncidentNumber} readOnly />
-                </label>
-                <label className="label">
-                  Linked request
-                  <input className="input" value={requestId ? `#${requestId}` : 'Not linked'} readOnly />
-                </label>
-                <label className="label">
-                  Provenance
-                  <input className="input" readOnly value={source === 'alert' ? `${alertSource || 'alert'}${fingerprint ? ` · ${fingerprint}` : ''}` : source || 'Unknown'} />
-                  <small>Manual form, webhook, or alert. Assignment is not acknowledgement.</small>
-                </label>
-                <label className="label">
-                  External IRM
-                  <input className="input" readOnly value={externalRef || '—'} />
-                </label>
-                <label className="label">
-                  Suspected change
+        {loading ? (
+          <p className="work-empty">Loading incident…</p>
+        ) : (
+          <section className="work-board">
+            <div className="request-facts">
+              <div><span>Reference</span><strong>{currentIncidentNumber || '—'}</strong></div>
+              <div><span>Linked request</span><strong>{requestId ? `#${requestId}` : 'Not linked'}</strong></div>
+              <div>
+                <span>Source</span>
+                <strong>{source === 'alert' ? `${alertSource || 'alert'}${fingerprint ? ` · ${fingerprint}` : ''}` : source || 'Unknown'}</strong>
+              </div>
+              <div><span>External IRM</span><strong>{externalRef || '—'}</strong></div>
+              <div>
+                <span>Suspected change</span>
+                <strong>
                   {suspectedChangeId ? (
-                    <Link href={`/changes/${suspectedChangeId}`} className="input" style={{ display: 'flex', alignItems: 'center' }}>
-                      {suspectedChangeNumber || `CHG${suspectedChangeId}`}
-                    </Link>
-                  ) : (
-                    <input className="input" readOnly value="Not linked" />
-                  )}
-                </label>
-                {source === 'change_regression' ? (
-                  <p className="portal-surface__subtitle">Opened by the post-deploy watcher. Check the linked change for the previous SHA rollback hint.</p>
-                ) : null}
+                    <Link href={`/changes/${suspectedChangeId}`}>{suspectedChangeNumber || `CHG${suspectedChangeId}`}</Link>
+                  ) : 'Not linked'}
+                </strong>
+              </div>
+              <ITSMClock sla={sla} />
+            </div>
+            {source === 'change_regression' ? (
+              <p className="chg-detail__hint">Opened by the post-deploy watcher. The linked change has the previous SHA.</p>
+            ) : null}
+            <div className="portal-form-grid" style={{ marginTop: 16 }}>
                 <label className="label">
                   Priority
                   <select className="input" value={severity} onChange={(event) => setSeverity(event.target.value)}>
@@ -532,10 +506,6 @@ export default function EditIncidentPage() {
                     ))}
                   </select>
                 </label>
-                <p className="portal-surface__subtitle">
-                  New → In Progress → On Hold → Resolved → Closed. Response SLA starts on create; moving out of New marks it met.
-                </p>
-                <ITSMClock sla={sla} />
                 <label className="label">
                   Assignment group
                   <select className="input" value={teamId} onChange={(event) => setTeamId(event.target.value)}>
@@ -574,7 +544,6 @@ export default function EditIncidentPage() {
                     {callers.map((caller) => (
                       <option key={caller.user_id} value={caller.user_id}>
                         {caller.username}
-                        {caller.email ? ` · ${caller.email}` : ''}
                       </option>
                     ))}
                   </select>
@@ -789,9 +758,8 @@ export default function EditIncidentPage() {
                   onPosted={setJournal}
                 />
               ) : null}
-            </>
-          )}
-        </section>
+          </section>
+        )}
       </div>
     </DevOpsLayout>
   );

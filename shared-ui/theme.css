@@ -4050,6 +4050,18 @@ html[data-theme] .portal-page {
   width: 100%;
 }
 
+html[data-theme] .portal-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 16px;
+  align-items: start;
+}
+
+html[data-theme] .portal-form-grid > .portal-surface__subtitle,
+html[data-theme] .portal-form-grid > .label:has(textarea) {
+  grid-column: 1 / -1;
+}
+
 html[data-theme] .portal-page__header {
   display: flex;
   flex-wrap: wrap;
@@ -7561,6 +7573,7 @@ html[data-theme] .devops-layout .request-note .input {
   margin-top: 4px;
   font-size: 15px;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .request-actions {
